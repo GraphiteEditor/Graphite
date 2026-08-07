@@ -531,13 +531,19 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 				color_input.chosen_gradient = color_input.value.to_css_background_image();
 			}
 			Widget::SpectrumInput(spectrum_input) => {
-				spectrum_input.track_css = spectrum_input
-					.track
-					.to_css_linear_gradient(spectrum_input.track_cyclic, spectrum_input.track_space, spectrum_input.track_hue_direction);
+				// The track strip spans exactly 0 to 1, which no spread affects, so the widget carries no spread of its own
+				let settings = graphene_std::vector::style::GradientSettings {
+					spread: Default::default(),
+					cyclic: spectrum_input.track_cyclic,
+					space: spectrum_input.track_space,
+					hue_direction: spectrum_input.track_hue_direction,
+					interpolation: spectrum_input.track_interpolation,
+				};
+				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient(settings);
 				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrapped interval's boundary-crossing color rather than the outermost stops'
-				let track_gradient = graphene_std::vector::style::Gradient::from(&spectrum_input.track);
+				let track_evaluator = graphene_std::vector::style::Gradient::from(&spectrum_input.track).evaluator(settings);
 				let cap = |t: f64| {
-					let color = track_gradient.evaluate(t, Default::default(), spectrum_input.track_cyclic, spectrum_input.track_space, spectrum_input.track_hue_direction);
+					let color = track_evaluator.evaluate(t);
 					SRGBA8::from(color).to_css_hex()
 				};
 				spectrum_input.track_start_css = cap(0.);

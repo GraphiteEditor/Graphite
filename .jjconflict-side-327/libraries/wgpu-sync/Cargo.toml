@@ -1,0 +1,10 @@
+[package]
+name = "wgpu-sync"
+description = "Helper for working with wgpu in a multi-threaded context"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+wgpu = { workspace = true }

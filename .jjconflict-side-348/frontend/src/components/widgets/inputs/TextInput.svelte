@@ -1,0 +1,110 @@
+<script lang="ts">
+	import { createEventDispatcher } from "svelte";
+	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+
+	const dispatch = createEventDispatcher<{ commitText: string }>();
+
+	// Content
+	export let value: string;
+	export let label: string | undefined = undefined;
+	export let placeholder: string | undefined = undefined;
+	export let disabled = false;
+	// Styling
+	export let narrow = false;
+	export let centered = false;
+	// Sizing
+	export let minWidth = 0;
+	export let maxWidth = 0;
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
+
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+
+	let self: FieldInput | undefined;
+	let editing = false;
+
+	function onTextFocused() {
+		editing = true;
+
+		self?.selectAllText(value);
+	}
+
+	// Called only when `value` is changed from the <input> element via user input and committed, either with the
+	// enter key (via the `change` event) or when the <input> element is unfocused (with the `blur` event binding)
+	function onTextChanged() {
+		// The `unFocus()` call in `onTextChangeCanceled()` causes itself to be run again, so this if statement skips a second run
+		if (!editing) return;
+
+		// Capture before `onTextChangeCanceled` blurs the input
+		const currentValue = self?.getValue();
+
+		onTextChangeCanceled();
+
+		// Only commit on a real edit, so a blur fired when the focused input is removed from the DOM (e.g., from a picker closing
+		// during hover transfer) doesn't round-trip the original value back to the backend and overwrite concurrent state.
+		if (self && currentValue !== undefined && currentValue !== value) {
+			dispatch("commitText", currentValue);
+		}
+
+		// Required if value is not changed by the parent component upon update:value event
+		self?.setInputElementValue(self.getValue());
+	}
+
+	function onTextChangeCanceled() {
+		editing = false;
+
+		self?.unFocus();
+	}
+
+	export function focus() {
+		self?.focus();
+	}
+
+	export function element(): HTMLInputElement | HTMLTextAreaElement | undefined {
+		return self?.element();
+	}
+</script>
+
+<FieldInput
+	class={`text-input ${className}`.trim()}
+	classes={{ centered, ...classes }}
+	styles={{
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+	}}
+	{value}
+	on:value
+	on:textFocused={onTextFocused}
+	on:textChanged={onTextChanged}
+	on:textChangeCanceled={onTextChangeCanceled}
+	spellcheck={true}
+	{label}
+	{disabled}
+	{narrow}
+	{tooltipLabel}
+	{tooltipDescription}
+	{tooltipShortcut}
+	{placeholder}
+	bind:this={self}
+/>
+
+<style lang="scss">
+	.text-input {
+		flex-shrink: 0;
+
+		input {
+			text-align: left;
+		}
+
+		&.centered {
+			input:not(:focus) {
+				text-align: center;
+			}
+		}
+	}
+</style>

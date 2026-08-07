@@ -1,0 +1,2977 @@
+// TODO: Eventually remove this document upgrade code
+// This file contains lots of hacky code for upgrading old documents to the new format
+
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, NodeTemplateImplementation, OutputConnector};
+use crate::messages::prelude::DocumentMessageHandler;
+use glam::{DVec2, IVec2};
+use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
+use graph_craft::document::DocumentNode;
+use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
+use graph_craft::{Type, item};
+use graphene_std::Color;
+use graphene_std::ParameterRef;
+use graphene_std::ProtoNodeIdentifier;
+use graphene_std::text::{TextAlign, TypesettingConfig};
+use graphene_std::transform::ScaleType;
+use graphene_std::uuid::NodeId;
+use graphene_std::vector::graphic_types;
+use graphene_std::vector::style::{GradientRamp, GradientSpread, PaintOrder, StrokeAlign};
+use std::collections::HashMap;
+use std::f64::consts::PI;
+use std::ops::Range;
+
+const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
+	("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
+	("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode", "graphene_core::vector::SubpathSegmentLengthsNode"),
+	("\"manual_composition\":null", "\"manual_composition\":{\"Generic\":\"T\"}"),
+	(
+		"core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>",
+		"core::option::Option<alloc::sync::Arc<core_types::context::OwnedContextImpl>>",
+	),
+	("graphene_core::transform::Footprint", "graphene_core::transform::Footprint"),
+	("\"OptionalF64\":", "\"F64\":"),
+	("\"path_bool_nodes::BooleanOperation\"", "\"vector_types::vector::misc::BooleanOperation\""),
+	("\"core_types::table::Table<", "\"core_types::list::List<"),
+	// The `GradientStops` type was renamed to `Gradient`; stale stored output names are cleared so the display falls back to the live type name
+	("\"output_names\":[\"GradientStops\"]", "\"output_names\":[\"\"]"),
+	("vector_types::gradient::GradientStops", "vector_types::gradient::Gradient"),
+];
+
+pub struct NodeReplacement<'a> {
+	node: ProtoNodeIdentifier,
+	aliases: &'a [&'a str],
+}
+
+const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
+	// ================================
+	// blending
+	// ================================
+	// The legacy combined "Blending" node was split into separate Blend Mode, Opacity (now also covers fill), and Clip nodes.
+	// Old Blending references are remapped here to `blend_mode::IDENTIFIER` so the per-node migration in `migrate_node` can
+	// detect a 5-input Blend Mode node and rewrite it as a chain (skipping any sub-node whose value is at the default and
+	// not exposed/wired up).
+	NodeReplacement {
+		node: graphene_std::blending_nodes::blend_mode::IDENTIFIER,
+		aliases: &[
+			"graphene_core::raster::BlendModeNode",
+			"graphene_core::blending_nodes::BlendModeNode",
+			"graphene_core::raster::BlendingNode",
+			"graphene_core::blending_nodes::BlendingNode",
+			"blending_nodes::BlendingNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::blending_nodes::opacity::IDENTIFIER,
+		aliases: &["graphene_core::raster::OpacityNode", "graphene_core::blending_nodes::OpacityNode"],
+	},
+	// ================================
+	// brush
+	// ================================
+	NodeReplacement {
+		node: graphene_std::brush::brush::blit::IDENTIFIER,
+		aliases: &["graphene_brush::BlitNode", "graphene_std::brush::BlitNode", "graphene_brush::brush::BlitNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::brush::brush::brush::IDENTIFIER,
+		aliases: &["graphene_brush::BrushNode", "graphene_std::brush::BrushNode", "graphene_brush::brush::BrushNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::brush::brush::brush_stamp_generator::IDENTIFIER,
+		aliases: &[
+			"graphene_brush::BrushStampGeneratorNode",
+			"graphene_std::brush::BrushStampGeneratorNode",
+			"graphene_brush::brush::BrushStampGeneratorNode",
+		],
+	},
+	// ================================
+	// gcore
+	// ================================
+	NodeReplacement {
+		node: graphene_std::animation::animation_time::IDENTIFIER,
+		aliases: &["graphene_core::animation::AnimationTimeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::extract_xy::extract_xy::IDENTIFIER,
+		aliases: &["graphene_core::ops::ExtractXyNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::ops::passthrough::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ops::IdentityNode",
+			"graphene_core::transform::CullNode",
+			"graphene_core::transform::BoundlessFootprintNode",
+			"graphene_core::transform::FreezeRealTimeNode",
+			"graphene_core::transform_nodes::BoundlessFootprintNode",
+			"graphene_core::transform_nodes::FreezeRealTimeNode",
+			"graphene_core::vector::SubpathSegmentLengthsNode",
+			"core_types::vector::SubpathSegmentLengthsNode",
+			// The deleted debug Option trio degrades to a passthrough of its single input
+			"graphene_core::ops::SizeOfNode",
+			"graphene_core::debug::SizeOfNode",
+			"graphene_core::ops::SomeNode",
+			"graphene_core::debug::SomeNode",
+			"graphene_core::ops::UnwrapNode",
+			"graphene_core::debug::UnwrapNode",
+			"graphene_core::debug::UnwrapOptionNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::memo::monitor::IDENTIFIER,
+		aliases: &["graphene_core::memo::MonitorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::memo::memoize::IDENTIFIER,
+		aliases: &["graphene_core::memo::MemoNode", "graphene_core::memo::ImpureMemoNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::animation::real_time::IDENTIFIER,
+		aliases: &["graphene_core::animation::RealTimeNode"],
+	},
+	// ================================
+	// graphic
+	// ================================
+	NodeReplacement {
+		node: graphene_std::artboard::create_artboard::IDENTIFIER,
+		aliases: &[
+			"graphene_core::artboard::CreateArtboardNode",
+			"graphene_core::ConstructArtboardNode",
+			"graphene_core::graphic_element::ToArtboardNode",
+			"graphene_core::artboard::ToArtboardNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::extend::IDENTIFIER,
+		aliases: &["graphene_core::graphic::graphic::ExtendNode", "graphene_core::graphic::ExtendNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::flatten_graphic::IDENTIFIER,
+		aliases: &[
+			"graphene_core::graphic::FlattenGraphicNode",
+			"graphene_core::graphic_element::FlattenGroupNode",
+			"graphene_core::graphic_types::FlattenGroupNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::flatten_vector::IDENTIFIER,
+		aliases: &["graphene_core::graphic::FlattenVectorNode", "graphene_core::graphic_element::FlattenVectorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::item_at_index::IDENTIFIER,
+		aliases: &[
+			"graphene_core::graphic_element::IndexNode",
+			"graphene_core::graphic::IndexNode",
+			"graphene_core::graphic::IndexElementsNode",
+			"graphic_nodes::graphic::IndexElementsNode",
+			"graphic_nodes::graphic::ExtractElementNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::read_attribute_gradient_form::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::ReadAttributeGradientTypeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::read_attribute_gradient_spread::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::ReadAttributeSpreadMethodNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::remove_at_index::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::OmitElementNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::legacy_layer_extend::IDENTIFIER,
+		aliases: &[
+			"graphene_core::graphic_element::LayerNode",
+			"graphene_core::graphic_types::LayerNode",
+			// Converted from "Append Artboard"
+			"graphene_core::AddArtboardNode",
+			"graphene_core::graphic_element::AppendArtboardNode",
+			"graphene_core::graphic_types::AppendArtboardNode",
+			"graphene_core::artboard::AppendArtboardNode",
+			"graphene_core::graphic::LegacyLayerExtendNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::to_graphic::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ToGraphicGroupNode",
+			"graphene_core::graphic_element::ToGroupNode",
+			"graphene_core::graphic_types::ToGroupNode",
+			"graphene_core::graphic::ToGraphicNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::wrap_graphic::IDENTIFIER,
+		aliases: &[
+			// Converted from "To Element"
+			"graphene_core::ToGraphicElementNode",
+			"graphene_core::graphic_element::ToElementNode",
+			"graphene_core::graphic_types::ToElementNode",
+			"graphene_core::graphic::WrapGraphicNode",
+		],
+	},
+	// ================================
+	// math
+	// ================================
+	NodeReplacement {
+		node: graphene_std::math_nodes::absolute_value::IDENTIFIER,
+		aliases: &["graphene_math_nodes::AbsoluteValueNode", "graphene_core::ops::AbsoluteValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::add::IDENTIFIER,
+		aliases: &["graphene_math_nodes::AddNode", "graphene_core::ops::AddNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::bool_value::IDENTIFIER,
+		aliases: &["graphene_math_nodes::BoolValueNode", "graphene_core::ops::BoolValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::ceiling::IDENTIFIER,
+		aliases: &["graphene_math_nodes::CeilingNode", "graphene_core::ops::CeilingNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::clamp::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ClampNode", "graphene_core::ops::ClampNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::color_value::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ColorValueNode", "graphene_core::ops::ColorValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::cosine::IDENTIFIER,
+		aliases: &["graphene_math_nodes::CosineNode", "graphene_core::ops::CosineNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::cosine_inverse::IDENTIFIER,
+		aliases: &["graphene_math_nodes::CosineInverseNode", "graphene_core::ops::CosineInverseNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::divide::IDENTIFIER,
+		aliases: &["graphene_math_nodes::DivideNode", "graphene_core::ops::DivideNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::dot_product::IDENTIFIER,
+		aliases: &["graphene_math_nodes::DotProductNode", "graphene_core::ops::DotProductNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::equals::IDENTIFIER,
+		aliases: &["graphene_math_nodes::EqualsNode", "graphene_core::ops::EqualsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::exponent::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ExponentNode", "graphene_core::ops::ExponentNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::floor::IDENTIFIER,
+		aliases: &["graphene_math_nodes::FloorNode", "graphene_core::ops::FloorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::footprint_value::IDENTIFIER,
+		aliases: &["graphene_math_nodes::FootprintValueNode", "graphene_core::ops::FootprintValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::gradient_form::IDENTIFIER,
+		aliases: &["math_nodes::GradientTypeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::gradient_spread::IDENTIFIER,
+		aliases: &["math_nodes::SpreadMethodNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::gradient_value::IDENTIFIER,
+		aliases: &[
+			"graphene_math_nodes::GradientValueNode",
+			"graphene_core::ops::GradientValueNode",
+			"graphene_math_nodes::GradientTableValueNode",
+			"graphene_core::ops::GradientTableValueNode",
+			"math_nodes::GradientTableValueNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::greater_than::IDENTIFIER,
+		aliases: &["graphene_math_nodes::GreaterThanNode", "graphene_core::ops::GreaterThanNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::greatest_common_divisor::IDENTIFIER,
+		aliases: &[
+			"graphene_math_nodes::GreatestCommonDivisor",
+			"graphene_core::ops::GreatestCommonDivisor",
+			"graphene_math_nodes::GreatestCommonDivisorNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::least_common_multiple::IDENTIFIER,
+		aliases: &[
+			"graphene_math_nodes::LeastCommonMultiple",
+			"graphene_core::ops::LeastCommonMultiple",
+			"graphene_math_nodes::LeastCommonMultipleNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::magnitude::IDENTIFIER,
+		aliases: &["math_nodes::LengthNode", "graphene_math_nodes::LengthNode", "graphene_core::ops::LenghtNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::less_than::IDENTIFIER,
+		aliases: &["graphene_math_nodes::LessThanNode", "graphene_core::ops::LessThanNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::logarithm::IDENTIFIER,
+		aliases: &["graphene_math_nodes::LogarithmNode", "graphene_core::ops::LogarithmNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::logical_and::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ops::LogicalAndNode",
+			"graphene_core::ops::LogicNotNode",
+			"graphene_core::logic::LogicNotNode",
+			"graphene_math_nodes::LogicalAndNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::logical_not::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ops::LogicalNotNode",
+			"graphene_core::ops::LogicOrNode",
+			"graphene_core::logic::LogicOrNode",
+			"graphene_math_nodes::LogicalNotNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::logical_or::IDENTIFIER,
+		aliases: &[
+			"graphene_core::ops::LogicalOrNode",
+			"graphene_core::ops::LogicAndNode",
+			"graphene_core::logic::LogicAndNode",
+			"graphene_math_nodes::LogicalOrNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::math::IDENTIFIER,
+		aliases: &["graphene_math_nodes::MathNode", "graphene_core::ops::MathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::max::IDENTIFIER,
+		aliases: &["graphene_math_nodes::MaxNode", "graphene_core::ops::MaxNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::min::IDENTIFIER,
+		aliases: &["graphene_math_nodes::MinNode", "graphene_core::ops::MinNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::modulo::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ModuloNode", "graphene_core::ops::ModuloNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::multiply::IDENTIFIER,
+		aliases: &["graphene_math_nodes::MultiplyNode", "graphene_core::ops::MultiplyNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::normalize::IDENTIFIER,
+		aliases: &["graphene_math_nodes::NormalizeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::not_equals::IDENTIFIER,
+		aliases: &["graphene_math_nodes::NotEqualsNode", "graphene_core::ops::NotEqualsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::number_value::IDENTIFIER,
+		aliases: &["graphene_math_nodes::NumberValueNode", "graphene_core::ops::NumberValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::percentage_value::IDENTIFIER,
+		aliases: &["graphene_math_nodes::PercentageValueNode", "graphene_core::ops::PercentageValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::random::IDENTIFIER,
+		aliases: &["graphene_math_nodes::RandomNode", "graphene_core::ops::RandomNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::remap::IDENTIFIER,
+		aliases: &["graphene_math_nodes::RemapNode", "graphene_core::ops::RemapNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::root::IDENTIFIER,
+		aliases: &["graphene_math_nodes::RootNode", "graphene_core::ops::RootNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::round::IDENTIFIER,
+		aliases: &["graphene_math_nodes::RoundNode", "graphene_core::ops::RoundNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::sample_gradient::IDENTIFIER,
+		aliases: &["graphene_math_nodes::SampleGradientNode", "graphene_core::ops::SampleGradientNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::sine::IDENTIFIER,
+		aliases: &["graphene_math_nodes::SineNode", "graphene_core::ops::SineNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::sine_inverse::IDENTIFIER,
+		aliases: &["graphene_math_nodes::SineInverseNode", "graphene_core::ops::SineInverseNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::subtract::IDENTIFIER,
+		aliases: &["graphene_math_nodes::SubtractNode", "graphene_core::ops::SubtractNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::tangent::IDENTIFIER,
+		aliases: &["graphene_math_nodes::TangentNode", "graphene_core::ops::TangentNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::tangent_inverse::IDENTIFIER,
+		aliases: &["graphene_math_nodes::TangentInverseNode", "graphene_core::ops::TangentInverseNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::as_f_64::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node", "math_nodes::ToF64Node"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::as_u_32::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToU32Node", "graphene_core::ops::ToU32Node", "math_nodes::ToU32Node"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::as_u_64::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToU64Node", "graphene_core::ops::ToU64Node", "math_nodes::ToU64Node"],
+	},
+	// The old 'Vec2 Value' node took separate X and Y inputs, a role now filled by 'Combine Vec2', while the new 'Vec2 Value' node takes a single vec2 input.
+	// Old references (including these older aliases) are remapped here to `vec_2_value::IDENTIFIER` so the per-node migration in `migrate_node` can detect the leftover 3-input shape and convert it into a 'Combine Vec2' node.
+	NodeReplacement {
+		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
+		aliases: &[
+			"graphene_math_nodes::Vec2ValueNode",
+			"graphene_core::ops::ConstructVector2",
+			"graphene_core::ops::Vector2ValueNode",
+			"graphene_core::ops::CoordinateValueNode",
+			"graphene_math_nodes::CoordinateValueNode",
+		],
+	},
+	// ================================
+	// path bool
+	// ================================
+	NodeReplacement {
+		node: graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER,
+		aliases: &["graphene_path_bool::BooleanOperationNode", "graphene_std::vector::BooleanOperationNode"],
+	},
+	// ================================
+	// raster
+	// ================================
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::black_and_white::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::BlackAndWhiteNode",
+			"graphene_core::raster::adjustments::BlackAndWhiteNode",
+			"graphene_core::raster::BlackAndWhiteNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::blending_nodes::mix::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::BlendNode",
+			"raster_nodes::adjustments::BlendNode",
+			"graphene_core::raster::adjustments::BlendNode",
+			"graphene_core::raster::BlendNode",
+			"graphene_raster_nodes::blending_nodes::BlendNode",
+			"raster_nodes::blending_nodes::BlendNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::filter::blur::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::filter::BlurNode", "graphene_std::filter::BlurNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::brightness_contrast::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::BrightnessContrastNode",
+			"graphene_core::raster::adjustments::BrightnessContrastNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::brightness_contrast_classic::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::adjustments::BrightnessContrastClassicNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::channel_mixer::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ChannelMixerNode",
+			"graphene_core::raster::adjustments::ChannelMixerNode",
+			"graphene_core::raster::ChannelMixerNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ColorOverlayNode",
+			"graphene_raster_nodes::generate_curves::ColorOverlayNode",
+			"raster_nodes::adjustments::ColorOverlayNode",
+			"graphene_core::raster::adjustments::ColorOverlayNode",
+			"raster_nodes::generate_curves::ColorOverlayNode",
+			"graphene_raster_nodes::blending_nodes::ColorOverlayNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::std_nodes::combine_channels::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::std_nodes::CombineChannelsNode", "graphene_std::raster::CombineChannelsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::dehaze::dehaze::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::dehaze::DehazeNode", "graphene_std::dehaze::DehazeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::std_nodes::empty_image::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::std_nodes::EmptyImageNode", "graphene_std::raster::EmptyImageNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::exposure::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ExposureNode",
+			"graphene_core::raster::adjustments::ExposureNode",
+			"graphene_core::raster::ExposureNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::std_nodes::extend_image_to_bounds::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::std_nodes::ExtendImageToBoundsNode", "graphene_std::raster::ExtendImageToBoundsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::extract_channel::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ExtractChannelNode",
+			"graphene_core::raster::adjustments::ExtractChannelNode",
+			"graphene_core::raster::ExtractChannelNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::gamma_correction::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::adjustments::GammaCorrectionNode", "graphene_core::raster::adjustments::GammaCorrectionNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::gradient_map::GradientMapNode",
+			"graphene_raster_nodes::adjustments::GradientMapNode",
+			"raster_nodes::gradient_map::GradientMapNode",
+			"raster_nodes::adjustments::GradientMapNode",
+			"graphene_core::raster::adjustments::GradientMapNode",
+			"graphene_core::raster::GradientMapNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::hue_saturation::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::HueSaturationNode",
+			"graphene_core::raster::adjustments::HueSaturationNode",
+			"graphene_core::raster::HueSaturationNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::image_color_palette::image_color_palette::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::image_color_palette::ImageColorPaletteNode",
+			"graphene_std::image_color_palette::ImageColorPaletteNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::std_nodes::image::IDENTIFIER,
+		aliases: &[
+			"raster_nodes::std_nodes::ImageValueNode",
+			"graphene_raster_nodes::std_nodes::ImageValueNode",
+			"graphene_std::raster::ImageValueNode",
+			"graphene_std::raster::ImageNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::invert::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::InvertNode",
+			"graphene_core::raster::adjustments::InvertNode",
+			"graphene_core::raster::InvertNode",
+			"graphene_core::raster::InvertRGBNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::levels::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::LevelsNode",
+			"graphene_core::raster::adjustments::LevelsNode",
+			"graphene_core::raster::LevelsNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::luminance::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::LuminanceNode",
+			"graphene_core::raster::adjustments::LuminanceNode",
+			"graphene_core::raster::LuminanceNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::make_opaque::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::MakeOpaqueNode",
+			"graphene_core::raster::adjustments::MakeOpaqueNode",
+			"graphene_core::raster::ExtractOpaqueNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::std_nodes::MandelbrotNode", "graphene_std::raster::MandelbrotNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::std_nodes::mask::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::std_nodes::MaskNode", "graphene_std::raster::MaskNode", "graphene_std::raster::MaskImageNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::posterize::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::PosterizeNode",
+			"graphene_core::raster::adjustments::PosterizeNode",
+			"graphene_core::raster::PosterizeNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::std_nodes::NoisePatternNode", "graphene_std::raster::NoisePatternNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::std_nodes::sample_image::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::std_nodes::SampleImageNode",
+			"graphene_std::raster::SampleImageNode",
+			"graphene_std::raster::SampleNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::selective_color::IDENTIFIER,
+		aliases: &["graphene_raster_nodes::adjustments::SelectiveColorNode", "graphene_core::raster::adjustments::SelectiveColorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::threshold::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ThresholdNode",
+			"graphene_core::raster::adjustments::ThresholdNode",
+			"graphene_core::raster::ThresholdNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::vibrance::IDENTIFIER,
+		aliases: &[
+			"graphene_raster_nodes::adjustments::VibranceNode",
+			"graphene_core::raster::adjustments::VibranceNode",
+			"graphene_core::raster::VibranceNode",
+		],
+	},
+	// ================================
+	// text
+	// ================================
+	NodeReplacement {
+		node: ProtoNodeIdentifier::new("graphene_std::text::TextNode"),
+		aliases: &["graphene_core::text::text::TextNode", "graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_value::IDENTIFIER,
+		aliases: &["graphene_math_nodes::StringValueNode", "graphene_core::ops::StringValueNode", "math_nodes::StringValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_concatenate::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringConcatenateNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_length::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringLengthNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_replace::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringReplaceNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_slice::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringSliceNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_split::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringSplitNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::switch::IDENTIFIER,
+		aliases: &["graphene_core::logic::SwitchNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::as_string::IDENTIFIER,
+		aliases: &["graphene_core::logic::ToStringNode", "text_nodes::ToStringNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::json::query_json::IDENTIFIER,
+		aliases: &["graphene_core::logic::JsonGetNode", "graphene_std::text_nodes::JsonGetNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::serialize::IDENTIFIER,
+		aliases: &["graphene_core::logic::SerializeNode"],
+	},
+	// ================================
+	// transform
+	// ================================
+	NodeReplacement {
+		node: graphene_std::transform_nodes::decompose_rotation::IDENTIFIER,
+		aliases: &[
+			"graphene_core::transform_nodes::RotationScaleNode",
+			"graphene_core::transform::RotationScaleNode",
+			"graphene_core::transform_nodes::DecomposeRotationNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::transform_nodes::decompose_scale::IDENTIFIER,
+		aliases: &["graphene_core::transform_nodes::DecomposeScaleNode", "graphene_core::transform::DecomposeScaleNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::transform_nodes::decompose_translation::IDENTIFIER,
+		aliases: &["graphene_core::transform_nodes::DecomposeTranslationNode", "graphene_core::transform::DecomposeTranslationNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::transform_nodes::extract_transform::IDENTIFIER,
+		aliases: &[
+			"graphene_core::transform_nodes::ExtractTransformNode",
+			"graphene_core::transform::ExtractTransformNode",
+			"graphene_core::vector::ExtractTransformNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::transform_nodes::invert_transform::IDENTIFIER,
+		aliases: &["graphene_core::transform_nodes::InvertTransformNode", "graphene_core::transform::InvertTransformNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::transform_nodes::replace_transform::IDENTIFIER,
+		aliases: &[
+			"graphene_core::transform_nodes::ReplaceTransformNode",
+			"graphene_core::transform::SetTransformNode",
+			"graphene_core::transform::ReplaceTransformNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::transform_nodes::transform::IDENTIFIER,
+		aliases: &["graphene_core::transform_nodes::TransformNode", "graphene_core::transform::TransformNode"],
+	},
+	// ================================
+	// vector
+	// ================================
+	NodeReplacement {
+		node: graphene_std::vector::bake_transform::IDENTIFIER,
+		aliases: &[
+			"graphene_core::vector::ApplyTransformNode",
+			"graphene_core::vector::vector_modification::ApplyTransformNode",
+			"vector_nodes::vector_modification_nodes::ApplyTransformNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::area::IDENTIFIER,
+		aliases: &["graphene_core::vector::AreaNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::assign_colors::IDENTIFIER,
+		aliases: &["graphene_core::vector::AssignColorsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::auto_tangents::IDENTIFIER,
+		aliases: &["graphene_core::vector::vector_nodes::AutoTangentsNode", "graphene_core::vector::AutoTangentsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::bevel::IDENTIFIER,
+		aliases: &["graphene_core::vector::BevelNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::bounding_box::IDENTIFIER,
+		aliases: &["graphene_core::vector::BoundingBoxNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::box_warp::IDENTIFIER,
+		aliases: &["graphene_core::vector::BoxWarpNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::centroid::IDENTIFIER,
+		aliases: &["graphene_core::vector::CentroidNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::close_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::ClosePathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::list_length::IDENTIFIER,
+		aliases: &["graphene_core::vector::CountElementsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::cut_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::vector_nodes::SplitPathNode", "graphene_core::vector::SplitPathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::cut_segments::IDENTIFIER,
+		aliases: &[
+			"graphene_core::vector::vector_nodes::SplitSegmentsNode",
+			"graphene_core::vector::SplitSegmentsNode",
+			"graphene_core::vector::CutSegmentsNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::dimensions::IDENTIFIER,
+		aliases: &["graphene_core::vector::DimensionsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector_nodes::fill::IDENTIFIER,
+		aliases: &["graphene_core::vector::vector_nodes::FillNode", "graphene_core::vector::FillNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::combine_paths::IDENTIFIER,
+		aliases: &[
+			"graphene_core::vector::vector_nodes::FlattenPathNode",
+			"graphene_core::vector::FlattenVectorElementsNode",
+			"graphene_core::vector::FlattenPathNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::arc::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::ArcNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::circle::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::CircleNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::ellipse::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::EllipseNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::grid::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::GridNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::line::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::LineNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::rectangle::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::RectangleNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::RegularPolygonNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::spiral::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::SpiralNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::star::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::StarNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::context::read_index::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceIndexNode", "core_types::vector::InstanceIndexNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::map::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceMapNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::context::read_position::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstancePositionNode", "core_types::vector::InstancePositionNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::context::read_vector::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceVectorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceRepeatNode", "core_types::vector::InstanceRepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat_array::IDENTIFIER,
+		aliases: &["graphene_core::vector::RepeatNode", "core_types::vector::RepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat_radial::IDENTIFIER,
+		aliases: &["graphene_core::vector::CircularRepeatNode", "core_types::vector::CircularRepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat_on_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceOnPointsNode", "core_types::vector::InstanceOnPointsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::copy_to_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::CopyToPointsNode", "core_types::vector::CopyToPointsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::jitter_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::JitterPointsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::merge_by_distance::IDENTIFIER,
+		aliases: &["graphene_core::vector::MergeByDistanceNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::mirror::IDENTIFIER,
+		aliases: &["graphene_core::vector::MirrorNode", "core_types::vector::MirrorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::morph::IDENTIFIER,
+		aliases: &["graphene_core::vector::MorphNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::offset_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::OffsetPathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::path_length::IDENTIFIER,
+		aliases: &["graphene_core::vector::PathLengthNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::path_modify::IDENTIFIER,
+		aliases: &[
+			"graphene_core::vector::vector_modification_nodes::PathModifyNode",
+			"graphene_core::vector::vector_data::modification::PathModifyNode",
+			"graphene_core::vector::vector_modification::PathModifyNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::point_inside::IDENTIFIER,
+		aliases: &["graphene_core::vector::PointInsideNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::points_to_polyline::IDENTIFIER,
+		aliases: &["graphene_core::vector::PointsToPolylineNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::scatter_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::PoissonDiskPointsNode", "core_types::vector::PoissonDiskPointsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::position_on_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::PositionOnPathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::round_corners::IDENTIFIER,
+		aliases: &["graphene_core::vector::RoundCornersNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::sample_polyline::IDENTIFIER,
+		aliases: &[
+			"graphene_core::vector::SamplePolylineNode",
+			"graphene_core::vector::SamplePointsNode",
+			"graphene_core::vector::vector_nodes::SamplePointsNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::separate_subpaths::IDENTIFIER,
+		aliases: &["graphene_core::vector::SeparateSubpathsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::solidify_stroke::IDENTIFIER,
+		aliases: &["graphene_core::vector::SolidifyStrokeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::spline::IDENTIFIER,
+		aliases: &[
+			"graphene_core::vector::vector_nodes::SplineNode",
+			"graphene_core::vector::SplinesFromPointsNode",
+			"graphene_core::vector::SplineNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::stroke::IDENTIFIER,
+		aliases: &["graphene_core::vector::StrokeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::tangent_on_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::TangentOnPathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::as_vector::IDENTIFIER,
+		aliases: &[
+			"graphene_core::vector::vector_nodes::PositionToPointNode",
+			"graphene_core::vector::PositionToPointNode",
+			"graphene_core::vector::Vec2ToPointNode",
+			"core_types::vector::Vec2ToPointNode",
+		],
+	},
+];
+
+const REPLACEMENTS: &[(&str, &str)] = &[];
+
+pub fn document_migration_string_preprocessing(document_serialized_content: String) -> String {
+	let document_serialized_content = replace_optional_f64_null(&document_serialized_content);
+
+	TEXT_REPLACEMENTS
+		.iter()
+		.fold(document_serialized_content, |document_serialized_content, (old, new)| document_serialized_content.replace(old, new))
+}
+
+/// Rebuilds the old 13-input "Text" node template from the current `text` template plus the trailing `separate_glyphs` input it dropped,
+/// so the staged input-count migrations can still upgrade old text nodes before the split.
+fn legacy_text_node_template() -> Option<NodeTemplate> {
+	let mut template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))?.default_node_template();
+	template.implementation = NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode"));
+	template.inputs.push(NodeInput::value(TaggedValue::Bool(false), false));
+	template.input_metadata.push(Default::default());
+	Some(template)
+}
+
+fn replace_optional_f64_null(input: &str) -> String {
+	let mut result = String::new();
+	let mut last_end = 0;
+	let key = "\"OptionalF64\":";
+
+	for (start, _) in input.match_indices(key) {
+		let search_start = start + key.len();
+		if search_start >= input.len() {
+			continue;
+		}
+
+		let mut after_key_start = search_start;
+		for (i, c) in input[search_start..].char_indices() {
+			if !c.is_whitespace() {
+				after_key_start = search_start + i;
+				break;
+			}
+			// If we reach the end and it's all whitespace, update after_key_start
+			if search_start + i + c.len_utf8() == input.len() {
+				after_key_start = input.len();
+			}
+		}
+
+		if input[after_key_start..].starts_with("null") {
+			result.push_str(&input[last_end..start]);
+			result.push_str(key);
+			result.push_str("0.0");
+			last_end = after_key_start + "null".len();
+		}
+	}
+
+	result.push_str(&input[last_end..]);
+	result
+}
+
+/// Serialized proto identifiers of the pre-flip Merge and Artboard layer internals.
+/// A document containing any of them predates the leveled-records flip and rebuilds its
+/// layer definitions through the same reset mechanism as the `SourceNodeIdNode` entry in
+/// `document_migration_reset_node_definition`.
+pub const FLIP_RESET_NODE_MARKERS: &[&str] = &["graphic_nodes::graphic::WriteAttributeNode"];
+
+pub fn document_migration_reset_node_definition(document_serialized_content: &str) -> bool {
+	// Upgrade a document being opened to use fresh copies of all nodes
+	if document_serialized_content.contains("node_output_index") {
+		return true;
+	}
+
+	// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946 (see also `fn fix_nodes()` in `main.rs` of Graphene CLI)
+	if document_serialized_content.contains("graphene_core::ConstructLayerNode") || document_serialized_content.contains("graphene_core::AddArtboardNode") {
+		return true;
+	}
+
+	// The `source_node_id` proto node was removed in favor of `path_of_subgraph` + `write_attribute`.
+	// Documents that still reference it inside their Merge or Artboard layer networks need those layer definitions
+	// reset to the current default so the new internal plumbing replaces the obsolete node.
+	if document_serialized_content.contains("graphic_nodes::graphic::SourceNodeIdNode")
+		|| document_serialized_content.contains("graphene_core::graphic::graphic::SourceNodeIdNode")
+		|| document_serialized_content.contains("graphene_core::graphic::SourceNodeIdNode")
+	{
+		return true;
+	}
+
+	// The leveled-records flip replaced the layer internals; documents from before it rebuild
+	// their layer definitions.
+	if FLIP_RESET_NODE_MARKERS.iter().any(|marker| document_serialized_content.contains(marker)) {
+		return true;
+	}
+
+	false
+}
+
+pub fn document_migration_replace_resources_referenced_by_hash(document_serialized_content: String) -> (String, HashMap<ResourceHash, ResourceId>) {
+	fn collect_resources_referenced_by_hash(s: &str) -> HashMap<ResourceHash, Vec<Range<usize>>> {
+		let mut out: HashMap<ResourceHash, Vec<Range<usize>>> = HashMap::new();
+		let mut offset = 0;
+
+		while let Some(i) = s[offset..].find("\"Resource\":") {
+			let abs = offset + i + 11; // pos after `"Resource":`
+			offset = abs;
+
+			if let Some(j) = s[offset..].find('}') {
+				let chunk_start = offset;
+				let chunk = &s[chunk_start..chunk_start + j];
+
+				let quotes: Vec<_> = chunk.match_indices('"').collect();
+				if quotes.len() == 2 {
+					let q0 = chunk_start + quotes[0].0;
+					let q1 = chunk_start + quotes[1].0;
+					let hash = &s[q0 + 1..q1];
+
+					if hash.len() == 64
+						&& hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+						&& let Ok(hash) = hash.parse::<ResourceHash>()
+					{
+						out.entry(hash).or_default().push(q0..q1 + 1);
+					}
+				}
+
+				offset = chunk_start + j + 1;
+			} else {
+				break;
+			}
+		}
+
+		out
+	}
+
+	let resources_by_hash = collect_resources_referenced_by_hash(&document_serialized_content);
+
+	// Require each referenced hash to also appear as an embedded resource map key (more than ranges.len() occurrences).
+	if resources_by_hash.is_empty()
+		|| !resources_by_hash
+			.iter()
+			.all(|(hash, ranges)| document_serialized_content.matches(&hash.to_string()).count() > ranges.len())
+	{
+		return (document_serialized_content, HashMap::new());
+	}
+
+	// Assign a new ResourceId for each hash
+	let mut hash_to_id: HashMap<ResourceHash, ResourceId> = HashMap::new();
+	for hash in resources_by_hash.keys() {
+		#[allow(clippy::unwrap_or_default)]
+		hash_to_id.entry(*hash).or_insert_with(ResourceId::new);
+	}
+
+	// Each range is 66 bytes (64 hex + 2 quotes) and a ResourceId serializes to at most 20 ASCII digits, so the ID always fits.
+	// Overwrite each hash in place with its ID and pad the leftover bytes with spaces, which JSON deserialization discards.
+	let mut bytes = document_serialized_content.into_bytes();
+	for (hash, ranges) in &resources_by_hash {
+		let id_str = format!("{}", hash_to_id[hash]);
+		let id_bytes = id_str.as_bytes();
+		for range in ranges {
+			bytes[range.start..range.start + id_bytes.len()].copy_from_slice(id_bytes);
+			bytes[range.start + id_bytes.len()..range.end].fill(b' ');
+		}
+	}
+
+	let out = String::from_utf8(bytes).expect("in-place hash-to-ID rewrite produced invalid UTF-8");
+
+	(out, hash_to_id)
+}
+
+pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
+	document.network_interface.migrate_path_modify_node();
+	document.network_interface.document_network_mut().normalize_stored_types();
+
+	let network = document.network_interface.document_network().clone();
+
+	// Apply string and node replacements to each node
+	let mut replacements = HashMap::<&str, ProtoNodeIdentifier>::new();
+	Iterator::chain(
+		NODE_REPLACEMENTS.iter().flat_map(|NodeReplacement { node, aliases }| aliases.iter().map(|old| (*old, node.clone()))),
+		REPLACEMENTS.iter().map(|(old, new)| (*old, ProtoNodeIdentifier::new(new))),
+	)
+	.for_each(|(old, new)| {
+		if replacements.insert(old, new).is_some() {
+			panic!("Duplicate old name `{old}`");
+		}
+	});
+
+	for (node_id, node, network_path) in network.recursive_nodes() {
+		if let DocumentNodeImplementation::ProtoNode(protonode_id) = &node.implementation {
+			let node_path_without_type_args = protonode_id.as_str().split('<').next();
+			if let Some(new) = node_path_without_type_args.and_then(|node_path| replacements.get(node_path)) {
+				let mut default_template = NodeTemplate {
+					implementation: NodeTemplateImplementation::ProtoNode(new.clone()),
+					..Default::default()
+				};
+				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
+				document.network_interface.set_call_argument(node_id, &network_path, default_template.call_argument);
+			}
+		}
+	}
+
+	// The "Brush" wrapper network was replaced with the `brush` proto node directly. Convert old `Network("Brush")` instances to the proto node, forwarding all 3 inputs (Background, Trace, Cache) one-to-one.
+	// This must run as a pre-pass before the recursive iteration below: replacing the outer Brush's network impl orphans its child paths, and the recursive iteration would log errors for those stale paths.
+	let brush_layers: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Brush".into()))).then_some((*node_id, path)))
+		.collect();
+	for (node_id, network_path) in &brush_layers {
+		// Pre-load `outward_wires` so the chain-break check inside `set_input` resolves the original upstream→node wire from cache
+		// rather than triggering a fresh rebuild from the (already-mutated) post-`replace_inputs` state, which would orphan wires.
+		let _ = document.network_interface.outward_wires(network_path);
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+		for (index, input) in old_inputs.iter().take(3).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+	}
+
+	// The "Transform" wrapper network was replaced with the `transform` proto node directly. Convert old `Network("Transform")` instances to the proto node, forwarding the 5 user-facing inputs (Value, Translation, Rotation, Scale, Skew) and dropping the legacy migration sentinels (Origin Offset, Scale Appearance) at indices 5 and 6 if present.
+	// Pre-pass for the same reason as the Brush migration above: replacing the outer Transform's network impl orphans its child paths.
+	let transform_layers: Vec<(NodeId, Vec<NodeId>, usize)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			(document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Transform".into()))).then_some((*node_id, path, node.inputs.len()))
+		})
+		.collect();
+	for (node_id, network_path, old_inputs_count) in &transform_layers {
+		// Pre-load `outward_wires` so the chain-break check inside `set_input` resolves the original upstream→node wire from cache
+		// rather than triggering a fresh rebuild from the (already-mutated) post-`replace_inputs` state, which would orphan wires.
+		let _ = document.network_interface.outward_wires(network_path);
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+		// Forward the first 5 inputs (Value, Translation, Rotation, Scale, Skew); drop indices 5 and 6 if present.
+		for (index, input) in old_inputs.iter().take(5).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+
+		// Pre-2024 documents stored Transform with 6 inputs and used radians for Rotation and `tan(radians)` for Skew. Detect that legacy
+		// shape (no input at index 6) and convert the units to degrees so the values match what the new Properties panel widgets expect.
+		if *old_inputs_count == 6 {
+			match old_inputs.get(2) {
+				Some(NodeInput::Value { tagged_value, exposed }) => {
+					if let TaggedValue::F64(radians) = *tagged_value.clone().into_inner() {
+						let degrees = NodeInput::value(TaggedValue::F64(radians.to_degrees()), *exposed);
+						document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), degrees, network_path);
+					}
+				}
+				Some(NodeInput::Node { .. }) => {
+					// Wired upstream: splice in a Multiply node by 180/π that converts radians to degrees so the upstream value
+					// (which represented radians in the legacy format) reaches the now-degrees Rotation input correctly.
+					if let Some(multiply_node) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::multiply::IDENTIFIER)) {
+						let mut multiply_template = multiply_node.default_node_template();
+						multiply_template.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
+						let multiply_node_id = NodeId::new();
+						if let Some(transform_position) = document.network_interface.position_from_downstream_node(node_id, network_path) {
+							let multiply_position = transform_position + IVec2::new(-7, 1);
+							document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
+							document.network_interface.shift_absolute_node_position(&multiply_node_id, multiply_position, network_path);
+							document
+								.network_interface
+								.insert_node_between(&multiply_node_id, &InputConnector::node_at_index(*node_id, 2), 0, network_path);
+						}
+					}
+				}
+				_ => {}
+			}
+
+			if let Some(NodeInput::Value { tagged_value, exposed }) = old_inputs.get(4)
+				&& let TaggedValue::DVec2(old_value) = *tagged_value.clone().into_inner()
+			{
+				// The previous skew value stored `tan(radians)`, now it stores degrees directly.
+				let new_value = DVec2::new(old_value.x.atan().to_degrees(), old_value.y.atan().to_degrees());
+				let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), new_input, network_path);
+			}
+		}
+	}
+
+	// The "Image" wrapper network was replaced with the `image` proto node directly. Convert old `Network("Image")` instances to the proto node, forwarding the embedded image data so the `image` pass in `migrate_node` below turns it into a resource.
+	// Pre-pass for the same reason as the Brush and Transform migrations above: replacing the outer Image's network impl orphans its child paths.
+	let image_layers: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Image".into()))).then_some((*node_id, path)))
+		.collect();
+	for (node_id, network_path) in &image_layers {
+		let _ = document.network_interface.outward_wires(network_path);
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+
+		// Forward the embedded image data into input 0, where the `migrate_node` `image` pass finds it and converts it to a resource.
+		if let Some(image_input) = old_inputs.into_iter().find(|input| matches!(input.as_value(), Some(TaggedValue::ImageData(_)))) {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), image_input, network_path);
+		}
+	}
+
+	// Record which old text nodes are chain-positioned now, before `migrate_node`'s staged input-count migrations run, since those set
+	// the upstream chain to absolute; the split below re-chains exactly the nodes that were originally part of a layer chain.
+	let text_nodes_in_chain: std::collections::HashSet<NodeId> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, _, path)| {
+			(document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode")))
+				&& document.network_interface.is_chain(node_id, &path))
+			.then_some(*node_id)
+		})
+		.collect();
+
+	// Apply upgrades to each unmodified node.
+	let nodes = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.map(|(node_id, node, path)| (*node_id, node.clone(), path))
+		.collect::<Vec<(NodeId, graph_craft::document::DocumentNode, Vec<NodeId>)>>();
+	for (node_id, node, network_path) in &nodes {
+		migrate_node(node_id, node, network_path, document, reset_node_definitions_on_open);
+	}
+
+	// The old geometry-producing "Text" node was split into the current "Text" (`String[]`) -> converter pair, which reuses the same proto
+	// identifier. Runs after `migrate_node` normalizes old text nodes to the legacy 13-input layout, distinguished from the current 12-input
+	// node by the trailing `separate_glyphs` input (index 12): forward inputs 0..=11 onto the new node and splice the matching converter after it.
+	let old_text_nodes: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			// `separate_glyphs` is a `Bool` value or a wire feeding one; only a different value type there means a newer input, not the old node
+			let has_legacy_separate_glyphs = node.inputs.len() == 13 && node.inputs.get(12).is_some_and(|input| matches!(input.as_value(), None | Some(TaggedValue::Bool(_))));
+			(has_legacy_separate_glyphs && document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode"))))
+				.then_some((*node_id, path))
+		})
+		.collect();
+	for (node_id, network_path) in &old_text_nodes {
+		// Pre-load `outward_wires` so the splice below resolves the original downstream wiring from cache rather than a mutated state.
+		let _ = document.network_interface.outward_wires(network_path);
+
+		// Convert the old node in place to the current `text` node (12 inputs), capturing its old inputs.
+		let Some(text_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) else {
+			continue;
+		};
+		let mut text_template = text_definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut text_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut text_template) else {
+			continue;
+		};
+		// The current `text` node reorders the legacy inputs (Letter Tilt moved up to sit right after Letter Spacing), so map each new
+		// input index to the legacy 13-input index it sources from. Legacy order:
+		// [primary, text, font, size, line_height, letter_spacing, has_max_width, max_width, has_max_height, max_height, letter_tilt, align, separate_glyphs].
+		const LEGACY_INPUT_FOR_NEW: [usize; 12] = [0, 1, 2, 3, 4, 5, 10, 6, 7, 8, 9, 11];
+		for (new_index, &legacy_index) in LEGACY_INPUT_FOR_NEW.iter().enumerate() {
+			if let Some(input) = old_inputs.get(legacy_index) {
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, new_index), input.clone(), network_path);
+			}
+		}
+		// A `true` toggle at index 12 chose per-glyph geometry, which is now the dedicated "Text to Vector Glyphs" node
+		let separate_glyphs = matches!(old_inputs.get(12).and_then(|input| input.as_value()), Some(TaggedValue::Bool(true)));
+
+		// Collect the inputs reading the old text node's output before any rewiring so the new node can be spliced onto those wires.
+		let downstream_consumers: Vec<InputConnector> = document
+			.network_interface
+			.outward_wires(network_path)
+			.and_then(|wires| wires.get(&OutputConnector::node(*node_id, 0)))
+			.cloned()
+			.unwrap_or_default();
+
+		let text_was_in_chain = text_nodes_in_chain.contains(node_id);
+
+		// Insert the converter that turns the `text` `String[]` output back into vector geometry: "Text to Vector Glyphs" for the per-glyph case, otherwise "Text to Vector".
+		let converter_identifier = if separate_glyphs {
+			graphene_std::text::text_to_vector_glyphs::IDENTIFIER
+		} else {
+			graphene_std::text::text_to_vector::IDENTIFIER
+		};
+		let Some(converter_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(converter_identifier)) else {
+			continue;
+		};
+		let converter_id = NodeId::new();
+		document.network_interface.insert_node(converter_id, converter_definition.default_node_template(), network_path);
+
+		// Splice the converter onto the wire(s) leaving `text` (`insert_node_between` is the pure wire-splice the editor uses for dropping a node on a wire).
+		if let Some((first_consumer, remaining_consumers)) = downstream_consumers.split_first() {
+			document.network_interface.insert_node_between(&converter_id, first_consumer, 0, network_path);
+			for consumer in remaining_consumers {
+				document.network_interface.set_input(consumer, NodeInput::node(converter_id, 0), network_path);
+			}
+		} else {
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(converter_id, 0), NodeInput::node(*node_id, 0), network_path);
+		}
+
+		// If `text` was in a layer chain, re-chain the converter and its upstream so both lay out by distance from the layer (the splice
+		// broke the chain, like `move_node_to_chain_start`). Otherwise `text` is absolute, so place the converter beside it instead of
+		// leaving it at the origin.
+		if text_was_in_chain {
+			document.network_interface.force_set_upstream_to_chain(&converter_id, network_path);
+		} else if let Some(text_position) = document.network_interface.position(node_id, network_path) {
+			document.network_interface.shift_absolute_node_position(&converter_id, text_position + IVec2::new(7, 0), network_path);
+		}
+	}
+}
+
+/// Converts a legacy stroke dash input (a `List<f64>`, single `f64`, or comma/space separated `String`) to the `DashPattern` value type.
+fn migrate_dash_input(input: &NodeInput) -> Option<NodeInput> {
+	let NodeInput::Value { tagged_value, exposed } = input else { return None };
+	let lengths = match &*tagged_value.clone().into_inner() {
+		TaggedValue::F64Array(lengths) => lengths.clone(),
+		TaggedValue::F64(length) => vec![*length],
+		TaggedValue::String(text) => graphene_std::core_types::misc::parse_f64_list(text),
+		_ => return None,
+	};
+	Some(NodeInput::value(TaggedValue::DashPattern(lengths), *exposed))
+}
+
+/// Converts a legacy rectangle corner radius input (a single `f64` or a `List<f64>` of up to four values) to the `BoxCorners` value type.
+fn migrate_corner_radius_input(input: &NodeInput) -> Option<NodeInput> {
+	let NodeInput::Value { tagged_value, exposed } = input else { return None };
+	let values = match &*tagged_value.clone().into_inner() {
+		TaggedValue::F64Array(values) => values.clone(),
+		TaggedValue::F64(value) => vec![*value],
+		_ => return None,
+	};
+	Some(NodeInput::value(TaggedValue::BoxCorners(values), *exposed))
+}
+
+/// Rewrites a gradient ramp value input to carry the given gradient spread, which used to live in the Fill node's retired `_spread_method` input.
+fn fold_gradient_spread_into_ramp_input(input: &NodeInput, gradient_spread: GradientSpread) -> NodeInput {
+	match input.as_value() {
+		Some(TaggedValue::GradientRamp(ramp)) => NodeInput::value(TaggedValue::GradientRamp(GradientRamp { gradient_spread, ..ramp.clone() }), input.is_exposed()),
+		_ => input.clone(),
+	}
+}
+
+fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
+	// Must run before the reset block below: a node referencing a removed catalog entry would otherwise abort
+	// `migrate_node` via the `?` on `resolve_document_node_type`, preventing subsequent migration blocks from running.
+	migrate_removed_catalog_definitions(node_id, node, network_path, document);
+
+	if reset_node_definitions_on_open && let Some(reference) = document.network_interface.reference(node_id, network_path) {
+		let node_definition = resolve_document_node_type(&reference)?;
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
+
+		// The leveled-records flip moved the Copy to Points content wire ahead of the points wire.
+		if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::copy_to_points::IDENTIFIER) {
+			let mut node_template = node_definition.default_node_template();
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[0].clone(), network_path);
+			for (index, input) in old_inputs.into_iter().enumerate().skip(2) {
+				document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
+			}
+		}
+
+		// The leveled-records flip moved the Repeat on Points content wire ahead of the points wire.
+		if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) {
+			let mut node_template = node_definition.default_node_template();
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[0].clone(), network_path);
+			for (index, input) in old_inputs.into_iter().enumerate().skip(2) {
+				document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
+			}
+		}
+
+		// The leveled-records flip gave Mandelbrot a unit primary input.
+		if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER) {
+			let mut node_template = node_definition.default_node_template();
+			document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		}
+	}
+
+	// Rebuild stale Merge/Artboard subgraphs that still use the removed LegacyLayerExtendNode internally
+	if let DocumentNodeImplementation::Network(inner) = &node.implementation
+		&& inner
+			.nodes
+			.values()
+			.any(|n| matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("LegacyLayerExtend") || id.as_str().contains("legacy_layer_extend")))
+		&& let Some(reference) = document.network_interface.reference(node_id, network_path)
+		&& let Some(node_definition) = resolve_document_node_type(&reference)
+	{
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
+	}
+
+	// Rebuild stale Rasterize subgraphs from before the async-source conversion gave the inner proto node a unit primary input (5 inputs, now 6).
+	if let DocumentNodeImplementation::Network(inner) = &node.implementation
+		&& inner
+			.nodes
+			.values()
+			.any(|n| n.inputs.len() == 5 && matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("rasterize")))
+		&& document.network_interface.reference(node_id, network_path) == Some(DefinitionIdentifier::Network("Rasterize".into()))
+		&& let Some(node_definition) = resolve_document_node_type(&DefinitionIdentifier::Network("Rasterize".into()))
+	{
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
+	}
+
+	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` as their call argument
+	if node.call_argument == graph_craft::concrete!(()) || node.call_argument == graph_craft::concrete!(graphene_std::transform::Footprint) {
+		document.network_interface.set_call_argument(node_id, network_path, graph_craft::concrete!(graphene_std::Context));
+	}
+
+	// Only nodes that have not been modified and still refer to a definition can be updated
+	let reference = document.network_interface.reference(node_id, network_path)?;
+
+	let mut inputs_count = node.inputs.len();
+
+	// Split the legacy combined "Blending" node into a chain of separate Blend Mode, Opacity (now also covers fill), and Clip nodes.
+	// `NODE_REPLACEMENTS` rewrites the old `Blending` proto identifier (and its older aliases) to `blend_mode::IDENTIFIER`, so a leftover
+	// 5-input shape on a Blend Mode node identifies an old Blending node that still needs structural splitting. Sub-nodes whose values
+	// were at the default and weren't exposed/wired up are skipped, and the existing node ID is reused for the first kept sub-node so
+	// any references elsewhere in the document survive. If everything would be skipped, a no-op default Blend Mode node is left behind
+	// to preserve the chain structure (the user can delete it manually).
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blend_mode::IDENTIFIER) && inputs_count == 5 {
+		use graphene_std::blending::BlendMode;
+
+		// Snapshot the old inputs before any rewriting
+		let old_inputs = node.inputs.clone();
+		let content_input = old_inputs[0].clone();
+		let blend_mode_input = old_inputs[1].clone();
+		let opacity_input = old_inputs[2].clone();
+		let fill_input = old_inputs[3].clone();
+		let clip_input = old_inputs[4].clone();
+
+		// A sub-node is kept if its input is exposed/wired (so the user can drive it from the graph) OR if its value differs from the default
+		let keep_blend_mode = blend_mode_input.is_exposed() || !matches!(blend_mode_input.as_value(), Some(TaggedValue::BlendMode(BlendMode::Normal)));
+		let keep_opacity = opacity_input.is_exposed() || !matches!(opacity_input.as_value(), Some(TaggedValue::F64(v)) if (*v - 100.).abs() < f64::EPSILON);
+		let keep_fill = fill_input.is_exposed() || !matches!(fill_input.as_value(), Some(TaggedValue::F64(v)) if (*v - 100.).abs() < f64::EPSILON);
+		let keep_clip = clip_input.is_exposed() || !matches!(clip_input.as_value(), Some(TaggedValue::Bool(false)));
+
+		// Find the downstream connection so we can chain new nodes between this node and downstream
+		let downstream = document
+			.network_interface
+			.outward_wires(network_path)
+			.and_then(|wires| wires.get(&OutputConnector::node(*node_id, 0)))
+			.and_then(|connections| connections.first().cloned());
+
+		// The position of the existing node; subsequent chain nodes are placed to the right
+		let base_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
+
+		// Decide which sub-node the existing ID becomes (the first one in the chain order: Blend Mode, Opacity, Clip)
+		#[derive(Clone, Copy, PartialEq)]
+		enum SubNode {
+			BlendMode,
+			Opacity,
+			Clip,
+		}
+		let first_kind = if keep_blend_mode {
+			SubNode::BlendMode
+		} else if keep_opacity || keep_fill {
+			SubNode::Opacity
+		} else if keep_clip {
+			SubNode::Clip
+		} else {
+			// Everything was at default and not exposed: leave a no-op Blend Mode node so the chain structure is preserved
+			SubNode::BlendMode
+		};
+
+		let identifier_for = |kind: SubNode| match kind {
+			SubNode::BlendMode => graphene_std::blending_nodes::blend_mode::IDENTIFIER,
+			SubNode::Opacity => graphene_std::blending_nodes::opacity::IDENTIFIER,
+			SubNode::Clip => graphene_std::blending_nodes::clipping_mask::IDENTIFIER,
+		};
+
+		// Replace the existing node's implementation with the first kept sub-node's template
+		let first_reference = DefinitionIdentifier::ProtoNode(identifier_for(first_kind));
+		let mut first_template = resolve_document_node_type(&first_reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut first_template);
+		let _ = document.network_interface.replace_inputs(node_id, network_path, &mut first_template);
+
+		// Wire the existing node's inputs based on its new role (input 0 is always `content`)
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), content_input, network_path);
+		match first_kind {
+			SubNode::BlendMode => {
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, 1), blend_mode_input.clone(), network_path);
+			}
+			SubNode::Opacity => {
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Bool(keep_opacity), false), network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), opacity_input.clone(), network_path);
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(keep_fill), false), network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), fill_input.clone(), network_path);
+			}
+			SubNode::Clip => {
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), clip_input.clone(), network_path);
+			}
+		}
+
+		// Build the list of remaining sub-nodes to insert (after the first one), in chain order. Blend Mode is never
+		// reinserted because if it was kept it would already be the `first_kind`.
+		let mut remaining: Vec<SubNode> = Vec::new();
+		if first_kind != SubNode::Opacity && (keep_opacity || keep_fill) {
+			remaining.push(SubNode::Opacity);
+		}
+		if first_kind != SubNode::Clip && keep_clip {
+			remaining.push(SubNode::Clip);
+		}
+
+		// Insert each remaining sub-node into the chain between the previous node and the original downstream
+		let mut chain_x_offset = 7;
+		for sub in remaining {
+			let identifier = identifier_for(sub);
+			let new_id = NodeId::new();
+			let definition = match resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier.clone())) {
+				Some(definition) => definition,
+				None => {
+					log::error!("Could not resolve `{identifier:?}` while migrating Blending node");
+					continue;
+				}
+			};
+			let template = definition.default_node_template();
+			document.network_interface.insert_node(new_id, template, network_path);
+			document
+				.network_interface
+				.shift_absolute_node_position(&new_id, base_position + IVec2::new(chain_x_offset, 0), network_path);
+			chain_x_offset += 7;
+
+			// Splice this node in just before the original downstream input (so each iteration appends to the chain end)
+			if let Some(downstream_input) = &downstream {
+				document.network_interface.insert_node_between(&new_id, downstream_input, 0, network_path);
+			}
+
+			// Wire the parameter inputs for the inserted node
+			match sub {
+				SubNode::BlendMode => {
+					document.network_interface.set_input(&InputConnector::node_at_index(new_id, 1), blend_mode_input.clone(), network_path);
+				}
+				SubNode::Opacity => {
+					document
+						.network_interface
+						.set_input(&InputConnector::node_at_index(new_id, 1), NodeInput::value(TaggedValue::Bool(keep_opacity), false), network_path);
+					document.network_interface.set_input(&InputConnector::node_at_index(new_id, 2), opacity_input.clone(), network_path);
+					document
+						.network_interface
+						.set_input(&InputConnector::node_at_index(new_id, 3), NodeInput::value(TaggedValue::Bool(keep_fill), false), network_path);
+					document.network_interface.set_input(&InputConnector::node_at_index(new_id, 4), fill_input.clone(), network_path);
+				}
+				SubNode::Clip => {
+					document.network_interface.set_input(&InputConnector::node_at_index(new_id, 1), clip_input.clone(), network_path);
+				}
+			}
+		}
+
+		inputs_count = match first_kind {
+			SubNode::BlendMode => 2,
+			SubNode::Opacity => 5,
+			SubNode::Clip => 2,
+		};
+	}
+
+	// Upgrade old single-purpose Opacity node (content, opacity) to the new shape that also covers fill:
+	// (content, has_opacity, opacity, has_fill, fill). The original opacity input is preserved with `has_opacity` enabled,
+	// while `has_fill` is left disabled and the fill value defaults to 100% (no change to fill behavior).
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::opacity::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[1].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 4), NodeInput::value(TaggedValue::F64(100.), false), network_path);
+
+		inputs_count = 5;
+	}
+
+	// Upgrade the legacy 4-input Fill node (content, fill: Fill, _backup_color, _backup_gradient: Gradient) to the value-model
+	// 7-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_form, _has_transform, _transform).
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Content: no change
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+
+		// Fill: a literal Fill value is decomposed, and a wired input (`List<Gradient> / List<Color>`) is kept as-is
+		match old_inputs[1].as_value() {
+			Some(TaggedValue::LegacyFill(old_fill)) => {
+				let exposed = old_inputs[1].is_exposed();
+				let fill_value = match old_fill {
+					graphic_types::migrations::legacy::LegacyFill::None => TaggedValue::no_paint(),
+					graphic_types::migrations::legacy::LegacyFill::Solid(color) => TaggedValue::Color(*color),
+					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::GradientRamp(GradientRamp {
+						gradient_spread: gradient.spread_method,
+						..gradient.stops.clone()
+					}),
+				};
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(fill_value, exposed), network_path);
+
+				// Gradient metadata (4, 5, 6): applies only to a literal gradient, solids/none keep the template defaults
+				if let graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) = old_fill {
+					document.network_interface.set_input(
+						&InputConnector::node_at_index(*node_id, 4),
+						NodeInput::value(TaggedValue::GradientForm(gradient.gradient_type), false),
+						network_path,
+					);
+
+					if gradient.absolute {
+						let transform = gradient.transform * gradient.to_transform();
+						document
+							.network_interface
+							.set_input(&InputConnector::node_at_index(*node_id, 5), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+						document
+							.network_interface
+							.set_input(&InputConnector::node_at_index(*node_id, 6), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
+					} else {
+						// Baking a legacy bounding-box-relative gradient is deferred until the measurement pre-pass can supply the paint
+						// target's bounds, so the template's unbaked `_has_transform = false` stands until the bake lands
+						document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, gradient.clone()));
+					}
+				}
+			}
+			// Wired/exposed fill keeps the connection.
+			// The generic paint connector accepts the existing `List<Color>`/`List<Gradient>` paint sources directly.
+			_ => {
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+			}
+		}
+
+		// Color backup: no change
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+
+		// Gradient backup: extract stops
+		if let Some(TaggedValue::LegacyGradient(g)) = old_inputs[3].as_value() {
+			document.network_interface.set_input(
+				&InputConnector::node_at_index(*node_id, 3),
+				NodeInput::value(
+					TaggedValue::GradientRamp(GradientRamp {
+						gradient_spread: g.spread_method,
+						..g.stops.clone()
+					}),
+					false,
+				),
+				network_path,
+			);
+
+			// A solid/no-fill node leaves the gradient metadata inputs unused, so seed them from the backup gradient for a later Solid -> Gradient toggle to restore
+			if matches!(
+				old_inputs[1].as_value(),
+				Some(TaggedValue::LegacyFill(
+					graphic_types::migrations::legacy::LegacyFill::None | graphic_types::migrations::legacy::LegacyFill::Solid(_)
+				))
+			) {
+				document.network_interface.set_input(
+					&InputConnector::node_at_index(*node_id, 4),
+					NodeInput::value(TaggedValue::GradientForm(g.gradient_type), false),
+					network_path,
+				);
+
+				if g.absolute {
+					let transform = g.transform * g.to_transform();
+					document
+						.network_interface
+						.set_input(&InputConnector::node_at_index(*node_id, 5), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+					document
+						.network_interface
+						.set_input(&InputConnector::node_at_index(*node_id, 6), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
+				} else {
+					document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, g.clone()));
+				}
+			}
+		}
+
+		inputs_count = 7;
+	}
+
+	// Fill split its `Option<DAffine2>` placement into a `_has_transform` bool immediately before the `_transform` matrix. The modern
+	// shape is also 7 inputs, so this era is identified by its `_spread_method` input at 5 or its optional transform at 6.
+	let is_pre_transform_split_fill = inputs_count == 7
+		&& (matches!(node.inputs.get(5).and_then(|input| input.as_value()), Some(TaggedValue::GradientSpread(_)))
+			|| matches!(node.inputs.get(6).and_then(|input| input.as_value()), Some(TaggedValue::LegacyOptionalDAffine2(_))));
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER) && is_pre_transform_split_fill {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		let gradient_spread = match old_inputs.get(5).and_then(|input| input.as_value()) {
+			Some(&TaggedValue::GradientSpread(value)) => value,
+			_ => GradientSpread::default(),
+		};
+
+		for (index, input) in old_inputs.iter().enumerate().take(5) {
+			let input = if index == 1 || index == 3 {
+				fold_gradient_spread_into_ramp_input(input, gradient_spread)
+			} else {
+				input.clone()
+			};
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+
+		match old_inputs.get(6).and_then(|input| input.as_value()) {
+			Some(TaggedValue::LegacyOptionalDAffine2(value)) => {
+				let has_transform = value.is_some();
+				let transform = value.unwrap_or(glam::DAffine2::IDENTITY);
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, 5), NodeInput::value(TaggedValue::Bool(has_transform), false), network_path);
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, 6), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
+			}
+			// A wired (or otherwise non-value) transform keeps its connection and is treated as present
+			_ => {
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, 5), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+				let transform_input = old_inputs.get(6).cloned().unwrap_or_else(|| NodeInput::value(TaggedValue::DAffine2(glam::DAffine2::IDENTITY), false));
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 6), transform_input, network_path);
+			}
+		}
+
+		inputs_count = 7;
+	}
+
+	// The Fill node's `_spread_method` input moved into the `GradientRamp` value's own `gradient_spread` field
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER) && inputs_count == 8 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		let gradient_spread = match old_inputs.get(5).and_then(|input| input.as_value()) {
+			Some(&TaggedValue::GradientSpread(value)) => value,
+			_ => GradientSpread::default(),
+		};
+
+		for (index, input) in old_inputs.iter().enumerate().take(5) {
+			let input = if index == 1 || index == 3 {
+				fold_gradient_spread_into_ramp_input(input, gradient_spread)
+			} else {
+				input.clone()
+			};
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[6].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 6), old_inputs[7].clone(), network_path);
+
+		inputs_count = 7;
+	}
+
+	// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER) && inputs_count == 8 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		let align_input = NodeInput::value(TaggedValue::StrokeAlign(StrokeAlign::Center), false);
+		let paint_order_input = NodeInput::value(TaggedValue::PaintOrder(PaintOrder::StrokeAbove), false);
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), align_input, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[5].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[6].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 6), old_inputs[7].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 7), paint_order_input, network_path);
+		let dash_input = migrate_dash_input(&old_inputs[3]).unwrap_or_else(|| old_inputs[3].clone());
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 8), dash_input, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 9), old_inputs[4].clone(), network_path);
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	// A legacy "no color" on a plain color connector (`TaggedValue::no_paint()` restored by the deserializer) becomes a color,
+	// since only paint connectors keep the no-paint choice
+	{
+		let migrate_color_input = |input: &NodeInput, fallback: Color| -> Option<NodeInput> {
+			let NodeInput::Value { tagged_value, exposed } = input else { return None };
+			if !tagged_value.is_no_paint() {
+				return None;
+			}
+			Some(NodeInput::value(TaggedValue::Color(fallback), *exposed))
+		};
+
+		let conversions: &[(ParameterRef, Color)] = &[
+			(graphene_std::vector::fill::BackupColorInput.into(), Color::BLACK),
+			(graphene_std::artboard::create_artboard::BackgroundInput.into(), Color::WHITE),
+			(graphene_std::math_nodes::color_value::ColorInput.into(), Color::TRANSPARENT),
+			(graphene_std::raster_nodes::adjustments::black_and_white::TintInput.into(), Color::BLACK),
+			(graphene_std::raster_nodes::blending_nodes::color_overlay::ColorInput.into(), Color::BLACK),
+			(graphene_std::raster_nodes::std_nodes::empty_image::ColorInput.into(), Color::WHITE),
+		];
+		for (parameter, fallback) in conversions {
+			if reference != DefinitionIdentifier::ProtoNode(parameter.node_identifier.clone()) {
+				continue;
+			}
+			let Some(input) = node.inputs.get(parameter.input_index) else { continue };
+			if let Some(migrated) = migrate_color_input(input, *fallback) {
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, parameter.input_index), migrated, network_path);
+			}
+		}
+	}
+
+	// The stroke dash sequence became the `DashPattern` value type; convert any already-shaped stroke that still stores a legacy dash input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER)
+		&& let Some(dash_input) = node.input(graphene_std::vector::stroke::DashPatternInput)
+		&& let Some(migrated) = migrate_dash_input(dash_input)
+	{
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashPatternInput), migrated, network_path);
+	}
+
+	// The corner radius became the `BoxCorners` value type; convert any already-shaped rectangle that still stores a legacy corner input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)
+		&& let Some(corner_input) = node.input(graphene_std::vector::generator_nodes::rectangle::CornerRadiusInput)
+		&& let Some(migrated) = migrate_corner_radius_input(corner_input)
+	{
+		document.network_interface.set_input(
+			&InputConnector::node(*node_id, graphene_std::vector::generator_nodes::rectangle::CornerRadiusInput),
+			migrated,
+			network_path,
+		);
+	}
+
+	// The rectangle's corner radius became the `BoxCorners` value type and its hidden individual-radii toggle moved after the
+	// user-visible inputs. A legacy rectangle stores that toggle (a plain `bool`) at index 3, where the new shape stores the corner
+	// radius, so a `bool` value there identifies the old input order: [width, height, individual, corner_radius, clamped].
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)
+		&& let Some(toggle_input) = node.inputs.get(3)
+		&& matches!(toggle_input.as_value(), Some(TaggedValue::Bool(_)))
+	{
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		let corner_radius = migrate_corner_radius_input(&old_inputs[4]).unwrap_or_else(|| old_inputs[4].clone());
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), corner_radius, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[5].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[3].clone(), network_path);
+	}
+
+	// The Text to Vector node's runtime `separate_glyphs` toggle became the dedicated "Text to Vector Glyphs" node, leaving Text to Vector as a plain
+	// string-to-compound-path converter. A 2-input Text to Vector is the old toggled shape: a `true` toggle routes to Text to Vector Glyphs, otherwise
+	// the node stays Text to Vector; either way the toggle input is dropped and the string wire is preserved.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text_to_vector::IDENTIFIER) && inputs_count == 2 {
+		let separate_glyphs = matches!(node.inputs.get(1).and_then(|input| input.as_value()), Some(TaggedValue::Bool(true)));
+		let target = if separate_glyphs {
+			graphene_std::text::text_to_vector_glyphs::IDENTIFIER
+		} else {
+			graphene_std::text::text_to_vector::IDENTIFIER
+		};
+
+		let mut node_template = resolve_proto_node_type(target)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		if let Some(string_input) = node.inputs.first() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), string_input.clone(), network_path);
+		}
+	}
+
+	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
+	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode")) && inputs_count == 8 {
+		let mut template: NodeTemplate = legacy_text_node_template()?;
+		document.network_interface.replace_implementation(node_id, network_path, &mut template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 4),
+			if inputs_count == 6 {
+				old_inputs[4].clone()
+			} else {
+				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().line_height_ratio), false)
+			},
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 5),
+			if inputs_count == 6 {
+				old_inputs[5].clone()
+			} else {
+				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().letter_spacing), false)
+			},
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 6),
+			if inputs_count >= 7 {
+				old_inputs[6].clone()
+			} else {
+				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().max_width.unwrap_or_default()), false)
+			},
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 7),
+			if inputs_count >= 8 {
+				old_inputs[7].clone()
+			} else {
+				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().max_width.unwrap_or_default()), false)
+			},
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 8),
+			if inputs_count >= 9 {
+				old_inputs[8].clone()
+			} else {
+				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().letter_tilt), false)
+			},
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 9),
+			if inputs_count >= 10 {
+				old_inputs[9].clone()
+			} else {
+				NodeInput::value(TaggedValue::TextAlign(TextAlign::default()), false)
+			},
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 10),
+			if inputs_count >= 11 {
+				old_inputs[10].clone()
+			} else {
+				NodeInput::value(TaggedValue::Bool(false), false)
+			},
+			network_path,
+		);
+		inputs_count = 11
+	}
+
+	// Insert bool parameters for `has_max_width` and `has_max_height`:
+	// https://github.com/GraphiteEditor/Graphite/pull/3643
+	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode")) && inputs_count == 11 {
+		let mut template: NodeTemplate = legacy_text_node_template()?;
+		document.network_interface.replace_implementation(node_id, network_path, &mut template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
+
+		// Copy over old inputs
+		#[allow(clippy::needless_range_loop)]
+		for i in 0..=5 {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i), old_inputs[i].clone(), network_path);
+		}
+
+		// Max Width
+		let Some(&TaggedValue::F64(old_max_width)) = old_inputs[6].as_value() else { return None };
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 6),
+			NodeInput::value(TaggedValue::Bool(old_max_width != 0.), false),
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 7),
+			NodeInput::value(TaggedValue::F64(if old_max_width == 0. { 100. } else { old_max_width }), false),
+			network_path,
+		);
+
+		// Max Height
+		let Some(&TaggedValue::F64(old_max_height)) = old_inputs[7].as_value() else { return None };
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 8),
+			NodeInput::value(TaggedValue::Bool(old_max_height != 0.), false),
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 9),
+			NodeInput::value(TaggedValue::F64(if old_max_height == 0. { 100. } else { old_max_height }), false),
+			network_path,
+		);
+
+		// Copy over old inputs
+		#[allow(clippy::needless_range_loop)]
+		for i in 10..=12 {
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, i), old_inputs[i - 2].clone(), network_path);
+		}
+
+		inputs_count = 13;
+	}
+
+	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
+	if inputs_count == 1
+		&& (reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::sine::IDENTIFIER)
+			|| reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::cosine::IDENTIFIER)
+			|| reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::tangent::IDENTIFIER))
+	{
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+	}
+
+	// Upgrade the 'Tangent on Path' node to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::tangent_on_path::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[3].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 4), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+	}
+
+	// Upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::modulo::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+	}
+
+	// Convert the old 'Vec2 Value' node, identified by its leftover 3-input shape with separate X and Y inputs,
+	// into the 'Combine Vec2' node which now fills that role (the new 'Vec2 Value' node instead takes a single vec2 input)
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::vec_2_value::IDENTIFIER) && inputs_count == 3 {
+		let combine_vec2_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::combine_vec_2::IDENTIFIER);
+		let mut node_template = resolve_document_node_type(&combine_vec2_reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+	}
+
+	// Upgrade the Mirror node to add the `keep_original` boolean input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::graphic::mirror::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+	}
+
+	// Upgrade the Mirror node to add the `reference_point` input and change `offset` from `DVec2` to `f64`
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::graphic::mirror::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		let Some(&TaggedValue::DVec2(old_offset)) = old_inputs[1].as_value() else { return None };
+		let old_offset = if old_offset.x.abs() > old_offset.y.abs() { old_offset.x } else { old_offset.y };
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 1),
+			NodeInput::value(TaggedValue::ReferencePoint(graphene_std::transform::ReferencePoint::Center), false),
+			network_path,
+		);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::F64(old_offset), false), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[3].clone(), network_path);
+	}
+
+	// Upgrade `image` nodes that stored image data as `Image<Color>`` to `image` nodes that store a reference to the image data as a resource.
+	// Encodes the image data as PNG and stores it in the document's embedded resources and rewires the node to reference that resource.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER) {
+		let image = node.inputs.iter().find_map(|input| match input.as_value()? {
+			TaggedValue::ImageData(image) => Some(image.clone()),
+			_ => None,
+		});
+
+		if let Some(image) = image {
+			let hash = document.resources.embedded.store(Resource::new(image.to_png()));
+
+			let resource_id = ResourceId::new();
+			document.resources.registry.push_source_back(&resource_id, DataSource::Embedded);
+			document.resources.registry.resolve(&resource_id, hash);
+
+			let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+			let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
+		}
+	}
+
+	// Convert text nodes from the old `editor-api` scope + `Font` input to a single font `Resource` input.
+	// The chosen typeface is recorded as a `DataSource::Font` in the document's resource registry and loaded on open.
+	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode")) && inputs_count == 13 && matches!(node.inputs.first(), Some(NodeInput::Scope(_))) {
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+
+		if let Some(TaggedValue::Font(font)) = node.inputs.get(2).and_then(|input| input.as_value()) {
+			let resource_id = ResourceId::new();
+			document.resources.registry.push_source_back(&resource_id, DataSource::Embedded);
+			document.resources.registry.push_source_back(
+				&resource_id,
+				DataSource::Font {
+					family: font.font_family.clone(),
+					style: Some(font.font_style.clone()),
+				},
+			);
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
+		}
+	}
+
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER) && inputs_count == 15 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+		for (i, input) in old_inputs.iter().enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i + 1), input.clone(), network_path);
+		}
+	}
+
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+	}
+
+	// Old shape: [background, bounds, trace, cache]. Both "bounds" (input 1) and "cache" (input 3) are dropped, and "cache" is now stored as
+	// internal node state via `#[data]` on the brush node, so it is not a node input at all in the new shape.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[2].clone(), network_path);
+	}
+
+	// Old shape: [background, trace, cache]. The "cache" input is dropped because the brush node now stores its cache as internal `#[data]` state.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+	}
+
+	// A brush node saved before `Item<Raster<CPU>>` had a default stored its unconnected background as the invalid `()`,
+	// which fails type resolution against the raster primary; adopt the definition's empty-raster default instead.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && matches!(node.inputs.first().and_then(|input| input.as_value()), Some(TaggedValue::None)) {
+		let default_background = resolve_document_node_type(&reference)?.node_template.inputs.first()?.clone();
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), default_background, network_path);
+	}
+
+	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::RemoveHandlesNode")) {
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::auto_tangents::IDENTIFIER))?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::F64(0.), false), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+	}
+
+	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::GenerateHandlesNode")) {
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::auto_tangents::IDENTIFIER))?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+	}
+
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::merge_by_distance::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 2),
+			NodeInput::value(TaggedValue::MergeByDistanceAlgorithm(graphene_std::vector::misc::MergeByDistanceAlgorithm::Topological), false),
+			network_path,
+		);
+	}
+
+	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SpatialMergeByDistanceNode")) {
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::merge_by_distance::IDENTIFIER))?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 2),
+			NodeInput::value(TaggedValue::MergeByDistanceAlgorithm(graphene_std::vector::misc::MergeByDistanceAlgorithm::Spatial), false),
+			network_path,
+		);
+	}
+
+	if reference == DefinitionIdentifier::Network("Sample Points".into()) && inputs_count == 5 {
+		let mut node_template = resolve_network_node_type("Sample Polyline")?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		let new_spacing_value = NodeInput::value(TaggedValue::PointSpacingType(graphene_std::vector::misc::PointSpacingType::Separation), false);
+		let new_quantity_value = NodeInput::value(TaggedValue::U32(100), false);
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), new_spacing_value, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), new_quantity_value, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 6), old_inputs[4].clone(), network_path);
+	}
+
+	// Make the "Quantity" parameter a u32 instead of f64
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::sample_polyline::IDENTIFIER) {
+		// Get the inputs, obtain the quantity value, and put the inputs back
+		let quantity_value = document
+			.network_interface
+			.input_from_connector(&InputConnector::Node { node_id: *node_id, input_index: 3 }, network_path)?;
+
+		if let NodeInput::Value { tagged_value, exposed } = quantity_value
+			&& let TaggedValue::F64(value) = **tagged_value
+		{
+			let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), *exposed);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), new_quantity_value, network_path);
+		}
+	}
+
+	// Upgrade the "Grid" node from its six-input layout to the current seven-input layout (which adds a trailing
+	// "connect_cells" toggle, defaulting to the connected mesh that older grids produced). Legacy documents also placed
+	// "angles" at index 3 instead of index 5 (after "columns" and "rows"), so we reorder those. Either way, "connect_cells"
+	// is left at its default from the new node template.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER) && inputs_count == 6 {
+		let mut new_node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut new_node_template)?;
+
+		// The two six-input layouts differ only in where the DVec2 "angles" and the u32 "columns"/"rows" sit:
+		//   Legacy: [primary, grid_type, spacing, angles (DVec2), columns (u32), rows (u32)]
+		//   Modern: [primary, grid_type, spacing, columns (u32), rows (u32), angles (DVec2)]
+		// So a DVec2 "angles" at index 3, or a u32 "rows" at index 5, marks the legacy order. Checking both slots classifies
+		// correctly even when one of them is a wired or imported connection rather than a literal value.
+		let index_3_is_angles = matches!(old_inputs.get(3), Some(NodeInput::Value { tagged_value, .. }) if matches!(**tagged_value, TaggedValue::DVec2(_)));
+		let index_5_is_rows = matches!(old_inputs.get(5), Some(NodeInput::Value { tagged_value, .. }) if matches!(**tagged_value, TaggedValue::U32(_)));
+		let legacy_angles_layout = index_3_is_angles || index_5_is_rows;
+
+		if legacy_angles_layout {
+			// Old order: [primary, grid_type, spacing, angles, columns, rows]. Move "angles" from index 3 to index 5.
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[4].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[5].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[3].clone(), network_path);
+		} else {
+			// Modern six-input order. Carry each input over to the same index.
+			for (index, input) in old_inputs.iter().take(6).enumerate() {
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+			}
+		}
+	}
+
+	// Add the "Depth" parameter to the "Read Index" node
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_index::IDENTIFIER) && inputs_count == 0 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		document.network_interface.set_display_name(node_id, "Read Index".to_string(), network_path);
+
+		let mut node_path = network_path.to_vec();
+		node_path.push(*node_id);
+
+		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &node_path);
+		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
+	}
+
+	// Upgrade the "Animation" node to add the "Rate" input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::animation::animation_time::IDENTIFIER) && inputs_count < 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
+
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::F64(1.), false), network_path);
+	}
+
+	// Upgrade the "Read Position" node to add the "Loop Level" input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_position::IDENTIFIER) && inputs_count < 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
+
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::U32(0), false), network_path);
+	}
+
+	// Migrate from the old source/target v1 "Morph" node to the new `List<Vector>`-based v2 "Morph" node.
+	// This doesn't produce exactly equivalent results in cases involving input `List<Vector>` values with multiple items.
+	// The old version would zip the source and target items, interpolating each pair together.
+	// The migrated version will instead deeply flatten both merged `List`s and morph sequentially between all source vectors and all target vector elements.
+	// This migration assumes most usages didn't involve multiple parallel vector elements, and instead morphed from a single source to a single target vector element.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && (inputs_count == 3 || inputs_count == 4) {
+		// 3 inputs - old signature (#3405):
+		// async fn morph(_: impl Ctx, source: List<Vector>, #[expose] target: List<Vector>, #[default(0.5)] time: Fraction) -> List<Vector> { ... }
+		//
+		// 4 inputs - even older signature (commit 80b8df8d4298b6669f124b929ce61bfabfc44e41):
+		// async fn morph(_: impl Ctx, source: List<Vector>, #[expose] target: List<Vector>, #[default(0.5)] time: Fraction, start_index: u32) -> List<Vector> { ... }
+		//
+		// v2 signature:
+		// async fn morph<I: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: I, progression: Progression) -> List<Vector> { ... }
+
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Create a new Merge node
+		let Some(merge_node_type) = resolve_network_node_type("Merge") else {
+			log::error!("Could not get merge node from definition when upgrading morph");
+			return None;
+		};
+		let merge_template = merge_node_type.default_node_template();
+		let merge_node_id = NodeId::new();
+
+		// Decide on the placement position of the new Merge node
+		let Some(morph_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
+			log::error!("Could not get position for morph node {node_id}");
+			return None;
+		};
+		let merge_position = morph_position + IVec2::new(-7, 0);
+
+		// Insert the new Merge node into the network
+		document.network_interface.insert_node(merge_node_id, merge_template, network_path);
+		document.network_interface.set_to_node_or_layer(&merge_node_id, network_path, false);
+		document.network_interface.shift_absolute_node_position(&merge_node_id, merge_position, network_path);
+
+		// Connect the old 'source' and 'target' inputs to the new Merge node
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(merge_node_id, 0), old_inputs[0].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(merge_node_id, 1), old_inputs[1].clone(), network_path);
+
+		// Connect the new Merge node to the 'content' input of the Morph node
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::node(merge_node_id, 0), network_path);
+		// Connect the old 'progression' input to the new 'progression' input of the Morph node
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[2].clone(), network_path);
+
+		inputs_count = 2;
+	}
+
+	// Migrate from the v2 "Morph" node (2 inputs: content, progression) to the v3 "Morph" node (5 inputs: content, progression, reverse, distribution, path).
+	// The old progression used integer part for pair selection (range 0..N-1 where N is the number of content objects).
+	// The new progression uses fractional 0..1 for euclidean traversal through all objects.
+	// We insert List Length → Subtract 1 → Divide to remap: new_progression = old_progression / (N - 1).
+	// For the common 2-object case (N=2), this divides by 1 which is a no-op, preserving identical behavior.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Reconnect content (input 0) and leave path (input 4) as default
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+
+		let Some(morph_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
+			log::error!("Could not get position for morph node {node_id}");
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+			return None;
+		};
+
+		// Create List Length node: counts content `List` items → N
+		let Some(list_length_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::list_length::IDENTIFIER)) else {
+			log::error!("Could not get list_length node from definition when upgrading morph");
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+			return None;
+		};
+		let list_length_template = list_length_def.default_node_template();
+		let list_length_id = NodeId::new();
+
+		// Create Subtract node: N → N-1
+		let Some(subtract_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::subtract::IDENTIFIER)) else {
+			log::error!("Could not get subtract node from definition when upgrading morph");
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+			return None;
+		};
+		let mut subtract_template = subtract_def.default_node_template();
+		subtract_template.inputs[1] = NodeInput::value(TaggedValue::F64(1.), false);
+		let subtract_id = NodeId::new();
+
+		// Create Divide node: old_progression / (N-1) → new progression
+		let Some(divide_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::divide::IDENTIFIER)) else {
+			log::error!("Could not get divide node from definition when upgrading morph");
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+			return None;
+		};
+		let divide_template = divide_def.default_node_template();
+		let divide_id = NodeId::new();
+
+		// Insert and position nodes
+		document.network_interface.insert_node(list_length_id, list_length_template, network_path);
+		document
+			.network_interface
+			.shift_absolute_node_position(&list_length_id, morph_position + IVec2::new(-21, 2), network_path);
+
+		document.network_interface.insert_node(subtract_id, subtract_template, network_path);
+		document.network_interface.shift_absolute_node_position(&subtract_id, morph_position + IVec2::new(-14, 2), network_path);
+
+		document.network_interface.insert_node(divide_id, divide_template, network_path);
+		document.network_interface.shift_absolute_node_position(&divide_id, morph_position + IVec2::new(-7, 1), network_path);
+
+		// Wire: content source → List Length input 0
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(list_length_id, 0), old_inputs[0].clone(), network_path);
+
+		// Wire: List Length output → Subtract input 0 (minuend)
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(subtract_id, 0), NodeInput::node(list_length_id, 0), network_path);
+
+		// Wire: old progression → Divide input 0 (numerator)
+		document.network_interface.set_input(&InputConnector::node_at_index(divide_id, 0), old_inputs[1].clone(), network_path);
+
+		// Wire: Subtract output → Divide input 1 (denominator)
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(divide_id, 1), NodeInput::node(subtract_id, 0), network_path);
+
+		// Wire: Divide output → Morph progression input
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::node(divide_id, 0), network_path);
+	}
+
+	// Migrate old Arrow node from (start, end, shaft_width, head_width, head_length) to (arrow_to, shaft_width, head_width, head_length) with a Transform node for positioning
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::arrow::IDENTIFIER) && inputs_count == 6 {
+		// Read old start and end values
+		let start = match node.inputs.get(1)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::ZERO
+				}
+			}
+			_ => DVec2::ZERO,
+		};
+		let end = match node.inputs.get(2)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::new(100., 0.)
+				}
+			}
+			_ => DVec2::new(100., 0.),
+		};
+
+		// Replace inputs with the new node definition (primary + arrow_to + shaft_width + head_width + head_length)
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Preserve primary input connection
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		// Set arrow_to = end - start
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
+		// Preserve shaft_width, head_width, head_length (shifted from indices 3,4,5 to 2,3,4)
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[4].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[5].clone(), network_path);
+
+		// Find downstream connection to insert Transform node
+		let downstream = document
+			.network_interface
+			.outward_wires(network_path)
+			.and_then(|wires| wires.get(&OutputConnector::node(*node_id, 0)))
+			.and_then(|connections| connections.first().cloned());
+
+		if let Some(downstream_input) = downstream {
+			// Create a Transform node with translation = start
+			let Some(transform_node_type) = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER) else {
+				log::error!("Transform node definition not found during Arrow migration");
+				return None;
+			};
+			let mut transform_template = transform_node_type.default_node_template();
+			transform_template.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
+
+			let transform_id = NodeId::new();
+
+			// Position the Transform node to the right of the Arrow node
+			let arrow_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
+			document.network_interface.insert_node(transform_id, transform_template, network_path);
+			document.network_interface.shift_absolute_node_position(&transform_id, arrow_position + IVec2::new(7, 0), network_path);
+			document.network_interface.insert_node_between(&transform_id, &downstream_input, 0, network_path);
+		}
+	}
+
+	// Migrate old Line node from (start, end) to (line_to) with a Transform node for positioning
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER) && inputs_count == 3 {
+		// Read old start and end values
+		let start = match node.inputs.get(1)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::ZERO
+				}
+			}
+			_ => DVec2::ZERO,
+		};
+		let end = match node.inputs.get(2)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::new(100., 100.)
+				}
+			}
+			_ => DVec2::new(100., 100.),
+		};
+
+		// Replace inputs with the new node definition (primary + line_to)
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Preserve primary input connection
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		// Set line_to = end - start
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
+
+		// Find downstream connection to insert Transform node
+		let downstream = document
+			.network_interface
+			.outward_wires(network_path)
+			.and_then(|wires| wires.get(&OutputConnector::node(*node_id, 0)))
+			.and_then(|connections| connections.first().cloned());
+
+		if let Some(downstream_input) = downstream {
+			// Create a Transform node with translation = start
+			let Some(transform_node_type) = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER) else {
+				log::error!("Transform node definition not found during Line migration");
+				return None;
+			};
+			let mut transform_template = transform_node_type.default_node_template();
+			transform_template.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
+
+			let transform_id = NodeId::new();
+
+			// Position the Transform node to the right of the Line node
+			let line_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
+			document.network_interface.insert_node(transform_id, transform_template, network_path);
+			document.network_interface.shift_absolute_node_position(&transform_id, line_position + IVec2::new(7, 0), network_path);
+			document.network_interface.insert_node_between(&transform_id, &downstream_input, 0, network_path);
+		}
+	}
+
+	// Add the "Scale Type" parameter to the "Decompose Scale" node
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::decompose_scale::IDENTIFIER) && inputs_count == 1 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 1),
+			NodeInput::value(TaggedValue::ScaleType(ScaleType::Magnitude), false),
+			network_path,
+		);
+	}
+
+	// Add the "Along Normals" parameter to the "Jitter Points" node
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::jitter_points::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+	}
+
+	// SVG-import legacy Path nodes baked their geometry at non-exposed input 0; move it to input 1 (the modern slot for VectorModification).
+	// For exposed input 0, any baked value is unused at runtime, so just reset it.
+	if reference == DefinitionIdentifier::Network("Path".into()) {
+		let input_0 = node.inputs.first()?;
+		if let NodeInput::Value { tagged_value, exposed } = input_0
+			&& let TaggedValue::VectorModification(modification) = &**tagged_value
+		{
+			let modification = modification.clone();
+			let was_exposed = *exposed;
+
+			document.network_interface.set_input(
+				&InputConnector::node_at_index(*node_id, 0),
+				NodeInput::type_default(item!(graphene_std::vector::Vector), true),
+				network_path,
+			);
+
+			if !was_exposed {
+				document.network_interface.set_input(
+					&InputConnector::node_at_index(*node_id, 1),
+					NodeInput::value(TaggedValue::VectorModification(modification), false),
+					network_path,
+				);
+			}
+		}
+	}
+
+	// `load_resource` no longer takes the `editor-api`
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::platform_application_io::load_resource::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[2].clone(), network_path);
+	}
+
+	// `wgpu-executor` scope was removed, change to the auto injected scope node `graphene_std::platform_application_io::wgpu_executor`
+	for (i, input) in node.inputs.iter().enumerate() {
+		if let NodeInput::Scope(name) = input
+			&& *name == "wgpu-executor"
+		{
+			document.network_interface.set_input(
+				&InputConnector::node_at_index(*node_id, i),
+				NodeInput::Scope("graphene_std::platform_application_io::WgpuExecutorNode".into()),
+				network_path,
+			);
+		}
+	}
+
+	// A value input stored as a List-form TypeDefault adopts the definition's current default when the connector's declared default has since changed (e.g. the connector was ranked down to Item).
+	// The red-slash no-paint choice shares that stored form but is a deliberate value, not a stale disconnect default, so it is exempt.
+	if let Some(definition) = resolve_document_node_type(&reference) {
+		let definition_inputs = definition.node_template.inputs.clone();
+		for (index, definition_input) in definition_inputs.iter().enumerate() {
+			if !matches!(definition_input, NodeInput::Value { .. }) {
+				continue;
+			}
+
+			let stale_list_default = document
+				.network_interface
+				.input_from_connector(&InputConnector::node_at_index(*node_id, index), network_path)
+				.is_some_and(|stored_input| match stored_input {
+					NodeInput::Value { tagged_value, .. } => match &**tagged_value {
+						TaggedValue::TypeDefault(stored_type) if matches!(stored_type, Type::List(_)) && !tagged_value.is_no_paint() => {
+							!matches!(definition_input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, TaggedValue::TypeDefault(definition_type) if definition_type == stored_type))
+						}
+						_ => false,
+					},
+					_ => false,
+				});
+
+			if stale_list_default {
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, index), definition_input.clone(), network_path);
+			}
+		}
+	}
+
+	// ==================================
+	// PUT ALL MIGRATIONS ABOVE THIS LINE
+	// ==================================
+
+	// Ensure layers are positioned as stacks if they are upstream siblings of another layer
+	document.network_interface.load_structure();
+	let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
+	for layer in all_layers {
+		let (downstream_node, input_index) = document
+			.network_interface
+			.outward_wires(&[])
+			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), 0)))
+			.and_then(|outward_wires| outward_wires.first())
+			.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))?;
+		// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
+		if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && !document.network_interface.is_stack(&layer.to_node(), &[]) {
+			// Ensure the layer is horizontally aligned with the downstream layer to prevent changing the layout of old files
+			let (Some(layer_position), Some(downstream_position)) = (document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[])) else {
+				log::error!("Could not get position for layer {:?} or downstream node {} when opening file", layer.to_node(), downstream_node);
+				return None;
+			};
+			if layer_position.x == downstream_position.x {
+				document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
+			}
+		}
+	}
+
+	Some(())
+}
+
+/// Migrates document nodes whose catalog definitions have been removed.
+///
+/// This is called from `migrate_node` BEFORE its standard reset/migration logic, since that logic aborts when it can't
+/// resolve the node's `reference` against the current catalog. Each block here detects a specific decommissioned
+/// definition by its old reference name, swaps it to a still-supported implementation, and preserves the user's inputs.
+/// After this runs, the node's reference resolves cleanly so the rest of `migrate_node` proceeds normally.
+fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler) -> Option<()> {
+	// Collapse the legacy "Sample Polyline" wrapper network into the standalone `sample_polyline` proto node.
+	// The proto node now computes per-bezpath segment lengths inline, so the wrapper's separate `subpath_segment_lengths`
+	// and `Memoize` nodes are no longer needed. The 7 user-facing inputs are positionally identical between the
+	// old wrapper and the new proto node.
+	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
+		&& name == "Sample Polyline"
+		&& node.inputs.len() == 7
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::vector::sample_polyline::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(7).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+	}
+
+	// Collapse the legacy "Scatter Points" wrapper network into the standalone `scatter_points` proto node.
+	// The wrapper's trailing `Memoize` node is now produced automatically by the `memoize` attribute on the
+	// proto node, so the wrapper itself is redundant. The 3 user-facing inputs are positionally identical
+	// between the old wrapper and the new proto node.
+	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
+		&& name == "Scatter Points"
+		&& node.inputs.len() == 3
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::vector::scatter_points::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(3).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+	}
+
+	// Collapse the legacy "Boolean Operation" wrapper network into the standalone `boolean_operation` proto node.
+	// The wrapper's trailing `Memoize` node is now produced automatically by the `memoize` attribute on the
+	// proto node, so the wrapper itself is redundant. The 2 user-facing inputs are positionally identical
+	// between the old wrapper and the new proto node.
+	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
+		&& name == "Boolean Operation"
+		&& node.inputs.len() == 2
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+	}
+
+	// The removed Attach Attribute node degrades to a passthrough of its
+	// content: its eager whole-list source input cannot be mechanically rewired as Write Attribute's lazy per-item value producer.
+	if let Some(DefinitionIdentifier::ProtoNode(identifier)) = document.network_interface.reference(node_id, network_path)
+		&& identifier.as_str().ends_with("::AttachAttributeNode")
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		if let Some(content) = old_inputs.first() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), content.clone(), network_path);
+		}
+	}
+
+	// The Upload Texture node's old wrapper-network form maps onto its proto node form, which draws the executor from scope
+	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
+		&& name == "Upload Texture"
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		if let Some(content) = old_inputs.first() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), content.clone(), network_path);
+		}
+	}
+
+	Some(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// The removed-definition blocks above abort silently via `?` if their swap target ever leaves the catalog
+	#[test]
+	fn removed_definition_swap_targets_resolve() {
+		assert!(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).is_some());
+		assert!(resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER).is_some());
+	}
+
+	#[test]
+	fn the_flip_reset_markers_keep_the_historical_merge_internals_spelling() {
+		// The node itself is removed; the marker matches its spelling in
+		// documents saved before the flip, which must stay stable.
+		assert_eq!(FLIP_RESET_NODE_MARKERS, &["graphic_nodes::graphic::WriteAttributeNode"]);
+	}
+
+	#[test]
+	fn test_no_duplicate_node_replacements() {
+		let mut hashmap = HashMap::<ProtoNodeIdentifier, u32>::new();
+		NODE_REPLACEMENTS.iter().for_each(|node| {
+			*hashmap.entry(node.node.clone()).or_default() += 1;
+		});
+		let duplicates = hashmap.iter().filter(|(_, count)| **count > 1).map(|(node, _)| node.as_str()).collect::<Vec<_>>();
+		if !duplicates.is_empty() {
+			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {duplicates:?}");
+		}
+	}
+}
