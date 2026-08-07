@@ -171,7 +171,7 @@ pub mod migrations {
 				let position: Vec<f64> = stops.iter().map(|(position, _)| *position).collect();
 				let mut gradient = Gradient::from(stops.into_iter().map(|(_, color)| color).collect::<Vec<_>>());
 				gradient.set_positions(&position);
-				gradient.elide_default_attributes();
+				gradient.elide_default_attributes(false);
 
 				GradientRamp {
 					gradient_space: GradientSpace::RgbGamma,

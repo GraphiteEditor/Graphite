@@ -2408,6 +2408,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			gradient_form: GradientForm,
 			gradient_spread: GradientSpread,
 			gradient_space: GradientSpace,
+			gradient_cyclic: bool,
 			gradient_hue_direction: GradientHueDirection,
 			transform: DAffine2,
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
@@ -2440,6 +2441,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						gradient_form: gradient.gradient_form,
 						gradient_spread: gradient.gradient_spread,
 						gradient_space: gradient.gradient_space,
+						gradient_cyclic: gradient.gradient_cyclic,
 						gradient_hue_direction: gradient.gradient_hue_direction,
 						transform: gradient.transform,
 						transform_is_value: gradient.transform_is_value,
@@ -2472,12 +2474,14 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			gradient: stops,
 			gradient_spread,
 			gradient_space,
+			gradient_cyclic,
 			gradient_hue_direction,
 			..
 		} => {
 			let stops = stops.clone();
 			let gradient_spread = *gradient_spread;
 			let gradient_space = *gradient_space;
+			let gradient_cyclic = *gradient_cyclic;
 			let gradient_hue_direction = *gradient_hue_direction;
 
 			let reverse_button = IconButton::new("Reverse", 24)
@@ -2488,8 +2492,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						TaggedValue::GradientRamp(GradientRamp {
 							gradient_spread,
 							gradient_space,
+							gradient_cyclic,
 							gradient_hue_direction,
-							..GradientRamp::from(stops.reversed())
+							..GradientRamp::from(stops.reversed(gradient_cyclic))
 						})
 					},
 					node_id,
@@ -2514,11 +2519,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			gradient: stops,
 			gradient_spread,
 			gradient_space,
+			gradient_cyclic,
 			gradient_hue_direction,
 			..
 		} => FillChoice::<SRGBA8>::Gradient(GradientRamp {
 			gradient_spread: *gradient_spread,
 			gradient_space: *gradient_space,
+			gradient_cyclic: *gradient_cyclic,
 			gradient_hue_direction: *gradient_hue_direction,
 			..GradientRamp::from(stops)
 		}),

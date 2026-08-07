@@ -9,8 +9,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_chain_source_gradient_hue_direction, get_chain_source_gradient_space, get_chain_source_gradient_spread, get_fill_node_id_with_direct_fill_input, get_gradient_stops,
-	get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain, reverse_direction_tooltip_description,
+	self, NodeGraphLayer, get_chain_source_gradient_cyclic, get_chain_source_gradient_hue_direction, get_chain_source_gradient_space, get_chain_source_gradient_spread,
+	get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain, reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use glam::DMat2;
@@ -31,6 +31,7 @@ pub struct GradientOptions {
 	gradient_form: GradientForm,
 	gradient_spread: GradientSpread,
 	gradient_space: GradientSpace,
+	gradient_cyclic: bool,
 	gradient_hue_direction: GradientHueDirection,
 }
 
@@ -98,7 +99,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 					responses.add(ToolMessage::UpdateCursor);
 				}
 				GradientOptionsUpdate::ReverseStops => {
-					apply_gradient_update(&mut self.data, context, responses, |_| true, |(gradient, _appearance)| *gradient = gradient.reversed());
+					apply_gradient_update(
+						&mut self.data,
+						context,
+						responses,
+						|_| true,
+						|(gradient, appearance)| *gradient = gradient.reversed(appearance.gradient_cyclic),
+					);
 				}
 				GradientOptionsUpdate::ReverseDirection => apply_gradient_update(
 					&mut self.data,
@@ -141,6 +148,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				let ramp = GradientRamp::from(&ramp);
 				self.options.gradient_spread = ramp.gradient_spread;
 				self.options.gradient_space = ramp.gradient_space;
+				self.options.gradient_cyclic = ramp.gradient_cyclic;
 				self.options.gradient_hue_direction = ramp.gradient_hue_direction;
 				apply_stops_update(
 					&mut self.data,
@@ -149,6 +157,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 					Gradient::from(&ramp),
 					ramp.gradient_spread,
 					ramp.gradient_space,
+					ramp.gradient_cyclic,
 					ramp.gradient_hue_direction,
 				);
 			}
@@ -190,6 +199,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 					}
 					if self.options.gradient_space != appearance.gradient_space {
 						self.options.gradient_space = appearance.gradient_space;
+						needs_refresh = true;
+					}
+					if self.options.gradient_cyclic != appearance.gradient_cyclic {
+						self.options.gradient_cyclic = appearance.gradient_cyclic;
 						needs_refresh = true;
 					}
 					if self.options.gradient_hue_direction != appearance.gradient_hue_direction {
@@ -277,6 +290,7 @@ impl LayoutHolder for GradientTool {
 		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp {
 			gradient_spread: self.options.gradient_spread,
 			gradient_space: self.options.gradient_space,
+			gradient_cyclic: self.options.gradient_cyclic,
 			gradient_hue_direction: self.options.gradient_hue_direction,
 			..GradientRamp::from(&stops_value)
 		}))
@@ -379,6 +393,7 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 					gradient_form: gradient.gradient_form,
 					gradient_spread: gradient.gradient_spread,
 					gradient_space: gradient.gradient_space,
+					gradient_cyclic: gradient.gradient_cyclic,
 					gradient_hue_direction: gradient.gradient_hue_direction,
 					transform: gradient.transform,
 				},
@@ -400,6 +415,7 @@ struct GradientAppearance {
 	gradient_form: GradientForm,
 	gradient_spread: GradientSpread,
 	gradient_space: GradientSpace,
+	gradient_cyclic: bool,
 	gradient_hue_direction: GradientHueDirection,
 }
 
@@ -442,6 +458,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 		gradient_form: gradient_form.unwrap_or_default(),
 		gradient_spread: get_chain_source_gradient_spread(layer, network_interface).unwrap_or_default(),
 		gradient_space: get_chain_source_gradient_space(layer, network_interface).unwrap_or_default(),
+		gradient_cyclic: get_chain_source_gradient_cyclic(layer, network_interface).unwrap_or_default(),
 		gradient_hue_direction: get_chain_source_gradient_hue_direction(layer, network_interface).unwrap_or_default(),
 	}
 }
@@ -479,6 +496,70 @@ fn midpoint_hidden_by_proximity(left_stop_pos: f64, right_stop_pos: f64, viewpor
 	(right_stop_pos - left_stop_pos) * viewport_line_length < GRADIENT_STOP_MIN_VIEWPORT_GAP * 2.
 }
 
+/// A cyclic gradient's wrapped interval as `(start, end)` along the gradient line, where `end` runs past 1 by however far
+/// the interval continues beyond the boundary to reach the first stop.
+fn wrapped_interval_span(gradient: &Gradient) -> (f64, f64) {
+	(gradient.position(gradient.len() - 1, true), gradient.position(0, true) + 1.)
+}
+
+/// The gradient's visible midpoint diamonds as `(owning stop index, position along the gradient line)`, omitting intervals
+/// whose stops are too closely packed. A cyclic gradient's wrapped interval adds a final diamond owned by the last stop.
+fn midpoint_diamonds(gradient: &Gradient, gradient_cyclic: bool, viewport_line_length: f64) -> Vec<(usize, f64)> {
+	let mut diamonds = Vec::with_capacity(gradient.len());
+
+	for index in 0..gradient.len().saturating_sub(1) {
+		let left = gradient.position(index, gradient_cyclic);
+		let right = gradient.position(index + 1, gradient_cyclic);
+		if midpoint_hidden_by_proximity(left, right, viewport_line_length) {
+			continue;
+		}
+
+		diamonds.push((index, left + gradient.midpoint(index) * (right - left)));
+	}
+
+	if gradient_cyclic && gradient.len() >= 2 {
+		let last = gradient.len() - 1;
+		let (left, right) = wrapped_interval_span(gradient);
+		if !midpoint_hidden_by_proximity(left, right, viewport_line_length) {
+			diamonds.push((last, (left + gradient.midpoint(last) * (right - left)).rem_euclid(1.)));
+		}
+	}
+
+	diamonds
+}
+
+/// Maps a pointer's unclamped position along the gradient line to a midpoint ratio within the interval owned by the
+/// stop at `index`, or `None` when that interval has no width. The wrapped interval continues past the line's end,
+/// so overdragging keeps tracking with the line's length as an offset.
+fn midpoint_ratio_at(gradient: &Gradient, index: usize, gradient_cyclic: bool, position_along_line: f64) -> Option<f64> {
+	let is_wrapped_interval = gradient_cyclic && index + 1 == gradient.len();
+	let (left, right) = if is_wrapped_interval {
+		wrapped_interval_span(gradient)
+	} else {
+		(gradient.position(index, gradient_cyclic), gradient.position(index + 1, gradient_cyclic))
+	};
+
+	let span = right - left;
+	if span <= 0. {
+		return None;
+	}
+
+	let first = gradient.position(0, gradient_cyclic);
+	let dead_zone_split = match (is_wrapped_interval, left >= 1., first > 0.) {
+		(true, true, _) => f64::INFINITY,
+		(true, false, true) => (first + left) / 2.,
+		_ => f64::NEG_INFINITY,
+	};
+
+	let local = if position_along_line < dead_zone_split {
+		position_along_line + 1. - left
+	} else {
+		position_along_line - left
+	};
+
+	Some((local / span).clamp(GRADIENT_MIDPOINT_MIN, GRADIENT_MIDPOINT_MAX))
+}
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub enum GradientDragTarget {
 	Start,
@@ -504,13 +585,13 @@ struct SelectedGradient {
 	is_gradient_chain: bool,
 }
 
-fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, mouse: DVec2) -> Option<f64> {
+fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, gradient_cyclic: bool, mouse: DVec2) -> Option<f64> {
 	let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 	let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
 	if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
-		for stop in stops {
-			let stop_pos = start.lerp(end, stop.position);
+		for i in 0..stops.len() {
+			let stop_pos = start.lerp(end, stops.position(i, gradient_cyclic));
 			if stop_pos.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) {
 				return None;
 			}
@@ -521,16 +602,8 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, mouse: DVec2)
 
 		// Don't insert when clicking near a (currently visible) midpoint diamond
 		let line_length = start.distance(end);
-		for i in 0..stops.len().saturating_sub(1) {
-			let left = stops.position(i);
-			let right = stops.position(i + 1);
-
-			if midpoint_hidden_by_proximity(left, right, line_length) {
-				continue;
-			}
-
-			let midpoint_pos = left + stops.midpoint(i) * (right - left);
-			let midpoint_viewport = start.lerp(end, midpoint_pos);
+		for (_, midpoint_position) in midpoint_diamonds(stops, gradient_cyclic, line_length) {
+			let midpoint_viewport = start.lerp(end, midpoint_position);
 			if midpoint_viewport.distance_squared(mouse) < GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2) {
 				return None;
 			}
@@ -697,18 +770,19 @@ impl SelectedGradient {
 				let min_gap = GRADIENT_STOP_MIN_VIEWPORT_GAP / line_length;
 				let last_index = self.gradient.len() - 1;
 
-				let has_other_stop_at_zero = stop != 0 && !self.gradient.is_empty() && self.gradient.position(0).abs() < f64::EPSILON * 1000.;
-				let has_other_stop_at_one = stop != last_index && !self.gradient.is_empty() && (1. - self.gradient.position(last_index)).abs() < f64::EPSILON * 1000.;
+				let gradient_cyclic = self.appearance.gradient_cyclic;
+				let has_other_stop_at_zero = stop != 0 && !self.gradient.is_empty() && self.gradient.position(0, gradient_cyclic).abs() < f64::EPSILON * 1000.;
+				let has_other_stop_at_one = stop != last_index && !self.gradient.is_empty() && (1. - self.gradient.position(last_index, gradient_cyclic)).abs() < f64::EPSILON * 1000.;
 
 				let left_bound = if has_other_stop_at_zero { min_gap } else { 0. };
 				let right_bound = if has_other_stop_at_one { 1. - min_gap } else { 1. };
 
 				let clamped = new_pos.clamp(left_bound, right_bound);
-				self.gradient.set_position(stop, clamped);
+				self.gradient.set_position(stop, clamped, gradient_cyclic);
 				let new_position = clamped;
 				let new_color = self.gradient.color(stop).unwrap_or(Color::BLACK);
 
-				self.gradient.sort();
+				self.gradient.sort(gradient_cyclic);
 				if let Some(new_index) = self.gradient.iter().position(|s| s.position == new_position && s.color == new_color) {
 					self.dragging = GradientDragTarget::Stop(new_index);
 				}
@@ -755,12 +829,8 @@ impl SelectedGradient {
 					return;
 				}
 
-				// Convert to a midpoint ratio within the interval between the two surrounding stops
-				let left_stop = self.gradient.position(midpoint_index);
-				let right_stop = self.gradient.position(midpoint_index + 1);
-				let range = right_stop - left_stop;
-				if range > 0. {
-					let midpoint_ratio = ((full_pos - left_stop) / range).clamp(GRADIENT_MIDPOINT_MIN, GRADIENT_MIDPOINT_MAX);
+				// Convert to a midpoint ratio within the interval owned by the dragged diamond's stop
+				if let Some(midpoint_ratio) = midpoint_ratio_at(&self.gradient, midpoint_index, self.appearance.gradient_cyclic, full_pos) {
 					self.gradient.set_midpoint(midpoint_index, midpoint_ratio);
 				}
 			}
@@ -780,6 +850,7 @@ impl SelectedGradient {
 					gradient_form: self.appearance.gradient_form,
 					gradient_spread: self.appearance.gradient_spread,
 					gradient_space: self.appearance.gradient_space,
+					gradient_cyclic: self.appearance.gradient_cyclic,
 					gradient_hue_direction: self.appearance.gradient_hue_direction,
 					transform: self.appearance.transform,
 				});
@@ -801,7 +872,7 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 	responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: gradient.clone() });
 	responses.add(GraphOperationMessage::GradientPositionsSet {
 		layer,
-		positions: gradient.nondefault_positions().unwrap_or_default(),
+		positions: gradient.nondefault_positions(appearance.gradient_cyclic).unwrap_or_default(),
 	});
 	responses.add(GraphOperationMessage::GradientMidpointsSet {
 		layer,
@@ -822,6 +893,10 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 	responses.add(GraphOperationMessage::GradientSpaceSet {
 		layer,
 		gradient_space: appearance.gradient_space,
+	});
+	responses.add(GraphOperationMessage::GradientCyclicSet {
+		layer,
+		gradient_cyclic: appearance.gradient_cyclic,
 	});
 	responses.add(GraphOperationMessage::GradientHueDirectionSet {
 		layer,
@@ -930,8 +1005,9 @@ impl Fsm for GradientToolFsmState {
 					let end_hex = gradient.color(gradient.len().saturating_sub(1)).map(color_to_hex).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
 
 					// Check if the first/last stops are at position ~0/~1 (rendered as the endpoint dots rather than as separate stops)
-					let first_at_start = !gradient.is_empty() && gradient.position(0).abs() < f64::EPSILON * 1000.;
-					let last_at_end = !gradient.is_empty() && (1. - gradient.position(gradient.len() - 1)).abs() < f64::EPSILON * 1000.;
+					let gradient_cyclic = appearance.gradient_cyclic;
+					let first_at_start = !gradient.is_empty() && gradient.position(0, gradient_cyclic).abs() < f64::EPSILON * 1000.;
+					let last_at_end = !gradient.is_empty() && (1. - gradient.position(gradient.len() - 1, gradient_cyclic)).abs() < f64::EPSILON * 1000.;
 
 					overlay_context.line(start, end, None, None);
 
@@ -956,11 +1032,12 @@ impl Fsm for GradientToolFsmState {
 						};
 						check(start.distance_squared(mouse), StopId::Start);
 						check(end.distance_squared(mouse), StopId::End);
-						for (index, stop) in gradient.iter().enumerate() {
-							if stop.position.abs() < f64::EPSILON * 1000. || (1. - stop.position).abs() < f64::EPSILON * 1000. {
+						for index in 0..gradient.len() {
+							let position = gradient.position(index, gradient_cyclic);
+							if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 								continue;
 							}
-							check(start.lerp(end, stop.position).distance_squared(mouse), StopId::Middle(index));
+							check(start.lerp(end, position).distance_squared(mouse), StopId::Middle(index));
 						}
 						best.map(|(_, id)| id)
 					} else {
@@ -982,8 +1059,8 @@ impl Fsm for GradientToolFsmState {
 						StopId::Start => overlay_context.gradient_color_stop(start, emphasis, &start_hex, !first_at_start),
 						StopId::End => overlay_context.gradient_color_stop(end, emphasis, &end_hex, !last_at_end),
 						StopId::Middle(i) => {
-							if let Some(stop) = gradient.iter().nth(i) {
-								overlay_context.gradient_color_stop(start.lerp(end, stop.position), emphasis, &color_to_hex(stop.color), false);
+							if let Some(color) = gradient.color(i) {
+								overlay_context.gradient_color_stop(start.lerp(end, gradient.position(i, gradient_cyclic)), emphasis, &color_to_hex(color), false);
 							}
 						}
 					};
@@ -995,8 +1072,9 @@ impl Fsm for GradientToolFsmState {
 					if !is_deferred(StopId::End) {
 						draw_stop(StopId::End, emphasis_for(StopId::End));
 					}
-					for (index, stop) in gradient.iter().enumerate() {
-						if stop.position.abs() < f64::EPSILON * 1000. || (1. - stop.position).abs() < f64::EPSILON * 1000. {
+					for index in 0..gradient.len() {
+						let position = gradient.position(index, gradient_cyclic);
+						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
 						let id = StopId::Middle(index);
@@ -1022,18 +1100,10 @@ impl Fsm for GradientToolFsmState {
 					let line_angle = (end - start).to_angle();
 					let line_length = start.distance(end);
 					let midpoint_tolerance = GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2);
-					for i in 0..gradient.len().saturating_sub(1) {
-						let left = gradient.position(i);
-						let right = gradient.position(i + 1);
+					for (index, midpoint_position) in midpoint_diamonds(gradient, gradient_cyclic, line_length) {
+						let midpoint_viewport = start.lerp(end, midpoint_position);
 
-						if midpoint_hidden_by_proximity(left, right, line_length) {
-							continue;
-						}
-
-						let midpoint_pos = left + gradient.midpoint(i) * (right - left);
-						let midpoint_viewport = start.lerp(end, midpoint_pos);
-
-						let emphasis = if dragging == Some(GradientDragTarget::Midpoint(i)) {
+						let emphasis = if dragging == Some(GradientDragTarget::Midpoint(index)) {
 							GizmoEmphasis::Active
 						} else if !matches!(self, GradientToolFsmState::Drawing { .. }) && midpoint_viewport.distance_squared(mouse) < midpoint_tolerance {
 							GizmoEmphasis::Hovered
@@ -1044,7 +1114,7 @@ impl Fsm for GradientToolFsmState {
 					}
 
 					if !matches!(self, GradientToolFsmState::Drawing { .. })
-						&& calculate_insertion(start, end, gradient, mouse).is_some()
+						&& calculate_insertion(start, end, gradient, gradient_cyclic, mouse).is_some()
 						&& let Some(dir) = (end - start).try_normalize()
 					{
 						let perp = dir.perp();
@@ -1093,7 +1163,7 @@ impl Fsm for GradientToolFsmState {
 					let gradient = &selected_gradient.gradient;
 					if stop_index < gradient.len() {
 						let color = gradient.color(stop_index).unwrap_or(Color::BLACK);
-						let position = gradient.position(stop_index);
+						let position = gradient.position(stop_index, selected_gradient.appearance.gradient_cyclic);
 						let start = transform.transform_point2(DVec2::ZERO);
 						let end = transform.transform_point2(DVec2::X);
 						let position = start.lerp(end, position).into();
@@ -1133,10 +1203,11 @@ impl Fsm for GradientToolFsmState {
 						GradientDragTarget::Start | GradientDragTarget::End | GradientDragTarget::Stop(_) => {
 							// Find the stop index from the drag target
 							let gradient = &selected_gradient.gradient;
+							let gradient_cyclic = selected_gradient.appearance.gradient_cyclic;
 							let stop_index = match selected_gradient.dragging {
 								GradientDragTarget::Stop(i) => Some(i),
-								GradientDragTarget::Start => (0..gradient.len()).position(|i| gradient.position(i).abs() < f64::EPSILON * 1000.),
-								GradientDragTarget::End => (0..gradient.len()).position(|i| (1. - gradient.position(i)).abs() < f64::EPSILON * 1000.),
+								GradientDragTarget::Start => (0..gradient.len()).position(|i| gradient.position(i, gradient_cyclic).abs() < f64::EPSILON * 1000.),
+								GradientDragTarget::End => (0..gradient.len()).position(|i| (1. - gradient.position(i, gradient_cyclic)).abs() < f64::EPSILON * 1000.),
 								_ => None,
 							};
 							if let Some(stop_index) = stop_index
@@ -1148,7 +1219,7 @@ impl Fsm for GradientToolFsmState {
 									tool_data.color_picker_transaction_open = false;
 								}
 
-								let stop_pos = selected_gradient.gradient.position(stop_index);
+								let stop_pos = selected_gradient.gradient.position(stop_index, selected_gradient.appearance.gradient_cyclic);
 								let (start, end) = selected_gradient.viewport_handle_positions();
 								let viewport_pos = start.lerp(end, stop_pos);
 								let position = viewport_pos.into();
@@ -1191,7 +1262,7 @@ impl Fsm for GradientToolFsmState {
 				match selected_gradient.dragging {
 					GradientDragTarget::Start => {
 						// Only delete if there's a real color stop at position ~0 (not the endpoint of the line which isn't itself a color stop)
-						if !selected_gradient.gradient.is_empty() && selected_gradient.gradient.position(0).abs() < f64::EPSILON * 1000. {
+						if !selected_gradient.gradient.is_empty() && selected_gradient.gradient.position(0, selected_gradient.appearance.gradient_cyclic).abs() < f64::EPSILON * 1000. {
 							selected_gradient.gradient.remove(0);
 						} else {
 							responses.add(DocumentMessage::AbortTransaction);
@@ -1200,7 +1271,9 @@ impl Fsm for GradientToolFsmState {
 					}
 					GradientDragTarget::End => {
 						// Only delete if there's a real color stop at position ~1 (not the endpoint of the line which isn't itself a color stop)
-						if !selected_gradient.gradient.is_empty() && (1. - selected_gradient.gradient.position(selected_gradient.gradient.len() - 1)).abs() < f64::EPSILON * 1000. {
+						if !selected_gradient.gradient.is_empty()
+							&& (1. - selected_gradient.gradient.position(selected_gradient.gradient.len() - 1, selected_gradient.appearance.gradient_cyclic)).abs() < f64::EPSILON * 1000.
+						{
 							let _ = selected_gradient.gradient.pop();
 						} else {
 							responses.add(DocumentMessage::AbortTransaction);
@@ -1241,7 +1314,7 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				// Find the minimum and maximum positions
-				let positions = selected_gradient.gradient.positions();
+				let positions = selected_gradient.gradient.positions(selected_gradient.appearance.gradient_cyclic);
 				let min_position = positions.iter().copied().reduce(f64::min).expect("No min");
 				let max_position = positions.iter().copied().reduce(f64::max).expect("No max");
 
@@ -1277,7 +1350,14 @@ impl Fsm for GradientToolFsmState {
 					// If click is on the line then insert point
 					if distance < (SELECTION_THRESHOLD * 2.) {
 						// Try and insert the new stop
-						if let Some(index) = insert_stop_at_point(&mut gradient, mouse, unit_to_viewport, appearance.gradient_space, appearance.gradient_hue_direction) {
+						if let Some(index) = insert_stop_at_point(
+							&mut gradient,
+							mouse,
+							unit_to_viewport,
+							appearance.gradient_cyclic,
+							appearance.gradient_space,
+							appearance.gradient_hue_direction,
+						) {
 							responses.add(DocumentMessage::StartTransaction);
 
 							let mut selected_gradient = SelectedGradient::new(gradient, appearance, source, layer, document);
@@ -1330,19 +1410,11 @@ impl Fsm for GradientToolFsmState {
 					if drag_hint.is_none() {
 						let line_length = start.distance(end);
 						let midpoint_tolerance = GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2);
-						for i in 0..gradient.len().saturating_sub(1) {
-							let left = gradient.position(i);
-							let right = gradient.position(i + 1);
-
-							if midpoint_hidden_by_proximity(left, right, line_length) {
-								continue;
-							}
-
-							let midpoint_pos = left + gradient.midpoint(i) * (right - left);
-							let midpoint_viewport = start.lerp(end, midpoint_pos);
+						for (index, midpoint_position) in midpoint_diamonds(&gradient, appearance.gradient_cyclic, line_length) {
+							let midpoint_viewport = start.lerp(end, midpoint_position);
 
 							if midpoint_viewport.distance_squared(mouse) < midpoint_tolerance {
-								let resettable = midpoint_is_resettable(gradient.midpoint(i));
+								let resettable = midpoint_is_resettable(gradient.midpoint(index));
 								drag_hint = Some(GradientDragHintState::Midpoint { resettable });
 
 								tool_data.selected_gradient = Some(SelectedGradient {
@@ -1351,7 +1423,7 @@ impl Fsm for GradientToolFsmState {
 									gradient: gradient.clone(),
 									appearance,
 									initial_gradient_transform: appearance.transform,
-									dragging: GradientDragTarget::Midpoint(i),
+									dragging: GradientDragTarget::Midpoint(index),
 									initial_gradient: gradient.clone(),
 									is_gradient_chain,
 								});
@@ -1364,15 +1436,15 @@ impl Fsm for GradientToolFsmState {
 					// Check for dragging the closest stop to the mouse pointer
 					if drag_hint.is_none() {
 						let mut best: Option<(f64, usize)> = None;
-						for (index, stop) in gradient.iter().enumerate() {
-							let pos = start.lerp(end, stop.position);
+						for index in 0..gradient.len() {
+							let pos = start.lerp(end, gradient.position(index, appearance.gradient_cyclic));
 							let dist_sq = pos.distance_squared(mouse);
 							if dist_sq < tolerance && best.as_ref().is_none_or(|&(best_dist, _)| dist_sq < best_dist) {
 								best = Some((dist_sq, index));
 							}
 						}
 						if let Some((_, index)) = best {
-							let stop_position = gradient.position(index);
+							let stop_position = gradient.position(index, appearance.gradient_cyclic);
 							// Stops at position 0 or 1 are locked endpoints: dragging moves the
 							// gradient line endpoint geometry (start/end) instead of stop position
 							let drag_target = if stop_position.abs() < f64::EPSILON * 1000. {
@@ -1427,7 +1499,14 @@ impl Fsm for GradientToolFsmState {
 
 						if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
 							let mut new_gradient = gradient.clone();
-							if let Some(index) = insert_stop_at_point(&mut new_gradient, mouse, unit_to_viewport, appearance.gradient_space, appearance.gradient_hue_direction) {
+							if let Some(index) = insert_stop_at_point(
+								&mut new_gradient,
+								mouse,
+								unit_to_viewport,
+								appearance.gradient_cyclic,
+								appearance.gradient_space,
+								appearance.gradient_hue_direction,
+							) {
 								responses.add(DocumentMessage::StartTransaction);
 								transaction_started = true;
 
@@ -1507,6 +1586,7 @@ impl Fsm for GradientToolFsmState {
 									gradient_form: tool_options.gradient_form,
 									gradient_spread: tool_options.gradient_spread,
 									gradient_space: tool_options.gradient_space,
+									gradient_cyclic: tool_options.gradient_cyclic,
 									gradient_hue_direction: tool_options.gradient_hue_direction,
 								},
 								// A blank layer, or one holding only the other tool's paint, starts a whole-expanse gradient chain; a layer with content gets its Fill painted
@@ -1605,8 +1685,10 @@ impl Fsm for GradientToolFsmState {
 
 				// Clear the selection if we were dragging an endpoint of the gradient which isn't a stop
 				if tool_data.selected_gradient.as_ref().is_some_and(|selected| match selected.dragging {
-					GradientDragTarget::Start => selected.gradient.is_empty() || selected.gradient.position(0).abs() >= f64::EPSILON * 1000.,
-					GradientDragTarget::End => selected.gradient.is_empty() || (1. - selected.gradient.position(selected.gradient.len() - 1)).abs() >= f64::EPSILON * 1000.,
+					GradientDragTarget::Start => selected.gradient.is_empty() || selected.gradient.position(0, selected.appearance.gradient_cyclic).abs() >= f64::EPSILON * 1000.,
+					GradientDragTarget::End => {
+						selected.gradient.is_empty() || (1. - selected.gradient.position(selected.gradient.len() - 1, selected.appearance.gradient_cyclic)).abs() >= f64::EPSILON * 1000.
+					}
 					_ => false,
 				}) {
 					tool_data.selected_gradient = None;
@@ -1739,10 +1821,17 @@ impl Fsm for GradientToolFsmState {
 	}
 }
 
-fn insert_stop_at_point(gradient: &mut Gradient, point: DVec2, unit_to_viewport: DAffine2, gradient_space: GradientSpace, gradient_hue_direction: GradientHueDirection) -> Option<usize> {
+fn insert_stop_at_point(
+	gradient: &mut Gradient,
+	point: DVec2,
+	unit_to_viewport: DAffine2,
+	gradient_cyclic: bool,
+	gradient_space: GradientSpace,
+	gradient_hue_direction: GradientHueDirection,
+) -> Option<usize> {
 	let (start, end) = gradient_handle_positions(unit_to_viewport);
 	let t = ((end - start).angle_to(point - start)).cos() * start.distance(point) / start.distance(end);
-	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t, gradient_space, gradient_hue_direction))
+	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t, gradient_cyclic, gradient_space, gradient_hue_direction))
 }
 
 fn dismiss_color_stop_color_picker(tool_data: &mut GradientToolData, responses: &mut VecDeque<Message>) {
@@ -1769,18 +1858,11 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 		let line_length = start.distance(end);
 
 		// Check midpoint diamonds first (smaller hit area, higher priority)
-		for i in 0..gradient.len().saturating_sub(1) {
-			let left = gradient.position(i);
-			let right = gradient.position(i + 1);
-			if midpoint_hidden_by_proximity(left, right, line_length) {
-				continue;
-			}
-
-			let midpoint_position = left + gradient.midpoint(i) * (right - left);
+		for (index, midpoint_position) in midpoint_diamonds(&gradient, appearance.gradient_cyclic, line_length) {
 			let midpoint_viewport = start.lerp(end, midpoint_position);
 
 			if midpoint_viewport.distance_squared(mouse) < midpoint_tolerance {
-				let resettable = midpoint_is_resettable(gradient.midpoint(i));
+				let resettable = midpoint_is_resettable(gradient.midpoint(index));
 				return GradientHoverTarget::Midpoint { resettable };
 			}
 		}
@@ -1805,7 +1887,7 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 		}
 
 		// Check insertion point on line
-		if calculate_insertion(start, end, &gradient, mouse).is_some() {
+		if calculate_insertion(start, end, &gradient, appearance.gradient_cyclic, mouse).is_some() {
 			return GradientHoverTarget::InsertionPoint;
 		}
 	}
@@ -1867,6 +1949,7 @@ fn apply_gradient_update(
 					gradient_form: appearance.gradient_form,
 					gradient_spread: appearance.gradient_spread,
 					gradient_space: appearance.gradient_space,
+					gradient_cyclic: appearance.gradient_cyclic,
 					gradient_hue_direction: appearance.gradient_hue_direction,
 					transform: appearance.transform,
 				});
@@ -1891,6 +1974,7 @@ fn apply_gradient_update(
 /// Set new gradient stops on every selected layer's gradient. Unlike `apply_gradient_update`, this doesn't open its own
 /// transaction so it can be called repeatedly during a color picker drag and have all the changes coalesced into a
 /// single undo entry by the surrounding 'on_commit' callback.
+#[allow(clippy::too_many_arguments)]
 fn apply_stops_update(
 	data: &mut GradientToolData,
 	context: &mut ToolActionMessageContext,
@@ -1898,6 +1982,7 @@ fn apply_stops_update(
 	new_gradient: Gradient,
 	gradient_spread: GradientSpread,
 	gradient_space: GradientSpace,
+	gradient_cyclic: bool,
 	gradient_hue_direction: GradientHueDirection,
 ) {
 	let selected_layers: Vec<_> = context
@@ -1917,6 +2002,7 @@ fn apply_stops_update(
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: new_gradient.clone() });
 			responses.add(GraphOperationMessage::GradientSpreadSet { layer, gradient_spread });
 			responses.add(GraphOperationMessage::GradientSpaceSet { layer, gradient_space });
+			responses.add(GraphOperationMessage::GradientCyclicSet { layer, gradient_cyclic });
 			responses.add(GraphOperationMessage::GradientHueDirectionSet { layer, gradient_hue_direction });
 			updated_any_layer = true;
 		} else if let Some((_gradient, appearance, _source)) = resolve_gradient(layer, &context.document.network_interface) {
@@ -1926,6 +2012,7 @@ fn apply_stops_update(
 				gradient_form: appearance.gradient_form,
 				gradient_spread,
 				gradient_space,
+				gradient_cyclic,
 				gradient_hue_direction,
 				transform: appearance.transform,
 			});
@@ -1937,6 +2024,7 @@ fn apply_stops_update(
 		selected_gradient.gradient = new_gradient.clone();
 		selected_gradient.appearance.gradient_spread = gradient_spread;
 		selected_gradient.appearance.gradient_space = gradient_space;
+		selected_gradient.appearance.gradient_cyclic = gradient_cyclic;
 		selected_gradient.appearance.gradient_hue_direction = gradient_hue_direction;
 	}
 
@@ -2021,6 +2109,8 @@ enum GradientDragHintState {
 
 #[cfg(test)]
 mod test_gradient {
+	use super::{gradient_to_viewport_transform, midpoint_diamonds, midpoint_ratio_at};
+	use crate::consts::{GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN};
 	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
 	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -2037,7 +2127,56 @@ mod test_gradient {
 	use graphene_std::vector::style::{GradientForm, GradientSpread, build_transform_with_y_preservation};
 	use graphene_std::vector::{Gradient, GradientRamp, GradientStop, fill};
 
-	use super::gradient_to_viewport_transform;
+	/// A line long enough that no interval in these tests trips the closely-packed-stops hiding rule.
+	const UNCROWDED_LINE_LENGTH: f64 = 10_000.;
+
+	#[test]
+	fn cyclic_adds_a_wrap_diamond_owned_by_the_last_stop() {
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+
+		// The elided cyclic stops sit at 0 and 0.5, so the wrapped interval spans the other half and centers its diamond at 0.75
+		assert_eq!(midpoint_diamonds(&gradient, false, UNCROWDED_LINE_LENGTH), vec![(0, 0.5)]);
+		assert_eq!(midpoint_diamonds(&gradient, true, UNCROWDED_LINE_LENGTH), vec![(0, 0.25), (1, 0.75)]);
+
+		// A wrapped interval crossing the boundary places its diamond on whichever side the midpoint lands
+		let mut offset = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		offset.set_positions(&[0.25, 0.5]);
+		offset.set_midpoints(&[0.5, 0.9]);
+		let diamonds = midpoint_diamonds(&offset, true, UNCROWDED_LINE_LENGTH);
+		assert_eq!(diamonds[1].0, 1);
+		assert!((diamonds[1].1 - 0.175).abs() < 1e-9, "the late wrap midpoint should land past the boundary, got {}", diamonds[1].1);
+
+		// Stops pinned to both ends leave the wrapped interval no width, so it contributes no diamond
+		let mut spanning = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		spanning.set_positions(&[0., 1.]);
+		assert_eq!(midpoint_diamonds(&spanning, true, UNCROWDED_LINE_LENGTH), vec![(0, 0.5)]);
+	}
+
+	#[test]
+	fn wrap_midpoint_drag_tracks_past_the_ends_and_saturates_across_the_dead_zone() {
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		gradient.set_positions(&[0.25, 0.5]);
+
+		// Within the interval the ratio maps linearly, and overdragging past the line's end keeps tracking
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.875), Some(0.5));
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 1.0625), Some(0.75));
+
+		// The dead zone between the outermost stops splits at its midpoint (0.375), each half saturating against the nearer end
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.45), Some(GRADIENT_MIDPOINT_MIN));
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.3), Some(GRADIENT_MIDPOINT_MAX));
+
+		// A first stop at 0 leaves no room before the boundary, so the one-sided interval saturates like any other
+		let mut one_sided = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		one_sided.set_positions(&[0., 0.5]);
+		assert_eq!(midpoint_ratio_at(&one_sided, 1, true, 0.4), Some(GRADIENT_MIDPOINT_MIN));
+		assert_eq!(midpoint_ratio_at(&one_sided, 1, true, 0.75), Some(0.5));
+
+		// Ordinary intervals never wrap, and a zero-width interval has no ratio to give
+		assert_eq!(midpoint_ratio_at(&gradient, 0, true, 0.375), Some(0.5));
+		let mut degenerate = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		degenerate.set_positions(&[0.5, 0.5]);
+		assert_eq!(midpoint_ratio_at(&degenerate, 0, false, 0.5), None);
+	}
 
 	struct ResolvedGradient {
 		stops: Gradient,
@@ -2200,7 +2339,11 @@ mod test_gradient {
 		let Some(TaggedValue::GradientRamp(ramp)) = stops else {
 			panic!("expected a gradient default, got {stops:?}")
 		};
-		assert_eq!(Gradient::from(ramp).positions(), vec![0., 1.], "the parameter default should be the black-to-white starting gradient");
+		assert_eq!(
+			Gradient::from(ramp).positions(false),
+			vec![0., 1.],
+			"the parameter default should be the black-to-white starting gradient"
+		);
 	}
 
 	async fn create_fill_gradient_chain_layer(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
@@ -2476,7 +2619,7 @@ mod test_gradient {
 
 		// Verify initial stop positions and colors
 		let mut stops = initial_gradient.stops.clone();
-		stops.sort();
+		stops.sort(false);
 
 		let positions: Vec<f64> = stops.iter().map(|stop| stop.position).collect();
 		assert_stops_at_positions(&positions, &[0., 0.25, 1.], 0.1);
@@ -2515,7 +2658,7 @@ mod test_gradient {
 
 		// Verify updated stop positions and colors
 		let mut updated_stops = updated_gradient.stops.clone();
-		updated_stops.sort();
+		updated_stops.sort(false);
 
 		// Check positions are now correctly ordered
 		let updated_positions: Vec<f64> = updated_stops.iter().map(|stop| stop.position).collect();
@@ -2907,7 +3050,7 @@ mod test_gradient {
 		let updated = ResolvedGradient::new(updated, appearance);
 
 		assert_eq!(updated.stops.len(), 3, "Stop count should be preserved");
-		assert_stops_at_positions(&updated.stops.positions(), &[0., 0.5, 1.], 1e-10);
+		assert_stops_at_positions(&updated.stops.positions(false), &[0., 0.5, 1.], 1e-10);
 		assert_eq!(SRGBA8::from(updated.stops.color(0).unwrap()), SRGBA8::from(Color::RED), "First stop color should be preserved");
 		assert_eq!(SRGBA8::from(updated.stops.color(1).unwrap()), SRGBA8::from(Color::GREEN), "Middle stop color should be preserved");
 		assert_eq!(SRGBA8::from(updated.stops.color(2).unwrap()), SRGBA8::from(Color::BLUE), "Last stop color should be preserved");
@@ -3112,14 +3255,14 @@ mod test_gradient {
 		editor.handle_message(GraphOperationMessage::GradientMidpointsSet { layer, midpoints: vec![0.7, 0.5] }).await;
 		let document = editor.active_document();
 		let stops = get_gradient_stops(layer, &document.network_interface).expect("the chain should resolve stops");
-		assert_stops_at_positions(&stops.positions(), &[0., 0.25], 1e-10);
+		assert_stops_at_positions(&stops.positions(false), &[0., 0.25], 1e-10);
 		assert_eq!(stops.midpoints(), vec![0.7, 0.5]);
 
 		// An empty update restores the default placement, overriding the value's own explicit placement at runtime
 		editor.handle_message(GraphOperationMessage::GradientPositionsSet { layer, positions: vec![] }).await;
 		let document = editor.active_document();
 		let stops = get_gradient_stops(layer, &document.network_interface).expect("the chain should resolve stops");
-		assert_stops_at_positions(&stops.positions(), &[0., 1.], 1e-10);
+		assert_stops_at_positions(&stops.positions(false), &[0., 1.], 1e-10);
 		assert!(!stops.has_position_attribute(), "the empty setter value should clear the attribute");
 
 		// A wired setter input is procedural authorship, which the update must leave untouched rather than bake over

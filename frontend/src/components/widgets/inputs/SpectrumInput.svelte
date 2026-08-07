@@ -13,6 +13,7 @@
 	export let trackCSS: string;
 	export let trackStartCSS: string;
 	export let trackEndCSS: string;
+	export let trackCyclic = false;
 	export let markers: SpectrumMarker[];
 	export let activeMarkerIndex: number | undefined = 0;
 	export let activeMarkerIsMidpoint = false;
@@ -54,11 +55,11 @@
 		emit({ ActiveMarker: { activeMarkerIndex: index, activeMarkerIsMidpoint: isMidpoint } });
 	}
 
-	function pointerPosition(e: MouseEvent): number | undefined {
+	function pointerPosition(e: MouseEvent, clamp = true): number | undefined {
 		const rect = markerTrackElement?.div()?.getBoundingClientRect();
 		if (!rect) return undefined;
 		const ratio = (e.clientX - rect.left) / rect.width;
-		return Math.max(0, Math.min(1, ratio));
+		return clamp ? Math.max(0, Math.min(1, ratio)) : ratio;
 	}
 
 	function clampToNeighbors(index: number, position: number): number {
@@ -237,18 +238,32 @@
 			return;
 		}
 
-		const absolute = pointerPosition(e);
+		// The wrapped interval's diamond (cyclic only) belongs to the last marker and spans through the 1|0 boundary to the first.
+		// Its pointer ratio stays unclamped so overdragging past the strip's right or left edge keeps tracking after the 1|0 wrap.
+		const isWrappedInterval = trackCyclic && activeMarkerIndex === markers.length - 1;
+		const absolute = pointerPosition(e, !isWrappedInterval);
 		if (absolute === undefined) return;
 
 		const left = markers[activeMarkerIndex]?.position;
-		const right = markers[activeMarkerIndex + 1]?.position;
+		const right = isWrappedInterval ? markers[0].position + 1 : markers[activeMarkerIndex + 1]?.position;
 		if (left === undefined || right === undefined) return;
 		const range = right - left;
 		if (range <= 0) return;
 
+		// The dead zone between the first and last stops splits so each half saturates against the wrapped interval's nearer end,
+		// except when an outermost stop leaves no room on its side of the boundary, where the one-sided interval skips the split
+		// and saturates like any other
+		let deadZoneSplit = Number.NEGATIVE_INFINITY;
+		if (isWrappedInterval) {
+			const first = markers[0].position;
+			if (left >= 1) deadZoneSplit = Number.POSITIVE_INFINITY;
+			else if (first > 0) deadZoneSplit = (first + left) / 2;
+		}
+		const local = absolute < deadZoneSplit ? absolute + 1 - left : absolute - left;
+
 		midpointDragged = true;
 		dispatch("dragging", true);
-		emit({ MoveMidpoint: { index: activeMarkerIndex, position: (absolute - left) / range } });
+		emit({ MoveMidpoint: { index: activeMarkerIndex, position: local / range } });
 	}
 
 	function abortDrag() {
@@ -347,7 +362,22 @@
 	}
 
 	// Map midpoint pairs to absolute track positions for rendering the diamond markers.
-	$: midpointPositions = !showMidpoints || markers.length < 2 ? [] : markers.slice(0, -1).map((marker, i) => marker.position + marker.midpoint * (markers[i + 1].position - marker.position));
+	// A rendered diamond's index is the index of the interval's left marker, which for the cyclic wrapped interval's diamond is the last marker.
+	function diamondPositions(markers: SpectrumMarker[], showMidpoints: boolean, trackCyclic: boolean): number[] {
+		if (!showMidpoints || markers.length < 2) return [];
+		const positions = markers.slice(0, -1).map((marker, i) => marker.position + marker.midpoint * (markers[i + 1].position - marker.position));
+
+		// The wrapped interval's diamond may land on either side of the 1|0 boundary
+		if (trackCyclic) {
+			const first = markers[0];
+			const last = markers[markers.length - 1];
+			const wrapLength = first.position + 1 - last.position;
+			if (wrapLength > 1e-9) positions.push((last.position + last.midpoint * wrapLength) % 1);
+		}
+
+		return positions;
+	}
+	$: midpointPositions = diamondPositions(markers, showMidpoints, trackCyclic);
 
 	onMount(() => {
 		document.addEventListener("keydown", deleteShortcut);
