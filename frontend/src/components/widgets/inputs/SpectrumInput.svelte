@@ -238,23 +238,23 @@
 			return;
 		}
 
-		// The wrap segment's diamond (cyclic only) belongs to the last marker and spans through the 1|0 boundary to the first.
+		// The wrapped interval's diamond (cyclic only) belongs to the last marker and spans through the 1|0 boundary to the first.
 		// Its pointer ratio stays unclamped so overdragging past the strip's right edge keeps tracking, the diamond wrapped a full strip width behind the pointer.
-		const isWrapSegment = trackCyclic && activeMarkerIndex === markers.length - 1;
-		const absolute = pointerPosition(e, !isWrapSegment);
+		const isWrappedInterval = trackCyclic && activeMarkerIndex === markers.length - 1;
+		const absolute = pointerPosition(e, !isWrappedInterval);
 		if (absolute === undefined) return;
 
 		const left = markers[activeMarkerIndex]?.position;
-		const right = isWrapSegment ? markers[0].position + 1 : markers[activeMarkerIndex + 1]?.position;
+		const right = isWrappedInterval ? markers[0].position + 1 : markers[activeMarkerIndex + 1]?.position;
 		if (left === undefined || right === undefined) return;
 		const range = right - left;
 		if (range <= 0) return;
 
-		// The dead zone between the first and last stops splits so each half saturates against the wrap segment's
+		// The dead zone between the first and last stops splits so each half saturates against the wrapped interval's
 		// nearer end, except when an outermost stop leaves no room on its side of the boundary, where the one-sided
-		// segment skips the split and saturates like an ordinary interval
+		// interval skips the split and saturates like any other
 		let deadZoneSplit = Number.NEGATIVE_INFINITY;
-		if (isWrapSegment) {
+		if (isWrappedInterval) {
 			const first = markers[0].position;
 			if (left >= 1) deadZoneSplit = Number.POSITIVE_INFINITY;
 			else if (first > 0) deadZoneSplit = (first + left) / 2;
@@ -362,12 +362,12 @@
 	}
 
 	// Map midpoint pairs to absolute track positions for rendering the diamond markers.
-	// A rendered diamond's index is the index of the interval's left marker, which for the cyclic wrap segment's diamond is the last marker.
+	// A rendered diamond's index is the index of the interval's left marker, which for the cyclic wrapped interval's diamond is the last marker.
 	function diamondPositions(markers: SpectrumMarker[], showMidpoints: boolean, trackCyclic: boolean): number[] {
 		if (!showMidpoints || markers.length < 2) return [];
 		const positions = markers.slice(0, -1).map((marker, i) => marker.position + marker.midpoint * (markers[i + 1].position - marker.position));
 
-		// The wrap segment's diamond may land on either side of the 1|0 boundary
+		// The wrapped interval's diamond may land on either side of the 1|0 boundary
 		if (trackCyclic) {
 			const first = markers[0];
 			const last = markers[markers.length - 1];

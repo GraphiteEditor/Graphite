@@ -534,7 +534,7 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 				spectrum_input.track_css = spectrum_input
 					.track
 					.to_css_linear_gradient(spectrum_input.track_cyclic, spectrum_input.track_space, spectrum_input.track_hue_direction);
-				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrap segment's boundary-crossing color rather than the outermost stops'
+				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrapped interval's boundary-crossing color rather than the outermost stops'
 				let track_gradient = graphene_std::vector::style::Gradient::from(&spectrum_input.track);
 				let cap = |t: f64| {
 					let color = track_gradient.evaluate(t, Default::default(), spectrum_input.track_cyclic, spectrum_input.track_space, spectrum_input.track_hue_direction);

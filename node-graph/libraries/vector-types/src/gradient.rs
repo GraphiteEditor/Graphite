@@ -488,7 +488,7 @@ fn even_position(index: usize, count: usize, gradient_cyclic: bool) -> f64 {
 	if count <= 1 {
 		return 0.;
 	}
-	// A cyclic gradient reserves the same span for the wrap segment as for each interval between stops
+	// A cyclic gradient reserves the same span for the wrapped interval as for each interval between stops
 	let denominator = if gradient_cyclic { count } else { count - 1 };
 	index as f64 / denominator as f64
 }
@@ -706,7 +706,7 @@ impl Gradient {
 		let color = self.evaluate(position, Default::default(), gradient_cyclic, gradient_space, gradient_hue_direction);
 		let index = (0..self.len()).position(|i| self.position(i, gradient_cyclic) > position).unwrap_or(self.len());
 
-		// Inserting before the first stop of a cyclic gradient splits the wrap segment, so its handle is inherited
+		// Inserting before the first stop of a cyclic gradient splits the wrapped interval, so its handle is inherited
 		let midpoint = if index > 0 {
 			self.midpoint(index - 1)
 		} else if gradient_cyclic && !self.is_empty() {
@@ -793,7 +793,7 @@ impl Gradient {
 	}
 
 	/// Samples the gradient's color at `t`. Given a `t` outside the 0 to 1 range, the `gradient_spread` determines how the gradient extends.
-	/// When `gradient_cyclic`, the flat caps before the first stop and after the last are replaced by a wrap segment
+	/// When `gradient_cyclic`, the flat caps before the first stop and after the last are replaced by a wrapped interval
 	/// interpolating from the last stop through the 1|0 boundary back to the first, timed by the last stop's midpoint.
 	pub fn evaluate(&self, t: f64, gradient_spread: GradientSpread, gradient_cyclic: bool, gradient_space: GradientSpace, gradient_hue_direction: GradientHueDirection) -> Color {
 		let t = match gradient_spread {
@@ -997,7 +997,7 @@ impl Gradient {
 			let midpoint = sanitized_midpoint(stops[i].midpoint);
 			let next_midpoint = sanitized_midpoint(stops[i + 1].midpoint);
 
-			// Add the start stop (subsequent segments share the previous end stop)
+			// Add the start stop (subsequent intervals share the previous end stop)
 			if i == 0 {
 				result.push((pos_a, color_a, Some(midpoint)));
 			}
@@ -1011,7 +1011,7 @@ impl Gradient {
 			result.push((pos_b, color_b, Some(next_midpoint)));
 		}
 
-		// Bake the wrap segment into the flat list: the piece from the last stop to the 1|0 boundary, and the piece
+		// Bake the wrapped interval into the flat list: the piece from the last stop to the 1|0 boundary, and the piece
 		// continuing from the boundary to the first stop, so both ends of the emitted list share the boundary-crossing
 		// color and downstream renderers stay unaware of the cycle
 		if gradient_cyclic {
@@ -1698,7 +1698,7 @@ mod tests {
 	}
 
 	#[test]
-	fn cyclic_reserves_the_wrap_segment_in_the_even_distribution() {
+	fn cyclic_reserves_the_wrapped_interval_in_the_even_distribution() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::RED, Color::BLUE]);
 		assert_eq!(gradient.positions(false), vec![0., 1. / 3., 2. / 3., 1.]);
 		assert_eq!(gradient.positions(true), vec![0., 0.25, 0.5, 0.75]);
@@ -1706,14 +1706,14 @@ mod tests {
 
 	#[test]
 	fn cyclic_evaluate_wraps_from_the_last_stop_back_to_the_first() {
-		// Elided cyclic positions put the stops at 0 and 0.5, so the wrap segment spans the other half
+		// Elided cyclic positions put the stops at 0 and 0.5, so the wrapped interval spans the other half
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		let quarter = gradient.evaluate(0.25, Default::default(), true, GradientSpace::RgbLinear, Default::default());
 		let wrap_quarter = gradient.evaluate(0.75, Default::default(), true, GradientSpace::RgbLinear, Default::default());
 		assert_eq!(quarter, Color::BLACK.lerp(&Color::WHITE, 0.5));
 		assert_eq!(wrap_quarter, Color::WHITE.lerp(&Color::BLACK, 0.5));
 
-		// A wrap segment crossing the 1|0 boundary reads as one continuous span, so its two sides agree at the seam
+		// A wrapped interval crossing the 1|0 boundary reads as one continuous span, so its two sides agree at the seam
 		let mut offset = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		offset.set_positions(&[0.25, 0.5]);
 		let at_end = offset.evaluate(1., Default::default(), true, GradientSpace::RgbLinear, Default::default());
@@ -1723,7 +1723,7 @@ mod tests {
 	}
 
 	#[test]
-	fn cyclic_wrap_segment_times_with_the_last_stops_midpoint() {
+	fn cyclic_wrapped_interval_times_with_the_last_stops_midpoint() {
 		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		gradient.set_midpoints(&[0.5, 0.25]);
 
@@ -1744,7 +1744,7 @@ mod tests {
 		assert_eq!(samples.first().unwrap().1, samples.last().unwrap().1, "both ends must share the boundary-crossing color");
 		assert!(samples.windows(2).all(|pair| pair[0].0 <= pair[1].0), "samples must ascend");
 
-		// The flat samples' gamma playback must track the true cyclic curve, wrap segment included
+		// The flat samples' gamma playback must track the true cyclic curve, wrapped interval included
 		for probe in 0..=400 {
 			let t = probe as f64 / 400.;
 
@@ -1780,7 +1780,7 @@ mod tests {
 	}
 
 	#[test]
-	fn inserting_into_the_wrap_segment_inherits_the_wrap_handle_and_samples_its_color() {
+	fn inserting_into_the_wrapped_interval_inherits_the_wrap_handle_and_samples_its_color() {
 		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		gradient.set_midpoints(&[0.5, 0.3]);
 

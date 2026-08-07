@@ -472,7 +472,7 @@ impl ColorPickerMessageHandler {
 				if i >= count {
 					return;
 				}
-				// Each stop's "natural" position is its evenly-spaced fraction along 0..1, e.g., for 5 stops: 0, 0.25, 0.5, 0.75, 1 (or fifths when cyclic, leaving the wrap segment its share). Falls back to the midpoint between neighbors when the natural position would push the stop past another.
+				// Each stop's "natural" position is its evenly-spaced fraction along 0..1, e.g., for 5 stops: 0, 0.25, 0.5, 0.75, 1 (or fifths when cyclic, leaving the wrapped interval its share). Falls back to the midpoint between neighbors when the natural position would push the stop past another.
 				let left = if i == 0 { 0. } else { gradient.position(i - 1, self.gradient_cyclic) };
 				let right = if i + 1 < count { gradient.position(i + 1, self.gradient_cyclic) } else { 1. };
 				let denominator = if self.gradient_cyclic { count } else { count - 1 };

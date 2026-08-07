@@ -496,14 +496,14 @@ fn midpoint_hidden_by_proximity(left_stop_pos: f64, right_stop_pos: f64, viewpor
 	(right_stop_pos - left_stop_pos) * viewport_line_length < GRADIENT_STOP_MIN_VIEWPORT_GAP * 2.
 }
 
-/// A cyclic gradient's wrap segment as `(start, end)` along the gradient line, where `end` runs past 1 by however far
-/// the segment continues beyond the boundary to reach the first stop.
-fn wrap_segment_span(gradient: &Gradient) -> (f64, f64) {
+/// A cyclic gradient's wrapped interval as `(start, end)` along the gradient line, where `end` runs past 1 by however far
+/// the interval continues beyond the boundary to reach the first stop.
+fn wrapped_interval_span(gradient: &Gradient) -> (f64, f64) {
 	(gradient.position(gradient.len() - 1, true), gradient.position(0, true) + 1.)
 }
 
 /// The gradient's visible midpoint diamonds as `(owning stop index, position along the gradient line)`, omitting
-/// intervals whose stops are too closely packed. A cyclic gradient's wrap segment adds a final diamond owned by the last stop.
+/// intervals whose stops are too closely packed. A cyclic gradient's wrapped interval adds a final diamond owned by the last stop.
 fn midpoint_diamonds(gradient: &Gradient, gradient_cyclic: bool, viewport_line_length: f64) -> Vec<(usize, f64)> {
 	let mut diamonds = Vec::with_capacity(gradient.len());
 
@@ -519,7 +519,7 @@ fn midpoint_diamonds(gradient: &Gradient, gradient_cyclic: bool, viewport_line_l
 
 	if gradient_cyclic && gradient.len() >= 2 {
 		let last = gradient.len() - 1;
-		let (left, right) = wrap_segment_span(gradient);
+		let (left, right) = wrapped_interval_span(gradient);
 		if !midpoint_hidden_by_proximity(left, right, viewport_line_length) {
 			diamonds.push((last, (left + gradient.midpoint(last) * (right - left)).rem_euclid(1.)));
 		}
@@ -529,12 +529,12 @@ fn midpoint_diamonds(gradient: &Gradient, gradient_cyclic: bool, viewport_line_l
 }
 
 /// Maps a pointer's unclamped position along the gradient line to a midpoint ratio within the interval owned by the stop
-/// at `index`, or `None` when that interval has no width. The wrap segment continues past the line's end, so overdragging
+/// at `index`, or `None` when that interval has no width. The wrapped interval continues past the line's end, so overdragging
 /// keeps tracking with the line's length as an offset.
 fn midpoint_ratio_at(gradient: &Gradient, index: usize, gradient_cyclic: bool, position_along_line: f64) -> Option<f64> {
-	let is_wrap_segment = gradient_cyclic && index + 1 == gradient.len();
-	let (left, right) = if is_wrap_segment {
-		wrap_segment_span(gradient)
+	let is_wrapped_interval = gradient_cyclic && index + 1 == gradient.len();
+	let (left, right) = if is_wrapped_interval {
+		wrapped_interval_span(gradient)
 	} else {
 		(gradient.position(index, gradient_cyclic), gradient.position(index + 1, gradient_cyclic))
 	};
@@ -545,7 +545,7 @@ fn midpoint_ratio_at(gradient: &Gradient, index: usize, gradient_cyclic: bool, p
 	}
 
 	let first = gradient.position(0, gradient_cyclic);
-	let dead_zone_split = match (is_wrap_segment, left >= 1., first > 0.) {
+	let dead_zone_split = match (is_wrapped_interval, left >= 1., first > 0.) {
 		(true, true, _) => f64::INFINITY,
 		(true, false, true) => (first + left) / 2.,
 		_ => f64::NEG_INFINITY,
@@ -2136,11 +2136,11 @@ mod test_gradient {
 	fn cyclic_adds_a_wrap_diamond_owned_by_the_last_stop() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 
-		// The elided cyclic stops sit at 0 and 0.5, so the wrap segment spans the other half and centers its diamond at 0.75
+		// The elided cyclic stops sit at 0 and 0.5, so the wrapped interval spans the other half and centers its diamond at 0.75
 		assert_eq!(midpoint_diamonds(&gradient, false, UNCROWDED_LINE_LENGTH), vec![(0, 0.5)]);
 		assert_eq!(midpoint_diamonds(&gradient, true, UNCROWDED_LINE_LENGTH), vec![(0, 0.25), (1, 0.75)]);
 
-		// A wrap segment crossing the boundary places its diamond on whichever side the midpoint lands
+		// A wrapped interval crossing the boundary places its diamond on whichever side the midpoint lands
 		let mut offset = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		offset.set_positions(&[0.25, 0.5]);
 		offset.set_midpoints(&[0.5, 0.9]);
@@ -2148,7 +2148,7 @@ mod test_gradient {
 		assert_eq!(diamonds[1].0, 1);
 		assert!((diamonds[1].1 - 0.175).abs() < 1e-9, "the late wrap midpoint should land past the boundary, got {}", diamonds[1].1);
 
-		// Stops pinned to both ends leave the wrap segment no width, so it contributes no diamond
+		// Stops pinned to both ends leave the wrapped interval no width, so it contributes no diamond
 		let mut spanning = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		spanning.set_positions(&[0., 1.]);
 		assert_eq!(midpoint_diamonds(&spanning, true, UNCROWDED_LINE_LENGTH), vec![(0, 0.5)]);
@@ -2159,7 +2159,7 @@ mod test_gradient {
 		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		gradient.set_positions(&[0.25, 0.5]);
 
-		// Within the segment the ratio maps linearly, and overdragging past the line's end keeps tracking
+		// Within the interval the ratio maps linearly, and overdragging past the line's end keeps tracking
 		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.875), Some(0.5));
 		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 1.0625), Some(0.75));
 
@@ -2167,7 +2167,7 @@ mod test_gradient {
 		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.45), Some(GRADIENT_MIDPOINT_MIN));
 		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.3), Some(GRADIENT_MIDPOINT_MAX));
 
-		// A first stop at 0 leaves no room before the boundary, so the one-sided segment saturates like an ordinary interval
+		// A first stop at 0 leaves no room before the boundary, so the one-sided interval saturates like any other
 		let mut one_sided = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		one_sided.set_positions(&[0., 0.5]);
 		assert_eq!(midpoint_ratio_at(&one_sided, 1, true, 0.4), Some(GRADIENT_MIDPOINT_MIN));

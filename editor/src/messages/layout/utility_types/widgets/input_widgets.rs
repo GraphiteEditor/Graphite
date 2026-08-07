@@ -589,7 +589,7 @@ pub struct SpectrumInput {
 	/// The color space the track's stops interpolate in, used to compute `track_css`. Not sent to the frontend.
 	#[serde(skip)]
 	pub track_space: GradientSpace,
-	/// Whether the track's stops wrap as a cycle, used to compute `track_css` and by the frontend to draw the wrap segment's midpoint diamond.
+	/// Whether the track's stops wrap as a cycle, used to compute `track_css` and by the frontend to draw the wrapped interval's midpoint diamond.
 	#[serde(rename = "trackCyclic")]
 	pub track_cyclic: bool,
 	/// The hue direction the track's stops interpolate with in a polar space, used to compute `track_css`. Not sent to the frontend.
@@ -645,7 +645,7 @@ pub struct SpectrumMarker {
 	/// Position (0..1) of the marker along the spectrum track.
 	position: f64,
 	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true.
-	/// The last marker's value controls the wrap segment when `track_cyclic` is set, and is otherwise ignored.
+	/// The last marker's value controls the wrapped interval when `track_cyclic` is set, and is otherwise ignored.
 	midpoint: f64,
 	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`].
 	#[serde(rename = "handleColorCSS")]
