@@ -828,18 +828,21 @@ fn smooth_samples(stops: &[GradientStop], settings: GradientSettings) -> Vec<(f6
 		anchors.push((1., None));
 	}
 
+	// A synthetic end anchor copies the start's color so the seam closes exactly rather than relying on the
+	// two wrapped views of the spline agreeing to the last bit; a real stop at 1 keeps its own color
+	let seam_color = synthetic_end.then(|| path.evaluate(anchors[0].0));
+	let anchor_color = |position: f64| match seam_color {
+		Some(color) if position >= 1. => color,
+		_ => path.evaluate(position),
+	};
+
 	let mut result: Vec<(f64, Color, Option<f64>)> = Vec::new();
 	for (index, &(position, midpoint)) in anchors.iter().enumerate() {
-		// A synthetic end anchor copies the start's color so the seam closes exactly rather than relying on the
-		// two wrapped views of the spline agreeing to the last bit; a real stop at 1 keeps its own color
-		let color = match result.first() {
-			Some(&(_, boundary, _)) if synthetic_end && position >= 1. => boundary,
-			_ => path.evaluate(position),
-		};
+		let color = anchor_color(position);
 		result.push((position, color, midpoint));
 
 		if let Some(&(next, _)) = anchors.get(index + 1) {
-			subdivide(&path, position, next, color, path.evaluate(next), &mut result, 0);
+			subdivide(&path, position, next, color, anchor_color(next), &mut result, 0);
 		}
 	}
 
