@@ -39,23 +39,13 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{DashPattern, Gradient, GradientHueDirection, GradientSpace, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::vector::{PointDomain, RegionDomain};
 
 /// The gradient color for one assign-colors position, replaying the
 /// randomized draws up to it.
-fn assign_color_at(
-	gradient: &Gradient,
-	gradient_cyclic: bool,
-	gradient_space: vector_types::GradientSpace,
-	gradient_hue_direction: vector_types::GradientHueDirection,
-	position: usize,
-	length: usize,
-	randomize: bool,
-	seed: SeedValue,
-	repeat_every: u32,
-) -> Color {
+fn assign_color_at(gradient: &Gradient, settings: vector_types::GradientSettings, position: usize, length: usize, randomize: bool, seed: SeedValue, repeat_every: u32) -> Color {
 	let factor = match randomize {
 		true => {
 			let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
@@ -71,7 +61,7 @@ fn assign_color_at(
 			_ => position as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
 		},
 	};
-	gradient.evaluate(factor, Default::default(), gradient_cyclic, gradient_space, gradient_hue_direction)
+	gradient.evaluate(factor, settings)
 }
 
 /// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
@@ -114,30 +104,24 @@ fn assign_colors<'e>(
 	if gradient.is_empty() {
 		return Ok((content.lane(lane).map_element(element), Attr(existing_fill), Attr(existing_stroke)));
 	}
-	let gradient_cyclic = gradient.lane(0).attr::<vector_types::markers::GradientCyclic>();
-	let gradient_space = gradient.lane(0).attr::<vector_types::markers::GradientSpace>();
-	let gradient_hue_direction = gradient.lane(0).attr::<vector_types::markers::GradientHueDirection>();
+	let settings = vector_types::GradientSettings {
+		spread: gradient.lane(0).attr::<vector_types::markers::GradientSpread>(),
+		cyclic: gradient.lane(0).attr::<vector_types::markers::GradientCyclic>(),
+		space: gradient.lane(0).attr::<vector_types::markers::GradientSpace>(),
+		hue_direction: gradient.lane(0).attr::<vector_types::markers::GradientHueDirection>(),
+		interpolation: gradient.lane(0).attr::<vector_types::markers::GradientInterpolation>(),
+	};
 	let gradient_element = gradient.element_ref(0);
 	let reversed;
 	let gradient_element = match reverse {
 		true => {
-			reversed = gradient_element.reversed();
+			reversed = gradient_element.reversed(settings.cyclic);
 			&reversed
 		}
 		false => gradient_element,
 	};
 
-	let color = assign_color_at(
-		gradient_element,
-		gradient_cyclic,
-		gradient_space,
-		gradient_hue_direction,
-		lane,
-		content.len(),
-		randomize,
-		seed,
-		repeat_every,
-	);
+	let color = assign_color_at(gradient_element, settings, lane, content.len(), randomize, seed, repeat_every);
 	let paint = List::new_from_element(color).into_graphic_list();
 	let parked = park_paint(ctx.arena(), paint)?;
 
@@ -195,14 +179,18 @@ fn assign_colors_graphic<'e>(
 	if gradient.is_empty() {
 		return Ok(content.lane(lane).map_element(original.clone()));
 	}
-	let gradient_cyclic = gradient.lane(0).attr::<vector_types::markers::GradientCyclic>();
-	let gradient_space = gradient.lane(0).attr::<vector_types::markers::GradientSpace>();
-	let gradient_hue_direction = gradient.lane(0).attr::<vector_types::markers::GradientHueDirection>();
+	let settings = vector_types::GradientSettings {
+		spread: gradient.lane(0).attr::<vector_types::markers::GradientSpread>(),
+		cyclic: gradient.lane(0).attr::<vector_types::markers::GradientCyclic>(),
+		space: gradient.lane(0).attr::<vector_types::markers::GradientSpace>(),
+		hue_direction: gradient.lane(0).attr::<vector_types::markers::GradientHueDirection>(),
+		interpolation: gradient.lane(0).attr::<vector_types::markers::GradientInterpolation>(),
+	};
 	let gradient_element = gradient.element_ref(0);
 	let reversed;
 	let gradient_element = match reverse {
 		true => {
-			reversed = gradient_element.reversed();
+			reversed = gradient_element.reversed(settings.cyclic);
 			&reversed
 		}
 		false => gradient_element,
@@ -243,17 +231,7 @@ fn assign_colors_graphic<'e>(
 		Some(mut rows) => {
 			for row in 0..rows.len() {
 				let has_stroke = rows.element(row).is_some_and(|vector| vector.stroke.is_some());
-				let color = assign_color_at(
-					gradient_element,
-					gradient_cyclic,
-					gradient_space,
-					gradient_hue_direction,
-					position + row,
-					length,
-					randomize,
-					seed,
-					repeat_every,
-				);
+				let color = assign_color_at(gradient_element, settings, position + row, length, randomize, seed, repeat_every);
 				let paint = List::new_from_element(color).into_graphic_list();
 				if fill {
 					set_paint_attribute_at(&mut rows, row, ATTR_FILL, paint.clone());

@@ -13,7 +13,8 @@ use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::Gradient;
 use vector_types::markers::{
-	GradientCyclic as GradientCyclicAttr, GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
+	GradientCyclic as GradientCyclicAttr, GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientInterpolation as GradientInterpolationAttr,
+	GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
 };
 
 /// The struct that stores the context for the maths parser.
@@ -1229,6 +1230,12 @@ fn gradient_hue_direction(_: impl Ctx, gradient: Gradient, gradient_hue_directio
 	(gradient, Attr(gradient_hue_direction))
 }
 
+/// Sets how the color progresses across each interval between gradient stops: stepped, linear, or smoothstep.
+#[node_macro::node(category("Gradient"))]
+fn gradient_interpolation(_: impl Ctx, gradient: Gradient, gradient_interpolation: vector_types::GradientInterpolation) -> (Gradient, Attr<GradientInterpolationAttr>) {
+	(gradient, Attr(gradient_interpolation))
+}
+
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
@@ -1264,11 +1271,14 @@ fn sample_gradient(
 		return Err(GraphError::past_end().into());
 	}
 
-	let gradient_spread = gradient.lane(0).attr::<GradientSpreadAttr>();
-	let gradient_space = gradient.lane(0).attr::<GradientSpaceAttr>();
-	let gradient_hue_direction = gradient.lane(0).attr::<GradientHueDirectionAttr>();
-	let gradient_cyclic = gradient.lane(0).attr::<GradientCyclicAttr>();
-	Ok(gradient.element_ref(0).evaluate(position, gradient_spread, gradient_cyclic, gradient_space, gradient_hue_direction))
+	let settings = vector_types::GradientSettings {
+		spread: gradient.lane(0).attr::<GradientSpreadAttr>(),
+		cyclic: gradient.lane(0).attr::<GradientCyclicAttr>(),
+		space: gradient.lane(0).attr::<GradientSpaceAttr>(),
+		hue_direction: gradient.lane(0).attr::<GradientHueDirectionAttr>(),
+		interpolation: gradient.lane(0).attr::<GradientInterpolationAttr>(),
+	};
+	Ok(gradient.element_ref(0).evaluate(position, settings))
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.

@@ -23,16 +23,19 @@ fn gradient_map<T: Adjust<Color> + Clone + Send + Sync + core_types::CacheHash +
 	if gradient.is_empty() {
 		return image;
 	}
-	let gradient_spread = gradient.lane(0).attr::<vector_types::markers::GradientSpread>();
-	let gradient_space = gradient.lane(0).attr::<vector_types::markers::GradientSpace>();
-	let gradient_hue_direction = gradient.lane(0).attr::<vector_types::markers::GradientHueDirection>();
-	let gradient_cyclic = gradient.lane(0).attr::<vector_types::markers::GradientCyclic>();
-	let gradient = gradient.element_ref(0);
+	let settings = vector_types::GradientSettings {
+		spread: gradient.lane(0).attr::<vector_types::markers::GradientSpread>(),
+		cyclic: gradient.lane(0).attr::<vector_types::markers::GradientCyclic>(),
+		space: gradient.lane(0).attr::<vector_types::markers::GradientSpace>(),
+		hue_direction: gradient.lane(0).attr::<vector_types::markers::GradientHueDirection>(),
+		interpolation: gradient.lane(0).attr::<vector_types::markers::GradientInterpolation>(),
+	};
+	let evaluator = gradient.element_ref(0).evaluator(settings);
 
 	image.adjust(|color| {
 		let intensity = color.luminance_rec_709();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evaluate(intensity as f64, gradient_spread, gradient_cyclic, gradient_space, gradient_hue_direction)
+		evaluator.evaluate(intensity as f64)
 	});
 
 	image

@@ -1,4 +1,4 @@
-use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, spread_adjusted_samples, transform_is_invertible};
+use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, lane_gradient_settings, spread_adjusted_samples, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::Color;
 use core_types::attribute::Transform;
@@ -14,7 +14,7 @@ use graphic_types::vector_types::markers::{
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
-use vector_types::gradient::{GradientHueDirection, GradientSpace, GradientSpread};
+use vector_types::gradient::GradientSpread;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -112,20 +112,9 @@ pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = Gradient>
 		let Some(stops) = source.element(0) else { return 0 };
 		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(0);
 		let local_gradient_transform: DAffine2 = source.attr::<Transform>(0);
-		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(0);
-		let gradient_space: GradientSpace = source.attr::<GradientSpaceAttr>(0);
-		let gradient_hue_direction: GradientHueDirection = source.attr::<GradientHueDirectionAttr>(0);
-		let gradient_cyclic: bool = source.attr::<GradientCyclicAttr>(0);
+		let settings = lane_gradient_settings(source, 0);
 
-		let (samples, _) = spread_adjusted_samples(
-			stops,
-			gradient_spread,
-			gradient_form,
-			gradient_cyclic,
-			gradient_space,
-			gradient_hue_direction,
-			ClearGuardPlacement::SvgStopOrder,
-		);
+		let (samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
 
 		for (position, color, original_midpoint) in samples {
 			stop.push_str("<stop");
@@ -164,10 +153,10 @@ pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = Gradient>
 			format!(r#" gradientTransform="{gradient_transform}""#)
 		};
 
-		let gradient_spread = if matches!(gradient_spread, GradientSpread::Pad | GradientSpread::Clear) {
+		let gradient_spread = if matches!(settings.spread, GradientSpread::Pad | GradientSpread::Clear) {
 			String::new()
 		} else {
-			format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
+			format!(r#" spreadMethod="{}""#, settings.spread.svg_name())
 		};
 
 		let gradient_id = generate_uuid();
