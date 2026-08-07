@@ -772,7 +772,12 @@ impl ColorPickerMessageHandler {
 			groups.push(LayoutGroup::row(vec![
 				TextLabel::new("Space").tooltip_label("Gradient Space").tooltip_description(SPACE_DESCRIPTION).widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
-				DropdownInput::new(entries).selected_index(Some(self.gradient_space as u32)).disabled(self.disabled).widget_instance(),
+				DropdownInput::new(entries)
+					.selected_index(Some(self.gradient_space as u32))
+					.disabled(self.disabled)
+					.tooltip_label("Gradient Space")
+					.tooltip_description(SPACE_DESCRIPTION)
+					.widget_instance(),
 			]));
 		}
 
@@ -789,6 +794,8 @@ impl ColorPickerMessageHandler {
 				DropdownInput::new(entries)
 					.selected_index(Some(self.gradient_interpolation as u32))
 					.disabled(self.disabled)
+					.tooltip_label("Gradient Interpolation")
+					.tooltip_description(INTERPOLATION_DESCRIPTION)
 					.widget_instance(),
 			]));
 		}
@@ -806,6 +813,8 @@ impl ColorPickerMessageHandler {
 				DropdownInput::new(entries)
 					.selected_index(Some(self.gradient_hue_direction as u32))
 					.disabled(self.disabled)
+					.tooltip_label("Gradient Hue Direction")
+					.tooltip_description(HUE_DIRECTION_DESCRIPTION)
 					.widget_instance(),
 			]));
 		}
