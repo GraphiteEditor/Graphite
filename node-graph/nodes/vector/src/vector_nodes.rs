@@ -141,7 +141,7 @@ where
 
 	let mut content = content;
 	let length = content.vector_count();
-	// The factor spans 0..=1 inclusively, so the spread deliberately stays Pad (Repeat would wrap the final element onto the first stop's color)
+	// The factor spans 0..=1, so the spread deliberately stays Pad (Repeat would wrap the final element onto the first stop's color)
 	let settings = GradientSettings {
 		spread: Default::default(),
 		..GradientSettings::from(&gradient)

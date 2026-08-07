@@ -226,7 +226,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
 
 				let previous_cyclic = std::mem::replace(&mut self.gradient_cyclic, gradient_cyclic);
-				gradient.rebase_positions_for_cyclic(previous_cyclic, gradient_cyclic);
+				gradient.hold_positions_across_cyclic_change(previous_cyclic, gradient_cyclic);
 
 				let ramp = GradientRamp::from(&*gradient);
 				responses.add(FrontendMessage::ColorPickerColorChanged {

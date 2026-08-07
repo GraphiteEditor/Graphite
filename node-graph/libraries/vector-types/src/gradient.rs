@@ -267,14 +267,23 @@ impl From<&GradientRamp<SRGBA8>> for GradientRamp {
 }
 
 impl<C> GradientRamp<C> {
-	/// Overwrites the whole-ramp settings fields as one bundle. This writes the cyclic flag without rebasing stop
-	/// positions (unlike [`GradientRamp::with_cyclic`]), so the stops must already be authored under `settings.cyclic`.
+	/// Overwrites the whole-ramp settings fields as one bundle. This writes the cyclic flag without holding the stops in place
+	/// (unlike [`GradientRamp::with_cyclic`]), so they must already be authored under `settings.cyclic`.
 	pub fn with_settings(mut self, settings: GradientSettings) -> Self {
-		self.gradient_spread = settings.spread;
-		self.gradient_cyclic = settings.cyclic;
-		self.gradient_space = settings.space;
-		self.gradient_hue_direction = settings.hue_direction;
-		self.gradient_interpolation = settings.interpolation;
+		let GradientSettings {
+			spread,
+			cyclic,
+			space,
+			hue_direction,
+			interpolation,
+		} = settings;
+
+		self.gradient_spread = spread;
+		self.gradient_cyclic = cyclic;
+		self.gradient_space = space;
+		self.gradient_hue_direction = hue_direction;
+		self.gradient_interpolation = interpolation;
+
 		self
 	}
 }
@@ -285,17 +294,14 @@ impl GradientRamp {
 	}
 
 	/// Sets the cyclic flag, holding the stops at the positions they already occupy.
-	///
-	/// The ramp owns this rather than leaving it to the runtime type's elision, since an absent `position`
-	/// attribute means a different even distribution in each mode and flipping the flag alone would relocate
-	/// every stop that was still riding the default.
+	/// The ramp owns this rather than leaving it to the runtime type's elision because `cyclic` determines different default elided positions.
 	pub fn with_cyclic(mut self, gradient_cyclic: bool) -> Self {
 		if self.gradient_cyclic == gradient_cyclic {
 			return self;
 		}
 
 		let mut gradient = Gradient::from(self.stops);
-		gradient.rebase_positions_for_cyclic(self.gradient_cyclic, gradient_cyclic);
+		gradient.hold_positions_across_cyclic_change(self.gradient_cyclic, gradient_cyclic);
 
 		self.stops = (&gradient).into();
 		self.gradient_cyclic = gradient_cyclic;
@@ -321,8 +327,8 @@ impl RenderComplexity for Gradient {
 	}
 }
 
-/// Controls accuracy vs. number of samples tradeoff.
-/// 2/255 means the linear approximation will deviate by no more than 2 gradations of 8-bit color from the theoretically perfect curve.
+/// Controls accuracy vs. number of samples tradeoff. 2/255 means the linear approximation will
+/// deviate by no more than 2 gradations of 8-bit color from the theoretically perfect curve.
 const SAMPLE_THRESHOLD: f64 = 2. / 255.;
 
 /// The effective midpoint domain shared by sampling and rendering: NaN reads as the linear default, and extremes are bounded to `0.01..=0.99` so curves stay finite and cheap to subdivide.
@@ -392,7 +398,7 @@ fn lerp_in_space<CS: color::ColorSpace>(color_a: Color, color_b: Color, t: f32, 
 			b[hue_index] = a[hue_index];
 		}
 
-		// The fixup applies to hues the conversions already place in the 0 to 360 range
+		// The fixup applies to hues that the conversions already place in the 0 to 360 range
 		b[hue_index] = a[hue_index] + hue_delta((b[hue_index] - a[hue_index]) as f64, gradient_hue_direction) as f32;
 	}
 
@@ -452,7 +458,7 @@ fn max_gamma_channel_deviation(a: Color, b: Color) -> f64 {
 	(0..4).fold(0_f64, |max, i| max.max((a[i] - b[i]).abs() as f64))
 }
 
-/// A color's channels in the space `CS`, alongside its straight alpha.
+/// A color's channels in the color space `CS`, alongside its straight alpha.
 fn space_channels<CS: color::ColorSpace>(color: Color) -> [f64; 4] {
 	let [x, y, z] = CS::from_linear_srgb([color.r(), color.g(), color.b()]);
 	[x as f64, y as f64, z as f64, color.a() as f64]
@@ -473,8 +479,8 @@ fn space_hue_index<CS: color::ColorSpace>() -> Option<usize> {
 	}
 }
 
-/// The chroma (or saturation, channel 1 in both polar layouts) below which a color counts as achromatic and its
-/// hue as powerless, scaled to the space's lightness range so conversion noise stays below the threshold.
+/// The chroma (or saturation, channel 1 in both polar layouts) below which a color counts as achromatic and
+/// its hue as powerless, scaled to the space's lightness range so conversion noise stays below the threshold.
 fn achromatic_chroma_threshold<CS: color::ColorSpace>() -> f32 {
 	1e-4 * CS::WHITE_COMPONENTS.iter().fold(0_f32, |max, &component| max.max(component))
 }
@@ -517,9 +523,8 @@ fn hue_delta(delta: f64, gradient_hue_direction: GradientHueDirection) -> f64 {
 	}
 }
 
-/// Every knot's color in the space `CS`. An achromatic knot borrows its nearest chromatic neighbor's powerless
-/// hue, then the whole hue run accumulates its per-step fixup so the spline sees one continuous sequence rather
-/// than values that wrap at 360.
+/// Every knot's color in the space `CS`. An achromatic knot borrows its nearest chromatic neighbor's powerless hue,
+/// then the whole-hue run accumulates its per-step fixup so the spline sees one continuous sequence rather than values that wrap at 360.
 fn knot_channels<CS: color::ColorSpace>(knots: &[GradientStop], gradient_hue_direction: GradientHueDirection) -> Vec<[f64; 4]> {
 	let mut channels: Vec<[f64; 4]> = knots.iter().map(|knot| space_channels::<CS>(knot.color)).collect();
 
@@ -548,18 +553,19 @@ fn knot_channels<CS: color::ColorSpace>(knots: &[GradientStop], gradient_hue_dir
 	channels
 }
 
-/// A monotone piecewise cubic Hermite interpolant (PCHIP). It passes through every sample and joins the pieces
-/// with matching slopes, while the Fritsch-Carlson limiter keeps each piece bounded by its own two samples, so
-/// an interpolated channel never overshoots the values it was built from.
+/// A Piecewise Cubic Hermite Interpolating Polynomial (PCHIP) spline, preserving its samples' monotonicity:
+/// it passes through every sample and joins the pieces with matching slopes, while the Fritsch-Carlson
+/// limiter keeps each piece bounded by its own two samples, so the curve rises and falls only where its
+/// samples do instead of overshooting past them.
 ///
 /// Construction is O(n) and evaluation is O(log n) in the sample count.
-struct MonotoneSpline {
+struct MonotonicSpline {
 	position: Vec<f64>,
 	value: Vec<f64>,
 	tangent: Vec<f64>,
 }
 
-impl MonotoneSpline {
+impl MonotonicSpline {
 	fn new(position: Vec<f64>, value: Vec<f64>) -> Self {
 		let count = position.len();
 		if count < 2 {
@@ -574,8 +580,8 @@ impl MonotoneSpline {
 			})
 			.collect();
 
-		// A sign change or a flat run between neighboring secants pins that tangent to zero, which is what stops
-		// the curve from bulging past a local extreme
+		// A sign change or a flat run between neighboring secants pins that tangent to zero,
+		// which is what stops the curve from bulging past a local extreme
 		let mut tangent = Vec::with_capacity(count);
 		tangent.push(secant[0]);
 		for index in 1..count - 1 {
@@ -629,15 +635,14 @@ impl MonotoneSpline {
 	}
 }
 
-/// The Smooth path: a monotone spline per color channel through every stop, traversed by a second monotone
-/// spline that maps ramp position to spline parameter. Fitting the stop and midpoint constraints into one
-/// global warp is what keeps the traversal rate continuous across stops, where independent per-interval
-/// curves (what Linear uses) would kink at each one.
+/// The Smooth path: a monoticity-preserving spline per color channel through every stop, traversed by a second such spline that
+/// maps ramp position to spline parameter. Fitting the stop and midpoint constraints into one global warp is what keeps the
+/// traversal rate continuous across stops, where independent per-interval curves (what Linear uses) would kink at each one.
 struct SmoothPath {
 	space: GradientSpace,
 	hue_index: Option<usize>,
-	channel: [MonotoneSpline; 4],
-	warp: MonotoneSpline,
+	channel: [MonotonicSpline; 4],
+	warp: MonotonicSpline,
 }
 
 impl SmoothPath {
@@ -672,10 +677,10 @@ impl SmoothPath {
 
 		let channels = with_space!(settings.space, knot_channels, &knots, settings.hue_direction);
 		let parameter: Vec<f64> = (0..knots.len()).map(|index| index as f64).collect();
-		let channel = std::array::from_fn(|component| MonotoneSpline::new(parameter.clone(), channels.iter().map(|values| values[component]).collect()));
+		let channel = std::array::from_fn(|component| MonotonicSpline::new(parameter.clone(), channels.iter().map(|values| values[component]).collect()));
 
-		// Each stop pins its own knot parameter and each midpoint the half-parameter between two, so one monotone
-		// curve satisfies every midpoint constraint at once
+		// Each stop pins its own knot parameter and each midpoint the half-parameter between two,
+		// so one monotonic curve satisfies every midpoint constraint at once
 		let mut warp_position = Vec::with_capacity(knots.len() * 2);
 		let mut warp_value = Vec::with_capacity(knots.len() * 2);
 		for (index, knot) in knots.iter().enumerate() {
@@ -695,7 +700,7 @@ impl SmoothPath {
 			space: settings.space,
 			hue_index: with_space!(settings.space, space_hue_index),
 			channel,
-			warp: MonotoneSpline::new(warp_position, warp_value),
+			warp: MonotonicSpline::new(warp_position, warp_value),
 		}
 	}
 
@@ -725,8 +730,7 @@ fn stepped_color(stops: &[GradientStop], t: f64, gradient_cyclic: bool) -> Color
 	stops.windows(2).find(|pair| t < pair[1].position).map_or(last.color, |pair| pair[0].color)
 }
 
-/// Linear traces the chord from each stop to the next, turning a corner at every stop, with the midpoint biasing
-/// the timing across each interval independently.
+/// Linear traces the chord from each stop to the next, turning a corner at every stop, with the midpoint biasing the timing across each interval independently.
 fn linear_color(stops: &[GradientStop], t: f64, settings: GradientSettings) -> Color {
 	let (Some(first), Some(last)) = (stops.first(), stops.last()) else { return Color::BLACK };
 
@@ -760,8 +764,8 @@ fn linear_color(stops: &[GradientStop], t: f64, settings: GradientSettings) -> C
 	Color::BLACK
 }
 
-/// Stepped's bake is exact rather than approximated: each interval emits its color at both ends, leaving the
-/// renderer's own interpolation nothing to traverse so the jump lands squarely on the next stop.
+/// Stepped's bake is exact rather than approximated: each interval emits its color at both ends,
+/// leaving the renderer's own interpolation nothing to traverse so the jump lands squarely on the next stop.
 fn stepped_samples(stops: &[GradientStop], gradient_cyclic: bool) -> Vec<(f64, Color, Option<f64>)> {
 	let count = stops.len();
 	let (first, last) = (&stops[0], &stops[count - 1]);
@@ -1016,10 +1020,9 @@ impl Gradient {
 		}
 	}
 
-	/// Pins the stops to the positions they currently occupy under `from_cyclic`, then re-elides against
-	/// `to_cyclic`, so flipping the flag leaves them where they are instead of snapping to the other mode's
-	/// even distribution.
-	pub fn rebase_positions_for_cyclic(&mut self, from_cyclic: bool, to_cyclic: bool) {
+	/// Pins the stops to the positions they currently occupy under `from_cyclic`, then re-elides against `to_cyclic`,
+	/// so flipping the flag leaves them where they are instead of snapping to the other mode's even distribution.
+	pub fn hold_positions_across_cyclic_change(&mut self, from_cyclic: bool, to_cyclic: bool) {
 		if from_cyclic == to_cyclic {
 			return;
 		}
@@ -1244,10 +1247,9 @@ impl Gradient {
 
 		match settings.interpolation {
 			GradientInterpolation::Stepped => stepped_color(&stops, t, settings.cyclic),
-			GradientInterpolation::Linear => linear_color(&stops, t, settings),
 			GradientInterpolation::Smooth if stops.len() >= 2 => SmoothPath::new(&stops, settings).evaluate(t),
 			// A spline through fewer than two stops has nothing to curve between
-			GradientInterpolation::Smooth => linear_color(&stops, t, settings),
+			GradientInterpolation::Linear | GradientInterpolation::Smooth => linear_color(&stops, t, settings),
 		}
 	}
 
@@ -1555,11 +1557,9 @@ pub enum GradientSpace {
 	LCh,
 	/// Interpolates between stops in linear light, keeping transitions uniformly bright.
 	#[menu_separator]
-	#[cfg_attr(feature = "serde", serde(alias = "SrgbLinear"))]
 	#[label("Linear (RGB)")]
 	RgbLinear,
 	/// Interpolates between stops in gamma-encoded RGB, matching classic SVG and CSS gradients.
-	#[cfg_attr(feature = "serde", serde(alias = "SrgbGamma"))]
 	#[label("Classic (RGB)")]
 	RgbGamma,
 	/// Interpolates between stops in the hue/saturation/value cylinder, keeping tints at full brightness.
@@ -1811,11 +1811,6 @@ mod tests {
 		);
 		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), default_space);
 
-		// The pre-rename variant names from the interim format alias to the current ones
-		let renamed_away = json.replace(r#""OkLab""#, r#""SrgbLinear""#);
-		let recovered = serde_json::from_str::<GradientRamp>(&renamed_away).unwrap();
-		assert_eq!(recovered.gradient_space, GradientSpace::RgbLinear, "the old variant names should decode via their aliases");
-
 		let gamma = GradientRamp {
 			gradient_space: GradientSpace::RgbGamma,
 			..default_space.clone()
@@ -1958,7 +1953,7 @@ mod tests {
 
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::BLACK]);
 
-		// A monotone spline is pinned to its stops, unlike an overshooting one such as Catmull-Rom
+		// A monotonic spline is pinned to its stops, unlike an overshooting one such as Catmull-Rom
 		for (index, expected) in [(0., Color::BLACK), (0.5, Color::WHITE), (1., Color::BLACK)] {
 			let sampled = gradient.evaluate(index, smooth);
 			assert!((sampled.r() - expected.r()).abs() < 1e-4, "the spline must pass through the stop at {index}, got {sampled:?}");
@@ -1967,7 +1962,7 @@ mod tests {
 		// Every sample between two stops stays bounded by them, so no channel manufactures an out-of-gamut excursion
 		for step in 0..=100 {
 			let red = gradient.evaluate(step as f64 / 100., smooth).r();
-			assert!((-1e-4..=1. + 1e-4).contains(&red), "the monotone spline must not overshoot its stops, got {red} at step {step}");
+			assert!((-1e-4..=1. + 1e-4).contains(&red), "the monotonic spline must not overshoot its stops, got {red} at step {step}");
 		}
 	}
 

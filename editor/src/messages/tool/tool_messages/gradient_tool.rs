@@ -971,8 +971,8 @@ impl Fsm for GradientToolFsmState {
 					let end_hex = gradient.color(gradient.len().saturating_sub(1)).map(color_to_hex).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
 
 					// Check if the first/last stops are at position ~0/~1 (rendered as the endpoint dots rather than as separate stops)
-					let gradient_cyclic = appearance.settings.cyclic;
 					let settings = appearance.settings;
+					let gradient_cyclic = settings.cyclic;
 					let first_at_start = !gradient.is_empty() && gradient.position(0, gradient_cyclic).abs() < f64::EPSILON * 1000.;
 					let last_at_end = !gradient.is_empty() && (1. - gradient.position(gradient.len() - 1, gradient_cyclic)).abs() < f64::EPSILON * 1000.;
 
