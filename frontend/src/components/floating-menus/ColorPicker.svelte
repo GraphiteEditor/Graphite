@@ -98,13 +98,16 @@
 		.details {
 			margin-left: 16px;
 			width: 200px;
-			gap: 8px;
 
 			> .widget-span {
 				--row-height: 24px;
 
 				&:last-child {
 					margin-top: auto;
+				}
+
+				&:not(:last-child) {
+					margin-bottom: 8px;
 				}
 
 				> .text-label {

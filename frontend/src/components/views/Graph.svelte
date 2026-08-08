@@ -985,7 +985,7 @@
 							& {
 								// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
 								// https://stackoverflow.com/a/71753552/775283
-								background-color: rgba(var(--color-e-nearwhite-rgb), calc(254 / 255));
+								background-color: rgb(from var(--color-e-nearwhite) r g b / calc(254 / 255));
 							}
 						}
 					}
@@ -1182,7 +1182,7 @@
 			// ancestor elements, `.graph` and `.panel`, each have the simultaneous pairing of `overflow: hidden` and `border-radius`.
 			// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
 			// backdrop-filter: blur(4px);
-			background: rgba(var(--color-0-black-rgb), 0.33);
+			background: rgb(from var(--color-0-black) r g b / 0.33);
 
 			&::after {
 				content: "";
@@ -1202,7 +1202,7 @@
 			}
 
 			&.disabled {
-				background: rgba(var(--color-4-dimgray-rgb), 0.33);
+				background: rgb(from var(--color-4-dimgray) r g b / 0.33);
 				color: var(--color-a-softgray);
 
 				.icon-label {
@@ -1256,10 +1256,10 @@
 			}
 
 			&.selected {
-				background: rgba(var(--color-5-dullgray-rgb), 0.33);
+				background: rgb(from var(--color-5-dullgray) r g b / 0.33);
 
 				&.in-selected-network {
-					background: rgba(var(--color-6-lowergray-rgb), 0.33);
+					background: rgb(from var(--color-6-lowergray) r g b / 0.33);
 				}
 			}
 
@@ -1398,18 +1398,18 @@
 
 			&.selected {
 				.primary {
-					background: rgba(var(--color-f-white-rgb), 0.15);
+					background: rgb(from var(--color-f-white) r g b / 0.15);
 
 					&.in-selected-network {
-						background: rgba(var(--color-f-white-rgb), 0.2);
+						background: rgb(from var(--color-f-white) r g b / 0.2);
 					}
 				}
 
 				.secondary {
-					background: rgba(var(--color-f-white-rgb), 0.1);
+					background: rgb(from var(--color-f-white) r g b / 0.1);
 
 					&.in-selected-network {
-						background: rgba(var(--color-f-white-rgb), 0.15);
+						background: rgb(from var(--color-f-white) r g b / 0.15);
 					}
 				}
 			}
@@ -1435,7 +1435,7 @@
 				width: 100%;
 				height: 24px;
 				border-radius: 2px 2px 0 0;
-				background: rgba(var(--color-f-white-rgb), 0.05);
+				background: rgb(from var(--color-f-white) r g b / 0.05);
 
 				&.no-secondary-section {
 					border-radius: 2px;
