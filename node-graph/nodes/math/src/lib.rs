@@ -1436,9 +1436,9 @@ fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64
 	gradient
 }
 
-/// Sets the interpolation midpoint for each interval between gradient stops, a factor from 0 to 1 where the 0.5 default means linear interpolation and another value skews the transition speed toward one stop or the other.
+/// Skews how rapidly the color flows across each interval between color stops, bunching up the transition toward one end instead of progressing uniformly. Each value places the halfway color within its corresponding interval, measured as a fraction of the distance (0 to 1) between the adjacent stops. A 0.5 midpoint keeps a uniform transition rate through the interval.
 ///
-/// The final stop's midpoint controls the wrap back around to the first stop when the gradient is cyclic, and is otherwise ignored.
+/// Non-cyclic gradients have no interval following the last stop, meaning the midpoint is ignored in that position.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
 #[node_macro::node(category("Gradient"))]
