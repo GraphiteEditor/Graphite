@@ -201,8 +201,12 @@ impl LayoutMessageHandler {
 							warn!("ColorInput update was not able to be parsed as FillChoice<SRGBA8>: {color_button:?}");
 							return;
 						};
-						color_button.value = fill_choice;
-						(color_button.on_update.callback)(color_button)
+						// The stored copy has to keep mirroring what the frontend was last sent, so the rebuilt layout still
+						// diffs against it and syncs picks that leave the swatch unchanged; the callback borrows the new one
+						let previous_value = std::mem::replace(&mut color_button.value, fill_choice);
+						let update_message = (color_button.on_update.callback)(color_button);
+						color_button.value = previous_value;
+						update_message
 					}
 				};
 
