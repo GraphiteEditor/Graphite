@@ -3,17 +3,21 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import type { SpectrumInputUpdate, SpectrumMarker } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { GradientInterpolation, SpectrumInputUpdate, SpectrumMarker, SpectrumSample } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
 	const dispatch = createEventDispatcher<{ update: SpectrumInputUpdate; dragging: boolean }>();
 
-	export let trackCSS: string;
+	// Document-unique `id` for this instance's SVG gradient, referenced by its `url(#...)`
+	const gradientId = `spectrum-input-gradient-${String(Math.random()).substring(2)}`;
+
+	export let trackSamples: SpectrumSample[];
 	export let trackStartCSS: string;
 	export let trackEndCSS: string;
 	export let trackCyclic = false;
+	export let trackInterpolation: GradientInterpolation = "Linear";
 	export let markers: SpectrumMarker[];
 	export let activeMarkerIndex: number | undefined = 0;
 	export let activeMarkerIsMidpoint = false;
@@ -363,8 +367,9 @@
 
 	// Map midpoint pairs to absolute track positions for rendering the diamond markers.
 	// A rendered diamond's index is the index of the interval's left marker, which for the cyclic wrapped interval's diamond is the last marker.
-	function diamondPositions(markers: SpectrumMarker[], showMidpoints: boolean, trackCyclic: boolean): number[] {
-		if (!showMidpoints || markers.length < 2) return [];
+	function diamondPositions(markers: SpectrumMarker[], showMidpoints: boolean, trackCyclic: boolean, trackInterpolation: GradientInterpolation): number[] {
+		// A stepped ramp jumps at its stops, so no midpoint has anything to bias
+		if (!showMidpoints || trackInterpolation === "Stepped" || markers.length < 2) return [];
 		const positions = markers.slice(0, -1).map((marker, i) => marker.position + marker.midpoint * (markers[i + 1].position - marker.position));
 
 		// The wrapped interval's diamond may land on either side of the 1|0 boundary
@@ -377,7 +382,7 @@
 
 		return positions;
 	}
-	$: midpointPositions = diamondPositions(markers, showMidpoints, trackCyclic);
+	$: midpointPositions = diamondPositions(markers, showMidpoints, trackCyclic, trackInterpolation);
 
 	onMount(() => {
 		document.addEventListener("keydown", deleteShortcut);
@@ -394,48 +399,61 @@
 	styles={{
 		"--gradient-start": trackStartCSS,
 		"--gradient-end": trackEndCSS,
-		"--gradient-stops": trackCSS,
 	}}
 >
-	<LayoutRow class="gradient-strip" on:pointerdown={trackPointerDown}></LayoutRow>
+	<LayoutRow class="gradient-strip" on:pointerdown={trackPointerDown}>
+		<!-- An SVG gradient interpolates its stops with straight alpha, matching the renderers, where a CSS gradient would premultiply -->
+		<svg class="strip-gradient" xmlns="http://www.w3.org/2000/svg">
+			<linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+				{#each trackSamples as sample}
+					<stop offset={sample.position} stop-color={sample.color} stop-opacity={sample.alpha} />
+				{/each}
+			</linearGradient>
+			<rect width="100%" height="100%" fill={`url(#${gradientId})`} />
+		</svg>
+	</LayoutRow>
 	<LayoutRow class="midpoint-track">
 		{#each midpointPositions as midpoint, index}
-			<svg
-				class="midpoint"
-				class:active={index === activeMarkerIndex && activeMarkerIsMidpoint}
-				style:--midpoint-position={midpoint}
-				on:pointerdown={(e) => midpointPointerDown(e, index)}
-				on:dblclick={() => midpointDoubleClick(index)}
-				data-gradient-midpoint
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 8 8"
-			>
-				<polygon points="0,4 4,0 8,4 4,8" />
-			</svg>
+			{#if midpoint >= 0 && midpoint <= 1}
+				<svg
+					class="midpoint"
+					class:active={index === activeMarkerIndex && activeMarkerIsMidpoint}
+					style:--midpoint-position={midpoint}
+					on:pointerdown={(e) => midpointPointerDown(e, index)}
+					on:dblclick={() => midpointDoubleClick(index)}
+					data-gradient-midpoint
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 8 8"
+				>
+					<polygon points="0,4 4,0 8,4 4,8" />
+				</svg>
+			{/if}
 		{/each}
 	</LayoutRow>
 	<LayoutRow class="marker-track" bind:this={markerTrackElement}>
 		{#each markers as marker, index}
-			<svg
-				class="marker"
-				class:active={index === activeMarkerIndex && !activeMarkerIsMidpoint}
-				style:--marker-position={marker.position}
-				style:--marker-color={marker.handleColorCSS}
-				on:pointerdown={(e) => markerPointerDown(e, index)}
-				on:dblclick={() => markerDoubleClick(index)}
-				data-gradient-marker
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 12 12"
-			>
-				<path class="inner-fill" d="M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z" />
-				{#if disabled}
-					<path class="disabled-fill" d="M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z" />
-				{/if}
-				<path
-					class="outer-border"
-					d="M6,1.4L1.3,6.1C1.1,6.3,1,6.6,1,6.8V10c0,0.6,0.4,1,1,1h8c0.6,0,1-0.4,1-1V6.8c0-0.3-0.1-0.5-0.3-0.7L6,1.4M6,0l5.4,5.4C11.8,5.8,12,6.3,12,6.8V10c0,1.1-0.9,2-2,2H2c-1.1,0-2-0.9-2-2V6.8c0-0.5,0.2-1,0.6-1.4L6,0z"
-				/>
-			</svg>
+			{#if marker.position >= 0 && marker.position <= 1}
+				<svg
+					class="marker"
+					class:active={index === activeMarkerIndex && !activeMarkerIsMidpoint}
+					style:--marker-position={marker.position}
+					style:--marker-color={marker.handleColorCSS}
+					on:pointerdown={(e) => markerPointerDown(e, index)}
+					on:dblclick={() => markerDoubleClick(index)}
+					data-gradient-marker
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 12 12"
+				>
+					<path class="inner-fill" d="M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z" />
+					{#if disabled}
+						<path class="disabled-fill" d="M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z" />
+					{/if}
+					<path
+						class="outer-border"
+						d="M6,1.4L1.3,6.1C1.1,6.3,1,6.6,1,6.8V10c0,0.6,0.4,1,1,1h8c0.6,0,1-0.4,1-1V6.8c0-0.3-0.1-0.5-0.3-0.7L6,1.4M6,0l5.4,5.4C11.8,5.8,12,6.3,12,6.8V10c0,1.1-0.9,2-2,2H2c-1.1,0-2-0.9-2-2V6.8c0-0.5,0.2-1,0.6-1.4L6,0z"
+					/>
+				</svg>
+			{/if}
 		{/each}
 	</LayoutRow>
 </LayoutCol>
@@ -447,26 +465,30 @@
 
 		.gradient-strip {
 			flex: 0 0 auto;
+			position: relative;
 			height: 16px;
 			background-image:
-				var(--gradient-stops),
 				// Solid start/end colors on either side so the gradient begins at the center of a marker
-				linear-gradient(var(--gradient-start), var(--gradient-start)),
-				linear-gradient(var(--gradient-end), var(--gradient-end)),
-				var(--color-transparent-checkered-background);
+				linear-gradient(var(--gradient-start), var(--gradient-start)), linear-gradient(var(--gradient-end), var(--gradient-end)), var(--color-transparent-checkered-background);
 			background-size:
-				calc(100% - 2 * var(--marker-half-width)) 100%,
 				// TODO: Find a solution that avoids visual artifacts where these end colors meet the gradient that appear when viewing with a non-integer zoom or display scaling factor
 				var(--marker-half-width) 100%,
 				var(--marker-half-width) 100%,
 				var(--color-transparent-checkered-background-size);
 			background-position:
-				var(--marker-half-width) 0,
 				left 0,
 				right 0,
 				var(--color-transparent-checkered-background-position);
-			background-repeat: no-repeat, no-repeat, no-repeat, var(--color-transparent-checkered-background-repeat);
+			background-repeat: no-repeat, no-repeat, var(--color-transparent-checkered-background-repeat);
 			border-radius: 2px;
+
+			.strip-gradient {
+				position: absolute;
+				top: 0;
+				left: var(--marker-half-width);
+				width: calc(100% - 2 * var(--marker-half-width));
+				height: 100%;
+			}
 		}
 
 		&.narrow .gradient-strip {

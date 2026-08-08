@@ -14,8 +14,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT,
-	ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN,
+	ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -39,7 +39,7 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::{GradientHueDirection, GradientSpace, GradientSpread};
+use vector_types::gradient::{GradientSettings, GradientSpread};
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -416,17 +416,9 @@ pub(crate) enum ClearGuardPlacement {
 /// The `Clear` spread brackets the samples with transparent guard stops placed per `guards`: the pad extension then
 /// paints transparency outward while hard stops cut the paint off exactly at the unit range's boundaries. A radial
 /// gradient's span still starts at zero, since its sampling distance never goes below the center.
-pub(crate) fn spread_adjusted_samples(
-	gradient: &Gradient,
-	gradient_spread: GradientSpread,
-	gradient_form: GradientForm,
-	gradient_cyclic: bool,
-	gradient_space: GradientSpace,
-	gradient_hue_direction: GradientHueDirection,
-	guards: ClearGuardPlacement,
-) -> (GradientSamples, (f64, f64)) {
-	let samples = gradient.interpolated_samples(gradient_cyclic, gradient_space, gradient_hue_direction);
-	if gradient_spread != GradientSpread::Clear {
+pub(crate) fn spread_adjusted_samples(gradient: &Gradient, settings: GradientSettings, gradient_form: GradientForm, guards: ClearGuardPlacement) -> (GradientSamples, (f64, f64)) {
+	let samples = gradient.interpolated_samples(settings);
+	if settings.spread != GradientSpread::Clear {
 		return (samples, (0., 1.));
 	}
 
@@ -509,20 +501,9 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 
 	let gradient_form: GradientForm = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_FORM, 0);
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-	let gradient_spread: GradientSpread = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, 0);
-	let gradient_space: GradientSpace = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, 0);
-	let gradient_cyclic: bool = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, 0);
-	let gradient_hue_direction: GradientHueDirection = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, 0);
+	let settings = GradientSettings::from_list_row_attributes(gradient_list, 0);
 
-	let (samples, span) = spread_adjusted_samples(
-		stops,
-		gradient_spread,
-		gradient_form,
-		gradient_cyclic,
-		gradient_space,
-		gradient_hue_direction,
-		ClearGuardPlacement::VelloRampTexels,
-	);
+	let (samples, span) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
 
 	let peniko_stops = peniko_color_stops(&samples);
 
@@ -544,9 +525,10 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 			}
 			.into(),
 		},
-		extend: peniko_extend(gradient_spread),
+		extend: peniko_extend(settings.spread),
 		stops: peniko_stops,
-		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+		// Straight alpha, keeping parity with the SVG renderer's stop interpolation
+		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
 		..Default::default()
 	});
 
@@ -2201,11 +2183,8 @@ impl Render for List<Gradient> {
 			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let gradient_spread: GradientSpread = self.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, index);
 			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
-			let gradient_space: GradientSpace = self.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, index);
-			let gradient_cyclic: bool = self.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, index);
-			let gradient_hue_direction: GradientHueDirection = self.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, index);
+			let settings = GradientSettings::from_list_row_attributes(self, index);
 			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 			render.leaf_tag(tag, |attributes| {
 				if let Some((min, size)) = thumbnail_rect {
@@ -2221,15 +2200,7 @@ impl Render for List<Gradient> {
 					attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 				}
 
-				let (samples, _) = spread_adjusted_samples(
-					gradient,
-					gradient_spread,
-					gradient_form,
-					gradient_cyclic,
-					gradient_space,
-					gradient_hue_direction,
-					ClearGuardPlacement::SvgStopOrder,
-				);
+				let (samples, _) = spread_adjusted_samples(gradient, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
 
 				let mut stop_string = String::new();
 				for (position, color, original_midpoint) in samples {
@@ -2253,10 +2224,10 @@ impl Render for List<Gradient> {
 				};
 
 				let gradient_id = generate_uuid();
-				let gradient_spread_attribute = if matches!(gradient_spread, GradientSpread::Pad | GradientSpread::Clear) {
+				let gradient_spread_attribute = if matches!(settings.spread, GradientSpread::Pad | GradientSpread::Clear) {
 					String::new()
 				} else {
-					format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
+					format!(r#" spreadMethod="{}""#, settings.spread.svg_name())
 				};
 
 				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
@@ -2296,12 +2267,7 @@ impl Render for List<Gradient> {
 			return;
 		}
 
-		for (((index, gradient), gradient_spread), gradient_form) in self
-			.iter_element_values()
-			.enumerate()
-			.zip(self.iter_attribute_values_or_default::<GradientSpread>(ATTR_GRADIENT_SPREAD))
-			.zip(self.iter_attribute_values_or_default::<GradientForm>(ATTR_GRADIENT_FORM))
-		{
+		for ((index, gradient), gradient_form) in self.iter_element_values().enumerate().zip(self.iter_attribute_values_or_default::<GradientForm>(ATTR_GRADIENT_FORM)) {
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
@@ -2311,22 +2277,12 @@ impl Render for List<Gradient> {
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let gradient_space: GradientSpace = self.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, index);
-			let gradient_cyclic: bool = self.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, index);
-			let gradient_hue_direction: GradientHueDirection = self.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, index);
-			let (samples, span) = spread_adjusted_samples(
-				gradient,
-				gradient_spread,
-				gradient_form,
-				gradient_cyclic,
-				gradient_space,
-				gradient_hue_direction,
-				ClearGuardPlacement::VelloRampTexels,
-			);
+			let settings = GradientSettings::from_list_row_attributes(self, index);
+			let (samples, span) = spread_adjusted_samples(gradient, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
 
 			let stops = peniko_color_stops(&samples);
 
-			let extend = peniko_extend(gradient_spread);
+			let extend = peniko_extend(settings.spread);
 
 			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
 			// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.
@@ -2349,7 +2305,7 @@ impl Render for List<Gradient> {
 				kind,
 				stops,
 				extend,
-				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
 				..Default::default()
 			});
 			let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_form).to_cols_array());
@@ -2866,6 +2822,7 @@ impl SvgRenderAttrs<'_> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use vector_types::gradient::GradientSpace;
 
 	#[test]
 	fn spread_adjusted_samples_wraps_clear_in_transparent_guards() {
@@ -2873,24 +2830,32 @@ mod tests {
 
 		let (samples, span) = spread_adjusted_samples(
 			&gradient,
-			GradientSpread::Repeat,
+			GradientSettings {
+				spread: GradientSpread::Repeat,
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			},
 			GradientForm::Linear,
-			false,
-			GradientSpace::RgbGamma,
-			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
 		);
 		assert_eq!(span, (0., 1.));
-		assert_eq!(samples, gradient.interpolated_samples(false, GradientSpace::RgbGamma, Default::default()));
+		assert_eq!(
+			samples,
+			gradient.interpolated_samples(GradientSettings {
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			})
+		);
 
 		// SVG guards share the range ends' exact offsets, ordered so the pad extension resolves to the transparent outer stops
 		let (samples, span) = spread_adjusted_samples(
 			&gradient,
-			GradientSpread::Clear,
+			GradientSettings {
+				spread: GradientSpread::Clear,
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			},
 			GradientForm::Linear,
-			false,
-			GradientSpace::RgbGamma,
-			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
 		);
 		assert_eq!(span, (0., 1.));
@@ -2903,11 +2868,12 @@ mod tests {
 		let texel = 1. / (VELLO_GRADIENT_RAMP_TEXELS - 1.);
 		let (samples, span) = spread_adjusted_samples(
 			&gradient,
-			GradientSpread::Clear,
+			GradientSettings {
+				spread: GradientSpread::Clear,
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			},
 			GradientForm::Linear,
-			false,
-			GradientSpace::RgbGamma,
-			Default::default(),
 			ClearGuardPlacement::VelloRampTexels,
 		);
 		assert_eq!(
@@ -2924,11 +2890,12 @@ mod tests {
 		// A radial keeps its stops and span anchored at zero, with no guard below the center
 		let (samples, span) = spread_adjusted_samples(
 			&gradient,
-			GradientSpread::Clear,
+			GradientSettings {
+				spread: GradientSpread::Clear,
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			},
 			GradientForm::Radial,
-			false,
-			GradientSpace::RgbGamma,
-			Default::default(),
 			ClearGuardPlacement::VelloRampTexels,
 		);
 		assert_eq!(span.0, 0.);
@@ -2940,11 +2907,12 @@ mod tests {
 	fn spread_adjusted_samples_keeps_a_stopless_clear_gradient_black_inside_the_range() {
 		let (samples, _) = spread_adjusted_samples(
 			&Gradient::from(Vec::new()),
-			GradientSpread::Clear,
+			GradientSettings {
+				spread: GradientSpread::Clear,
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			},
 			GradientForm::Linear,
-			false,
-			GradientSpace::RgbGamma,
-			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
 		);
 		let colors: Vec<Color> = samples.iter().map(|&(_, color, _)| color).collect();

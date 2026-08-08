@@ -7,7 +7,7 @@ use derivative::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::transform::ReferencePoint;
-use graphene_std::vector::style::{FillChoice, GradientHueDirection, GradientSpace, GradientStops};
+use graphene_std::vector::style::{FillChoice, GradientHueDirection, GradientInterpolation, GradientSpace, GradientStops};
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -586,19 +586,22 @@ pub struct SpectrumInput {
 	/// The colored gradient drawn behind the markers (display-only, caller-owned).
 	#[widget_builder(constructor)]
 	pub track: GradientStops<SRGBA8>,
-	/// The color space the track's stops interpolate in, used to compute `track_css`. Not sent to the frontend.
+	/// The color space the track's stops interpolate in, used to bake `track_samples`. Not sent to the frontend.
 	#[serde(skip)]
 	pub track_space: GradientSpace,
-	/// Whether the track's stops wrap as a cycle, used to compute `track_css` and by the frontend to draw the wrapped interval's midpoint diamond.
+	/// Whether the track's stops wrap as a cycle, used to bake `track_samples` and by the frontend to draw the wrapped interval's midpoint diamond.
 	#[serde(rename = "trackCyclic")]
 	pub track_cyclic: bool,
-	/// The hue direction the track's stops interpolate with in a polar space, used to compute `track_css`. Not sent to the frontend.
+	/// The hue direction the track's stops interpolate with in a polar space, used to bake `track_samples`. Not sent to the frontend.
 	#[serde(skip)]
 	pub track_hue_direction: GradientHueDirection,
-	/// CSS `linear-gradient(...)` string for the track strip's `background-image`. Auto-populated from `track` at layout-send time.
-	#[serde(rename = "trackCSS")]
+	/// The path the track's stops interpolate along, used to bake `track_samples` and by the frontend to suppress the midpoint diamonds when stepped.
+	#[serde(rename = "trackInterpolation")]
+	pub track_interpolation: GradientInterpolation,
+	/// Straight-alpha samples the frontend draws as the stops of an SVG gradient filling the track strip. Auto-populated from `track` at layout-send time.
+	#[serde(rename = "trackSamples")]
 	#[widget_builder(skip)]
-	pub track_css: String,
+	pub track_samples: Vec<SpectrumSample>,
 	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated by evaluating `track` at position 0.
 	#[serde(rename = "trackStartCSS")]
 	#[widget_builder(skip)]
@@ -642,20 +645,43 @@ pub struct SpectrumInput {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpectrumMarker {
-	/// Position (0..1) of the marker along the spectrum track.
+	/// Position of the marker along the spectrum track, normally from 0 to 1. A shifted or stretched non-cyclic ramp can
+	/// place it outside that range, where the track draws only the markers falling within its visible span.
 	position: f64,
 	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true.
 	/// The last marker's value controls the wrapped interval when `track_cyclic` is set, and is otherwise ignored.
 	midpoint: f64,
-	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`].
+	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`],
+	/// discarding any transparency so the handle always shows the RGB that steers the interpolation.
 	#[serde(rename = "handleColorCSS")]
 	handle_color_css: String,
 }
 
 impl SpectrumMarker {
 	pub fn new(position: f64, midpoint: f64, handle_color: Color) -> Self {
-		let handle_color_css = SRGBA8::from(handle_color).to_css_hex();
+		let handle_color_css = format!("#{}", SRGBA8::from(handle_color).to_rgb_hex());
 		Self { position, midpoint, handle_color_css }
+	}
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SpectrumSample {
+	/// Position (0..1) of the sample along the spectrum track, drawn as the SVG stop's `offset`.
+	position: f64,
+	/// `#rrggbb` hex of the sample's color, drawn as the SVG stop's `stop-color`.
+	color: String,
+	/// Straight alpha (0..1) of the sample, drawn as the SVG stop's `stop-opacity`.
+	alpha: f32,
+}
+
+impl SpectrumSample {
+	pub fn new(position: f64, color: Color) -> Self {
+		Self {
+			position,
+			color: format!("#{}", SRGBA8::from(color).to_rgb_hex()),
+			alpha: color.a(),
+		}
 	}
 }
 

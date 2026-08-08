@@ -271,7 +271,7 @@ pub fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 	let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.;
 	let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.;
 	let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.;
-	Some(Color::from_rgbaf32_unchecked(r, g, b, opacity))
+	Some(Color::from_gamma_srgb_channels(r, g, b, opacity))
 }
 
 // Create an intermidate representation that holds data extracted from usvg data structures

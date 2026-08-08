@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::parse_css_color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientHueDirection, GradientRamp, GradientSpace, GradientSpread, GradientStops};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops};
 
 /// Bounds for a midpoint position (relative to the interval between two adjacent gradient stops).
 const MIN_MIDPOINT: f64 = 0.01;
@@ -33,6 +33,7 @@ pub struct ColorPickerMessageHandler {
 	gradient_space: GradientSpace,
 	gradient_cyclic: bool,
 	gradient_hue_direction: GradientHueDirection,
+	gradient_interpolation: GradientInterpolation,
 	active_marker_index: Option<u32>,
 	active_marker_is_midpoint: bool,
 
@@ -58,6 +59,7 @@ impl Default for ColorPickerMessageHandler {
 			gradient_space: GradientSpace::default(),
 			gradient_cyclic: false,
 			gradient_hue_direction: GradientHueDirection::default(),
+			gradient_interpolation: GradientInterpolation::default(),
 			active_marker_index: None,
 			active_marker_is_midpoint: false,
 			allow_none: true,
@@ -82,6 +84,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 						self.gradient_space = GradientSpace::default();
 						self.gradient_cyclic = false;
 						self.gradient_hue_direction = GradientHueDirection::default();
+						self.gradient_interpolation = GradientInterpolation::default();
 						self.active_marker_index = None;
 						self.active_marker_is_midpoint = false;
 					}
@@ -91,6 +94,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 						self.gradient_space = GradientSpace::default();
 						self.gradient_cyclic = false;
 						self.gradient_hue_direction = GradientHueDirection::default();
+						self.gradient_interpolation = GradientInterpolation::default();
 						self.active_marker_index = None;
 						self.active_marker_is_midpoint = false;
 						self.adopt_color(color);
@@ -102,6 +106,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 						self.gradient_space = ramp.gradient_space;
 						self.gradient_cyclic = ramp.gradient_cyclic;
 						self.gradient_hue_direction = ramp.gradient_hue_direction;
+						self.gradient_interpolation = ramp.gradient_interpolation;
 						let gradient = Gradient::from(ramp);
 						let first_color = gradient.color(0).unwrap_or(Color::BLACK);
 						self.gradient = Some(gradient);
@@ -212,28 +217,20 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
 				self.gradient_spread = gradient_spread;
 				responses.add(FrontendMessage::ColorPickerColorChanged {
-					value: FillChoice::Gradient(GradientRamp {
-						gradient_spread,
-						gradient_space: self.gradient_space,
-						gradient_cyclic: self.gradient_cyclic,
-						gradient_hue_direction: self.gradient_hue_direction,
-						..GradientRamp::from(gradient)
-					}),
+					value: FillChoice::Gradient(GradientRamp::from(gradient).with_settings(self.gradient_settings())),
 				});
 				self.send_layouts(responses);
 			}
 			ColorPickerMessage::SetGradientCyclic { gradient_cyclic } => {
-				let Some(gradient) = &self.gradient else { return };
+				let Some(gradient) = &mut self.gradient else { return };
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
-				self.gradient_cyclic = gradient_cyclic;
+
+				let previous_cyclic = std::mem::replace(&mut self.gradient_cyclic, gradient_cyclic);
+				gradient.hold_positions_across_cyclic_change(previous_cyclic, gradient_cyclic);
+
+				let ramp = GradientRamp::from(&*gradient);
 				responses.add(FrontendMessage::ColorPickerColorChanged {
-					value: FillChoice::Gradient(GradientRamp {
-						gradient_spread: self.gradient_spread,
-						gradient_space: self.gradient_space,
-						gradient_cyclic,
-						gradient_hue_direction: self.gradient_hue_direction,
-						..GradientRamp::from(gradient)
-					}),
+					value: FillChoice::Gradient(ramp.with_settings(self.gradient_settings())),
 				});
 				self.send_layouts(responses);
 			}
@@ -242,13 +239,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
 				self.gradient_space = gradient_space;
 				responses.add(FrontendMessage::ColorPickerColorChanged {
-					value: FillChoice::Gradient(GradientRamp {
-						gradient_spread: self.gradient_spread,
-						gradient_space,
-						gradient_cyclic: self.gradient_cyclic,
-						gradient_hue_direction: self.gradient_hue_direction,
-						..GradientRamp::from(gradient)
-					}),
+					value: FillChoice::Gradient(GradientRamp::from(gradient).with_settings(self.gradient_settings())),
 				});
 				self.send_layouts(responses);
 			}
@@ -257,13 +248,16 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
 				self.gradient_hue_direction = gradient_hue_direction;
 				responses.add(FrontendMessage::ColorPickerColorChanged {
-					value: FillChoice::Gradient(GradientRamp {
-						gradient_spread: self.gradient_spread,
-						gradient_space: self.gradient_space,
-						gradient_cyclic: self.gradient_cyclic,
-						gradient_hue_direction,
-						..GradientRamp::from(gradient)
-					}),
+					value: FillChoice::Gradient(GradientRamp::from(gradient).with_settings(self.gradient_settings())),
+				});
+				self.send_layouts(responses);
+			}
+			ColorPickerMessage::SetGradientInterpolation { gradient_interpolation } => {
+				let Some(gradient) = &self.gradient else { return };
+				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
+				self.gradient_interpolation = gradient_interpolation;
+				responses.add(FrontendMessage::ColorPickerColorChanged {
+					value: FillChoice::Gradient(GradientRamp::from(gradient).with_settings(self.gradient_settings())),
 				});
 				self.send_layouts(responses);
 			}
@@ -315,6 +309,17 @@ impl ColorPickerMessageHandler {
 		self.old_is_none = is_none;
 	}
 
+	/// The whole-ramp settings the picker is currently editing with, bundled for sampling and for emitting ramps.
+	fn gradient_settings(&self) -> GradientSettings {
+		GradientSettings {
+			spread: self.gradient_spread,
+			cyclic: self.gradient_cyclic,
+			space: self.gradient_space,
+			hue_direction: self.gradient_hue_direction,
+			interpolation: self.gradient_interpolation,
+		}
+	}
+
 	fn snapshot_old(&mut self) {
 		self.old_hue = self.hue;
 		self.old_saturation = self.saturation;
@@ -350,14 +355,9 @@ impl ColorPickerMessageHandler {
 			&& (active_index as usize) < gradient.len()
 		{
 			gradient.set_color(active_index as usize, color);
+			let ramp = GradientRamp::from(&*gradient);
 			responses.add(FrontendMessage::ColorPickerColorChanged {
-				value: FillChoice::Gradient(GradientRamp {
-					gradient_spread: self.gradient_spread,
-					gradient_space: self.gradient_space,
-					gradient_cyclic: self.gradient_cyclic,
-					gradient_hue_direction: self.gradient_hue_direction,
-					..GradientRamp::from(&*gradient)
-				}),
+				value: FillChoice::Gradient(ramp.with_settings(self.gradient_settings())),
 			});
 		} else {
 			responses.add(FrontendMessage::ColorPickerColorChanged {
@@ -414,7 +414,7 @@ impl ColorPickerMessageHandler {
 				gradient.set_midpoint(index as usize, position.clamp(MIN_MIDPOINT, MAX_MIDPOINT));
 			}
 			SpectrumInputUpdate::InsertMarker { position } => {
-				let new_index = gradient.insert_stop(position, self.gradient_cyclic, self.gradient_space, self.gradient_hue_direction);
+				let new_index = gradient.insert_stop(position, self.gradient_settings());
 				self.active_marker_index = Some(new_index as u32);
 				self.active_marker_is_midpoint = false;
 				if let Some(color) = gradient.color(new_index) {
@@ -487,13 +487,7 @@ impl ColorPickerMessageHandler {
 		}
 
 		responses.add(FrontendMessage::ColorPickerColorChanged {
-			value: FillChoice::Gradient(GradientRamp {
-				gradient_spread: self.gradient_spread,
-				gradient_space: self.gradient_space,
-				gradient_cyclic: self.gradient_cyclic,
-				gradient_hue_direction: self.gradient_hue_direction,
-				..GradientRamp::from(&gradient)
-			}),
+			value: FillChoice::Gradient(GradientRamp::from(&gradient).with_settings(self.gradient_settings())),
 		});
 		self.gradient = Some(gradient);
 		self.send_layouts(responses);
@@ -527,6 +521,7 @@ impl ColorPickerMessageHandler {
 					.track_space(self.gradient_space)
 					.track_cyclic(self.gradient_cyclic)
 					.track_hue_direction(self.gradient_hue_direction)
+					.track_interpolation(self.gradient_interpolation)
 					.markers(markers)
 					.active_marker_index(self.active_marker_index)
 					.active_marker_is_midpoint(self.active_marker_is_midpoint)
@@ -620,7 +615,11 @@ impl ColorPickerMessageHandler {
 
 		// Hex
 		groups.push(LayoutGroup::row(vec![
-			TextLabel::new("Hex").tooltip_label("Hex Color Code").tooltip_description(HEX_DESCRIPTION).widget_instance(),
+			TextLabel::new("Hex")
+				.disabled(self.disabled)
+				.tooltip_label("Hex Color Code")
+				.tooltip_description(HEX_DESCRIPTION)
+				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			TextInput::new(hex_value)
 				.centered(true)
@@ -633,7 +632,11 @@ impl ColorPickerMessageHandler {
 
 		// RGB
 		groups.push(LayoutGroup::row(vec![
-			TextLabel::new("RGB").tooltip_label("Red/Green/Blue").tooltip_description("Integers 0–255.").widget_instance(),
+			TextLabel::new("RGB")
+				.disabled(self.disabled)
+				.tooltip_label("Red/Green/Blue")
+				.tooltip_description("Integers 0–255.")
+				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			rgb_input(RgbChannel::Red, rgb_255.map(|(r, _, _)| r), "Red Channel", self.disabled),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -645,6 +648,7 @@ impl ColorPickerMessageHandler {
 		// HSV
 		groups.push(LayoutGroup::row(vec![
 			TextLabel::new("HSV")
+				.disabled(self.disabled)
 				.tooltip_label("Hue/Saturation/Value")
 				.tooltip_description("Also known as Hue/Saturation/Brightness (HSB), but distinct from Hue/Saturation/Lightness (HSL), a different color model.")
 				.widget_instance(),
@@ -682,7 +686,11 @@ impl ColorPickerMessageHandler {
 
 		// Alpha
 		groups.push(LayoutGroup::row(vec![
-			TextLabel::new("Alpha").tooltip_label("Alpha").tooltip_description(ALPHA_DESCRIPTION).widget_instance(),
+			TextLabel::new("Alpha")
+				.disabled(self.disabled)
+				.tooltip_label("Alpha")
+				.tooltip_description(ALPHA_DESCRIPTION)
+				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(if self.is_none { None } else { Some(self.alpha * 100.) })
 				.disabled(self.disabled)
@@ -703,7 +711,11 @@ impl ColorPickerMessageHandler {
 			let entries = RadioEntryData::list_from_choice_type(|gradient_spread| ColorPickerMessage::SetGradientSpread { gradient_spread }.into());
 
 			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Ends").tooltip_label("Gradient Spread / Cyclic").tooltip_description(ENDS_DESCRIPTION).widget_instance(),
+				TextLabel::new("Ends")
+					.disabled(self.disabled)
+					.tooltip_label("Gradient Spread / Cyclic")
+					.tooltip_description(ENDS_DESCRIPTION)
+					.widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
 				RadioInput::new(entries)
 					.narrow(true)
@@ -726,14 +738,43 @@ impl ColorPickerMessageHandler {
 			]));
 		}
 
+		// Gradient interpolation (only present when the picker is in gradient mode)
+		if self.gradient.is_some() {
+			let entries = MenuListEntry::sections_from_choice_type(|gradient_interpolation| ColorPickerMessage::SetGradientInterpolation { gradient_interpolation }.into());
+
+			groups.push(LayoutGroup::row(vec![
+				TextLabel::new("Intrp.")
+					.disabled(self.disabled)
+					.tooltip_label("Gradient Interpolation")
+					.tooltip_description(INTERPOLATION_DESCRIPTION)
+					.widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
+				DropdownInput::new(entries)
+					.selected_index(Some(self.gradient_interpolation as u32))
+					.disabled(self.disabled)
+					.tooltip_label("Gradient Interpolation")
+					.tooltip_description(INTERPOLATION_DESCRIPTION)
+					.widget_instance(),
+			]));
+		}
+
 		// Gradient color space (only present when the picker is in gradient mode)
 		if self.gradient.is_some() {
 			let entries = MenuListEntry::sections_from_choice_type(|gradient_space| ColorPickerMessage::SetGradientSpace { gradient_space }.into());
 
 			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Space").tooltip_label("Gradient Space").tooltip_description(SPACE_DESCRIPTION).widget_instance(),
+				TextLabel::new("Space")
+					.disabled(self.disabled)
+					.tooltip_label("Gradient Space")
+					.tooltip_description(SPACE_DESCRIPTION)
+					.widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
-				DropdownInput::new(entries).selected_index(Some(self.gradient_space as u32)).disabled(self.disabled).widget_instance(),
+				DropdownInput::new(entries)
+					.selected_index(Some(self.gradient_space as u32))
+					.disabled(self.disabled)
+					.tooltip_label("Gradient Space")
+					.tooltip_description(SPACE_DESCRIPTION)
+					.widget_instance(),
 			]));
 		}
 
@@ -743,6 +784,7 @@ impl ColorPickerMessageHandler {
 
 			groups.push(LayoutGroup::row(vec![
 				TextLabel::new("Arc")
+					.disabled(self.disabled)
 					.tooltip_label("Gradient Hue Direction")
 					.tooltip_description(HUE_DIRECTION_DESCRIPTION)
 					.widget_instance(),
@@ -750,6 +792,8 @@ impl ColorPickerMessageHandler {
 				DropdownInput::new(entries)
 					.selected_index(Some(self.gradient_hue_direction as u32))
 					.disabled(self.disabled)
+					.tooltip_label("Gradient Hue Direction")
+					.tooltip_description(HUE_DIRECTION_DESCRIPTION)
 					.widget_instance(),
 			]));
 		}
@@ -811,6 +855,7 @@ const ENDS_DESCRIPTION: &str = "The method for how the gradient continues beyond
 const CYCLIC_DESCRIPTION: &str = "Treats the stops as a cycle, interpolating from the last stop back around to the first.";
 const SPACE_DESCRIPTION: &str = "The color space where stops interpolate toward their neighbors.";
 const HUE_DIRECTION_DESCRIPTION: &str = "Which way around the hue wheel the stops interpolate.";
+const INTERPOLATION_DESCRIPTION: &str = "The path the stops interpolate along, deciding whether the gradient jumps, turns corners, or flows smoothly through them.";
 
 /// The popover's background color as sRGB gamma-encoded channels (the `--color-2-mildblack` design token, `#222`).
 /// Used by the comparison swatch's outline computation to brighten the inset border for colors close to this background.

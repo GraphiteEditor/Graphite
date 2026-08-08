@@ -864,7 +864,7 @@
 				padding: calc(var(--widget-height) / 2 - var(--arrow-radius)) 0;
 				border: none;
 				border-radius: 2px;
-				background: rgba(var(--color-1-nearblack-rgb), 0.5);
+				background: rgb(from var(--color-1-nearblack) r g b / 0.5);
 				// An outline can appear when pressing the arrow button with left click then hitting Escape, so this stops that from showing
 				outline: none;
 				// TODO: This is a quick, imperfect way to make the arrow buttons appear like they're behind the text (without messing with the element click targets if we used z-index).
@@ -939,7 +939,6 @@
 				height: 100%;
 				padding: 0;
 				margin: 0;
-				-webkit-appearance: none; // Required until Safari 15.4 (Graphite supports 15.0+)
 				appearance: none;
 				background: none;
 				cursor: default;
@@ -964,7 +963,6 @@
 
 				// Chromium and Safari
 				&::-webkit-slider-thumb {
-					-webkit-appearance: none; // Required until Safari 15.4 (Graphite supports 15.0+)
 					appearance: none;
 					border-radius: 2px;
 					width: 4px;

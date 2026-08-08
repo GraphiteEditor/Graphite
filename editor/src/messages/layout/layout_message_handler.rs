@@ -201,8 +201,12 @@ impl LayoutMessageHandler {
 							warn!("ColorInput update was not able to be parsed as FillChoice<SRGBA8>: {color_button:?}");
 							return;
 						};
-						color_button.value = fill_choice;
-						(color_button.on_update.callback)(color_button)
+						// The stored copy has to keep mirroring what the frontend was last sent, so the rebuilt layout still
+						// diffs against it and syncs picks that leave the swatch unchanged; the callback borrows the new one
+						let previous_value = std::mem::replace(&mut color_button.value, fill_choice);
+						let update_message = (color_button.on_update.callback)(color_button);
+						color_button.value = previous_value;
+						update_message
 					}
 				};
 
@@ -531,13 +535,24 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 				color_input.chosen_gradient = color_input.value.to_css_background_image();
 			}
 			Widget::SpectrumInput(spectrum_input) => {
-				spectrum_input.track_css = spectrum_input
-					.track
-					.to_css_linear_gradient(spectrum_input.track_cyclic, spectrum_input.track_space, spectrum_input.track_hue_direction);
-				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrapped interval's boundary-crossing color rather than the outermost stops'
+				// The track strip spans exactly 0 to 1, which no spread affects, so the widget carries no spread of its own
+				let settings = graphene_std::vector::style::GradientSettings {
+					spread: Default::default(),
+					cyclic: spectrum_input.track_cyclic,
+					space: spectrum_input.track_space,
+					hue_direction: spectrum_input.track_hue_direction,
+					interpolation: spectrum_input.track_interpolation,
+				};
 				let track_gradient = graphene_std::vector::style::Gradient::from(&spectrum_input.track);
+				spectrum_input.track_samples = track_gradient
+					.interpolated_samples_or_black(settings)
+					.into_iter()
+					.map(|(position, color, _)| SpectrumSample::new(position, color))
+					.collect();
+				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrapped interval's boundary-crossing color rather than the outermost stops'
+				let track_evaluator = track_gradient.evaluator(settings);
 				let cap = |t: f64| {
-					let color = track_gradient.evaluate(t, Default::default(), spectrum_input.track_cyclic, spectrum_input.track_space, spectrum_input.track_hue_direction);
+					let color = track_evaluator.evaluate(t);
 					SRGBA8::from(color).to_css_hex()
 				};
 				spectrum_input.track_start_css = cap(0.);

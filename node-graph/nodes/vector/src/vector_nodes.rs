@@ -3,7 +3,7 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL, ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
@@ -34,7 +34,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{DashPattern, Gradient, GradientHueDirection, GradientSpace, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::vector::{PointDomain, RegionDomain};
 use vector_types::vectorize_config;
@@ -145,11 +145,14 @@ where
 
 	let mut content = content;
 	let length = content.vector_count();
-	let gradient_space = gradient.attribute_cloned_or_default::<GradientSpace>(ATTR_GRADIENT_SPACE);
-	let gradient_cyclic = gradient.attribute_cloned_or_default::<bool>(ATTR_GRADIENT_CYCLIC);
-	let gradient_hue_direction = gradient.attribute_cloned_or_default::<GradientHueDirection>(ATTR_GRADIENT_HUE_DIRECTION);
+	// The factor spans 0..=1, so the spread deliberately stays Pad (Repeat would wrap the final element onto the first stop's color)
+	let settings = GradientSettings {
+		spread: Default::default(),
+		..GradientSettings::from(&gradient)
+	};
 	let element = gradient.into_element();
-	let gradient = if reverse { element.reversed(gradient_cyclic) } else { element };
+	let gradient = if reverse { element.reversed(settings.cyclic) } else { element };
+	let evaluator = gradient.evaluator(settings);
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
@@ -165,8 +168,7 @@ where
 				},
 			};
 
-			// The factor spans 0..=1 inclusively, so the spread deliberately stays Pad (Repeat would wrap the final element onto the first stop's color)
-			let color = gradient.evaluate(factor, Default::default(), gradient_cyclic, gradient_space, gradient_hue_direction);
+			let color = evaluator.evaluate(factor);
 			let paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {
