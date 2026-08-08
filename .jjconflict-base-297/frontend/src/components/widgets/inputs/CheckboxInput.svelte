@@ -54,7 +54,6 @@
 			dispatch("checked", inputElement?.checked || false);
 		}}
 		{disabled}
-		tabindex={disabled ? -1 : 0}
 		bind:this={inputElement}
 	/>
 	<label

@@ -615,7 +615,11 @@ impl ColorPickerMessageHandler {
 
 		// Hex
 		groups.push(LayoutGroup::row(vec![
-			TextLabel::new("Hex").tooltip_label("Hex Color Code").tooltip_description(HEX_DESCRIPTION).widget_instance(),
+			TextLabel::new("Hex")
+				.disabled(self.disabled)
+				.tooltip_label("Hex Color Code")
+				.tooltip_description(HEX_DESCRIPTION)
+				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			TextInput::new(hex_value)
 				.centered(true)
@@ -628,7 +632,11 @@ impl ColorPickerMessageHandler {
 
 		// RGB
 		groups.push(LayoutGroup::row(vec![
-			TextLabel::new("RGB").tooltip_label("Red/Green/Blue").tooltip_description("Integers 0–255.").widget_instance(),
+			TextLabel::new("RGB")
+				.disabled(self.disabled)
+				.tooltip_label("Red/Green/Blue")
+				.tooltip_description("Integers 0–255.")
+				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			rgb_input(RgbChannel::Red, rgb_255.map(|(r, _, _)| r), "Red Channel", self.disabled),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -640,6 +648,7 @@ impl ColorPickerMessageHandler {
 		// HSV
 		groups.push(LayoutGroup::row(vec![
 			TextLabel::new("HSV")
+				.disabled(self.disabled)
 				.tooltip_label("Hue/Saturation/Value")
 				.tooltip_description("Also known as Hue/Saturation/Brightness (HSB), but distinct from Hue/Saturation/Lightness (HSL), a different color model.")
 				.widget_instance(),
@@ -677,7 +686,11 @@ impl ColorPickerMessageHandler {
 
 		// Alpha
 		groups.push(LayoutGroup::row(vec![
-			TextLabel::new("Alpha").tooltip_label("Alpha").tooltip_description(ALPHA_DESCRIPTION).widget_instance(),
+			TextLabel::new("Alpha")
+				.disabled(self.disabled)
+				.tooltip_label("Alpha")
+				.tooltip_description(ALPHA_DESCRIPTION)
+				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(if self.is_none { None } else { Some(self.alpha * 100.) })
 				.disabled(self.disabled)
@@ -698,7 +711,11 @@ impl ColorPickerMessageHandler {
 			let entries = RadioEntryData::list_from_choice_type(|gradient_spread| ColorPickerMessage::SetGradientSpread { gradient_spread }.into());
 
 			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Ends").tooltip_label("Gradient Spread / Cyclic").tooltip_description(ENDS_DESCRIPTION).widget_instance(),
+				TextLabel::new("Ends")
+					.disabled(self.disabled)
+					.tooltip_label("Gradient Spread / Cyclic")
+					.tooltip_description(ENDS_DESCRIPTION)
+					.widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
 				RadioInput::new(entries)
 					.narrow(true)
@@ -727,6 +744,7 @@ impl ColorPickerMessageHandler {
 
 			groups.push(LayoutGroup::row(vec![
 				TextLabel::new("Intrp.")
+					.disabled(self.disabled)
 					.tooltip_label("Gradient Interpolation")
 					.tooltip_description(INTERPOLATION_DESCRIPTION)
 					.widget_instance(),
@@ -745,7 +763,11 @@ impl ColorPickerMessageHandler {
 			let entries = MenuListEntry::sections_from_choice_type(|gradient_space| ColorPickerMessage::SetGradientSpace { gradient_space }.into());
 
 			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Space").tooltip_label("Gradient Space").tooltip_description(SPACE_DESCRIPTION).widget_instance(),
+				TextLabel::new("Space")
+					.disabled(self.disabled)
+					.tooltip_label("Gradient Space")
+					.tooltip_description(SPACE_DESCRIPTION)
+					.widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
 				DropdownInput::new(entries)
 					.selected_index(Some(self.gradient_space as u32))
@@ -762,6 +784,7 @@ impl ColorPickerMessageHandler {
 
 			groups.push(LayoutGroup::row(vec![
 				TextLabel::new("Arc")
+					.disabled(self.disabled)
 					.tooltip_label("Gradient Hue Direction")
 					.tooltip_description(HUE_DIRECTION_DESCRIPTION)
 					.widget_instance(),
