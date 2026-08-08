@@ -538,7 +538,8 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 		},
 		extend: peniko_extend(settings.spread),
 		stops: peniko_stops,
-		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+		// Straight alpha, keeping parity with the SVG renderer's stop interpolation
+		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
 		..Default::default()
 	});
 
@@ -2315,7 +2316,7 @@ impl Render for List<Gradient> {
 				kind,
 				stops,
 				extend,
-				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
 				..Default::default()
 			});
 			let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_form).to_cols_array());
