@@ -1597,7 +1597,8 @@ impl Gradient {
 		}
 
 		if count == 1 {
-			return vec![(stops[0].position, stops[0].color, Some(sanitized_midpoint(stops[0].midpoint)))];
+			let sample = vec![(stops[0].position, stops[0].color, Some(sanitized_midpoint(stops[0].midpoint)))];
+			return clip_samples_to_unit_range(&sample);
 		}
 
 		let samples = match settings.interpolation {
@@ -3053,5 +3054,19 @@ mod tests {
 			"the stop on the pivot should stay while the rest wrap past it"
 		);
 		assert!(!gradient.has_position_attribute(), "landing back on the even distribution should re-elide the positions");
+	}
+
+	#[test]
+	fn a_lone_stop_shifted_out_of_range_still_bakes_inside_it() {
+		let mut gradient = Gradient::from(vec![Color::RED]);
+		gradient.shift_positions(2., false);
+
+		let samples = gradient.interpolated_samples(Default::default());
+		let positions: Vec<f64> = samples.iter().map(|(position, ..)| *position).collect();
+		assert!(
+			positions.iter().all(|position| (0. ..=1.).contains(position)),
+			"renderers only accept offsets from 0 to 1, got {positions:?}"
+		);
+		assert_eq!(samples.first().map(|(_, color, _)| *color), Some(Color::RED), "the lone stop's color should still fill the ramp");
 	}
 }

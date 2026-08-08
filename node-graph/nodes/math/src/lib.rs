@@ -1461,7 +1461,7 @@ fn gradient_reverse(_: impl Ctx, gradient: Item<Gradient>) -> Item<Gradient> {
 
 /// Shifts every stop along each gradient's ramp, sliding the colors within the gradient without moving the gradient itself.
 ///
-/// The fraction is measured against the whole ramp. A cyclic gradient spins, wrapping past the end back around to the start so 1 is a full turn that lands where it began. A gradient that isn't cyclic has no loop to spin around, so its stops slide off the end instead, held at the edge until they are shifted back.
+/// The fraction is measured against the whole ramp. A cyclic gradient spins, wrapping past the end back around to the start so 1 is a full turn that lands where it began. A gradient that isn't cyclic has no loop to spin around, so its stops slide off the end and keep going, leaving the visible ramp to blend between whichever colors still span it.
 #[node_macro::node(category("Gradient"))]
 fn gradient_shift(
 	_: impl Ctx,
