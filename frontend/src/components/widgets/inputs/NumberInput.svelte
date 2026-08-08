@@ -939,7 +939,6 @@
 				height: 100%;
 				padding: 0;
 				margin: 0;
-				-webkit-appearance: none; // Required until Safari 15.4 (Graphite supports 15.0+)
 				appearance: none;
 				background: none;
 				cursor: default;
@@ -964,7 +963,6 @@
 
 				// Chromium and Safari
 				&::-webkit-slider-thumb {
-					-webkit-appearance: none; // Required until Safari 15.4 (Graphite supports 15.0+)
 					appearance: none;
 					border-radius: 2px;
 					width: 4px;

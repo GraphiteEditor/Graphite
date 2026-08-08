@@ -457,7 +457,6 @@ p {
 	margin: 0;
 	text-align: justify;
 	text-justify: inter-character; // Only supported in Firefox
-	-webkit-hyphens: auto;
 	hyphens: auto;
 
 	code {
@@ -566,7 +565,6 @@ code {
 	background: var(--color-fog);
 	padding: 0 4px;
 	overflow-wrap: anywhere;
-	-webkit-hyphens: none;
 	hyphens: none;
 
 	a & {
