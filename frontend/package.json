@@ -3,7 +3,6 @@
 	"private": true,
 	"description": "Graphite's web app frontend.",
 	"author": "Graphite Authors <contact@graphite.art>",
-	"browserslist": "> 1.5%, last 2 versions, not dead, not ie 11, not op_mini all, not ios_saf < 13",
 	"type": "module",
 	"scripts": {
 		"check": "svelte-check --fail-on-warnings && eslint",
