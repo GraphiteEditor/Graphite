@@ -963,12 +963,12 @@ impl Fsm for GradientToolFsmState {
 
 					let (start, end) = (unit_to_viewport.transform_point2(DVec2::ZERO), unit_to_viewport.transform_point2(DVec2::X));
 
-					fn color_to_hex(color: graphene_std::Color) -> String {
-						SRGBA8::from(color).to_css_hex()
+					fn color_to_opaque_hex(color: graphene_std::Color) -> String {
+						format!("#{}", SRGBA8::from(color).to_rgb_hex())
 					}
 
-					let start_hex = gradient.color(0).map(color_to_hex).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
-					let end_hex = gradient.color(gradient.len().saturating_sub(1)).map(color_to_hex).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
+					let start_hex = gradient.color(0).map(color_to_opaque_hex).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
+					let end_hex = gradient.color(gradient.len().saturating_sub(1)).map(color_to_opaque_hex).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
 
 					// Check if the first/last stops are at position ~0/~1 (rendered as the endpoint dots rather than as separate stops)
 					let settings = appearance.settings;
@@ -1027,7 +1027,7 @@ impl Fsm for GradientToolFsmState {
 						StopId::End => overlay_context.gradient_color_stop(end, emphasis, &end_hex, !last_at_end),
 						StopId::Middle(i) => {
 							if let Some(color) = gradient.color(i) {
-								overlay_context.gradient_color_stop(start.lerp(end, gradient.position(i, gradient_cyclic)), emphasis, &color_to_hex(color), false);
+								overlay_context.gradient_color_stop(start.lerp(end, gradient.position(i, gradient_cyclic)), emphasis, &color_to_opaque_hex(color), false);
 							}
 						}
 					};

@@ -650,14 +650,15 @@ pub struct SpectrumMarker {
 	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true.
 	/// The last marker's value controls the wrapped interval when `track_cyclic` is set, and is otherwise ignored.
 	midpoint: f64,
-	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`].
+	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`],
+	/// discarding any transparency so the handle always shows the RGB that steers the interpolation.
 	#[serde(rename = "handleColorCSS")]
 	handle_color_css: String,
 }
 
 impl SpectrumMarker {
 	pub fn new(position: f64, midpoint: f64, handle_color: Color) -> Self {
-		let handle_color_css = SRGBA8::from(handle_color).to_css_hex();
+		let handle_color_css = format!("#{}", SRGBA8::from(handle_color).to_rgb_hex());
 		Self { position, midpoint, handle_color_css }
 	}
 }
