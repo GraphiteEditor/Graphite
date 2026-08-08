@@ -1,5 +1,4 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-
 pub mod adjust;
 pub mod adjustments;
 pub mod blending_nodes;
