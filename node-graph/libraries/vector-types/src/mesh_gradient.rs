@@ -595,7 +595,6 @@ impl MeshGradient {
 #[derive(Clone, Copy)]
 pub struct MeshSubpatchVertex {
 	pub position: DVec2,
-	pub gamma_color: [f32; 4],
 }
 
 pub struct MeshSubpatch {
@@ -627,7 +626,7 @@ pub struct MeshPatchEvaluator {
 
 impl MeshPatchEvaluator {
 	/// Evaluate interpolated color in a mesh gradient's patch using bicubic hermite interpolation.
-	fn eval_color(&self, u: f32, v: f32) -> [f32; 4] {
+	pub fn eval_color(&self, u: f32, v: f32) -> [f32; 4] {
 		let hermite = |a: f32, ma: f32, b: f32, mb: f32, t: f32| -> f32 {
 			let t_power_2 = t * t;
 			let t_power_3 = t_power_2 * t;
@@ -942,9 +941,9 @@ impl MeshGradientEvaluator {
 				let patch_to_viewport = parent_transform * mesh_transform;
 				let [top_left, top_right, bottom_left, bottom_right] = corner_uvs.map(|uv| patch_to_viewport.transform_point2(patch.eval_position(uv.x, uv.y)));
 
-				let u_size = top_left.distance(top_right).min(bottom_left.distance(bottom_right));
-				let v_size = top_left.distance(bottom_left).min(top_right.distance(bottom_right));
-				let subpatch_size = u_size.min(v_size);
+				let u_size = top_left.distance(top_right).max(bottom_left.distance(bottom_right));
+				let v_size = top_left.distance(bottom_left).max(top_right.distance(bottom_right));
+				let subpatch_size = u_size.max(v_size);
 
 				let reached_minimum_size = subpatch_size <= minimum_subpatch_size;
 
@@ -966,10 +965,7 @@ impl MeshGradientEvaluator {
 
 				if within_tolerance || reached_minimum_size {
 					subpatches.push(MeshSubpatch {
-						corners: std::array::from_fn(|index| MeshSubpatchVertex {
-							position: corner_positions[index],
-							gamma_color: patch.eval_color(corner_uvs[index].x as f32, corner_uvs[index].y as f32),
-						}),
+						corners: corner_positions.map(|position| MeshSubpatchVertex { position }),
 						patch_index,
 						uv_bounds: [DVec2::new(u_start, v_start), DVec2::new(u_start + stride, v_start + stride)],
 					});

@@ -273,10 +273,10 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	}) + ")"
 }
 
-const MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT: f64 = 1.5;
+const MESH_POSITION_ERROR_TOLERANCE: f64 = 1.5;
 const MESH_MAXIMUM_CLIP_INFLATION: f64 = 0.5;
 
-const MESH_MINIMUM_SUBPATCH_SIZE: f64 = 2.;
+const MESH_MINIMUM_SUBPATCH_SIZE: f64 = 4.;
 
 fn mesh_linear_approximated_points<T>(func: &impl Fn(f32) -> T, error: &impl Fn(T, T) -> f32, start: f32, end: f32, depth: usize) -> Vec<(f32, T)>
 where
@@ -2661,7 +2661,7 @@ impl Render for List<MeshGradient> {
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
 			let Some(evaluator) = mesh_gradient.evaluator() else { continue };
-			let Some(subpatches) = evaluator.subdivide_patches_adaptive(MESH_MINIMUM_SUBPATCH_SIZE, mesh_transform, parent_transform, MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT) else {
+			let Some(subpatches) = evaluator.subdivide_patches_adaptive(MESH_MINIMUM_SUBPATCH_SIZE, mesh_transform, parent_transform, MESH_POSITION_ERROR_TOLERANCE) else {
 				continue;
 			};
 
@@ -2712,7 +2712,6 @@ impl Render for List<MeshGradient> {
 				let Some(patch_evaluator) = evaluator.patch_evaluator(patch_subpatches[0].patch_index) else {
 					continue;
 				};
-				let control_points = patch_evaluator.bicubic_bezier_control_points();
 
 				for subpatch in patch_subpatches {
 					let [top_left, top_right, bottom_left, _] = subpatch.corners;
@@ -2749,8 +2748,9 @@ impl Render for List<MeshGradient> {
 					let [uv_min, uv_max] = subpatch.uv_bounds.map(|uv| uv.as_vec2());
 					let remap_offset = |value: f32, start: f32, end: f32| (value - start) / (end - start);
 
-					let color_gradients: [_; 4] = std::array::from_fn(|row| {
-						let curve = |u| mesh_cubic_color(control_points[row], u);
+					// Approximate the original cubic color curves along the subpatch's top and bottom edges.
+					let [top_gradient, bottom_gradient] = [uv_min.y, uv_max.y].map(|v| {
+						let curve = |u| Vec4::from_array(patch_evaluator.eval_color(u, v));
 						let error = |a: Vec4, b: Vec4| (a - b).abs().max_element();
 						let stops = mesh_linear_approximated_points(&curve, &error, uv_min.x, uv_max.x, 0)
 							.into_iter()
@@ -2758,43 +2758,54 @@ impl Render for List<MeshGradient> {
 							.collect();
 						linear_gradient(DVec2::ZERO, DVec2::X, stops)
 					});
-					let alpha_gradients: [_; 3] = std::array::from_fn(|index| {
-						let alpha = |v| mesh_alpha(index, v);
-						let error = |a: f32, b: f32| (a - b).abs();
-						let stops = mesh_linear_approximated_points(&alpha, &error, uv_min.y, uv_max.y, 0)
-							.into_iter()
-							.map(|(v, alpha)| {
-								(
-									remap_offset(v, uv_min.y, uv_max.y),
-									SRGBA8 {
-										red: 255,
-										green: 255,
-										blue: 255,
-										alpha: (alpha.clamp(0., 1.) * 255.).round() as u8,
-									},
-								)
-							})
-							.collect();
-						linear_gradient(DVec2::new(0.5, 0.), DVec2::new(0.5, 1.), stops)
-					});
 
-					// Build the bicubic color first, then apply subpatch edge coverage once.
+					// Project the original cubic color curve at the subpatch's horizontal midpoint onto the
+					// line between its top and bottom colors, producing the best scalar mask approximation.
+					let center_u = (uv_min.x + uv_max.x) / 2.;
+					let top_center_color = Vec4::from_array(patch_evaluator.eval_color(center_u, uv_min.y));
+					let bottom_center_color = Vec4::from_array(patch_evaluator.eval_color(center_u, uv_max.y));
+					let color_axis = top_center_color - bottom_center_color;
+					let color_axis_length_squared = color_axis.length_squared();
+					let alpha = |v| {
+						if color_axis_length_squared > f32::EPSILON {
+							let color = Vec4::from_array(patch_evaluator.eval_color(center_u, v));
+							((color - bottom_center_color).dot(color_axis) / color_axis_length_squared).clamp(0., 1.)
+						} else {
+							1. - remap_offset(v, uv_min.y, uv_max.y)
+						}
+					};
+					let error = |a: f32, b: f32| (a - b).abs();
+					let mask_stops = mesh_linear_approximated_points(&alpha, &error, uv_min.y, uv_max.y, 0)
+						.into_iter()
+						.map(|(v, alpha)| {
+							(
+								remap_offset(v, uv_min.y, uv_max.y),
+								SRGBA8 {
+									red: 255,
+									green: 255,
+									blue: 255,
+									alpha: (alpha * 255.).round() as u8,
+								},
+							)
+						})
+						.collect();
+					let mask_gradient = linear_gradient(DVec2::new(0.5, 0.), DVec2::new(0.5, 1.), mask_stops);
+
+					// Blend the two cubic edge gradients with the cubic mask, then apply edge coverage once.
 					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &clip_rect);
-					scene.fill(peniko::Fill::NonZero, local_to_scene, &color_gradients[3], Some(horizontal_brush_transform), &paint_rect);
-					for layer in (0..3).rev() {
-						scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &paint_rect);
-						scene.fill(peniko::Fill::NonZero, local_to_scene, &alpha_gradients[layer], Some(vertical_brush_transform), &paint_rect);
-						scene.push_layer(
-							peniko::Fill::NonZero,
-							peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
-							1.,
-							local_to_scene,
-							&paint_rect,
-						);
-						scene.fill(peniko::Fill::NonZero, local_to_scene, &color_gradients[layer], Some(horizontal_brush_transform), &paint_rect);
-						scene.pop_layer();
-						scene.pop_layer();
-					}
+					scene.fill(peniko::Fill::NonZero, local_to_scene, &bottom_gradient, Some(horizontal_brush_transform), &paint_rect);
+					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &paint_rect);
+					scene.fill(peniko::Fill::NonZero, local_to_scene, &mask_gradient, Some(vertical_brush_transform), &paint_rect);
+					scene.push_layer(
+						peniko::Fill::NonZero,
+						peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
+						1.,
+						local_to_scene,
+						&paint_rect,
+					);
+					scene.fill(peniko::Fill::NonZero, local_to_scene, &top_gradient, Some(horizontal_brush_transform), &paint_rect);
+					scene.pop_layer();
+					scene.pop_layer();
 					scene.pop_layer();
 				}
 			}
