@@ -271,23 +271,36 @@ pub struct BorrowTree {
 	nodes: HashMap<NodeId, (EdgeHandle, Path)>,
 	/// A hashmap from the document path to the proto node ID.
 	source_map: HashMap<Path, (NodeId, NodeTypes)>,
+	/// The record-stack reserve, folded from the graph at construction.
+	stack_need: usize,
 }
 
 impl BorrowTree {
 	pub fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, GraphErrors> {
 		let mut nodes = BorrowTree::default();
+		let output = proto_network.output;
+		let mut deps = HashMap::new();
 		for (id, node) in proto_network.nodes {
+			if let ConstructionArgs::Nodes(ids) = &node.construction_args {
+				deps.insert(id, ids.clone());
+			}
 			nodes.push_node(id, node, typing_context)?
 		}
+		nodes.stack_need = stack_peak(output, &deps, &|id| nodes.frame_bytes(id));
 		Ok(nodes)
 	}
 
 	/// Pushes new nodes into the tree and return orphaned nodes
 	pub fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
+		let output = proto_network.output;
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
 		let mut new_nodes: Vec<_> = Vec::new();
+		let mut deps = HashMap::new();
 		// TODO: Problem: When a passthrough node is connected directly to an export the first input to the passthrough node is not added to the proto network, while the second input is. This means the primary input does not have a type.
 		for (id, node) in proto_network.nodes {
+			if let ConstructionArgs::Nodes(ids) = &node.construction_args {
+				deps.insert(id, ids.clone());
+			}
 			if !self.nodes.contains_key(&id) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 				self.push_node(id, node, typing_context)?;
@@ -296,6 +309,7 @@ impl BorrowTree {
 			}
 			old_nodes.remove(&id);
 		}
+		self.stack_need = stack_peak(output, &deps, &|id| self.frame_bytes(id));
 		Ok((new_nodes, old_nodes))
 	}
 
@@ -480,13 +494,37 @@ impl BorrowTree {
 		&self.source_map
 	}
 
-	/// The record-stack bound of an evaluation: the sum over all node frames.
+	/// The record-stack reserve of an evaluation, folded from the graph at
+	/// construction (see [`stack_peak`]).
 	pub fn stack_need(&self) -> usize {
-		self.nodes
-			.values()
-			.map(|(handle, _)| handle.layout().map_or(0, |layout| layout.frame_bytes()))
-			.sum()
+		self.stack_need
 	}
+
+	fn frame_bytes(&self, id: NodeId) -> usize {
+		self.nodes.get(&id).and_then(|(handle, _)| handle.layout()).map_or(0, |layout| layout.frame_bytes())
+	}
+}
+
+/// Peak record-stack bytes for evaluating `output`'s cone. A node holds its
+/// inputs' frames until it returns, so its need is its own frame plus every
+/// input's frame plus the deepest input's peak. Memoized over shared cones.
+fn stack_peak(output: NodeId, deps: &HashMap<NodeId, Vec<NodeId>>, frame_bytes: &dyn Fn(NodeId) -> usize) -> usize {
+	fn peak(id: NodeId, deps: &HashMap<NodeId, Vec<NodeId>>, frame_bytes: &dyn Fn(NodeId) -> usize, memo: &mut HashMap<NodeId, usize>) -> usize {
+		if let Some(&cached) = memo.get(&id) {
+			return cached;
+		}
+		let mut held = 0;
+		let mut deepest = 0;
+		for &child in deps.get(&id).map_or(&[][..], Vec::as_slice) {
+			let child_frame = frame_bytes(child);
+			held += child_frame;
+			deepest = deepest.max(peak(child, deps, frame_bytes, memo).saturating_sub(child_frame));
+		}
+		let need = frame_bytes(id) + held + deepest;
+		memo.insert(id, need);
+		need
+	}
+	peak(output, deps, frame_bytes, &mut HashMap::new())
 }
 
 #[cfg(test)]
@@ -503,6 +541,19 @@ mod test {
 		fn spawn(&self, _task: SourceFuture) -> bool {
 			false
 		}
+	}
+
+	#[test]
+	fn stack_peak_folds_a_diamond_chain() {
+		// S3 <- S2 <- S1 <- S0, each consuming the node below on both inputs.
+		let deps = HashMap::from([
+			(NodeId(1), vec![NodeId(0), NodeId(0)]),
+			(NodeId(2), vec![NodeId(1), NodeId(1)]),
+			(NodeId(3), vec![NodeId(2), NodeId(2)]),
+		]);
+		let frame = |_: NodeId| 1;
+		assert_eq!(stack_peak(NodeId(0), &deps, &frame), 1);
+		assert_eq!(stack_peak(NodeId(3), &deps, &frame), 7);
 	}
 
 	#[test]

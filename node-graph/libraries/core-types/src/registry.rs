@@ -147,9 +147,22 @@ where
 	type Output = N::Output;
 
 	fn eval(&self, input: &Input) -> crate::gpoll::GPoll<Self::Output> {
+		// Every node advances the record stack by exactly its own frame: it keeps
+		// its output and reclaims its inputs. A mismatch is a leaked or
+		// over-released frame.
+		#[cfg(debug_assertions)]
+		let sp_before = crate::record::stack::sp();
 		// SAFETY: `own` keeps the payload alive for `self`'s lifetime and Arc
 		// payloads are address stable.
-		unsafe { self.ptr.as_ref() }.eval(input)
+		let result = unsafe { self.ptr.as_ref() }.eval(input);
+		#[cfg(debug_assertions)]
+		debug_assert_eq!(
+			crate::record::stack::sp(),
+			sp_before + self.layout().map_or(0, |layout| layout.frame_bytes()),
+			"{} left the record stack misaligned",
+			std::any::type_name::<N>(),
+		);
+		result
 	}
 
 	fn extent(&self, input: &Input) -> crate::gpoll::GPoll<crate::gpoll::Extent> {

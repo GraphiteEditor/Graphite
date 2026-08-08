@@ -1208,9 +1208,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let #name: #ty = unsafe { #core_types::record::read_element(#rec_local) };
 				}
 			}
-			// A borrow taken before the node's own frame push parks a
-			// byte-carried spilled element into the arena; parked and inline
-			// elements borrow directly.
+			// The lend input's frame survives on the record stack until this
+			// node's frame is reclaimed, so the borrow stays valid in place.
 			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) if flip => {
 				let slot = format_ident!("__in_{index}");
 				let record_local = format_ident!("__record_{index}");
@@ -1219,14 +1218,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						Ok(value) => value,
 						Err(interrupt) => return interrupt.into(),
 					};
-					let Some(#name) = (unsafe {
-						#core_types::record::borrow_or_park::<#ty>(self.#slot.rec(&#record_local), &self.#slot, #core_types::context::ExtractArena::arena(__input))
-					}) else {
-						return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError {
-							kind: #core_types::gpoll::ErrorKind::ArenaExhausted,
-							trace: ::std::vec::Vec::new(),
-						}));
-					};
+					let #name = unsafe { #core_types::record::borrow_element::<#ty>(self.#slot.rec(&#record_local)) };
 				}
 			}
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if flip => {
@@ -1650,7 +1642,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#element_store
 			#(#attr_stores)*
 			if self.__frame_bytes != 0 {
-				#core_types::record::stack::pop(__dst);
+				#core_types::record::stack::truncate_above(__dst, self.__frame_bytes);
 				__value = #core_types::record::RecordValue::spilled(unsafe { #core_types::record::Rec::new(__dst.cast_const()) });
 			}
 			__cell.finish(__value)
@@ -1664,7 +1656,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					__cell.merge(unsafe { #core_types::record::lift_poll_into(#kernel_call, __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) })
 				},
 				None => quote! {
-					__cell.merge(#core_types::record::lift_poll(#kernel_call, &self.__layout, #core_types::context::ExtractArena::arena(__input)))
+					let mut __scratch = #core_types::record::RecordValue::zeroed();
+					let __dst = match self.__frame_bytes {
+						0 => __scratch.as_mut_ptr(),
+						__bytes => #core_types::record::stack::push(__bytes),
+					};
+					__cell.merge(unsafe { #core_types::record::lift_poll_into(#kernel_call, __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) })
 				},
 			};
 		}
@@ -1688,8 +1685,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				})
 			},
 			None => quote! {
+				let mut __scratch = #core_types::record::RecordValue::zeroed();
+				let __dst = match self.__frame_bytes {
+					0 => __scratch.as_mut_ptr(),
+					__bytes => #core_types::record::stack::push(__bytes),
+				};
 				let __kernel_value = #kernel_value;
-				__cell.merge(#core_types::record::lift_poll(#core_types::gpoll::GPoll::Final(__kernel_value), &self.__layout, #core_types::context::ExtractArena::arena(__input)))
+				__cell.merge(unsafe { #core_types::record::lift_poll_into(#core_types::gpoll::GPoll::Final(__kernel_value), __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) })
 			},
 		}
 	});
@@ -1915,6 +1917,27 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 
+	// An inline node only leaks if an input spilled a frame. Flip nodes store
+	// each input's layout, so gate precisely; inline record-io nodes are rare
+	// (attributes usually spill the output) and their value-input layouts are
+	// not all stored, so guard them whenever inline.
+	let reclaim_active = match flip {
+		true => {
+			let spilled_inputs = (0..regular_fields.len()).map(|index| {
+				let slot = format_ident!("__in_{index}");
+				quote!(self.#slot.frame_bytes() != 0)
+			});
+			quote!(self.__frame_bytes == 0 && (false #(|| #spilled_inputs)*))
+		}
+		false => quote!(self.__frame_bytes == 0),
+	};
+	let reclaim_guard = (flip || record.is_some()).then(|| {
+		quote! {
+			// SAFETY: an inline node returns its output by value, so nothing above the entry pointer is live when the guard rewinds.
+			let __reclaim_guard = unsafe { #core_types::record::ReclaimGuard::new(#reclaim_active) };
+		}
+	});
+
 	let top_level = quote! {
 		#cfg
 		#[automatically_derived]
@@ -1932,6 +1955,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 			fn eval(&self, __input: &#ctx_ident) -> #core_types::gpoll::GPoll<Self::Output> {
 				let __cell = #cell_constructor;
+				#reclaim_guard
 				#(#eval_values)*
 				#(#clamps)*
 				#eval_tail

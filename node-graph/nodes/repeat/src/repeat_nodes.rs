@@ -35,11 +35,14 @@ fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	for index in 0..count {
 		let index = if reverse { count - index - 1 } else { index };
 
+		let mark = core_types::record::stack::sp();
 		let generated_content = content.eval(&ctx.promoted(&spilled, index))?;
 
 		for generated_row in generated_content.into_iter() {
 			result_list.push(generated_row);
 		}
+		// SAFETY: generated_content is an owned list fully moved into result_list, so no record borrow into this iteration's frames remains.
+		unsafe { core_types::record::stack::rewind(mark) };
 	}
 
 	Ok(result_list)
@@ -76,6 +79,7 @@ pub fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let translation = index as f64 * direction / total;
 		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
 
+		let mark = core_types::record::stack::sp();
 		let generated_content = content.eval(&ctx.promoted(&spilled, index as u64))?;
 
 		for row_index in 0..generated_content.len() {
@@ -88,6 +92,8 @@ pub fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 
 			result_list.push(row);
 		}
+		// SAFETY: rows are cloned into result_list and generated_content is owned, so no record borrow into this iteration's frames remains.
+		unsafe { core_types::record::stack::rewind(mark) };
 	}
 
 	Ok(result_list)
@@ -120,6 +126,7 @@ fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let translation = DAffine2::from_translation(radius * DVec2::Y);
 		let transform = angle * translation;
 
+		let mark = core_types::record::stack::sp();
 		let generated_content = content.eval(&ctx.promoted(&spilled, index as u64))?;
 
 		for row_index in 0..generated_content.len() {
@@ -132,6 +139,8 @@ fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 
 			result_list.push(row);
 		}
+		// SAFETY: rows are cloned into result_list and generated_content is owned, so no record borrow into this iteration's frames remains.
+		unsafe { core_types::record::stack::rewind(mark) };
 	}
 
 	Ok(result_list)
@@ -168,12 +177,15 @@ fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 			let transformed_point = transform.transform_point2(point);
 
 			let scoped = ctx.push_position(transformed_point);
+			let mark = core_types::record::stack::sp();
 			let generated_content = content.eval(&scoped.ctx().promoted(&spilled, index as u64))?;
 
 			for mut generated_row in generated_content.into_iter() {
 				generated_row.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM).translation = transformed_point;
 				result_list.push(generated_row);
 			}
+			// SAFETY: generated_content is an owned list fully moved into result_list, so no record borrow into this iteration's frames remains.
+			unsafe { core_types::record::stack::rewind(mark) };
 		}
 	}
 

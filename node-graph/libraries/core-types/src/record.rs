@@ -361,7 +361,7 @@ pub fn lift_poll<'e, T: Send + Sync + 'static>(poll: GPoll<T>, layout: &Layout, 
 		} else {
 			let dst = stack::push(layout.frame_bytes());
 			let written = unsafe { write_element(dst, element, arena) };
-			stack::pop(dst);
+			stack::truncate_above(dst, layout.frame_bytes());
 			written.map(|()| RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
 		}
 	};
@@ -612,13 +612,74 @@ pub mod stack {
 	}
 
 	/// Returns the stack pointer to `frame`, a pointer earlier returned by
-	/// [`push`] on this thread, releasing everything above it.
+	/// [`push`] on this thread, releasing it and everything above it. Resets to
+	/// a checkpoint between repeated evaluations.
 	pub fn pop(frame: *mut u8) {
 		STACK.with(|stack| {
 			let offset = frame as usize - stack.base.get() as usize;
 			debug_assert!(offset <= stack.sp.get(), "pop target must lie within the claimed stack");
 			stack.sp.set(offset);
 		});
+	}
+
+	/// Releases everything above `frame`'s `bytes`-sized region, keeping the
+	/// region itself. A node reclaims its inputs' frames on return but leaves
+	/// its own output readable for its consumer.
+	pub fn truncate_above(frame: *mut u8, bytes: usize) {
+		STACK.with(|stack| {
+			let top = frame as usize - stack.base.get() as usize + bytes.next_multiple_of(8);
+			debug_assert!(top <= stack.sp.get(), "truncate target must lie within the claimed stack");
+			stack.sp.set(top);
+		});
+	}
+
+	/// The current stack pointer, a checkpoint to [`rewind`] to.
+	pub fn sp() -> usize {
+		STACK.with(|stack| stack.sp.get())
+	}
+
+	/// Resets the stack pointer to an earlier [`sp`] checkpoint, so a loop that
+	/// evaluates a subtree per iteration reuses the same slots each time.
+	///
+	/// # Safety
+	/// No `Rec` or `RecordValue` into the region above `mark` may be used after
+	/// this call. The caller must have copied out everything it still needs.
+	pub unsafe fn rewind(mark: usize) {
+		STACK.with(|stack| {
+			debug_assert!(mark <= stack.sp.get(), "rewind target above the stack pointer");
+			stack.sp.set(mark);
+		});
+	}
+}
+
+/// Reclaims the frames an inline node's inputs push. An inline node returns
+/// its output by value rather than on the stack, so it has no frame whose
+/// `truncate_above` would release its inputs; this guard captures the entry
+/// pointer and rewinds to it on drop instead. Inactive (a no-op) for spilled
+/// nodes, which release their inputs through their own frame.
+pub struct ReclaimGuard {
+	target: usize,
+}
+
+impl ReclaimGuard {
+	/// # Safety
+	/// When `active`, the node must return its output by value, so that no
+	/// record into the region above the entry pointer is live once its eval
+	/// returns and the guard rewinds.
+	pub unsafe fn new(active: bool) -> Self {
+		Self {
+			target: if active { stack::sp() } else { usize::MAX },
+		}
+	}
+}
+
+impl Drop for ReclaimGuard {
+	fn drop(&mut self) {
+		if self.target != usize::MAX {
+			// SAFETY: an inline node returns its output by value, so no record into
+			// the reclaimed region is live once its eval returns.
+			unsafe { stack::rewind(self.target) };
+		}
 	}
 }
 
@@ -664,7 +725,7 @@ pub unsafe fn write_field<T>(dst: *mut u8, offset: usize, value: T) {
 pub unsafe fn lift_poll_into<'e, T: Send + Sync + 'static>(poll: GPoll<T>, dst: *mut u8, frame_bytes: usize, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
 	let release = || {
 		if frame_bytes != 0 {
-			stack::pop(dst);
+			stack::truncate_above(dst, frame_bytes);
 		}
 	};
 	let build = |element: T| {
@@ -750,27 +811,6 @@ pub unsafe fn read_element<T: Clone>(rec: Rec) -> T {
 	unsafe { borrow_element::<T>(rec) }.clone()
 }
 
-/// Borrows a record's element for the rest of the evaluation. Parked elements
-/// borrow the arena, inline elements borrow their record value in place, and
-/// a byte-carried spilled element copies into the arena first: its stack
-/// region dies with the next push, and a borrow taken before the consumer's
-/// own frame push always has one coming. `None` reports arena exhaustion.
-///
-/// # Safety
-/// The record's element must be a `T` in the form [`element_parked`] picks,
-/// and for inline layouts the record value must outlive the borrow.
-pub unsafe fn borrow_or_park<'e, T: Send + Sync + 'static>(rec: Rec, layout: &Layout, arena: &'e crate::arena::Arena) -> Option<&'e T> {
-	if element_parked::<T>() {
-		return Some(unsafe { rec.element::<&T>() });
-	}
-	if layout.is_inline() {
-		return Some(unsafe { &*rec.ptr().cast::<T>() });
-	}
-	// A bitwise read duplicates soundly: byte-carried elements have no drop
-	// glue.
-	let value = unsafe { rec.ptr().cast::<T>().read() };
-	arena.alloc(value).map(|(parked, _)| parked)
-}
 
 /// # Safety
 /// `dst` must be fresh element storage of a record whose element is `T`.
@@ -867,6 +907,7 @@ impl SourcePlan {
 pub struct RecordSource<N> {
 	edge: N,
 	plan: Option<SourcePlan>,
+	union: Layout,
 }
 
 impl<N> RecordSource<N> {
@@ -874,6 +915,7 @@ impl<N> RecordSource<N> {
 		Self {
 			edge,
 			plan: SourcePlan::new(source, union),
+			union: union.clone(),
 		}
 	}
 }
@@ -985,7 +1027,7 @@ impl OwnedRecord {
 		};
 		let written = self.write_into(layout, dst, arena);
 		if layout.frame_bytes() != 0 {
-			stack::pop(dst);
+			stack::truncate_above(dst, layout.frame_bytes());
 			value = RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) });
 		}
 		written.map(|()| value)
@@ -1093,6 +1135,10 @@ where
 				value.map(|value| RecordValue::spilled(unsafe { plan.translate(plan.source.rec(&value), dst) }))
 			}
 		}
+	}
+
+	fn layout(&self) -> Option<&Layout> {
+		Some(&self.union)
 	}
 }
 
