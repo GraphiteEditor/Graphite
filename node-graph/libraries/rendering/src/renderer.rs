@@ -548,7 +548,8 @@ fn create_peniko_gradient_brush<S: LaneSource<Element = Gradient>>(gradient_list
 		},
 		extend: peniko_extend(settings.spread),
 		stops: peniko_stops,
-		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+		// Straight alpha, keeping parity with the SVG renderer's stop interpolation
+		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
 		..Default::default()
 	});
 
@@ -2552,7 +2553,8 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 			kind,
 			stops,
 			extend,
-			interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+			// Straight alpha, keeping parity with the SVG renderer's stop interpolation
+			interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
 			..Default::default()
 		});
 		let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_form).to_cols_array());
