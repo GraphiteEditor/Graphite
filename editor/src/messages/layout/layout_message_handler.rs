@@ -541,7 +541,7 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 				};
 				let track_gradient = graphene_std::vector::style::Gradient::from(&spectrum_input.track);
 				spectrum_input.track_samples = track_gradient
-					.interpolated_samples(settings)
+					.interpolated_samples_or_black(settings)
 					.into_iter()
 					.map(|(position, color, _)| SpectrumSample::new(position, color))
 					.collect();

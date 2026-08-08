@@ -1295,6 +1295,13 @@ impl Gradient {
 		mapped
 	}
 
+	/// The gradient's [`Gradient::interpolated_samples`], falling back to one black sample when it has no stops, since a
+	/// stopless SVG gradient paints nothing where [`Gradient::evaluate`] gives black.
+	pub fn interpolated_samples_or_black(&self, settings: GradientSettings) -> Vec<(f64, Color, Option<f64>)> {
+		let samples = self.interpolated_samples(settings);
+		if samples.is_empty() { vec![(0., Color::BLACK, None)] } else { samples }
+	}
+
 	/// Build a CSS `background-image` value embedding the gradient as an SVG data URI, sampling the midpoint curves, color
 	/// space, and spline. SVG interpolates its stops with straight alpha, matching the canvas renderers, where a CSS
 	/// `linear-gradient` interpolates premultiplied and would hide the pull a transparent stop's RGB exerts on the render.
@@ -1302,7 +1309,7 @@ impl Gradient {
 		use std::fmt::Write;
 
 		let mut stops = String::new();
-		for (position, color, _) in self.interpolated_samples(settings) {
+		for (position, color, _) in self.interpolated_samples_or_black(settings) {
 			let srgba = SRGBA8::from(color);
 			let _ = write!(stops, "<stop offset='{}' stop-color='#{}'", (position * 1e4).round() / 1e4, srgba.to_rgb_hex());
 			if srgba.alpha < 255 {
@@ -2207,6 +2214,14 @@ mod tests {
 		assert!(image.starts_with("url(\"data:image/svg+xml,"), "the value should be an SVG data URI: {image}");
 		assert!(image.contains("stop-opacity='0.5'"), "a transparent stop should emit its straight alpha: {image}");
 		assert!(!image.contains(['#', '<', '>']), "URI-hostile characters should be percent-encoded: {image}");
+	}
+
+	#[test]
+	fn svg_background_image_paints_a_stopless_gradient_black() {
+		let image = Gradient::from(Vec::new()).to_svg_background_image(GradientSettings::default());
+
+		// The hex color's `#` arrives percent-encoded
+		assert!(image.contains("stop-color='%23000000'"), "a gradient with no stops should paint black rather than nothing: {image}");
 	}
 
 	#[test]
