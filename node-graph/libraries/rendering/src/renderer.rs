@@ -27,10 +27,7 @@ use graphic_types::graphic::{PaintColumns, PaintOverlay, PaintReach, has_paint, 
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientSettings};
-use graphic_types::vector_types::markers::GradientInterpolation as GradientInterpolationAttr;
-use graphic_types::vector_types::markers::{
-	GradientCyclic as GradientCyclicAttr, GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
-};
+use graphic_types::vector_types::markers::GradientForm as GradientFormAttr;
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
@@ -506,23 +503,12 @@ fn peniko_extend(gradient_spread: GradientSpread) -> peniko::Extend {
 	}
 }
 
-/// The gradient's whole-ramp settings from its lane attributes.
-pub(crate) fn lane_gradient_settings<S: LaneSource<Element = Gradient>>(source: &S, index: usize) -> GradientSettings {
-	GradientSettings {
-		spread: source.attr::<GradientSpreadAttr>(index),
-		cyclic: source.attr::<GradientCyclicAttr>(index),
-		space: source.attr::<GradientSpaceAttr>(index),
-		hue_direction: source.attr::<GradientHueDirectionAttr>(index),
-		interpolation: source.attr::<GradientInterpolationAttr>(index),
-	}
-}
-
 fn create_peniko_gradient_brush<S: LaneSource<Element = Gradient>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_form: GradientForm = gradient_list.attr::<GradientFormAttr>(0);
 	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
-	let settings = lane_gradient_settings(gradient_list, 0);
+	let settings = GradientSettings::from_lane_attributes(gradient_list, 0);
 
 	let (samples, span) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
 
@@ -2430,7 +2416,7 @@ fn render_gradient_svg<S: LaneSource<Element = Gradient>>(source: &S, render: &m
 		let blend_mode: BlendMode = source.attr::<BlendModeAttr>(index);
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
-		let settings = lane_gradient_settings(source, index);
+		let settings = GradientSettings::from_lane_attributes(source, index);
 		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
 		let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 		render.leaf_tag(tag, |attributes| {
@@ -2516,7 +2502,7 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 
 	for index in 0..source.lane_count() {
 		let Some(gradient) = source.element(index) else { continue };
-		let settings = lane_gradient_settings(source, index);
+		let settings = GradientSettings::from_lane_attributes(source, index);
 		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
 		let transform: DAffine2 = source.attr::<Transform>(index);
 		let blend_mode_attr: BlendMode = source.attr::<BlendModeAttr>(index);
@@ -2553,7 +2539,6 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 			kind,
 			stops,
 			extend,
-			// Straight alpha, keeping parity with the SVG renderer's stop interpolation
 			interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
 			..Default::default()
 		});
@@ -3329,7 +3314,7 @@ mod group_walk_tests {
 #[cfg(test)]
 mod spread_tests {
 	use super::*;
-	use graphic_types::vector_types::gradient::{GradientHueDirection, GradientInterpolation, GradientSpace};
+	use graphic_types::vector_types::gradient::GradientSpace;
 	#[test]
 	fn spread_adjusted_samples_wraps_clear_in_transparent_guards() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);

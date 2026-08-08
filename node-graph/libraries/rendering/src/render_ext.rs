@@ -1,4 +1,4 @@
-use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, lane_gradient_settings, spread_adjusted_samples, transform_is_invertible};
+use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, spread_adjusted_samples, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::Color;
 use core_types::attribute::Transform;
@@ -8,13 +8,11 @@ use core_types::uuid::generate_uuid;
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientForm;
-use graphic_types::vector_types::markers::{
-	GradientCyclic as GradientCyclicAttr, GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
-};
+use graphic_types::vector_types::markers::GradientForm as GradientFormAttr;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
-use vector_types::gradient::GradientSpread;
+use vector_types::gradient::{GradientSettings, GradientSpread};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -112,7 +110,7 @@ pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = Gradient>
 		let Some(stops) = source.element(0) else { return 0 };
 		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(0);
 		let local_gradient_transform: DAffine2 = source.attr::<Transform>(0);
-		let settings = lane_gradient_settings(source, 0);
+		let settings = GradientSettings::from_lane_attributes(source, 0);
 
 		let (samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
 
