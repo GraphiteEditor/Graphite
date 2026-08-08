@@ -70,7 +70,7 @@
 			bottom: 0;
 			left: 0;
 			right: 0;
-			box-shadow: inset 0 0 0 1px rgba(var(--color-0-black-rgb), var(--outline-amount));
+			box-shadow: inset 0 0 0 1px rgb(from var(--color-0-black) r g b / var(--outline-amount));
 		}
 
 		&.transparency {

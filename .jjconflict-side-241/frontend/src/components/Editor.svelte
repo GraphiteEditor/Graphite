@@ -83,45 +83,24 @@
 	}
 
 	:root {
-		// Replace usage of `-rgb` variants with CSS color() function to calculate alpha when browsers support it
-		// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
-		// Specifically, support for the relative syntax is needed: `color(from var(--color-0-black) srgb r g b / 0.5)` to convert black to 50% alpha
 		--color-0-black: #000;
-		--color-0-black-rgb: 0, 0, 0;
 		--color-1-nearblack: #111;
-		--color-1-nearblack-rgb: 17, 17, 17;
 		--color-2-mildblack: #222;
-		--color-2-mildblack-rgb: 34, 34, 34;
 		--color-3-darkgray: #333;
-		--color-3-darkgray-rgb: 51, 51, 51;
 		--color-4-dimgray: #444;
-		--color-4-dimgray-rgb: 68, 68, 68;
 		--color-5-dullgray: #555;
-		--color-5-dullgray-rgb: 85, 85, 85;
 		--color-6-lowergray: #666;
-		--color-6-lowergray-rgb: 102, 102, 102;
 		--color-7-middlegray: #777;
-		--color-7-middlegray-rgb: 109, 109, 109;
 		--color-8-uppergray: #888;
-		--color-8-uppergray-rgb: 136, 136, 136;
 		--color-9-palegray: #999;
-		--color-9-palegray-rgb: 153, 153, 153;
 		--color-a-softgray: #aaa;
-		--color-a-softgray-rgb: 170, 170, 170;
 		--color-b-lightgray: #bbb;
-		--color-b-lightgray-rgb: 187, 187, 187;
 		--color-c-brightgray: #ccc;
-		--color-c-brightgray-rgb: 204, 204, 204;
 		--color-d-mildwhite: #ddd;
-		--color-d-mildwhite-rgb: 221, 221, 221;
 		--color-e-nearwhite: #eee;
-		--color-e-nearwhite-rgb: 238, 238, 238;
 		--color-f-white: #fff;
-		--color-f-white-rgb: 255, 255, 255;
 		--color-error-red: #d6536e;
-		--color-error-red-rgb: 214, 83, 110;
 		--color-warning-yellow: #d5aa43;
-		--color-warning-yellow-rgb: 213, 170, 67;
 
 		--color-data-general: #cfcfcf;
 		--color-data-general-dim: #8a8a8a;
@@ -277,7 +256,7 @@
 				& {
 					// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
 					// https://stackoverflow.com/a/71753552/775283
-					background-color: rgba(var(--color-4-dimgray-rgb), calc(254 / 255));
+					background-color: rgb(from var(--color-4-dimgray) r g b / calc(254 / 255));
 				}
 			}
 		}

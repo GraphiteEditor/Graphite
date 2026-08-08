@@ -781,7 +781,7 @@
 				}
 
 				&.selected-but-not-in-selected-network {
-					background: rgba(var(--color-4-dimgray-rgb), 0.5);
+					background: rgb(from var(--color-4-dimgray) r g b / 0.5);
 				}
 
 				&.insert-folder::after {
