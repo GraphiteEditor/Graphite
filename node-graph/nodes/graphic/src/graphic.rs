@@ -1,10 +1,11 @@
 use crate::record::Inherited;
 use core_types::arena::Arena;
-use core_types::attribute::{Attr, EditorLayerPath, Name0, Named, Opacity, OpacityFill, Transform as TransformAttr, WireValue};
+use core_types::attribute::{Attr, Attribute, EditorLayerPath, Midpoint, Name0, Named, Opacity, OpacityFill, Position, Transform as TransformAttr, WireValue};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::extent::{LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt};
 use core_types::list::List;
+use core_types::list::{ATTR_MIDPOINT, ATTR_POSITION};
 use core_types::node::Lane;
 use core_types::registry::types::Angle;
 use core_types::uuid::NodeId;
@@ -15,6 +16,7 @@ use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::{ATTR_FILL, ATTR_STROKE, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::gradient::{GradientForm as GradientFormValue, GradientHueDirection, GradientSpace, GradientSpread};
+use vector_types::markers::GradientCyclic;
 use vector_types::{Gradient, ReferencePoint};
 
 fn arena_exhausted() -> Interrupt {
@@ -559,10 +561,58 @@ pub fn flatten_gradient<'e>(
 	flatten_leaf_lane(content, ctx.index() as usize)
 }
 
-/// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
+/// A gradient over a level of colors: a `position` or `midpoint` column on the level places its stops, and a level carrying neither distributes them evenly.
+fn gradient_of_lanes(colors: core_types::node::List<'_, Color>) -> Gradient {
+	let layout = colors.batch().layout();
+	let has_position = layout.offset_of(Position::NAME, 0).is_some();
+	let has_midpoint = layout.offset_of(Midpoint::NAME, 0).is_some();
+
+	let mut list = List::new();
+	for index in 0..colors.len() {
+		let lane = colors.lane(index);
+		list.push(core_types::list::Item::new_from_element(colors.get(index)));
+		if has_position {
+			list.set_attribute(ATTR_POSITION, index, lane.attr::<Position>());
+		}
+		if has_midpoint {
+			list.set_attribute(ATTR_MIDPOINT, index, lane.attr::<Midpoint>());
+		}
+	}
+	Gradient::from(list)
+}
+
+/// Constructs a gradient from a `Color[]`, where each color becomes a gradient stop. A `position` attribute on the colors places their stops along the ramp and a `midpoint` attribute skews each transition, while colors carrying neither are distributed evenly across the 0 to 1 range.
 #[node_macro::node(category("Gradient"), name("Colors to Gradient"))]
 pub fn colors_to_gradient(_: impl Ctx, colors: IList<Color>) -> Gradient {
-	Gradient::from(colors.iter().collect::<Vec<_>>())
+	gradient_of_lanes(colors)
+}
+
+/// Unwraps each gradient into the `Color[]` of its stops, each carrying its `position` and `midpoint` along the ramp. Attributes belonging to the gradient as a whole (like spread and interpolation), rather than its individual color stops, are not preserved.
+#[node_macro::node(category("Gradient"), name("Gradient to Colors"), extent(gradient_to_colors_extent))]
+pub fn gradient_to_colors<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	gradients: IList<Gradient>,
+) -> Result<IList<(Color, Attr<'e, Position>, Attr<'e, Midpoint>)>, Interrupt> {
+	let mut remaining = ctx.index() as usize;
+	for row in 0..gradients.len() {
+		let gradient = gradients.element_ref(row);
+		if remaining >= gradient.len() {
+			remaining -= gradient.len();
+			continue;
+		}
+		let gradient_cyclic = gradients.lane(row).attr::<GradientCyclic>();
+		let Some(color) = gradient.color(remaining) else { break };
+		return Ok((color, Attr(gradient.position(remaining, gradient_cyclic)), Attr(gradient.midpoint(remaining))));
+	}
+	Err(GraphError::past_end().into())
+}
+
+/// The level holds every gradient's stops in order.
+fn gradient_to_colors_extent(gradients: ListIn<'_, Gradient>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => gradients.get().map(|gradients| Extent::Exactly((0..gradients.len()).map(|row| gradients.element_ref(row).len()).sum())),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
 }
 
 /// The gradient over a graphic level's color leaves, as [`colors_to_gradient`].

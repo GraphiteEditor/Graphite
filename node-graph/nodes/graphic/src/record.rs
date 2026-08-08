@@ -223,7 +223,10 @@ fn flatten_levels_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent>
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::graphic::{ColorsToGradientNode, FlattenColorNode, FlattenGraphicNode, WrapGraphicNode, flatten_color_layout_meta, flatten_graphic_layout_meta, wrap_graphic_layout_meta};
+	use crate::graphic::{
+		ColorsToGradientNode, FlattenColorNode, FlattenGraphicNode, GradientToColorsNode, WrapGraphicNode, flatten_color_layout_meta, flatten_graphic_layout_meta, gradient_to_colors_layout_meta,
+		wrap_graphic_layout_meta,
+	};
 	use core_types::arena::Arena;
 	use core_types::attribute::Attribute as AttributeMarker;
 	use core_types::context::{ContextImpl, ExtractArena};
@@ -734,6 +737,46 @@ mod tests {
 			let transform: DAffine2 = unsafe { item.lanes().get(lane).rec().read(offset) };
 			assert_eq!(transform.translation.x, x, "lane {lane}");
 		}
+	}
+
+	/// The stops of a gradient level unwrap to color lanes carrying their
+	/// effective placement, which a `Colors to Gradient` reads back.
+	#[test]
+	fn gradient_stops_round_trip_through_color_lanes() {
+		let frames = core_types::record::test_frames(1 << 16);
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
+		gradient.set_positions(&[0., 0.25, 1.]);
+		gradient.set_midpoints(&[0.3, 0.5, 0.5]);
+		let source = core_types::value::LeveledValueSource::new(vec![gradient.clone()]);
+		let layout = Node::<ContextImpl>::layout(&source).clone();
+		let colors = install(GradientToColorsNode::new(source), gradient_to_colors_layout_meta(), &[Some(&layout)]);
+		let colors_layout = Node::<ContextImpl>::layout(&colors).clone();
+		assert_eq!(colors.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(3)));
+
+		let head = ctx.index_head();
+		for (lane, (color, position, midpoint)) in [(Color::RED, 0., 0.3), (Color::GREEN, 0.25, 0.5), (Color::BLUE, 1., 0.5)].into_iter().enumerate() {
+			let GPoll::Final(record) = record::capture(&colors, &ctx.promoted(&head, lane as u64), &frames) else {
+				panic!("expected a final record");
+			};
+			assert_eq!(record.element::<Color>(), color, "lane {lane}");
+			assert_eq!(record.attr::<core_types::attribute::Position>(), position, "lane {lane}");
+			assert_eq!(record.attr::<core_types::attribute::Midpoint>(), midpoint, "lane {lane}");
+		}
+
+		let out = Layout::default().with_writes(0, record::element_write_hashed::<Gradient>(), &[]);
+		let restored = install_flip(ColorsToGradientNode::new(colors, &colors_layout), &out);
+		let GPoll::Final(record) = record::capture(&restored, &ctx, &frames) else {
+			panic!("expected a final record");
+		};
+		let restored = record.element::<Gradient>();
+		assert_eq!(restored.positions(false), gradient.positions(false));
+		assert_eq!(restored.midpoints(), gradient.midpoints());
+		assert_eq!(restored.iter().map(|stop| stop.color).collect::<Vec<_>>(), vec![Color::RED, Color::GREEN, Color::BLUE]);
 	}
 
 	#[test]
