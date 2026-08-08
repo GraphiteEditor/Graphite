@@ -3,14 +3,17 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import type { GradientInterpolation, SpectrumInputUpdate, SpectrumMarker } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { GradientInterpolation, SpectrumInputUpdate, SpectrumMarker, SpectrumSample } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
 	const dispatch = createEventDispatcher<{ update: SpectrumInputUpdate; dragging: boolean }>();
 
-	export let trackCSS: string;
+	// Document-unique `id` for this instance's SVG gradient, referenced by its `url(#...)`
+	const gradientId = `spectrum-input-gradient-${String(Math.random()).substring(2)}`;
+
+	export let trackSamples: SpectrumSample[];
 	export let trackStartCSS: string;
 	export let trackEndCSS: string;
 	export let trackCyclic = false;
@@ -396,10 +399,19 @@
 	styles={{
 		"--gradient-start": trackStartCSS,
 		"--gradient-end": trackEndCSS,
-		"--gradient-stops": trackCSS,
 	}}
 >
-	<LayoutRow class="gradient-strip" on:pointerdown={trackPointerDown}></LayoutRow>
+	<LayoutRow class="gradient-strip" on:pointerdown={trackPointerDown}>
+		<!-- An SVG gradient interpolates its stops with straight alpha, matching the renderers, where a CSS gradient would premultiply -->
+		<svg class="strip-gradient" xmlns="http://www.w3.org/2000/svg">
+			<linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+				{#each trackSamples as sample}
+					<stop offset={sample.position} stop-color={sample.color} stop-opacity={sample.alpha} />
+				{/each}
+			</linearGradient>
+			<rect width="100%" height="100%" fill={`url(#${gradientId})`} />
+		</svg>
+	</LayoutRow>
 	<LayoutRow class="midpoint-track">
 		{#each midpointPositions as midpoint, index}
 			<svg
@@ -449,26 +461,30 @@
 
 		.gradient-strip {
 			flex: 0 0 auto;
+			position: relative;
 			height: 16px;
 			background-image:
-				var(--gradient-stops),
 				// Solid start/end colors on either side so the gradient begins at the center of a marker
-				linear-gradient(var(--gradient-start), var(--gradient-start)),
-				linear-gradient(var(--gradient-end), var(--gradient-end)),
-				var(--color-transparent-checkered-background);
+				linear-gradient(var(--gradient-start), var(--gradient-start)), linear-gradient(var(--gradient-end), var(--gradient-end)), var(--color-transparent-checkered-background);
 			background-size:
-				calc(100% - 2 * var(--marker-half-width)) 100%,
 				// TODO: Find a solution that avoids visual artifacts where these end colors meet the gradient that appear when viewing with a non-integer zoom or display scaling factor
 				var(--marker-half-width) 100%,
 				var(--marker-half-width) 100%,
 				var(--color-transparent-checkered-background-size);
 			background-position:
-				var(--marker-half-width) 0,
 				left 0,
 				right 0,
 				var(--color-transparent-checkered-background-position);
-			background-repeat: no-repeat, no-repeat, no-repeat, var(--color-transparent-checkered-background-repeat);
+			background-repeat: no-repeat, no-repeat, var(--color-transparent-checkered-background-repeat);
 			border-radius: 2px;
+
+			.strip-gradient {
+				position: absolute;
+				top: 0;
+				left: var(--marker-half-width);
+				width: calc(100% - 2 * var(--marker-half-width));
+				height: 100%;
+			}
 		}
 
 		&.narrow .gradient-strip {
