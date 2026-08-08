@@ -1260,11 +1260,13 @@ fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: List<f64>)
 
 /// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"))]
-fn sample_gradient(
+fn evaluate_gradient(
 	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	_primary: (),
 	#[default(Color::BLACK, Color::WHITE)] gradient: IList<Gradient>,
-	position: Fraction,
+	#[range]
+	#[soft(0..1)]
+	position: f64,
 ) -> Result<IList<Color>, Interrupt> {
 	// An unwired gradient serves an empty level: no color
 	if gradient.is_empty() || ctx.index() != 0 {
