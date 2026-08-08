@@ -14,8 +14,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_LETTER_SPACING,
-	ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN,
+	ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -496,23 +496,12 @@ fn peniko_extend(gradient_spread: GradientSpread) -> peniko::Extend {
 	}
 }
 
-/// The whole-ramp settings attributes carried by the gradient at `index` of the list.
-pub(crate) fn gradient_settings_at(list: &List<Gradient>, index: usize) -> GradientSettings {
-	GradientSettings {
-		spread: list.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, index),
-		cyclic: list.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, index),
-		space: list.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, index),
-		hue_direction: list.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, index),
-		interpolation: list.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, index),
-	}
-}
-
 fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_form: GradientForm = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_FORM, 0);
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-	let settings = gradient_settings_at(gradient_list, 0);
+	let settings = GradientSettings::from_list_row_attributes(gradient_list, 0);
 
 	let (samples, span) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
 
@@ -2195,7 +2184,7 @@ impl Render for List<Gradient> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
-			let settings = gradient_settings_at(self, index);
+			let settings = GradientSettings::from_list_row_attributes(self, index);
 			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 			render.leaf_tag(tag, |attributes| {
 				if let Some((min, size)) = thumbnail_rect {
@@ -2288,7 +2277,7 @@ impl Render for List<Gradient> {
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let settings = gradient_settings_at(self, index);
+			let settings = GradientSettings::from_list_row_attributes(self, index);
 			let (samples, span) = spread_adjusted_samples(gradient, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
 
 			let stops = peniko_color_stops(&samples);

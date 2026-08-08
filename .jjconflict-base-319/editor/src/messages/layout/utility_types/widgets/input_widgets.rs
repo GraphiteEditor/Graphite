@@ -645,7 +645,8 @@ pub struct SpectrumInput {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpectrumMarker {
-	/// Position (0..1) of the marker along the spectrum track.
+	/// Position of the marker along the spectrum track, normally from 0 to 1. A shifted or stretched non-cyclic ramp can
+	/// place it outside that range, where the track draws only the markers falling within its visible span.
 	position: f64,
 	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true.
 	/// The last marker's value controls the wrapped interval when `track_cyclic` is set, and is otherwise ignored.

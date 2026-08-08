@@ -1,4 +1,4 @@
-use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, gradient_settings_at, spread_adjusted_samples, transform_is_invertible};
+use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, spread_adjusted_samples, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
@@ -10,7 +10,7 @@ use graphic_types::vector_types::gradient::GradientForm;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
-use vector_types::gradient::GradientSpread;
+use vector_types::gradient::{GradientSettings, GradientSpread};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -95,7 +95,7 @@ impl RenderExt for List<Gradient> {
 		let Some(stops) = self.element(0) else { return 0 };
 		let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, 0);
 		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let settings = gradient_settings_at(self, 0);
+		let settings = GradientSettings::from_list_row_attributes(self, 0);
 
 		let (samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
 
