@@ -496,3 +496,125 @@ pub fn extract_all_paths(
 		_ => {}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn color_interpolation_resolves_per_gradient_with_inheritance_and_style_priority() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" color-interpolation="linearRGB">
+			<defs>
+				<linearGradient id="inherited"/>
+				<linearGradient id="attribute" color-interpolation="sRGB"/>
+				<linearGradient id="styled" color-interpolation="sRGB" style="fill: red; color-interpolation: linearRGB"/>
+				<radialGradient id="auto" color-interpolation="auto"/>
+			</defs>
+		</svg>"##;
+
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(spaces.get("inherited"), Some(&GradientSpace::RgbLinear), "an undeclared gradient should inherit from its ancestors");
+		assert_eq!(spaces.get("attribute"), Some(&GradientSpace::RgbGamma), "an sRGB declaration should beat the inherited linearRGB");
+		assert_eq!(spaces.get("styled"), Some(&GradientSpace::RgbLinear), "the inline style should beat the presentation attribute");
+		assert_eq!(
+			spaces.get("auto"),
+			Some(&GradientSpace::RgbGamma),
+			"auto should mean gamma like browsers treat it, not defer to ancestors"
+		);
+	}
+
+	#[test]
+	fn graphite_stop_extraction_keeps_real_stops_and_linearizes_their_colors() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art">
+			<defs>
+				<linearGradient id="ramp">
+					<stop stop-color="#000000" graphite:midpoint="0.3" />
+					<stop offset="0.25" stop-color="#404040" />
+					<stop offset="0.5" stop-color="#808080" stop-opacity="0.5" graphite:midpoint="0.5" />
+					<stop offset="1" stop-color="#ffffff" graphite:midpoint="0.5" />
+				</linearGradient>
+			</defs>
+		</svg>"##;
+
+		let stops = extract_graphite_gradient_stops(svg);
+		let gradient = stops.get("ramp").expect("the tagged gradient should be recovered");
+
+		// The untagged stop is baked approximation residue, not authored data
+		assert_eq!(gradient.len(), 3, "only stops tagged with a midpoint should survive");
+		assert_eq!(gradient.positions(false), vec![0., 0.5, 1.]);
+		assert_eq!(gradient.midpoints(), vec![0.3, 0.5, 0.5]);
+
+		// Hex stop bytes are gamma-encoded, so the recovered color must lift them to linear light
+		assert_eq!(gradient.color(1), Some(Color::from_gamma_srgb_channels(128. / 255., 128. / 255., 128. / 255., 0.5)));
+	}
+
+	#[test]
+	fn color_interpolation_reads_style_blocks_with_selector_specificity() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+			<style>
+				linearGradient { color-interpolation: linearRGB }
+				.classy { color-interpolation: sRGB }
+				#exact { color-interpolation: linearRGB }
+			</style>
+			<defs>
+				<linearGradient id="from-type-rule"/>
+				<linearGradient id="from-class-rule" class="classy"/>
+				<linearGradient id="exact" class="classy"/>
+				<linearGradient id="inline-beats-rules" class="classy" style="color-interpolation: linearRGB"/>
+				<linearGradient id="rule-beats-attribute" class="classy" color-interpolation="linearRGB"/>
+			</defs>
+		</svg>"##;
+
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(spaces.get("from-type-rule"), Some(&GradientSpace::RgbLinear), "a type rule in a style block should reach the gradient");
+		assert_eq!(
+			spaces.get("from-class-rule"),
+			Some(&GradientSpace::RgbGamma),
+			"the class rule should outrank the type rule by specificity"
+		);
+		assert_eq!(spaces.get("exact"), Some(&GradientSpace::RgbLinear), "the ID rule should outrank the class rule");
+		assert_eq!(spaces.get("inline-beats-rules"), Some(&GradientSpace::RgbLinear), "the inline style should beat every style block rule");
+		assert_eq!(
+			spaces.get("rule-beats-attribute"),
+			Some(&GradientSpace::RgbGamma),
+			"a style block rule should beat the presentation attribute"
+		);
+	}
+
+	#[test]
+	fn repeated_and_important_declarations_resolve_by_cascade_order() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+			<style>.forced { color-interpolation: linearRGB !important }</style>
+			<linearGradient id="last-declaration-wins" style="color-interpolation: sRGB; color-interpolation: linearRGB"/>
+			<linearGradient id="important-beats-later" style="color-interpolation: linearRGB !important; color-interpolation: sRGB"/>
+			<linearGradient id="important-rule-beats-inline" class="forced" style="color-interpolation: sRGB"/>
+		</svg>"##;
+
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(
+			spaces.get("last-declaration-wins"),
+			Some(&GradientSpace::RgbLinear),
+			"the last of repeated inline declarations should win"
+		);
+		assert_eq!(
+			spaces.get("important-beats-later"),
+			Some(&GradientSpace::RgbLinear),
+			"an `!important` declaration should beat a later normal one"
+		);
+		assert_eq!(
+			spaces.get("important-rule-beats-inline"),
+			Some(&GradientSpace::RgbLinear),
+			"an `!important` style block rule should beat the inline style"
+		);
+	}
+
+	#[test]
+	fn color_interpolation_yields_nothing_when_never_declared() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><linearGradient id="plain"/></svg>"##;
+
+		assert!(
+			extract_gradient_spaces(svg).is_empty(),
+			"gradients without any declaration should fall back to the caller's gamma default"
+		);
+	}
+}
