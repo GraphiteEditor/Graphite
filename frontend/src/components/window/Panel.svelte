@@ -650,7 +650,7 @@
 
 		.docking-ghost {
 			position: absolute;
-			background: rgba(var(--color-f-white-rgb), 0.2);
+			background: rgb(from var(--color-f-white) r g b / 0.2);
 			border-radius: 6px;
 			pointer-events: none;
 			z-index: 1;
