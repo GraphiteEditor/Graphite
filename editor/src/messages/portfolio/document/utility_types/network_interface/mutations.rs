@@ -887,7 +887,7 @@ impl NodeNetworkInterface {
 										// If the layer feeds into the bottom input of layer, and has no other outputs, set its position to stack at its previous y position
 										let multiple_outward_wires = self
 											.outward_wires(network_path)
-											.and_then(|all_outward_wires| all_outward_wires.get(&OutputConnector::node(*upstream_node_id, 0)))
+											.and_then(|all_outward_wires| all_outward_wires.get(&OutputConnector::primary_output(*upstream_node_id)))
 											.is_some_and(|outward_wires| outward_wires.len() > 1);
 										if *input_index == 0 && !multiple_outward_wires {
 											self.set_stack_position_calculated_offset(upstream_node_id, downstream_node_id, network_path);
@@ -932,7 +932,7 @@ impl NodeNetworkInterface {
 					let old_upstream_node_is_layer = self.is_layer(&old_upstream_node_id, network_path);
 					let Some(outward_wires) = self
 						.outward_wires(network_path)
-						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(old_upstream_node_id, 0)))
+						.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(old_upstream_node_id)))
 					else {
 						log::error!("Could not get outward wires in set_input");
 						return;
@@ -1132,11 +1132,14 @@ impl NodeNetworkInterface {
 
 			// Perform an upstream traversal to try delete children for secondary inputs
 			let mut upstream_nodes = (1..self.number_of_inputs(node_id, network_path))
-				.filter_map(|input_index| self.upstream_output_connector(&InputConnector::node(*node_id, input_index), network_path).and_then(|oc| oc.node_id()))
+				.filter_map(|input_index| {
+					self.upstream_output_connector(&InputConnector::node_at_index(*node_id, input_index), network_path)
+						.and_then(|oc| oc.node_id())
+				})
 				.collect::<Vec<_>>();
 			while let Some(upstream_node) = upstream_nodes.pop() {
 				// Add the upstream nodes to the traversal
-				for input_connector in (0..self.number_of_inputs(&upstream_node, network_path)).map(|input_index| InputConnector::node(upstream_node, input_index)) {
+				for input_connector in (0..self.number_of_inputs(&upstream_node, network_path)).map(|input_index| InputConnector::node_at_index(upstream_node, input_index)) {
 					if let Some(upstream_node) = self.upstream_output_connector(&input_connector, network_path).and_then(|oc| oc.node_id()) {
 						upstream_nodes.push(upstream_node);
 					}
@@ -1174,7 +1177,7 @@ impl NodeNetworkInterface {
 
 			// Disconnect every input by position, since hidden inputs make the displayed count undershoot the index of a later exposed wire
 			for input_index in 0..self.number_of_inputs(delete_node_id, network_path) {
-				self.disconnect_input(&InputConnector::node(*delete_node_id, input_index), network_path);
+				self.disconnect_input(&InputConnector::node_at_index(*delete_node_id, input_index), network_path);
 			}
 
 			let Some(network) = self.network_mut(network_path) else {
@@ -1257,7 +1260,7 @@ impl NodeNetworkInterface {
 				&& let Some(reconnect_input) = &reconnect_to_input
 			{
 				reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
-				self.disconnect_input(&InputConnector::node(*node_id, 0), network_path);
+				self.disconnect_input(&InputConnector::primary_input(*node_id), network_path);
 				self.set_input(downstream_input, reconnect_input.clone(), network_path);
 			}
 		}
@@ -1463,7 +1466,7 @@ impl NodeNetworkInterface {
 					if self.is_layer(&upstream_sibling_id, network_path)
 						&& self
 							.outward_wires(network_path)
-							.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(upstream_sibling_id, 0)))
+							.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(upstream_sibling_id)))
 							.is_some_and(|outward_wires| outward_wires.len() == 1)
 					{
 						self.set_stack_position_calculated_offset(&upstream_sibling_id, node_id, network_path);
@@ -1484,7 +1487,7 @@ impl NodeNetworkInterface {
 			.outward_wires(network_path)
 			.and_then(|outward_wires| {
 				outward_wires
-					.get(&OutputConnector::node(*node_id, 0))
+					.get(&OutputConnector::primary_output(*node_id))
 					.and_then(|outward_wires| (outward_wires.len() == 1).then(|| outward_wires[0]))
 					.and_then(|downstream_connector| if downstream_connector.input_index() == 0 { downstream_connector.node_id() } else { None })
 			})
@@ -1509,7 +1512,7 @@ impl NodeNetworkInterface {
 
 		// Try build the chain
 		if is_layer {
-			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
+			self.try_set_upstream_to_chain(&InputConnector::layer_secondary_input(*node_id), network_path);
 		} else {
 			self.try_set_node_to_chain(node_id, network_path);
 		}
@@ -1569,7 +1572,7 @@ impl NodeNetworkInterface {
 				}
 				// The export is not clicked
 				else {
-					new_export = Some(OutputConnector::node(toggle_id, 0));
+					new_export = Some(OutputConnector::primary_output(toggle_id));
 
 					// There is currently a dashed line being drawn
 					if let Previewing::Yes { root_node_to_restore } = self.previewing(network_path) {
@@ -1577,7 +1580,7 @@ impl NodeNetworkInterface {
 						if let Some(root_node_to_restore) = root_node_to_restore {
 							// If the node with the solid line is clicked, then start previewing that node without restore
 							if root_node_to_restore.node_id == toggle_id {
-								new_export = Some(OutputConnector::node(toggle_id, 0));
+								new_export = Some(OutputConnector::primary_output(toggle_id));
 								new_previewing_state = Previewing::Yes { root_node_to_restore: None };
 							} else {
 								// Root node to restore does not change
@@ -1593,7 +1596,7 @@ impl NodeNetworkInterface {
 					}
 					// Not previewing, there is no dashed line being drawn
 					else {
-						new_export = Some(OutputConnector::node(toggle_id, 0));
+						new_export = Some(OutputConnector::primary_output(toggle_id));
 						new_previewing_state = Previewing::Yes {
 							root_node_to_restore: Some(RootNode {
 								node_id: previous_export_id,
@@ -1605,7 +1608,7 @@ impl NodeNetworkInterface {
 			}
 			// The primary export is disconnected, so preview the node with nothing to restore, which disconnects the export again when the preview ends
 			else {
-				new_export = Some(OutputConnector::node(toggle_id, 0));
+				new_export = Some(OutputConnector::primary_output(toggle_id));
 				new_previewing_state = Previewing::Yes { root_node_to_restore: None };
 			}
 		}

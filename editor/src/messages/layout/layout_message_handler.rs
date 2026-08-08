@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::prelude::*;
 use graphene_std::color::SRGBA8;
-use graphene_std::vector::style::FillChoiceUI;
+use graphene_std::vector::style::FillChoice;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -117,23 +117,26 @@ impl LayoutMessageHandler {
 				}
 				LayoutGroup::Table(WidgetTable { rows, .. }) => {
 					for (row_index, row) in rows.iter().enumerate() {
-						for (value_index, value) in row.iter().enumerate() {
-							// Return if this is the correct ID
-							if value.widget_id == widget_id {
-								widget_path.push(row_index);
-								widget_path.push(value_index);
-								return Some((value, widget_path));
-							}
+						for (cell_index, cell) in row.iter().enumerate() {
+							for (value_index, value) in cell.iter().enumerate() {
+								// Return if this is the correct ID
+								if value.widget_id == widget_id {
+									widget_path.push(row_index);
+									widget_path.push(cell_index);
+									widget_path.push(value_index);
+									return Some((value, widget_path));
+								}
 
-							if let Widget::PopoverButton(popover) = &*value.widget {
-								stack.extend(
-									popover
-										.popover_layout
-										.0
-										.iter()
-										.enumerate()
-										.map(|(child, val)| ([widget_path.as_slice(), &[row_index, value_index, child]].concat(), val)),
-								);
+								if let Widget::PopoverButton(popover) = &*value.widget {
+									stack.extend(
+										popover
+											.popover_layout
+											.0
+											.iter()
+											.enumerate()
+											.map(|(child, val)| ([widget_path.as_slice(), &[row_index, cell_index, value_index, child]].concat(), val)),
+									);
+								}
 							}
 						}
 					}
@@ -194,11 +197,11 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let Ok(fill_choice_ui) = serde_json::from_value::<FillChoiceUI>(value) else {
-							warn!("ColorInput update was not able to be parsed as FillChoiceUI: {color_button:?}");
+						let Ok(fill_choice) = serde_json::from_value::<FillChoice<SRGBA8>>(value) else {
+							warn!("ColorInput update was not able to be parsed as FillChoice<SRGBA8>: {color_button:?}");
 							return;
 						};
-						color_button.value = fill_choice_ui;
+						color_button.value = fill_choice;
 						(color_button.on_update.callback)(color_button)
 					}
 				};
@@ -528,9 +531,17 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 				color_input.chosen_gradient = color_input.value.to_css_background_image();
 			}
 			Widget::SpectrumInput(spectrum_input) => {
-				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient();
-				spectrum_input.track_start_css = spectrum_input.track.color.first().map(|color| color.to_css_hex()).unwrap_or_else(|| "black".to_string());
-				spectrum_input.track_end_css = spectrum_input.track.color.last().map(|color| color.to_css_hex()).unwrap_or_else(|| "black".to_string());
+				spectrum_input.track_css = spectrum_input
+					.track
+					.to_css_linear_gradient(spectrum_input.track_cyclic, spectrum_input.track_space, spectrum_input.track_hue_direction);
+				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrapped interval's boundary-crossing color rather than the outermost stops'
+				let track_gradient = graphene_std::vector::style::Gradient::from(&spectrum_input.track);
+				let cap = |t: f64| {
+					let color = track_gradient.evaluate(t, Default::default(), spectrum_input.track_cyclic, spectrum_input.track_space, spectrum_input.track_hue_direction);
+					SRGBA8::from(color).to_css_hex()
+				};
+				spectrum_input.track_start_css = cap(0.);
+				spectrum_input.track_end_css = cap(1.);
 			}
 			Widget::ColorComparisonInput(comparison) => {
 				let contrasting = |color: Option<SRGBA8>| color.map_or(SRGBA8::BLACK, |color| color.contrasting_text_color()).to_css_hex();

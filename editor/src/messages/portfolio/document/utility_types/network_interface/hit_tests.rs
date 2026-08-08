@@ -220,7 +220,7 @@ impl NodeNetworkInterface {
 					transient_node_metadata
 						.port_click_targets
 						.clicked_input_port_from_point(point)
-						.map(|port| InputConnector::node(*node_id, port))
+						.map(|port| InputConnector::node_at_index(*node_id, port))
 				})
 				.flatten()
 			})

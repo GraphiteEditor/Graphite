@@ -3,13 +3,13 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
+use core_types::list::{ATTR_FILL, ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, CloneVarArgs,
-	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
+	ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -19,10 +19,11 @@ use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
-use rendering::usvg_utils::{extract_all_paths, extract_usvg_node};
+use rendering::usvg_utils::{SvgGradientInfo, extract_all_paths, extract_usvg_node};
 use repeat_nodes::raster_types::Bitmap;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
+use vector_types::GradientForm;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -33,11 +34,10 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{DashPattern, Gradient, GradientHueDirection, GradientSpace, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::vector::{PointDomain, RegionDomain};
 use vector_types::vectorize_config;
-use vector_types::{GradientSpreadMethod, GradientType};
 use vtracer::{ColorImage, Config, convert};
 
 /// Implemented for `List` types that contain vector items reachable via mutable access.
@@ -122,6 +122,7 @@ async fn assign_colors<T>(
 	/// Whether to style the stroke.
 	stroke: Item<bool>,
 	/// The range of colors to select from.
+	#[default(Color::BLACK, Color::WHITE)]
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
 	gradient: Item<Gradient>,
 	/// Whether to reverse the gradient.
@@ -144,8 +145,11 @@ where
 
 	let mut content = content;
 	let length = content.vector_count();
+	let gradient_space = gradient.attribute_cloned_or_default::<GradientSpace>(ATTR_GRADIENT_SPACE);
+	let gradient_cyclic = gradient.attribute_cloned_or_default::<bool>(ATTR_GRADIENT_CYCLIC);
+	let gradient_hue_direction = gradient.attribute_cloned_or_default::<GradientHueDirection>(ATTR_GRADIENT_HUE_DIRECTION);
 	let element = gradient.into_element();
-	let gradient = if reverse { element.reversed() } else { element };
+	let gradient = if reverse { element.reversed(gradient_cyclic) } else { element };
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
@@ -161,7 +165,8 @@ where
 				},
 			};
 
-			let color = gradient.evaluate(factor);
+			// The factor spans 0..=1 inclusively, so the spread deliberately stays Pad (Repeat would wrap the final element onto the first stop's color)
+			let color = gradient.evaluate(factor, Default::default(), gradient_cyclic, gradient_space, gradient_hue_direction);
 			let paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {
@@ -193,16 +198,15 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	)]
 	fill: F,
 	_backup_color: Item<Color>,
-	_backup_gradient: Item<Gradient>,
-	_gradient_type: Item<GradientType>,
-	_spread_method: Item<GradientSpreadMethod>,
+	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: Item<Gradient>,
+	_gradient_form: Item<GradientForm>,
 	_has_transform: Item<bool>,
 	_transform: Item<DAffine2>,
 ) -> Item<V>
 where
 	Item<V>: VectorItemMut + 'n + Send,
 {
-	let (_gradient_type, _spread_method) = (_gradient_type.into_element(), _spread_method.into_element());
+	let _gradient_form = _gradient_form.into_element();
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
 
 	let mut content = content;
@@ -212,15 +216,9 @@ where
 	for graphic in fill.iter_element_values_mut() {
 		let Graphic::Gradient(gradient) = graphic else { continue };
 
-		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
-				*value = _gradient_type;
-			}
-		}
-
-		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-				*value = _spread_method;
+		if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
+			for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
+				*value = _gradient_form;
 			}
 		}
 
@@ -1056,8 +1054,11 @@ pub fn vectorize(
 		};
 		// log::debug!("vectorized_image: {}", image_svg);
 
-		let graphite_gradient_stops = HashMap::new();
-		let parsed_root = extract_usvg_node(&usvg::Node::Group(Box::new(svg_tree.root().clone())), &graphite_gradient_stops);
+		let gradient_info = SvgGradientInfo {
+			graphite_stops: HashMap::new(),
+			spaces: HashMap::new(),
+		};
+		let parsed_root = extract_usvg_node(&usvg::Node::Group(Box::new(svg_tree.root().clone())), &gradient_info);
 		// let mut i = 1;
 		extract_all_paths(parsed_root, &mut vectors, vectorize_mode);
 
@@ -2549,14 +2550,12 @@ async fn morph<I: IntoGraphicList>(
 				.zip(color_list_b.element(0))
 				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
 			(Some(Graphic::Color(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
-				let mut solid_to_gradient = stops_b.clone();
-				solid_to_gradient.color.iter_mut().for_each(|color| *color = *color_a);
+				let solid_to_gradient = stops_b.map_colors(|_| *color_a);
 				let stops = solid_to_gradient.lerp(stops_b, time);
 				gradient_with_stops(gradient_list_b.clone(), stops)
 			}),
 			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Color(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
-				let mut gradient_to_solid = stops_a.clone();
-				gradient_to_solid.color.iter_mut().for_each(|color| *color = *color_b);
+				let gradient_to_solid = stops_a.map_colors(|_| *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
 				gradient_with_stops(gradient_list_a.clone(), stops)
 			}),

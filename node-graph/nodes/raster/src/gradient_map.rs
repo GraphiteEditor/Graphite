@@ -18,17 +18,21 @@ async fn gradient_map<T: Adjust<Color> + Send>(
 		Gradient,
 	)]
 	image: Item<T>,
-	gradient: Item<Gradient>,
+	#[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>,
 	reverse: Item<bool>,
 ) -> Item<T> {
 	let mut image = image;
+	let gradient_spread = gradient.attribute_cloned_or_default::<vector_types::GradientSpread>(core_types::ATTR_GRADIENT_SPREAD);
+	let gradient_space = gradient.attribute_cloned_or_default::<vector_types::GradientSpace>(core_types::ATTR_GRADIENT_SPACE);
+	let gradient_cyclic = gradient.attribute_cloned_or_default::<bool>(core_types::ATTR_GRADIENT_CYCLIC);
+	let gradient_hue_direction = gradient.attribute_cloned_or_default::<vector_types::GradientHueDirection>(core_types::ATTR_GRADIENT_HUE_DIRECTION);
 	let gradient = gradient.into_element();
 	let reverse = reverse.into_element();
 
 	image.element_mut().adjust(|color| {
 		let intensity = color.luminance_rec_709();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evaluate(intensity as f64)
+		gradient.evaluate(intensity as f64, gradient_spread, gradient_cyclic, gradient_space, gradient_hue_direction)
 	});
 
 	image

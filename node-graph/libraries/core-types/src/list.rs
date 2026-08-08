@@ -55,10 +55,25 @@ pub const ATTR_DIMENSIONS: &str = "dimensions";
 pub const ATTR_BACKGROUND: &str = "background";
 /// `bool` for whether an artboard clips content to its bounds.
 pub const ATTR_CLIP: &str = "clip";
-/// Gradient's `GradientSpreadMethod` (`Pad`, `Reflect`, or `Repeat`).
-pub const ATTR_SPREAD_METHOD: &str = "spread_method";
-/// Gradient's `GradientType` (`Linear` or `Radial`).
-pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
+// TODO: Consider adding "gradient_spread_left" and "gradient_spread_right" override attributes to allow setting different gradient spreads on each side of a gradient
+/// Gradient's `GradientSpread` (`Pad`, `Reflect`, `Repeat`, or `Clear`).
+pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
+/// Gradient's `GradientForm` (`Linear` or `Radial`).
+pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
+/// Gradient's `GradientSpace`, the color space its stops interpolate in.
+pub const ATTR_GRADIENT_SPACE: &str = "gradient_space";
+/// Gradient's `GradientHueDirection` (`Shorter`, `Longer`, `Increasing`, or `Decreasing`), which way around the
+/// hue wheel the stops interpolate when the gradient space is polar.
+pub const ATTR_GRADIENT_HUE_DIRECTION: &str = "gradient_hue_direction";
+/// Gradient's `bool` (implicit default `false`) for treating the stop list as a cycle, where a wrapped interval
+/// interpolates from the last stop through the 1|0 boundary back to the first.
+pub const ATTR_GRADIENT_CYCLIC: &str = "gradient_cyclic";
+/// Gradient stop's `f64` position from 0 to 1 along the gradient, on the `List<Color>` inside a `Gradient`.
+/// When the attribute is absent, stops distribute evenly across the 0 to 1 range.
+pub const ATTR_POSITION: &str = "position";
+/// Gradient stop's `f64` midpoint (implicit default `0.5`, linear), a factor from 0 to 1 across the distance to the next
+/// stop, on the `List<Color>` inside a `Gradient`. The final stop's midpoint is ignored if "gradient_cyclic" is false.
+pub const ATTR_MIDPOINT: &str = "midpoint";
 /// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
 pub const ATTR_FILL: &str = "fill";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
@@ -73,7 +88,8 @@ pub const ATTR_LINE_HEIGHT: &str = "line_height";
 pub const ATTR_LETTER_SPACING: &str = "letter_spacing";
 /// Text item's maximum line-wrap width in document-space units (`Option<f64>`, implicit default `None`).
 pub const ATTR_MAX_WIDTH: &str = "max_width";
-/// Text item's maximum block height in document-space units, past which lines are not drawn (`Option<f64>`, implicit default `None`).
+/// Text item's maximum block height in document-space units, past which lines are not drawn
+/// (`Option<f64>`, implicit default `None`).
 pub const ATTR_MAX_HEIGHT: &str = "max_height";
 /// Text item's faux-italic letter tilt angle in degrees (`f64`, implicit default `0.`).
 pub const ATTR_LETTER_TILT: &str = "letter_tilt";
@@ -136,6 +152,7 @@ unsafe impl<T: StaticTypeSized> StaticType for Bundle<T> {
 fn implicit_default_value(key: &str) -> Option<Box<dyn AnyAttributeValue>> {
 	match key {
 		ATTR_OPACITY | ATTR_OPACITY_FILL => Some(Box::new(1_f64)),
+		ATTR_MIDPOINT => Some(Box::new(0.5_f64)),
 		_ => None,
 	}
 }
@@ -1220,7 +1237,7 @@ impl<T: CacheHash> CacheHash for List<T> {
 		self.element.cache_hash(state);
 
 		// Hash every attribute attribute (key + values) rather than just the well-known ones, so changes to user-defined keys
-		// (e.g., gradient_type, spread_method) invalidate downstream graph caches as expected
+		// (e.g., gradient_form, gradient_spread) invalidate downstream graph caches as expected
 		for (key, attribute) in &self.attributes.attributes {
 			std::hash::Hash::hash(key.as_str(), state);
 			attribute.cache_hash_dyn(state);

@@ -1373,31 +1373,84 @@ fn hex_to_color(_: impl Ctx, hex_code: Item<String>) -> Item<Color> {
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: Item<Gradient>) -> Item<Gradient> {
+fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>) -> Item<Gradient> {
 	gradient
 }
 
-/// Sets the type (linear or radial) of each gradient in the input list.
-#[node_macro::node(category("Color"))]
-fn gradient_type(_: impl Ctx, gradient: Item<Gradient>, gradient_type: Item<vector_types::GradientType>) -> Item<Gradient> {
+/// Sets the form (linear or radial) of each gradient in the input list.
+#[node_macro::node(category("Gradient"))]
+fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vector_types::GradientForm>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_TYPE, *gradient_type.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_FORM, *gradient_form.element());
 	gradient
 }
 
-/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
-#[node_macro::node(category("Color"))]
-fn spread_method(_: impl Ctx, gradient: Item<Gradient>, spread_method: Item<vector_types::GradientSpreadMethod>) -> Item<Gradient> {
+/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, Repeat, or Clear.
+#[node_macro::node(category("Gradient"))]
+fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<vector_types::GradientSpread>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_SPREAD_METHOD, *spread_method.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_SPREAD, *gradient_spread.element());
 	gradient
 }
 
-/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+/// Sets the color space in which each gradient in the input list interpolates between its stops.
+#[node_macro::node(category("Gradient"))]
+fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientSpace>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_SPACE, *space.element());
+	gradient
+}
+
+/// Sets whether each gradient in the input list treats its stops as a cycle, interpolating from the last stop back around to the first.
+#[node_macro::node(category("Gradient"))]
+fn gradient_cyclic(_: impl Ctx, gradient: Item<Gradient>, cyclic: Item<bool>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_CYCLIC, *cyclic.element());
+	gradient
+}
+
+/// Sets which way around the hue wheel each gradient in the input list interpolates, for polar color spaces.
+#[node_macro::node(category("Gradient"))]
+fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: Item<vector_types::GradientHueDirection>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_HUE_DIRECTION, *hue_direction.element());
+	gradient
+}
+
+/// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
+///
+/// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
+#[node_macro::node(category("Gradient"))]
+fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	let positions: Vec<f64> = positions.iter_element_values().copied().collect();
+	gradient.element_mut().set_positions(&positions);
+	gradient
+}
+
+/// Sets the interpolation midpoint for each interval between gradient stops, a factor from 0 to 1 where the 0.5 default means linear interpolation and another value skews the transition speed toward one stop or the other.
+///
+/// The final stop's midpoint controls the wrap back around to the first stop when the gradient is cyclic, and is otherwise ignored.
+///
+/// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
+#[node_macro::node(category("Gradient"))]
+fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	let midpoints: Vec<f64> = midpoints.iter_element_values().copied().collect();
+	gradient.element_mut().set_midpoints(&midpoints);
+	gradient
+}
+
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
-	let position = position.element().clamp(0., 1.);
-	let color = gradient.element().evaluate(position);
+fn sample_gradient(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
+	let gradient_spread = gradient.attribute_cloned_or_default::<vector_types::GradientSpread>(core_types::ATTR_GRADIENT_SPREAD);
+	let gradient_space = gradient.attribute_cloned_or_default::<vector_types::GradientSpace>(core_types::ATTR_GRADIENT_SPACE);
+	let gradient_cyclic = gradient.attribute_cloned_or_default::<bool>(core_types::ATTR_GRADIENT_CYCLIC);
+	let gradient_hue_direction = gradient.attribute_cloned_or_default::<vector_types::GradientHueDirection>(core_types::ATTR_GRADIENT_HUE_DIRECTION);
+	let color = gradient
+		.element()
+		.evaluate(*position.element(), gradient_spread, gradient_cyclic, gradient_space, gradient_hue_direction);
 	Item::new_from_element(color)
 }
 

@@ -1,5 +1,6 @@
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::{TransformIn, import_usvg_node};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::BLEND_PATH_INPUT_INDEX;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
@@ -9,7 +10,7 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
 use graphene_std::Artboard;
-use graphene_std::renderer::usvg_utils::extract_graphite_gradient_stops;
+use graphene_std::renderer::usvg_utils::{SvgGradientInfo, extract_gradient_spaces, extract_graphite_gradient_stops};
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -34,15 +35,23 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.fill_color_set(color);
 				}
 			}
+			GraphOperationMessage::ColorValueSet { layer, color } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.color_value_set(color);
+				}
+			}
 			GraphOperationMessage::FillGradientSet {
 				layer,
 				gradient,
-				gradient_type,
-				spread_method,
+				gradient_form,
+				gradient_spread,
+				gradient_space,
+				gradient_cyclic,
+				gradient_hue_direction,
 				transform,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_space, gradient_cyclic, gradient_hue_direction, transform);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -55,19 +64,44 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.gradient_stops_set(stops);
 				}
 			}
+			GraphOperationMessage::GradientPositionsSet { layer, positions } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_positions_set(positions);
+				}
+			}
+			GraphOperationMessage::GradientMidpointsSet { layer, midpoints } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_midpoints_set(midpoints);
+				}
+			}
 			GraphOperationMessage::GradientTransformSet { layer, transform } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.gradient_transform_set(transform);
 				}
 			}
-			GraphOperationMessage::GradientTypeSet { layer, gradient_type } => {
+			GraphOperationMessage::GradientFormSet { layer, gradient_form } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_type_set(gradient_type);
+					modify_inputs.gradient_form_set(gradient_form);
 				}
 			}
-			GraphOperationMessage::GradientSpreadMethodSet { layer, spread_method } => {
+			GraphOperationMessage::GradientSpreadSet { layer, gradient_spread } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_spread_method_set(spread_method);
+					modify_inputs.gradient_spread_set(gradient_spread);
+				}
+			}
+			GraphOperationMessage::GradientSpaceSet { layer, gradient_space } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_space_set(gradient_space);
+				}
+			}
+			GraphOperationMessage::GradientCyclicSet { layer, gradient_cyclic } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_cyclic_set(gradient_cyclic);
+				}
+			}
+			GraphOperationMessage::GradientHueDirectionSet { layer, gradient_hue_direction } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_hue_direction_set(gradient_hue_direction);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
@@ -127,7 +161,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				}
 			}
 			GraphOperationMessage::SetUpstreamToChain { layer } => {
-				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[]) else {
+				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::layer_secondary_input(layer.to_node()), &[]) else {
 					return;
 				};
 
@@ -176,15 +210,15 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 						// Set the bottom input of the artboard back to artboard
 						let bottom_input = NodeInput::type_default(list!(Artboard), true);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
+						network_interface.set_input(&InputConnector::primary_input(artboard_layer.to_node()), bottom_input, &[]);
 					} else {
 						// We have some non layers (e.g. just a rectangle node). We disconnect the bottom input and connect it to the left input.
-						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 1), primary_input, &[]);
+						network_interface.disconnect_input(&InputConnector::primary_input(artboard_layer.to_node()), &[]);
+						network_interface.set_input(&InputConnector::layer_secondary_input(artboard_layer.to_node()), primary_input, &[]);
 
 						// Set the bottom input of the artboard back to artboard
 						let bottom_input = NodeInput::type_default(list!(Artboard), true);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
+						network_interface.set_input(&InputConnector::primary_input(artboard_layer.to_node()), bottom_input, &[]);
 					}
 				}
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
@@ -207,11 +241,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
 
-				// Insert the main chain node (Blend or Morph) depending on whether a blend count is provided
-				let (chain_node_id, layer_alias, path_alias) = if let Some(count) = blend_count {
-					(modify_inputs.insert_blend_data(layer, count as f64), "Blend", "Blend Path")
+				// Insert the main chain node (Blend or Morph) depending on whether a blend count is provided, referencing
+				// its control path input by the Blend template's named position or the Morph proto node's parameter symbol
+				let (path_input_connector, layer_alias, path_alias) = if let Some(count) = blend_count {
+					let blend_node_id = modify_inputs.insert_blend_data(layer, count as f64);
+					(InputConnector::node_at_index(blend_node_id, BLEND_PATH_INPUT_INDEX), "Blend", "Blend Path")
 				} else {
-					(modify_inputs.insert_morph_data(layer), "Morph", "Morph Path")
+					let morph_node_id = modify_inputs.insert_morph_data(layer);
+					(InputConnector::node(morph_node_id, graphene_std::vector::morph::PathInput), "Morph", "Morph Path")
 				};
 
 				// Create the control path layer (Path → Auto-Tangents → Origins to Polyline)
@@ -221,9 +258,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				network_interface.move_layer_to_stack(control_path_layer, parent, insert_index, &[]);
 				network_interface.move_layer_to_stack(layer, parent, insert_index + 1, &[]);
 
-				// Connect the Path node's output to the chain node's path parameter input (input 4 for both Morph and Blend).
+				// Connect the Path node's output to the chain node's control path input.
 				// Done after move_layer_to_stack so chain nodes have correct positions when converted to absolute.
-				network_interface.set_input(&InputConnector::node(chain_node_id, 4), NodeInput::node(path_node_id, 0), &[]);
+				network_interface.set_input(&path_input_connector, NodeInput::node(path_node_id, 0), &[]);
 
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: id,
@@ -241,29 +278,29 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				control_path_id,
 			} => {
 				// Find the chain node (Blend or Morph, first in chain of the layer)
-				let Some(OutputConnector::Node { node_id: chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(interpolation_layer_id, 1), &[]) else {
+				let Some(OutputConnector::Node { node_id: chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::layer_secondary_input(interpolation_layer_id), &[]) else {
 					log::error!("Could not find chain node for layer {interpolation_layer_id}");
 					return;
 				};
 
 				// Get what feeds into the chain node's primary input (the children stack)
-				let Some(OutputConnector::Node { node_id: children_id, output_index }) = network_interface.upstream_output_connector(&InputConnector::node(chain_node, 0), &[]) else {
+				let Some(OutputConnector::Node { node_id: children_id, output_index }) = network_interface.upstream_output_connector(&InputConnector::primary_input(chain_node), &[]) else {
 					log::error!("Could not find children stack feeding chain node {chain_node}");
 					return;
 				};
 
 				// Find the deepest node in the control path layer's chain (Origins to Polyline)
 				let mut deepest_chain_node = None;
-				let mut current_connector = InputConnector::node(control_path_id, 1);
+				let mut current_connector = InputConnector::layer_secondary_input(control_path_id);
 				while let Some(OutputConnector::Node { node_id, .. }) = network_interface.upstream_output_connector(&current_connector, &[]) {
 					deepest_chain_node = Some(node_id);
-					current_connector = InputConnector::node(node_id, 0);
+					current_connector = InputConnector::primary_input(node_id);
 				}
 
 				// Connect children to the deepest chain node's input 0 (or the layer's input 1 if no chain)
 				let target_connector = match deepest_chain_node {
-					Some(node_id) => InputConnector::node(node_id, 0),
-					None => InputConnector::node(control_path_id, 1),
+					Some(node_id) => InputConnector::primary_input(node_id),
+					None => InputConnector::layer_secondary_input(control_path_id),
 				};
 				network_interface.set_input(&target_connector, NodeInput::node(children_id, output_index), &[]);
 
@@ -294,7 +331,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(layer.to_node(), 1),
+						input_connector: InputConnector::layer_secondary_input(layer.to_node()),
 						input: NodeInput::node(first_new_node_id, 0),
 					});
 				}
@@ -305,7 +342,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::NewColorFillLayer { node_id, color, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(node_id);
-				modify_inputs.insert_color_value(color, layer);
+				modify_inputs.insert_color_value(color, layer, InputConnector::layer_secondary_input(layer.to_node()));
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -363,7 +400,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 							input_node: NodeInput::node(document_node.inputs[1].as_node().unwrap_or_default(), 0),
 							output_nodes: network_interface
 								.outward_wires(&[])
-								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(artboard.to_node(), 0)))
+								.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(artboard.to_node())))
 								.cloned()
 								.unwrap_or_default(),
 							merge_node: node_id,
@@ -389,7 +426,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				for artboard in &artboard_data {
 					// Modify downstream connections
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(artboard.1.merge_node, 1),
+						input_connector: InputConnector::layer_secondary_input(artboard.1.merge_node),
 						input: NodeInput::node(artboard.1.input_node.as_node().unwrap_or_default(), 0),
 					});
 
@@ -397,7 +434,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					for outward_wire in &artboard.1.output_nodes {
 						let input = NodeInput::node(artboard_data[artboard.0].merge_node, 0);
 						let input_connector = match artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
-							Some(artboard_info) => InputConnector::node(artboard_info.merge_node, outward_wire.input_index()),
+							Some(artboard_info) => InputConnector::node_at_index(artboard_info.merge_node, outward_wire.input_index()),
 							_ => *outward_wire,
 						};
 						responses.add(NodeGraphMessage::SetInput { input_connector, input });
@@ -458,18 +495,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				};
 				placement_transform.translation = placement_transform.translation.round();
 
-				let graphite_gradient_stops = extract_graphite_gradient_stops(&svg);
+				let gradient_info = SvgGradientInfo {
+					graphite_stops: extract_graphite_gradient_stops(&svg),
+					spaces: extract_gradient_spaces(&svg),
+				};
 
 				// Pass identity so each leaf layer receives only its SVG-native transform from `abs_transform`.
 				// The placement offset is then applied once to the root group layer below.
-				import_usvg_node(
-					&mut modify_inputs,
-					&usvg::Node::Group(Box::new(tree.root().clone())),
-					id,
-					parent,
-					insert_index,
-					&graphite_gradient_stops,
-				);
+				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root().clone())), id, parent, insert_index, &gradient_info);
 
 				// After import, `layer_node` is set to the root group. Apply the placement transform to it
 				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
@@ -488,4 +521,101 @@ struct ArtboardInfo {
 	input_node: NodeInput,
 	output_nodes: Vec<InputConnector>,
 	merge_node: NodeId,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn color_interpolation_resolves_per_gradient_with_inheritance_and_style_priority() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" color-interpolation="linearRGB">
+			<defs>
+				<linearGradient id="inherited"/>
+				<linearGradient id="attribute" color-interpolation="sRGB"/>
+				<linearGradient id="styled" color-interpolation="sRGB" style="fill: red; color-interpolation: linearRGB"/>
+				<radialGradient id="auto" color-interpolation="auto"/>
+			</defs>
+		</svg>"##;
+
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(spaces.get("inherited"), Some(&GradientSpace::RgbLinear), "an undeclared gradient should inherit from its ancestors");
+		assert_eq!(spaces.get("attribute"), Some(&GradientSpace::RgbGamma), "an sRGB declaration should beat the inherited linearRGB");
+		assert_eq!(spaces.get("styled"), Some(&GradientSpace::RgbLinear), "the inline style should beat the presentation attribute");
+		assert_eq!(
+			spaces.get("auto"),
+			Some(&GradientSpace::RgbGamma),
+			"auto should mean gamma like browsers treat it, not defer to ancestors"
+		);
+	}
+
+	#[test]
+	fn color_interpolation_reads_style_blocks_with_selector_specificity() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+			<style>
+				linearGradient { color-interpolation: linearRGB }
+				.classy { color-interpolation: sRGB }
+				#exact { color-interpolation: linearRGB }
+			</style>
+			<defs>
+				<linearGradient id="from-type-rule"/>
+				<linearGradient id="from-class-rule" class="classy"/>
+				<linearGradient id="exact" class="classy"/>
+				<linearGradient id="inline-beats-rules" class="classy" style="color-interpolation: linearRGB"/>
+				<linearGradient id="rule-beats-attribute" class="classy" color-interpolation="linearRGB"/>
+			</defs>
+		</svg>"##;
+
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(spaces.get("from-type-rule"), Some(&GradientSpace::RgbLinear), "a type rule in a style block should reach the gradient");
+		assert_eq!(
+			spaces.get("from-class-rule"),
+			Some(&GradientSpace::RgbGamma),
+			"the class rule should outrank the type rule by specificity"
+		);
+		assert_eq!(spaces.get("exact"), Some(&GradientSpace::RgbLinear), "the ID rule should outrank the class rule");
+		assert_eq!(spaces.get("inline-beats-rules"), Some(&GradientSpace::RgbLinear), "the inline style should beat every style block rule");
+		assert_eq!(
+			spaces.get("rule-beats-attribute"),
+			Some(&GradientSpace::RgbGamma),
+			"a style block rule should beat the presentation attribute"
+		);
+	}
+
+	#[test]
+	fn repeated_and_important_declarations_resolve_by_cascade_order() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+			<style>.forced { color-interpolation: linearRGB !important }</style>
+			<linearGradient id="last-declaration-wins" style="color-interpolation: sRGB; color-interpolation: linearRGB"/>
+			<linearGradient id="important-beats-later" style="color-interpolation: linearRGB !important; color-interpolation: sRGB"/>
+			<linearGradient id="important-rule-beats-inline" class="forced" style="color-interpolation: sRGB"/>
+		</svg>"##;
+
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(
+			spaces.get("last-declaration-wins"),
+			Some(&GradientSpace::RgbLinear),
+			"the last of repeated inline declarations should win"
+		);
+		assert_eq!(
+			spaces.get("important-beats-later"),
+			Some(&GradientSpace::RgbLinear),
+			"an `!important` declaration should beat a later normal one"
+		);
+		assert_eq!(
+			spaces.get("important-rule-beats-inline"),
+			Some(&GradientSpace::RgbLinear),
+			"an `!important` style block rule should beat the inline style"
+		);
+	}
+
+	#[test]
+	fn color_interpolation_yields_nothing_when_never_declared() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><linearGradient id="plain"/></svg>"##;
+
+		assert!(
+			extract_gradient_spaces(svg).is_empty(),
+			"gradients without any declaration should fall back to the caller's gamma default"
+		);
+	}
 }

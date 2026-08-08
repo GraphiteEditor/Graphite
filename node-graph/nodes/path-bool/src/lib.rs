@@ -1,10 +1,11 @@
 use core_types::list::{ATTR_FILL, Item, ItemAttributeValues, List};
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color, Ctx,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE,
+	ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx,
 };
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
-use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
+use graphic_types::vector_types::gradient::{GradientForm, GradientHueDirection, GradientSpace, GradientSpread};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
@@ -283,11 +284,20 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
 							gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
 						}
-						if let Some(gradient_type) = attributes.remove::<GradientType>(ATTR_GRADIENT_TYPE) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_TYPE, 0, gradient_type);
+						if let Some(gradient_form) = attributes.remove::<GradientForm>(ATTR_GRADIENT_FORM) {
+							gradient_paint.set_attribute(ATTR_GRADIENT_FORM, 0, gradient_form);
 						}
-						if let Some(spread_method) = attributes.remove::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-							gradient_paint.set_attribute(ATTR_SPREAD_METHOD, 0, spread_method);
+						if let Some(gradient_spread) = attributes.remove::<GradientSpread>(ATTR_GRADIENT_SPREAD) {
+							gradient_paint.set_attribute(ATTR_GRADIENT_SPREAD, 0, gradient_spread);
+						}
+						if let Some(gradient_space) = attributes.remove::<GradientSpace>(ATTR_GRADIENT_SPACE) {
+							gradient_paint.set_attribute(ATTR_GRADIENT_SPACE, 0, gradient_space);
+						}
+						if let Some(gradient_cyclic) = attributes.remove::<bool>(ATTR_GRADIENT_CYCLIC) {
+							gradient_paint.set_attribute(ATTR_GRADIENT_CYCLIC, 0, gradient_cyclic);
+						}
+						if let Some(gradient_hue_direction) = attributes.remove::<GradientHueDirection>(ATTR_GRADIENT_HUE_DIRECTION) {
+							gradient_paint.set_attribute(ATTR_GRADIENT_HUE_DIRECTION, 0, gradient_hue_direction);
 						}
 						set_paint_attribute(&mut attributes, ATTR_FILL, gradient_paint);
 

@@ -1,6 +1,6 @@
 use crate::messages::layout::utility_types::widgets::input_widgets::{SpectrumInputUpdate, VisualColorPickersInputUpdate};
 use crate::messages::prelude::*;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::vector::style::{FillChoice, GradientHueDirection, GradientSpace, GradientSpread};
 
 /// Identifies which RGB channel a numeric input change targets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -47,6 +47,14 @@ pub enum ColorPickerMessage {
 
 	/// `SpectrumInput` change: marker move/insert/delete, midpoint move/reset, or active marker selection changed.
 	GradientUpdate { update: SpectrumInputUpdate },
+	/// Gradient spread choice from the gradient "Ends" selection.
+	SetGradientSpread { gradient_spread: GradientSpread },
+	/// Gradient cyclic choice: whether the stops wrap as a cycle, from the "Cyclic" checkbox.
+	SetGradientCyclic { gradient_cyclic: bool },
+	/// Gradient space choice: the color space the stops interpolate in, from the "Space" dropdown.
+	SetGradientSpace { gradient_space: GradientSpace },
+	/// Gradient hue direction choice: which way around the hue wheel the stops interpolate in a polar space, from the "Arc" dropdown.
+	SetGradientHueDirection { gradient_hue_direction: GradientHueDirection },
 
 	/// Tell the frontend to start an undo transaction (forwarded as a `FrontendMessage` it bridges out to the picker's parent).
 	StartTransaction,

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use core_types::{
-	ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, Color,
+	ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, Color,
 	list::{ATTR_FILL, ATTR_STROKE, ATTR_TRANSFORM, Item, List},
 };
 use glam::{DAffine2, DVec2};
@@ -13,7 +13,7 @@ use vector_types::{
 	subpath::{ManipulatorGroup, Subpath},
 	vector::{
 		PointId,
-		style::{Gradient, GradientSpreadMethod, GradientStop, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin},
+		style::{Gradient, GradientForm, GradientSpace, GradientSpread, GradientStop, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin},
 	},
 	vectorize_config,
 };
@@ -62,11 +62,11 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 	subpaths
 }
 
-pub fn convert_spread_method(spread_method: usvg::SpreadMethod) -> GradientSpreadMethod {
+pub fn convert_gradient_spread(spread_method: usvg::SpreadMethod) -> GradientSpread {
 	match spread_method {
-		usvg::SpreadMethod::Pad => GradientSpreadMethod::Pad,
-		usvg::SpreadMethod::Reflect => GradientSpreadMethod::Reflect,
-		usvg::SpreadMethod::Repeat => GradientSpreadMethod::Repeat,
+		usvg::SpreadMethod::Pad => GradientSpread::Pad,
+		usvg::SpreadMethod::Reflect => GradientSpread::Reflect,
+		usvg::SpreadMethod::Repeat => GradientSpread::Repeat,
 	}
 }
 
@@ -80,6 +80,131 @@ pub fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 }
 
 const GRAPHITE_NAMESPACE: &str = "https://graphite.art";
+
+/// Gradient information pre-parsed from the raw SVG XML, carrying what usvg's simplified tree drops.
+pub struct SvgGradientInfo {
+	/// Real stops, keyed by gradient element `id`, for gradients Graphite exported with midpoint curve data.
+	pub graphite_stops: HashMap<String, Gradient>,
+	/// Gradient spaces, keyed by gradient element `id`, resolved from the `color-interpolation` property.
+	pub spaces: HashMap<String, GradientSpace>,
+}
+
+/// Pre-parses the raw SVG XML to resolve each gradient's inherited `color-interpolation` property, which usvg's
+/// tree does not carry. Only `linearRGB` selects the linear space; `auto` and `sRGB` (browsers treat the
+/// user-agent-defined `auto` as `sRGB`) mean gamma, as does any unrecognized value.
+pub fn extract_gradient_spaces(svg: &str) -> HashMap<String, GradientSpace> {
+	let mut result = HashMap::new();
+
+	// Quick check: gradients in an SVG that never mentions `color-interpolation` all take the sRGB default
+	if !svg.contains("color-interpolation") {
+		return result;
+	}
+
+	let doc = match usvg::roxmltree::Document::parse(svg) {
+		Ok(doc) => doc,
+		Err(_) => return result,
+	};
+
+	// The document's `<style>` blocks apply to every element, so parse them once up front
+	let mut stylesheet = simplecss::StyleSheet::new();
+	for style_element in doc.descendants().filter(|node| node.tag_name().name() == "style") {
+		if !matches!(style_element.attribute("type"), None | Some("") | Some("text/css")) {
+			continue;
+		}
+		for text in style_element.children().filter(|child| child.is_text()).filter_map(|child| child.text()) {
+			stylesheet.parse_more(text);
+		}
+	}
+
+	for node in doc.descendants() {
+		match node.tag_name().name() {
+			"linearGradient" | "radialGradient" => {}
+			_ => continue,
+		}
+
+		if let Some(gradient_id) = node.attribute("id")
+			&& let Some(gradient_space) = resolve_color_interpolation(node, &stylesheet)
+		{
+			result.insert(gradient_id.to_string(), gradient_space);
+		}
+	}
+
+	result
+}
+
+/// The `color-interpolation` in effect for an element: the nearest self-or-ancestor declaration, taking each
+/// element's own winning declaration per [`declared_color_interpolation`]'s cascade order.
+pub fn resolve_color_interpolation(element: usvg::roxmltree::Node, stylesheet: &simplecss::StyleSheet) -> Option<GradientSpace> {
+	let mut next = Some(element);
+
+	while let Some(element) = next {
+		match declared_color_interpolation(element, stylesheet) {
+			Some("linearRGB") => return Some(GradientSpace::RgbLinear),
+			// `inherit` defers to the ancestors like an undeclared element
+			Some("inherit") | None => {}
+			Some(_) => return Some(GradientSpace::RgbGamma),
+		}
+
+		next = element.parent_element();
+	}
+
+	None
+}
+
+/// The winning `color-interpolation` declaration on a single element per the CSS cascade: `!important` declarations
+/// beat normal ones, the inline `style` beats the `<style>` rules (already specificity-sorted, so their last match
+/// wins), and the presentation attribute yields to them all. Later declarations win priority ties.
+pub fn declared_color_interpolation<'a>(element: usvg::roxmltree::Node<'a, '_>, stylesheet: &simplecss::StyleSheet<'a>) -> Option<&'a str> {
+	let mut winner: Option<(u8, &'a str)> = None;
+	let mut consider = |priority: u8, value: &'a str| {
+		if winner.is_none_or(|(existing, _)| priority >= existing) {
+			winner = Some((priority, value));
+		}
+	};
+
+	if let Some(value) = element.attribute("color-interpolation") {
+		consider(0, value.trim());
+	}
+
+	for rule in stylesheet.rules.iter().filter(|rule| rule.selector.matches(&CssElement(element))) {
+		for declaration in rule.declarations.iter().filter(|declaration| declaration.name == "color-interpolation") {
+			consider(if declaration.important { 3 } else { 1 }, declaration.value);
+		}
+	}
+
+	if let Some(style) = element.attribute("style") {
+		for declaration in simplecss::DeclarationTokenizer::from(style).filter(|declaration| declaration.name == "color-interpolation") {
+			consider(if declaration.important { 4 } else { 2 }, declaration.value);
+		}
+	}
+
+	winner.map(|(_, value)| value)
+}
+
+/// Adapts a roxmltree element to simplecss's selector-matching interface.
+struct CssElement<'a, 'input>(usvg::roxmltree::Node<'a, 'input>);
+
+impl simplecss::Element for CssElement<'_, '_> {
+	fn parent_element(&self) -> Option<Self> {
+		self.0.parent_element().map(CssElement)
+	}
+
+	fn prev_sibling_element(&self) -> Option<Self> {
+		self.0.prev_sibling_element().map(CssElement)
+	}
+
+	fn has_local_name(&self, local_name: &str) -> bool {
+		self.0.tag_name().name() == local_name
+	}
+
+	fn attribute_matches(&self, local_name: &str, operator: simplecss::AttributeOperator) -> bool {
+		self.0.attribute(local_name).is_some_and(|value| operator.matches(value))
+	}
+
+	fn pseudo_class_matches(&self, class: simplecss::PseudoClass) -> bool {
+		matches!(class, simplecss::PseudoClass::FirstChild) && self.0.prev_sibling_element().is_none()
+	}
+}
 
 // Pre-parses the raw SVG XML to extract gradient stops that have `graphite:midpoint` attributes.
 // Graphite exports gradients with midpoint curve data by writing interpolated approximation stops
@@ -181,7 +306,7 @@ pub struct ParsedSvgText {
 }
 
 /// Extract fill paint from a usvg fill. Only solid colors are supported for now.
-pub fn extract_usvg_fill(fill: &usvg::Fill, graphite_gradient_stops: &HashMap<String, Gradient>) -> Option<List<Graphic>> {
+pub fn extract_usvg_fill(fill: &usvg::Fill, gradient_info: &SvgGradientInfo) -> Option<List<Graphic>> {
 	match &fill.paint() {
 		usvg::Paint::Color(color) => {
 			let color = usvg_color(*color, fill.opacity().get());
@@ -194,9 +319,9 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, graphite_gradient_stops: &HashMap<St
 			let direction = end - start;
 			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
-			let gradient_type = GradientType::Linear;
+			let gradient_form = GradientForm::Linear;
 
-			let gradient_stops = match graphite_gradient_stops.get(linear.id()) {
+			let gradient = match gradient_info.graphite_stops.get(linear.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
 				None => {
 					let stops = linear.stops().iter().map(|stop| GradientStop {
@@ -207,11 +332,14 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, graphite_gradient_stops: &HashMap<St
 					Gradient::new(stops)
 				}
 			};
-			let spread_method = convert_spread_method(linear.spread_method());
+			let gradient_spread = convert_gradient_spread(linear.spread_method());
+			// SVG interpolates between stops in gamma sRGB unless `color-interpolation` opts into linearRGB, carried explicitly rather than as the linear default
+			let gradient_space = gradient_info.spaces.get(linear.id()).copied().unwrap_or(GradientSpace::RgbGamma);
 
-			let gradient = Item::new_from_element(gradient_stops)
-				.with_attribute(ATTR_GRADIENT_TYPE, gradient_type)
-				.with_attribute(ATTR_SPREAD_METHOD, spread_method)
+			let gradient = Item::new_from_element(gradient)
+				.with_attribute(ATTR_GRADIENT_FORM, gradient_form)
+				.with_attribute(ATTR_GRADIENT_SPREAD, gradient_spread)
+				.with_attribute(ATTR_GRADIENT_SPACE, gradient_space)
 				.with_attribute(ATTR_TRANSFORM, transform);
 			Some(List::new_from_item(gradient).into_graphic_list())
 		}
@@ -223,9 +351,9 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, graphite_gradient_stops: &HashMap<St
 			let direction = end - start;
 			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
-			let gradient_type = GradientType::Radial;
+			let gradient_form = GradientForm::Radial;
 
-			let gradient_stops = match graphite_gradient_stops.get(radial.id()) {
+			let gradient = match gradient_info.graphite_stops.get(radial.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
 				None => {
 					let stops = radial.stops().iter().map(|stop| GradientStop {
@@ -236,11 +364,13 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, graphite_gradient_stops: &HashMap<St
 					Gradient::new(stops)
 				}
 			};
-			let spread_method = convert_spread_method(radial.spread_method());
+			let gradient_spread = convert_gradient_spread(radial.spread_method());
+			let gradient_space = gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma);
 
-			let gradient = Item::new_from_element(gradient_stops)
-				.with_attribute(ATTR_GRADIENT_TYPE, gradient_type)
-				.with_attribute(ATTR_SPREAD_METHOD, spread_method)
+			let gradient = Item::new_from_element(gradient)
+				.with_attribute(ATTR_GRADIENT_FORM, gradient_form)
+				.with_attribute(ATTR_GRADIENT_SPREAD, gradient_spread)
+				.with_attribute(ATTR_GRADIENT_SPACE, gradient_space)
 				.with_attribute(ATTR_TRANSFORM, transform);
 			Some(List::new_from_item(gradient).into_graphic_list())
 		}
@@ -288,7 +418,7 @@ pub fn extract_usvg_stroke(stroke: &usvg::Stroke, transform: DAffine2) -> (Optio
 	(Some(stroke), paint)
 }
 
-pub fn extract_usvg_path(node: &usvg::Node, path: &usvg::Path, graphite_gradient_stops: &HashMap<String, Gradient>) -> ParsedSvgPath {
+pub fn extract_usvg_path(node: &usvg::Node, path: &usvg::Path, gradient_info: &SvgGradientInfo) -> ParsedSvgPath {
 	let subpaths = convert_usvg_path(path);
 	let transform = usvg_transform(node.abs_transform());
 
@@ -296,24 +426,24 @@ pub fn extract_usvg_path(node: &usvg::Node, path: &usvg::Path, graphite_gradient
 
 	ParsedSvgPath {
 		subpaths,
-		fill_paint: path.fill().and_then(|fill| extract_usvg_fill(fill, graphite_gradient_stops)),
+		fill_paint: path.fill().and_then(|fill| extract_usvg_fill(fill, gradient_info)),
 		stroke,
 		stroke_paint,
 		transform,
 	}
 }
 
-pub fn extract_usvg_node(node: &usvg::Node, graphite_gradient_stops: &HashMap<String, Gradient>) -> ParsedSvgNode {
+pub fn extract_usvg_node(node: &usvg::Node, gradient_info: &SvgGradientInfo) -> ParsedSvgNode {
 	match node {
 		usvg::Node::Group(group) => {
 			let group = Box::new(ParsedSvgGroup {
-				children: group.children().iter().map(|child| extract_usvg_node(child, graphite_gradient_stops)).collect(),
+				children: group.children().iter().map(|child| extract_usvg_node(child, gradient_info)).collect(),
 				transform: usvg_transform(node.abs_transform()),
 			});
 
 			ParsedSvgNode::Group(group)
 		}
-		usvg::Node::Path(path) => ParsedSvgNode::Path(Box::new(extract_usvg_path(node, path, graphite_gradient_stops))),
+		usvg::Node::Path(path) => ParsedSvgNode::Path(Box::new(extract_usvg_path(node, path, gradient_info))),
 		usvg::Node::Image(_) => ParsedSvgNode::Image { msg: String::from("Not supported") },
 		usvg::Node::Text(text) => {
 			let text = ParsedSvgText {
