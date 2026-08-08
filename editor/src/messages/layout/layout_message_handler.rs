@@ -539,9 +539,14 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 					hue_direction: spectrum_input.track_hue_direction,
 					interpolation: spectrum_input.track_interpolation,
 				};
-				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient(settings);
+				let track_gradient = graphene_std::vector::style::Gradient::from(&spectrum_input.track);
+				spectrum_input.track_samples = track_gradient
+					.interpolated_samples(settings)
+					.into_iter()
+					.map(|(position, color, _)| SpectrumSample::new(position, color))
+					.collect();
 				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrapped interval's boundary-crossing color rather than the outermost stops'
-				let track_evaluator = graphene_std::vector::style::Gradient::from(&spectrum_input.track).evaluator(settings);
+				let track_evaluator = track_gradient.evaluator(settings);
 				let cap = |t: f64| {
 					let color = track_evaluator.evaluate(t);
 					SRGBA8::from(color).to_css_hex()

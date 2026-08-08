@@ -91,9 +91,9 @@ impl From<&GradientStops<SRGBA8>> for Gradient {
 }
 
 impl GradientStops<SRGBA8> {
-	/// CSS `linear-gradient(...)` string. Stops are emitted as `#rrggbbaa` hex (already gamma-encoded bytes).
-	pub fn to_css_linear_gradient(&self, settings: GradientSettings) -> String {
-		Gradient::from(self).to_css_linear_gradient(settings)
+	/// CSS `background-image` value drawing the stops as an SVG data URI, keeping straight-alpha interpolation.
+	pub fn to_svg_background_image(&self, settings: GradientSettings) -> String {
+		Gradient::from(self).to_svg_background_image(settings)
 	}
 }
 
@@ -1295,22 +1295,26 @@ impl Gradient {
 		mapped
 	}
 
-	/// Build a CSS `linear-gradient(...)` string suitable for use as a `background-image`. Samples the midpoint curves and color space so the rendered gradient matches Graphite's interpolation rather than browser defaults.
-	pub fn to_css_linear_gradient(&self, settings: GradientSettings) -> String {
-		if self.len() <= 1 {
-			let hex = self.color(0).map(|c| SRGBA8::from(c).to_rgba_hex()).unwrap_or_else(|| "000000ff".to_string());
-			return format!("linear-gradient(to right, #{hex} 0%, #{hex} 100%)");
+	/// Build a CSS `background-image` value embedding the gradient as an SVG data URI, sampling the midpoint curves, color
+	/// space, and spline. SVG interpolates its stops with straight alpha, matching the canvas renderers, where a CSS
+	/// `linear-gradient` interpolates premultiplied and would hide the pull a transparent stop's RGB exerts on the render.
+	pub fn to_svg_background_image(&self, settings: GradientSettings) -> String {
+		use std::fmt::Write;
+
+		let mut stops = String::new();
+		for (position, color, _) in self.interpolated_samples(settings) {
+			let srgba = SRGBA8::from(color);
+			let _ = write!(stops, "<stop offset='{}' stop-color='#{}'", (position * 1e4).round() / 1e4, srgba.to_rgb_hex());
+			if srgba.alpha < 255 {
+				let _ = write!(stops, " stop-opacity='{}'", (color.a() as f64 * 1000.).round() / 1000.);
+			}
+			stops.push_str("/>");
 		}
-		let pieces = self
-			.interpolated_samples(settings)
-			.into_iter()
-			.map(|(position, color, _)| {
-				let percent = ((position * 100.) * 1e2).round() / 1e2;
-				format!("#{} {percent}%", SRGBA8::from(color).to_rgba_hex())
-			})
-			.collect::<Vec<_>>()
-			.join(", ");
-		format!("linear-gradient(to right, {pieces})")
+
+		// A sizeless SVG stretches to fill the CSS background area; the encoding covers the URI-hostile characters
+		let svg = format!("<svg xmlns='http://www.w3.org/2000/svg'><linearGradient id='g' x1='0' y1='0' x2='1' y2='0'>{stops}</linearGradient><rect width='100%' height='100%' fill='url(#g)'/></svg>");
+		let encoded = svg.replace('%', "%25").replace('#', "%23").replace('<', "%3C").replace('>', "%3E");
+		format!("url(\"data:image/svg+xml,{encoded}\")")
 	}
 
 	/// Produce a set of linearly-interpolated color samples that approximate the gradient's true curve.
@@ -2191,6 +2195,18 @@ mod tests {
 				}
 			}
 		}
+	}
+
+	#[test]
+	fn svg_background_image_percent_encodes_and_keeps_straight_alpha_stops() {
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		gradient.set_color(1, Color::from_rgbaf32_unchecked(1., 1., 1., 0.5));
+
+		let image = gradient.to_svg_background_image(GradientSettings::default());
+
+		assert!(image.starts_with("url(\"data:image/svg+xml,"), "the value should be an SVG data URI: {image}");
+		assert!(image.contains("stop-opacity='0.5'"), "a transparent stop should emit its straight alpha: {image}");
+		assert!(!image.contains(['#', '<', '>']), "URI-hostile characters should be percent-encoded: {image}");
 	}
 
 	#[test]
