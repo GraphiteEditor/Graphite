@@ -801,9 +801,9 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 		"the transform input should hold a matrix, but became {transform:?}"
 	);
 
-	// The Sample Gradient parameter held the tuple-form stops, which parse as the ramp value with even positions elided
-	let sample_gradient_node = &network.nodes[&graph_craft::document::NodeId(2)];
-	let stops = sample_gradient_node.input_value(graphene_std::math_nodes::sample_gradient::GradientInput);
+	// The Evaluate Gradient parameter held the tuple-form stops, which parse as the ramp value with even positions elided
+	let evaluate_gradient_node = &network.nodes[&graph_craft::document::NodeId(2)];
+	let stops = evaluate_gradient_node.input_value(graphene_std::math_nodes::evaluate_gradient::GradientInput);
 	let Some(TaggedValue::GradientRamp(ramp)) = stops else {
 		panic!("the legacy stops parameter should become a gradient ramp value, but became {stops:?}");
 	};

@@ -259,6 +259,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::EqualsNode", "graphene_core::ops::EqualsNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::math_nodes::evaluate_gradient::IDENTIFIER,
+		aliases: &["math_nodes::SampleGradientNode", "graphene_math_nodes::SampleGradientNode", "graphene_core::ops::SampleGradientNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::math_nodes::exponent::IDENTIFIER,
 		aliases: &["graphene_math_nodes::ExponentNode", "graphene_core::ops::ExponentNode"],
 	},
@@ -398,10 +402,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::math_nodes::round::IDENTIFIER,
 		aliases: &["graphene_math_nodes::RoundNode", "graphene_core::ops::RoundNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::sample_gradient::IDENTIFIER,
-		aliases: &["graphene_math_nodes::SampleGradientNode", "graphene_core::ops::SampleGradientNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::sine::IDENTIFIER,
