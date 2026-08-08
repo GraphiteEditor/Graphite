@@ -22,7 +22,7 @@ The hexagon represents one unit in the lattice grid chemical structure of graphe
 
 The Graphite logo is made available for community use, with some limitations. While the software is free and open source, the brand identity is more restrictive. Please be respectful of the Graphite brand by reviewing this usage policy.
 
-Be aware that the logo is not covered under the [Apache License 2.0](/license#source-code) of Graphite's source code. Its usage within Graphite software distributions is covered by the [Graphite Branding License](/license#branding).
+Be aware that the logo is not covered under the [MIT or Apache 2.0 licenses](/license#source-code) of Graphite's source code. Its usage within Graphite software distributions is covered by the [Graphite Branding License](/license#branding).
 
 Outside the context of the Graphite application (or derivatives), community usage of the logo must adhere to the usage policy:
 
