@@ -25,7 +25,7 @@ use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin,
+	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Artboard, Color, Context, Graphic};
@@ -102,6 +102,7 @@ impl DataPanelMessageHandler {
 			desired_path: &mut self.element_path,
 			network_interface: &*network_interface,
 			node_lookup_network_path: Vec::new(),
+			gradient_settings: GradientSettings::default(),
 			breadcrumbs: Vec::new(),
 			vector_table_tab: self.active_vector_table_tab,
 		};
@@ -173,6 +174,9 @@ struct LayoutData<'a> {
 	/// Defaults to root (`&[]`); `List<NodeId>` rendering temporarily sets it to the path's prefix so nested
 	/// layers (e.g. inside a Ctrl+M-merged custom subgraph) resolve correctly.
 	node_lookup_network_path: Vec<NodeId>,
+	/// The whole-ramp settings to preview a `Gradient` element with, since they live in the attributes beside it
+	/// rather than in the stop list itself. The enclosing `Item`/`List` sets it to the owning row's attributes.
+	gradient_settings: GradientSettings,
 	breadcrumbs: Vec<String>,
 	vector_table_tab: VectorTableTab,
 }
@@ -385,7 +389,10 @@ impl<T: TableItemLayout> TableItemLayout for Item<T> {
 		let attribute_keys: Vec<String> = self.attributes().keys().map(str::to_string).collect();
 
 		// A single element, so no leading ID column, unlike the `List` table
+		let saved_gradient_settings = data.gradient_settings;
+		data.gradient_settings = GradientSettings::from_item_attributes(self);
 		let mut values = vec![self.element().value_widgets(PathStep::Element(0), data)];
+		data.gradient_settings = saved_gradient_settings;
 		for key in &attribute_keys {
 			let target = PathStep::Attribute { row: 0, key: key.clone() };
 			let cell = self.attributes().get_any(key).and_then(|any| dispatch_value_widgets(any, target, data)).unwrap_or_else(|| {
@@ -443,10 +450,13 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 		let mut rows = (0..self.len())
 			.map(|index| {
 				let element = self.element(index).unwrap();
+				let saved_gradient_settings = data.gradient_settings;
+				data.gradient_settings = GradientSettings::from_list_row_attributes(self, index);
 				let mut values = vec![
 					vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance()],
 					element.value_widgets(PathStep::Element(index), data),
 				];
+				data.gradient_settings = saved_gradient_settings;
 				for key in &attribute_keys {
 					let target = PathStep::Attribute { row: index, key: key.clone() };
 					let cell = self.attribute_any(key, index).and_then(|any| dispatch_value_widgets(any, target, data)).unwrap_or_else(|| {
@@ -752,14 +762,14 @@ impl TableItemLayout for Gradient {
 		self.value_page(data)
 	}
 	// The preview widget doesn't navigate, so a drill-in button beside it opens the newtype's underlying color list
-	fn value_widgets(&self, target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
 		vec![
 			TextButton::new(self.as_color_list().identifier())
 				.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
 				.narrow(true)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
-			ColorInput::new(FillChoice::<SRGBA8>::Gradient(GradientRamp::from(self)))
+			ColorInput::new(FillChoice::<SRGBA8>::Gradient(GradientRamp::from(self).with_settings(data.gradient_settings)))
 				.menu_direction(Some(MenuDirection::Top))
 				.disabled(true)
 				.narrow(true)

@@ -1449,6 +1449,56 @@ fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64
 	gradient
 }
 
+/// Reverses the order of each gradient's stops, moving the color at the start of the ramp to the end and vice versa.
+#[node_macro::node(category("Gradient"))]
+fn gradient_reverse(_: impl Ctx, gradient: Item<Gradient>) -> Item<Gradient> {
+	let settings = vector_types::GradientSettings::from(&gradient);
+	let mut gradient = gradient;
+	let reversed = gradient.element().reversed(settings.cyclic);
+	*gradient.element_mut() = reversed;
+	gradient
+}
+
+/// Shifts every stop along each gradient's ramp, sliding the colors within the gradient without moving the gradient itself.
+///
+/// The fraction is measured against the whole ramp. A cyclic gradient spins, wrapping past the end back around to the start so 1 is a full turn that lands where it began. A gradient that isn't cyclic has no loop to spin around, so its stops slide off the end instead, held at the edge until they are shifted back.
+#[node_macro::node(category("Gradient"))]
+fn gradient_shift(
+	_: impl Ctx,
+	gradient: Item<Gradient>,
+	#[range]
+	#[soft(-1..1)]
+	fraction: Item<f64>,
+) -> Item<Gradient> {
+	let settings = vector_types::GradientSettings::from(&gradient);
+	let mut gradient = gradient;
+	gradient.element_mut().shift_positions(*fraction.element(), settings.cyclic);
+	gradient
+}
+
+/// Stretches or squeezes the spacing of each gradient's stops around a pivot, spreading the colors within the gradient without moving the gradient itself.
+///
+/// The factor multiplies every stop's distance from the pivot, so 2 spreads the ramp over twice its span while 0.5 packs it into half. A negative factor mirrors the stops across the pivot, reversing the order of the colors.
+///
+/// The pivot is the one point that stays put, measured against the whole ramp from 0 at the start to 1 at the end.
+#[node_macro::node(category("Gradient"))]
+fn gradient_stretch(
+	_: impl Ctx,
+	gradient: Item<Gradient>,
+	#[default(1.)]
+	#[unit("x")]
+	factor: Item<f64>,
+	#[default(0.5)]
+	#[range]
+	#[soft(0..1)]
+	pivot: Item<f64>,
+) -> Item<Gradient> {
+	let settings = vector_types::GradientSettings::from(&gradient);
+	let mut gradient = gradient;
+	gradient.element_mut().stretch_positions(*factor.element(), *pivot.element(), settings.cyclic);
+	gradient
+}
+
 /// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"))]
 fn evaluate_gradient(

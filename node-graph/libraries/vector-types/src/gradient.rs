@@ -849,6 +849,47 @@ fn smooth_samples(stops: &[GradientStop], settings: GradientSettings) -> Vec<(f6
 	result
 }
 
+/// Clips a baked sample list to the unit range, replacing everything beyond an end with one sample interpolated at that boundary.
+/// Renderers only accept offsets from 0 to 1, and the bake is dense enough that interpolating between neighbors in gamma reproduces the ramp's curve there.
+fn clip_samples_to_unit_range(samples: &[(f64, Color, Option<f64>)]) -> Vec<(f64, Color, Option<f64>)> {
+	fn sample_at(samples: &[(f64, Color, Option<f64>)], boundary: f64) -> Color {
+		let index = samples.partition_point(|&(position, ..)| position < boundary);
+
+		// A sample sitting on the boundary already answers it, so only a straddling pair needs interpolating
+		if let Some(&(position, color, _)) = samples.get(index)
+			&& position == boundary
+		{
+			return color;
+		}
+
+		match (index.checked_sub(1).map(|before| samples[before]), samples.get(index).copied()) {
+			(Some((left, left_color, _)), Some((right, right_color, _))) => {
+				let span = right - left;
+				let fraction = if span > 0. { (boundary - left) / span } else { 0. };
+				left_color.lerp_gamma_srgb(&right_color, fraction as f32)
+			}
+			(Some((_, color, _)), None) | (None, Some((_, color, _))) => color,
+			(None, None) => Color::BLACK,
+		}
+	}
+
+	let leads_in = samples.first().is_some_and(|&(position, ..)| position < 0.);
+	let trails_out = samples.last().is_some_and(|&(position, ..)| position > 1.);
+	if !leads_in && !trails_out {
+		return samples.to_vec();
+	}
+
+	let mut result: Vec<(f64, Color, Option<f64>)> = samples.iter().copied().filter(|&(position, ..)| (0. ..=1.).contains(&position)).collect();
+	if leads_in && result.first().is_none_or(|&(position, ..)| position > 0.) {
+		result.insert(0, (0., sample_at(samples, 0.), None));
+	}
+	if trails_out && result.last().is_none_or(|&(position, ..)| position < 1.) {
+		result.push((1., sample_at(samples, 1.), None));
+	}
+
+	result
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct GradientStop {
 	pub position: f64,
@@ -1207,16 +1248,17 @@ impl Gradient {
 		new_index
 	}
 
-	/// Gradient stops as evaluation and rendering should see them: positions clamped to the 0 to 1 range
-	/// (infinities landing at the ends, a NaN dropping its stop from sampling since it has no defined placement)
-	/// and sorted ascending, so the sampler and every renderer agree on how non-compliant authored data behaves.
+	/// Gradient stops as evaluation and rendering should see them, sorted ascending: a NaN drops its stop since it has no
+	/// defined placement, and an infinity lands on the nearest end. A cyclic ramp folds positions into the 0 to 1 range, the
+	/// whole of its circle, while a non-cyclic ramp keeps finite ones so a shifted ramp samples through stops that slid out.
 	fn normalized_stops(&self, gradient_cyclic: bool) -> Vec<GradientStop> {
 		let mut stops: Vec<GradientStop> = (0..self.len())
 			.filter_map(|index| {
-				let position = self.position(index, gradient_cyclic).clamp(0., 1.);
+				let position = self.position(index, gradient_cyclic);
 				if position.is_nan() {
 					return None;
 				}
+				let position = if gradient_cyclic || position.is_infinite() { position.clamp(0., 1.) } else { position };
 
 				let midpoint = self.midpoint(index);
 				let color = self.color(index)?;
@@ -1251,7 +1293,7 @@ impl Gradient {
 
 	pub fn reversed(&self, gradient_cyclic: bool) -> Self {
 		let count = self.len();
-		let mut list = self.reordered((0..count).rev());
+		let mut list = self.mirrored_rows(gradient_cyclic);
 
 		// Row reversal already reversed the position cells' order, each also flips across the range
 		if self.has_position_attribute()
@@ -1267,8 +1309,15 @@ impl Gradient {
 			}
 		}
 
-		// Midpoints belong to the interval to a stop's right, so they shift by one stop as well as flipping;
-		// a cyclic gradient's final midpoint is its wrap handle, which flips in place
+		Self(list)
+	}
+
+	/// Reverses the rows for a mirrored ramp, leaving positions to the caller since each mirroring has its own axis. Midpoints
+	/// govern the interval to their stop's right, so each shifts by one stop as well as flipping. The wrap handle flips in place.
+	fn mirrored_rows(&self, gradient_cyclic: bool) -> List<Color> {
+		let count = self.len();
+		let mut list = self.reordered((0..count).rev());
+
 		if self.has_midpoint_attribute() {
 			let midpoints: Vec<f64> = (0..count)
 				.map(|i| {
@@ -1286,7 +1335,80 @@ impl Gradient {
 			}
 		}
 
-		Self(list)
+		list
+	}
+
+	/// Shifts every stop along the ramp by `fraction` of its whole length, each midpoint riding along. A cyclic ramp rotates,
+	/// wrapping past 1 back to 0 and re-sorting. A non-cyclic one translates, its positions leaving the range to sample through.
+	pub fn shift_positions(&mut self, fraction: f64, gradient_cyclic: bool) {
+		if !fraction.is_finite() {
+			return;
+		}
+
+		// Only a rotation comes back around every whole turn, while a translation keeps going
+		let shift = if gradient_cyclic { fraction.rem_euclid(1.) } else { fraction };
+		if shift == 0. {
+			return;
+		}
+
+		self.materialize_default_positions(gradient_cyclic);
+
+		if let Some(positions) = self.0.iter_attribute_values_mut::<f64>(ATTR_POSITION) {
+			for position in positions {
+				// A non-finite position has no placement to shift, and wrapping one would land it on NaN
+				if !position.is_finite() {
+					continue;
+				}
+
+				*position = if gradient_cyclic {
+					// Wrapping into the range first lands stops at 0 and 1, the same circle point,
+					// on an identical value rather than rounding apart into an unstable order
+					(position.rem_euclid(1.) + shift).rem_euclid(1.)
+				} else {
+					*position + shift
+				};
+			}
+		}
+
+		// Rotation carries stops across the seam and reorders the list, but translation leaves the order alone
+		if gradient_cyclic {
+			self.sort(gradient_cyclic);
+		}
+
+		self.elide_default_attributes(gradient_cyclic);
+	}
+
+	/// Multiplies every stop's distance from `pivot` by `factor`, a negative one mirroring the ramp across it. A cyclic ramp wraps
+	/// the results back around the circle its positions live on. A non-cyclic ramp lets them leave the range and samples through.
+	pub fn stretch_positions(&mut self, factor: f64, pivot: f64, gradient_cyclic: bool) {
+		if !factor.is_finite() || !pivot.is_finite() || factor == 1. {
+			return;
+		}
+
+		self.materialize_default_positions(gradient_cyclic);
+
+		if let Some(positions) = self.0.iter_attribute_values_mut::<f64>(ATTR_POSITION) {
+			for position in positions {
+				if !position.is_finite() {
+					continue;
+				}
+
+				let stretched = pivot + (*position - pivot) * factor;
+				*position = if gradient_cyclic { stretched.rem_euclid(1.) } else { stretched };
+			}
+		}
+
+		// A mirrored ramp comes out in descending order, which the row reversal undoes
+		if factor < 0. {
+			self.0 = self.mirrored_rows(gradient_cyclic);
+		}
+
+		// Wrapping can carry stops across the seam and reorder them
+		if gradient_cyclic {
+			self.sort(gradient_cyclic);
+		}
+
+		self.elide_default_attributes(gradient_cyclic);
 	}
 
 	pub fn map_colors<F: Fn(&Color) -> Color>(&self, f: F) -> Self {
@@ -1478,11 +1600,14 @@ impl Gradient {
 			return vec![(stops[0].position, stops[0].color, Some(sanitized_midpoint(stops[0].midpoint)))];
 		}
 
-		let mut result = match settings.interpolation {
+		let samples = match settings.interpolation {
 			GradientInterpolation::Stepped => stepped_samples(&stops, settings.cyclic),
 			GradientInterpolation::Linear => linear_samples(&stops, settings),
 			GradientInterpolation::Smooth => smooth_samples(&stops, settings),
 		};
+
+		// A shifted non-cyclic ramp can leave stops outside the range, which the curve still runs through
+		let mut result = clip_samples_to_unit_range(&samples);
 
 		// If every midpoint is 0.5 (or within epsilon), turn all midpoints to None
 		if result.iter().all(|(_, _, midpoint)| matches!(midpoint, Some(m) if (m - 0.5).abs() < 1e-6)) {
@@ -1681,8 +1806,10 @@ pub struct GradientSettings {
 	pub interpolation: GradientInterpolation,
 }
 
-impl From<&Item<Gradient>> for GradientSettings {
-	fn from(item: &Item<Gradient>) -> Self {
+impl GradientSettings {
+	/// The whole-ramp settings an item carries in its attributes beside a gradient element, defaulting each absent one.
+	/// Generic over the element type so callers holding an unresolved item can still read them.
+	pub fn from_item_attributes<T>(item: &Item<T>) -> Self {
 		Self {
 			spread: item.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD),
 			cyclic: item.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC),
@@ -1690,6 +1817,23 @@ impl From<&Item<Gradient>> for GradientSettings {
 			hue_direction: item.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION),
 			interpolation: item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION),
 		}
+	}
+
+	/// The whole-ramp settings a list carries at `index` beside a gradient element, defaulting each absent one.
+	pub fn from_list_row_attributes<T>(list: &List<T>, index: usize) -> Self {
+		Self {
+			spread: list.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, index),
+			cyclic: list.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, index),
+			space: list.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, index),
+			hue_direction: list.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, index),
+			interpolation: list.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, index),
+		}
+	}
+}
+
+impl From<&Item<Gradient>> for GradientSettings {
+	fn from(item: &Item<Gradient>) -> Self {
+		Self::from_item_attributes(item)
 	}
 }
 
@@ -2457,25 +2601,26 @@ mod tests {
 
 	#[test]
 	fn non_compliant_positions_normalize_for_sampling_and_rendering() {
-		// Stored positions stay as authored, but consumers see them clamped to the 0 to 1 range and sorted
+		// Stored positions stay as authored and consumers sort them, with the bake clipped to the range the renderers accept
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::BLACK, Color::RED]);
 		gradient.set_positions(&[1.5, 0.4, -0.5]);
 		assert_eq!(gradient.positions(false), vec![1.5, 0.4, -0.5]);
 
-		let sample_positions: Vec<f64> = gradient
-			.interpolated_samples(GradientSettings {
-				space: GradientSpace::RgbGamma,
-				..Default::default()
-			})
-			.iter()
-			.map(|(position, ..)| *position)
-			.collect();
+		let settings = GradientSettings {
+			space: GradientSpace::RgbGamma,
+			..Default::default()
+		};
+
+		let sample_positions: Vec<f64> = gradient.interpolated_samples(settings).iter().map(|(position, ..)| *position).collect();
 		assert!(sample_positions.windows(2).all(|pair| pair[0] <= pair[1]), "samples must ascend: {sample_positions:?}");
 		assert_eq!(sample_positions.first(), Some(&0.));
 		assert_eq!(sample_positions.last(), Some(&1.));
 
-		assert_eq!(gradient.evaluate(0., Default::default()), Color::RED);
-		assert_eq!(gradient.evaluate(1., Default::default()), Color::WHITE);
+		// The outermost stops lie beyond the range, so the ends interpolate toward them instead of adopting their colors
+		let start = gradient.evaluate(0., settings);
+		let end = gradient.evaluate(1., settings);
+		assert!(max_gamma_channel_deviation(start, Color::RED.lerp_gamma_srgb(&Color::BLACK, 0.5 / 0.9)) < 1e-6, "got {start:?}");
+		assert!(max_gamma_channel_deviation(end, Color::BLACK.lerp_gamma_srgb(&Color::WHITE, 0.6 / 1.1)) < 1e-6, "got {end:?}");
 	}
 
 	#[test]
@@ -2749,5 +2894,164 @@ mod tests {
 			vec![0.5, 0.5, 0.75],
 			"the wrap handle should flip in place while interval midpoints shift and flip"
 		);
+	}
+
+	#[test]
+	fn shift_rotates_a_cyclic_ramp_back_onto_the_even_distribution() {
+		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE, Color::WHITE]);
+		assert!(!gradient.has_position_attribute(), "an even distribution starts elided");
+
+		gradient.shift_positions(0.25, true);
+
+		let colors: Vec<Color> = (0..gradient.len()).filter_map(|index| gradient.color(index)).collect();
+		assert_eq!(colors, vec![Color::WHITE, Color::RED, Color::GREEN, Color::BLUE], "a quarter turn should rotate the stops by one");
+		assert!(!gradient.has_position_attribute(), "landing back on the even distribution should re-elide the positions");
+	}
+
+	#[test]
+	fn cyclic_shift_keeps_stops_at_both_ends_together_and_in_order() {
+		// Stops at 0 and 1 occupy one point on the circle, so every shift has to place them together and break the
+		// resulting tie the same way, or the render flickers as the fraction sweeps
+		let mut gradient = Gradient::from(vec![Color::RED, Color::BLUE]);
+		gradient.set_positions(&[0., 1.]);
+
+		// Decimal steps, as a slider produces them, since a dyadic fraction would wrap exactly either way
+		for step in 1..100 {
+			let mut shifted = gradient.clone();
+			shifted.shift_positions(step as f64 * 0.01, true);
+
+			let positions = shifted.positions(true);
+			assert_eq!(positions[0], positions[1], "both ends should land on an identical position, got {positions:?}");
+			assert_eq!(shifted.color(0), Some(Color::RED), "the tie should keep the original stop order");
+		}
+	}
+
+	#[test]
+	fn stops_shifted_out_of_range_sample_through_instead_of_piling_at_the_edge() {
+		let settings = GradientSettings {
+			space: GradientSpace::RgbGamma,
+			..Default::default()
+		};
+
+		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
+		gradient.shift_positions(-0.6, false);
+
+		// The red stop slid to -0.6 and the green to -0.1, so the range's start lands a fifth of the way from green to blue
+		let expected = Color::GREEN.lerp_gamma_srgb(&Color::BLUE, 0.2);
+		let edge = gradient.evaluate(0., settings);
+		assert!(
+			max_gamma_channel_deviation(edge, expected) < 1e-6,
+			"the start should interpolate through the stops that slid out, got {edge:?}"
+		);
+
+		let samples = gradient.interpolated_samples(settings);
+		assert!(
+			samples.iter().all(|&(position, ..)| (0. ..=1.).contains(&position)),
+			"the bake should carry no offsets outside the range"
+		);
+		let &(first_position, first_color, _) = samples.first().expect("a three stop ramp bakes samples");
+		assert_eq!(first_position, 0.);
+		assert!(
+			max_gamma_channel_deviation(first_color, expected) < SAMPLE_THRESHOLD,
+			"the baked start should match the sampled start rather than the stop that slid out, got {first_color:?}"
+		);
+	}
+
+	#[test]
+	fn shift_translates_a_non_cyclic_ramp_and_stays_reversible() {
+		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
+
+		gradient.shift_positions(0.25, false);
+		assert_eq!(gradient.positions(false), vec![0.25, 0.75, 1.25], "stops should slide past the end rather than wrapping to the front");
+		let colors: Vec<Color> = (0..gradient.len()).filter_map(|index| gradient.color(index)).collect();
+		assert_eq!(colors, vec![Color::RED, Color::GREEN, Color::BLUE], "a translation should leave the stop order alone");
+
+		gradient.shift_positions(-0.25, false);
+		assert_eq!(
+			gradient.positions(false),
+			vec![0., 0.5, 1.],
+			"the out-of-range position should survive so shifting back restores the ramp"
+		);
+		assert!(!gradient.has_position_attribute(), "landing back on the even distribution should re-elide the positions");
+	}
+
+	#[test]
+	fn shift_carries_midpoints_with_their_stops_and_ignores_whole_turns() {
+		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE, Color::WHITE]);
+		gradient.set_midpoints(&[0.8, 0.5, 0.5, 0.5]);
+
+		let untouched = gradient.clone();
+		gradient.shift_positions(1., true);
+		assert_eq!(gradient, untouched, "a whole turn should leave the ramp exactly as it was");
+
+		gradient.shift_positions(0.25, true);
+		assert_eq!(gradient.color(1), Some(Color::RED));
+		assert_eq!(gradient.midpoints(), vec![0.5, 0.8, 0.5, 0.5], "red's midpoint should follow it to its new index");
+	}
+
+	#[test]
+	fn stretch_spreads_stops_about_the_pivot_and_stays_reversible() {
+		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
+
+		gradient.stretch_positions(2., 0.5, false);
+		assert_eq!(gradient.positions(false), vec![-0.5, 0.5, 1.5], "the stop on the pivot should stay put while the rest spread out");
+		let colors: Vec<Color> = (0..gradient.len()).filter_map(|index| gradient.color(index)).collect();
+		assert_eq!(colors, vec![Color::RED, Color::GREEN, Color::BLUE], "a positive factor should leave the stop order alone");
+
+		gradient.stretch_positions(0.5, 0.5, false);
+		assert_eq!(
+			gradient.positions(false),
+			vec![0., 0.5, 1.],
+			"the out-of-range positions should survive so the reciprocal restores the ramp"
+		);
+		assert!(!gradient.has_position_attribute(), "landing back on the even distribution should re-elide the positions");
+	}
+
+	#[test]
+	fn negative_stretch_matches_reversal_when_mirrored_about_the_middle() {
+		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
+		gradient.set_midpoints(&[0.25, 0.125, 0.5]);
+
+		let mut mirrored = gradient.clone();
+		mirrored.stretch_positions(-1., 0.5, false);
+
+		assert_eq!(mirrored, gradient.reversed(false), "mirroring about the middle is exactly a reversal");
+		assert_eq!(
+			mirrored.midpoints(),
+			vec![0.875, 0.75, 0.5],
+			"each interval's midpoint should flip and move to the stop now preceding it"
+		);
+	}
+
+	#[test]
+	fn negative_stretch_mirrors_across_an_off_center_pivot() {
+		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
+
+		gradient.stretch_positions(-1., 0.25, false);
+
+		let colors: Vec<Color> = (0..gradient.len()).filter_map(|index| gradient.color(index)).collect();
+		assert_eq!(colors, vec![Color::BLUE, Color::GREEN, Color::RED], "mirroring should reverse the stop order");
+		assert_eq!(
+			gradient.positions(false),
+			vec![-0.5, 0., 0.5],
+			"each stop should land as far from the pivot as it started, on the other side"
+		);
+	}
+
+	#[test]
+	fn cyclic_stretch_mirrors_around_the_circle_and_re_elides() {
+		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE, Color::WHITE]);
+		assert!(!gradient.has_position_attribute(), "an even distribution starts elided");
+
+		// Mirroring about the ramp's start sends every other stop the long way around the loop
+		gradient.stretch_positions(-1., 0., true);
+
+		let colors: Vec<Color> = (0..gradient.len()).filter_map(|index| gradient.color(index)).collect();
+		assert_eq!(
+			colors,
+			vec![Color::RED, Color::WHITE, Color::BLUE, Color::GREEN],
+			"the stop on the pivot should stay while the rest wrap past it"
+		);
+		assert!(!gradient.has_position_attribute(), "landing back on the even distribution should re-elide the positions");
 	}
 }
