@@ -124,7 +124,8 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
 
-	const samples = e.pointerType === "pen" ? e.getCoalescedEvents() : [e];
+	const coalesced = e.pointerType === "pen" && typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : [];
+	const samples = coalesced.length > 0 ? coalesced : [e];
 	for (const sample of samples) editor.onMouseMove(sample.clientX, sample.clientY, sample.buttons, modifiers, ...pointerAttributes(sample));
 }
 
