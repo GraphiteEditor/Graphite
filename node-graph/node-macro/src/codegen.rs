@@ -854,12 +854,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Some(ctx_param) => ctx_param.ident.clone(),
 		None => format_ident!("__Ctx"),
 	};
-	let async_fn = parsed.is_async;
-	let future_kernel = is_source_kernel(&parsed.output_type);
-	let async_source = async_fn || future_kernel;
 	let Some(model) = model.as_ref() else {
 		return Ok(NodePlan::default());
 	};
+	let async_fn = matches!(model.dialect, Dialect::AsyncFn);
+	let future_kernel = matches!(model.dialect, Dialect::Future | Dialect::FutureInterrupt);
+	let async_source = async_fn || future_kernel;
 	let record = match &model.class {
 		Class::RecordIo(shape) => Some(shape.clone()),
 		_ => None,
@@ -980,7 +980,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(None, None) if flip => syn::parse_quote!(#core_types::record::RecordValue<'__record>),
 		(None, None) => slot_value_type(&parsed.output_type),
 	};
-	let raw_lazy = matches!(kernel_kind(&parsed.output_type), KernelKind::Poll(_));
+	let raw_lazy = matches!(model.dialect, Dialect::Poll);
 	let injected_name = |ident: &Ident| async_source && (ident == "_runtime" || ident == "_source");
 	let where_predicates: Vec<TokenStream2> = parsed.where_clause.iter().flat_map(|clause| clause.predicates.iter()).map(|predicate| quote!(#predicate)).collect();
 
@@ -1049,6 +1049,40 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let routing_source = |ty: &Type| matches!((&routing, ty), (Some(routing), Type::Path(path)) if path.path.get_ident() == Some(&routing.generic));
 
+	let field_role = |index: usize, field: &ParsedField| match &field.ty {
+		ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => {
+			if record.is_some() && !skips_carrier && index == 0 {
+				InputRole::RecordCarrier
+			} else if carrier_flip && index == 0 {
+				InputRole::FlipCarrier
+			} else if flip && lend.is_some() {
+				InputRole::LendBorrow
+			} else if record.is_some() && !field.attribute_reads.is_empty() {
+				InputRole::ReadingSecondary
+			} else if flip || (routing.is_some() && !routing_source(ty)) {
+				InputRole::RecordValue
+			} else {
+				InputRole::PlainValue
+			}
+		}
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
+			if derive_routing && routing_source(output_type) {
+				InputRole::DeriveRoutingSource
+			} else if flip && raw_lazy {
+				InputRole::FlipRawLazyEdge
+			} else if flip {
+				InputRole::FlipLazy
+			} else if opaque && raw_lazy && is_record_value(output_type) {
+				InputRole::OpaqueRecordEdge
+			} else if raw_lazy {
+				InputRole::RawLazy
+			} else {
+				InputRole::Lazy
+			}
+		}
+	};
+	let roles: Vec<InputRole> = regular_fields.iter().enumerate().map(|(index, field)| field_role(index, field)).collect();
+
 	let lazy_read_out = |field: &ParsedField, output_type: &Type| {
 		let attr_tys = field.attribute_reads.iter().map(|read| {
 			let marker = &read.marker;
@@ -1077,31 +1111,29 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.attribute_reads.is_empty() => read_tuple_param(field, quote!(#pat), quote!(#ty)),
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
-				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if derive_routing && routing_source(output_type) => {
-					let source_generic = format_ident!("__Source{index}");
-					quote!(#pat: #core_types::record::RecordLazyInput<'_, '__record, #source_generic>)
-				}
-				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if opaque && raw_lazy && is_record_value(output_type) => {
-					let source_generic = format_ident!("__Source{index}");
-					quote!(#pat: &#core_types::record::RecordEdgeInput<'_, #source_generic>)
-				}
-				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if flip && raw_lazy => {
-					let source_generic = format_ident!("__Source{index}");
-					let out = lazy_read_out(field, output_type);
-					quote!(#pat: &#core_types::record::ElementEdge<'_, #out, #source_generic>)
-				}
-				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if flip => {
-					let source_generic = format_ident!("__Source{index}");
-					let out = lazy_read_out(field, output_type);
-					quote!(#pat: #core_types::record::ElementLazyInput<'_, #out, #source_generic>)
-				}
-				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if raw_lazy => {
-					let bound = lazy_bound(output_type);
-					quote!(#pat: &impl #bound)
-				}
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
-					let bound = lazy_bound(output_type);
-					quote!(#pat: #core_types::node::LazyInput<'_, impl #bound>)
+					let source_generic = format_ident!("__Source{index}");
+					match roles[index] {
+						InputRole::DeriveRoutingSource => quote!(#pat: #core_types::record::RecordLazyInput<'_, '__record, #source_generic>),
+						InputRole::OpaqueRecordEdge => quote!(#pat: &#core_types::record::RecordEdgeInput<'_, #source_generic>),
+						InputRole::FlipRawLazyEdge => {
+							let out = lazy_read_out(field, output_type);
+							quote!(#pat: &#core_types::record::ElementEdge<'_, #out, #source_generic>)
+						}
+						InputRole::FlipLazy => {
+							let out = lazy_read_out(field, output_type);
+							quote!(#pat: #core_types::record::ElementLazyInput<'_, #out, #source_generic>)
+						}
+						InputRole::RawLazy => {
+							let bound = lazy_bound(output_type);
+							quote!(#pat: &impl #bound)
+						}
+						InputRole::Lazy => {
+							let bound = lazy_bound(output_type);
+							quote!(#pat: #core_types::node::LazyInput<'_, impl #bound>)
+						}
+						_ => unreachable!("value role on a lazy input"),
+					}
 				}
 			}
 		});
@@ -1209,15 +1241,24 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let eval_values = regular_fields.iter().enumerate().map(|(index, field)| {
 		let name = &field.pat_ident.ident;
-		match &field.ty {
-			ParsedFieldType::Regular(_) if record.is_some() && !skips_carrier && index == 0 => quote!(),
-			// A carrier primary evaluates beyond the node's own frame in the
-			// flip tail, so its fields survive until the carry.
-			ParsedFieldType::Regular(_) if carrier_flip && index == 0 => quote!(),
+		let regular_ty = || match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
+			_ => unreachable!("value role on a lazy input"),
+		};
+		let node_output = || match &field.ty {
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type.clone(),
+			_ => unreachable!("lazy role on a value input"),
+		};
+		match roles[index] {
+			// A carrier primary evaluates beyond the node's own frame (in the
+			// record/flip tail), and a raw poll edge is threaded straight through,
+			// so none bind here.
+			InputRole::RecordCarrier | InputRole::FlipCarrier | InputRole::RawLazy => quote!(),
 			// A reading secondary input claims a record edge: the element and
 			// the declared reads copy out right after its eval, before any
 			// later sibling eval can reuse the record stack.
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if record.is_some() && !field.attribute_reads.is_empty() => {
+			InputRole::ReadingSecondary => {
+				let ty = regular_ty();
 				let slot = format_ident!("__in_{index}");
 				let rec_local = format_ident!("__rec_{index}");
 				let mark = format_ident!("__mark_{index}");
@@ -1237,7 +1278,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 			// The lend input's frame survives on the record stack until this
 			// node's frame is reclaimed, so the borrow stays valid in place.
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) if flip => {
+			InputRole::LendBorrow => {
+				let ty = regular_ty();
 				let slot = format_ident!("__in_{index}");
 				let record_local = format_ident!("__record_{index}");
 				quote! {
@@ -1248,7 +1290,11 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let #name = unsafe { #core_types::record::borrow_element::<#ty>(self.#slot.rec(&#record_local)) };
 				}
 			}
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if flip => {
+			// A flip value or a routing non-source value rides a record edge; the
+			// element copies out right after its eval, before any sibling eval can
+			// reuse the record stack.
+			InputRole::RecordValue => {
+				let ty = regular_ty();
 				let slot = format_ident!("__in_{index}");
 				let mark = format_ident!("__mark_{index}");
 				quote! {
@@ -1262,33 +1308,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					unsafe { #core_types::record::stack::rewind(#mark) };
 				}
 			}
-			// A routing node's value input rides a record edge; the element
-			// copies out right after its eval, before any source evaluation
-			// can reuse the record stack.
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if routing.is_some() && !routing_source(ty) => {
-				let slot = format_ident!("__in_{index}");
-				let mark = format_ident!("__mark_{index}");
-				quote! {
-					let #mark = #core_types::record::stack::sp();
-					let #name = match __cell.eval_input(#index, &self.#name, __input) {
-						Ok(value) => value,
-						Err(interrupt) => return interrupt.into(),
-					};
-					let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
-					// SAFETY: the element copied out by value, so no record above the mark is live.
-					unsafe { #core_types::record::stack::rewind(#mark) };
-				}
-			}
-			ParsedFieldType::Regular(_) => quote! {
+			InputRole::PlainValue => quote! {
 				let #name = match __cell.eval_input(#index, &self.#name, __input) {
 					Ok(value) => value,
 					Err(interrupt) => return interrupt.into(),
 				};
 			},
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if derive_routing && routing_source(output_type) => quote! {
+			InputRole::DeriveRoutingSource => quote! {
 				let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index);
 			},
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if flip && raw_lazy => {
+			InputRole::FlipRawLazyEdge => {
+				let output_type = node_output();
 				let slot = format_ident!("__in_{index}");
 				match field.attribute_reads.is_empty() {
 					true => quote! {
@@ -1303,7 +1333,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 				}
 			}
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if flip => {
+			InputRole::FlipLazy => {
+				let output_type = node_output();
 				let slot = format_ident!("__in_{index}");
 				match field.attribute_reads.is_empty() {
 					true => quote! {
@@ -1318,11 +1349,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 				}
 			}
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if opaque && raw_lazy && is_record_value(output_type) => quote! {
+			InputRole::OpaqueRecordEdge => quote! {
 				let #name = #core_types::record::RecordEdgeInput::new(&self.#name, &self.__layout);
 			},
-			ParsedFieldType::Node(_) if raw_lazy => quote!(),
-			ParsedFieldType::Node(_) => quote! {
+			InputRole::Lazy => quote! {
 				let #name = #core_types::node::LazyInput::new(&self.#name, &__cell, #index);
 			},
 		}
@@ -1349,16 +1379,18 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.filter(|(index, _)| !(carrier_flip && *index == 0))
 		.filter_map(|(_, field)| clamp_tokens(field));
 
-	let call_args = regular_fields.iter().filter(|field| !injected_name(&field.pat_ident.ident)).map(|field| {
+	let call_args = regular_fields.iter().enumerate().filter(|(_, field)| !injected_name(&field.pat_ident.ident)).map(|(index, field)| {
 		let name = &field.pat_ident.ident;
 		match &field.ty {
-			ParsedFieldType::Node(_) if flip && raw_lazy => quote!(&#name),
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if opaque && raw_lazy && is_record_value(output_type) => quote!(&#name),
-			ParsedFieldType::Node(_) if raw_lazy => quote!(&self.#name),
 			// A lend param binds an owned edge; the kernel borrows the
 			// evaluated value.
 			ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) if !flip => quote!(&#name),
-			_ => quote!(#name),
+			ParsedFieldType::Regular(_) => quote!(#name),
+			ParsedFieldType::Node(_) => match roles[index] {
+				InputRole::FlipRawLazyEdge | InputRole::OpaqueRecordEdge => quote!(&#name),
+				InputRole::RawLazy => quote!(&self.#name),
+				_ => quote!(#name),
+			},
 		}
 	});
 
@@ -1473,14 +1505,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => quote!(#core_types::node::StatusCell::new()),
 	};
 	let kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #call_args)*));
-	let lift = match kernel_kind(&parsed.output_type) {
-		KernelKind::Interrupt(_) => quote! {
+	let lift = match model.dialect {
+		Dialect::Interrupt => quote! {
 			match #kernel_call {
 				Ok(value) => __cell.finish(value),
 				Err(interrupt) => interrupt.into(),
 			}
 		},
-		KernelKind::Poll(_) => quote!(__cell.merge(#kernel_call)),
+		Dialect::Poll => quote!(__cell.merge(#kernel_call)),
 		_ => quote!(__cell.finish(#kernel_call)),
 	};
 
@@ -1620,14 +1652,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			true => Vec::new(),
 			false => reads_of(0).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(__src_rec))).collect(),
 		};
-		let kernel_value = match shape.dialect {
-			RecordDialect::Plain => quote!(#record_kernel_call),
-			RecordDialect::Interrupt => quote! {
+		let kernel_value = match model.dialect {
+			Dialect::Interrupt => quote! {
 				match #record_kernel_call {
 					Ok(__value) => __value,
 					Err(__interrupt) => return __interrupt.into(),
 				}
 			},
+			_ => quote!(#record_kernel_call),
 		};
 		let attr_binders: Vec<Ident> = (0..shape.write_markers.len()).map(|index| format_ident!("__attr_{index}")).collect();
 		let element_binder = match &shape.element_write {
@@ -1684,7 +1716,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 	let flip_tail = flip.then(|| {
-		if matches!(kernel_kind(&parsed.output_type), KernelKind::Poll(_)) {
+		if matches!(model.dialect, Dialect::Poll) {
 			return match &carried_prelude {
 				Some(prelude) => quote! {
 					#prelude
@@ -1700,8 +1732,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				},
 			};
 		}
-		let kernel_value = match kernel_kind(&parsed.output_type) {
-			KernelKind::Interrupt(_) => quote! {
+		let kernel_value = match model.dialect {
+			Dialect::Interrupt => quote! {
 				match #kernel_call {
 					Ok(value) => value,
 					Err(interrupt) => return interrupt.into(),
@@ -1761,8 +1793,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				),
 				None => (quote!(), pending_return.clone()),
 			};
-			let acquire = match kernel_kind(&parsed.output_type) {
-				KernelKind::FutureInterrupt(_) => quote! {
+			let acquire = match model.dialect {
+				Dialect::FutureInterrupt => quote! {
 					let __future = match #kernel_call {
 						Ok(future) => future,
 						Err(interrupt) => return interrupt.into(),
@@ -2058,12 +2090,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	})
 }
 
-#[derive(Clone)]
-pub(crate) enum RecordDialect {
-	Plain,
-	Interrupt,
-}
-
 /// How a record node's primary input lowers.
 #[derive(Clone)]
 pub(crate) enum RecordCarrier {
@@ -2087,7 +2113,6 @@ pub(crate) struct RecordShape {
 	pub(crate) element_write: Option<Type>,
 	pub(crate) write_markers: Vec<Type>,
 	pub(crate) removes: Vec<Type>,
-	pub(crate) dialect: RecordDialect,
 }
 
 impl RecordShape {
@@ -2110,12 +2135,39 @@ pub(crate) enum Class {
 	Opaque,
 }
 
+/// The effect/return axis of a node's kernel, resolved once from the signature.
+/// Orthogonal to [`Class`]: it selects the eval tail (finish / merge / spawn)
+/// and the kernel signature wrapping across every class.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Dialect {
+	Sync,
+	Interrupt,
+	Poll,
+	AsyncFn,
+	Future,
+	FutureInterrupt,
+}
+
+pub(crate) fn dialect(parsed: &ParsedNodeFn) -> Dialect {
+	if parsed.is_async {
+		return Dialect::AsyncFn;
+	}
+	match kernel_kind(&parsed.output_type) {
+		KernelKind::Plain => Dialect::Sync,
+		KernelKind::Interrupt(_) => Dialect::Interrupt,
+		KernelKind::Poll(_) => Dialect::Poll,
+		KernelKind::Future(_) => Dialect::Future,
+		KernelKind::FutureInterrupt(_) => Dialect::FutureInterrupt,
+	}
+}
+
 /// The result of classifying a node fn. A node with no supported lowering
 /// (an async node with lazy inputs, malformed record io, or a signature no
 /// class accepts) yields `None` and generates a struct and metadata but no
 /// `Node` impl.
 pub(crate) struct NodeModel {
 	pub(crate) class: Class,
+	pub(crate) dialect: Dialect,
 }
 
 pub(crate) fn analyze(parsed: &ParsedNodeFn) -> Option<NodeModel> {
@@ -2135,7 +2187,27 @@ pub(crate) fn analyze(parsed: &ParsedNodeFn) -> Option<NodeModel> {
 	} else {
 		return None;
 	};
-	Some(NodeModel { class })
+	Some(NodeModel { class, dialect: dialect(parsed) })
+}
+
+/// The per-field binding role, resolved once per regular field from the node
+/// class and field shape. Drives the eval bindings and the lazy-edge input
+/// types. The `lend` and `reads` axes stay field properties the value arms of
+/// `kernel_params`/`call_args`/`value_args` consult, since they cross roles.
+#[derive(Clone, Copy)]
+pub(crate) enum InputRole {
+	RecordCarrier,
+	FlipCarrier,
+	ReadingSecondary,
+	LendBorrow,
+	RecordValue,
+	PlainValue,
+	DeriveRoutingSource,
+	OpaqueRecordEdge,
+	FlipRawLazyEdge,
+	FlipLazy,
+	RawLazy,
+	Lazy,
 }
 
 /// Whether the signature declares record-tier attribute io: value-input reads
@@ -2305,9 +2377,9 @@ pub(crate) fn unbounded_generic(parsed: &ParsedNodeFn, ty: &Type) -> Option<Iden
 }
 
 pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
-	let (value, dialect) = match kernel_kind(&parsed.output_type) {
-		KernelKind::Plain => (parsed.output_type.clone(), RecordDialect::Plain),
-		KernelKind::Interrupt(inner) => (inner, RecordDialect::Interrupt),
+	let value = match kernel_kind(&parsed.output_type) {
+		KernelKind::Plain => parsed.output_type.clone(),
+		KernelKind::Interrupt(inner) => inner,
 		_ => return None,
 	};
 	let writes = record_writes(&value);
@@ -2370,7 +2442,6 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 		element_write,
 		write_markers,
 		removes,
-		dialect,
 	})
 }
 
