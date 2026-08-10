@@ -1748,12 +1748,22 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			},
 		}
 	});
-	let eval_tail = match (async_fn, future_kernel) {
-		(false, false) => match record_tail {
-			Some(tail) => tail,
-			None => flip_tail.unwrap_or(lift),
-		},
-		(true, _) => {
+	let tail_form = if async_fn {
+		Tail::SpawnAsyncFn
+	} else if future_kernel {
+		Tail::SpawnFuture
+	} else if record.is_some() {
+		Tail::Record
+	} else if flip {
+		Tail::Flip
+	} else {
+		Tail::Forward
+	};
+	let lower_tail = |form: Tail| match form {
+		Tail::Forward => lift.clone(),
+		Tail::Record => record_tail.clone().expect("a record-io node has a record tail"),
+		Tail::Flip => flip_tail.clone().expect("a flip node has a flip tail"),
+		Tail::SpawnAsyncFn => {
 			let kernel_value_names: Vec<&Ident> = kernel_fields.iter().map(|field| &field.pat_ident.ident).collect();
 			let snapshot_binding = snapshot_ctx.then(|| quote!(let __snapshot = #core_types::context::CtxSnapshot::capture(__input);)).into_iter();
 			let snapshot_arg = snapshot_ctx.then(|| quote!(__snapshot)).into_iter();
@@ -1771,7 +1781,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				#tail
 			}
 		}
-		(false, true) => {
+		Tail::SpawnFuture => {
 			let (placeholder_binding, spawn_return) = match &parsed.attributes.placeholder {
 				Some(path) => (
 					quote!(let __placeholder = #path(#(&#placeholder_value_names),*);),
@@ -2005,7 +2015,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.filter(|(index, _)| !(carrier_flip && *index == 0))
 				.map(|(_, field)| EvalStep::Clamp(field)),
 		)
-		.chain(std::iter::once(EvalStep::Tail))
+		.chain(std::iter::once(EvalStep::Tail(tail_form)))
 		.collect();
 	let eval_body = eval_steps.iter().map(|step| match step {
 		EvalStep::Bind(index, field) => {
@@ -2023,7 +2033,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		}
 		EvalStep::Clamp(field) => clamp_tokens(field).unwrap_or_default(),
-		EvalStep::Tail => eval_tail.clone(),
+		EvalStep::Tail(form) => lower_tail(*form),
 	});
 
 	let top_level = quote! {
@@ -2239,13 +2249,25 @@ impl InputRole {
 	}
 }
 
+/// The tail form of a node's eval, selected from its class and dialect: forward
+/// the kernel's own record, assemble a record (io or flip carrier), or spawn a
+/// source and lift its completion.
+#[derive(Clone, Copy)]
+enum Tail {
+	Forward,
+	Record,
+	Flip,
+	SpawnAsyncFn,
+	SpawnFuture,
+}
+
 /// One statement group of a node's `eval` body, lowered in order: the input
 /// binds first (one per input), then the numeric clamps, then the tail that
 /// assembles the output record and closes the dialect.
 enum EvalStep<'a> {
 	Bind(usize, &'a ParsedField),
 	Clamp(&'a ParsedField),
-	Tail,
+	Tail(Tail),
 }
 
 /// Whether the signature declares record-tier attribute io: value-input reads
