@@ -111,9 +111,27 @@ impl From<List<String>> for Graphic {
 	}
 }
 
+/// Whether the list is a single leaf item carrying nothing to compose onto its contents, so flattening it
+/// collapses no structure and rebuilding or snapshotting the result would be busywork.
+pub fn is_lone_anonymous_leaf(content: &List<Graphic>) -> bool {
+	content.len() == 1
+		&& !matches!(content.element(0), Some(Graphic::Graphic(_)))
+		&& content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).is_none()
+		&& content.attribute::<f64>(ATTR_OPACITY, 0).is_none()
+		&& content.attribute::<f64>(ATTR_OPACITY_FILL, 0).is_none()
+		&& content.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).is_none()
+}
+
 /// Deeply flattens a `List<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
 /// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-`List`s composes transforms and opacity.
 fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
+	// Its list is already the flat answer, so hand it back rather than rebuilding it item by item
+	if is_lone_anonymous_leaf(&content) {
+		let Some(item) = content.into_iter().next() else { return List::new() };
+
+		return extract_variant(item.into_element()).unwrap_or_default();
+	}
+
 	fn flatten_recursive<T>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
 		for current_graphic_item in current_graphic_list.into_iter() {
 			// Whether the parent carries each attribute: a structural fact (column presence), never a value comparison.
