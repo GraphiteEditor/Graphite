@@ -38,8 +38,7 @@ pub struct DocumentMetadata {
 	pub text_frames: HashMap<LayerNodeIdentifier, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, Vector>,
-	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
-	/// This provides accurate SegmentIds for layers without explicit Path nodes.
+	/// Vector data keyed by layer ID, used as fallback when no Path node exists; provides accurate SegmentIds for layers without explicit Path nodes.
 	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>,
 	/// Per-layer `ATTR_FILL` attribute, exposed so message handlers can read paint
 	/// information that lives on the list.

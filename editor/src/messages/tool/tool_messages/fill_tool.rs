@@ -1,14 +1,20 @@
 use super::tool_prelude::*;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, PathStyleType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::color_selector::solid;
-use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_upstream_color_value_node_id, gradient_chain_target_input, replaceable_paint_chain};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_upstream_color_value_node_id, gradient_chain_target_input, replaceable_paint_chain};
+use crate::messages::tool::common_functionality::utility_functions::near_to_subpath;
+use graphene_std::Vector;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::style::FillChoice;
+
+const STROKE_ID: DefinitionIdentifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+const FILL_ID: DefinitionIdentifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
 
 #[derive(Default, ExtractField)]
 pub struct FillTool {
@@ -140,19 +146,59 @@ impl Fsm for FillToolFsmState {
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
 			(_, FillToolMessage::Overlays { context: mut overlay_context }) => {
+				if !overlay_context.visibility_settings.fillable_indicator() {
+					return self;
+				}
 				// Choose the color to preview
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
-				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
+				let preview_color = {
+					let color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
+					SRGBA8::from(color).to_css_hex()
+				};
 
-				// Pattern the layer the fill would land on, over its whole expanse when the color is its entire content
+				// Get the layer the user is hovering
 				if let Some(layer) = fill_target_layer(document, input, viewport) {
-					let color_hex = SRGBA8::from(preview_color).to_css_hex();
-
+					// Pattern the layer the fill would land on, over its whole expanse when the color is its entire content
 					if paints_whole_expanse(layer, &document.network_interface) {
 						let expanse = whole_expanse_rect(layer, document, overlay_context.viewport.size().into_dvec2());
-						overlay_context.fill_path_pattern(std::iter::once(expanse), DAffine2::IDENTITY, &color_hex);
+						let is_closed = expanse.closed();
+						let vector_data = Vector::from_subpath(expanse);
+
+						overlay_context.preview_fill(PathStyleType::Fill, &vector_data, preview_color.as_str(), DAffine2::IDENTITY, is_closed);
 					} else {
-						overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &color_hex);
+						if let Some(vector_data) = document.network_interface.vector_data_from_layer(layer) {
+							let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+
+							// Stroke
+							let stroke_node = graph_layer.upstream_node_id_from_name(&STROKE_ID);
+							let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
+
+							let mut subpaths = vector_data.stroke_bezier_paths();
+							// Subpaths on a layer is considered "closed" only if all subpaths are closed.
+							let is_closed_on_all = subpaths.all(|subpath| subpath.closed);
+							subpaths = vector_data.stroke_bezier_paths();
+							let near_to_stroke = subpaths.any(|subpath| {
+								near_to_subpath(
+									input.mouse.position,
+									subpath,
+									is_closed_on_all,
+									vector_data.stroke.clone(),
+									layer_to_viewport,
+									Some(overlay_context.clone()),
+								)
+							});
+
+							// Fill
+							let fill_node = graph_layer.upstream_node_id_from_name(&FILL_ID);
+							let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
+
+							if stroke_exists_and_visible && near_to_stroke {
+								overlay_context.preview_fill(PathStyleType::Stroke, &vector_data, preview_color.as_str(), layer_to_viewport, is_closed_on_all);
+							} else if fill_exists_and_visible {
+								overlay_context.preview_fill(PathStyleType::Fill, &vector_data, preview_color.as_str(), layer_to_viewport, is_closed_on_all);
+							}
+						}
 					}
 				}
 
@@ -183,10 +229,37 @@ impl Fsm for FillToolFsmState {
 				if route_to_color_chain {
 					responses.add(GraphOperationMessage::ColorValueSet { layer: layer_identifier, color });
 				} else {
-					responses.add(GraphOperationMessage::FillColorSet {
-						layer: layer_identifier,
-						color: Some(color),
-					});
+					if let Some(vector_data) = document.network_interface.vector_data_from_layer(layer_identifier) {
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer_identifier, &document.network_interface);
+						let layer_to_viewport = document.metadata().transform_to_viewport(layer_identifier);
+
+						// Stroke
+						let stroke_node = graph_layer.upstream_node_id_from_name(&STROKE_ID);
+						let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
+						let stroke = vector_data.stroke.clone();
+
+						let mut subpaths = vector_data.stroke_bezier_paths();
+						// Subpaths on a layer is considered "closed" only if all subpaths are closed.
+						let is_closed_on_all = subpaths.all(|subpath| subpath.closed);
+						subpaths = vector_data.stroke_bezier_paths();
+						let near_to_stroke = subpaths.any(|subpath| near_to_subpath(input.mouse.position, subpath, is_closed_on_all, stroke.clone(), layer_to_viewport, None));
+
+						// Fill
+						let fill_node = graph_layer.upstream_node_id_from_name(&FILL_ID);
+						let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
+
+						if stroke_exists_and_visible && near_to_stroke {
+							responses.add(GraphOperationMessage::StrokeColorSet {
+								layer: layer_identifier,
+								stroke_color: color,
+							});
+						} else if fill_exists_and_visible {
+							responses.add(GraphOperationMessage::FillColorSet {
+								layer: layer_identifier,
+								color: Some(color),
+							});
+						}
+					}
 				}
 
 				FillToolFsmState::Filling

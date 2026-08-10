@@ -1374,16 +1374,7 @@ async fn offset_path(_: impl Ctx, content: Item<Vector>, distance: Item<f64>, jo
 		bezpath.apply_affine(transform);
 
 		// Taking the existing stroke data and passing it to Kurbo to generate new paths.
-		let mut bezpath_out = offset_bezpath(
-			&bezpath,
-			-distance,
-			match join {
-				StrokeJoin::Miter => kurbo::Join::Miter,
-				StrokeJoin::Bevel => kurbo::Join::Bevel,
-				StrokeJoin::Round => kurbo::Join::Round,
-			},
-			Some(miter_limit),
-		);
+		let mut bezpath_out = offset_bezpath(&bezpath, -distance, join.to_kurbo(), Some(miter_limit));
 
 		bezpath_out.apply_affine(transform.inverse());
 
@@ -1419,26 +1410,9 @@ where
 			let mut solidified_stroke = Vector::default();
 
 			// Taking the existing stroke data and passing it to kurbo::stroke to generate new fill paths.
-			let join = match stroke.join {
-				StrokeJoin::Miter => kurbo::Join::Miter,
-				StrokeJoin::Bevel => kurbo::Join::Bevel,
-				StrokeJoin::Round => kurbo::Join::Round,
-			};
-			let cap = match stroke.cap {
-				StrokeCap::Butt => kurbo::Cap::Butt,
-				StrokeCap::Round => kurbo::Cap::Round,
-				StrokeCap::Square => kurbo::Cap::Square,
-			};
-			let dash_offset = stroke.dash_offset;
-			let dash_pattern = stroke.dash_lengths;
-			let miter_limit = stroke.join_miter_limit;
 			let paint_order = stroke.paint_order;
 
-			let stroke_style = kurbo::Stroke::new(stroke.weight)
-				.with_caps(cap)
-				.with_join(join)
-				.with_dashes(dash_offset, dash_pattern)
-				.with_miter_limit(miter_limit);
+			let stroke_style = stroke.to_kurbo();
 
 			// Pick `stable_dash_order` per subpath: closed subpaths use the default merge so the seam-spanning dash matches Vello/SVG renderers, while open subpaths use stable order so dashes are emitted in path-length sequence
 			let stroke_options_default = kurbo::StrokeOpts::default();

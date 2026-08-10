@@ -93,6 +93,10 @@ pub enum GraphOperationMessage {
 		color: Option<Color>,
 		stroke: Stroke,
 	},
+	StrokeColorSet {
+		layer: LayerNodeIdentifier,
+		stroke_color: Color,
+	},
 	TransformChange {
 		layer: LayerNodeIdentifier,
 		transform: DAffine2,
