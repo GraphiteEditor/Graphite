@@ -103,6 +103,7 @@ pub const MAXIMUM_ALT_SCALE_FACTOR: f64 = 25.;
 pub const MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT: f64 = 1e-4;
 
 // BOUNDING BOX
+/// Used for inflation while compositing stroke and fill overlays for the fill tool
 pub const INFLATE_FACTOR: f64 = 1.5;
 
 // SKEW TRIANGLES

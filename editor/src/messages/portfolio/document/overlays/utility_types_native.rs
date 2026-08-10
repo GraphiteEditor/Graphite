@@ -20,7 +20,7 @@ use graphene_std::subpath::{self, Subpath};
 use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
-use graphene_std::vector::style::{PaintOrder, PathStyleType, StrokeAlign};
+use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use kurbo::{self, BezPath, ParamCurve, Shape};
 use kurbo::{Affine, PathSeg};
@@ -43,6 +43,13 @@ pub enum GizmoEmphasis {
 	Regular,
 	Hovered,
 	Active,
+}
+
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PathStyleType {
+	Fill,
+	Stroke,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -1138,6 +1145,7 @@ impl OverlayContextInternal {
 
 	/// Previews the fill on the shape's stroke/fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
 	pub fn preview_fill(&mut self, style_type: PathStyleType, vector_data: &Vector, color: &str, transform: DAffine2, is_closed_on_all: bool) {
+		let vello_transform = self.get_transform();
 		let subpaths = vector_data.stroke_bezier_paths();
 
 		if let Some(stroke) = vector_data.stroke.clone() {
@@ -1153,20 +1161,20 @@ impl OverlayContextInternal {
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
 
 			let do_fill = |ctx: &mut Self, compose_mode: Option<peniko::Compose>, stroke_scale: Option<f64>| {
-				let element_transform = Affine::new(element_transform.to_cols_array());
+				let element_transform = vello_transform * Affine::new(element_transform.to_cols_array());
 				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
 				let (new_path, winding) = ctx.path_and_winding_for_fill(vector_data, applied_stroke_transform);
 				// TODO: avoid cloning the path
 				let path = new_path.unwrap_or(path.clone());
 
 				if let Some(compose_mode) = compose_mode {
-					let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.0));
+					let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.));
 					// TODO: find a method to rid of the extra offset factor
 					let inflation = stroke.weight() * INFLATE_FACTOR;
 					let path_bbox = path.bounding_box().inflate(inflation, inflation);
 
 					ctx.scene
-						.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
+						.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1., element_transform, &path_bbox);
 					ctx.scene.fill(winding, element_transform, &peniko::Brush::Solid(peniko::Color::BLACK), None, &path);
 					ctx.scene.pop_layer();
 				} else {
@@ -1174,8 +1182,8 @@ impl OverlayContextInternal {
 				}
 			};
 			let do_stroke = |ctx: &mut Self, compose_mode: Option<peniko::Compose>, stroke_scale: Option<f64>| {
-				let element_transform = Affine::new(element_transform.to_cols_array());
-				let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.0));
+				let element_transform = vello_transform * Affine::new(element_transform.to_cols_array());
+				let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.));
 
 				if let Some(compose_mode) = compose_mode {
 					// TODO: find a method to rid of the extra offset factor
@@ -1183,7 +1191,7 @@ impl OverlayContextInternal {
 					let path_bbox = path.bounding_box().inflate(inflation, inflation);
 
 					ctx.scene
-						.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
+						.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1., element_transform, &path_bbox);
 					ctx.scene.stroke(&stroke.to_kurbo(), element_transform, &peniko::Brush::Solid(peniko::Color::BLACK), None, &path);
 					ctx.scene.pop_layer();
 				} else {
@@ -1196,7 +1204,7 @@ impl OverlayContextInternal {
 					match (stroke_align, stroke.paint_order) {
 						(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
 							do_fill(self, None, None);
-							do_stroke(self, Some(peniko::Compose::DestOut), Some(2.0));
+							do_stroke(self, Some(peniko::Compose::DestOut), Some(2.));
 						}
 						(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {
 							do_fill(self, None, None);
@@ -1217,8 +1225,8 @@ impl OverlayContextInternal {
 				PathStyleType::Stroke => {
 					match (stroke_align, stroke.paint_order) {
 						(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
-							do_stroke(self, None, Some(2.0));
-							do_fill(self, Some(peniko::Compose::DestIn), Some(2.0));
+							do_stroke(self, None, Some(2.));
+							do_fill(self, Some(peniko::Compose::DestIn), Some(2.));
 						}
 						(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {}
 						(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
@@ -1230,8 +1238,8 @@ impl OverlayContextInternal {
 						}
 						// Paint order does not affect StrokeAlign::Outside
 						(StrokeAlign::Outside, _) => {
-							do_stroke(self, None, Some(2.0));
-							do_fill(self, Some(peniko::Compose::DestOut), Some(2.0));
+							do_stroke(self, None, Some(2.));
+							do_fill(self, Some(peniko::Compose::DestOut), Some(2.));
 						}
 					}
 				}
@@ -1243,7 +1251,7 @@ impl OverlayContextInternal {
 				let path = new_path.unwrap_or(self.path_from_subpaths(subpaths, false, transform));
 
 				let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
-				self.scene.fill(winding, Affine::IDENTITY, &brush, None, &path);
+				self.scene.fill(winding, vello_transform, &brush, Some(vello_transform.inverse()), &path);
 			}
 		}
 	}

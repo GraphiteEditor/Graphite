@@ -1,12 +1,12 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, PathStyleType};
 use crate::messages::tool::common_functionality::color_selector::solid;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::utility_functions::near_to_subpath;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoiceUI, PathStyleType};
+use graphene_std::vector::style::FillChoiceUI;
 
 const STROKE_ID: DefinitionIdentifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
 const FILL_ID: DefinitionIdentifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);

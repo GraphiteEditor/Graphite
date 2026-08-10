@@ -16,7 +16,7 @@ use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
-use graphene_std::vector::style::{PaintOrder, PathStyleType, StrokeAlign};
+use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use js_sys::{Array, Reflect};
 use kurbo::{self, Affine, BezPath, CubicBez, ParamCurve, PathSeg, Shape};
@@ -35,6 +35,12 @@ pub enum GizmoEmphasis {
 	Regular,
 	Hovered,
 	Active,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PathStyleType {
+	Fill,
+	Stroke,
 }
 
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
@@ -634,11 +640,26 @@ impl OverlayContext {
 			.expect("transform should be able to be set to be able to account for DPI");
 	}
 
-	/// Un-transforms the Canvas context to adjust for DPI scaling
+	/// Un-transforms the canvas context to adjust for DPI scaling
 	///
 	/// Warning: this function doesn't only reset the DPI scaling adjustment, it resets the entire transform.
 	fn end_dpi_aware_transform(&self) {
 		self.render_context.reset_transform().expect("transform should be able to be reset to be able to account for DPI");
+	}
+
+	/// Transforms a offscreen canvas context to adjust for DPI scaling
+	///
+	/// Overwrites all existing tranforms. This operation can be reversed with [`Self::reset_transform`].
+	fn start_dpi_aware_transform_offscreen(&self, off_context: &OffscreenCanvasRenderingContext2d) {
+		let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(self.viewport.scale())).to_cols_array();
+		off_context.set_transform(a, b, c, d, e, f).expect("transform should be able to be set to be able to account for DPI");
+	}
+
+	/// Un-transforms a offscreen context to adjust for DPI scaling
+	///
+	/// Warning: this function doesn't only reset the DPI scaling adjustment, it resets the entire transform.
+	fn end_dpi_aware_transform_offscreen(&self, off_context: &OffscreenCanvasRenderingContext2d) {
+		off_context.reset_transform().expect("transform should be able to be reset to be able to account for DPI");
 	}
 
 	pub fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
@@ -1083,7 +1104,7 @@ impl OverlayContext {
 	}
 
 	/// Default canvas pattern used for filling stroke or fill of a path.
-	fn fill_canvas_pattern(&self, color: &str) -> web_sys::CanvasPattern {
+	fn fill_canvas_pattern(&self, off_context: &OffscreenCanvasRenderingContext2d, color: &str) -> web_sys::CanvasPattern {
 		const PATTERN_WIDTH: usize = 4;
 		const PATTERN_HEIGHT: usize = 4;
 
@@ -1115,8 +1136,8 @@ impl OverlayContext {
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
 		pattern_context.put_image_data(&image_data, 0, 0).unwrap();
 
-		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
-		let dom_matrix = self.render_context.get_transform().unwrap().inverse();
+		let pattern = off_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+		let dom_matrix = off_context.get_transform().unwrap().inverse();
 		let set_pattern_transform = |pattern: &CanvasPattern, matrix: &DomMatrix| {
 			// Get the JS function: pattern.setTransform
 			let func = Reflect::get(pattern, &JsValue::from_str("setTransform"))?;
@@ -1126,7 +1147,7 @@ impl OverlayContext {
 		};
 		let _ = set_pattern_transform(&pattern, &dom_matrix);
 
-		return pattern;
+		pattern
 	}
 
 	fn path_and_winding_for_fill(&self, vector_data: &Vector, transform: DAffine2) -> (Option<Path2d>, CanvasWindingRule) {
@@ -1161,7 +1182,19 @@ impl OverlayContext {
 		let subpaths = vector_data.stroke_bezier_paths();
 
 		self.render_context.save();
-		self.start_dpi_aware_transform();
+
+		let main_w = (self.render_context.canvas().unwrap().width() as f64) as u32;
+		let main_h = (self.render_context.canvas().unwrap().height() as f64) as u32;
+		// Create offscreen canvas with identical dimensions as render canvas
+		let off_canvas: OffscreenCanvas = OffscreenCanvas::new(main_w, main_h).unwrap();
+		let off_context: OffscreenCanvasRenderingContext2d = off_canvas
+			.get_context("2d")
+			.ok()
+			.flatten()
+			.expect("Failed to get canvas context")
+			.dyn_into()
+			.expect("Context should be a canvas 2d context");
+		self.start_dpi_aware_transform_offscreen(&off_context);
 
 		if let Some(stroke) = vector_data.stroke.clone() {
 			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
@@ -1169,7 +1202,7 @@ impl OverlayContext {
 			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
 
 			let [a, b, c, d, e, f] = element_transform.to_cols_array();
-			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
+			off_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
 			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths as closed.
 			let path = self.path_from_subpaths(subpaths, false, applied_stroke_transform);
 
@@ -1178,34 +1211,32 @@ impl OverlayContext {
 
 			let do_fill = |use_as_mask: bool| {
 				if use_as_mask {
-					self.render_context.set_fill_style_str(&"#000000");
+					off_context.set_fill_style_str(&"#000000");
 				} else {
-					self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+					off_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(&off_context, color));
 				}
 				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
 				let (new_path, winding) = self.path_and_winding_for_fill(vector_data, applied_stroke_transform);
 				// TODO: avoid cloning the path
 				let path = new_path.unwrap_or(path.clone());
-				self.render_context.fill_with_path_2d_and_winding(&path, winding);
+				off_context.fill_with_path_2d_and_winding(&path, winding);
 			};
 			let do_stroke = |stroke_weight: f64, use_as_mask: bool| {
 				if use_as_mask {
-					self.render_context.set_stroke_style_str(&"#000000");
-					self.render_context.set_line_width(stroke_weight);
+					off_context.set_stroke_style_str(&"#000000");
+					off_context.set_line_width(stroke_weight);
 				} else {
-					self.render_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(color));
-					self.render_context.set_line_width(stroke_weight);
-					self.render_context.set_line_cap(stroke.cap.html_canvas_name().as_str());
-					self.render_context.set_line_join(stroke.join.html_canvas_name().as_str());
-					self.render_context.set_miter_limit(stroke.join_miter_limit);
+					off_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(&off_context, color));
+					off_context.set_line_width(stroke_weight);
+					off_context.set_line_cap(stroke.cap.html_canvas_name());
+					off_context.set_line_join(stroke.join.html_canvas_name());
+					off_context.set_miter_limit(stroke.join_miter_limit);
 				}
-				self.render_context.stroke_with_path(&path);
+				off_context.stroke_with_path(&path);
 			};
 			let composite_mode = |composite_operation: &str| {
 				// For HTMLCanvas Composition Operations: https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
-				self.render_context
-					.set_global_composite_operation(composite_operation)
-					.expect("Failed to set global composite operation");
+				off_context.set_global_composite_operation(composite_operation).expect("Failed to set global composite operation");
 			};
 
 			// WARN: don't use source-in, destination-atop, destination-in, copy
@@ -1237,7 +1268,7 @@ impl OverlayContext {
 					match (stroke_align, stroke.paint_order) {
 						(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
 							// Clips away the stroke lying outside the path drawn from the subpaths
-							self.render_context.clip_with_path_2d(&path);
+							off_context.clip_with_path_2d(&path);
 							do_stroke(stroke.weight() * 2., false);
 						}
 						(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {}
@@ -1264,17 +1295,16 @@ impl OverlayContext {
 				let (new_path, winding) = self.path_and_winding_for_fill(vector_data, transform);
 				let path = new_path.unwrap_or(self.path_from_subpaths(subpaths, false, transform));
 
-				self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
-				self.render_context.fill_with_path_2d_and_winding(&path, winding);
+				off_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(&off_context, color));
+				off_context.fill_with_path_2d_and_winding(&path, winding);
 			}
 		}
+		self.render_context
+			.draw_image_with_offscreen_canvas(&off_canvas, 0.0, 0.0)
+			.expect("Failed to write the offscreen canvas to the render canvas");
 
-		self.end_dpi_aware_transform();
+		self.end_dpi_aware_transform_offscreen(&off_context);
 		self.render_context.restore();
-	}
-
-	pub fn get_width(&self, text: &str) -> f64 {
-		self.render_context.measure_text(text).expect("Failed to measure text dimensions").width()
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
@@ -1341,7 +1371,7 @@ impl OverlayContext {
 
 	fn snap_to_physical_pixel(&self, p: DVec2) -> DVec2 {
 		let s = self.viewport.scale();
-		if !s.is_finite() || s <= 0.0 {
+		if !s.is_finite() || s <= 0. {
 			return p.round();
 		}
 		(p * s).round() / s
@@ -1349,7 +1379,7 @@ impl OverlayContext {
 
 	fn snap_to_physical_pixel_center(&self, p: DVec2) -> DVec2 {
 		let s = self.viewport.scale();
-		if !s.is_finite() || s <= 0.0 {
+		if !s.is_finite() || s <= 0. {
 			return p.round() - DVec2::splat(0.5);
 		}
 		self.snap_to_physical_pixel(p) - DVec2::splat(0.5 / s)

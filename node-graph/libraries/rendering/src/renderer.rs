@@ -1417,15 +1417,9 @@ impl Render for List<Vector> {
 					};
 
 					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
-					let stroke = kurbo::Stroke {
-						width: stroke.weight * width_scale,
-						miter_limit: stroke.join_miter_limit,
-						join: stroke.join.to_kurbo(),
-						start_cap: stroke.cap.to_kurbo(),
-						end_cap: stroke.cap.to_kurbo(),
-						dash_pattern,
-						dash_offset: stroke.dash_offset,
-					};
+					let mut stroke = stroke.to_kurbo();
+					stroke.width *= width_scale;
+					stroke.dash_pattern = dash_pattern;
 
 					if stroke.width <= 0. {
 						continue;

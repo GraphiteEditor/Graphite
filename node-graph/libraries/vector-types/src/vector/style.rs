@@ -133,12 +133,8 @@ impl StrokeCap {
 		}
 	}
 
-	pub fn html_canvas_name(&self) -> String {
-		match self {
-			StrokeCap::Butt => String::from("butt"),
-			StrokeCap::Round => String::from("round"),
-			StrokeCap::Square => String::from("square"),
-		}
+	pub fn html_canvas_name(&self) -> &'static str {
+		self.svg_name()
 	}
 
 	pub fn to_kurbo(&self) -> kurbo::Cap {
@@ -174,12 +170,8 @@ impl StrokeJoin {
 		}
 	}
 
-	pub fn html_canvas_name(&self) -> String {
-		match self {
-			StrokeJoin::Bevel => String::from("bevel"),
-			StrokeJoin::Miter => String::from("miter"),
-			StrokeJoin::Round => String::from("round"),
-		}
+	pub fn html_canvas_name(&self) -> &'static str {
+		self.svg_name()
 	}
 
 	pub fn to_kurbo(&self) -> kurbo::Join {
@@ -333,17 +325,15 @@ impl Stroke {
 		}
 	}
 
-	/// Converts Stroke to kurbo::Stroke, lose of data is possible since some fields are non-existent in kurbo::Stroke
+	/// Converts Stroke to kurbo::Stroke, **loss of data is possible since some fields are non-existent in kurbo::Stroke**
 	pub fn to_kurbo(&self) -> kurbo::Stroke {
-		kurbo::Stroke {
-			width: self.weight,
-			join: self.join.to_kurbo(),
-			miter_limit: self.join_miter_limit,
-			start_cap: self.cap.to_kurbo(),
-			end_cap: self.cap.to_kurbo(),
-			dash_offset: self.dash_offset,
-			..Default::default()
-		}
+		let _paint_order = self.paint_order;
+
+		kurbo::Stroke::new(self.weight)
+			.with_caps(self.cap.to_kurbo())
+			.with_join(self.join.to_kurbo())
+			.with_dashes(self.dash_offset, self.dash_lengths.clone())
+			.with_miter_limit(self.join_miter_limit)
 	}
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
@@ -511,11 +501,6 @@ impl Default for Stroke {
 			paint_order: PaintOrder::default(),
 		}
 	}
-}
-
-pub enum PathStyleType {
-	Fill,
-	Stroke,
 }
 
 /// Ways the user can choose to view the artwork in the viewport.

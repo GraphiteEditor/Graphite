@@ -682,15 +682,15 @@ pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on
 			};
 
 			// Compute insideness and stroke scale while in element space
-			let (is_inside_seg, stroke_scale) = seg.tangent_at(nearest.t).try_normalize().map_or((false, 1.0), |tangent| {
+			let (is_inside_seg, stroke_scale) = seg.tangent_at(nearest.t).try_normalize().map_or((false, 1.), |tangent| {
 				// Transform the normal from element space to viewport space
 				let normal_dir = {
 					let subpath_bezpath = test_subpath_bezpath();
 					let seg = transform_seg(element_transform);
 					let transformed_normal = (element_transform).transform_vector2(tangent.perp());
-					let normal_end = dvec2_to_point(point_to_dvec2(seg.eval(nearest.t)) + ((stroke.weight() / 2.0) * transformed_normal));
+					let normal_end = dvec2_to_point(point_to_dvec2(seg.eval(nearest.t)) + ((stroke.weight() / 2.) * transformed_normal));
 
-					if subpath_bezpath.contains(normal_end) { -1.0 } else { 1.0 }
+					if subpath_bezpath.contains(normal_end) { -1. } else { 1. }
 				};
 				let normal = normal_dir * tangent.perp();
 				let transformed_normal = (element_transform).transform_vector2(normal);
@@ -702,18 +702,18 @@ pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on
 				// 	let seg = transform_seg(element_transform);
 
 				// 	let normal_start = point_to_dvec2(seg.eval(nearest.t));
-				// 	let normal_end = normal_start + ((stroke.weight() / 2.0) * transformed_normal);
-				// 	ctx.line(normal_start, normal_end, Some("#d23434"), Some(2.0));
+				// 	let normal_end = normal_start + ((stroke.weight() / 2.) * transformed_normal);
+				// 	ctx.line(normal_start, normal_end, Some("#d23434"), Some(2.));
 				// }
 
-				(normal.dot(seg_to_mouse) <= 0.0, transformed_normal.length())
+				(normal.dot(seg_to_mouse) <= 0., transformed_normal.length())
 			});
 
 			// Adjust max stroke distance based on stroke properities and insideness
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
-			let mut max_stroke_distance = (stroke.weight() / 2.0) * stroke_scale;
+			let mut max_stroke_distance = (stroke.weight() / 2.) * stroke_scale;
 			match (stroke_align, stroke.paint_order, is_inside_seg) {
-				(StrokeAlign::Inside, PaintOrder::StrokeAbove, true) => max_stroke_distance *= 2.0,
+				(StrokeAlign::Inside, PaintOrder::StrokeAbove, true) => max_stroke_distance *= 2.,
 				(StrokeAlign::Inside, PaintOrder::StrokeAbove, false) => max_stroke_distance = -f64::INFINITY,
 				(StrokeAlign::Inside, PaintOrder::StrokeBelow, _) => max_stroke_distance = -f64::INFINITY,
 				(StrokeAlign::Center, PaintOrder::StrokeAbove, _) => {}
@@ -721,7 +721,7 @@ pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on
 				(StrokeAlign::Center, PaintOrder::StrokeBelow, false) => {}
 				// Paint order does not affect StrokeAlign::Outside
 				(StrokeAlign::Outside, _, true) => max_stroke_distance = -f64::INFINITY,
-				(StrokeAlign::Outside, _, false) => max_stroke_distance *= 2.0,
+				(StrokeAlign::Outside, _, false) => max_stroke_distance *= 2.,
 			}
 
 			// Compute the nearest distance (subpath to mouse position in viewport space)

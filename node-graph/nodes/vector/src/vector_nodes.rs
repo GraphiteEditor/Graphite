@@ -1410,18 +1410,9 @@ where
 			let mut solidified_stroke = Vector::default();
 
 			// Taking the existing stroke data and passing it to kurbo::stroke to generate new fill paths.
-			let join = stroke.join.to_kurbo();
-			let cap = stroke.cap.to_kurbo();
-			let dash_offset = stroke.dash_offset;
-			let dash_pattern = stroke.dash_lengths;
-			let miter_limit = stroke.join_miter_limit;
 			let paint_order = stroke.paint_order;
 
-			let stroke_style = kurbo::Stroke::new(stroke.weight)
-				.with_caps(cap)
-				.with_join(join)
-				.with_dashes(dash_offset, dash_pattern)
-				.with_miter_limit(miter_limit);
+			let stroke_style = stroke.to_kurbo();
 
 			// Pick `stable_dash_order` per subpath: closed subpaths use the default merge so the seam-spanning dash matches Vello/SVG renderers, while open subpaths use stable order so dashes are emitted in path-length sequence
 			let stroke_options_default = kurbo::StrokeOpts::default();

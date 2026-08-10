@@ -1,5 +1,5 @@
 use super::misc::dvec2_to_point;
-use super::style::{Stroke, StrokeCap, StrokeJoin};
+use super::style::Stroke;
 pub use super::vector_attributes::*;
 use crate::subpath::{BezierHandles, ManipulatorGroup, Subpath};
 use crate::vector::click_target::{ClickTargetType, FreePoint};
@@ -260,22 +260,8 @@ impl Vector {
 			return path_bounds;
 		}
 
-		let join = match stroke.join {
-			StrokeJoin::Miter => kurbo::Join::Miter,
-			StrokeJoin::Bevel => kurbo::Join::Bevel,
-			StrokeJoin::Round => kurbo::Join::Round,
-		};
-		let cap = match stroke.cap {
-			StrokeCap::Butt => kurbo::Cap::Butt,
-			StrokeCap::Round => kurbo::Cap::Round,
-			StrokeCap::Square => kurbo::Cap::Square,
-		};
-
-		let stroke_style = kurbo::Stroke::new(kurbo_width)
-			.with_caps(cap)
-			.with_join(join)
-			.with_dashes(stroke.dash_offset, stroke.dash_lengths.clone())
-			.with_miter_limit(stroke.join_miter_limit);
+		let mut stroke_style = stroke.to_kurbo();
+		stroke_style.width = kurbo_width;
 		let stroke_options = kurbo::StrokeOpts::default();
 		// Same tolerance as `solidify_stroke` — balanced between performance and curve accuracy
 		const STROKE_TOLERANCE: f64 = 0.25;
