@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 
 /// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.
 #[node_macro::node(category("General"), skip_impl)]
-fn passthrough<'i, T: 'i + Send>(_: impl Ctx, content: T) -> T {
+fn passthrough<T: Send>(_: impl Ctx, content: T) -> T {
 	content
 }
 
