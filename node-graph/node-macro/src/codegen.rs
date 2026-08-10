@@ -1239,7 +1239,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.collect::<Vec<(usize, &AttributeRead)>>()
 	};
 
-	let eval_values = regular_fields.iter().enumerate().map(|(index, field)| {
+	let bind_body = |index: usize, field: &ParsedField| {
 		let name = &field.pat_ident.ident;
 		let regular_ty = || match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
@@ -1261,10 +1261,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let ty = regular_ty();
 				let slot = format_ident!("__in_{index}");
 				let rec_local = format_ident!("__rec_{index}");
-				let mark = format_ident!("__mark_{index}");
 				let bindings: Vec<TokenStream2> = reads_of(index).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(#rec_local))).collect();
 				quote! {
-					let #mark = #core_types::record::stack::sp();
 					let #name = match __cell.eval_input(#index, &self.#name, __input) {
 						Ok(value) => value,
 						Err(interrupt) => return interrupt.into(),
@@ -1272,8 +1270,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let #rec_local = self.#slot.rec(&#name);
 					#(#bindings)*
 					let #name: #ty = unsafe { #core_types::record::read_element(#rec_local) };
-					// SAFETY: the element and declared attribute reads copied out by value, so no record above the mark is live.
-					unsafe { #core_types::record::stack::rewind(#mark) };
 				}
 			}
 			// The lend input's frame survives on the record stack until this
@@ -1291,21 +1287,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				}
 			}
 			// A flip value or a routing non-source value rides a record edge; the
-			// element copies out right after its eval, before any sibling eval can
-			// reuse the record stack.
+			// element copies out into `name`. The mark/rewind that reclaims the
+			// record's frame is applied by the step lowering (see `reads_out`).
 			InputRole::RecordValue => {
 				let ty = regular_ty();
 				let slot = format_ident!("__in_{index}");
-				let mark = format_ident!("__mark_{index}");
 				quote! {
-					let #mark = #core_types::record::stack::sp();
 					let #name = match __cell.eval_input(#index, &self.#name, __input) {
 						Ok(value) => value,
 						Err(interrupt) => return interrupt.into(),
 					};
 					let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
-					// SAFETY: the element copied out by value, so no record above the mark is live.
-					unsafe { #core_types::record::stack::rewind(#mark) };
 				}
 			}
 			InputRole::PlainValue => quote! {
@@ -1356,7 +1348,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let #name = #core_types::node::LazyInput::new(&self.#name, &__cell, #index);
 			},
 		}
-	});
+	};
 
 	let clamp_tokens = |field: &ParsedField| {
 		let ParsedFieldType::Regular(RegularParsedField { number_hard_min, number_hard_max, .. }) = &field.ty else {
@@ -1372,12 +1364,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 		(!tokens.is_empty()).then_some(tokens)
 	};
-	// A carrier primary binds in the flip tail; its clamp runs there too.
-	let clamps = regular_fields
-		.iter()
-		.enumerate()
-		.filter(|(index, _)| !(carrier_flip && *index == 0))
-		.filter_map(|(_, field)| clamp_tokens(field));
 
 	let call_args = regular_fields.iter().enumerate().filter(|(_, field)| !injected_name(&field.pat_ident.ident)).map(|(index, field)| {
 		let name = &field.pat_ident.ident;
@@ -2005,6 +1991,41 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 
+	// The eval body as an ordered step sequence: bind each input, clamp, then the
+	// tail. The record-stack mark/rewind of a read-out bind is applied here from
+	// the role, so the discipline is structural rather than per-arm.
+	let eval_steps: Vec<EvalStep> = regular_fields
+		.iter()
+		.enumerate()
+		.map(|(index, field)| EvalStep::Bind(index, field))
+		.chain(
+			regular_fields
+				.iter()
+				.enumerate()
+				.filter(|(index, _)| !(carrier_flip && *index == 0))
+				.map(|(_, field)| EvalStep::Clamp(field)),
+		)
+		.chain(std::iter::once(EvalStep::Tail))
+		.collect();
+	let eval_body = eval_steps.iter().map(|step| match step {
+		EvalStep::Bind(index, field) => {
+			let body = bind_body(*index, field);
+			match roles[*index].reads_out() {
+				false => body,
+				true => {
+					let mark = format_ident!("__mark_{index}");
+					quote! {
+						let #mark = #core_types::record::stack::sp();
+						#body
+						unsafe { #core_types::record::stack::rewind(#mark) };
+					}
+				}
+			}
+		}
+		EvalStep::Clamp(field) => clamp_tokens(field).unwrap_or_default(),
+		EvalStep::Tail => eval_tail.clone(),
+	});
+
 	let top_level = quote! {
 		#cfg
 		#[automatically_derived]
@@ -2023,9 +2044,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			fn eval(&self, __input: &#ctx_ident) -> #core_types::gpoll::GPoll<Self::Output> {
 				let __cell = #cell_constructor;
 				#reclaim_guard
-				#(#eval_values)*
-				#(#clamps)*
-				#eval_tail
+				#(#eval_body)*
 			}
 
 			#extent_impl
@@ -2208,6 +2227,25 @@ pub(crate) enum InputRole {
 	FlipLazy,
 	RawLazy,
 	Lazy,
+}
+
+impl InputRole {
+	/// A role that copies an element out of a record edge, so its record frame
+	/// must be reclaimed after the read. The step lowering wraps such a bind in
+	/// `mark`/`rewind`, making the stack discipline structural rather than
+	/// hand-threaded through each read-out arm.
+	fn reads_out(self) -> bool {
+		matches!(self, InputRole::ReadingSecondary | InputRole::RecordValue)
+	}
+}
+
+/// One statement group of a node's `eval` body, lowered in order: the input
+/// binds first (one per input), then the numeric clamps, then the tail that
+/// assembles the output record and closes the dialect.
+enum EvalStep<'a> {
+	Bind(usize, &'a ParsedField),
+	Clamp(&'a ParsedField),
+	Tail,
 }
 
 /// Whether the signature declares record-tier attribute io: value-input reads
