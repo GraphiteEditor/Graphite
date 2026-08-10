@@ -39,10 +39,19 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// Separate data fields from regular fields
 	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = fields.iter().partition(|f| f.is_data_field);
 
-	let record = record_shape(parsed);
-	let routing = routing_io(parsed);
-	let flip = record_flip(parsed);
-	let opaque = record_opaque(parsed);
+	let model = analyze(parsed);
+	let class = model.as_ref().map(|model| &model.class);
+	let record = match class {
+		Some(Class::RecordIo(shape)) => Some(shape.clone()),
+		_ => None,
+	};
+	let routing = match class {
+		Some(Class::Routing(routing)) => Some(routing.clone()),
+		_ => None,
+	};
+	let flip = matches!(class, Some(Class::Flip { .. }));
+	let carrier_flip = matches!(class, Some(Class::Flip { carrier: true }));
+	let opaque = matches!(class, Some(Class::Opaque));
 	let record_skips_carrier = record.as_ref().is_some_and(|shape| shape.skips_carrier());
 	// Record nodes with a `_: ()` primary input have no carrier edge; the unit
 	// field stays visible in the metadata but claims no struct field.
@@ -82,7 +91,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// Flipped nodes carry their kernel generics as struct parameters: record
 	// edges no longer bind them through `Output`, so the struct must.
 	let ctx_ident_for_flip = context_param(parsed).map(|ctx| ctx.ident.clone());
-	let flip_generics: Vec<&syn::GenericParam> = if record_flip(parsed) {
+	let flip_generics: Vec<&syn::GenericParam> = if flip {
 		fn_generics
 			.iter()
 			.filter(|param| match param {
@@ -188,7 +197,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		None if opaque => vec![quote!(pub(super) __layout: gcore::record::Layout)],
 		None if flip => {
 			let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout), quote!(pub(super) __frame_bytes: usize)];
-			if flip_carrier(parsed) {
+			if carrier_flip {
 				state.push(quote!(pub(super) __plan: ::std::vec::Vec<(usize, usize, usize)>));
 			}
 			state.extend((0..struct_regular_fields.len()).map(|index| {
@@ -386,7 +395,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.into_iter()
 		.flatten();
 	let flip_prelude = flip
-		.then(|| match flip_carrier(parsed) {
+		.then(|| match carrier_flip {
 			true => quote! {
 				let __layout = __in_0.with_writes(__in_0.depth, gcore::record::element_write::<#slot_value_type>(), &[]);
 				let __plan = gcore::record::copy_plan(__in_0, &__layout, false, &[]);
@@ -423,7 +432,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.flatten();
 	let flip_output_inits = flip
 		.then(|| {
-			let plan = flip_carrier(parsed).then(|| quote!(__plan,));
+			let plan = carrier_flip.then(|| quote!(__plan,));
 			match flip_generic_idents.is_empty() {
 				true => quote!(__layout, __frame_bytes, #plan),
 				false => quote!(__layout, __frame_bytes, #plan __marker: ::core::marker::PhantomData,),
@@ -462,11 +471,36 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
-	let node = generate_node_impl(crate_ident, parsed)?;
-	let node_in_mod = node.in_mod;
-	let node_top_level = node.top_level;
+	let mut plan = generate_node_impl(
+		crate_ident,
+		parsed,
+		&model,
+		NodeFields {
+			data_fields: data_fields.clone(),
+			regular_fields: struct_regular_fields.clone(),
+			node_generics: node_generics.clone(),
+			data_field_generic_idents: data_field_generic_idents.clone(),
+			struct_type_params: struct_type_params.clone(),
+		},
+	)?;
+	plan.struct_item = quote! {
+		#struct_derives
+		pub struct #struct_name<#(#struct_generic_params,)*> {
+			#(#struct_fields,)*
+		}
+	};
+	plan.value_ctor = new_impl;
+	let NodePlan {
+		struct_item,
+		value_ctor,
+		kernel,
+		lazy_read_fns,
+		record_ctor,
+		node_impl,
+		entries,
+	} = plan;
 	let entries_name = format_ident!("{}_entries", parsed.fn_name);
-	let register_entries = match node_in_mod.is_empty() {
+	let register_entries = match entries.is_empty() {
 		true => quote!(),
 		false => quote!(gcore::registry::NODE_REGISTRY.lock().unwrap().entry(#identifier()).or_default().extend(#entries_name());),
 	};
@@ -505,7 +539,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	Ok(quote! {
 		#(#description_doc_attrs)*
-		#node_top_level
+		#kernel
+
+		#lazy_read_fns
+
+		#record_ctor
+
+		#node_impl
 
 		#cfg
 		const fn #identifier() -> #core_types::ProtoNodeIdentifier {
@@ -533,14 +573,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 			static #import_name: core::marker::PhantomData<(#(#all_implementation_types,)*)> = core::marker::PhantomData;
 
-			#struct_derives
-			pub struct #struct_name<#(#struct_generic_params,)*> {
-				#(#struct_fields,)*
-			}
+			#struct_item
 
-			#new_impl
+			#value_ctor
 
-			#node_in_mod
+			#entries
 
 			#register_node_impl
 
@@ -782,12 +819,34 @@ pub(crate) fn type_contains_ident(ty: &Type, ident: &Ident) -> bool {
 	checker.found
 }
 
-pub(crate) struct NodeImplTokens {
-	pub(crate) in_mod: TokenStream2,
-	pub(crate) top_level: TokenStream2,
+/// The generated items of one node, produced uniformly across classes and
+/// stitched by the assembling `quote!` at the end of [`generate_node_code`].
+/// `struct_item` and `value_ctor` are filled by the caller; the rest come from
+/// [`generate_node_impl`].
+#[derive(Default)]
+pub(crate) struct NodePlan {
+	pub(crate) struct_item: TokenStream2,
+	pub(crate) value_ctor: TokenStream2,
+	pub(crate) kernel: TokenStream2,
+	pub(crate) lazy_read_fns: TokenStream2,
+	pub(crate) record_ctor: TokenStream2,
+	pub(crate) node_impl: TokenStream2,
+	pub(crate) entries: TokenStream2,
 }
 
-pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<NodeImplTokens> {
+/// The field and generic derivation shared by the struct/metadata side and the
+/// impl side, computed once in [`generate_node_code`] and passed to
+/// [`generate_node_impl`]. `regular_fields` is the carrier-skipped slice both
+/// sides agree on.
+pub(crate) struct NodeFields<'a> {
+	pub(crate) data_fields: Vec<&'a ParsedField>,
+	pub(crate) regular_fields: Vec<&'a ParsedField>,
+	pub(crate) node_generics: Vec<Ident>,
+	pub(crate) data_field_generic_idents: Vec<Ident>,
+	pub(crate) struct_type_params: Vec<Ident>,
+}
+
+pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn, model: &Option<NodeModel>, fields: NodeFields) -> syn::Result<NodePlan> {
 	let core_types = crate_ident.gcore()?;
 
 	let ctx_param = context_param(parsed);
@@ -798,28 +857,25 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let async_fn = parsed.is_async;
 	let future_kernel = is_source_kernel(&parsed.output_type);
 	let async_source = async_fn || future_kernel;
-	if async_fn && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
-		return Ok(NodeImplTokens {
-			in_mod: quote!(),
-			top_level: quote!(),
-		});
-	}
-	let record = record_shape(parsed);
-	if record.is_none() && has_record_io(parsed) {
-		return Ok(NodeImplTokens {
-			in_mod: quote!(),
-			top_level: quote!(),
-		});
-	}
+	let Some(model) = model.as_ref() else {
+		return Ok(NodePlan::default());
+	};
+	let record = match &model.class {
+		Class::RecordIo(shape) => Some(shape.clone()),
+		_ => None,
+	};
+	let routing = match &model.class {
+		Class::Routing(routing) => Some(routing.clone()),
+		_ => None,
+	};
+	let flip = matches!(model.class, Class::Flip { .. });
+	let carrier_flip = matches!(model.class, Class::Flip { carrier: true });
+	let opaque = matches!(model.class, Class::Opaque);
 	let record_token = match record.as_ref().map(|shape| &shape.carrier) {
 		Some(RecordCarrier::Token(token)) => Some(token.clone()),
 		_ => None,
 	};
 	let skips_carrier = record.as_ref().is_some_and(|shape| shape.skips_carrier());
-	let routing = routing_io(parsed);
-	let flip = record_flip(parsed);
-	let carrier_flip = flip_carrier(parsed);
-	let opaque = record_opaque(parsed);
 	let snapshot_ctx = async_fn && matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
 
 	let mut ctx_bounds: Vec<TokenStream2> = match ctx_param {
@@ -928,8 +984,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let injected_name = |ident: &Ident| async_source && (ident == "_runtime" || ident == "_source");
 	let where_predicates: Vec<TokenStream2> = parsed.where_clause.iter().flat_map(|clause| clause.predicates.iter()).map(|predicate| quote!(#predicate)).collect();
 
-	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = parsed.fields.iter().partition(|field| field.is_data_field);
-	let regular_fields: Vec<_> = regular_fields.into_iter().skip(skips_carrier as usize).collect();
+	let NodeFields {
+		data_fields,
+		regular_fields,
+		node_generics,
+		data_field_generic_idents,
+		struct_type_params,
+	} = fields;
 
 	if derive_routing {
 		for (index, field) in regular_fields.iter().enumerate() {
@@ -971,44 +1032,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		}
 	}
-
-	let data_field_generic_idents: Vec<Ident> = parsed
-		.fn_generics
-		.iter()
-		.filter_map(|generic| match generic {
-			GenericParam::Type(type_param) => Some(type_param.ident.clone()),
-			_ => None,
-		})
-		.filter(|ident| {
-			data_fields.iter().any(|field| match &field.ty {
-				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => crate::codegen::type_contains_ident(ty, ident),
-				_ => false,
-			})
-		})
-		.collect();
-
-	let node_generics: Vec<Ident> = regular_fields.iter().enumerate().map(|(index, _)| format_ident!("Node{}", index)).collect();
-	let flip_generic_idents: Vec<Ident> = match flip {
-		true => parsed
-			.fn_generics
-			.iter()
-			.filter_map(|param| match param {
-				GenericParam::Type(type_param)
-					if Some(&type_param.ident) != ctx_param.map(|ctx_param| &ctx_param.ident) && !data_field_generic_idents.contains(&type_param.ident) =>
-				{
-					Some(type_param.ident.clone())
-				}
-				_ => None,
-			})
-			.collect(),
-		false => Vec::new(),
-	};
-	let struct_type_params: Vec<Ident> = data_field_generic_idents
-		.iter()
-		.cloned()
-		.chain(node_generics.iter().cloned())
-		.chain(flip_generic_idents.iter().cloned())
-		.collect();
 
 	let data_names: Vec<&Ident> = data_fields.iter().map(|field| &field.pat_ident.ident).collect();
 	let data_params = data_fields.iter().map(|field| {
@@ -1822,7 +1845,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => quote!(),
 	};
 
-	let entries = entries_tokens(parsed, &struct_name, &data_field_generic_idents, &regular_fields);
+	let entries = entries_tokens(parsed, &model.class, &struct_name, &data_field_generic_idents, &regular_fields);
 	let cfg = crate::shader_nodes::modify_cfg(&parsed.attributes);
 
 	let record_wiring = record.as_ref().map(|shape| {
@@ -2025,26 +2048,24 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.collect();
 
-	Ok(NodeImplTokens {
-		in_mod: entries,
-		top_level: quote! {
-			#kernel
-
-			#(#lazy_read_fns)*
-
-			#record_wiring
-
-			#top_level
-		},
+	Ok(NodePlan {
+		kernel,
+		lazy_read_fns: quote!(#(#lazy_read_fns)*),
+		record_ctor: quote!(#record_wiring),
+		node_impl: top_level,
+		entries,
+		..Default::default()
 	})
 }
 
+#[derive(Clone)]
 pub(crate) enum RecordDialect {
 	Plain,
 	Interrupt,
 }
 
 /// How a record node's primary input lowers.
+#[derive(Clone)]
 pub(crate) enum RecordCarrier {
 	/// `_: ()`: no carrier edge, the kernel writes a fresh record.
 	None,
@@ -2060,6 +2081,7 @@ pub(crate) enum RecordCarrier {
 /// and the markers written and removed. Present exactly when the signature
 /// declares attribute reads or writes in a shape the record tier supports;
 /// malformed record io is reported by validation and generates no node impl.
+#[derive(Clone)]
 pub(crate) struct RecordShape {
 	pub(crate) carrier: RecordCarrier,
 	pub(crate) element_write: Option<Type>,
@@ -2076,6 +2098,44 @@ impl RecordShape {
 	pub(crate) fn carries_element(&self) -> bool {
 		self.element_write.is_none()
 	}
+}
+
+/// The record-tier lowering a node fn resolves to. Exactly one class per node,
+/// computed once by [`analyze`]; every downstream fragment reads the class
+/// instead of recomputing the classification predicates.
+pub(crate) enum Class {
+	RecordIo(RecordShape),
+	Routing(RoutingIo),
+	Flip { carrier: bool },
+	Opaque,
+}
+
+/// The result of classifying a node fn. A node with no supported lowering
+/// (an async node with lazy inputs, malformed record io, or a signature no
+/// class accepts) yields `None` and generates a struct and metadata but no
+/// `Node` impl.
+pub(crate) struct NodeModel {
+	pub(crate) class: Class,
+}
+
+pub(crate) fn analyze(parsed: &ParsedNodeFn) -> Option<NodeModel> {
+	if parsed.is_async && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+		return None;
+	}
+	let class = if let Some(shape) = record_shape(parsed) {
+		Class::RecordIo(shape)
+	} else if has_record_io(parsed) {
+		return None;
+	} else if let Some(routing) = routing_io(parsed) {
+		Class::Routing(routing)
+	} else if record_flip(parsed) {
+		Class::Flip { carrier: flip_carrier(parsed) }
+	} else if record_opaque(parsed) {
+		Class::Opaque
+	} else {
+		return None;
+	};
+	Some(NodeModel { class })
 }
 
 /// Whether the signature declares record-tier attribute io: value-input reads
@@ -2323,6 +2383,7 @@ pub(crate) fn is_poll_kernel(output: &Type) -> bool {
 /// `RecordValue` so opaque records flow through the kernel. Detected only
 /// when the family's fields carry no implementations lists, so the existing
 /// per-type row spelling keeps its meaning.
+#[derive(Clone)]
 pub(crate) struct RoutingIo {
 	pub(crate) generic: Ident,
 }
@@ -2641,71 +2702,15 @@ fn desugar_extract_lifetime(bound: &TypeParamBound, core_types: &TokenStream2) -
 	quote!(#core_types::context::ExtractArena<ArenaRef = &#lifetime #core_types::arena::Arena>)
 }
 
-fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic_idents: &[Ident], regular_fields: &[&ParsedField]) -> TokenStream2 {
+fn entries_tokens(parsed: &ParsedNodeFn, class: &Class, struct_name: &Ident, data_field_generic_idents: &[Ident], regular_fields: &[&ParsedField]) -> TokenStream2 {
 	if !data_field_generic_idents.is_empty() {
 		return quote!();
 	}
-	if has_record_io(parsed) {
-		return record_entries_tokens(parsed, struct_name, regular_fields);
-	}
-	if routing_io(parsed).is_some() {
-		return routing_entries_tokens(parsed, struct_name, regular_fields);
-	}
-	if record_flip(parsed) {
-		return flip_entries_tokens(parsed, struct_name, regular_fields);
-	}
-	if record_opaque(parsed) {
-		return record_opaque_entries_tokens(parsed, struct_name, regular_fields);
-	}
-	let Some(rows) = implementation_rows(parsed, regular_fields) else {
-		return quote!();
-	};
-	let rows: Vec<&Vec<Type>> = rows.iter().filter(|row| row.iter().all(|ty| !type_disqualifies(ty))).collect();
-	if rows.is_empty() {
-		return quote!();
-	}
-
-	if matches!(slot_value_type(&parsed.output_type), Type::Reference(_)) {
-		return quote!();
-	}
-
-	let fn_name = &parsed.fn_name;
-	let entries_name = format_ident!("{}_entries", fn_name);
-	let arity = regular_fields.len();
-	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
-
-	let entries = rows.iter().map(|row| {
-		let input_types = row.iter().map(|ty| quote!(gcore::registry::edge_type::<#ty>()));
-		let edge_types = row.iter().map(|ty| quote!(gcore::registry::SharedEdge<gcore::registry::ErasedNode<#ty>>));
-		let output = quote!(<#struct_name<#(#edge_types),*> as gcore::node::Node<gcore::context::ContextImpl<'static>>>::Output);
-		let (io_output, construct) = (
-			quote!(gcore::concrete!(#output)),
-			quote!(Ok(gcore::registry::EdgeHandle::new(::std::sync::Arc::new(#struct_name::new(#(#names),*)) as ::std::sync::Arc<gcore::registry::ErasedNode<#output>>))),
-		);
-		let downcasts = names.iter().zip(row.iter()).map(|(name, ty)| quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;));
-		quote! {
-			gcore::registry::RegistryEntry {
-				io: gcore::registry::NodeIOTypes::new(
-					gcore::concrete!(gcore::context::ContextImpl<'static>),
-					#io_output,
-					vec![#(#input_types),*],
-				),
-				constructor: |inputs| {
-					if inputs.len() != #arity {
-						return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });
-					}
-					let mut inputs = inputs.into_iter();
-					#(#downcasts)*
-					#construct
-				},
-			}
-		}
-	});
-
-	quote! {
-		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
-			vec![#(#entries),*]
-		}
+	match class {
+		Class::RecordIo(_) => record_entries_tokens(parsed, struct_name, regular_fields),
+		Class::Routing(_) => routing_entries_tokens(parsed, struct_name, regular_fields),
+		Class::Flip { .. } => flip_entries_tokens(parsed, struct_name, regular_fields),
+		Class::Opaque => record_opaque_entries_tokens(parsed, struct_name, regular_fields),
 	}
 }
 
