@@ -2061,8 +2061,14 @@ impl Render for List<Raster<CPU>> {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
+		for index in 0..self.len() {
+			// The unit square is the raster's own space, so its placement only exists in the item transform
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
+			subpath.apply_transform(transform);
+
+			click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
+		}
 	}
 }
 
@@ -2156,8 +2162,13 @@ impl Render for List<Raster<GPU>> {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
+		for index in 0..self.len() {
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
+			subpath.apply_transform(transform);
+
+			click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
+		}
 	}
 }
 
