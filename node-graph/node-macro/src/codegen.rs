@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicU64;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
-use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
+use syn::{Error, Expr, ExprPath, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
@@ -188,6 +188,20 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				_ => quote!(RegistryValueSource::None),
 			},
 			None => quote!(RegistryValueSource::None),
+		})
+		.collect();
+
+	let default_colors: Vec<_> = regular_fields
+		.iter()
+		.map(|field| match field.ty.regular() {
+			Some(RegularParsedField {
+				value_source: ParsedValueSource::Default(data),
+				..
+			}) => match color_constant_paths(data) {
+				Some(paths) => quote!(Some(&[#(#paths),*])),
+				None => quote!(None),
+			},
+			_ => quote!(None),
 		})
 		.collect();
 
@@ -658,7 +672,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let inject_scope_flag = attributes.inject_scope;
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
-	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, core_types, &identifier, &cfg);
+	let node_input_accessor = generate_node_input_references(parsed, &field_idents, core_types, &identifier, &cfg);
 	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
 
 	let mapped_node_impl = match (&mapped_struct_where_clause, &mapped_eval_impl) {
@@ -858,6 +872,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								hidden: #input_hidden,
 								exposed: #exposed,
 								value_source: #value_sources,
+								default_colors: #default_colors,
 								default_type: #default_types,
 								number_soft_min: #number_soft_min_values,
 								number_soft_max: #number_soft_max_values,
@@ -881,61 +896,44 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	})
 }
 
-/// Generates strongly typed utilites to access inputs
-fn generate_node_input_references(
-	parsed: &ParsedNodeFn,
-	fn_generics: &[crate::GenericParam],
-	field_idents: &[&PatIdent],
-	core_types: &TokenStream2,
-	identifier: &Ident,
-	cfg: &TokenStream2,
-) -> TokenStream2 {
+/// The `Color::*` constant paths making up a default expression, when it consists solely of them (the form used by color and gradient parameter defaults).
+fn color_constant_paths(tokens: &TokenStream2) -> Option<Vec<ExprPath>> {
+	use syn::parse::Parser;
+
+	let expressions = Punctuated::<Expr, Token![,]>::parse_terminated.parse2(tokens.clone()).ok()?;
+	if expressions.is_empty() {
+		return None;
+	}
+
+	expressions
+		.into_iter()
+		.map(|expression| {
+			let Expr::Path(path) = expression else { return None };
+			let segments = &path.path.segments;
+			let is_color_constant = path.qself.is_none() && segments.len() == 2 && segments[0].ident == "Color" && segments.iter().all(|segment| segment.arguments.is_none());
+			is_color_constant.then_some(path)
+		})
+		.collect()
+}
+
+/// Generates the per-parameter symbol types used to reference this node's inputs.
+fn generate_node_input_references(parsed: &ParsedNodeFn, field_idents: &[&PatIdent], core_types: &TokenStream2, identifier: &Ident, cfg: &TokenStream2) -> TokenStream2 {
 	let inputs_module_name = format_ident!("{}", parsed.struct_name.to_string().to_case(Case::Snake));
 
 	let mut generated_input_accessor = Vec::new();
 	if !parsed.attributes.skip_impl {
-		let (mut modified, mut generic_collector) = FilterUsedGenerics::new(fn_generics);
-
-		for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
-			let mut ty = match &parsed_input.ty {
-				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type.clone(),
-				value => value.regular().expect("a non-node field is a value field").ty.clone(),
-			};
-
-			// The element-wise primary input's document wire carries the mapped List form
-			if Some(input_index) == parsed.primary_input_field().map(|(primary_index, _)| primary_index)
-				&& let Some(element_ty) = primary_item_element(parsed)
-			{
-				ty = parse_quote!(#core_types::list::List<#element_ty>);
-			}
-
-			// We only want the necessary generics.
-			let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);
+		for (input_index, input_ident) in field_idents.iter().enumerate() {
 			// TODO: figure out a better name that doesn't conflict with so many types
 			let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
-			let (fn_generic_params, phantom_data_declerations) = generate_phantom_data(used.iter());
 
-			// Only create structs with phantom data where necessary.
-			generated_input_accessor.push(if phantom_data_declerations.is_empty() {
-				quote! {
-					pub struct #struct_name;
-				}
-			} else {
-				quote! {
-					pub struct #struct_name <#(#used),*>{
-						#(#phantom_data_declerations,)*
-					}
+			// Every parameter gets a plain unit struct: the symbol used across the codebase to name this input
+			generated_input_accessor.push(quote! {
+				pub struct #struct_name;
+				impl #core_types::NodeParameter for #struct_name {
+					const NODE_IDENTIFIER: #core_types::ProtoNodeIdentifier = #inputs_module_name::IDENTIFIER;
+					const INDEX: usize = #input_index;
 				}
 			});
-			generated_input_accessor.push(quote! {
-				impl <#(#used),*> #core_types::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
-					const INDEX: usize = #input_index;
-					fn identifier() -> #core_types::ProtoNodeIdentifier {
-						#inputs_module_name::IDENTIFIER.clone()
-					}
-					type Result = #ty;
-				}
-			})
 		}
 	}
 
@@ -949,33 +947,6 @@ fn generate_node_input_references(
 			#(#generated_input_accessor)*
 		}
 	}
-}
-
-/// It is necessary to generate PhantomData for each fn generic to avoid compiler errors.
-fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::GenericParam>) -> (Vec<TokenStream2>, Vec<TokenStream2>) {
-	let mut phantom_data_declerations = Vec::new();
-	let mut fn_generic_params = Vec::new();
-
-	for fn_generic_param in fn_generics {
-		let field_name = format_ident!("phantom_{}", phantom_data_declerations.len());
-
-		match fn_generic_param {
-			crate::GenericParam::Lifetime(lifetime_param) => {
-				let lifetime = &lifetime_param.lifetime;
-
-				fn_generic_params.push(quote! {#lifetime});
-				phantom_data_declerations.push(quote! {#field_name: core::marker::PhantomData<&#lifetime ()>})
-			}
-			crate::GenericParam::Type(type_param) => {
-				let generic_name = &type_param.ident;
-
-				fn_generic_params.push(quote! {#generic_name});
-				phantom_data_declerations.push(quote! {#field_name: core::marker::PhantomData<#generic_name>});
-			}
-			_ => {}
-		}
-	}
-	(fn_generic_params, phantom_data_declerations)
 }
 
 /// The wire container a generated node variant is registered with, wrapping the kernel's primary input element type.
@@ -1295,86 +1266,6 @@ impl VisitMut for LifetimeReplacer {
 fn substitute_lifetimes(mut ty: Type, lifetime: &'static str) -> Type {
 	LifetimeReplacer(lifetime).visit_type_mut(&mut ty);
 	ty
-}
-
-/// Get only the necessary generics.
-struct FilterUsedGenerics {
-	all: Vec<crate::GenericParam>,
-	used: Vec<bool>,
-}
-
-impl VisitMut for FilterUsedGenerics {
-	fn visit_lifetime_mut(&mut self, used_lifetime: &mut Lifetime) {
-		for (generic, used) in self.all.iter().zip(self.used.iter_mut()) {
-			let crate::GenericParam::Lifetime(lifetime_param) = generic else { continue };
-			if used_lifetime == &lifetime_param.lifetime {
-				*used = true;
-			}
-		}
-	}
-
-	fn visit_path_mut(&mut self, path: &mut syn::Path) {
-		for (index, (generic, used)) in self.all.iter().zip(self.used.iter_mut()).enumerate() {
-			let crate::GenericParam::Type(type_param) = generic else { continue };
-			if path.leading_colon.is_none() && !path.segments.is_empty() && path.segments[0].arguments.is_none() && path.segments[0].ident == type_param.ident {
-				*used = true;
-				// Sometimes the generics conflict with the type name so we rename the generics.
-				path.segments[0].ident = format_ident!("G{index}");
-			}
-		}
-		for mut el in Punctuated::pairs_mut(&mut path.segments) {
-			self.visit_path_segment_mut(el.value_mut());
-		}
-	}
-}
-
-impl FilterUsedGenerics {
-	fn new(fn_generics: &[crate::GenericParam]) -> (Vec<crate::GenericParam>, Self) {
-		let mut all_possible_generics = fn_generics.to_vec();
-		// The 'n lifetime may also be needed; we must add it in
-		all_possible_generics.insert(0, syn::GenericParam::Lifetime(syn::LifetimeParam::new(Lifetime::new("'n", proc_macro2::Span::call_site()))));
-
-		let modified = all_possible_generics
-			.iter()
-			.cloned()
-			.enumerate()
-			.map(|(index, mut generic)| {
-				let crate::GenericParam::Type(type_param) = &mut generic else { return generic };
-				// Sometimes the generics conflict with the type name so we rename the generics.
-				type_param.ident = format_ident!("G{index}");
-				generic
-			})
-			.collect::<Vec<_>>();
-
-		let generic_collector = Self {
-			used: vec![false; all_possible_generics.len()],
-			all: all_possible_generics,
-		};
-
-		(modified, generic_collector)
-	}
-
-	fn used<'a>(&'a self, modified: &'a [crate::GenericParam]) -> impl Iterator<Item = &'a crate::GenericParam> {
-		modified.iter().zip(&self.used).filter(|(_, used)| **used).map(move |(value, _)| value)
-	}
-
-	fn filter_unnecessary_generics(&mut self, modified: &mut Vec<syn::GenericParam>, ty: &mut Type) -> Vec<syn::GenericParam> {
-		self.used.fill(false);
-
-		// Find out which generics are necessary to support the node input
-		self.visit_type_mut(ty);
-
-		// Sometimes generics may reference other generics. This is a non-optimal way of dealing with that.
-		for _ in 0..=self.all.len() {
-			for (index, item) in modified.iter_mut().enumerate() {
-				if self.used[index] {
-					self.visit_generic_param_mut(item);
-				}
-			}
-		}
-
-		self.used(&*modified).cloned().collect()
-	}
 }
 
 /// Check if a type contains a reference to a specific identifier (e.g., a generic type parameter)

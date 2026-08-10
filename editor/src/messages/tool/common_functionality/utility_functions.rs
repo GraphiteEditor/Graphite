@@ -571,7 +571,7 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	// Must be a vector layer, at either rank
 	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
 
-	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
+	let output_type = network_interface.output_type(&OutputConnector::primary_output(node_id), &[]);
 	if output_type.compiled_element_name().as_deref() != Some("Vector") {
 		return None;
 	}

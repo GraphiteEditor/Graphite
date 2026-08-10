@@ -2614,7 +2614,11 @@ impl DocumentMessageHandler {
 
 				// If there's already a boolean operation on the selected layer, update it with the new operation
 				if let (Some(upstream_boolean_op), Some(only_selected_layer)) = (upstream_boolean_op, only_selected_layer) {
-					network_interface.set_input(&InputConnector::node(upstream_boolean_op, 1), NodeInput::value(TaggedValue::BooleanOperation(operation), false), &[]);
+					network_interface.set_input(
+						&InputConnector::node(upstream_boolean_op, graphene_std::path_bool_nodes::boolean_operation::OperationInput),
+						NodeInput::value(TaggedValue::BooleanOperation(operation), false),
+						&[],
+					);
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 
@@ -2815,7 +2819,8 @@ impl DocumentMessageHandler {
 				self.network_interface.insert_node(new_index_id, new_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);
 
-				self.network_interface.create_wire(&OutputConnector::node(solidify_id, 0), &InputConnector::node(new_index_id, 0), &[]);
+				self.network_interface
+					.create_wire(&OutputConnector::primary_output(solidify_id), &InputConnector::primary_input(new_index_id), &[]);
 
 				resulting_layers.push(layer.to_node());
 				resulting_layers.push(new_layer.to_node());
@@ -3597,7 +3602,7 @@ impl DocumentMessageHandler {
 					// Showing only compatible types for the layer based on the output type of the node upstream from its horizontal input
 					let compatible_type = selected_layer.and_then(|layer| {
 						self.network_interface
-							.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[])
+							.upstream_output_connector(&InputConnector::layer_secondary_input(layer.to_node()), &[])
 							.and_then(|upstream_output| self.network_interface.output_type(&upstream_output, &[]).add_node_string())
 					});
 
@@ -4349,13 +4354,18 @@ mod document_message_handler_tests {
 
 		let instrumented = editor.eval_graph().await.unwrap();
 
+		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass vacuously
 		let base_lengths: Vec<usize> = instrumented
-			.grab_all_input::<graphene_std::graphic::extend::BaseInput<graphene_std::Graphic>>(&editor.runtime)
+			.grab_all_input::<graphene_std::graphic::extend::BaseInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
 			.map(|base| base.len())
 			.collect();
+		assert!(!base_lengths.is_empty(), "Instrumentation should have recorded at least one stack base");
 		assert!(base_lengths.iter().all(|&len| len == 0), "Every stack base should be empty, found lengths {base_lengths:?}");
 
-		let news: Vec<graphene_std::list::List<graphene_std::Graphic>> = instrumented.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Graphic>>(&editor.runtime).collect();
+		let news: Vec<graphene_std::list::List<graphene_std::Graphic>> = instrumented
+			.grab_all_input::<graphene_std::graphic::extend::NewInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
+			.collect();
+		assert!(!news.is_empty(), "Instrumentation should have recorded at least one stacked element list");
 		let phantom_count = news
 			.iter()
 			.flat_map(|new| new.iter_element_values())

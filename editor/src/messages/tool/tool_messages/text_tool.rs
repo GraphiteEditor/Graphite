@@ -20,12 +20,11 @@ use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
-use graphene_std::vector::style::{FillChoice, FillChoiceUI};
-use graphene_std::{Color, NodeInputDecleration};
+use graphene_std::vector::style::FillChoice;
+use graphene_std::{Color, NodeParameter};
 
 #[derive(Default, ExtractField)]
 pub struct TextTool {
@@ -214,23 +213,12 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &D
 			.into()
 		})
 		.widget_instance();
-	let align_entries: Vec<_> = TextAlign::list()
-		.iter()
-		.flat_map(|section| section.iter())
-		.map(|(item, var_meta)| {
-			let align = *item;
-			let entry = RadioEntryData::new(var_meta.name)
-				.tooltip_label(var_meta.label)
-				.tooltip_description(var_meta.description.unwrap_or_default())
-				.on_update(move |_| {
-					TextToolMessage::UpdateOptions {
-						options: TextOptionsUpdate::Align(align),
-					}
-					.into()
-				});
-			if let Some(icon) = var_meta.icon { entry.icon(icon) } else { entry.label(var_meta.label) }
-		})
-		.collect();
+	let align_entries = RadioEntryData::list_from_choice_type(|align| {
+		TextToolMessage::UpdateOptions {
+			options: TextOptionsUpdate::Align(align),
+		}
+		.into()
+	});
 	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_instance();
 	vec![
 		font,
@@ -261,7 +249,7 @@ impl TextTool {
 
 	fn layout(&self, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Layout {
 		let mut widgets = vec![
-			ColorInput::new(FillChoiceUI::from(self.options.fill.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
+			ColorInput::new(FillChoice::<SRGBA8>::from(self.options.fill.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
 				.mixed(self.options.fill.fill_choice.is_none())
 				.narrow(true)
 				.on_update(|color: &ColorInput| {
@@ -546,7 +534,10 @@ impl TextToolData {
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 			// Make the rendered text invisible while editing
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(graph_modification_utils::get_text_id(self.layer, &document.network_interface).unwrap(), 1),
+				input_connector: InputConnector::node(
+					graph_modification_utils::get_text_id(self.layer, &document.network_interface).unwrap(),
+					graphene_std::text::text::TextInput,
+				),
 				input: NodeInput::value(TaggedValue::String("".to_string()), false),
 			});
 			responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -883,19 +874,19 @@ impl Fsm for TextToolFsmState {
 
 					// TODO: Don't set both max_width and max_height to true at the same time, only do one based on which edge is being dragged (or both if a corner is being dragged)
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxWidthInput::INDEX),
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxWidthInput),
 						input: NodeInput::value(TaggedValue::Bool(true), false),
 					});
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxWidthInput::INDEX),
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxWidthInput),
 						input: NodeInput::value(TaggedValue::F64(size_layer.x), false),
 					});
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxHeightInput::INDEX),
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxHeightInput),
 						input: NodeInput::value(TaggedValue::Bool(true), false),
 					});
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxHeightInput::INDEX),
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxHeightInput),
 						input: NodeInput::value(TaggedValue::F64(size_layer.y), false),
 					});
 					responses.add(GraphOperationMessage::TransformSet {
@@ -1026,7 +1017,10 @@ impl Fsm for TextToolFsmState {
 					tool_data.set_editing(false, fonts, responses);
 
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
+						input_connector: InputConnector::node(
+							graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(),
+							graphene_std::text::text::TextInput,
+						),
 						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);

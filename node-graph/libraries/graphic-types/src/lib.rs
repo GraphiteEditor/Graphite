@@ -12,24 +12,28 @@ pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 
 pub mod migrations {
 	use crate::Vector;
+	use core_types::Color;
+	use vector_types::gradient::GradientStops;
+	use vector_types::{Gradient, GradientRamp, GradientSpace};
 
 	// Storing legacy structs that are only used in document migration.
-	// TODO: Eventually remove this migration document upgrade code
+	// TODO: Eventually remove this document upgrade code
 	pub mod legacy {
 		use core_types::Color;
 		use dyn_any::DynAny;
 		use glam::{DAffine2, DVec2};
 		use vector_types::vector::{PointDomain, RegionDomain, SegmentDomain, misc::HandleId, style::Stroke};
-		use vector_types::{Gradient, Vector, vector};
+		use vector_types::{GradientRamp, Vector, vector};
 
 		#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 		pub struct LegacyGradient {
-			pub stops: Gradient,
-			pub gradient_type: vector::style::GradientType,
+			#[serde(deserialize_with = "crate::migrations::migrate_to_gradient_ramp")]
+			pub stops: GradientRamp,
+			pub gradient_type: vector::style::GradientForm,
 			pub start: DVec2,
 			pub end: DVec2,
 			#[serde(default)]
-			pub spread_method: vector::style::GradientSpreadMethod,
+			pub spread_method: vector::style::GradientSpread,
 			#[serde(default)]
 			pub absolute: bool,
 			#[serde(default)]
@@ -47,7 +51,7 @@ pub mod migrations {
 
 				// The legacy radial drew as a circle in the layer's own space; bake the adjustment that, composed with the
 				// endpoint frame, makes the new pipeline reproduce that circle through the (possibly non-uniform) layer transform.
-				let radial_invertible = self.gradient_type == vector::style::GradientType::Radial
+				let radial_invertible = self.gradient_type == vector::style::GradientForm::Radial
 					&& layer_transform.is_finite()
 					&& layer_transform.matrix2.determinant().recip().is_finite()
 					&& direction.length_squared() > 1e-20;
@@ -113,7 +117,7 @@ pub mod migrations {
 		}
 	}
 
-	// TODO: Eventually remove this migration document upgrade code
+	// TODO: Eventually remove this document upgrade code
 	/// Returns the first `Vector` recovered from any of the legacy on-disk shapes (the legacy `VectorData` flat struct, a single `Vector`, or any of the historical `List<Vector>` variants).
 	pub fn migrate_to_optional_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Vector>, D::Error> {
 		use serde::Deserialize;
@@ -139,6 +143,41 @@ pub mod migrations {
 			}),
 			VectorFormat::Vector(vector) => Some(vector),
 			VectorFormat::List(list) => list.element.into_iter().next(),
+		})
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Recovers a [`GradientRamp`] from any of its on-disk shapes: the current nested form, the flat stops struct
+	/// that preceded it, or the ancient position-color tuple list (whose even positions elide back to absence).
+	/// The pre-ramp shapes come from documents that rendered in gamma, so they carry that space explicitly.
+	pub fn migrate_to_gradient_ramp<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GradientRamp, D::Error> {
+		use serde::Deserialize;
+
+		#[derive(serde::Deserialize)]
+		#[serde(untagged)]
+		enum GradientRampFormat {
+			Ramp(GradientRamp),
+			FlatStops(GradientStops<Color>),
+			Tuples(Vec<(f64, Color)>),
+		}
+
+		Ok(match GradientRampFormat::deserialize(deserializer)? {
+			GradientRampFormat::Ramp(ramp) => ramp,
+			GradientRampFormat::FlatStops(stops) => GradientRamp {
+				gradient_space: GradientSpace::RgbGamma,
+				..GradientRamp::from(stops)
+			},
+			GradientRampFormat::Tuples(stops) => {
+				let position: Vec<f64> = stops.iter().map(|(position, _)| *position).collect();
+				let mut gradient = Gradient::from(stops.into_iter().map(|(_, color)| color).collect::<Vec<_>>());
+				gradient.set_positions(&position);
+				gradient.elide_default_attributes(false);
+
+				GradientRamp {
+					gradient_space: GradientSpace::RgbGamma,
+					..GradientRamp::from(gradient)
+				}
+			}
 		})
 	}
 

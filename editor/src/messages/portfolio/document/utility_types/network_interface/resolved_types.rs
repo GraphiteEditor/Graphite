@@ -124,7 +124,7 @@ impl NodeNetworkInterface {
 						let outward_wires = self.with_outward_wires(&node_path, |map| map.get(&OutputConnector::Import(*input_index)).cloned()).flatten();
 						let Some(outward_wires) = outward_wires else { return false };
 						outward_wires.iter().any(|connector| match connector {
-							InputConnector::Node { node_id, input_index } => self.input_has_error(&InputConnector::node(*node_id, *input_index), &node_path),
+							InputConnector::Node { node_id, input_index } => self.input_has_error(&InputConnector::node_at_index(*node_id, *input_index), &node_path),
 							InputConnector::Export(_) => false,
 						})
 					}
@@ -161,7 +161,7 @@ impl NodeNetworkInterface {
 				let Some((encapsulating_node, encapsulating_path)) = network_path.split_last() else {
 					return TypeSource::Error("Could not get type of import in document network since it has no imports");
 				};
-				self.input_type(&InputConnector::node(*encapsulating_node, *import_index), encapsulating_path)
+				self.input_type(&InputConnector::node_at_index(*encapsulating_node, *import_index), encapsulating_path)
 			}
 			NodeInput::Scope(_) => TypeSource::Compiled(concrete!(())),
 			NodeInput::Reflection(document_node_metadata) => TypeSource::Compiled(document_node_metadata.ty()),
@@ -264,7 +264,7 @@ impl NodeNetworkInterface {
 					.filter_map(|node_io| {
 						// Check if this NodeIOTypes implementation is valid for the other inputs
 						let valid_implementation = (0..number_of_inputs).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
-							let input_type = self.input_type_not_invalid(&InputConnector::node(*node_id, iterator_index), network_path);
+							let input_type = self.input_type_not_invalid(&InputConnector::node_at_index(*node_id, iterator_index), network_path);
 							// TODO: Fix type checking for different call arguments
 							// For example a node input of (Footprint) -> Vector would not be compatible with a node that is called with () and returns Vector
 							node_io.inputs.get(iterator_index).map(|ty| ty.nested_type()) == input_type.compiled_nested_type()
@@ -297,7 +297,7 @@ impl NodeNetworkInterface {
 							log::error!("Protonode {proto_node_identifier:?} not found in registry in complete_valid_input_types");
 							return Vec::new();
 						};
-						let valid_output_types = self.valid_output_types(&OutputConnector::node(*node_id, 0), network_path);
+						let valid_output_types = self.valid_output_types(&OutputConnector::primary_output(*node_id), network_path);
 
 						implementations
 							.keys()
@@ -307,7 +307,7 @@ impl NodeNetworkInterface {
 								}
 
 								let valid_inputs = (0..node_io.inputs.len()).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
-									let input_type = self.input_type_not_invalid(&InputConnector::node(*node_id, iterator_index), network_path);
+									let input_type = self.input_type_not_invalid(&InputConnector::node_at_index(*node_id, iterator_index), network_path);
 									match input_type.compiled_nested_type() {
 										Some(input_type) => node_io.inputs.get(iterator_index).is_some_and(|node_io_input_type| node_io_input_type.nested_type() == input_type),
 										None => true,
@@ -342,7 +342,7 @@ impl NodeNetworkInterface {
 			OutputConnector::Node { node_id, output_index } => {
 				// A hidden node is replaced by a passthrough during flattening, so its output carries its primary input's type
 				if *output_index == 0 && !self.is_visible(node_id, network_path) {
-					return self.input_type(&InputConnector::node(*node_id, 0), network_path);
+					return self.input_type(&InputConnector::primary_input(*node_id), network_path);
 				}
 
 				// First try iterating upstream to the first protonode and try get its compiled type
@@ -352,7 +352,9 @@ impl NodeNetworkInterface {
 				match implementation {
 					DocumentNodeImplementation::Network(_) => self.input_type(&InputConnector::Export(*output_index), &[network_path, &[*node_id]].concat()),
 					// The compiler removes passthrough nodes so they resolve no type of their own, but their output carries their primary input's type
-					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => self.input_type(&InputConnector::node(*node_id, 0), network_path),
+					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => {
+						self.input_type(&InputConnector::primary_input(*node_id), network_path)
+					}
 					DocumentNodeImplementation::ProtoNode(_) => match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
 						Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
 						None => TypeSource::Unknown,
@@ -364,7 +366,7 @@ impl NodeNetworkInterface {
 				let Some((encapsulating_node, encapsulating_path)) = network_path.split_last() else {
 					return TypeSource::Error("Cannot get import type in document network since it has no imports");
 				};
-				let mut input_type = self.input_type(&InputConnector::node(*encapsulating_node, *import_index), encapsulating_path);
+				let mut input_type = self.input_type(&InputConnector::node_at_index(*encapsulating_node, *import_index), encapsulating_path);
 				if matches!(input_type, TypeSource::Invalid) {
 					input_type = TypeSource::Unknown
 				}

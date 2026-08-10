@@ -123,6 +123,14 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()))
 	}
 
+	/// Whether the node is a Merge node by identity, regardless of whether it currently participates in the scene.
+	pub fn is_merge(&self, node_id: &NodeId) -> bool {
+		self.reference(node_id)
+			.ok()
+			.flatten()
+			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Merge".into()))
+	}
+
 	/// The uneditable name in the Properties panel which represents the function name of the node implementation.
 	pub fn implementation_name(&self, node_id: &NodeId) -> String {
 		self.reference(node_id)
@@ -160,7 +168,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn primary_input_connected_to_layer(&self, node_id: &NodeId) -> bool {
-		self.input(&InputConnector::node(*node_id, 0))
+		self.input(&InputConnector::primary_input(*node_id))
 			.ok()
 			.and_then(|input| input.as_node())
 			.is_some_and(|upstream_id| self.is_layer(&upstream_id).unwrap_or_default())
@@ -234,7 +242,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn has_primary_input(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
-		Ok(self.input(&InputConnector::node(*node_id, 0)).is_ok_and(|input| input.is_exposed()))
+		Ok(self.input(&InputConnector::primary_input(*node_id)).is_ok_and(|input| input.is_exposed()))
 	}
 
 	pub fn hidden_primary_output(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
@@ -281,7 +289,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	pub fn persistent_input_metadata(&self, node_id: &NodeId, index: usize) -> Result<&'a InputPersistentMetadata, NetworkError> {
 		let metadata = self.node_metadata(node_id)?;
 		let input_metadata = metadata.persistent_metadata.input_metadata.get(index).ok_or(NetworkError::InputNotFound {
-			connector: InputConnector::node(*node_id, index),
+			connector: InputConnector::node_at_index(*node_id, index),
 		})?;
 		Ok(&input_metadata.persistent_metadata)
 	}

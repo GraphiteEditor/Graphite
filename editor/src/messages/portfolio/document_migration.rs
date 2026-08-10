@@ -11,14 +11,13 @@ use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graph_craft::{Type, item};
 use graphene_std::Color;
-use graphene_std::NodeInputDecleration;
+use graphene_std::ParameterRef;
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
-use graphene_std::vector::misc::BoxCorners;
-use graphene_std::vector::style::{DashPattern, PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{GradientRamp, GradientSpread, PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -169,6 +168,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
+		node: graphene_std::graphic::read_attribute_gradient_form::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::ReadAttributeGradientTypeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::read_attribute_gradient_spread::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::ReadAttributeSpreadMethodNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::graphic::remove_at_index::IDENTIFIER,
 		aliases: &["graphic_nodes::graphic::OmitElementNode"],
 	},
@@ -252,6 +259,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::EqualsNode", "graphene_core::ops::EqualsNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::math_nodes::evaluate_gradient::IDENTIFIER,
+		aliases: &["math_nodes::SampleGradientNode", "graphene_math_nodes::SampleGradientNode", "graphene_core::ops::SampleGradientNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::math_nodes::exponent::IDENTIFIER,
 		aliases: &["graphene_math_nodes::ExponentNode", "graphene_core::ops::ExponentNode"],
 	},
@@ -262,6 +273,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::math_nodes::footprint_value::IDENTIFIER,
 		aliases: &["graphene_math_nodes::FootprintValueNode", "graphene_core::ops::FootprintValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::gradient_form::IDENTIFIER,
+		aliases: &["math_nodes::GradientTypeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::gradient_spread::IDENTIFIER,
+		aliases: &["math_nodes::SpreadMethodNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_value::IDENTIFIER,
@@ -383,10 +402,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::math_nodes::round::IDENTIFIER,
 		aliases: &["graphene_math_nodes::RoundNode", "graphene_core::ops::RoundNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::sample_gradient::IDENTIFIER,
-		aliases: &["graphene_math_nodes::SampleGradientNode", "graphene_core::ops::SampleGradientNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::sine::IDENTIFIER,
@@ -1181,7 +1196,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			continue;
 		};
 		for (index, input) in old_inputs.iter().take(3).enumerate() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
 		}
 	}
 
@@ -1208,7 +1223,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		};
 		// Forward the first 5 inputs (Value, Translation, Rotation, Scale, Skew); drop indices 5 and 6 if present.
 		for (index, input) in old_inputs.iter().take(5).enumerate() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
 		}
 
 		// Pre-2024 documents stored Transform with 6 inputs and used radians for Rotation and `tan(radians)` for Skew. Detect that legacy
@@ -1218,7 +1233,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				Some(NodeInput::Value { tagged_value, exposed }) => {
 					if let TaggedValue::F64(radians) = *tagged_value.clone().into_inner() {
 						let degrees = NodeInput::value(TaggedValue::F64(radians.to_degrees()), *exposed);
-						document.network_interface.set_input(&InputConnector::node(*node_id, 2), degrees, network_path);
+						document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), degrees, network_path);
 					}
 				}
 				Some(NodeInput::Node { .. }) => {
@@ -1232,7 +1247,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 							let multiply_position = transform_position + IVec2::new(-7, 1);
 							document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
 							document.network_interface.shift_absolute_node_position(&multiply_node_id, multiply_position, network_path);
-							document.network_interface.insert_node_between(&multiply_node_id, &InputConnector::node(*node_id, 2), 0, network_path);
+							document
+								.network_interface
+								.insert_node_between(&multiply_node_id, &InputConnector::node_at_index(*node_id, 2), 0, network_path);
 						}
 					}
 				}
@@ -1245,7 +1262,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				// The previous skew value stored `tan(radians)`, now it stores degrees directly.
 				let new_value = DVec2::new(old_value.x.atan().to_degrees(), old_value.y.atan().to_degrees());
 				let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), new_input, network_path);
 			}
 		}
 	}
@@ -1270,7 +1287,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		// Forward the embedded image data into input 0, where the `migrate_node` `image` pass finds it and converts it to a resource.
 		if let Some(image_input) = old_inputs.into_iter().find(|input| matches!(input.as_value(), Some(TaggedValue::ImageData(_)))) {
-			document.network_interface.set_input(&InputConnector::node(*node_id, 0), image_input, network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), image_input, network_path);
 		}
 	}
 
@@ -1331,7 +1348,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		const LEGACY_INPUT_FOR_NEW: [usize; 12] = [0, 1, 2, 3, 4, 5, 10, 6, 7, 8, 9, 11];
 		for (new_index, &legacy_index) in LEGACY_INPUT_FOR_NEW.iter().enumerate() {
 			if let Some(input) = old_inputs.get(legacy_index) {
-				document.network_interface.set_input(&InputConnector::node(*node_id, new_index), input.clone(), network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, new_index), input.clone(), network_path);
 			}
 		}
 		// A `true` toggle at index 12 chose per-glyph geometry, which is now the dedicated "Text to Vector Glyphs" node
@@ -1366,7 +1383,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				document.network_interface.set_input(consumer, NodeInput::node(converter_id, 0), network_path);
 			}
 		} else {
-			document.network_interface.set_input(&InputConnector::node(converter_id, 0), NodeInput::node(*node_id, 0), network_path);
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(converter_id, 0), NodeInput::node(*node_id, 0), network_path);
 		}
 
 		// If `text` was in a layer chain, re-chain the converter and its upstream so both lay out by distance from the layer (the splice
@@ -1383,24 +1402,32 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 /// Converts a legacy stroke dash input (a `List<f64>`, single `f64`, or comma/space separated `String`) to the `DashPattern` value type.
 fn migrate_dash_input(input: &NodeInput) -> Option<NodeInput> {
 	let NodeInput::Value { tagged_value, exposed } = input else { return None };
-	let pattern = match &*tagged_value.clone().into_inner() {
-		TaggedValue::F64Array(lengths) => DashPattern::from(lengths.clone()),
-		TaggedValue::F64(length) => DashPattern::from(*length),
-		TaggedValue::String(text) => DashPattern::from(text.as_str()),
+	let lengths = match &*tagged_value.clone().into_inner() {
+		TaggedValue::F64Array(lengths) => lengths.clone(),
+		TaggedValue::F64(length) => vec![*length],
+		TaggedValue::String(text) => graphene_std::core_types::misc::parse_f64_list(text),
 		_ => return None,
 	};
-	Some(NodeInput::value(TaggedValue::DashPattern(pattern), *exposed))
+	Some(NodeInput::value(TaggedValue::DashPattern(lengths), *exposed))
 }
 
 /// Converts a legacy rectangle corner radius input (a single `f64` or a `List<f64>` of up to four values) to the `BoxCorners` value type.
 fn migrate_corner_radius_input(input: &NodeInput) -> Option<NodeInput> {
 	let NodeInput::Value { tagged_value, exposed } = input else { return None };
-	let corners = match &*tagged_value.clone().into_inner() {
-		TaggedValue::F64Array(values) => BoxCorners::from(values.clone()),
-		TaggedValue::F64(value) => BoxCorners::from(*value),
+	let values = match &*tagged_value.clone().into_inner() {
+		TaggedValue::F64Array(values) => values.clone(),
+		TaggedValue::F64(value) => vec![*value],
 		_ => return None,
 	};
-	Some(NodeInput::value(TaggedValue::BoxCorners(corners), *exposed))
+	Some(NodeInput::value(TaggedValue::BoxCorners(values), *exposed))
+}
+
+/// Rewrites a gradient ramp value input to carry the given gradient spread, which used to live in the Fill node's retired `_spread_method` input.
+fn fold_gradient_spread_into_ramp_input(input: &NodeInput, gradient_spread: GradientSpread) -> NodeInput {
+	match input.as_value() {
+		Some(TaggedValue::GradientRamp(ramp)) => NodeInput::value(TaggedValue::GradientRamp(GradientRamp { gradient_spread, ..ramp.clone() }), input.is_exposed()),
+		_ => input.clone(),
+	}
 }
 
 fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
@@ -1499,23 +1526,25 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let _ = document.network_interface.replace_inputs(node_id, network_path, &mut first_template);
 
 		// Wire the existing node's inputs based on its new role (input 0 is always `content`)
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), content_input, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), content_input, network_path);
 		match first_kind {
 			SubNode::BlendMode => {
-				document.network_interface.set_input(&InputConnector::node(*node_id, 1), blend_mode_input.clone(), network_path);
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, 1), blend_mode_input.clone(), network_path);
 			}
 			SubNode::Opacity => {
 				document
 					.network_interface
-					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(keep_opacity), false), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 2), opacity_input.clone(), network_path);
+					.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Bool(keep_opacity), false), network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), opacity_input.clone(), network_path);
 				document
 					.network_interface
-					.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(keep_fill), false), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 4), fill_input.clone(), network_path);
+					.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(keep_fill), false), network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), fill_input.clone(), network_path);
 			}
 			SubNode::Clip => {
-				document.network_interface.set_input(&InputConnector::node(*node_id, 1), clip_input.clone(), network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), clip_input.clone(), network_path);
 			}
 		}
 
@@ -1556,20 +1585,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			// Wire the parameter inputs for the inserted node
 			match sub {
 				SubNode::BlendMode => {
-					document.network_interface.set_input(&InputConnector::node(new_id, 1), blend_mode_input.clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node_at_index(new_id, 1), blend_mode_input.clone(), network_path);
 				}
 				SubNode::Opacity => {
 					document
 						.network_interface
-						.set_input(&InputConnector::node(new_id, 1), NodeInput::value(TaggedValue::Bool(keep_opacity), false), network_path);
-					document.network_interface.set_input(&InputConnector::node(new_id, 2), opacity_input.clone(), network_path);
+						.set_input(&InputConnector::node_at_index(new_id, 1), NodeInput::value(TaggedValue::Bool(keep_opacity), false), network_path);
+					document.network_interface.set_input(&InputConnector::node_at_index(new_id, 2), opacity_input.clone(), network_path);
 					document
 						.network_interface
-						.set_input(&InputConnector::node(new_id, 3), NodeInput::value(TaggedValue::Bool(keep_fill), false), network_path);
-					document.network_interface.set_input(&InputConnector::node(new_id, 4), fill_input.clone(), network_path);
+						.set_input(&InputConnector::node_at_index(new_id, 3), NodeInput::value(TaggedValue::Bool(keep_fill), false), network_path);
+					document.network_interface.set_input(&InputConnector::node_at_index(new_id, 4), fill_input.clone(), network_path);
 				}
 				SubNode::Clip => {
-					document.network_interface.set_input(&InputConnector::node(new_id, 1), clip_input.clone(), network_path);
+					document.network_interface.set_input(&InputConnector::node_at_index(new_id, 1), clip_input.clone(), network_path);
 				}
 			}
 		}
@@ -1589,30 +1618,30 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[1].clone(), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[1].clone(), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::F64(100.), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 4), NodeInput::value(TaggedValue::F64(100.), false), network_path);
 
 		inputs_count = 5;
 	}
 
 	// Upgrade the legacy 4-input Fill node (content, fill: Fill, _backup_color, _backup_gradient: Gradient) to the value-model
-	// 8-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_type, _spread_method, _has_transform, _transform).
+	// 7-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_form, _has_transform, _transform).
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 4 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
 		// Content: no change
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 
 		// Fill: a literal Fill value is decomposed, and a wired input (`List<Gradient> / List<Color>`) is kept as-is
 		match old_inputs[1].as_value() {
@@ -1621,22 +1650,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				let fill_value = match old_fill {
 					graphic_types::migrations::legacy::LegacyFill::None => TaggedValue::no_paint(),
 					graphic_types::migrations::legacy::LegacyFill::Solid(color) => TaggedValue::Color(*color),
-					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::Gradient(gradient.stops.clone()),
+					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::GradientRamp(GradientRamp {
+						gradient_spread: gradient.spread_method,
+						..gradient.stops.clone()
+					}),
 				};
 				document
 					.network_interface
-					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(fill_value, exposed), network_path);
+					.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(fill_value, exposed), network_path);
 
-				// Gradient metadata (4, 5, 6, 7): applies only to a literal gradient, solids/none keep the template defaults
+				// Gradient metadata (4, 5, 6): applies only to a literal gradient, solids/none keep the template defaults
 				if let graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) = old_fill {
 					document.network_interface.set_input(
-						&InputConnector::node(*node_id, 4),
-						NodeInput::value(TaggedValue::GradientType(gradient.gradient_type), false),
-						network_path,
-					);
-					document.network_interface.set_input(
-						&InputConnector::node(*node_id, 5),
-						NodeInput::value(TaggedValue::GradientSpreadMethod(gradient.spread_method), false),
+						&InputConnector::node_at_index(*node_id, 4),
+						NodeInput::value(TaggedValue::GradientForm(gradient.gradient_type), false),
 						network_path,
 					);
 
@@ -1644,10 +1671,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 						let transform = gradient.transform * gradient.to_transform();
 						document
 							.network_interface
-							.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+							.set_input(&InputConnector::node_at_index(*node_id, 5), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 						document
 							.network_interface
-							.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
+							.set_input(&InputConnector::node_at_index(*node_id, 6), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
 					} else {
 						// Baking a legacy bounding-box-relative gradient is deferred until the measurement pre-pass can supply the paint
 						// target's bounds, so the template's unbaked `_has_transform = false` stands until the bake lands
@@ -1658,18 +1685,26 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			// Wired/exposed fill keeps the connection.
 			// The generic paint connector accepts the existing `List<Color>`/`List<Gradient>` paint sources directly.
 			_ => {
-				document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 			}
 		}
 
 		// Color backup: no change
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
 
 		// Gradient backup: extract stops
 		if let Some(TaggedValue::LegacyGradient(g)) = old_inputs[3].as_value() {
-			document
-				.network_interface
-				.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(g.stops.clone()), false), network_path);
+			document.network_interface.set_input(
+				&InputConnector::node_at_index(*node_id, 3),
+				NodeInput::value(
+					TaggedValue::GradientRamp(GradientRamp {
+						gradient_spread: g.spread_method,
+						..g.stops.clone()
+					}),
+					false,
+				),
+				network_path,
+			);
 
 			// A solid/no-fill node leaves the gradient metadata inputs unused, so seed them from the backup gradient for a later Solid -> Gradient toggle to restore
 			if matches!(
@@ -1678,12 +1713,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					graphic_types::migrations::legacy::LegacyFill::None | graphic_types::migrations::legacy::LegacyFill::Solid(_)
 				))
 			) {
-				document
-					.network_interface
-					.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::GradientType(g.gradient_type), false), network_path);
 				document.network_interface.set_input(
-					&InputConnector::node(*node_id, 5),
-					NodeInput::value(TaggedValue::GradientSpreadMethod(g.spread_method), false),
+					&InputConnector::node_at_index(*node_id, 4),
+					NodeInput::value(TaggedValue::GradientForm(g.gradient_type), false),
 					network_path,
 				);
 
@@ -1691,26 +1723,40 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					let transform = g.transform * g.to_transform();
 					document
 						.network_interface
-						.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+						.set_input(&InputConnector::node_at_index(*node_id, 5), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 					document
 						.network_interface
-						.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
+						.set_input(&InputConnector::node_at_index(*node_id, 6), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
 				} else {
 					document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, g.clone()));
 				}
 			}
 		}
 
-		inputs_count = 8;
+		inputs_count = 7;
 	}
 
-	// Fill split its `Option<DAffine2>` placement into a `_has_transform` bool immediately before the `_transform` matrix
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER) && inputs_count == 7 {
+	// Fill split its `Option<DAffine2>` placement into a `_has_transform` bool immediately before the `_transform` matrix. The modern
+	// shape is also 7 inputs, so this era is identified by its `_spread_method` input at 5 or its optional transform at 6.
+	let is_pre_transform_split_fill = inputs_count == 7
+		&& (matches!(node.inputs.get(5).and_then(|input| input.as_value()), Some(TaggedValue::GradientSpread(_)))
+			|| matches!(node.inputs.get(6).and_then(|input| input.as_value()), Some(TaggedValue::LegacyOptionalDAffine2(_))));
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER) && is_pre_transform_split_fill {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		for (index, input) in old_inputs.iter().enumerate().take(6) {
-			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+		let gradient_spread = match old_inputs.get(5).and_then(|input| input.as_value()) {
+			Some(&TaggedValue::GradientSpread(value)) => value,
+			_ => GradientSpread::default(),
+		};
+
+		for (index, input) in old_inputs.iter().enumerate().take(5) {
+			let input = if index == 1 || index == 3 {
+				fold_gradient_spread_into_ramp_input(input, gradient_spread)
+			} else {
+				input.clone()
+			};
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
 		}
 
 		match old_inputs.get(6).and_then(|input| input.as_value()) {
@@ -1719,22 +1765,46 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				let transform = value.unwrap_or(glam::DAffine2::IDENTITY);
 				document
 					.network_interface
-					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(has_transform), false), network_path);
+					.set_input(&InputConnector::node_at_index(*node_id, 5), NodeInput::value(TaggedValue::Bool(has_transform), false), network_path);
 				document
 					.network_interface
-					.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
+					.set_input(&InputConnector::node_at_index(*node_id, 6), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
 			}
 			// A wired (or otherwise non-value) transform keeps its connection and is treated as present
 			_ => {
 				document
 					.network_interface
-					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+					.set_input(&InputConnector::node_at_index(*node_id, 5), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 				let transform_input = old_inputs.get(6).cloned().unwrap_or_else(|| NodeInput::value(TaggedValue::DAffine2(glam::DAffine2::IDENTITY), false));
-				document.network_interface.set_input(&InputConnector::node(*node_id, 7), transform_input, network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 6), transform_input, network_path);
 			}
 		}
 
-		inputs_count = 8;
+		inputs_count = 7;
+	}
+
+	// The Fill node's `_spread_method` input moved into the `GradientRamp` value's own `gradient_spread` field
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER) && inputs_count == 8 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		let gradient_spread = match old_inputs.get(5).and_then(|input| input.as_value()) {
+			Some(&TaggedValue::GradientSpread(value)) => value,
+			_ => GradientSpread::default(),
+		};
+
+		for (index, input) in old_inputs.iter().enumerate().take(5) {
+			let input = if index == 1 || index == 3 {
+				fold_gradient_spread_into_ramp_input(input, gradient_spread)
+			} else {
+				input.clone()
+			};
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[6].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 6), old_inputs[7].clone(), network_path);
+
+		inputs_count = 7;
 	}
 
 	// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)
@@ -1745,20 +1815,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let align_input = NodeInput::value(TaggedValue::StrokeAlign(StrokeAlign::Center), false);
 		let paint_order_input = NodeInput::value(TaggedValue::PaintOrder(PaintOrder::StrokeAbove), false);
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 3), align_input, network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[6].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[7].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 7), paint_order_input, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), align_input, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[5].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[6].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 6), old_inputs[7].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 7), paint_order_input, network_path);
 		let dash_input = migrate_dash_input(&old_inputs[3]).unwrap_or_else(|| old_inputs[3].clone());
-		document.network_interface.set_input(&InputConnector::node(*node_id, 8), dash_input, network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 8), dash_input, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 9), old_inputs[4].clone(), network_path);
 	}
 
-	// TODO: Eventually remove this migration document upgrade code
+	// TODO: Eventually remove this document upgrade code
 	// A legacy "no color" on a plain color connector (`TaggedValue::no_paint()` restored by the deserializer) becomes a color,
 	// since only paint connectors keep the no-paint choice
 	{
@@ -1770,53 +1840,47 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			Some(NodeInput::value(TaggedValue::Color(fallback), *exposed))
 		};
 
-		let conversions: &[(ProtoNodeIdentifier, usize, Color)] = &[
-			(graphene_std::vector::fill::IDENTIFIER, graphene_std::vector::fill::BackupColorInput::INDEX, Color::BLACK),
-			(
-				graphene_std::artboard::create_artboard::IDENTIFIER,
-				graphene_std::artboard::create_artboard::BackgroundInput::INDEX,
-				Color::WHITE,
-			),
-			(
-				graphene_std::math_nodes::color_value::IDENTIFIER,
-				graphene_std::math_nodes::color_value::ColorInput::INDEX,
-				Color::TRANSPARENT,
-			),
-			(
-				graphene_std::raster_nodes::adjustments::black_and_white::IDENTIFIER,
-				graphene_std::raster_nodes::adjustments::black_and_white::TintInput::INDEX,
-				Color::BLACK,
-			),
-			(
-				graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
-				graphene_std::raster_nodes::blending_nodes::color_overlay::ColorInput::INDEX,
-				Color::BLACK,
-			),
-			(
-				graphene_std::raster_nodes::std_nodes::empty_image::IDENTIFIER,
-				graphene_std::raster_nodes::std_nodes::empty_image::ColorInput::INDEX,
-				Color::WHITE,
-			),
+		let conversions: &[(ParameterRef, Color)] = &[
+			(graphene_std::vector::fill::BackupColorInput.into(), Color::BLACK),
+			(graphene_std::artboard::create_artboard::BackgroundInput.into(), Color::WHITE),
+			(graphene_std::math_nodes::color_value::ColorInput.into(), Color::TRANSPARENT),
+			(graphene_std::raster_nodes::adjustments::black_and_white::TintInput.into(), Color::BLACK),
+			(graphene_std::raster_nodes::blending_nodes::color_overlay::ColorInput.into(), Color::BLACK),
+			(graphene_std::raster_nodes::std_nodes::empty_image::ColorInput.into(), Color::WHITE),
 		];
-		for &(ref identifier, index, fallback) in conversions {
-			if reference != DefinitionIdentifier::ProtoNode(identifier.clone()) {
+		for (parameter, fallback) in conversions {
+			if reference != DefinitionIdentifier::ProtoNode(parameter.node_identifier.clone()) {
 				continue;
 			}
-			let Some(input) = node.inputs.get(index) else { continue };
-			if let Some(migrated) = migrate_color_input(input, fallback) {
-				document.network_interface.set_input(&InputConnector::node(*node_id, index), migrated, network_path);
+			let Some(input) = node.inputs.get(parameter.input_index) else { continue };
+			if let Some(migrated) = migrate_color_input(input, *fallback) {
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, parameter.input_index), migrated, network_path);
 			}
 		}
 	}
 
 	// The stroke dash sequence became the `DashPattern` value type; convert any already-shaped stroke that still stores a legacy dash input
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER)
-		&& let Some(dash_input) = node.inputs.get(graphene_std::vector::stroke::DashPatternInput::INDEX)
+		&& let Some(dash_input) = node.input(graphene_std::vector::stroke::DashPatternInput)
 		&& let Some(migrated) = migrate_dash_input(dash_input)
 	{
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashPatternInput::INDEX), migrated, network_path);
+			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashPatternInput), migrated, network_path);
+	}
+
+	// The corner radius became the `BoxCorners` value type; convert any already-shaped rectangle that still stores a legacy corner input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)
+		&& let Some(corner_input) = node.input(graphene_std::vector::generator_nodes::rectangle::CornerRadiusInput)
+		&& let Some(migrated) = migrate_corner_radius_input(corner_input)
+	{
+		document.network_interface.set_input(
+			&InputConnector::node(*node_id, graphene_std::vector::generator_nodes::rectangle::CornerRadiusInput),
+			migrated,
+			network_path,
+		);
 	}
 
 	// The rectangle's corner radius became the `BoxCorners` value type and its hidden individual-radii toggle moved after the
@@ -1831,12 +1895,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let corner_radius = migrate_corner_radius_input(&old_inputs[4]).unwrap_or_else(|| old_inputs[4].clone());
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 3), corner_radius, network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), corner_radius, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[5].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[3].clone(), network_path);
 	}
 
 	// The Text to Vector node's runtime `separate_glyphs` toggle became the dedicated "Text to Vector Glyphs" node, leaving Text to Vector as a plain
@@ -1854,7 +1918,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		if let Some(string_input) = node.inputs.first() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, 0), string_input.clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), string_input.clone(), network_path);
 		}
 	}
 
@@ -1864,12 +1928,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[3].clone(), network_path);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 4),
+			&InputConnector::node_at_index(*node_id, 4),
 			if inputs_count == 6 {
 				old_inputs[4].clone()
 			} else {
@@ -1878,7 +1942,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			network_path,
 		);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 5),
+			&InputConnector::node_at_index(*node_id, 5),
 			if inputs_count == 6 {
 				old_inputs[5].clone()
 			} else {
@@ -1887,7 +1951,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			network_path,
 		);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 6),
+			&InputConnector::node_at_index(*node_id, 6),
 			if inputs_count >= 7 {
 				old_inputs[6].clone()
 			} else {
@@ -1896,7 +1960,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			network_path,
 		);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 7),
+			&InputConnector::node_at_index(*node_id, 7),
 			if inputs_count >= 8 {
 				old_inputs[7].clone()
 			} else {
@@ -1905,7 +1969,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			network_path,
 		);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 8),
+			&InputConnector::node_at_index(*node_id, 8),
 			if inputs_count >= 9 {
 				old_inputs[8].clone()
 			} else {
@@ -1914,7 +1978,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			network_path,
 		);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 9),
+			&InputConnector::node_at_index(*node_id, 9),
 			if inputs_count >= 10 {
 				old_inputs[9].clone()
 			} else {
@@ -1923,7 +1987,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			network_path,
 		);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 10),
+			&InputConnector::node_at_index(*node_id, 10),
 			if inputs_count >= 11 {
 				old_inputs[10].clone()
 			} else {
@@ -1944,27 +2008,31 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Copy over old inputs
 		#[allow(clippy::needless_range_loop)]
 		for i in 0..=5 {
-			document.network_interface.set_input(&InputConnector::node(*node_id, i), old_inputs[i].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i), old_inputs[i].clone(), network_path);
 		}
 
 		// Max Width
 		let Some(&TaggedValue::F64(old_max_width)) = old_inputs[6].as_value() else { return None };
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(old_max_width != 0.), false), network_path);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 7),
+			&InputConnector::node_at_index(*node_id, 6),
+			NodeInput::value(TaggedValue::Bool(old_max_width != 0.), false),
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 7),
 			NodeInput::value(TaggedValue::F64(if old_max_width == 0. { 100. } else { old_max_width }), false),
 			network_path,
 		);
 
 		// Max Height
 		let Some(&TaggedValue::F64(old_max_height)) = old_inputs[7].as_value() else { return None };
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 8), NodeInput::value(TaggedValue::Bool(old_max_height != 0.), false), network_path);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 9),
+			&InputConnector::node_at_index(*node_id, 8),
+			NodeInput::value(TaggedValue::Bool(old_max_height != 0.), false),
+			network_path,
+		);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 9),
 			NodeInput::value(TaggedValue::F64(if old_max_height == 0. { 100. } else { old_max_height }), false),
 			network_path,
 		);
@@ -1972,7 +2040,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Copy over old inputs
 		#[allow(clippy::needless_range_loop)]
 		for i in 10..=12 {
-			document.network_interface.set_input(&InputConnector::node(*node_id, i), old_inputs[i - 2].clone(), network_path);
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, i), old_inputs[i - 2].clone(), network_path);
 		}
 
 		inputs_count = 13;
@@ -1989,10 +2059,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 	}
 
 	// Upgrade the 'Tangent on Path' node to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
@@ -2002,13 +2072,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[3].clone(), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 4), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 	}
 
 	// Upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option
@@ -2018,11 +2088,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 	}
 
 	// Convert the old 'Vec2 Value' node, identified by its leftover 3-input shape with separate X and Y inputs,
@@ -2034,9 +2104,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
 	}
 
 	// Upgrade the Mirror node to add the `keep_original` boolean input
@@ -2046,12 +2116,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 	}
 
 	// Upgrade the Mirror node to add the `reference_point` input and change `offset` from `DVec2` to `f64`
@@ -2064,17 +2134,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let Some(&TaggedValue::DVec2(old_offset)) = old_inputs[1].as_value() else { return None };
 		let old_offset = if old_offset.x.abs() > old_offset.y.abs() { old_offset.x } else { old_offset.y };
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 1),
+			&InputConnector::node_at_index(*node_id, 1),
 			NodeInput::value(TaggedValue::ReferencePoint(graphene_std::transform::ReferencePoint::Center), false),
 			network_path,
 		);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(old_offset), false), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[2].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[3].clone(), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::F64(old_offset), false), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[3].clone(), network_path);
 	}
 
 	// Upgrade `image` nodes that stored image data as `Image<Color>`` to `image` nodes that store a reference to the image data as a resource.
@@ -2097,7 +2167,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
 			document
 				.network_interface
-				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
+				.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
 		}
 	}
 
@@ -2106,7 +2176,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode")) && inputs_count == 13 && matches!(node.inputs.first(), Some(NodeInput::Scope(_))) {
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
 
 		if let Some(TaggedValue::Font(font)) = node.inputs.get(2).and_then(|input| input.as_value()) {
 			let resource_id = ResourceId::new();
@@ -2120,7 +2190,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			);
 			document
 				.network_interface
-				.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
+				.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
 		}
 	}
 
@@ -2132,9 +2202,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
 		for (i, input) in old_inputs.iter().enumerate() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, i + 1), input.clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i + 1), input.clone(), network_path);
 		}
 	}
 
@@ -2144,8 +2214,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 	}
 
 	// Old shape: [background, bounds, trace, cache]. Both "bounds" (input 1) and "cache" (input 3) are dropped, and "cache" is now stored as
@@ -2156,8 +2226,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[2].clone(), network_path);
 	}
 
 	// Old shape: [background, trace, cache]. The "cache" input is dropped because the brush node now stores its cache as internal `#[data]` state.
@@ -2167,15 +2237,15 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 	}
 
 	// A brush node saved before `Item<Raster<CPU>>` had a default stored its unconnected background as the invalid `()`,
 	// which fails type resolution against the raster primary; adopt the definition's empty-raster default instead.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && matches!(node.inputs.first().and_then(|input| input.as_value()), Some(TaggedValue::None)) {
 		let default_background = resolve_document_node_type(&reference)?.node_template.inputs.first()?.clone();
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), default_background, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), default_background, network_path);
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::RemoveHandlesNode")) {
@@ -2184,13 +2254,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::F64(0.), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::F64(0.), false), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::GenerateHandlesNode")) {
@@ -2199,11 +2269,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::merge_by_distance::IDENTIFIER) && inputs_count == 2 {
@@ -2212,10 +2282,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 2),
+			&InputConnector::node_at_index(*node_id, 2),
 			NodeInput::value(TaggedValue::MergeByDistanceAlgorithm(graphene_std::vector::misc::MergeByDistanceAlgorithm::Topological), false),
 			network_path,
 		);
@@ -2227,10 +2297,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 2),
+			&InputConnector::node_at_index(*node_id, 2),
 			NodeInput::value(TaggedValue::MergeByDistanceAlgorithm(graphene_std::vector::misc::MergeByDistanceAlgorithm::Spatial), false),
 			network_path,
 		);
@@ -2244,13 +2314,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let new_spacing_value = NodeInput::value(TaggedValue::PointSpacingType(graphene_std::vector::misc::PointSpacingType::Separation), false);
 		let new_quantity_value = NodeInput::value(TaggedValue::U32(100), false);
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), new_spacing_value, network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[2].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[4].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), new_spacing_value, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), new_quantity_value, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 6), old_inputs[4].clone(), network_path);
 	}
 
 	// Make the "Quantity" parameter a u32 instead of f64
@@ -2264,7 +2334,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			&& let TaggedValue::F64(value) = **tagged_value
 		{
 			let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), *exposed);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), new_quantity_value, network_path);
 		}
 	}
 
@@ -2287,16 +2357,16 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		if legacy_angles_layout {
 			// Old order: [primary, grid_type, spacing, angles, columns, rows]. Move "angles" from index 3 to index 5.
-			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[4].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[5].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[3].clone(), network_path);
 		} else {
 			// Modern six-input order. Carry each input over to the same index.
 			for (index, input) in old_inputs.iter().take(6).enumerate() {
-				document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
 			}
 		}
 	}
@@ -2322,10 +2392,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::F64(1.), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::F64(1.), false), network_path);
 	}
 
 	// Upgrade the "Read Position" node to add the "Loop Level" input
@@ -2336,10 +2406,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::U32(0), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::U32(0), false), network_path);
 	}
 
 	// Migrate from the old source/target v1 "Morph" node to the new `List<Vector>`-based v2 "Morph" node.
@@ -2381,15 +2451,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.shift_absolute_node_position(&merge_node_id, merge_position, network_path);
 
 		// Connect the old 'source' and 'target' inputs to the new Merge node
-		document.network_interface.set_input(&InputConnector::node(merge_node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(merge_node_id, 1), old_inputs[1].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(merge_node_id, 0), old_inputs[0].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(merge_node_id, 1), old_inputs[1].clone(), network_path);
 
 		// Connect the new Merge node to the 'content' input of the Morph node
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 0), NodeInput::node(merge_node_id, 0), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::node(merge_node_id, 0), network_path);
 		// Connect the old 'progression' input to the new 'progression' input of the Morph node
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[2].clone(), network_path);
 
 		inputs_count = 2;
 	}
@@ -2404,18 +2478,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
 		// Reconnect content (input 0) and leave path (input 4) as default
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 
 		let Some(morph_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
 			log::error!("Could not get position for morph node {node_id}");
-			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 			return None;
 		};
 
 		// Create List Length node: counts content `List` items → N
 		let Some(list_length_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::list_length::IDENTIFIER)) else {
 			log::error!("Could not get list_length node from definition when upgrading morph");
-			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 			return None;
 		};
 		let list_length_template = list_length_def.default_node_template();
@@ -2424,7 +2498,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Create Subtract node: N → N-1
 		let Some(subtract_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::subtract::IDENTIFIER)) else {
 			log::error!("Could not get subtract node from definition when upgrading morph");
-			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 			return None;
 		};
 		let mut subtract_template = subtract_def.default_node_template();
@@ -2434,7 +2508,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Create Divide node: old_progression / (N-1) → new progression
 		let Some(divide_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::divide::IDENTIFIER)) else {
 			log::error!("Could not get divide node from definition when upgrading morph");
-			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 			return None;
 		};
 		let divide_template = divide_def.default_node_template();
@@ -2453,21 +2527,27 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.shift_absolute_node_position(&divide_id, morph_position + IVec2::new(-7, 1), network_path);
 
 		// Wire: content source → List Length input 0
-		document.network_interface.set_input(&InputConnector::node(list_length_id, 0), old_inputs[0].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(list_length_id, 0), old_inputs[0].clone(), network_path);
 
 		// Wire: List Length output → Subtract input 0 (minuend)
 		document
 			.network_interface
-			.set_input(&InputConnector::node(subtract_id, 0), NodeInput::node(list_length_id, 0), network_path);
+			.set_input(&InputConnector::node_at_index(subtract_id, 0), NodeInput::node(list_length_id, 0), network_path);
 
 		// Wire: old progression → Divide input 0 (numerator)
-		document.network_interface.set_input(&InputConnector::node(divide_id, 0), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(divide_id, 0), old_inputs[1].clone(), network_path);
 
 		// Wire: Subtract output → Divide input 1 (denominator)
-		document.network_interface.set_input(&InputConnector::node(divide_id, 1), NodeInput::node(subtract_id, 0), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(divide_id, 1), NodeInput::node(subtract_id, 0), network_path);
 
 		// Wire: Divide output → Morph progression input
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), NodeInput::node(divide_id, 0), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::node(divide_id, 0), network_path);
 	}
 
 	// Migrate old Arrow node from (start, end, shaft_width, head_width, head_length) to (arrow_to, shaft_width, head_width, head_length) with a Transform node for positioning
@@ -2499,15 +2579,15 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
 		// Preserve primary input connection
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		// Set arrow_to = end - start
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
 		// Preserve shaft_width, head_width, head_length (shifted from indices 3,4,5 to 2,3,4)
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[3].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[4].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[5].clone(), network_path);
 
 		// Find downstream connection to insert Transform node
 		let downstream = document
@@ -2564,11 +2644,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
 		// Preserve primary input connection
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		// Set line_to = end - start
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
 
 		// Find downstream connection to insert Transform node
 		let downstream = document
@@ -2610,10 +2690,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ScaleType(ScaleType::Magnitude), false), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 1),
+			NodeInput::value(TaggedValue::ScaleType(ScaleType::Magnitude), false),
+			network_path,
+		);
 	}
 
 	// Add the "Along Normals" parameter to the "Jitter Points" node
@@ -2621,12 +2703,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 	}
 
 	// SVG-import legacy Path nodes baked their geometry at non-exposed input 0; move it to input 1 (the modern slot for VectorModification).
@@ -2639,14 +2721,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			let modification = modification.clone();
 			let was_exposed = *exposed;
 
-			document
-				.network_interface
-				.set_input(&InputConnector::node(*node_id, 0), NodeInput::type_default(item!(graphene_std::vector::Vector), true), network_path);
+			document.network_interface.set_input(
+				&InputConnector::node_at_index(*node_id, 0),
+				NodeInput::type_default(item!(graphene_std::vector::Vector), true),
+				network_path,
+			);
 
 			if !was_exposed {
-				document
-					.network_interface
-					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::VectorModification(modification), false), network_path);
+				document.network_interface.set_input(
+					&InputConnector::node_at_index(*node_id, 1),
+					NodeInput::value(TaggedValue::VectorModification(modification), false),
+					network_path,
+				);
 			}
 		}
 	}
@@ -2656,8 +2742,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[2].clone(), network_path);
 	}
 
 	// `wgpu-executor` scope was removed, change to the auto injected scope node `graphene_std::platform_application_io::wgpu_executor`
@@ -2666,7 +2752,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			&& *name == "wgpu-executor"
 		{
 			document.network_interface.set_input(
-				&InputConnector::node(*node_id, i),
+				&InputConnector::node_at_index(*node_id, i),
 				NodeInput::Scope("graphene_std::platform_application_io::WgpuExecutorNode".into()),
 				network_path,
 			);
@@ -2684,7 +2770,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 			let stale_list_default = document
 				.network_interface
-				.input_from_connector(&InputConnector::node(*node_id, index), network_path)
+				.input_from_connector(&InputConnector::node_at_index(*node_id, index), network_path)
 				.is_some_and(|stored_input| match stored_input {
 					NodeInput::Value { tagged_value, .. } => match &**tagged_value {
 						TaggedValue::TypeDefault(stored_type) if matches!(stored_type, Type::List(_)) && !tagged_value.is_no_paint() => {
@@ -2696,7 +2782,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				});
 
 			if stale_list_default {
-				document.network_interface.set_input(&InputConnector::node(*node_id, index), definition_input.clone(), network_path);
+				document
+					.network_interface
+					.set_input(&InputConnector::node_at_index(*node_id, index), definition_input.clone(), network_path);
 			}
 		}
 	}
@@ -2750,7 +2838,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		for (index, input) in old_inputs.iter().take(7).enumerate() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
 		}
 	}
 
@@ -2766,7 +2854,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		for (index, input) in old_inputs.iter().take(3).enumerate() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
 		}
 	}
 
@@ -2782,7 +2870,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		for (index, input) in old_inputs.iter().take(2).enumerate() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
 		}
 	}
 
@@ -2795,7 +2883,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		if let Some(content) = old_inputs.first() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, 0), content.clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), content.clone(), network_path);
 		}
 	}
 
@@ -2807,7 +2895,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		if let Some(content) = old_inputs.first() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, 0), content.clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), content.clone(), network_path);
 		}
 	}
 

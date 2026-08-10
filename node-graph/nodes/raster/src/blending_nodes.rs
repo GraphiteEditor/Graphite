@@ -41,16 +41,21 @@ mod blend_std {
 		}
 	}
 	impl Blend<Color> for Gradient {
+		// TODO: This joining is unfaithful in several ways: it samples only at stop positions so midpoint curves flatten away;
+		// TODO: it evaluates both sources with default whole-ramp attributes rather than their own (which this element-level impl cannot read);
+		// TODO: and the output keeps over's attributes despite being sampled with defaults
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut combined_stops = self.position.iter().chain(under.position.iter()).copied().collect::<Vec<_>>();
-			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+			let mut combined_stops = self.positions(false).into_iter().chain(under.positions(false)).collect::<Vec<_>>();
 			combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+			let over_evaluator = self.evaluator(Default::default());
+			let under_evaluator = under.evaluator(Default::default());
 			let stops = combined_stops.into_iter().map(|position| {
-				let over_color = self.evaluate(position);
-				let under_color = under.evaluate(position);
-				let color = blend_fn(over_color, under_color);
+				let color = blend_fn(over_evaluator.evaluate(position), under_evaluator.evaluate(position));
 				GradientStop { position, midpoint: 0.5, color }
 			});
+
+			// Positions stay explicit because eliding them needs the cyclic flag this impl can't read, and a wrong guess would relocate the stops
 			Gradient::new(stops)
 		}
 	}

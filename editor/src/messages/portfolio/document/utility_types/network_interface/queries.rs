@@ -108,7 +108,7 @@ impl NodeNetworkInterface {
 		while !self.is_layer(&id, network_path) {
 			id = self.with_outward_wires(network_path, |outward_wires| {
 				outward_wires
-					.get(&OutputConnector::node(id, 0))
+					.get(&OutputConnector::primary_output(id))
 					.and_then(|connections| connections.first())
 					.and_then(|connector| connector.node_id())
 			})??;
@@ -125,7 +125,7 @@ impl NodeNetworkInterface {
 				layers.push(current_node);
 			} else {
 				let downstream_found = self.with_outward_wires(network_path, |outward_wires| {
-					let Some(connections) = outward_wires.get(&OutputConnector::node(current_node, 0)) else {
+					let Some(connections) = outward_wires.get(&OutputConnector::primary_output(current_node)) else {
 						return false;
 					};
 					stack.extend(connections.iter().filter_map(|input_connector| input_connector.node_id()));
@@ -185,7 +185,7 @@ impl NodeNetworkInterface {
 				self.create_node_template(node_id, network_path).and_then(|mut node_template| {
 					// TODO: Get downstream connections from all outputs
 					let Some(has_selected_node_downstream) = self.with_outward_wires(network_path, |outward_wires| {
-						outward_wires.get(&OutputConnector::node(*node_id, 0)).is_some_and(|outputs| {
+						outward_wires.get(&OutputConnector::primary_output(*node_id)).is_some_and(|outputs| {
 							outputs
 								.iter()
 								.any(|input_connector| input_connector.node_id().is_some_and(|upstream_id| new_ids.keys().any(|key| *key == upstream_id)))
@@ -241,7 +241,7 @@ impl NodeNetworkInterface {
 		for old_id in new_nodes.iter().map(|(_, old_id, _)| *old_id).collect::<Vec<_>>() {
 			// Try set all selected nodes upstream of a layer to be chain nodes
 			if self.is_layer(&old_id, network_path) {
-				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::node(old_id, 1), network_path) {
+				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::layer_secondary_input(old_id), network_path) {
 					if let Some(node_template) = new_nodes.iter_mut().find_map(|(_, old_id, template)| (*old_id == valid_upstream_chain_node).then_some(template)) {
 						match &mut node_template.node_type_metadata {
 							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Chain,
@@ -269,12 +269,12 @@ impl NodeNetworkInterface {
 					*input = NodeInput::Node { node_id: new_id, output_index };
 				} else {
 					// Disconnect node input if it is not connected to another node in new_ids
-					let tagged_value = self.tagged_value_from_input(&InputConnector::node(*node_id, input_index), network_path);
+					let tagged_value = self.tagged_value_from_input(&InputConnector::node_at_index(*node_id, input_index), network_path);
 					*input = NodeInput::value(tagged_value, true);
 				}
 			} else if let &mut NodeInput::Import { .. } = input {
 				// Always disconnect network node input
-				let tagged_value = self.tagged_value_from_input(&InputConnector::node(*node_id, input_index), network_path);
+				let tagged_value = self.tagged_value_from_input(&InputConnector::node_at_index(*node_id, input_index), network_path);
 				*input = NodeInput::value(tagged_value, true);
 			}
 		}
@@ -624,7 +624,7 @@ impl NodeNetworkInterface {
 		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
 			InputConnector::Export(0)
 		} else {
-			InputConnector::node(parent.to_node(), 1)
+			InputConnector::layer_secondary_input(parent.to_node())
 		};
 		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
 		let mut current_index = 0;
@@ -644,7 +644,7 @@ impl NodeNetworkInterface {
 					current_index += 1;
 				}
 				// Input as a sibling to the Layer node above
-				post_node_input_connector = InputConnector::node(*next_node_in_stack_id, 0);
+				post_node_input_connector = InputConnector::primary_input(*next_node_in_stack_id);
 			} else {
 				log::error!("Error getting post node: insert_index out of bounds");
 				break;
@@ -660,7 +660,7 @@ impl NodeNetworkInterface {
 			match pre_node_output_connector {
 				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !self.is_layer(&pre_node_id, network_path) => {
 					// Update post_node_input_connector for the next iteration
-					post_node_input_connector = InputConnector::node(pre_node_id, 0);
+					post_node_input_connector = InputConnector::primary_input(pre_node_id);
 					// Insert directly under layer if moving to the end of a layer stack that ends with a non layer node that does not have an exposed primary input
 					let primary_is_exposed = self.input_from_connector(&post_node_input_connector, network_path).is_some_and(|input| input.is_exposed());
 					if !primary_is_exposed {
@@ -805,7 +805,7 @@ impl NodeNetworkInterface {
 		};
 		let description = input_metadata.input_description.to_string();
 		let name = if input_metadata.input_name.is_empty() {
-			self.input_type(&InputConnector::node(*node_id, input_index), network_path).resolved_type_node_string()
+			self.input_type(&InputConnector::node_at_index(*node_id, input_index), network_path).resolved_type_node_string()
 		} else {
 			input_metadata.input_name.to_string()
 		};
@@ -846,7 +846,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn primary_output_connected_to_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		let Some(downstream_connectors) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)).cloned()) else {
+		let Some(downstream_connectors) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(*node_id)).cloned()) else {
 			log::error!("Could not get outward_wires in primary_output_connected_to_layer");
 			return false;
 		};
@@ -895,6 +895,11 @@ impl NodeNetworkInterface {
 	/// Callers that care about scene membership should source their layers from the document structure or check connectivity separately.
 	pub fn is_artboard(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		self.query(network_path, "is_artboard", |view| Ok(view.is_artboard(node_id))).unwrap_or_default()
+	}
+
+	/// Whether the node is a Merge node by identity, meaning it is the generic layer wrapper rather than a specialized node displayed as a layer.
+	pub fn is_merge(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		self.query(network_path, "is_merge", |view| Ok(view.is_merge(node_id))).unwrap_or_default()
 	}
 
 	/// All artboard layers that participate in the scene, excluding disconnected Artboard nodes.

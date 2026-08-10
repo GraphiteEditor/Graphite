@@ -346,6 +346,32 @@ fn position_value_converts_through_the_vector_input_adapter() {
 	assert!(result.is_some(), "The position should arrive as an Item<Vector> single-anchor path");
 }
 
+// The 'Colors to Gradient' node turns an entire `List<Color>` wire into one gradient with those colors as its stops
+#[test]
+fn color_list_wraps_through_the_colors_to_gradient_node() {
+	let color_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Color(graphene_std::Color::WHITE).into()), vec![NodeId(0)]);
+
+	let mut raise_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	raise_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::ItemToListNode<Color>");
+
+	let mut colors_to_gradient_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
+	colors_to_gradient_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::ColorsToGradientNode");
+
+	let network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(2),
+		nodes: vec![(NodeId(0), color_node), (NodeId(1), raise_node), (NodeId(2), colors_to_gradient_node)],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&network).expect("A List<Color> wire should resolve the node's List<Color> implementation");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The node constructor should instantiate");
+
+	let context: Context = None;
+	let result: Option<Item<graphene_std::vector::Gradient>> = futures::executor::block_on(tree.eval(NodeId(2), context));
+	let gradient = result.expect("The color list should arrive wrapped as a gradient");
+	assert_eq!(gradient.element().len(), 1, "The single color should become the gradient's one stop");
+}
+
 // A scalar wire feeding a `DVec2` connector splats into both axes through the input adapter's `Convert` row
 #[test]
 fn number_value_splats_through_the_vec2_input_adapter() {

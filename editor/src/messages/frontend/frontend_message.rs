@@ -14,7 +14,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
 use graph_craft::document::NodeId;
 use graphene_std::color::SRGBA8;
-use graphene_std::vector::style::FillChoiceUI;
+use graphene_std::vector::style::FillChoice;
 use std::path::PathBuf;
 
 #[cfg(not(target_family = "wasm"))]
@@ -165,7 +165,7 @@ pub enum FrontendMessage {
 	},
 	/// The Rust color picker handler picked a new color/gradient. The frontend `<ColorPicker />` forwards this as its `colorOrGradient` event.
 	ColorPickerColorChanged {
-		value: FillChoiceUI,
+		value: FillChoice<SRGBA8>,
 	},
 	/// The Rust color picker handler is starting an undo transaction. The frontend `<ColorPicker />` forwards this as its `startHistoryTransaction` event.
 	ColorPickerStartHistoryTransaction,
