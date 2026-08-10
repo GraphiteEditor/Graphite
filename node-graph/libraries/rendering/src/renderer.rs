@@ -1156,222 +1156,263 @@ impl Render for List<Graphic> {
 	}
 }
 
-impl Render for List<Vector> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for index in 0..self.len() {
-			let Some(vector) = self.element(index) else { continue };
-			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+/// Emits one item of a `List<Vector>` as SVG, with no wrapping group of its own.
+fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, render: &mut SvgRender, render_params: &RenderParams) {
+	let item_transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+	let blend_mode_attr: BlendMode = list.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+	let opacity_attr: f64 = list.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+	let opacity_fill_attr: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
-			let has_real_stroke = vector.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
-			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
-			let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
-			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
-			let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
-			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
-			let layer_bounds = vector.bounding_box().unwrap_or_default();
-			let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
-			let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY).unwrap_or(layer_bounds);
+	// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
+	let has_real_stroke = vector.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
+	let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
+	let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
+	let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
+	let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
+	let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
+	let layer_bounds = vector.bounding_box().unwrap_or_default();
+	let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
+	let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY).unwrap_or(layer_bounds);
 
-			let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
-			let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
+	let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
+	let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
 
-			let mut path = String::new();
+	let mut path = String::new();
 
-			for mut bezpath in vector.stroke_bezpath_iter() {
-				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-				path.push_str(bezpath.to_svg().as_str());
+	for mut bezpath in vector.stroke_bezpath_iter() {
+		bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+		path.push_str(bezpath.to_svg().as_str());
+	}
+
+	let mask_type = if vector.stroke.as_ref().map(|x| x.align) == Some(StrokeAlign::Inside) {
+		MaskType::Clip
+	} else {
+		MaskType::Mask
+	};
+
+	let fill_graphic_list = graphic_list_at(list, index, ATTR_FILL);
+	let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
+
+	let stroke_graphic_list = graphic_list_at(list, index, ATTR_STROKE);
+	let stroke_graphic = stroke_graphic_list.as_ref().and_then(|l| l.element(0));
+
+	let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
+	let can_draw_aligned_stroke = path_is_closed
+		&& vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
+		&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
+	let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.covers_opaquely()) || mask_type == MaskType::Clip);
+
+	let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
+	let wants_stroke_below = vector.stroke.as_ref().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
+	let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
+	let use_face_fill = vector.use_face_fill();
+
+	if needs_separate_alignment_fill && !wants_stroke_below {
+		emit_svg_fill_path(
+			render,
+			path.clone(),
+			fill_graphic_list.as_deref(),
+			item_transform,
+			element_transform,
+			applied_stroke_transform,
+			bounds_matrix,
+			render_params,
+		);
+	}
+
+	let push_id = needs_separate_alignment_fill.then_some({
+		let id = format!("alignment-{}", generate_uuid());
+
+		let mut cloned_vector = vector.clone();
+		cloned_vector.stroke = None;
+
+		// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
+		// The wrapping SVG group (above) handles the user-set opacity.
+		let mut mask_item = Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform);
+		set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+		let vector_item = List::new_from_item(mask_item);
+
+		(id, mask_type, vector_item)
+	});
+
+	if use_face_fill {
+		for mut face_path in vector.construct_faces().filter(|face| face.area() >= 0.) {
+			face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+			let face_d = face_path.to_svg();
+
+			emit_svg_fill_path(
+				render,
+				face_d,
+				fill_graphic_list.as_deref(),
+				item_transform,
+				element_transform,
+				applied_stroke_transform,
+				bounds_matrix,
+				render_params,
+			);
+		}
+	}
+
+	render.leaf_tag("path", |attributes| {
+		attributes.push("d", path.clone());
+		let matrix = format_transform_matrix(element_transform);
+		if !matrix.is_empty() {
+			attributes.push(ATTR_TRANSFORM, matrix);
+		}
+
+		let defs = &mut attributes.0.svg_defs;
+		if let Some((ref id, mask_type, ref vector_item)) = push_id {
+			let mut svg = SvgRender::new();
+			vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
+			let stroke = vector.stroke.as_ref().unwrap();
+			// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
+			let (largest_scale, _) = singular_values(applied_stroke_transform);
+			let inflation = stroke.max_aabb_inflation(true) * largest_scale;
+			let quad = Quad::from_box(transformed_bounds).inflate(inflation);
+			let (x, y) = quad.top_left().into();
+			let (width, height) = (quad.bottom_right() - quad.top_left()).into();
+
+			write!(defs, r##"{}"##, svg.svg_defs).unwrap();
+			let rect = format!(r##"<rect x="{x}" y="{y}" width="{width}" height="{height}" fill="white" />"##);
+
+			match mask_type {
+				MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
+				MaskType::Mask => write!(
+					defs,
+					r##"<mask id="{id}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="{x}" y="{y}" width="{width}" height="{height}">{}{}</mask>"##,
+					rect,
+					svg.svg.to_svg_string()
+				)
+				.unwrap(),
 			}
+		}
 
-			let mask_type = if vector.stroke.as_ref().map(|x| x.align) == Some(StrokeAlign::Inside) {
-				MaskType::Clip
-			} else {
-				MaskType::Mask
-			};
+		let mut render_params = render_params.clone();
+		render_params.aligned_strokes = can_draw_aligned_stroke;
+		render_params.override_paint_order = override_paint_order;
 
-			let fill_graphic_list = graphic_list_at(self, index, ATTR_FILL);
-			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
-
-			let stroke_graphic_list = graphic_list_at(self, index, ATTR_STROKE);
-			let stroke_graphic = stroke_graphic_list.as_ref().and_then(|l| l.element(0));
-
-			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
-			let can_draw_aligned_stroke = path_is_closed
-				&& vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
-				&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
-			let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.covers_opaquely()) || mask_type == MaskType::Clip);
-
-			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
-			let wants_stroke_below = vector.stroke.as_ref().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
-			let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
-			let use_face_fill = vector.use_face_fill();
-
-			if needs_separate_alignment_fill && !wants_stroke_below {
-				emit_svg_fill_path(
-					render,
-					path.clone(),
-					fill_graphic_list.as_deref(),
-					item_transform,
-					element_transform,
-					applied_stroke_transform,
-					bounds_matrix,
-					render_params,
-				);
-			}
-
-			let push_id = needs_separate_alignment_fill.then_some({
-				let id = format!("alignment-{}", generate_uuid());
-
-				let mut cloned_vector = vector.clone();
-				cloned_vector.stroke = None;
-
-				// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
-				// The wrapping SVG group (above) handles the user-set opacity.
-				let mut mask_item = Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform);
-				set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
-				let vector_item = List::new_from_item(mask_item);
-
-				(id, mask_type, vector_item)
-			});
-
-			if use_face_fill {
-				for mut face_path in vector.construct_faces().filter(|face| face.area() >= 0.) {
-					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-					let face_d = face_path.to_svg();
-
-					emit_svg_fill_path(
-						render,
-						face_d,
-						fill_graphic_list.as_deref(),
-						item_transform,
-						element_transform,
-						applied_stroke_transform,
-						bounds_matrix,
-						render_params,
-					);
-				}
-			}
-
-			render.leaf_tag("path", |attributes| {
-				attributes.push("d", path.clone());
-				let matrix = format_transform_matrix(element_transform);
-				if !matrix.is_empty() {
-					attributes.push(ATTR_TRANSFORM, matrix);
-				}
-
-				let defs = &mut attributes.0.svg_defs;
-				if let Some((ref id, mask_type, ref vector_item)) = push_id {
-					let mut svg = SvgRender::new();
-					vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
-					let stroke = vector.stroke.as_ref().unwrap();
-					// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
-					let (largest_scale, _) = singular_values(applied_stroke_transform);
-					let inflation = stroke.max_aabb_inflation(true) * largest_scale;
-					let quad = Quad::from_box(transformed_bounds).inflate(inflation);
-					let (x, y) = quad.top_left().into();
-					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
-
-					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
-					let rect = format!(r##"<rect x="{x}" y="{y}" width="{width}" height="{height}" fill="white" />"##);
-
-					match mask_type {
-						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
-						MaskType::Mask => write!(
-							defs,
-							r##"<mask id="{id}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="{x}" y="{y}" width="{width}" height="{height}">{}{}</mask>"##,
-							rect,
-							svg.svg.to_svg_string()
-						)
-						.unwrap(),
-					}
-				}
-
-				let mut render_params = render_params.clone();
-				render_params.aligned_strokes = can_draw_aligned_stroke;
-				render_params.override_paint_order = override_paint_order;
-
-				let stroke_shape_attribute = vector
-					.stroke
-					.as_ref()
-					.map(|stroke| {
-						if stroke_graphic_list.as_deref().is_some_and(is_paint_present) {
-							stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
-						} else {
-							String::new()
-						}
-					})
-					.unwrap_or_default();
-
-				// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
-				let stroke_visible = vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
-				let stroke_attribute = if stroke_visible {
-					stroke_graphic_list
-						.as_deref()
-						.map(|list| {
-							// Gradient should align with the fill path bbox so that a shared gradient lines up across fill and stroke.
-							// Only clipping-based paints need the stroke-inclusive bbox.
-							let paint_bounds = match list.element(0) {
-								Some(Graphic::Color(_)) | Some(Graphic::Gradient(_)) => bounds_matrix,
-								_ => stroke_bounds_matrix,
-							};
-							list.render(defs, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
-						})
-						.unwrap_or_else(|| r#" stroke="none""#.to_string())
+		let stroke_shape_attribute = vector
+			.stroke
+			.as_ref()
+			.map(|stroke| {
+				if stroke_graphic_list.as_deref().is_some_and(is_paint_present) {
+					stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
 				} else {
 					String::new()
-				};
-
-				let fill_attribute = if needs_separate_alignment_fill || use_face_fill {
-					r#" fill="none""#.to_string()
-				} else {
-					fill_graphic_list
-						.as_deref()
-						.map(|list| list.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Fill))
-						.unwrap_or_else(|| r#" fill="none""#.to_string())
-				};
-
-				if let Some((id, mask_type, _)) = push_id {
-					let selector = format!("url(#{id})");
-					attributes.push(mask_type.to_attribute(), selector);
 				}
-				attributes.push_val(fill_attribute);
-				attributes.push_val(stroke_shape_attribute);
-				attributes.push_val(stroke_attribute);
+			})
+			.unwrap_or_default();
 
-				if vector.is_branching() && !use_face_fill {
-					attributes.push("fill-rule", "evenodd");
+		// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
+		let stroke_visible = vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
+		let stroke_attribute = if stroke_visible {
+			stroke_graphic_list
+				.as_deref()
+				.map(|list| {
+					// Gradient should align with the fill path bbox so that a shared gradient lines up across fill and stroke.
+					// Only clipping-based paints need the stroke-inclusive bbox.
+					let paint_bounds = match list.element(0) {
+						Some(Graphic::Color(_)) | Some(Graphic::Gradient(_)) => bounds_matrix,
+						_ => stroke_bounds_matrix,
+					};
+					list.render(defs, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
+				})
+				.unwrap_or_else(|| r#" stroke="none""#.to_string())
+		} else {
+			String::new()
+		};
+
+		let fill_attribute = if needs_separate_alignment_fill || use_face_fill {
+			r#" fill="none""#.to_string()
+		} else {
+			fill_graphic_list
+				.as_deref()
+				.map(|list| list.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Fill))
+				.unwrap_or_else(|| r#" fill="none""#.to_string())
+		};
+
+		if let Some((id, mask_type, _)) = push_id {
+			let selector = format!("url(#{id})");
+			attributes.push(mask_type.to_attribute(), selector);
+		}
+		attributes.push_val(fill_attribute);
+		attributes.push_val(stroke_shape_attribute);
+		attributes.push_val(stroke_attribute);
+
+		if vector.is_branching() && !use_face_fill {
+			attributes.push("fill-rule", "evenodd");
+		}
+
+		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+		if opacity < 1. {
+			attributes.push("opacity", opacity.to_string());
+		}
+
+		if blend_mode_attr != BlendMode::default() {
+			attributes.push("style", blend_mode_attr.render());
+		}
+	});
+
+	// When splitting passes and stroke is below, draw the fill after the stroke.
+	if needs_separate_alignment_fill && wants_stroke_below {
+		emit_svg_fill_path(
+			render,
+			path.clone(),
+			fill_graphic_list.as_deref(),
+			item_transform,
+			element_transform,
+			applied_stroke_transform,
+			bounds_matrix,
+			render_params,
+		);
+	}
+}
+
+impl Render for List<Vector> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		let mut clip_mask_state: Option<(u64, MaskType)> = None;
+
+		for index in 0..self.len() {
+			let Some(vector) = self.element(index) else { continue };
+
+			// A clip-flagged item is masked by its nearest preceding unflagged sibling, which a consecutive run shares
+			let next_clips = index + 1 < self.len() && self.attribute_cloned_or_default::<bool>(ATTR_CLIPPING_MASK, index + 1);
+			let mut masked_by = None;
+
+			if next_clips && clip_mask_state.is_none() {
+				let masker = Graphic::Vector(List::new_from_item(Item::from_parts(vector.clone(), self.clone_item_attributes(index))));
+				let mask_type = if masker.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
+				let uuid = generate_uuid();
+
+				let mut masker_svg = SvgRender::new();
+				masker.render_svg(&mut masker_svg, &render_params.for_clipper());
+				render.svg_defs.push_str(&masker_svg.svg_defs);
+				mask_type.write_to_defs(&mut render.svg_defs, uuid, masker_svg.svg.to_svg_string());
+
+				clip_mask_state = Some((uuid, mask_type));
+			} else if let Some((uuid, mask_type)) = clip_mask_state {
+				if !next_clips {
+					clip_mask_state = None;
 				}
 
-				let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
-				if opacity < 1. {
-					attributes.push("opacity", opacity.to_string());
-				}
+				masked_by = Some((mask_type.to_attribute(), format!("url(#mask-{uuid})")));
+			}
 
-				if blend_mode_attr != BlendMode::default() {
-					attributes.push("style", blend_mode_attr.render());
-				}
-			});
-
-			// When splitting passes and stroke is below, draw the fill after the stroke.
-			if needs_separate_alignment_fill && wants_stroke_below {
-				emit_svg_fill_path(
-					render,
-					path.clone(),
-					fill_graphic_list.as_deref(),
-					item_transform,
-					element_transform,
-					applied_stroke_transform,
-					bounds_matrix,
-					render_params,
-				);
+			// Item geometry is baked into the path data instead of a group transform, so mask coordinates line up
+			match masked_by {
+				Some((attribute, selector)) => render.parent_tag(
+					"g",
+					|attributes| attributes.push(attribute, selector),
+					|render| render_vector_item_svg(self, index, vector, render, render_params),
+				),
+				None => render_vector_item_svg(self, index, vector, render, render_params),
 			}
 		}
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+		let mut clip_masker: Option<List<Vector>> = None;
+
 		for index in 0..self.len() {
 			use graphic_types::vector_types::vector;
 
@@ -1423,23 +1464,53 @@ impl Render for List<Vector> {
 			let can_draw_aligned_stroke =
 				!stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
+			// A clip-flagged item is masked by its nearest preceding unflagged sibling, which a consecutive run shares
+			let next_clips = index + 1 < self.len() && self.attribute_cloned_or_default::<bool>(ATTR_CLIPPING_MASK, index + 1);
+
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
-			if opacity < 1. || blend_mode_attr != BlendMode::default() {
-				layer = true;
+			let needs_blend_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
+
+			// Shared by the blend and clipping layers below, so it is only worth deriving when one of them is pushed
+			let layer_geometry = (needs_blend_layer || clip_masker.is_some()).then(|| {
 				// `max_aabb_inflation` is in `applied_stroke_transform`-space; `layer_bounds` is path-local and `push_layer` re-applies `multiplied_transform`.
 				// Divide by the smaller axial scale to cover the stroke in both axes after Vello's transform. Skip on a degenerate transform.
 				let (_, smallest_scale) = singular_values(applied_stroke_transform);
 				let stroke_inflation = stroke.map_or(0., |s| s.max_aabb_inflation(can_draw_aligned_stroke));
 				let inflate_amount = if smallest_scale > 0. { stroke_inflation / smallest_scale } else { 0. };
-				let quad = Quad::from_box(layer_bounds).inflate(inflate_amount);
-				let layer_bounds = quad.bounding_box();
-				scene.push_layer(
-					peniko::Fill::NonZero,
-					peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
-					opacity,
+				let bounds = Quad::from_box(layer_bounds).inflate(inflate_amount).bounding_box();
+
+				(
 					kurbo::Affine::new(multiplied_transform.to_cols_array()),
-					&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
-				);
+					kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
+				)
+			});
+
+			if needs_blend_layer && let Some((layer_affine, layer_rect)) = layer_geometry {
+				layer = true;
+				scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver), opacity, layer_affine, &layer_rect);
+			}
+
+			// Pushed inside the blend layer so the mask cuts this item's own paint rather than the composited result
+			let mut clip_layers = false;
+			if next_clips && clip_masker.is_none() {
+				clip_masker = Some(List::new_from_item(Item::from_parts(element.clone(), self.clone_item_attributes(index))));
+			} else if let Some(masker) = clip_masker.as_ref() {
+				if let Some((layer_affine, layer_rect)) = layer_geometry {
+					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., layer_affine, &layer_rect);
+					masker.render_to_vello(scene, parent_transform, context, &render_params.for_clipper());
+					scene.push_layer(
+						peniko::Fill::NonZero,
+						peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
+						1.,
+						layer_affine,
+						&layer_rect,
+					);
+					clip_layers = true;
+				}
+
+				if !next_clips {
+					clip_masker = None;
+				}
 			}
 
 			let use_layer = can_draw_aligned_stroke;
@@ -1641,6 +1712,11 @@ impl Render for List<Vector> {
 						}
 					}
 				}
+			}
+
+			if clip_layers {
+				scene.pop_layer();
+				scene.pop_layer();
 			}
 
 			// If we pushed a layer for opacity or a blend mode, we need to pop it

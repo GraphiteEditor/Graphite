@@ -133,6 +133,12 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 				// Compose the parent's transform/opacity/fill onto each child, but only for attributes the parent carries.
 				// A child lacking one is padded with the composition identity (`1.` for opacity/fill, identity for transform), so composing through it is a no-op.
 				Graphic::Graphic(mut sub_list) => {
+					// A group's first child has no preceding sibling, so its clipping flag is inert until splicing
+					// hands it the group's own predecessor. Clear it (keeping the column) to stay clip-neutral.
+					if sub_list.attribute::<bool>(ATTR_CLIPPING_MASK, 0).is_some() {
+						sub_list.set_attribute(ATTR_CLIPPING_MASK, 0, false);
+					}
+
 					if parent_has_transform {
 						for v in sub_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 							*v = current_transform * *v;
