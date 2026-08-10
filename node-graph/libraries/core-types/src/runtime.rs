@@ -171,7 +171,7 @@ mod tests {
 	use crate::context::{ContextImpl, Ctx, CtxSnapshot, EvalScope, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots};
 	use crate::gpoll::GPoll;
 	use crate::node::Node;
-	use crate::record::{Layout, RecordExtract, RecordLift, element_write};
+	use crate::record::{Layout, RecordExtract, RecordLift, element_write, stack};
 	use crate::transform::Footprint;
 	use std::sync::Mutex;
 	use std::sync::atomic::{AtomicU32, Ordering};
@@ -267,6 +267,7 @@ mod tests {
 	}
 
 	fn extract<El: Clone + Send + Sync + 'static, N>(graph: N) -> RecordExtract<El, N> {
+		stack::reserve(1 << 12);
 		RecordExtract::new(graph, &element_layout::<El>())
 	}
 

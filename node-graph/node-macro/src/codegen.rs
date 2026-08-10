@@ -1197,8 +1197,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if record.is_some() && !field.attribute_reads.is_empty() => {
 				let slot = format_ident!("__in_{index}");
 				let rec_local = format_ident!("__rec_{index}");
+				let mark = format_ident!("__mark_{index}");
 				let bindings: Vec<TokenStream2> = reads_of(index).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(#rec_local))).collect();
 				quote! {
+					let #mark = #core_types::record::stack::sp();
 					let #name = match __cell.eval_input(#index, &self.#name, __input) {
 						Ok(value) => value,
 						Err(interrupt) => return interrupt.into(),
@@ -1206,6 +1208,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let #rec_local = self.#slot.rec(&#name);
 					#(#bindings)*
 					let #name: #ty = unsafe { #core_types::record::read_element(#rec_local) };
+					// SAFETY: the element and declared attribute reads copied out by value, so no record above the mark is live.
+					unsafe { #core_types::record::stack::rewind(#mark) };
 				}
 			}
 			// The lend input's frame survives on the record stack until this
@@ -1223,12 +1227,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if flip => {
 				let slot = format_ident!("__in_{index}");
+				let mark = format_ident!("__mark_{index}");
 				quote! {
+					let #mark = #core_types::record::stack::sp();
 					let #name = match __cell.eval_input(#index, &self.#name, __input) {
 						Ok(value) => value,
 						Err(interrupt) => return interrupt.into(),
 					};
 					let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
+					// SAFETY: the element copied out by value, so no record above the mark is live.
+					unsafe { #core_types::record::stack::rewind(#mark) };
 				}
 			}
 			// A routing node's value input rides a record edge; the element
@@ -1236,12 +1244,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			// can reuse the record stack.
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if routing.is_some() && !routing_source(ty) => {
 				let slot = format_ident!("__in_{index}");
+				let mark = format_ident!("__mark_{index}");
 				quote! {
+					let #mark = #core_types::record::stack::sp();
 					let #name = match __cell.eval_input(#index, &self.#name, __input) {
 						Ok(value) => value,
 						Err(interrupt) => return interrupt.into(),
 					};
 					let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
+					// SAFETY: the element copied out by value, so no record above the mark is live.
+					unsafe { #core_types::record::stack::rewind(#mark) };
 				}
 			}
 			ParsedFieldType::Regular(_) => quote! {

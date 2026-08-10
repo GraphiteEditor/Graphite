@@ -183,6 +183,7 @@ mod tests {
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
+		stack::reserve(1 << 16);
 		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
@@ -202,7 +203,7 @@ mod tests {
 	}
 
 	fn reserve_for(layouts: &[&Layout]) {
-		stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum());
+		stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12));
 	}
 
 	fn lifted_value<T: Clone + Send + Sync + 'static>(value: T) -> (core_types::record::RecordLift<T, ValueNode<T>>, Layout) {
@@ -544,7 +545,7 @@ mod tests {
 
 		let carrier_layout = f64_layout(&["opacity"]);
 		let by_layout = f64_layout(&["opacity", "length"]);
-		assert!(!by_layout.is_inline(), "the borrow must point into a spilled frame to exercise the park");
+		assert!(by_layout.frame_bytes() != 0, "the borrow must point into a spilled frame to exercise the park");
 		reserve_for(&[&carrier_layout, &by_layout]);
 
 		let node = OffsetNode::new(
@@ -858,13 +859,20 @@ mod tests {
 		type Output = RecordValue<'e>;
 
 		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			assert!(self.layout.is_inline());
-			let mut value = RecordValue::zeroed();
 			let element: f64 = match core_types::context::ExtractRealTime::try_real_time(input) {
 				Some(_) => 1.,
 				None => 0.,
 			};
-			unsafe { value.as_mut_ptr().cast::<f64>().write(element) };
+			let mut value = RecordValue::zeroed();
+			let dst = match self.layout.frame_bytes() {
+				0 => value.as_mut_ptr(),
+				bytes => stack::push(bytes),
+			};
+			unsafe { dst.cast::<f64>().write(element) };
+			if self.layout.frame_bytes() != 0 {
+				stack::pop(dst);
+				value = RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) });
+			}
 			GPoll::Final(value)
 		}
 	}
@@ -943,36 +951,6 @@ mod tests {
 			panic!("expected a final value");
 		};
 		assert_eq!(text, "parked");
-	}
-
-	#[test]
-	fn inline_records_survive_sibling_evaluations_by_value() {
-		let arena = Arena::new(1024).unwrap();
-		let generations = [];
-		let scope = scope_fixture(&generations, &arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let layout_a = f64_layout(&["opacity"]);
-		let layout_b = f64_layout(&[]);
-		let union = Layout::union(&[&layout_a, &layout_b]);
-		assert!(union.is_inline());
-		reserve_for(&[&layout_a, &layout_b, &union, &union]);
-
-		let (condition, condition_layout) = lifted_value(false);
-		let chain = HoldFirstNode::new(
-			condition,
-			RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
-			RecordSource::new(f64_record_source(&layout_b, 3., vec![]), &layout_b, &union),
-			&union,
-			&condition_layout,
-		);
-
-		let GPoll::Final(value) = chain.eval(&ctx) else {
-			panic!("expected a final record");
-		};
-		let rec = union.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 1.);
-		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("opacity", 0).unwrap()) }, 0.5);
 	}
 
 	#[test]

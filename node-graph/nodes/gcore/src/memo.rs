@@ -164,6 +164,7 @@ mod tests {
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
+		core_types::record::stack::reserve(1 << 16);
 		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
