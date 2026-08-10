@@ -1728,17 +1728,8 @@ impl Render for List<Vector> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
 		// Aggregate all items' targets per element_id so multi-item lists (e.g. the "Text to Vector Glyphs" node) produce hit areas for every glyph.
-		// Targets are baked relative to item 0's transform since `Graphic::collect_metadata` records that as `local_transforms[element_id]`.
-		let item_zero_transform: DAffine2 = if !self.is_empty() {
-			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
-		} else {
-			DAffine2::IDENTITY
-		};
-		let item_zero_inverse = if transform_is_invertible(item_zero_transform) {
-			item_zero_transform.inverse()
-		} else {
-			DAffine2::IDENTITY
-		};
+		// Targets are baked relative to the first item carrying each element_id, since that is the transform recorded as its `local_transforms` entry.
+		let mut reference_transforms: HashMap<NodeId, DAffine2> = HashMap::new();
 
 		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 		let mut accumulated_outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
@@ -1750,18 +1741,17 @@ impl Render for List<Vector> {
 			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
-				// When recovering element_id from the item's editor:layer_path tag (because the caller
-				// passed None), also store the transform metadata that Graphic::collect_metadata
-				// normally provides but skipped due to the None element_id.
-				if caller_element_id.is_none() {
-					metadata.upstream_footprints.entry(element_id).or_insert(footprint);
-					metadata.local_transforms.entry(element_id).or_insert(item_zero_transform);
-				}
+				let reference_transform = *reference_transforms.entry(element_id).or_insert(transform);
+				let reference_inverse = if transform_is_invertible(reference_transform) {
+					reference_transform.inverse()
+				} else {
+					DAffine2::IDENTITY
+				};
 
 				// Use click-target override if the item provides one (e.g. 'Text' node's per-glyph bboxes)
 				let click_target_vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
 
-				let item_relative_transform = item_zero_inverse * transform;
+				let item_relative_transform = reference_inverse * transform;
 
 				let mut click_targets_unwrapped = Vec::new();
 				extend_targets_from_vector(&mut click_targets_unwrapped, self, index, click_target_vector, item_relative_transform);
@@ -1810,6 +1800,15 @@ impl Render for List<Vector> {
 		}
 		for (element_id, targets) in accumulated_outlines {
 			metadata.outlines.insert(element_id, targets);
+		}
+
+		// Recovering element_id from `editor:layer_path` means `Graphic::collect_metadata` skipped this transform metadata.
+		// It lands after the snapshot recursion above so each element keeps the pair its targets were baked against.
+		if caller_element_id.is_none() {
+			for (element_id, reference_transform) in reference_transforms {
+				metadata.upstream_footprints.insert(element_id, footprint);
+				metadata.local_transforms.insert(element_id, reference_transform);
+			}
 		}
 	}
 
