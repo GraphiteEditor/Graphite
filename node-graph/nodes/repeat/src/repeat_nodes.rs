@@ -199,7 +199,8 @@ mod test {
 	use core_types::context::{ContextImpl, EvalScope, ExtractIndex, ExtractPosition};
 	use core_types::gpoll::GPoll;
 	use core_types::list::Item;
-	use core_types::node::{LazyInput, Node, StatusCell};
+	use core_types::node::{Node, StatusCell};
+	use core_types::record::{ElementLazyInput, RecordLift};
 	use vector_types::subpath::Subpath;
 
 	const TEST_POSITION: &str = "test-position";
@@ -252,6 +253,7 @@ mod test {
 
 	macro_rules! test_ctx {
 		($ctx:ident, $cell:ident) => {
+			core_types::record::stack::reserve(1 << 16);
 			let arena = Arena::new(4096).unwrap();
 			let generations = [];
 			let scope = EvalScope::new(None, None, None, &generations, &arena);
@@ -266,10 +268,13 @@ mod test {
 
 		let x_translations = |values: [f64; 3]| values.map(|x| DVec2::new(x, 0.)).to_vec();
 
-		let forward = super::repeat(&ctx, LazyInput::new(&IndexProbe, &cell, 0), 3, false).unwrap();
+		let lift = RecordLift::<List<Vector>, _>::new(IndexProbe);
+		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+
+		let forward = super::repeat(&ctx, ElementLazyInput::new(&lift, &cell, 0, &layout), 3, false).unwrap();
 		assert_eq!(row_translations(&forward, ATTR_TRANSFORM), x_translations([0., 1., 2.]));
 
-		let reversed = super::repeat(&ctx, LazyInput::new(&IndexProbe, &cell, 0), 3, true).unwrap();
+		let reversed = super::repeat(&ctx, ElementLazyInput::new(&lift, &cell, 0, &layout), 3, true).unwrap();
 		assert_eq!(row_translations(&reversed, ATTR_TRANSFORM), x_translations([2., 1., 0.]));
 	}
 
@@ -279,8 +284,9 @@ mod test {
 		let direction = DVec2::new(1.5, 0.);
 		let count = 3;
 
-		let content = ValueNode(single_default_vector());
-		let repeated = super::repeat_array(&ctx, LazyInput::new(&content, &cell, 0), direction, 0., count).unwrap();
+		let lift = RecordLift::<List<Vector>, _>::new(ValueNode(single_default_vector()));
+		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let repeated = super::repeat_array(&ctx, ElementLazyInput::new(&lift, &cell, 0, &layout), direction, 0., count).unwrap();
 
 		assert_eq!(repeated.len(), count as usize);
 		for (index, translation) in row_translations(&repeated, ATTR_TRANSFORM).into_iter().enumerate() {
@@ -293,8 +299,9 @@ mod test {
 	fn repeat_array_single_copy_stays_finite() {
 		test_ctx!(ctx, cell);
 
-		let content = ValueNode(single_default_vector());
-		let repeated = super::repeat_array(&ctx, LazyInput::new(&content, &cell, 0), DVec2::new(12., 10.), 45., 1).unwrap();
+		let lift = RecordLift::<List<Vector>, _>::new(ValueNode(single_default_vector()));
+		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let repeated = super::repeat_array(&ctx, ElementLazyInput::<List<Vector>, _>::new(&lift, &cell, 0, &layout), DVec2::new(12., 10.), 45., 1).unwrap();
 
 		assert_eq!(repeated.len(), 1);
 		let transform: DAffine2 = repeated.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
@@ -306,8 +313,9 @@ mod test {
 		test_ctx!(ctx, cell);
 		let (radius, count) = (5., 4);
 
-		let content = ValueNode(single_default_vector());
-		let repeated = super::repeat_radial(&ctx, LazyInput::new(&content, &cell, 0), 0., radius, count).unwrap();
+		let lift = RecordLift::<List<Vector>, _>::new(ValueNode(single_default_vector()));
+		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let repeated = super::repeat_radial(&ctx, ElementLazyInput::<List<Vector>, _>::new(&lift, &cell, 0, &layout), 0., radius, count).unwrap();
 
 		assert_eq!(repeated.len(), count as usize);
 		for index in 0..count as usize {
@@ -323,11 +331,14 @@ mod test {
 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
 		let points = List::new_from_element(Vector::from_subpath(Subpath::from_anchors(positions, false)));
 
-		let generated = super::repeat_on_points(&ctx, points.clone(), LazyInput::new(&PositionProbe, &cell, 0), false).unwrap();
+		let lift = RecordLift::<List<Vector>, _>::new(PositionProbe);
+		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+
+		let generated = super::repeat_on_points(&ctx, points.clone(), ElementLazyInput::new(&lift, &cell, 0, &layout), false).unwrap();
 		assert_eq!(row_translations(&generated, ATTR_TRANSFORM), positions.to_vec());
 		assert_eq!(row_translations(&generated, TEST_POSITION), positions.to_vec());
 
-		let reversed = super::repeat_on_points(&ctx, points, LazyInput::new(&PositionProbe, &cell, 0), true).unwrap();
+		let reversed = super::repeat_on_points(&ctx, points, ElementLazyInput::new(&lift, &cell, 0, &layout), true).unwrap();
 		let mut expected = positions.to_vec();
 		expected.reverse();
 		assert_eq!(row_translations(&reversed, ATTR_TRANSFORM), expected);
