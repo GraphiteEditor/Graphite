@@ -1220,6 +1220,7 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 	})
 }
 
+// TODO: After the Graphic lowering refactor, measure a group as one enclosing box instead of one box per shape
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
@@ -1242,6 +1243,7 @@ async fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementati
 	})
 }
 
+// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 	let dimensions = content
@@ -1681,6 +1683,7 @@ async fn separate_subpaths<V: ExpandVectorItems + 'n + Send>(_: impl Ctx, #[impl
 	})
 }
 
+// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 /// Determines if the subpath at the given index is closed, meaning its ends are connected together forming a loop.
 #[node_macro::node(name("Path is Closed"), category("Vector: Measure"), path(core_types::vector))]
 async fn path_is_closed(
@@ -2142,6 +2145,7 @@ async fn cut_segments<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementati
 	})
 }
 
+// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 /// Determines the position of a point on the path, given by its progression from 0 to 1 along the path.
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
@@ -2179,6 +2183,7 @@ async fn position_on_path(
 	Item::new_from_element(position)
 }
 
+// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 /// Determines the angle of the tangent at a point on the path, given by its progression from 0 to 1 along the path.
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
@@ -3409,6 +3414,7 @@ fn close_path<V: MapVectorItems + Send + Sync + 'static>(_: impl Ctx, #[implemen
 	})
 }
 
+// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<bool> {
 	let point = point.into_element();
@@ -3425,6 +3431,7 @@ async fn list_length(_: impl Ctx, content: ListDyn) -> Item<f64> {
 	Item::new_from_element(content.len() as f64)
 }
 
+// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 async fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
 	let count = content.element().point_domain.positions().len() as f64;
@@ -3432,6 +3439,7 @@ async fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
 	Item::new_from_element(count)
 }
 
+// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index within a vector element.
 /// If no value exists at that index, the position (0, 0) is returned.
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
@@ -3460,6 +3468,7 @@ async fn index_points(
 	Item::new_from_element(positions[index])
 }
 
+// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
 	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -3475,6 +3484,7 @@ async fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
 	Item::new_from_element(length)
 }
 
+// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>) -> Item<f64> {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
@@ -3487,6 +3497,7 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Cont
 	Item::new_from_element(area)
 }
 
+// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>, centroid_type: Item<CentroidType>) -> Item<DVec2> {
 	let centroid_type = centroid_type.into_element();
