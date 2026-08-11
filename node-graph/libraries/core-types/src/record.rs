@@ -242,6 +242,52 @@ pub fn empty_layout() -> &'static Layout {
 	EMPTY.get_or_init(Layout::default)
 }
 
+/// Declarative record-io metadata for a node type, emitted by the macro into
+/// its registry entry so the compiler can fold each wire's layout without
+/// running the node's constructor. [`fold`](LayoutMeta::fold) reproduces the
+/// layout the constructor derives at wiring today; the compiler layout pass
+/// calls it over the proto graph instead.
+#[derive(Clone, Debug)]
+pub struct LayoutMeta {
+	/// Whether the node derives its layout from a carrier input; `false` writes
+	/// a fresh record from `Layout::default`.
+	pub carrier: bool,
+	/// The output element: a concrete write, or carried through from the carrier.
+	pub element: ElementSpec,
+	/// The attributes the node writes at its acting level.
+	pub writes: Vec<FieldWrite>,
+	/// The attributes removed from the carrier's layout, as `(name, level)`.
+	pub removes: Vec<(&'static str, u8)>,
+	/// The depth change the node applies to its carrier: `0` for elementwise and
+	/// flip nodes, `+1` for a creator, `-1` for a reducer.
+	pub level_delta: i8,
+}
+
+/// Where a node's output element comes from, for [`LayoutMeta`].
+#[derive(Clone, Debug)]
+pub enum ElementSpec {
+	/// The node writes this concrete element.
+	Concrete(ElementWrite),
+	/// The node carries the carrier's element through unchanged.
+	Carried,
+}
+
+impl LayoutMeta {
+	/// Folds the node's output layout from its carrier's, reproducing what the
+	/// node's constructor derives at wiring. `carrier` is the carrier input's
+	/// layout, or `None` when the node writes a fresh record.
+	pub fn fold(&self, carrier: Option<&Layout>) -> Layout {
+		let carrier = carrier.filter(|_| self.carrier);
+		let base = carrier.map_or_else(Layout::default, |c| c.without(&self.removes));
+		let depth = (carrier.map_or(0, |c| c.depth) as i8 + self.level_delta).max(0) as u8;
+		let element = match &self.element {
+			ElementSpec::Concrete(element) => *element,
+			ElementSpec::Carried => carrier.map_or_else(ElementWrite::default, |c| c.element),
+		};
+		base.with_writes(depth, element, &self.writes)
+	}
+}
+
 /// A view of one record: a pointer whose layout is proven at wiring.
 #[derive(Clone, Copy, Debug)]
 pub struct Rec(*const u8);

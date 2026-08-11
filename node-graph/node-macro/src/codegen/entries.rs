@@ -56,6 +56,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 	let arity = regular_fields.len();
 	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
 	let node_underscores: Vec<TokenStream2> = regular_fields.iter().map(|_| quote!(_)).collect();
+	let carrier_present = flip_carrier(parsed);
 
 	// Shorthand associated types in the output only resolve against the
 	// generics' bounds, so rows name the output through a bounded alias. Only
@@ -144,6 +145,13 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 		});
 		Some(quote! {
 			gcore::registry::RegistryEntry {
+				layout_meta: Some(gcore::record::LayoutMeta {
+					carrier: #carrier_present,
+					element: gcore::record::ElementSpec::Concrete(gcore::record::element_write::<#row_output>()),
+					writes: ::std::vec::Vec::new(),
+					removes: ::std::vec::Vec::new(),
+					level_delta: 0,
+				}),
 				io: gcore::registry::NodeIOTypes::new(
 					gcore::concrete!(gcore::context::ContextImpl<'static>),
 					gcore::registry::record_type::<#row_output>(),
@@ -273,6 +281,7 @@ fn routing_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fi
 	quote! {
 		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
 			vec![gcore::registry::RegistryEntry {
+				layout_meta: None,
 				io: gcore::registry::NodeIOTypes::new(
 					gcore::concrete!(gcore::context::ContextImpl<'static>),
 					gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed(#token_name)))),
@@ -353,6 +362,7 @@ fn record_opaque_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regu
 	quote! {
 		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
 			vec![gcore::registry::RegistryEntry {
+				layout_meta: None,
 				io: gcore::registry::NodeIOTypes::new(
 					gcore::concrete!(gcore::context::ContextImpl<'static>),
 					gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed("T")))),
@@ -464,9 +474,11 @@ fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fie
 		(_, None) => unreachable!("non-token record nodes write an element"),
 	};
 
+	let layout_meta_fn = format_ident!("{}_layout_meta", fn_name);
 	quote! {
 		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
 			vec![gcore::registry::RegistryEntry {
+				layout_meta: Some(self::#layout_meta_fn()),
 				io: gcore::registry::NodeIOTypes::new(
 					gcore::concrete!(gcore::context::ContextImpl<'static>),
 					#io_output,

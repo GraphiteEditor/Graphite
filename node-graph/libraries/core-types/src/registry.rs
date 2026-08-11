@@ -170,6 +170,11 @@ where
 		unsafe { self.ptr.as_ref() }.extent(input)
 	}
 
+	fn extent_at(&self, input: &Input, level: u8) -> crate::gpoll::GPoll<crate::gpoll::Extent> {
+		// SAFETY: as in eval.
+		unsafe { self.ptr.as_ref() }.extent_at(input, level)
+	}
+
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		// SAFETY: as in eval.
 		unsafe { self.ptr.as_ref() }.serialize()
@@ -278,6 +283,10 @@ pub type NodeConstructor = fn(Vec<EdgeHandle>) -> Result<EdgeHandle, Constructio
 pub struct RegistryEntry {
 	pub io: NodeIOTypes,
 	pub constructor: NodeConstructor,
+	/// Declarative record-io metadata for the compiler layout pass; `None` for
+	/// nodes whose layout the pass does not yet fold (routing/opaque, hand-written
+	/// rows), which keep the construction-time path.
+	pub layout_meta: Option<crate::record::LayoutMeta>,
 }
 
 pub fn construct(entry: &RegistryEntry, inputs: Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError> {
@@ -502,6 +511,7 @@ mod tests {
 			Ok(EdgeHandle::new(Arc::new(ValueNode(0u32)) as Arc<ErasedNode<u32>>))
 		}
 		let entry = RegistryEntry {
+			layout_meta: None,
 			io: NodeIOTypes::new(concrete!(Context), concrete!(u32), vec![edge_type::<String>()]),
 			constructor: construct_strlen,
 		};
