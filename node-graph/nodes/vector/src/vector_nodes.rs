@@ -1395,20 +1395,64 @@ async fn offset_path(_: impl Ctx, content: Item<Vector>, distance: Item<f64>, jo
 	content
 }
 
-#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn solidify_stroke<T: 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<T>) -> List<Vector>
-where
-	List<T>: IntoGraphicList,
-{
-	// TODO: Make this node support stroke align, which it currently ignores
+/// Element-level dispatch for the Solidify Stroke node, which changes how many vector items its content holds.
+/// Implementors rebuild their vector content in place so the structure it arrived in survives.
+trait SolidifyStroke: Sized {
+	fn solidify_strokes(content: Item<Self>) -> List<Self>;
+}
 
-	let graphic_list = List::new_from_item(content).into_graphic_list();
-	let flattened: List<Vector> = graphic_list.clone().into_flattened_list();
+impl SolidifyStroke for Vector {
+	fn solidify_strokes(content: Item<Vector>) -> List<Vector> {
+		solidify_stroke_list_with_snapshot(List::new_from_item(content))
+	}
+}
 
+impl SolidifyStroke for Graphic {
+	fn solidify_strokes(content: Item<Graphic>) -> List<Graphic> {
+		fn solidify_nested(graphic: &mut Graphic) {
+			match graphic {
+				Graphic::Vector(list) if !list.is_empty() => *list = solidify_stroke_list_with_snapshot(std::mem::take(list)),
+				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(solidify_nested),
+				_ => {}
+			}
+		}
+
+		let mut content = content;
+		solidify_nested(content.element_mut());
+
+		List::new_from_item(content)
+	}
+}
+
+/// Solidifies the list, stashing the original as a merged-layers snapshot since outlining discards the editable path.
+fn solidify_stroke_list_with_snapshot(source: List<Vector>) -> List<Vector> {
+	let mut output = solidify_stroke_list(source.clone());
+
+	if !output.is_empty() {
+		// Pre-compensate by item 0's inverse so the renderer's `upstream_footprint *= item_0_transform`
+		// recursion cancels out and leaves the snapshot's original transforms intact
+		let mut snapshot = source.into_graphic_list();
+		let item_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		if item_0_transform.matrix2.determinant().abs() > f64::EPSILON {
+			let inverse = item_0_transform.inverse();
+			for transform in snapshot.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+				*transform = inverse * *transform;
+			}
+		}
+
+		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, snapshot);
+	}
+
+	output
+}
+
+/// Replaces each item's stroke with filled outline geometry, emitting a separate fill item beside it when the
+/// original carried a fill. Grows the item count by up to 2x.
+fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 	// A fill exists when the canonical attribute carries paint
-	let has_fills: Vec<bool> = (0..flattened.len()).map(|index| has_paint_at(&flattened, index, ATTR_FILL)).collect();
+	let has_fills: Vec<bool> = (0..content.len()).map(|index| has_paint_at(&content, index, ATTR_FILL)).collect();
 
-	let mut output: List<Vector> = flattened
+	content
 		.into_iter()
 		.zip(has_fills)
 		.flat_map(|(row, has_fill)| {
@@ -1483,27 +1527,14 @@ where
 				PaintOrder::StrokeBelow => std::iter::once(stroke_row).chain(fill_row).collect::<Vec<_>>(),
 			}
 		})
-		.collect();
+		.collect()
+}
 
-	// Snapshot the upstream content so the renderer can recurse into it for editor click-target preservation
-	// and surface the original pre-solidified `Vector` to the Path tool for editing.
-	if !output.is_empty() {
-		// Row 0 carries a composed transform inherited from the flattened input, but the merged_layers
-		// already holds the original transforms; pre-compensate by row 0's inverse so the renderer's
-		// `upstream_footprint *= row_0_transform` recursion cancels out and leaves the originals intact.
-		let mut graphic_list = graphic_list;
-		let row_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		if row_0_transform.matrix2.determinant().abs() > f64::EPSILON {
-			let inverse = row_0_transform.inverse();
-			for transform in graphic_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-				*transform = inverse * *transform;
-			}
-		}
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn solidify_stroke<V: SolidifyStroke + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
+	// TODO: Make this node support stroke align, which it currently ignores
 
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
-	}
-
-	output
+	V::solidify_strokes(content)
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
