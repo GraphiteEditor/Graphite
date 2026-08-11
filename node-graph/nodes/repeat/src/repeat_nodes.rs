@@ -269,7 +269,7 @@ mod test {
 		let x_translations = |values: [f64; 3]| values.map(|x| DVec2::new(x, 0.)).to_vec();
 
 		let lift = RecordLift::<List<Vector>, _>::new(IndexProbe);
-		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let layout = Node::<ContextImpl>::layout(&lift).clone();
 
 		let forward = super::repeat(&ctx, ElementLazyInput::new(&lift, &cell, 0, &layout), 3, false).unwrap();
 		assert_eq!(row_translations(&forward, ATTR_TRANSFORM), x_translations([0., 1., 2.]));
@@ -285,7 +285,7 @@ mod test {
 		let count = 3;
 
 		let lift = RecordLift::<List<Vector>, _>::new(ValueNode(single_default_vector()));
-		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		let repeated = super::repeat_array(&ctx, ElementLazyInput::new(&lift, &cell, 0, &layout), direction, 0., count).unwrap();
 
 		assert_eq!(repeated.len(), count as usize);
@@ -300,7 +300,7 @@ mod test {
 		test_ctx!(ctx, cell);
 
 		let lift = RecordLift::<List<Vector>, _>::new(ValueNode(single_default_vector()));
-		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		let repeated = super::repeat_array(&ctx, ElementLazyInput::<List<Vector>, _>::new(&lift, &cell, 0, &layout), DVec2::new(12., 10.), 45., 1).unwrap();
 
 		assert_eq!(repeated.len(), 1);
@@ -314,7 +314,7 @@ mod test {
 		let (radius, count) = (5., 4);
 
 		let lift = RecordLift::<List<Vector>, _>::new(ValueNode(single_default_vector()));
-		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		let repeated = super::repeat_radial(&ctx, ElementLazyInput::<List<Vector>, _>::new(&lift, &cell, 0, &layout), 0., radius, count).unwrap();
 
 		assert_eq!(repeated.len(), count as usize);
@@ -332,7 +332,7 @@ mod test {
 		let points = List::new_from_element(Vector::from_subpath(Subpath::from_anchors(positions, false)));
 
 		let lift = RecordLift::<List<Vector>, _>::new(PositionProbe);
-		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let layout = Node::<ContextImpl>::layout(&lift).clone();
 
 		let generated = super::repeat_on_points(&ctx, points.clone(), ElementLazyInput::new(&lift, &cell, 0, &layout), false).unwrap();
 		assert_eq!(row_translations(&generated, ATTR_TRANSFORM), positions.to_vec());

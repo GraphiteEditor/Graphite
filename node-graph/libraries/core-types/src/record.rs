@@ -234,6 +234,14 @@ impl Layout {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ElToken;
 
+/// The shared empty layout: `depth` 0, no element, no fields, so `frame_bytes`
+/// is 0. The `Node::layout` default returns it for element-only and test nodes,
+/// which carry no record.
+pub fn empty_layout() -> &'static Layout {
+	static EMPTY: std::sync::OnceLock<Layout> = std::sync::OnceLock::new();
+	EMPTY.get_or_init(Layout::default)
+}
+
 /// A view of one record: a pointer whose layout is proven at wiring.
 #[derive(Clone, Copy, Debug)]
 pub struct Rec(*const u8);
@@ -1081,8 +1089,8 @@ where
 		lift_poll(self.edge.eval(input), &self.layout, input.arena())
 	}
 
-	fn layout(&self) -> Option<&Layout> {
-		Some(&self.layout)
+	fn layout(&self) -> &Layout {
+		&self.layout
 	}
 }
 
@@ -1139,8 +1147,8 @@ where
 		}
 	}
 
-	fn layout(&self) -> Option<&Layout> {
-		Some(&self.union)
+	fn layout(&self) -> &Layout {
+		&self.union
 	}
 }
 

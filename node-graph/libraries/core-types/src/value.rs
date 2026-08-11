@@ -40,8 +40,8 @@ where
 		crate::record::lift_poll(crate::gpoll::GPoll::Final(self.value.clone()), &self.layout, input.arena())
 	}
 
-	fn layout(&self) -> Option<&crate::record::Layout> {
-		Some(&self.layout)
+	fn layout(&self) -> &crate::record::Layout {
+		&self.layout
 	}
 }
 

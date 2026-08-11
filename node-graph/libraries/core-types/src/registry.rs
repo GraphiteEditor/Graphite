@@ -158,7 +158,7 @@ where
 		#[cfg(debug_assertions)]
 		debug_assert_eq!(
 			crate::record::stack::sp(),
-			sp_before + self.layout().map_or(0, |layout| layout.frame_bytes()),
+			sp_before + self.layout().frame_bytes(),
 			"{} left the record stack misaligned",
 			std::any::type_name::<N>(),
 		);
@@ -175,7 +175,7 @@ where
 		unsafe { self.ptr.as_ref() }.serialize()
 	}
 
-	fn layout(&self) -> Option<&crate::record::Layout> {
+	fn layout(&self) -> &crate::record::Layout {
 		// SAFETY: as in eval.
 		unsafe { self.ptr.as_ref() }.layout()
 	}
@@ -228,7 +228,7 @@ impl EdgeHandle {
 			node: Box::new(SharedEdge::new(node)),
 			share: |edge| Box::new(edge.downcast_ref::<SharedEdge<N>>().expect("share hook matches the stored edge type").share()),
 			serialize: |edge| Node::<ContextImpl>::serialize(edge.downcast_ref::<SharedEdge<N>>().expect("serialize hook matches the stored edge type")),
-			layout: |edge| Node::<ContextImpl>::layout(edge.downcast_ref::<SharedEdge<N>>().expect("layout hook matches the stored edge type")),
+			layout: |edge| Some(Node::<ContextImpl>::layout(edge.downcast_ref::<SharedEdge<N>>().expect("layout hook matches the stored edge type"))),
 			ty,
 		}
 	}

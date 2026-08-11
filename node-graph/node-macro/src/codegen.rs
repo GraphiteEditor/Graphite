@@ -1702,8 +1702,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let record_layout_impl = match record.is_some() || routing.is_some() || flip || opaque {
 		true => quote! {
-			fn layout(&self) -> Option<&#core_types::record::Layout> {
-				Some(&self.__layout)
+			fn layout(&self) -> &#core_types::record::Layout {
+				&self.__layout
 			}
 		},
 		false => quote!(),

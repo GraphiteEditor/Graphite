@@ -208,7 +208,7 @@ mod tests {
 
 	fn lifted_value<T: Clone + Send + Sync + 'static>(value: T) -> (core_types::record::RecordLift<T, ValueNode<T>>, Layout) {
 		let lift = core_types::record::RecordLift::<T, _>::new(ValueNode(value));
-		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		(lift, layout)
 	}
 
@@ -234,7 +234,7 @@ mod tests {
 		reserve_for(&[&source_layout, &modified, &stacked]);
 
 		let chain = MultiplyOpacityNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout), ValueNode(0.5), &modified);
-		assert_eq!(chain.layout(), Some(&stacked));
+		assert_eq!(chain.layout(), &stacked);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -361,7 +361,7 @@ mod tests {
 		reserve_for(&[&layout]);
 
 		let node = SourceOpacityNode::new(ValueNode(3.), ValueNode(0.25));
-		assert_eq!(Node::<ContextImpl>::layout(&node), Some(&layout));
+		assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
 		let GPoll::Final(value) = node.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -490,7 +490,7 @@ mod tests {
 
 		let source_layout = f64_layout(&["opacity"]);
 		let factor = core_types::record::RecordLift::<f64, _>::new(ValueNode(3.));
-		let factor_layout = Node::<ContextImpl>::layout(&factor).unwrap().clone();
+		let factor_layout = Node::<ContextImpl>::layout(&factor).clone();
 		reserve_for(&[&source_layout]);
 
 		let node = BoostNode::new(
@@ -499,7 +499,7 @@ mod tests {
 			&source_layout,
 			&factor_layout,
 		);
-		let out_layout = Node::<ContextImpl>::layout(&node).unwrap().clone();
+		let out_layout = Node::<ContextImpl>::layout(&node).clone();
 		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the primary input's fields pass through to the output");
 		let GPoll::Final(value) = node.eval(&ctx) else {
 			panic!("expected a final record");
@@ -526,7 +526,7 @@ mod tests {
 			&source_layout,
 			&factor_layout,
 		);
-		let out_layout = Node::<ContextImpl>::layout(&node).unwrap().clone();
+		let out_layout = Node::<ContextImpl>::layout(&node).clone();
 		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the primary input's fields pass through the poll kernel");
 		let GPoll::Final(value) = node.eval(&ctx) else {
 			panic!("expected a final record");
@@ -554,7 +554,7 @@ mod tests {
 			&carrier_layout,
 			&by_layout,
 		);
-		let out_layout = Node::<ContextImpl>::layout(&node).unwrap().clone();
+		let out_layout = Node::<ContextImpl>::layout(&node).clone();
 		let GPoll::Final(value) = node.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -593,7 +593,7 @@ mod tests {
 			&runtime_layout,
 			&source_id_layout,
 		);
-		let out_layout = Node::<ContextImpl>::layout(&node).unwrap().clone();
+		let out_layout = Node::<ContextImpl>::layout(&node).clone();
 		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the carrier's fields pass through the async source");
 
 		let GPoll::Final(value) = node.eval(&ctx) else {
@@ -619,14 +619,14 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let unit = core_types::record::RecordLift::<(), _>::new(ValueNode(()));
-		let unit_layout = Node::<ContextImpl>::layout(&unit).unwrap().clone();
+		let unit_layout = Node::<ContextImpl>::layout(&unit).clone();
 		let content_layout = f64_layout(&["opacity"]);
 		reserve_for(&[&content_layout]);
 
 		let run = |opacity: Option<f64>| {
 			let evals = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
 			let alternate = core_types::record::RecordLift::<f64, _>::new(CountingValue(evals.clone()));
-			let alternate_layout = Node::<ContextImpl>::layout(&alternate).unwrap().clone();
+			let alternate_layout = Node::<ContextImpl>::layout(&alternate).clone();
 			let (content_layout, fields) = match opacity {
 				Some(value) => (content_layout.clone(), vec![(content_layout.offset_of("opacity", 0).unwrap(), value)]),
 				None => (f64_layout(&[]), vec![]),
@@ -642,7 +642,7 @@ mod tests {
 			let GPoll::Final(value) = node.eval(&ctx) else {
 				panic!("expected a final record");
 			};
-			let element = unsafe { Node::<ContextImpl>::layout(&node).unwrap().rec(&value).element::<f64>() };
+			let element = unsafe { Node::<ContextImpl>::layout(&node).rec(&value).element::<f64>() };
 			(element, evals.load(std::sync::atomic::Ordering::Relaxed))
 		};
 
@@ -892,7 +892,7 @@ mod tests {
 		let probed = |features: ContextFeatures| {
 			let (modification, modification_layout) = lifted_value(ContextModification::from_sources(features, &[]));
 			let node = crate::context_modification::ContextModificationNode::new(RealTimeProbe { layout: layout.clone() }, modification, &layout, &modification_layout);
-			assert_eq!(Node::<ContextImpl>::layout(&node), Some(&layout));
+			assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
 			let GPoll::Final(value) = node.eval(&ctx) else {
 				panic!("expected a final record");
 			};
@@ -944,7 +944,7 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let lift = core_types::record::RecordLift::<String, _>::new(ValueNode(String::from("parked")));
-		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		let chain = core_types::record::RecordExtract::<String, _>::new(lift, &layout);
 
 		let GPoll::Final(text) = chain.eval(&ctx) else {
@@ -1029,7 +1029,7 @@ mod tests {
 
 		let evals = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
 		let lift = core_types::record::RecordLift::<f64, _>::new(CountingValue(evals.clone()));
-		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		let memo = crate::memo::MemoizeNode::new(lift, &layout);
 
 		let GPoll::Final(value) = memo.eval(&ctx) else {
