@@ -104,6 +104,36 @@ impl VectorItemMut for Item<Graphic> {
 	}
 }
 
+/// Geometry counterpart to [`VectorItemMut`] for the element-wise modifier nodes, running a per-item transformation over
+/// every vector reachable from the content. Geometry is never inherited, so this recurses into nested groups.
+trait MapVectorItems: Sized {
+	fn map_vector_items(content: Item<Self>, f: impl FnMut(Item<Vector>) -> Item<Vector>) -> Item<Self>;
+}
+
+impl MapVectorItems for Vector {
+	fn map_vector_items(content: Item<Vector>, mut f: impl FnMut(Item<Vector>) -> Item<Vector>) -> Item<Vector> {
+		f(content)
+	}
+}
+
+impl MapVectorItems for Graphic {
+	fn map_vector_items(content: Item<Graphic>, mut f: impl FnMut(Item<Vector>) -> Item<Vector>) -> Item<Graphic> {
+		fn map_nested(graphic: &mut Graphic, f: &mut impl FnMut(Item<Vector>) -> Item<Vector>) {
+			match graphic {
+				// Collecting from zero items would drop the attribute columns, so an empty list is left alone
+				Graphic::Vector(list) if !list.is_empty() => *list = std::mem::take(list).into_iter().map(&mut *f).collect(),
+				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| map_nested(nested, f)),
+				_ => {}
+			}
+		}
+
+		let mut content = content;
+		map_nested(content.element_mut(), &mut f);
+
+		content
+	}
+}
+
 /// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T>(
@@ -1731,16 +1761,16 @@ async fn sample_polyline(
 
 /// Simplifies vector paths by reducing the number of curve segments while preserving the overall shape within the given tolerance.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn simplify(
+async fn simplify<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	/// The vector paths to simplify.
-	content: Item<Vector>,
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
 	/// The maximum distance the simplified path may deviate from the original.
 	#[default(5.)]
 	#[unit(" px")]
 	tolerance: Item<Length>,
-) -> Item<Vector> {
-	let mut content = content;
+) -> Item<V> {
 	let tolerance = *tolerance.element();
 
 	if tolerance <= 0. {
@@ -1749,26 +1779,28 @@ async fn simplify(
 
 	let options = SimplifyOptions::default();
 
-	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let transform = Affine::new(transform_attribute.to_cols_array());
-	let inverse_transform = transform.inverse();
+	V::map_vector_items(content, |mut item| {
+		let transform_attribute: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let transform = Affine::new(transform_attribute.to_cols_array());
+		let inverse_transform = transform.inverse();
 
-	let mut result = Vector {
-		stroke: std::mem::take(&mut content.element_mut().stroke),
-		..Default::default()
-	};
+		let mut result = Vector {
+			stroke: std::mem::take(&mut item.element_mut().stroke),
+			..Default::default()
+		};
 
-	for mut bezpath in content.element().stroke_bezpath_iter() {
-		bezpath.apply_affine(transform);
+		for mut bezpath in item.element().stroke_bezpath_iter() {
+			bezpath.apply_affine(transform);
 
-		let mut simplified = simplify_bezpath(bezpath, tolerance, &options);
+			let mut simplified = simplify_bezpath(bezpath, tolerance, &options);
 
-		simplified.apply_affine(inverse_transform);
-		result.append_bezpath(simplified);
-	}
+			simplified.apply_affine(inverse_transform);
+			result.append_bezpath(simplified);
+		}
 
-	*content.element_mut() = result;
-	content
+		*item.element_mut() = result;
+		item
+	})
 }
 
 /// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
@@ -3253,10 +3285,11 @@ fn bevel(_: impl Ctx, source: Item<Vector>, #[default(10.)] distance: Item<Lengt
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn close_path(_: impl Ctx, source: Item<Vector>) -> Item<Vector> {
-	let mut source = source;
-	source.element_mut().close_subpaths();
-	source
+fn close_path<V: MapVectorItems + Send + Sync + 'static>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>) -> Item<V> {
+	V::map_vector_items(source, |mut item| {
+		item.element_mut().close_subpaths();
+		item
+	})
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
