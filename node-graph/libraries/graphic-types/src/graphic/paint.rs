@@ -37,20 +37,23 @@ where
 	paint_graphics::<A, S>(source, index).is_some()
 }
 
-/// Whether every lane of a vector source draws as a plain clip path: fully
+/// Whether one lane of a vector source draws as a plain clip path: fully
 /// opaque, fill absent or opaque, stroke invisible or fully transparent.
+pub fn vector_lane_can_reduce_to_clip_path<S: LaneSource<Element = Vector>>(source: &S, index: usize) -> bool {
+	let Some(element) = source.element(index) else { return false };
+	let opacity: f64 = source.attr::<Opacity>(index);
+
+	let fill_opaque_or_absent = paint_graphics::<Fill, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
+
+	let stroke_invisible_or_transparent = element.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke())
+		|| paint_graphics::<Stroke, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
+
+	opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
+}
+
+/// Whether every lane of a vector source draws as a plain clip path.
 pub fn vector_can_reduce_to_clip_path<S: LaneSource<Element = Vector>>(source: &S) -> bool {
-	(0..source.lane_count()).all(|index| {
-		let Some(element) = source.element(index) else { return false };
-		let opacity: f64 = source.attr::<Opacity>(index);
-
-		let fill_opaque_or_absent = paint_graphics::<Fill, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
-
-		let stroke_invisible_or_transparent = element.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke())
-			|| paint_graphics::<Stroke, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
-
-		opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
-	})
+	(0..source.lane_count()).all(|index| vector_lane_can_reduce_to_clip_path(source, index))
 }
 
 /// The paint a lane carries for its interiors, in the reference form

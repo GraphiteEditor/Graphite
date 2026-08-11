@@ -11,7 +11,7 @@ use core_types::registry::types::Angle;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{Graphic, GraphicLevel, RowStep, TryFromGraphic, walk_vector_rows};
+use graphic_types::graphic::{Graphic, GraphicLevel, RowStep, TryFromGraphic, is_lone_anonymous_leaf, walk_vector_rows};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::{ATTR_FILL, ATTR_STROKE, Vector};
 use raster_types::{CPU, GPU, Raster};
@@ -488,7 +488,8 @@ pub fn flatten_vector<'e>(
 	let Some((row, top)) = locate_vector_row(GraphicLevel::Run(&item), lane) else {
 		return Err(GraphError::past_end().into());
 	};
-	let snapshot = (lane == 0).then(|| legacy_render_list_of(content));
+	// A lone anonymous leaf flattens to itself, so there is no erased structure to snapshot
+	let snapshot = (lane == 0).then(|| legacy_render_list_of(content)).filter(|list| !is_lone_anonymous_leaf(list));
 	emit_vector_row(ctx.arena(), content.lane(top), row, snapshot)
 }
 
