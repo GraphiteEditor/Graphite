@@ -721,17 +721,6 @@ pub fn get_stroke_id(layer: LayerNodeIdentifier, network_interface: &NodeNetwork
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER))
 }
 
-/// Stroke weight of the first selected non-artboard layer, used by tool control bars to mirror the selection's weight.
-/// Returns `Some(0.)` if the layer has no Stroke node so the widget reads "0 px", and `None` only when no layer is selected.
-pub fn first_selected_stroke_weight(document: &DocumentMessageHandler) -> Option<f64> {
-	document
-		.network_interface
-		.selected_nodes()
-		.selected_layers_except_artboards(&document.network_interface)
-		.next()
-		.map(|layer| get_stroke_width(layer, &document.network_interface).unwrap_or(0.))
-}
-
 /// Writes the weight back to every selected non-artboard layer's stroke. Layers with an existing stroke just have their
 /// `WeightInput` updated; layers without one get a fresh stroke node added (defaulting to a black stroke with the new
 /// weight) only when the new weight is nonzero, so changing back to 0 doesn't keep adding empty strokes.
