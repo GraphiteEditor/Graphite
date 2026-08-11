@@ -347,6 +347,16 @@ impl<'a> ModifyInputsContext<'a> {
 		self.existing_node_id(&DefinitionIdentifier::ProtoNode(reference), create_if_nonexistent)
 	}
 
+	/// The same as [`Self::existing_proto_node_id`], but yielding `None` on layers whose chain cannot host the node.
+	fn existing_chain_hosted_node_id(&mut self, reference: ProtoNodeIdentifier, create_if_nonexistent: bool) -> Option<NodeId> {
+		let output_layer = self.get_output_layer()?;
+		if !self.network_interface.layer_chain_hosts_node(&output_layer.to_node(), &[], &reference) {
+			return None;
+		}
+
+		self.existing_proto_node_id(reference, create_if_nonexistent)
+	}
+
 	/// Gets the node id of a document node with a specific reference that is upstream from the layer node, and optionally creates it if it does not exist.
 	fn existing_node_id(&mut self, reference: &DefinitionIdentifier, create_if_nonexistent: bool) -> Option<NodeId> {
 		// Start from the layer node or export
@@ -480,7 +490,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
-		let Some(blend_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::blend_mode::IDENTIFIER, true) else {
+		let Some(blend_node_id) = self.existing_chain_hosted_node_id(graphene_std::blending_nodes::blend_mode::IDENTIFIER, true) else {
 			return;
 		};
 		let input_connector = InputConnector::node(blend_node_id, graphene_std::blending_nodes::blend_mode::BlendModeInput);
@@ -488,7 +498,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn opacity_set(&mut self, opacity: f64) {
-		let Some(opacity_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::opacity::IDENTIFIER, true) else {
+		let Some(opacity_node_id) = self.existing_chain_hosted_node_id(graphene_std::blending_nodes::opacity::IDENTIFIER, true) else {
 			return;
 		};
 		// Enable the `has_opacity` checkbox so the value is applied
@@ -507,9 +517,9 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn opacity_fill_set(&mut self, fill: f64) {
 		// Reuse an existing Opacity node to avoid a redundant chain walk on slider drags
 		let identifier = graphene_std::blending_nodes::opacity::IDENTIFIER;
-		let existing = self.existing_proto_node_id(identifier.clone(), false);
+		let existing = self.existing_chain_hosted_node_id(identifier.clone(), false);
 		let existed = existing.is_some();
-		let Some(opacity_node_id) = existing.or_else(|| self.existing_proto_node_id(identifier, true)) else {
+		let Some(opacity_node_id) = existing.or_else(|| self.existing_chain_hosted_node_id(identifier, true)) else {
 			return;
 		};
 		// Freshly-created node defaults to opacity enabled; disable it so the fill slider works independently
@@ -823,7 +833,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
 		let clip = !clip_mode.unwrap_or(false);
-		let Some(clip_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::clipping_mask::IDENTIFIER, true) else {
+		let Some(clip_node_id) = self.existing_chain_hosted_node_id(graphene_std::blending_nodes::clipping_mask::IDENTIFIER, true) else {
 			return;
 		};
 		let input_connector = InputConnector::node(clip_node_id, graphene_std::blending_nodes::clipping_mask::ClipInput);

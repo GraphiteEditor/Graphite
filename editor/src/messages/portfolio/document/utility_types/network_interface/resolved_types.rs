@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
-use graph_craft::{Type, concrete};
+use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 use graphene_std::uuid::NodeId;
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::node_registry::NODE_REGISTRY;
@@ -63,15 +63,14 @@ impl TypeSource {
 		self.compiled_nested_type().is_some_and(|ty| matches!(ty, Type::List(_)) || ty.bundle_element_name().is_some())
 	}
 
-	/// The element type's identifier name with any rank-0 `Item` or rank-1 `List` wrapper peeled, so semantic type checks can be rank-agnostic.
+	/// The element type with any rank-0 `Item` or rank-1 `List` wrapper peeled, so semantic type checks can be rank-agnostic.
+	pub fn compiled_element_type(&self) -> Option<&Type> {
+		Some(element_of(self.compiled_nested_type()?))
+	}
+
+	/// The identifier name of [`Self::compiled_element_type`].
 	pub fn compiled_element_name(&self) -> Option<String> {
-		let nested_type = self.compiled_nested_type()?;
-		// A rank-0 `Item` or rank-1 `List` peels to its element; a bare value reports itself
-		let element = match nested_type {
-			Type::Item(element) | Type::List(element) => element.as_ref(),
-			other => other,
-		};
-		Some(element.identifier_name())
+		Some(self.compiled_element_type()?.identifier_name())
 	}
 
 	pub fn compiled_nested_type(&self) -> Option<&Type> {
@@ -107,6 +106,14 @@ impl TypeSource {
 			TypeSource::Invalid => "Invalid".to_string(),
 			TypeSource::Error(_) => "Error".to_string(),
 		}
+	}
+}
+
+/// Peels any `Fn`/`Future` wrapper, then any rank-0 `Item` or rank-1 `List` wrapper, down to the element type.
+fn element_of(ty: &Type) -> &Type {
+	match ty.nested_type() {
+		Type::Item(element) | Type::List(element) => element.as_ref(),
+		other => other,
 	}
 }
 
@@ -167,6 +174,33 @@ impl NodeNetworkInterface {
 			NodeInput::Reflection(document_node_metadata) => TypeSource::Compiled(document_node_metadata.ty()),
 			NodeInput::Inline(_) => TypeSource::Compiled(concrete!(InlineRust)),
 		}
+	}
+
+	/// Whether the given node has a registered implementation accepting the layer chain's element type as its content input.
+	/// A chain awaiting compilation has no resolved type yet, so only a known-wrong type or a type error locks the layer out.
+	pub fn layer_chain_hosts_node(&self, node_id: &NodeId, network_path: &[NodeId], node: &ProtoNodeIdentifier) -> bool {
+		let secondary_input = InputConnector::layer_secondary_input(*node_id);
+		if !self.input_from_connector(&secondary_input, network_path).is_some_and(|input| input.is_exposed()) {
+			return false;
+		}
+
+		let chain_type = self.input_type(&secondary_input, network_path);
+		match chain_type.compiled_element_type() {
+			Some(element) => {
+				let Some(implementations) = NODE_REGISTRY.get(node) else {
+					log::error!("Proto node {node:?} not found in the node registry, in layer_chain_hosts_node");
+					return false;
+				};
+				implementations.keys().any(|node_io| node_io.inputs.first().is_some_and(|content| element_of(content) == element))
+			}
+			None => !matches!(chain_type, TypeSource::Invalid),
+		}
+	}
+
+	/// Whether the blending nodes (blend mode, opacity, clipping mask) can be spliced into this layer's chain.
+	pub fn layer_hosts_blending_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		// Blend Mode stands in for the trio since they share one implementations list
+		self.layer_chain_hosts_node(node_id, network_path, &graphene_std::blending_nodes::blend_mode::IDENTIFIER)
 	}
 
 	/// Get the [`TypeSource`] for any InputConnector.
