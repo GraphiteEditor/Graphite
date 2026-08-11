@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{
-	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, has_selection, reset_colors_on_deactivation,
+	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, has_paintable_selection, reset_colors_on_deactivation,
 	swap_fill_and_stroke, sync_color_options, sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoManager;
@@ -582,8 +582,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 				apply_fill_color_pick(&mut self.options.drawing, fill_choice, context.document, responses);
 			}
 			ShapeOptionsUpdate::FillEnabled(enabled) => {
-				// When toggled with no selection, persist the new state as the current shape mode's default
-				if !has_selection(context.document) {
+				// When toggled with no paintable selection, persist the new state as the current shape mode's default
+				if !has_paintable_selection(context.document) {
 					self.options.shape_fill_defaults.insert(self.tool_data.current_shape, enabled);
 				}
 				apply_fill_enabled(&mut self.options.drawing, enabled, context.global_tool_data, context.document, responses);
@@ -595,8 +595,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 				apply_stroke_color_pick(&mut self.options.drawing, color, context.document, responses);
 			}
 			ShapeOptionsUpdate::StrokeEnabled(enabled) => {
-				// When toggled with no selection, persist the new state as the current shape mode's default
-				if !has_selection(context.document) {
+				// When toggled with no paintable selection, persist the new state as the current shape mode's default
+				if !has_paintable_selection(context.document) {
 					self.options.shape_stroke_defaults.insert(self.tool_data.current_shape, enabled);
 				}
 				apply_stroke_enabled(&mut self.options.drawing, enabled, context.global_tool_data, context.document, responses);
