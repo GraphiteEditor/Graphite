@@ -1,11 +1,7 @@
-use core_types::list::{ATTR_FILL, Item, ItemAttributeValues, List};
-use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE,
-	ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx,
-};
+use core_types::list::{Item, List, NodeIdPath};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Ctx};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
-use graphic_types::vector_types::gradient::{GradientForm, GradientHueDirection, GradientSpace, GradientSpread};
+use graphic_types::graphic::bake_paint_transforms;
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
@@ -178,147 +174,76 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 	list
 }
 
+/// Flattens graphic content into the operands of a boolean operation, matching `flatten_graphic_list`'s attribute composition.
+/// Non-path content is dropped, since it contributes no region to operate on.
 fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 	(0..graphic_list.len())
 		.flat_map(|index| {
 			let graphic = graphic_list.element(index).unwrap();
+
+			// Whether the parent carries each attribute is a structural fact, so an absent one never invents a column on the children
+			let parent_has_transform = graphic_list.attribute::<DAffine2>(ATTR_TRANSFORM, index).is_some();
+			let parent_has_opacity = graphic_list.attribute::<f64>(ATTR_OPACITY, index).is_some();
+			let parent_has_fill = graphic_list.attribute::<f64>(ATTR_OPACITY_FILL, index).is_some();
+			let parent_has_layer_path = graphic_list.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).is_some();
+
+			let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let parent_opacity: f64 = graphic_list.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let parent_fill: f64 = graphic_list.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let layer_path: NodeIdPath = graphic_list.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+
+			let compose_parent = |mut item: Item<Vector>| {
+				if parent_has_transform || item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some() {
+					let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+					item.set_attribute(ATTR_TRANSFORM, parent_transform * item_transform);
+				}
+				if parent_has_opacity || item.attribute::<f64>(ATTR_OPACITY).is_some() {
+					let item_opacity: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
+					item.set_attribute(ATTR_OPACITY, parent_opacity * item_opacity);
+				}
+				if parent_has_fill || item.attribute::<f64>(ATTR_OPACITY_FILL).is_some() {
+					let item_fill: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+					item.set_attribute(ATTR_OPACITY_FILL, parent_fill * item_fill);
+				}
+				if parent_has_layer_path {
+					item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+				}
+
+				item
+			};
+
 			match graphic.clone() {
-				Graphic::None => Vec::new(),
-				Graphic::Vector(vector) => {
-					// Apply the parent graphic's transform to each element of the `List<Vector>`
-					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					vector
-						.into_iter()
-						.map(|mut sub_vector| {
-							let current_transform: DAffine2 = sub_vector.attribute_cloned_or_default(ATTR_TRANSFORM);
-							*sub_vector.attribute_mut_or_insert_default(ATTR_TRANSFORM) = parent_transform * current_transform;
-							sub_vector
-						})
-						.collect::<Vec<_>>()
-				}
-				Graphic::RasterCPU(image) => {
-					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					let make_item = |transform: DAffine2, source_attributes: &ItemAttributeValues| {
-						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-						subpath.apply_transform(transform);
-
-						let element = Vector::from_subpath(subpath);
-
-						let mut item = Item::new_from_element(element);
-						for key in [ATTR_BLEND_MODE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH] {
-							item.attributes_mut().insert_cloned_from(source_attributes, key);
-						}
-						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
-						item
-					};
-
-					// Apply the parent graphic's transform to each raster element, preserving each item's layer
-					// and alpha_blending so the boolean op downstream can route clicks (and inherit blending state)
-					// back to the originating raster layer
-					(0..image.len())
-						.map(|i| {
-							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let source_attributes = image.clone_item_attributes(i);
-							make_item(parent_transform * row_transform, &source_attributes)
-						})
-						.collect::<Vec<_>>()
-				}
-				Graphic::RasterGPU(image) => {
-					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					let make_item = |transform: DAffine2, source_attributes: &ItemAttributeValues| {
-						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-						subpath.apply_transform(transform);
-
-						let element = Vector::from_subpath(subpath);
-
-						let mut item = Item::new_from_element(element);
-						for key in [ATTR_BLEND_MODE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH] {
-							item.attributes_mut().insert_cloned_from(source_attributes, key);
-						}
-						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
-						item
-					};
-
-					// Apply the parent graphic's transform to each raster element, preserving each item's layer
-					// and alpha_blending so the boolean op downstream can route clicks (and inherit blending state)
-					// back to the originating raster layer
-					(0..image.len())
-						.map(|i| {
-							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let source_attributes = image.clone_item_attributes(i);
-							make_item(parent_transform * row_transform, &source_attributes)
-						})
-						.collect::<Vec<_>>()
-				}
+				Graphic::Vector(vector) => vector.into_iter().map(compose_parent).collect::<Vec<_>>(),
+				Graphic::Text(text) => text_nodes::shape_text_list(&text, false).into_iter().map(compose_parent).collect::<Vec<_>>(),
 				Graphic::Graphic(mut graphic) => {
-					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					// Apply the parent graphic's transform to each element of the inner `List`
-					for transform in graphic.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-						*transform = parent_transform * *transform;
+					if parent_has_transform {
+						for transform in graphic.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+							*transform = parent_transform * *transform;
+						}
+					}
+					if parent_has_opacity {
+						for opacity in graphic.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY) {
+							*opacity *= parent_opacity;
+						}
+					}
+					if parent_has_fill {
+						for fill in graphic.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY_FILL) {
+							*fill *= parent_fill;
+						}
 					}
 
-					// Recursively flatten the inner `List` into the output `List<Vector>`
+					// Unioning each group lets it enter the outer operation as one region, which is why this cannot defer
+					// to `flatten_graphic_list`. Splicing children in as sibling operands makes them subtract from each other.
 					let flattened = flatten_vector(&graphic);
-					let unioned = boolean_operation_on_vector_list(&flattened, BooleanOperation::Union);
-
-					unioned.into_iter().collect::<Vec<_>>()
+					if flattened.is_empty() {
+						// The union call emits one blank operand even from an empty list
+						Vec::new()
+					} else {
+						boolean_operation_on_vector_list(&flattened, BooleanOperation::Union).into_iter().collect::<Vec<_>>()
+					}
 				}
-				Graphic::Color(color) => color
-					.into_iter()
-					.map(|row| {
-						let (color, mut attributes) = row.into_parts();
-						set_paint_attribute(&mut attributes, ATTR_FILL, List::new_from_element(color));
-
-						let mut element = Vector::default();
-						element.set_stroke_transform(DAffine2::IDENTITY);
-
-						Item::from_parts(element, attributes)
-					})
-					.collect::<Vec<_>>(),
-				Graphic::Gradient(gradient) => gradient
-					.into_iter()
-					.map(|row| {
-						let (stops, mut attributes) = row.into_parts();
-
-						let mut gradient_paint = List::new_from_element(stops);
-						if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
-							gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
-						}
-						if let Some(gradient_form) = attributes.remove::<GradientForm>(ATTR_GRADIENT_FORM) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_FORM, 0, gradient_form);
-						}
-						if let Some(gradient_spread) = attributes.remove::<GradientSpread>(ATTR_GRADIENT_SPREAD) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_SPREAD, 0, gradient_spread);
-						}
-						if let Some(gradient_space) = attributes.remove::<GradientSpace>(ATTR_GRADIENT_SPACE) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_SPACE, 0, gradient_space);
-						}
-						if let Some(gradient_cyclic) = attributes.remove::<bool>(ATTR_GRADIENT_CYCLIC) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_CYCLIC, 0, gradient_cyclic);
-						}
-						if let Some(gradient_hue_direction) = attributes.remove::<GradientHueDirection>(ATTR_GRADIENT_HUE_DIRECTION) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_HUE_DIRECTION, 0, gradient_hue_direction);
-						}
-						set_paint_attribute(&mut attributes, ATTR_FILL, gradient_paint);
-
-						let mut element = Vector::default();
-						element.set_stroke_transform(DAffine2::IDENTITY);
-
-						Item::from_parts(element, attributes)
-					})
-					.collect::<Vec<_>>(),
-				Graphic::Text(text) => {
-					// Shape the glyphs into vectors (each item's own transform is applied), then compose the parent's transform like the other arms
-					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					text_nodes::shape_text_list(&text, false)
-						.into_iter()
-						.map(|mut sub_vector| {
-							let current_transform: DAffine2 = sub_vector.attribute_cloned_or_default(ATTR_TRANSFORM);
-							*sub_vector.attribute_mut_or_insert_default(ATTR_TRANSFORM) = parent_transform * current_transform;
-							sub_vector
-						})
-						.collect::<Vec<_>>()
-				}
+				// Rasters, colors, and gradients bound no region, so they contribute no operand
+				Graphic::None | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) => Vec::new(),
 			}
 		})
 		.collect()
