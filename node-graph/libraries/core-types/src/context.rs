@@ -989,6 +989,21 @@ impl<'a> ContextImpl<'a> {
 			..*self
 		}
 	}
+
+	/// The promote half of decompose-and-promote: derives the context for the
+	/// content of one copy at a pushed structure level. `copy` becomes the
+	/// enclosing level's index (held in `frame`, which the caller owns for the
+	/// derived context's scope) and `inner` is the content's lane within that
+	/// copy. The structure node computes `copy`/`inner` from its own
+	/// extent-driven decomposition of the current lane.
+	pub fn push_level<'s>(&self, frame: &'s mut IndexLink<'s>, copy: u64, inner: u64) -> ContextImpl<'s>
+	where
+		'a: 's,
+	{
+		frame.index = copy;
+		frame.outer = self.index.outer;
+		self.promoted(frame, inner)
+	}
 }
 
 impl Ctx for ContextImpl<'_> {}

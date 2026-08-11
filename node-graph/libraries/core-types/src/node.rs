@@ -181,6 +181,20 @@ pub trait Node<Input> {
 		GPoll::Final(Extent::Free)
 	}
 
+	/// The count of items at one absolute nesting level (innermost `0`). The
+	/// leveled primitive a structure node overrides to report a pushed level's
+	/// size; the scalar base is one item at every level. Uncertainty rides the
+	/// `GPoll` status axis, as with [`extent`](Node::extent).
+	fn extent_at(&self, _input: &Input, _level: u8) -> GPoll<Extent> {
+		GPoll::Final(Extent::Exactly(1))
+	}
+
+	/// The node's domain depth (number of nesting levels; `0` = scalar), baked
+	/// into the record layout at wiring.
+	fn depth(&self) -> u8 {
+		self.layout().depth
+	}
+
 	/// Introspection access to node-resident records; `None` for ordinary nodes.
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		None
@@ -252,6 +266,10 @@ where
 		(**self).extent(input)
 	}
 
+	fn extent_at(&self, input: &Input, level: u8) -> GPoll<Extent> {
+		(**self).extent_at(input, level)
+	}
+
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		(**self).serialize()
 	}
@@ -282,6 +300,10 @@ where
 		(**self).extent(input)
 	}
 
+	fn extent_at(&self, input: &Input, level: u8) -> GPoll<Extent> {
+		(**self).extent_at(input, level)
+	}
+
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		(**self).serialize()
 	}
@@ -310,6 +332,10 @@ where
 
 	fn extent(&self, input: &Input) -> GPoll<Extent> {
 		(**self).extent(input)
+	}
+
+	fn extent_at(&self, input: &Input, level: u8) -> GPoll<Extent> {
+		(**self).extent_at(input, level)
 	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
