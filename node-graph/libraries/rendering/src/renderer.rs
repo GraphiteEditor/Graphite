@@ -940,49 +940,61 @@ impl Render for List<Graphic> {
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let element = self.element(index).unwrap();
 
-			render.parent_tag(
-				"g",
-				|attributes| {
-					let matrix = format_transform_matrix(transform);
-					if !matrix.is_empty() {
-						attributes.push(ATTR_TRANSFORM, matrix);
-					}
+			let matrix = format_transform_matrix(transform);
+			let next_clips = index + 1 < self.len() && self.element(index + 1).unwrap().had_clip_enabled();
+			let mut masked_by = None;
 
-					let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
-					if opacity < 1. {
-						attributes.push("opacity", opacity.to_string());
-					}
+			if next_clips && mask_state.is_none() {
+				let uuid = generate_uuid();
+				let mask_type = if element.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 
-					if blend_mode != BlendMode::default() {
-						attributes.push("style", blend_mode.render());
-					}
+				let mut svg = SvgRender::new();
+				element.render_svg(&mut svg, &render_params.for_clipper());
 
-					let next_clips = index + 1 < self.len() && self.element(index + 1).unwrap().had_clip_enabled();
+				// The def is resolved in this list's space, so the masker's own transform has to be baked into it
+				let masker = match matrix.is_empty() {
+					true => svg.svg.to_svg_string(),
+					false => format!(r##"<g transform="{matrix}">{}</g>"##, svg.svg.to_svg_string()),
+				};
 
-					if next_clips && mask_state.is_none() {
-						let uuid = generate_uuid();
-						let mask_type = if element.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
-						mask_state = Some((uuid, mask_type));
-						let mut svg = SvgRender::new();
-						element.render_svg(&mut svg, &render_params.for_clipper());
+				render.svg_defs.push_str(&svg.svg_defs);
+				mask_type.write_to_defs(&mut render.svg_defs, uuid, masker);
 
-						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
-						mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
-					} else if let Some((uuid, mask_type)) = mask_state {
-						if !next_clips {
-							mask_state = None;
+				mask_state = Some((uuid, mask_type));
+			} else if let Some((uuid, mask_type)) = mask_state {
+				if !next_clips {
+					mask_state = None;
+				}
+
+				masked_by = Some((mask_type.to_attribute(), format!("url(#mask-{uuid})")));
+			}
+
+			let render_item = |render: &mut SvgRender| {
+				render.parent_tag(
+					"g",
+					|attributes| {
+						if !matrix.is_empty() {
+							attributes.push(ATTR_TRANSFORM, matrix.clone());
 						}
 
-						let id = format!("mask-{uuid}");
-						let selector = format!("url(#{id})");
+						let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+						if opacity < 1. {
+							attributes.push("opacity", opacity.to_string());
+						}
 
-						attributes.push(mask_type.to_attribute(), selector);
-					}
-				},
-				|render| {
-					element.render_svg(render, render_params);
-				},
-			);
+						if blend_mode != BlendMode::default() {
+							attributes.push("style", blend_mode.render());
+						}
+					},
+					|render| element.render_svg(render, render_params),
+				);
+			};
+
+			// The mask rides an untransformed wrapper so it resolves in this list's space rather than the item's own
+			match masked_by {
+				Some((attribute, selector)) => render.parent_tag("g", |attributes| attributes.push(attribute, selector), render_item),
+				None => render_item(render),
+			}
 		}
 	}
 
