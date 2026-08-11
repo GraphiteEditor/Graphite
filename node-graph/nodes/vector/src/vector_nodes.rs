@@ -108,11 +108,18 @@ impl VectorItemMut for Item<Graphic> {
 /// every vector reachable from the content. Geometry is never inherited, so this recurses into nested groups.
 trait MapVectorItems: Sized {
 	fn map_vector_items(content: Item<Self>, f: impl FnMut(Item<Vector>) -> Item<Vector>) -> Item<Self>;
+
+	/// Mutable access to each reachable vector at once, for callers that must await between elements.
+	fn vector_elements_mut(content: &mut Item<Self>) -> Vec<&mut Vector>;
 }
 
 impl MapVectorItems for Vector {
 	fn map_vector_items(content: Item<Vector>, mut f: impl FnMut(Item<Vector>) -> Item<Vector>) -> Item<Vector> {
 		f(content)
+	}
+
+	fn vector_elements_mut(content: &mut Item<Vector>) -> Vec<&mut Vector> {
+		vec![content.element_mut()]
 	}
 }
 
@@ -131,6 +138,21 @@ impl MapVectorItems for Graphic {
 		map_nested(content.element_mut(), &mut f);
 
 		content
+	}
+
+	fn vector_elements_mut(content: &mut Item<Graphic>) -> Vec<&mut Vector> {
+		fn collect<'a>(graphic: &'a mut Graphic, elements: &mut Vec<&'a mut Vector>) {
+			match graphic {
+				Graphic::Vector(list) => elements.extend(list.iter_element_values_mut()),
+				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| collect(nested, elements)),
+				_ => {}
+			}
+		}
+
+		let mut elements = Vec::new();
+		collect(content.element_mut(), &mut elements);
+
+		elements
 	}
 }
 
@@ -1675,13 +1697,19 @@ async fn path_is_closed(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Item<Vector>, mapped: impl Node<Context<'static>, Output = Item<DVec2>>) -> Item<Vector> {
+async fn map_points<V: MapVectorItems + 'n + Send>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	#[implementations(Graphic, Vector)] content: Item<V>,
+	mapped: impl Node<Context<'static>, Output = Item<DVec2>>,
+) -> Item<V> {
 	let mut content = content;
 
-	for (index, (_, position)) in content.element_mut().point_domain.positions_mut().enumerate() {
-		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
+	for vector in V::vector_elements_mut(&mut content) {
+		for (index, (_, position)) in vector.point_domain.positions_mut().enumerate() {
+			let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
 
-		*position = mapped.eval(owned_ctx.into_context()).await.into_element();
+			*position = mapped.eval(owned_ctx.into_context()).await.into_element();
+		}
 	}
 
 	content
