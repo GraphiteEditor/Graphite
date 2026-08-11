@@ -69,7 +69,7 @@ mod test {
 	fn test_image_color_palette() {
 		let result = image_color_palette(
 			&(),
-			List::new_from_element(Raster::new_cpu(Image {
+			&List::new_from_element(Raster::new_cpu(Image {
 				width: 100,
 				height: 100,
 				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],

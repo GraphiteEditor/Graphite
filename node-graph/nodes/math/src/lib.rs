@@ -1060,9 +1060,10 @@ mod graphene_test {
 	use core_types::context::{ContextImpl, EvalScope, ExtractIndex};
 	use core_types::gpoll::{Finality, GPoll};
 	use core_types::node::{BatchStatus, Node};
-	use core_types::registry::{EdgeHandle, ErasedNode, construct};
+	use core_types::record::{Layout, RecordLift, RecordValue, stack};
+	use core_types::registry::{ErasedRecordNode, construct};
+	use core_types::value::record_value_edge;
 	use std::mem::MaybeUninit;
-	use std::sync::Arc;
 
 	struct SourceNode<T>(T);
 
@@ -1088,14 +1089,42 @@ mod graphene_test {
 		EvalScope::new(None, None, None, &[], arena)
 	}
 
+	fn reserve_for(layouts: &[&Layout]) {
+		stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12));
+	}
+
+	/// Lifts a plain-element test source onto a record wire, returned beside its
+	/// element-only layout for the generated node's constructor.
+	fn lifted<T, N>(node: N) -> (RecordLift<T, N>, Layout)
+	where
+		T: Clone + Send + Sync + 'static,
+		N: for<'c> Node<ContextImpl<'c>, Output = T>,
+	{
+		let lift = RecordLift::<T, _>::new(node);
+		let layout = Node::<ContextImpl>::layout(&lift).clone();
+		(lift, layout)
+	}
+
+	fn element<T: Copy>(layout: &Layout, value: &RecordValue<'_>) -> T {
+		unsafe { layout.rec(value).element::<T>() }
+	}
+
 	#[test]
 	fn generated_add_evaluates_through_the_node_path() {
 		let arena = Arena::new(64).unwrap();
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let graph = AddNode::new(SourceNode(1.0f64), SourceNode(2.0f64));
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(3.0));
+		let (a, la) = lifted(SourceNode(1.0f64));
+		let (b, lb) = lifted(SourceNode(2.0f64));
+		let graph = AddNode::<_, _, f64, f64>::new(a, b, &la, &lb);
+		let out = Node::<ContextImpl>::layout(&graph).clone();
+		reserve_for(&[&la, &lb, &out]);
+
+		let GPoll::Final(value) = Node::eval(&graph, &ctx) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(element::<f64>(&out, &value), 3.0);
 	}
 
 	#[test]
@@ -1104,14 +1133,20 @@ mod graphene_test {
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let erased: Box<ErasedNode<f64>> = Box::new(AddNode::new(IndexNode, SourceNode(10.0f64)));
+		let (index, li) = lifted(IndexNode);
+		let (src, ls) = lifted(SourceNode(10.0f64));
+		let node = AddNode::<_, _, f64, f64>::new(index, src, &li, &ls);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		reserve_for(&[&li, &ls, &out]);
+
+		let erased: Box<ErasedRecordNode> = Box::new(node);
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
 		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch));
 		let BatchStatus::Filled(batch, finality) = status else {
 			panic!("expected filled, got {status:?}");
 		};
 		let mut got = Vec::new();
-		batch.for_each(|_, lane| got.push(*lane));
+		batch.for_each(|_, lane| got.push(unsafe { lane.element::<f64>() }));
 		assert_eq!(got, vec![12.0, 13.0, 14.0, 15.0]);
 		assert_eq!(finality, Finality::AllFinal);
 	}
@@ -1122,12 +1157,16 @@ mod graphene_test {
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let entries = logical_or_entries();
-		let value = EdgeHandle::new(Arc::new(SourceNode(true)) as Arc<ErasedNode<bool>>);
-		let other_value = EdgeHandle::new(Arc::new(SourceNode(false)) as Arc<ErasedNode<bool>>);
-		let wired = construct(&entries[0], vec![value, other_value]).unwrap().downcast::<bool>().unwrap();
+		let entries = super::_logical_or_mod::logical_or_entries();
+		let wired = construct(&entries[0], vec![record_value_edge(true), record_value_edge(false)]).unwrap();
+		let layout = wired.layout().unwrap().clone();
+		let edge = wired.downcast_record::<bool>().unwrap();
+		reserve_for(&[&layout]);
 
-		assert_eq!(Node::eval(&wired, &ctx), GPoll::Final(true));
+		let GPoll::Final(value) = edge.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		assert!(element::<bool>(&layout, &value));
 	}
 
 	#[test]
@@ -1146,18 +1185,22 @@ mod graphene_test {
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let entries = add_entries();
+		let entries = super::_add_mod::add_entries();
 		assert_eq!(entries.len(), 6);
-		assert_eq!(entries[0].io.inputs, vec![core_types::concrete!(f64), core_types::concrete!(f64)]);
-		assert_eq!(entries[0].io.return_value, core_types::concrete!(f64));
-		assert_eq!(entries[3].io.inputs, vec![core_types::concrete!(DVec2), core_types::concrete!(DVec2)]);
-		assert_eq!(entries[3].io.return_value, core_types::concrete!(DVec2));
+		assert_eq!(entries[0].io.inputs, vec![core_types::registry::record_edge_type::<f64>(), core_types::registry::record_edge_type::<f64>()]);
+		assert_eq!(entries[0].io.return_value, core_types::registry::record_type::<f64>());
+		assert_eq!(entries[3].io.inputs, vec![core_types::registry::record_edge_type::<DVec2>(), core_types::registry::record_edge_type::<DVec2>()]);
+		assert_eq!(entries[3].io.return_value, core_types::registry::record_type::<DVec2>());
 
-		let augend = EdgeHandle::new(Arc::new(SourceNode(1.5f64)) as Arc<ErasedNode<f64>>);
-		let addend = EdgeHandle::new(Arc::new(SourceNode(2.5f64)) as Arc<ErasedNode<f64>>);
-		let wired = construct(&entries[0], vec![augend, addend]).unwrap().downcast::<f64>().unwrap();
+		let wired = construct(&entries[0], vec![record_value_edge(1.5f64), record_value_edge(2.5f64)]).unwrap();
+		let layout = wired.layout().unwrap().clone();
+		let edge = wired.downcast_record::<f64>().unwrap();
+		reserve_for(&[&layout]);
 
-		assert_eq!(Node::eval(&wired, &ctx), GPoll::Final(4.0));
+		let GPoll::Final(value) = edge.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(element::<f64>(&layout, &value), 4.0);
 	}
 
 	#[test]
@@ -1182,9 +1225,17 @@ mod graphene_test {
 
 		let taken = Arc::new(AtomicU32::new(0));
 		let untaken = Arc::new(AtomicU32::new(0));
-		let graph = SwitchNode::new(SourceNode(true), CountingSource(taken.clone(), 1.0), CountingSource(untaken.clone(), 2.0));
+		let (cond, lc) = lifted(SourceNode(true));
+		let (if_true, lt) = lifted(CountingSource(taken.clone(), 1.0));
+		let (if_false, lf) = lifted(CountingSource(untaken.clone(), 2.0));
+		let graph = SwitchNode::<_, _, _, f64>::new(cond, if_true, if_false, &lc, &lt, &lf);
+		let out = Node::<ContextImpl>::layout(&graph).clone();
+		reserve_for(&[&lc, &lt, &lf, &out]);
 
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(1.0));
+		let GPoll::Final(value) = Node::eval(&graph, &ctx) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(element::<f64>(&out, &value), 1.0);
 		assert_eq!(taken.load(Ordering::Relaxed), 1);
 		assert_eq!(untaken.load(Ordering::Relaxed), 0);
 	}
@@ -1215,11 +1266,23 @@ mod graphene_test {
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let pending = SwitchNode::new(SourceNode(true), PendingSource, PartialSource);
-		assert_eq!(Node::eval(&pending, &ctx), GPoll::Pending);
+		let (c1, lc1) = lifted(SourceNode(true));
+		let (p1, lp1) = lifted(PendingSource);
+		let (pa1, lpa1) = lifted(PartialSource);
+		let pending = SwitchNode::<_, _, _, f64>::new(c1, p1, pa1, &lc1, &lp1, &lpa1);
 
-		let partial = SwitchNode::new(SourceNode(false), PendingSource, PartialSource);
-		assert_eq!(Node::eval(&partial, &ctx), GPoll::Partial(7.0));
+		let (c2, lc2) = lifted(SourceNode(false));
+		let (p2, lp2) = lifted(PendingSource);
+		let (pa2, lpa2) = lifted(PartialSource);
+		let partial = SwitchNode::<_, _, _, f64>::new(c2, p2, pa2, &lc2, &lp2, &lpa2);
+		let out = Node::<ContextImpl>::layout(&partial).clone();
+		reserve_for(&[&lc1, &lp1, &lpa1, &lc2, &lp2, &lpa2, &out]);
+
+		assert!(matches!(Node::eval(&pending, &ctx), GPoll::Pending));
+		let GPoll::Partial(value) = Node::eval(&partial, &ctx) else {
+			panic!("expected a partial record");
+		};
+		assert_eq!(element::<f64>(&out, &value), 7.0);
 	}
 
 	#[test]
@@ -1238,8 +1301,17 @@ mod graphene_test {
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let graph = SwitchNode::new(PartialCondition, SourceNode(1.0f64), SourceNode(2.0f64));
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Partial(1.0));
+		let (cond, lc) = lifted(PartialCondition);
+		let (if_true, lt) = lifted(SourceNode(1.0f64));
+		let (if_false, lf) = lifted(SourceNode(2.0f64));
+		let graph = SwitchNode::<_, _, _, f64>::new(cond, if_true, if_false, &lc, &lt, &lf);
+		let out = Node::<ContextImpl>::layout(&graph).clone();
+		reserve_for(&[&lc, &lt, &lf, &out]);
+
+		let GPoll::Partial(value) = Node::eval(&graph, &ctx) else {
+			panic!("expected a partial record");
+		};
+		assert_eq!(element::<f64>(&out, &value), 1.0);
 	}
 
 	#[test]
@@ -1258,11 +1330,16 @@ mod graphene_test {
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let graph = AddNode::new(FallbackNode, SourceNode(5.0f64));
+		let (fallback, lfb) = lifted(FallbackNode);
+		let (src, ls) = lifted(SourceNode(5.0f64));
+		let graph = AddNode::<_, _, f64, f64>::new(fallback, src, &lfb, &ls);
+		let out = Node::<ContextImpl>::layout(&graph).clone();
+		reserve_for(&[&lfb, &ls, &out]);
+
 		let GPoll::Fallback(boxed) = Node::eval(&graph, &ctx) else {
 			panic!("fallback must propagate with the computed stand-in");
 		};
-		assert_eq!(boxed.0, 5.0);
+		assert_eq!(element::<f64>(&out, &boxed.0), 5.0);
 		assert!(boxed.1.kind == "upstream failed");
 		assert_eq!(boxed.1.trace, vec![0]);
 	}
