@@ -203,6 +203,12 @@ impl NodeNetworkInterface {
 		self.layer_chain_hosts_node(node_id, network_path, &graphene_std::blending_nodes::blend_mode::IDENTIFIER)
 	}
 
+	/// Whether the Fill and Stroke nodes can be spliced into this layer's chain.
+	pub fn layer_hosts_paint_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		// Fill stands in for both since they share one implementations list
+		self.layer_chain_hosts_node(node_id, network_path, &graphene_std::vector_nodes::fill::IDENTIFIER)
+	}
+
 	/// Get the [`TypeSource`] for any InputConnector.
 	/// If the input is not compiled, then an Unknown or default from the definition is returned.
 	pub fn input_type(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> TypeSource {

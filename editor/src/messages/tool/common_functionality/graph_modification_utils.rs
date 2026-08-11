@@ -736,8 +736,7 @@ pub fn first_selected_stroke_weight(document: &DocumentMessageHandler) -> Option
 /// `WeightInput` updated; layers without one get a fresh stroke node added (defaulting to a black stroke with the new
 /// weight) only when the new weight is nonzero, so changing back to 0 doesn't keep adding empty strokes.
 pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
-	for layer in layers {
+	for layer in paintable_selected_layers(document) {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
 			responses.add(NodeGraphMessage::SetInputValue {
 				node_id,
@@ -817,12 +816,21 @@ pub struct SelectedStrokeState {
 	pub optional_color: Option<Option<Color>>,
 }
 
+/// The selected layers (artboards excluded) whose chains can host Fill and Stroke nodes.
+/// The tool options bar's paint widgets treat these as the whole selection, so other layers act as if unselected.
+pub fn paintable_selected_layers(document: &DocumentMessageHandler) -> Vec<LayerNodeIdentifier> {
+	let selected_nodes = document.network_interface.selected_nodes();
+	selected_nodes
+		.selected_layers_except_artboards(&document.network_interface)
+		.filter(|layer| document.network_interface.layer_hosts_paint_nodes(&layer.to_node(), &[]))
+		.collect()
+}
+
 /// Reads the fill state across all selected non-artboard layers, including whether their enabled states or colors differ.
 /// "Enabled" tracks node attachment: a layer counts as enabled whenever a Fill node is attached, even when that fill's value is the no-paint choice.
-/// Unticked means there is no Fill node. Returns `None` only when no layer is selected.
+/// Unticked means there is no Fill node. Returns `None` only when no paintable layer is selected.
 pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<SelectedFillState> {
-	let selected_nodes = document.network_interface.selected_nodes();
-	let mut per_layer = selected_nodes.selected_layers_except_artboards(&document.network_interface).map(|layer| {
+	let mut per_layer = paintable_selected_layers(document).into_iter().map(|layer| {
 		let Some(fill_node_id) = get_fill_id(layer, &document.network_interface) else {
 			return (false, FillChoice::None);
 		};
@@ -873,8 +881,7 @@ pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<Selected
 /// "Enabled" tracks node attachment: a layer counts as enabled whenever a Stroke node is attached, even when that stroke's color is `None`.
 /// Unticked means there is no Stroke node. Returns `None` only when no layer is selected.
 pub fn selected_stroke_state(document: &DocumentMessageHandler) -> Option<SelectedStrokeState> {
-	let selected_nodes = document.network_interface.selected_nodes();
-	let mut per_layer = selected_nodes.selected_layers_except_artboards(&document.network_interface).map(|layer| {
+	let mut per_layer = paintable_selected_layers(document).into_iter().map(|layer| {
 		if get_stroke_id(layer, &document.network_interface).is_none() {
 			return (false, None);
 		}
@@ -911,8 +918,7 @@ pub fn selected_stroke_state(document: &DocumentMessageHandler) -> Option<Select
 
 /// Sets the fill on all selected non-artboard layers, preserving gradient transform data when the layer already has a gradient fill.
 pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
-	for layer in layers {
+	for layer in paintable_selected_layers(document) {
 		match &fill_choice {
 			FillChoice::None => responses.add(GraphOperationMessage::FillColorSet { layer, color: None }),
 			FillChoice::Solid(color) => responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) }),
@@ -947,8 +953,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 /// the provided `weight`, so picking any color (including `None`) from an unticked stroke control bar entry both attaches
 /// the Stroke node and applies the chosen color.
 pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
-	for layer in layers {
+	for layer in paintable_selected_layers(document) {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
 			responses.add(NodeGraphMessage::SetInputValue {
 				node_id,
@@ -964,8 +969,7 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 
 /// Removes the Fill node from all selected non-artboard layers.
 pub fn remove_fill_for_selected_layers(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
-	for layer in layers {
+	for layer in paintable_selected_layers(document) {
 		if let Some(node_id) = get_fill_id(layer, &document.network_interface) {
 			responses.add(NodeGraphMessage::DeleteNodes {
 				node_ids: vec![node_id],
@@ -979,8 +983,7 @@ pub fn remove_fill_for_selected_layers(document: &DocumentMessageHandler, respon
 
 /// Removes the Stroke node from all selected non-artboard layers.
 pub fn remove_stroke_for_selected_layers(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
-	for layer in layers {
+	for layer in paintable_selected_layers(document) {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
 			responses.add(NodeGraphMessage::DeleteNodes {
 				node_ids: vec![node_id],
