@@ -397,6 +397,9 @@ impl<'a> ModifyInputsContext<'a> {
 			return None;
 		};
 
+		// Without a secondary input there is no chain to hold the node, so inserting it would strand it at the graph origin
+		self.network_interface.input_from_connector(&InputConnector::layer_secondary_input(output_layer.to_node()), &[])?;
+
 		// If inserting a 'Path' node, insert a 'Combine Paths' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on `List` data by utilizing the reference (index or ID?) for each item.
 		if node_definition.identifier == "Path" {
