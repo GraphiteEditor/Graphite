@@ -3835,41 +3835,31 @@ fn count_points(_: impl Ctx, content: IList<Vector>) -> f64 {
 	(0..content.len()).map(|index| content.element_ref(index).point_domain.positions().len() as f64).sum()
 }
 
-/// Retrieves the vec2 position (in local space) of the anchor point at the specified index in a `List` of vector elements.
+/// Retrieves the vec2 position (in local space) of the anchor point at the specified index within a vector element.
 /// If no value exists at that index, the position (0, 0) is returned.
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 fn index_points(
 	_: impl Ctx,
-	/// The vector element or elements containing the anchor points to be retrieved.
-	content: IList<Vector>,
-	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last item.
+	/// The vector element containing the anchor points to be retrieved.
+	content: Vector,
+	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last point.
 	index: f64,
 ) -> DVec2 {
-	let points_count = (0..content.len()).map(|row| content.element_ref(row).point_domain.positions().len()).sum::<usize>();
+	let positions = content.point_domain.positions();
 
-	if points_count == 0 {
+	let Some(last_index) = positions.len().checked_sub(1) else {
 		return DVec2::ZERO;
-	}
+	};
+
 	// Clamp and allow negative indexing from the end
 	let index = index as isize;
 	let index = if index < 0 {
-		(points_count as isize + index).max(0) as usize
+		(positions.len() as isize + index).max(0) as usize
 	} else {
-		(index as usize).min(points_count - 1)
+		(index as usize).min(last_index)
 	};
 
-	// Find the point at the given index across all vector elements
-	let mut accumulated = 0;
-	for row in 0..content.len() {
-		let vector = content.element_ref(row);
-		let row_point_count = vector.point_domain.positions().len();
-		if index - accumulated < row_point_count {
-			return vector.point_domain.positions()[index - accumulated];
-		}
-		accumulated += row_point_count;
-	}
-
-	DVec2::ZERO
+	positions[index]
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
