@@ -3,7 +3,7 @@ use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, SeedValue, SignedInteger};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{Graphic, IntoGraphicList};
+use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
 use graphic_types::{Artboard, Vector};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
@@ -1020,7 +1020,7 @@ pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(L
 	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
 	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Combine Paths,
 	// TODO: Morph, Rasterize) become unnecessary.
-	if !output.is_empty() {
+	if !output.is_empty() && !is_lone_anonymous_leaf(&graphic_list) {
 		// Item 0 carries a composed transform inherited from the flattened input, but the merged_layers
 		// already holds the original transforms; pre-compensate by item 0's inverse so the renderer's
 		// `upstream_footprint *= item_0_transform` recursion cancels out and leaves the originals intact.

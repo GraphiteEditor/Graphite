@@ -111,9 +111,27 @@ impl From<List<String>> for Graphic {
 	}
 }
 
+/// Whether the list is a single leaf item carrying nothing to compose onto its contents, so flattening it
+/// collapses no structure and rebuilding or snapshotting the result would be busywork.
+pub fn is_lone_anonymous_leaf(content: &List<Graphic>) -> bool {
+	content.len() == 1
+		&& !matches!(content.element(0), Some(Graphic::Graphic(_)))
+		&& content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).is_none()
+		&& content.attribute::<f64>(ATTR_OPACITY, 0).is_none()
+		&& content.attribute::<f64>(ATTR_OPACITY_FILL, 0).is_none()
+		&& content.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).is_none()
+}
+
 /// Deeply flattens a `List<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
 /// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-`List`s composes transforms and opacity.
 fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
+	// Its list is already the flat answer, so hand it back rather than rebuilding it item by item
+	if is_lone_anonymous_leaf(&content) {
+		let Some(item) = content.into_iter().next() else { return List::new() };
+
+		return extract_variant(item.into_element()).unwrap_or_default();
+	}
+
 	fn flatten_recursive<T>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
 		for current_graphic_item in current_graphic_list.into_iter() {
 			// Whether the parent carries each attribute: a structural fact (column presence), never a value comparison.
@@ -133,6 +151,12 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 				// Compose the parent's transform/opacity/fill onto each child, but only for attributes the parent carries.
 				// A child lacking one is padded with the composition identity (`1.` for opacity/fill, identity for transform), so composing through it is a no-op.
 				Graphic::Graphic(mut sub_list) => {
+					// A group's first child has no preceding sibling, so its clipping flag is inert until splicing
+					// hands it the group's own predecessor. Clear it (keeping the column) to stay clip-neutral.
+					if sub_list.attribute::<bool>(ATTR_CLIPPING_MASK, 0).is_some() {
+						sub_list.set_attribute(ATTR_CLIPPING_MASK, 0, false);
+					}
+
 					if parent_has_transform {
 						for v in sub_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 							*v = current_transform * *v;
@@ -304,14 +328,9 @@ impl IntoGraphicList for List<Graphic> {
 
 impl IntoGraphicList for List<Vector> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		// Propagate the `editor:layer_path` column (if present) from item 0 onto the wrapper Graphic item so a
-		// subsequent `flatten_graphic_list` doesn't drop the inner Vector's layer stamp
-		let layer_path = self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).cloned();
-		let mut graphic_list = List::new_from_element(Graphic::Vector(self));
-		if let Some(layer_path) = layer_path {
-			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
-		}
-		graphic_list
+		// A synthetic container, not a real group layer, so it carries no `editor:layer_path` that would
+		// overwrite the inner items' own stamps when flattened back out
+		List::new_from_element(Graphic::Vector(self))
 	}
 }
 
@@ -341,12 +360,7 @@ impl IntoGraphicList for List<Gradient> {
 
 impl IntoGraphicList for List<String> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		let layer_path = self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).cloned();
-		let mut graphic_list = List::new_from_element(Graphic::Text(self));
-		if let Some(layer_path) = layer_path {
-			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
-		}
-		graphic_list
+		List::new_from_element(Graphic::Text(self))
 	}
 }
 
@@ -634,9 +648,50 @@ impl<T: Clone> OmitIndex for List<T> {
 mod tests {
 	use super::*;
 	use core_types::list::List;
+	use core_types::uuid::NodeId;
 
 	fn vector_graphic() -> Graphic {
 		Graphic::Vector(List::new_from_element(Vector::default()))
+	}
+
+	fn vector_list_stamped_with_layers(layers: [u64; 2]) -> List<Vector> {
+		let mut list = List::new();
+
+		for layer in layers {
+			let mut item = Item::new_from_element(Vector::default());
+			item.set_attribute(ATTR_EDITOR_LAYER_PATH, NodeIdPath::from(vec![NodeId(layer)]));
+			list.push(item);
+		}
+
+		list
+	}
+
+	// The wrapper minted for a typed list is a container rather than a layer, so it must never claim a layer path
+	#[test]
+	fn wrapping_a_typed_list_leaves_the_wrapper_anonymous() {
+		let graphic_list = vector_list_stamped_with_layers([7, 9]).into_graphic_list();
+
+		assert_eq!(graphic_list.len(), 1);
+		assert!(!graphic_list.attribute_keys().any(|key| key == ATTR_EDITOR_LAYER_PATH));
+	}
+
+	// Round-tripping through that wrapper must not collapse the items' distinct stamps onto item 0's
+	#[test]
+	fn round_trip_through_the_wrapper_preserves_per_item_layer_paths() {
+		let flattened: List<Vector> = vector_list_stamped_with_layers([7, 9]).into_flattened_list();
+
+		let layers = (0..flattened.len())
+			.map(|index| {
+				flattened
+					.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index)
+					.0
+					.iter_element_values()
+					.next_back()
+					.copied()
+			})
+			.collect::<Vec<_>>();
+
+		assert_eq!(layers, [Some(NodeId(7)), Some(NodeId(9))]);
 	}
 
 	// Flattening must not invent attribute columns that neither the parent graphic nor the child carried
