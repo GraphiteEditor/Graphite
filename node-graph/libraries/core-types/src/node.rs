@@ -6,8 +6,8 @@ use std::ops::Range;
 
 #[derive(Debug)]
 pub enum BatchStatus<'a, T> {
-	Lent(&'a [T], Finality),
-	Filled(FilledBatch<'a, T>, Finality),
+	Lent(RecordBatch<'a, T>, Finality),
+	Filled(RecordBatch<'a, T>, Finality),
 	Pending,
 	Error(GraphError),
 	NeedBuffer,
@@ -57,6 +57,121 @@ pub unsafe fn assume_init_prefix_mut<T>(scratch: &mut [MaybeUninit<T>], len: usi
 	unsafe { std::slice::from_raw_parts_mut(scratch.as_mut_ptr().cast::<T>(), len) }
 }
 
+/// A borrow-for-scope view over a batch of records whose element type is `T`,
+/// paired with their shared [`Layout`](crate::record::Layout). Row-major backed
+/// today; the interface (`len`/`layout`/`get`/`for_each`) is storage-agnostic so
+/// a columnar backing can replace it without touching consumers.
+#[derive(Debug)]
+pub struct RecordBatch<'a, T> {
+	lanes: LaneStore<'a, T>,
+	layout: &'a crate::record::Layout,
+}
+
+#[derive(Debug)]
+enum LaneStore<'a, T> {
+	/// Borrows resident storage (the `Lent` status): no drop obligation.
+	Borrowed(&'a [T]),
+	/// Owns the caller scratch's initialized prefix (the `Filled` status).
+	Owned(FilledBatch<'a, T>),
+}
+
+impl<'a, T> RecordBatch<'a, T> {
+	pub fn lent(values: &'a [T], layout: &'a crate::record::Layout) -> Self {
+		Self { lanes: LaneStore::Borrowed(values), layout }
+	}
+
+	pub fn filled(filled: FilledBatch<'a, T>, layout: &'a crate::record::Layout) -> Self {
+		Self { lanes: LaneStore::Owned(filled), layout }
+	}
+
+	fn lanes(&self) -> &[T] {
+		match &self.lanes {
+			LaneStore::Borrowed(values) => values,
+			LaneStore::Owned(filled) => filled.values(),
+		}
+	}
+
+	pub fn len(&self) -> usize {
+		self.lanes().len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
+	pub fn layout(&self) -> &crate::record::Layout {
+		self.layout
+	}
+
+	/// Lends lane `lane`'s record to `f` for the callback's scope only.
+	pub fn get<R>(&self, lane: usize, f: impl FnOnce(RecordLane<'_, T>) -> R) -> R {
+		f(RecordLane { value: &self.lanes()[lane], layout: self.layout })
+	}
+
+	/// Lends every lane's record in order, each for its callback's scope only.
+	pub fn for_each(&self, mut f: impl FnMut(usize, RecordLane<'_, T>)) {
+		for (lane, value) in self.lanes().iter().enumerate() {
+			f(lane, RecordLane { value, layout: self.layout });
+		}
+	}
+
+	/// Hands the owned scratch prefix back to the caller, cancelling the drop
+	/// obligation. Panics on a lent batch, which owns nothing to return.
+	pub fn into_values(self) -> &'a mut [T] {
+		match self.lanes {
+			LaneStore::Owned(filled) => filled.into_values(),
+			LaneStore::Borrowed(_) => panic!("into_values on a lent batch"),
+		}
+	}
+}
+
+/// One lane's record, lent for a callback scope. Derefs to the raw lane value;
+/// for record elements, [`rec`](RecordLane::rec) and [`attr`](RecordLane::attr)
+/// read the record through its layout.
+#[derive(Debug)]
+pub struct RecordLane<'r, T> {
+	value: &'r T,
+	layout: &'r crate::record::Layout,
+}
+
+impl<T> std::ops::Deref for RecordLane<'_, T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
+		self.value
+	}
+}
+
+impl<T> RecordLane<'_, T> {
+	pub fn layout(&self) -> &crate::record::Layout {
+		self.layout
+	}
+}
+
+impl<'e> RecordLane<'_, crate::record::RecordValue<'e>> {
+	/// The record pointer, resolved through the layout.
+	pub fn rec(&self) -> crate::record::Rec {
+		self.layout.rec(self.value)
+	}
+
+	/// The element at offset 0.
+	///
+	/// # Safety
+	/// `U` must be the record's element type, proven at the consumer's wiring.
+	pub unsafe fn element<U: Copy>(&self) -> U {
+		unsafe { self.rec().element::<U>() }
+	}
+
+	/// Attribute `A` at the record's top level, or its census default when the
+	/// layout does not carry it.
+	pub fn attr<A: crate::attribute::Attribute>(&self) -> A::Value<'e> {
+		match self.layout.offset_of(A::NAME, 0) {
+			Some(offset) => unsafe { self.rec().read::<A::Value<'e>>(offset) },
+			None => A::default(),
+		}
+	}
+}
+
 pub trait Node<Input> {
 	type Output;
 
@@ -79,7 +194,7 @@ pub trait Node<Input> {
 		crate::record::empty_layout()
 	}
 
-	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
+	fn eval_batch<'a>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
 	where
 		Input: InjectIndex + Copy,
 	{
@@ -119,7 +234,7 @@ pub trait Node<Input> {
 			}
 		}
 		// SAFETY: all `len` lanes were written by the loop above.
-		BatchStatus::Filled(unsafe { FilledBatch::new(scratch, len) }, finality)
+		BatchStatus::Filled(RecordBatch::filled(unsafe { FilledBatch::new(scratch, len) }, self.layout()), finality)
 	}
 }
 
@@ -145,7 +260,7 @@ where
 		(**self).layout()
 	}
 
-	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
+	fn eval_batch<'a>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
 	where
 		Input: InjectIndex + Copy,
 	{
@@ -175,7 +290,7 @@ where
 		(**self).layout()
 	}
 
-	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
+	fn eval_batch<'a>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
 	where
 		Input: InjectIndex + Copy,
 	{
@@ -205,7 +320,7 @@ where
 		(**self).layout()
 	}
 
-	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
+	fn eval_batch<'a>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
 	where
 		Input: InjectIndex + Copy,
 	{
@@ -337,10 +452,12 @@ mod tests {
 		let input = TestInput { index: 0 };
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
 		let status = Double.eval_batch(&input, 2..6, Some(&mut scratch));
-		let BatchStatus::Filled(lanes, finality) = status else {
+		let BatchStatus::Filled(batch, finality) = status else {
 			panic!("expected filled, got {status:?}");
 		};
-		assert_eq!(lanes.values(), &[4, 6, 8, 10]);
+		let mut got = Vec::new();
+		batch.for_each(|_, lane| got.push(*lane));
+		assert_eq!(got, vec![4, 6, 8, 10]);
 		assert_eq!(finality, Finality::AllFinal);
 	}
 
@@ -399,10 +516,12 @@ mod tests {
 		let input = TestInput { index: 0 };
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
 		let status = PartialAtThree.eval_batch(&input, 0..4, Some(&mut scratch));
-		let BatchStatus::Filled(lanes, finality) = status else {
+		let BatchStatus::Filled(batch, finality) = status else {
 			panic!("expected filled, got {status:?}");
 		};
-		assert_eq!(lanes.values(), &[0, 1, 2, 3]);
+		let mut got = Vec::new();
+		batch.for_each(|_, lane| got.push(*lane));
+		assert_eq!(got, vec![0, 1, 2, 3]);
 		assert_eq!(finality, Finality::Partial);
 	}
 

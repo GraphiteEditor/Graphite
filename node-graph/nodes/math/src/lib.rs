@@ -1107,10 +1107,12 @@ mod graphene_test {
 		let erased: Box<ErasedNode<f64>> = Box::new(AddNode::new(IndexNode, SourceNode(10.0f64)));
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
 		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch));
-		let BatchStatus::Filled(lanes, finality) = status else {
+		let BatchStatus::Filled(batch, finality) = status else {
 			panic!("expected filled, got {status:?}");
 		};
-		assert_eq!(lanes.values(), &[12.0, 13.0, 14.0, 15.0]);
+		let mut got = Vec::new();
+		batch.for_each(|_, lane| got.push(*lane));
+		assert_eq!(got, vec![12.0, 13.0, 14.0, 15.0]);
 		assert_eq!(finality, Finality::AllFinal);
 	}
 

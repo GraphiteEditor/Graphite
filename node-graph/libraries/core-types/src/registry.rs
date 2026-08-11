@@ -180,7 +180,7 @@ where
 		unsafe { self.ptr.as_ref() }.layout()
 	}
 
-	fn eval_batch<'a>(&self, input: &'a Input, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<Self::Output>]>) -> crate::node::BatchStatus<'a, Self::Output>
+	fn eval_batch<'a>(&'a self, input: &'a Input, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<Self::Output>]>) -> crate::node::BatchStatus<'a, Self::Output>
 	where
 		Input: crate::context::InjectIndex + Copy,
 	{

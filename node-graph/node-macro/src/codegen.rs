@@ -1258,7 +1258,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let batch_impl = match &parsed.attributes.batch {
 		Some(path) => quote! {
 			fn eval_batch<'__batch>(
-				&self,
+				&'__batch self,
 				__input: &'__batch #ctx_ident,
 				__range: ::std::ops::Range<u64>,
 				__scratch: Option<&'__batch mut [::std::mem::MaybeUninit<Self::Output>]>,
