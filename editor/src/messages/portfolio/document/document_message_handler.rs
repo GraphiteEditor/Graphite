@@ -3409,6 +3409,11 @@ impl DocumentMessageHandler {
 		let selected_nodes = self.network_interface.selected_nodes();
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
 
+		// A layer whose chain cannot carry blending nodes has nowhere to put the value, so it disqualifies the whole selection
+		let all_layers_support_blending = selected_nodes
+			.selected_layers_except_artboards(&self.network_interface)
+			.all(|layer| self.network_interface.layer_hosts_blending_nodes(&layer.to_node(), &[]));
+
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
 		let mut blending_options = selected_layers_except_artboards.map(|layer| {
 			(
@@ -3420,8 +3425,8 @@ impl DocumentMessageHandler {
 		let first_blending_options = blending_options.next();
 		let result_blending_options = blending_options;
 
-		// If there are no selected layers, disable the opacity and blend mode widgets.
-		let disabled = first_blending_options.is_none();
+		// If there are no selected layers, or any of them cannot host the nodes, disable the opacity and blend mode widgets.
+		let disabled = first_blending_options.is_none() || !all_layers_support_blending;
 
 		// Amongst the selected layers, check if the opacities and blend modes are identical across all layers.
 		// The result is setting `option` and `blend_mode` to Some value if all their values are identical, or None if they are not.

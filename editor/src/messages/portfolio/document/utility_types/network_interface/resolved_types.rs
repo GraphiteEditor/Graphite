@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
-use graph_craft::{Type, concrete};
+use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 use graphene_std::uuid::NodeId;
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::node_registry::NODE_REGISTRY;
@@ -172,6 +172,39 @@ impl NodeNetworkInterface {
 			NodeInput::Reflection(document_node_metadata) => TypeSource::Compiled(document_node_metadata.ty()),
 			NodeInput::Inline(_) => TypeSource::Compiled(concrete!(InlineRust)),
 		}
+	}
+
+	/// Whether the given node has a registered implementation accepting the layer chain's element type as its content input.
+	/// A chain awaiting compilation has no resolved type yet, so only a known-wrong type or a type error locks the layer out.
+	pub fn layer_chain_hosts_node(&self, node_id: &NodeId, network_path: &[NodeId], node: &ProtoNodeIdentifier) -> bool {
+		let secondary_input = InputConnector::layer_secondary_input(*node_id);
+		if !self.input_from_connector(&secondary_input, network_path).is_some_and(|input| input.is_exposed()) {
+			return false;
+		}
+
+		let chain_type = self.input_type(&secondary_input, network_path);
+		match chain_type.compiled_nested_type() {
+			Some(element) => {
+				let Some(implementations) = NODE_REGISTRY.get(node) else {
+					log::error!("Proto node {node:?} not found in the node registry, in layer_chain_hosts_node");
+					return false;
+				};
+				implementations.iter().any(|entry| entry.io.inputs.first().is_some_and(|content| content.nested_type() == element))
+			}
+			None => !matches!(chain_type, TypeSource::Invalid),
+		}
+	}
+
+	/// Whether the blending nodes (blend mode, opacity, clipping mask) can be spliced into this layer's chain.
+	pub fn layer_hosts_blending_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		// Blend Mode stands in for the trio since they share one implementations list
+		self.layer_chain_hosts_node(node_id, network_path, &graphene_std::blending_nodes::blend_mode::IDENTIFIER)
+	}
+
+	/// Whether the Fill and Stroke nodes can be spliced into this layer's chain.
+	pub fn layer_hosts_paint_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		// Fill stands in for both since they share one implementations list
+		self.layer_chain_hosts_node(node_id, network_path, &graphene_std::vector_nodes::fill::IDENTIFIER)
 	}
 
 	/// Get the [`TypeSource`] for any InputConnector.
