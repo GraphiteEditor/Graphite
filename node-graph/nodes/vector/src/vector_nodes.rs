@@ -134,6 +134,41 @@ impl MapVectorItems for Graphic {
 	}
 }
 
+/// Counterpart to [`MapVectorItems`] for modifiers whose per-item result is a whole list rather than one item.
+trait ExpandVectorItems: Sized {
+	fn expand_vector_items(content: Item<Self>, f: impl FnMut(Item<Vector>) -> List<Vector>) -> List<Self>;
+}
+
+impl ExpandVectorItems for Vector {
+	fn expand_vector_items(content: Item<Vector>, mut f: impl FnMut(Item<Vector>) -> List<Vector>) -> List<Vector> {
+		f(content)
+	}
+}
+
+impl ExpandVectorItems for Graphic {
+	fn expand_vector_items(content: Item<Graphic>, mut f: impl FnMut(Item<Vector>) -> List<Vector>) -> List<Graphic> {
+		fn expand_nested(graphic: &mut Graphic, f: &mut impl FnMut(Item<Vector>) -> List<Vector>) {
+			match graphic {
+				// Collecting from zero items would drop the attribute columns, so an empty list is left alone
+				Graphic::Vector(list) if !list.is_empty() => {
+					let mut expanded = List::with_capacity(list.len());
+					for item in std::mem::take(list) {
+						expanded.extend(f(item));
+					}
+					*list = expanded;
+				}
+				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| expand_nested(nested, f)),
+				_ => {}
+			}
+		}
+
+		let mut content = content;
+		expand_nested(content.element_mut(), &mut f);
+
+		List::new_from_item(content)
+	}
+}
+
 /// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T>(
@@ -1204,34 +1239,36 @@ fn as_vector(_: impl Ctx, value: Item<Vector>) -> Item<Vector> {
 
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
-async fn points_to_polyline(_: impl Ctx, points: Item<Vector>, #[default(true)] closed: Item<bool>) -> Item<Vector> {
-	let mut points = points;
+async fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] points: Item<V>, #[default(true)] closed: Item<bool>) -> Item<V> {
 	let closed = *closed.element();
 
-	let vector = points.element_mut();
+	V::map_vector_items(points, |points| {
+		let mut points = points;
+		let vector = points.element_mut();
 
-	let mut segment_domain = SegmentDomain::new();
-	let mut next_id = SegmentId::ZERO;
+		let mut segment_domain = SegmentDomain::new();
+		let mut next_id = SegmentId::ZERO;
 
-	let points_count = vector.point_domain.ids().len();
+		let points_count = vector.point_domain.ids().len();
 
-	if points_count >= 2 {
-		(0..points_count - 1).for_each(|i| {
-			segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
-		});
+		if points_count >= 2 {
+			(0..points_count - 1).for_each(|i| {
+				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
+			});
 
-		if closed && points_count != 2 {
-			segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
+			if closed && points_count != 2 {
+				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
-			vector
-				.region_domain
-				.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap(), FillId::generate());
+				vector
+					.region_domain
+					.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap(), FillId::generate());
+			}
 		}
-	}
 
-	vector.segment_domain = segment_domain;
+		vector.segment_domain = segment_domain;
 
-	points
+		points
+	})
 }
 
 /// Evens out the distances between points by applying Lloyd's relaxation, moving every interior point toward the center of its Voronoi cell.
@@ -1596,28 +1633,30 @@ async fn solidify_stroke<V: SolidifyStroke + 'n + Send>(_: impl Ctx, #[implement
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn separate_subpaths(_: impl Ctx, content: Item<Vector>) -> List<Vector> {
-	let bezpaths = content.element().stroke_bezpath_iter().collect::<Vec<_>>();
+async fn separate_subpaths<V: ExpandVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
+	V::expand_vector_items(content, |content| {
+		let bezpaths = content.element().stroke_bezpath_iter().collect::<Vec<_>>();
 
-	// Pass the original element through unchanged when it has no subpaths, so its attributes
-	// (such as the layer transform) survive downstream rather than being dropped along with the empty list.
-	if bezpaths.is_empty() {
-		return List::new_from_item(content);
-	}
+		// Pass the original element through unchanged when it has no subpaths, so its attributes
+		// (such as the layer transform) survive downstream rather than being dropped along with the empty list.
+		if bezpaths.is_empty() {
+			return List::new_from_item(content);
+		}
 
-	let stroke = content.element().stroke.clone();
-	let (_, attributes) = content.into_parts();
+		let stroke = content.element().stroke.clone();
+		let (_, attributes) = content.into_parts();
 
-	bezpaths
-		.into_iter()
-		.map(|bezpath| {
-			let mut vector = Vector::default();
-			vector.append_bezpath(bezpath);
-			vector.stroke = stroke.clone();
+		bezpaths
+			.into_iter()
+			.map(|bezpath| {
+				let mut vector = Vector::default();
+				vector.append_bezpath(bezpath);
+				vector.stroke = stroke.clone();
 
-			Item::from_parts(vector, attributes.clone())
-		})
-		.collect()
+				Item::from_parts(vector, attributes.clone())
+			})
+			.collect()
+	})
 }
 
 /// Determines if the subpath at the given index is closed, meaning its ends are connected together forming a loop.
