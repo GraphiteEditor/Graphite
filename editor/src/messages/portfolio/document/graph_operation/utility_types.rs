@@ -431,7 +431,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn fill_color_set(&mut self, color: Option<Color>) {
-		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
+		let Some(fill_node_id) = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
 		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput);
@@ -446,7 +446,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: DAffine2) {
-		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
+		let Some(fill_node_id) = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput);
@@ -841,7 +841,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn stroke_set(&mut self, color: Option<Color>, stroke: Stroke) {
-		let Some(stroke_node_id) = self.existing_proto_node_id(graphene_std::vector::stroke::IDENTIFIER, true) else {
+		let Some(stroke_node_id) = self.existing_chain_hosted_node_id(graphene_std::vector::stroke::IDENTIFIER, true) else {
 			return;
 		};
 
