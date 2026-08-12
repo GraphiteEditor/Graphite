@@ -172,7 +172,7 @@
 	function isGuideEditor(x: unknown): x is GuideEditor {
 		return (
 			typeof x === "object" &&
-			x !== null &&
+			!!x &&
 			"createGuideLine" in x &&
 			typeof x.createGuideLine === "function" &&
 			"moveGuideLine" in x &&
@@ -196,7 +196,7 @@
 
 	function createGuideDragHandlers(options: { deleteOnCancel: boolean }) {
 		const viewportEl = viewport;
-		if (!viewportEl) return null;
+		if (!viewportEl) return undefined;
 
 		const onMove = (event: PointerEvent) => {
 			if (draggingGuideId === undefined || !draggingGuideDirection) return;
