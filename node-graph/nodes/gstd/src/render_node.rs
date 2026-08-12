@@ -221,7 +221,7 @@ mod tests {
 
 	#[test]
 	fn create_context_builds_the_render_context_from_the_root_vararg() {
-		let arena = Arena::new(256).unwrap();
+		let arena = Arena::new(4096).unwrap();
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let root = ContextImpl::root(&scope);
@@ -240,12 +240,16 @@ mod tests {
 		};
 		let ctx = root.with_varargs(&varargs);
 
-		let graph = CreateContextNode::new(ProbeNode);
-		let GPoll::Final(result) = <CreateContextNode<ProbeNode> as Node<ContextImpl>>::eval(&graph, &ctx) else {
+		let probe = core_types::record::RecordLift::<RenderOutput, _>::new(ProbeNode);
+		let layout = Node::<ContextImpl>::layout(&probe).clone();
+		core_types::record::stack::reserve(layout.frame_bytes().max(1 << 12));
+		let graph = CreateContextNode::new(probe, &layout);
+		let GPoll::Final(result) = Node::<ContextImpl>::eval(&graph, &ctx) else {
 			panic!("create_context must complete synchronously");
 		};
+		let output: &RenderOutput = unsafe { core_types::record::borrow_element(layout.rec(&result)) };
 		assert_eq!(
-			result.data,
+			output.data,
 			RenderOutputType::Buffer {
 				data: Vec::new(),
 				width: 0,
