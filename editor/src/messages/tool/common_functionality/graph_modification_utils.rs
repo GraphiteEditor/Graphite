@@ -692,10 +692,7 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		Some(TaggedValue::F64(value)) => *value,
 		_ => 4.,
 	};
-	let paint_order = match parameters.value(stroke::PaintOrderInput) {
-		Some(TaggedValue::PaintOrder(value)) => *value,
-		_ => PaintOrder::default(),
-	};
+	let paint_order = get_stroke_paint_order(layer, network_interface);
 	let dash_lengths = match parameters.value(stroke::DashPatternInput) {
 		Some(TaggedValue::DashPattern(lengths)) => lengths.clone(),
 		_ => Vec::new(),
@@ -719,6 +716,67 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 /// Returns the node ID of a layer's upstream Stroke proto node, if one exists.
 pub fn get_stroke_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER))
+}
+
+/// Whether the paint order swap can act on the layer: exactly one Fill and one Stroke node in its chain,
+/// wired directly together. Extra paint nodes make the swap unreliable, since a cover replaced in place
+/// keeps the slot in the paint order that its upstream sibling established.
+pub fn stroke_paint_order_applicable(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+	let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+	let fill_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+
+	let mut strokes = Vec::new();
+	let mut fills = Vec::new();
+	let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
+	for node_id in node_graph_layer
+		.horizontal_layer_flow()
+		.take_while(|&node_id| node_id == layer.to_node() || !network_interface.is_layer(&node_id, &[]))
+	{
+		let reference = network_interface.reference(&node_id, &[]);
+		if reference.as_ref() == Some(&stroke_reference) {
+			strokes.push(node_id);
+		} else if reference.as_ref() == Some(&fill_reference) {
+			fills.push(node_id);
+		}
+	}
+	let (&[stroke_node_id], &[fill_node_id]) = (strokes.as_slice(), fills.as_slice()) else {
+		return false;
+	};
+
+	let primary_source = |node_id: NodeId| match network_interface.input_from_connector(&InputConnector::node_at_index(node_id, 0), &[]) {
+		Some(NodeInput::Node { node_id, output_index: 0, .. }) => Some(*node_id),
+		_ => None,
+	};
+	primary_source(stroke_node_id) == Some(fill_node_id) || primary_source(fill_node_id) == Some(stroke_node_id)
+}
+
+/// The paint order of a layer's stroke, read from the chain topology: both the Fill and Stroke nodes append
+/// their cover, so the more downstream of the two paints on top, following the painter's algorithm.
+pub fn get_stroke_paint_order(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> PaintOrder {
+	let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+	let fill_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+
+	// The flow iterates downstream to upstream, so the first of the pair encountered is the one painting on top
+	let mut stroke_position = None;
+	let mut fill_position = None;
+	let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
+	for (position, node_id) in node_graph_layer
+		.horizontal_layer_flow()
+		.take_while(|&node_id| node_id == layer.to_node() || !network_interface.is_layer(&node_id, &[]))
+		.enumerate()
+	{
+		let reference = network_interface.reference(&node_id, &[]);
+		if reference.as_ref() == Some(&stroke_reference) {
+			stroke_position.get_or_insert(position);
+		} else if reference.as_ref() == Some(&fill_reference) {
+			fill_position.get_or_insert(position);
+		}
+	}
+
+	match stroke_position.zip(fill_position) {
+		Some((stroke_position, fill_position)) if fill_position < stroke_position => PaintOrder::StrokeBelow,
+		_ => PaintOrder::StrokeAbove,
+	}
 }
 
 /// Writes the weight back to every selected non-artboard layer's stroke. Layers with an existing stroke just have their

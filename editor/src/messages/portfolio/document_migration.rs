@@ -1,6 +1,7 @@
 // TODO: Eventually remove this document upgrade code
 // This file contains lots of hacky code for upgrading old documents to the new format
 
+use crate::messages::portfolio::document::graph_operation::utility_types::set_stroke_paint_order;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, NodeTemplateImplementation, OutputConnector};
@@ -1807,13 +1808,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 7;
 	}
 
-	// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)
+	// Upgrade Stroke node to reorder parameters and add "Align" (#2644)
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER) && inputs_count == 8 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
 		let align_input = NodeInput::value(TaggedValue::StrokeAlign(StrokeAlign::Center), false);
-		let paint_order_input = NodeInput::value(TaggedValue::PaintOrder(PaintOrder::StrokeAbove), false);
 
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
@@ -1822,10 +1822,34 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[5].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[6].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 6), old_inputs[7].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 7), paint_order_input, network_path);
 		let dash_input = migrate_dash_input(&old_inputs[3]).unwrap_or_else(|| old_inputs[3].clone());
-		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 8), dash_input, network_path);
-		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 9), old_inputs[4].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 7), dash_input, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 8), old_inputs[4].clone(), network_path);
+
+		inputs_count = 9;
+	}
+
+	// The Stroke node's "Paint Order" input was retired in favor of the relative order of the Fill and Stroke
+	// nodes in the chain, so the stored value becomes a topology rewrite that reorders the two nodes.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER) && inputs_count == 10 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// A wired paint order input cannot be evaluated statically, so it degrades to the default
+		let paint_order = match old_inputs.get(7).and_then(|input| input.as_value()) {
+			Some(&TaggedValue::PaintOrder(value)) => value,
+			_ => PaintOrder::StrokeAbove,
+		};
+
+		for (index, input) in old_inputs.iter().enumerate().take(7) {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		let dash_input = migrate_dash_input(&old_inputs[8]).unwrap_or_else(|| old_inputs[8].clone());
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 7), dash_input, network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 8), old_inputs[9].clone(), network_path);
+		inputs_count = 9;
+
+		set_stroke_paint_order(&mut document.network_interface, network_path, *node_id, paint_order);
 	}
 
 	// A legacy "no color" on a plain color connector (`TaggedValue::no_paint()` restored by the deserializer) becomes a color,

@@ -64,7 +64,9 @@ where
 	if has_dash {
 		rows.push(LayoutGroup::row(dash_offset_row(drawing.dash_offset, to_message.clone())));
 	}
-	rows.push(LayoutGroup::row(enum_radio_row::<PaintOrder, _>("Order", drawing.paint_order, false, {
+	// An inapplicable order (no Fill/Stroke pair to reorder) grays out and highlights no entry, since the synced value is only a fallback
+	let paint_order = drawing.paint_order.filter(|_| drawing.paint_order_applicable);
+	rows.push(LayoutGroup::row(enum_radio_row::<PaintOrder, _>("Order", paint_order, !drawing.paint_order_applicable, {
 		let to_message = to_message.clone();
 		move |value| to_message(StrokeOptionsUpdate::PaintOrder(value))
 	})));
@@ -198,7 +200,9 @@ pub fn apply_miter_limit(drawing: &mut DrawingToolState, limit: f64, document: &
 
 pub fn apply_paint_order(drawing: &mut DrawingToolState, order: PaintOrder, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.paint_order = Some(order);
-	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::PaintOrderInput, TaggedValue::PaintOrder(order), responses);
+	for layer in graph_modification_utils::paintable_selected_layers(document) {
+		responses.add(GraphOperationMessage::StrokeOrderSet { layer, paint_order: order });
+	}
 }
 
 pub fn apply_dash_lengths(drawing: &mut DrawingToolState, lengths: Vec<f64>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {

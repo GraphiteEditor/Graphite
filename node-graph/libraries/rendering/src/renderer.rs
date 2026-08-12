@@ -224,7 +224,8 @@ pub struct RenderParams {
 	/// Are we generating a mask for alignment? Used to prevent unnecessary transforms in masks
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
-	pub override_paint_order: bool,
+	/// Paint the stroke below the fill within the same SVG path element
+	pub stroke_below: bool,
 	/// Are we rendering for a pattern content
 	pub inside_pattern: bool,
 	pub artboard_background: Option<Color>,
@@ -1329,7 +1330,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 
 		let mut render_params = render_params.clone();
 		render_params.aligned_strokes = can_draw_aligned_stroke;
-		render_params.override_paint_order = override_paint_order;
+		render_params.stroke_below = override_paint_order || wants_stroke_below;
 
 		let stroke_shape_attribute = stroke_params
 			.as_ref()

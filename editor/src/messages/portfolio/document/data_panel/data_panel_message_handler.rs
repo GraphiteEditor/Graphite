@@ -26,7 +26,7 @@ use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin,
+	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Appearance, Artboard, Color, Context, Cover, Coverage, Graphic};
@@ -229,7 +229,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<StrokeJoin>,
 		List<StrokeAlign>,
 		List<StrokeCap>,
-		List<PaintOrder>,
 		List<MergeByDistanceAlgorithm>,
 		List<ExtrudeJoiningAlgorithm>,
 		List<PointSpacingType>,
@@ -285,7 +284,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<StrokeJoin>,
 		Item<StrokeAlign>,
 		Item<StrokeCap>,
-		Item<PaintOrder>,
 		Item<MergeByDistanceAlgorithm>,
 		Item<ExtrudeJoiningAlgorithm>,
 		Item<PointSpacingType>,
@@ -1028,7 +1026,6 @@ impl_table_item_layout_for_choice_enum!(
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
-	PaintOrder,
 	MergeByDistanceAlgorithm,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
@@ -1246,7 +1243,6 @@ macro_rules! known_item_types {
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,
-			PaintOrder,
 			MergeByDistanceAlgorithm,
 			ExtrudeJoiningAlgorithm,
 			PointSpacingType,

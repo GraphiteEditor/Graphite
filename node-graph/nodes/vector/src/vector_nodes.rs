@@ -32,7 +32,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::vector::{PointDomain, RegionDomain};
 
@@ -337,7 +337,8 @@ where
 		}
 	}
 
-	stamp_coverage(&mut content, Coverage::new_fill(), fill, CoverPlacement::Below);
+	// Appending follows the painter's algorithm: the most downstream paint node in the chain paints on top
+	stamp_coverage(&mut content, Coverage::new_fill(), fill, CoverPlacement::Above);
 	content
 }
 
@@ -368,9 +369,6 @@ async fn stroke<V, P: IntoGraphicList + 'n + Send + 'static>(
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
 	#[default(4.)]
 	miter_limit: Item<f64>,
-	// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
-	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
-	paint_order: Item<PaintOrder>,
 	/// The stroke dash pattern. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
 	dash_pattern: Item<DashPattern>,
 	/// The phase offset distance from the starting point of the dash pattern.
@@ -381,13 +379,12 @@ where
 	Item<V>: VectorItemMut + 'n + Send,
 {
 	let mut content = content;
-	let (weight, align, cap, join, miter_limit, paint_order, dash_offset) = (
+	let (weight, align, cap, join, miter_limit, dash_offset) = (
 		weight.into_element(),
 		align.into_element(),
 		cap.into_element(),
 		join.into_element(),
 		miter_limit.into_element(),
-		paint_order.into_element(),
 		dash_offset.into_element(),
 	);
 	let dash_lengths = dash_pattern.into_element().clamped_lengths();
@@ -401,19 +398,17 @@ where
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
-		paint_order,
 	};
 
 	let paint = paint.into_graphic_list();
 
-	// The coverage records the stroke's authoring space, so the item transform is composed in
+	// The coverage records the stroke's authoring space, so the item transform is composed in. Its translation
+	// cancels out in every consumer, so it is cleared to let an otherwise-identity capture elide.
 	let mut coverage_stroke = stroke;
 	coverage_stroke.transform *= content.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
-	let placement = match paint_order {
-		PaintOrder::StrokeAbove => CoverPlacement::Above,
-		PaintOrder::StrokeBelow => CoverPlacement::Below,
-	};
-	stamp_coverage(&mut content, Coverage::new_stroke(&coverage_stroke), paint, placement);
+	coverage_stroke.transform.translation = DVec2::ZERO;
+
+	stamp_coverage(&mut content, Coverage::new_stroke(&coverage_stroke), paint, CoverPlacement::Above);
 	content
 }
 

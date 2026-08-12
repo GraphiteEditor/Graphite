@@ -102,7 +102,6 @@ impl Coverage {
 			join_miter_limit: self.0.attribute_cloned_or(ATTR_JOIN_MITER_LIMIT, defaults.join_miter_limit),
 			align: self.0.attribute_cloned_or(ATTR_ALIGN, defaults.align),
 			transform: self.0.attribute_cloned_or(ATTR_TRANSFORM, defaults.transform),
-			paint_order: defaults.paint_order,
 		}
 	}
 }

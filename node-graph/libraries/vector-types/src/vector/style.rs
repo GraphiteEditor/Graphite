@@ -153,6 +153,8 @@ impl StrokeAlign {
 	}
 }
 
+// Backs the control bar's stroke popover radio and legacy document parsing: the relative order
+// of the Fill and Stroke nodes in the chain is what actually determines the paint order
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
@@ -235,8 +237,6 @@ pub struct Stroke {
 	pub align: StrokeAlign,
 	#[cfg_attr(feature = "serde", serde(default = "daffine2_identity"))]
 	pub transform: DAffine2,
-	#[cfg_attr(feature = "serde", serde(default))]
-	pub paint_order: PaintOrder,
 }
 
 impl Stroke {
@@ -250,7 +250,6 @@ impl Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			paint_order: PaintOrder::StrokeAbove,
 		}
 	}
 
@@ -287,7 +286,6 @@ impl Stroke {
 				let skew = DAffine2::from_cols_array(&[1., 0., lerp(s_skew, t_skew), 1., 0., 0.]);
 				trs * skew
 			},
-			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
 
@@ -402,7 +400,6 @@ impl Default for Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			paint_order: PaintOrder::default(),
 		}
 	}
 }

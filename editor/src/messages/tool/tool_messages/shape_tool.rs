@@ -710,6 +710,7 @@ impl ToolTransition for ShapeTool {
 			overlay_provider: Some(|context| ShapeToolMessage::Overlays { context }.into()),
 			tool_abort: Some(ShapeToolMessage::Abort.into()),
 			selection_changed: Some(ShapeToolMessage::SelectionChanged.into()),
+			graph_changed: Some(ShapeToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(ShapeToolMessage::WorkingColorChanged.into()),
 			..Default::default()
 		}
@@ -1129,8 +1130,9 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
-						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
 						tool_options.drawing.fill.apply_fill(layer, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
+						tool_options.drawing.apply_stroke_order_to_new_layer(layer, defered_responses);
 					}
 					ShapeType::Arrow => {
 						let viewport_drag_start = tool_data.data.viewport_drag_start(document);
@@ -1143,8 +1145,9 @@ impl Fsm for ShapeToolFsmState {
 
 						tool_data.line_data.weight = tool_options.drawing.effective_line_weight();
 						tool_data.line_data.editing_layer = Some(layer);
-						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
 						tool_options.drawing.fill.apply_fill(layer, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
+						tool_options.drawing.apply_stroke_order_to_new_layer(layer, defered_responses);
 					}
 					ShapeType::Line => {
 						let viewport_drag_start = tool_data.data.viewport_drag_start(document);
