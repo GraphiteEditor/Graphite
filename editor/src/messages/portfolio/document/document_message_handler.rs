@@ -273,7 +273,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						breadcrumb_network_path: &self.breadcrumb_network_path,
 						document_id,
 						collapsed: &mut self.collapsed,
-						properties_panel_collapsed_sections: &mut self.properties_panel_collapsed_sections,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
@@ -1407,12 +1406,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id } => {
-				if let Some(index) = self.properties_panel_collapsed_sections.iter().position(|id| *id == node_id) {
-					self.properties_panel_collapsed_sections.remove(index);
-				} else {
-					self.properties_panel_collapsed_sections.push(node_id);
-				}
-				responses.add(PropertiesPanelMessage::Refresh);
+				let collapsed = !self.network_interface.is_collapsed(&node_id, &[]);
+				responses.add(NodeGraphMessage::SetCollapsed { node_id, collapsed });
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids: vec![node_id],
+					network_path: vec![],
+				});
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {

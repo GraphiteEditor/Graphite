@@ -832,6 +832,10 @@ impl NodeNetworkInterface {
 		self.query(network_path, "is_pinned", |view| view.is_pinned(node_id)).unwrap_or_default()
 	}
 
+	pub fn is_collapsed(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		self.query(network_path, "is_collapsed", |view| view.is_collapsed(node_id)).unwrap_or_default()
+	}
+
 	/// The given network's pinned nodes in display order: pinning appends, dragging rearranges, and any not yet recorded go last.
 	pub fn ordered_pinned_nodes(&self, network_path: &[NodeId]) -> Vec<NodeId> {
 		self.query(network_path, "ordered_pinned_nodes", |view| Ok(view.ordered_pinned_nodes())).unwrap_or_default()

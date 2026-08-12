@@ -1393,6 +1393,16 @@ impl NodeNetworkInterface {
 		self.transaction_modified();
 	}
 
+	pub fn set_collapsed(&mut self, node_id: &NodeId, network_path: &[NodeId], collapsed: bool) {
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get node {node_id} in set_collapsed");
+			return;
+		};
+
+		node_metadata.persistent_metadata.collapsed = Some(collapsed);
+		self.transaction_modified();
+	}
+
 	/// Reorders a pinned node within its network's Properties panel display order so it ends up at `insert_index` among the
 	/// pinned nodes (0 being the topmost). Rebuilds the order from the list as currently shown, which also drops stale entries.
 	pub fn reorder_pinned_node(&mut self, node_id: NodeId, insert_index: usize, network_path: &[NodeId]) {

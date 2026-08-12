@@ -640,6 +640,8 @@ pub struct DocumentNodePersistentMetadata {
 	/// Indicates that the node will be shown in the Properties panel when it would otherwise be empty, letting a user easily edit its properties by just deselecting everything.
 	#[serde(default)]
 	pub pinned: bool,
+	#[serde(default)]
+	pub collapsed: Option<bool>,
 	/// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
 	/// All fields in NodeTypePersistentMetadata should automatically be updated by using the network interface API
 	pub node_type_metadata: NodeTypePersistentMetadata,

@@ -39,7 +39,6 @@ pub struct NodeGraphMessageContext<'a> {
 	pub breadcrumb_network_path: &'a [NodeId],
 	pub document_id: DocumentId,
 	pub collapsed: &'a mut CollapsedLayers,
-	pub properties_panel_collapsed_sections: &'a mut Vec<NodeId>,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
 	pub graph_fade_artwork_percentage: f64,
@@ -111,7 +110,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			breadcrumb_network_path,
 			document_id,
 			collapsed,
-			properties_panel_collapsed_sections,
 			ipp,
 			graph_view_overlay_open,
 			graph_fade_artwork_percentage,
@@ -193,10 +191,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Prune the Layers panel collapsed state for any layer tree paths whose nodes no longer exist, so it doesn't accumulate across loads
 				collapsed.0.retain(|path| path.iter().all(|&node_id| network_interface.document_network().nodes.contains_key(&node_id)));
-
-				// Prune the Properties panel node section collapsed state for any nodes (in any nested network) that no longer exist, so it doesn't accumulate across loads
-				let existing_nodes = network_interface.document_network().recursive_nodes().map(|(node_id, ..)| *node_id).collect::<HashSet<_>>();
-				properties_panel_collapsed_sections.retain(|node_id| existing_nodes.contains(node_id));
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
 				let selected_layers = network_interface.selected_nodes().selected_layers(network_interface.document_metadata()).collect::<Vec<_>>();

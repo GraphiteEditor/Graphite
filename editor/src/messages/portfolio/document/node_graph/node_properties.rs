@@ -2347,8 +2347,6 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if layout.is_empty() {
 		layout = node_no_properties(node_id, context);
 	}
-<<<<<<< HEAD
-
 	let display_name = context
 		.network_interface
 		.node_metadata(&node_id, context.selection_network_path)
@@ -2363,19 +2361,6 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	} else {
 		implementation_name
 	};
-=======
-	let mut name = context.network_interface.implementation_name(&node_id, context.selection_network_path);
-	if name == "Custom Node" {
-		if let Some(display_name) = context
-			.network_interface
-			.node_metadata(&node_id, context.selection_network_path)
-			.map(|metadata| metadata.persistent_metadata.display_name.clone())
-			.filter(|name| !name.is_empty())
-		{
-			name = display_name;
-		}
-	}
->>>>>>> 292bad2e7 (Fix)
 
 	let description = context
 		.network_interface
@@ -2388,14 +2373,16 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
-<<<<<<< HEAD
 	let expanded = !context.network_interface.is_collapsed(&node_id, context.selection_network_path);
-=======
-	let collapsed = context.network_interface.is_collapsed(&node_id, context.selection_network_path);
-	let expanded = !collapsed;
->>>>>>> 292bad2e7 (Fix)
 
 	LayoutGroup::section(name, description, visible, pinned, expanded, node_id.0, Layout(layout))
+}
+
+/// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
+/// is only loaded for the root document network, so a `LayerNodeIdentifier` can't be constructed there.
+fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContext) -> Option<LayerNodeIdentifier> {
+	if !context.selection_network_path.is_empty() {
+		return None;
 	}
 	let layer_node = context.network_interface.downstream_layer_for_chain_node(&node_id, context.selection_network_path)?;
 	Some(LayerNodeIdentifier::new(layer_node, context.network_interface))
