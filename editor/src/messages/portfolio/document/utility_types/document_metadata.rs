@@ -6,8 +6,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Flow
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
-use graphene_std::Graphic;
-use graphene_std::list::List;
+use graphene_std::Appearance;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath;
 use graphene_std::transform::Footprint;
@@ -41,12 +40,8 @@ pub struct DocumentMetadata {
 	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
 	/// This provides accurate SegmentIds for layers without explicit Path nodes.
 	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>,
-	/// Per-layer `ATTR_FILL` attribute, exposed so message handlers can read paint
-	/// information that lives on the list.
-	pub layer_fill_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>,
-	/// Per-layer `ATTR_STROKE` attribute, exposed so message handlers can read
-	/// stroke paint information that lives on the list.
-	pub layer_stroke_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>,
+	/// Per-layer `ATTR_APPEARANCE` attribute, exposed so message handlers can read paint information that lives on the list.
+	pub layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }

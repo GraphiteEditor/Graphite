@@ -152,6 +152,23 @@ impl Appearance {
 		self.covers().position(|coverage| coverage.cover() == cover)
 	}
 
+	/// The first coverage of the given cover in paint order.
+	pub fn first_coverage_of(&self, cover: Cover) -> Option<&Coverage> {
+		self.first_index_of(cover).and_then(|index| self.cover_at(index))
+	}
+
+	/// The paint of the first coverage of the given cover, filtered to paint that draws something.
+	pub fn first_paint_of(&self, cover: Cover) -> Option<&List<Graphic>> {
+		self.first_index_of(cover).and_then(|index| self.paint_at(index)).filter(|paint| is_paint_present(paint))
+	}
+
+	/// Iterates the coverages in paint order together with their paint, which is `None` when absent or drawing nothing.
+	pub fn covers_with_paints(&self) -> impl Iterator<Item = (&Coverage, Option<&List<Graphic>>)> {
+		self.covers()
+			.enumerate()
+			.map(|(index, coverage)| (coverage, self.paint_at(index).filter(|paint| is_paint_present(paint))))
+	}
+
 	/// Whether any coverage of the given cover exists, regardless of whether its paint draws anything.
 	pub fn has_cover(&self, cover: Cover) -> bool {
 		self.first_index_of(cover).is_some()

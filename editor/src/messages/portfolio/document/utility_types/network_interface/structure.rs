@@ -183,13 +183,8 @@ impl NodeNetworkInterface {
 		self.document_metadata.layer_vector_data = new_layer_vector_data;
 	}
 
-	/// Update the per-layer `ATTR_FILL` snapshot.
-	pub fn update_fill_attributes(&mut self, new_layer_fill_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>) {
-		self.document_metadata.layer_fill_attributes = new_layer_fill_attributes;
-	}
-
-	/// Update the per-layer `ATTR_STROKE` snapshot.
-	pub fn update_stroke_attributes(&mut self, new_layer_stroke_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>) {
-		self.document_metadata.layer_stroke_attributes = new_layer_stroke_attributes;
+	/// Update the per-layer `ATTR_APPEARANCE` snapshot.
+	pub fn update_appearance_attributes(&mut self, new_layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>) {
+		self.document_metadata.layer_appearance_attributes = new_layer_appearance_attributes;
 	}
 }

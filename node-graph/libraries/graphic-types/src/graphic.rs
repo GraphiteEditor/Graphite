@@ -1,4 +1,4 @@
-use crate::appearance::Appearance;
+use crate::appearance::{Appearance, Cover};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_APPEARANCE, ATTR_FILL, ATTR_PAINT, ATTR_STROKE, Item, ItemAttributeValues, List, NodeIdPath};
@@ -120,6 +120,7 @@ pub fn is_lone_anonymous_leaf(content: &List<Graphic>) -> bool {
 		&& content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).is_none()
 		&& content.attribute::<f64>(ATTR_OPACITY, 0).is_none()
 		&& content.attribute::<f64>(ATTR_OPACITY_FILL, 0).is_none()
+		&& content.attribute::<Appearance>(ATTR_APPEARANCE, 0).is_none()
 		&& content.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).is_none()
 }
 
@@ -142,6 +143,7 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 			let parent_has_opacity = current_graphic_item.attribute::<f64>(ATTR_OPACITY).is_some();
 			let parent_has_fill = current_graphic_item.attribute::<f64>(ATTR_OPACITY_FILL).is_some();
 			let parent_has_layer_path = current_graphic_item.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).is_some();
+			let parent_appearance = current_graphic_item.attribute::<Appearance>(ATTR_APPEARANCE).cloned();
 
 			let layer_path: NodeIdPath = current_graphic_item.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 			let current_transform: DAffine2 = current_graphic_item.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -173,6 +175,14 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 							*v *= current_fill;
 						}
 					}
+					// Appearance cascades only into children lacking their own column, since a child's appearance wins wholesale
+					if let Some(appearance) = &parent_appearance
+						&& sub_list.iter_attribute_values::<Appearance>(ATTR_APPEARANCE).is_none()
+					{
+						for v in sub_list.iter_attribute_values_mut_or_default::<Appearance>(ATTR_APPEARANCE) {
+							*v = appearance.clone();
+						}
+					}
 
 					flatten_recursive(output, sub_list, extract_variant);
 				}
@@ -196,6 +206,11 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 							}
 							if parent_has_layer_path {
 								item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+							}
+							if let Some(appearance) = &parent_appearance
+								&& item.attribute::<Appearance>(ATTR_APPEARANCE).is_none()
+							{
+								item.set_attribute(ATTR_APPEARANCE, appearance.clone());
 							}
 
 							output.push(item);
@@ -459,15 +474,24 @@ impl Graphic {
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
 			Graphic::Vector(vector) => (0..vector.len()).all(|index| {
-				let Some(element) = vector.element(index) else { return false };
 				let opacity: f64 = vector.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+				let appearance = vector.attribute::<Appearance>(ATTR_APPEARANCE, index);
 
-				let fill_opaque_or_absent = graphic_list_at(vector, index, ATTR_FILL).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
+				let fills_opaque_or_absent = appearance.is_none_or(|appearance| {
+					appearance
+						.covers_with_paints()
+						.filter(|(coverage, _)| coverage.cover() == Cover::Fill)
+						.all(|(_, paint)| paint.is_none_or(|paint| paint.element(0).is_none_or(Graphic::is_opaque)))
+				});
 
-				let stroke_invisible_or_transparent = element.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke())
-					|| graphic_list_at(vector, index, ATTR_STROKE).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
+				let strokes_invisible_or_transparent = appearance.is_none_or(|appearance| {
+					appearance
+						.covers_with_paints()
+						.filter(|(coverage, _)| coverage.cover() == Cover::Stroke)
+						.all(|(coverage, paint)| !coverage.stroke_params().has_renderable_stroke() || paint.is_none_or(|paint| paint.element(0).is_none_or(Graphic::is_fully_transparent)))
+				});
 
-				opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
+				opacity > 1. - f64::EPSILON && fills_opaque_or_absent && strokes_invisible_or_transparent
 			}),
 			_ => false,
 		}
@@ -478,16 +502,27 @@ impl Graphic {
 			Graphic::None => false,
 			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
 			Graphic::Vector(list) => {
-				let is_paint_opaque_at = |key: &str, index: usize| graphic_list_at(list, index, key).is_some_and(|graphic_list| graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque()));
-
 				!list.is_empty()
 					&& (0..list.len()).all(|i| {
-						let Some(vector) = list.element(i) else { return false };
 						let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 						let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-						let fill_opaque = opacity_fill >= 1. - f64::EPSILON && is_paint_opaque_at(ATTR_FILL, i);
-						let stroke_opaque_or_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_opaque_at(ATTR_STROKE, i);
-						opacity >= 1. - f64::EPSILON && fill_opaque && stroke_opaque_or_invisible
+						let appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, i);
+
+						let fill_opaque = opacity_fill >= 1. - f64::EPSILON
+							&& appearance.is_some_and(|appearance| {
+								appearance
+									.covers_with_paints()
+									.any(|(coverage, paint)| coverage.cover() == Cover::Fill && paint.is_some_and(|paint| paint.element(0).is_some_and(Graphic::is_opaque)))
+							});
+
+						let strokes_opaque_or_invisible = appearance.is_none_or(|appearance| {
+							appearance
+								.covers_with_paints()
+								.filter(|(coverage, _)| coverage.cover() == Cover::Stroke)
+								.all(|(coverage, paint)| !coverage.stroke_params().has_renderable_stroke() || paint.is_some_and(|paint| paint.element(0).is_some_and(Graphic::is_opaque)))
+						});
+
+						opacity >= 1. - f64::EPSILON && fill_opaque && strokes_opaque_or_invisible
 					})
 			}
 			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
@@ -501,18 +536,29 @@ impl Graphic {
 			Graphic::None => true,
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
 			Graphic::Vector(list) => (0..list.len()).all(|i| {
-				let Some(vector) = list.element(i) else { return false };
-				let is_paint_fully_transparent_at =
-					|key: &str, index: usize| graphic_list_at(list, index, key).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
-
 				let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 				if opacity <= f64::EPSILON {
 					return true;
 				}
 				let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-				let fill_invisible = opacity_fill <= f64::EPSILON || is_paint_fully_transparent_at(ATTR_FILL, i);
-				let stroke_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_fully_transparent_at(ATTR_STROKE, i);
-				fill_invisible && stroke_invisible
+				let appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, i);
+
+				let fills_invisible = opacity_fill <= f64::EPSILON
+					|| appearance.is_none_or(|appearance| {
+						appearance
+							.covers_with_paints()
+							.filter(|(coverage, _)| coverage.cover() == Cover::Fill)
+							.all(|(_, paint)| paint.is_none_or(|paint| paint.element(0).is_none_or(Graphic::is_fully_transparent)))
+					});
+
+				let strokes_invisible = appearance.is_none_or(|appearance| {
+					appearance
+						.covers_with_paints()
+						.filter(|(coverage, _)| coverage.cover() == Cover::Stroke)
+						.all(|(coverage, paint)| !coverage.stroke_params().has_renderable_stroke() || paint.is_none_or(|paint| paint.element(0).is_none_or(Graphic::is_fully_transparent)))
+				});
+
+				fills_invisible && strokes_invisible
 			}),
 			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
