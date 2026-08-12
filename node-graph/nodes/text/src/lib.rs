@@ -4,6 +4,7 @@ pub mod json;
 mod path_builder;
 pub mod regex;
 mod text_context;
+pub mod text_on_path;
 mod to_path;
 
 use convert_case::{Boundary, Converter, pattern};

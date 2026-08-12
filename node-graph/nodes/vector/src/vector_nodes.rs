@@ -1812,6 +1812,7 @@ async fn sample_polyline<V: MapVectorItems + 'n + Send>(
 			region_domain: Default::default(),
 			colinear_manipulators: Default::default(),
 			stroke: std::mem::take(&mut content.element_mut().stroke),
+			..Default::default()
 		};
 		// Transfer the stroke transform from the input vector content to the result.
 		result.set_stroke_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM));

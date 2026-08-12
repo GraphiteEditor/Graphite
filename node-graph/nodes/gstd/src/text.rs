@@ -3,6 +3,7 @@ use core_types::list::{Item, List};
 use core_types::{ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_TEXT_ALIGN, Ctx};
 use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
+pub use text_nodes::text_on_path::{LengthAdjust, TextAnchor, TextPathMethod, TextPathSide, TextPathSpacing};
 pub use text_nodes::*;
 
 /// Produces a styled text string carrying all typographic attributes.
@@ -115,3 +116,76 @@ fn text_to_vector_glyphs(
 ) -> List<Vector> {
 	shape_text_item(&string, true)
 }
+
+/// Flows text glyphs along a vector path following the SVG 2 text-on-path layout rules (§11.8).
+#[node_macro::node(category("Text"))]
+fn text_on_path(
+	_: impl Ctx,
+	/// The text content to flow along the path.
+	#[default("Lorem ipsum")]
+	text: Item<String>,
+	/// The vector path that glyphs follow.
+	path: Item<Vector>,
+	/// The loaded font file used to draw the text. The editor resolves the chosen typeface to these bytes via the resource system.
+	font: Item<Resource>,
+	/// The font size in pixels.
+	#[unit(" px")]
+	#[default(24.)]
+	#[hard_min(1.)]
+	size: Item<f64>,
+	/// Additional spacing, in pixels, added between each character.
+	#[unit(" px")]
+	#[step(0.1)]
+	character_spacing: Item<f64>,
+	/// Arc-length offset from the path start to the first glyph.
+	#[unit(" px")]
+	start_offset: Item<f64>,
+	/// If true, start_offset is treated as a 0–1 fraction of total path length.
+	start_offset_percent: Item<bool>,
+	/// Which side of the path direction to place text.
+	side: Item<TextPathSide>,
+	/// Text anchor point — affects where along the path the text is anchored.
+	text_anchor: Item<TextAnchor>,
+	/// Glyph rendering method. 'Align' uses rigid transforms; 'Stretch' warps glyphs along the path curvature.
+	method: Item<TextPathMethod>,
+	/// Spacing mode. 'Exact' uses computed positions; 'Auto' adjusts for path curvature.
+	spacing: Item<TextPathSpacing>,
+	/// Whether a forced text length is enabled.
+	#[widget(ParsedWidgetOverride::Hidden)]
+	has_text_length: Item<bool>,
+	/// If set, forces the total text advance to this length along the path.
+	#[unit(" px")]
+	#[hard_min(0.)]
+	text_length: Item<f64>,
+	/// How to fit text to the forced text length: adjust spacing only, or spacing and glyph widths.
+	length_adjust: Item<LengthAdjust>,
+	/// Whether a custom path authoring length is enabled.
+	#[widget(ParsedWidgetOverride::Hidden)]
+	has_path_length: Item<bool>,
+	/// Authoring path length for scaling startOffset. Maps the offset to the actual path length.
+	#[unit(" px")]
+	#[hard_min(0.)]
+	path_length: Item<f64>,
+	/// Right-to-left text direction.
+	rtl: Item<bool>,
+) -> List<Vector> {
+	let path_list = List::new_from_item(Item::new_from_element(path.into_element()));
+	text_nodes::text_on_path::place_text_on_path(
+		text.element(),
+		&path_list,
+		font.element(),
+		*size.element(),
+		*character_spacing.element(),
+		*start_offset.element(),
+		*start_offset_percent.element(),
+		*side.element(),
+		*text_anchor.element(),
+		*method.element(),
+		*spacing.element(),
+		(*has_text_length.element()).then_some(*text_length.element()),
+		*length_adjust.element(),
+		(*has_path_length.element()).then_some(*path_length.element()),
+		*rtl.element(),
+	)
+}
+

@@ -85,7 +85,7 @@ impl TextContext {
 	}
 
 	/// Get or cache font information for the given font resource.
-	fn get_font_info(&mut self, font: &Resource) -> Option<(String, FontInfo)> {
+	pub(crate) fn get_font_info(&mut self, font: &Resource) -> Option<(String, FontInfo)> {
 		let hash = font.hash();
 		if let Some((family_id, font_info)) = self.font_info_cache.get(&hash)
 			&& let Some(family_name) = self.font_context.collection.family_name(*family_id)

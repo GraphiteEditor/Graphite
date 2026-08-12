@@ -266,6 +266,14 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	}) + ")"
 }
 
+fn escape_xml_attr(value: &str) -> String {
+	value.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+fn escape_xml_text(value: &str) -> String {
+	value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
 /// `(max, min)` factors by which a unit vector is stretched under `transform`'s linear part — the
 /// principal and minor singular values, equal to the semi-axes of the ellipse a unit circle maps to.
 /// Equivalent to `(max(sx, sy), min(sx, sy))` for axis-aligned scales, but accounts for shear.
@@ -1383,9 +1391,34 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 impl Render for List<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut clip_mask_state: Option<(u64, MaskType)> = None;
+		let mut text_on_path_exported = false;
 
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
+
+			if render_params.for_export && !text_on_path_exported
+				&& let Some(ref meta) = vector.text_on_path_metadata
+			{
+				text_on_path_exported = true;
+				let path_id = format!("textpath-{}", generate_uuid());
+				write!(&mut render.svg_defs, r#"<path id="{path_id}" d="{}" fill="none"/>"#, escape_xml_attr(&meta.path_d)).unwrap();
+
+				let font_style_css = escape_xml_attr(&format!("font-family: {}; font-size: {}px; font-style: {};", meta.font_family, meta.font_size, meta.font_style));
+				let start_offset_attr = if meta.start_offset_percent { format!("{}%", meta.start_offset * 100.0) } else { format!("{}", meta.start_offset) };
+				let matrix = format_transform_matrix(self.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index));
+				let transform_attr = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
+				let text_length_attr = meta.text_length.map(|tl| format!(r#" textLength="{tl}" lengthAdjust="{}""#, meta.length_adjust)).unwrap_or_default();
+				let side_attr = if meta.side == "right" { r#" side="right""# } else { "" };
+				let anchor_style = format!("text-anchor: {};", meta.text_anchor);
+				let method = &meta.method;
+				let spacing = &meta.spacing;
+				let direction_attr = if meta.rtl { r#" direction="rtl""# } else { "" };
+				let path_length_attr = meta.path_length.map(|pl| format!(r#" pathLength="{pl}""#)).unwrap_or_default();
+				let text = escape_xml_text(&meta.text);
+
+				render.leaf_node(format!(r##"<text style="{font_style_css} {anchor_style}"{transform_attr}{direction_attr}><textPath href="#{path_id}" startOffset="{start_offset_attr}" method="{method}" spacing="{spacing}"{side_attr}{text_length_attr}{path_length_attr}>{text}</textPath></text>"##));
+				continue;
+			}
 
 			// A clip-flagged item is masked by its nearest preceding unflagged sibling, which a consecutive run shares
 			let next_clips = index + 1 < self.len() && self.attribute_cloned_or_default::<bool>(ATTR_CLIPPING_MASK, index + 1);

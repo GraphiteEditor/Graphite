@@ -140,6 +140,7 @@ pub mod migrations {
 				point_domain: old.point_domain,
 				segment_domain: old.segment_domain,
 				region_domain: old.region_domain,
+				text_on_path_metadata: None,
 			}),
 			VectorFormat::Vector(vector) => Some(vector),
 			VectorFormat::List(list) => list.element.into_iter().next(),

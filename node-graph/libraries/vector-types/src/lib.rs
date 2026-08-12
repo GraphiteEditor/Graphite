@@ -13,6 +13,7 @@ pub use math::{QuadExt, RectExt};
 pub use subpath::Subpath;
 pub use vector::Vector;
 pub use vector::reference_point::ReferencePoint;
+pub use vector::TextOnPathMetadata;
 
 // Re-export dependencies that users of this crate will need
 pub use dyn_any;

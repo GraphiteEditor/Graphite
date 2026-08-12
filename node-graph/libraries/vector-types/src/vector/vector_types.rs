@@ -13,6 +13,35 @@ use dyn_any::StaticType;
 use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, Rect, Shape};
 use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Metadata carried by a text-on-path `Vector` to enable lossless SVG `<textPath>` export.
+/// When present on the first row of a `Table<Vector>`, the SVG renderer emits
+/// `<text><textPath href="...">` instead of raw `<path>` outlines.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TextOnPathMetadata {
+	pub text: String,
+	pub font_family: String,
+	pub font_style: String,
+	pub font_size: f64,
+	/// SVG path `d` attribute string for the reference path.
+	pub path_d: String,
+	pub start_offset: f64,
+	pub start_offset_percent: bool,
+	/// "start" | "middle" | "end"
+	pub text_anchor: String,
+	/// "left" | "right"
+	pub side: String,
+	/// "align" | "stretch"
+	pub method: String,
+	/// "exact" | "auto"
+	pub spacing: String,
+	pub text_length: Option<f64>,
+	/// "spacing" | "spacingAndGlyphs"
+	pub length_adjust: String,
+	pub path_length: Option<f64>,
+	pub rtl: bool,
+}
 
 /// Represents vector graphics data, composed of Bézier curves in a path or mesh arrangement.
 #[derive(Clone, Debug, PartialEq)]
@@ -27,6 +56,11 @@ pub struct Vector {
 	pub point_domain: PointDomain,
 	pub segment_domain: SegmentDomain,
 	pub region_domain: RegionDomain,
+
+	/// When set, this vector was produced by a text-on-path node. SVG export uses this metadata
+	/// to emit a `<text><textPath>` element instead of raw path outlines.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub text_on_path_metadata: Option<Arc<TextOnPathMetadata>>,
 }
 unsafe impl StaticType for Vector {
 	type Static = Self;
@@ -40,6 +74,7 @@ impl Default for Vector {
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
 			region_domain: RegionDomain::new(),
+			text_on_path_metadata: None,
 		}
 	}
 }
@@ -51,6 +86,23 @@ impl graphene_hash::CacheHash for Vector {
 		self.region_domain.cache_hash(state);
 		self.stroke.cache_hash(state);
 		self.colinear_manipulators.cache_hash(state);
+		if let Some(metadata) = &self.text_on_path_metadata {
+			metadata.text.cache_hash(state);
+			metadata.font_family.cache_hash(state);
+			metadata.font_style.cache_hash(state);
+			metadata.font_size.to_bits().cache_hash(state);
+			metadata.path_d.cache_hash(state);
+			metadata.start_offset.to_bits().cache_hash(state);
+			metadata.start_offset_percent.cache_hash(state);
+			metadata.text_anchor.cache_hash(state);
+			metadata.side.cache_hash(state);
+			metadata.method.cache_hash(state);
+			metadata.spacing.cache_hash(state);
+			metadata.text_length.map(|tl| tl.to_bits()).cache_hash(state);
+			metadata.length_adjust.cache_hash(state);
+			metadata.path_length.map(|pl| pl.to_bits()).cache_hash(state);
+			metadata.rtl.cache_hash(state);
+		}
 	}
 }
 
@@ -82,6 +134,7 @@ impl core_types::transform::BakeTransform for Vector {
 impl Vector {
 	/// Add a subpath to this vector path.
 	pub fn append_subpath(&mut self, subpath: impl Borrow<Subpath<PointId>>, preserve_id: bool) {
+		self.text_on_path_metadata = None;
 		let subpath: &Subpath<PointId> = subpath.borrow();
 		let stroke_id = StrokeId::ZERO;
 		let mut point_id = self.point_domain.next_id();
