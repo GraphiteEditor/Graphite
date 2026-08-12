@@ -1828,7 +1828,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 9), old_inputs[4].clone(), network_path);
 	}
 
-	// TODO: Eventually remove this document upgrade code
 	// A legacy "no color" on a plain color connector (`TaggedValue::no_paint()` restored by the deserializer) becomes a color,
 	// since only paint connectors keep the no-paint choice
 	{

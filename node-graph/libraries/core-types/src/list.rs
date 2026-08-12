@@ -81,6 +81,26 @@ pub const ATTR_MIDPOINT: &str = "midpoint";
 pub const ATTR_FILL: &str = "fill";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
 pub const ATTR_STROKE: &str = "stroke";
+/// Item's ordered list of paint passes, of type `Appearance`. Earlier coverages paint first, compositing below later ones.
+pub const ATTR_APPEARANCE: &str = "appearance";
+// TODO: Add a "fill_rule" attribute as a sibling of "paint" on the coverage list (uniform across covers) once a FillRule type ships
+/// Coverage's `List<Graphic>` paint (implicit default empty, painting nothing), on the
+/// `List<Coverage>` inside an `Appearance`.
+pub const ATTR_PAINT: &str = "paint";
+/// Stroke coverage's line thickness (`f64`, implicit default `0.`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_WEIGHT: &str = "weight";
+/// Stroke coverage's `DashPattern` (implicit default empty, a solid line), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_DASH_PATTERN: &str = "dash_pattern";
+/// Stroke coverage's dash phase offset distance (`f64`, implicit default `0.`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_DASH_OFFSET: &str = "dash_offset";
+/// Stroke coverage's `StrokeCap` (implicit default `Butt`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_CAP: &str = "cap";
+/// Stroke coverage's `StrokeJoin` (implicit default `Miter`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_JOIN: &str = "join";
+/// Stroke coverage's miter limit threshold (`f64`, implicit default `4.`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_JOIN_MITER_LIMIT: &str = "join_miter_limit";
+/// Stroke coverage's `StrokeAlign` (implicit default `Center`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_ALIGN: &str = "align";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
 /// Text item's font, as a `Resource` of the loaded font file.
