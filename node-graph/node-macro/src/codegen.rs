@@ -1747,10 +1747,25 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			Some(ty) => quote!(#core_types::record::ElementSpec::Concrete(#core_types::record::element_write::<#ty>())),
 			None => quote!(#core_types::record::ElementSpec::Carried),
 		};
+		let sources = if carrier_present { quote!(::std::vec![0u8]) } else { quote!(::std::vec![]) };
+		let reads_meta: Vec<TokenStream2> = regular_fields
+			.iter()
+			.enumerate()
+			.filter(|(_, field)| !field.attribute_reads.is_empty())
+			.map(|(index, field)| {
+				let descs = field.attribute_reads.iter().map(|read| {
+					let marker = &read.marker;
+					quote!(#core_types::record::FieldWrite::of::<#marker>(0))
+				});
+				let index = index as u8;
+				quote!(#core_types::record::InputReads { input: #index, reads: ::std::vec![#(#descs),*] })
+			})
+			.collect();
 		let layout_meta_def = quote! {
 			#vis fn #layout_meta_fn() -> #core_types::record::LayoutMeta {
 				#core_types::record::LayoutMeta {
-					carrier: #carrier_present,
+					sources: #sources,
+					reads: ::std::vec![#(#reads_meta),*],
 					element: #element_spec,
 					writes: ::std::vec![#(#write_descs),*],
 					removes: ::std::vec![#(#remove_pairs),*],

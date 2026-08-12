@@ -222,6 +222,20 @@ mod tests {
 	}
 
 	#[test]
+	fn layout_meta_folds_to_construction() {
+		let base = f64_layout(&[]);
+		let carried = multiply_opacity_layout(&base);
+
+		assert_eq!(multiply_opacity_layout_meta().fold(&[Some(&base)]), multiply_opacity_layout(&base));
+		assert_eq!(multiply_opacity_layout_meta().fold(&[Some(&carried)]), multiply_opacity_layout(&carried));
+		assert_eq!(measure_layout_meta().fold(&[Some(&base)]), measure_layout(&base));
+		assert_eq!(strip_opacity_layout_meta().fold(&[Some(&carried)]), strip_opacity_layout(&carried));
+		assert_eq!(relength_layout_meta().fold(&[Some(&base)]), relength_layout(&base));
+		assert_eq!(transfer_opacity_layout_meta().fold(&[Some(&base), None]), transfer_opacity_layout(&base));
+		assert_eq!(source_opacity_layout_meta().fold(&[]), source_opacity_layout());
+	}
+
+	#[test]
 	fn defaults_then_modify_then_stack() {
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];

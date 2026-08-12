@@ -8,10 +8,8 @@ pub(crate) fn entries_tokens(parsed: &ParsedNodeFn, class: &Class, struct_name: 
 		return quote!();
 	}
 	match class {
-		Class::RecordIo(_) => record_entries_tokens(parsed, struct_name, regular_fields),
-		Class::Routing(_) => routing_entries_tokens(parsed, struct_name, regular_fields),
 		Class::Flip { .. } => flip_entries_tokens(parsed, struct_name, regular_fields),
-		Class::Opaque => record_opaque_entries_tokens(parsed, struct_name, regular_fields),
+		Class::RecordIo(_) | Class::Routing(_) | Class::Opaque => single_row_entries(parsed, class, struct_name, regular_fields),
 	}
 }
 
@@ -57,6 +55,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
 	let node_underscores: Vec<TokenStream2> = regular_fields.iter().map(|_| quote!(_)).collect();
 	let carrier_present = flip_carrier(parsed);
+	let sources = if carrier_present { quote!(::std::vec![0u8]) } else { quote!(::std::vec![]) };
 
 	// Shorthand associated types in the output only resolve against the
 	// generics' bounds, so rows name the output through a bounded alias. Only
@@ -146,7 +145,8 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 		Some(quote! {
 			gcore::registry::RegistryEntry {
 				layout_meta: Some(gcore::record::LayoutMeta {
-					carrier: #carrier_present,
+					sources: #sources,
+					reads: ::std::vec::Vec::new(),
 					element: gcore::record::ElementSpec::Concrete(gcore::record::element_write::<#row_output>()),
 					writes: ::std::vec::Vec::new(),
 					removes: ::std::vec::Vec::new(),
@@ -182,303 +182,223 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 	}
 }
 
-/// The registry row of a routing node: one instance covers every element,
-/// sources claim generic record edges, and the constructor wraps each source
-/// in its union translation and stores the union as the node's layout.
-fn routing_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields: &[&ParsedField]) -> TokenStream2 {
-	let Some(routing) = routing_io(parsed) else {
-		return quote!();
-	};
-	let is_source = |field: &ParsedField| {
-		let ty = match &field.ty {
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
-		};
-		matches!(ty, Type::Path(path) if path.path.get_ident() == Some(&routing.generic))
-	};
-	let values_concrete = regular_fields.iter().filter(|field| !is_source(field)).all(|field| {
-		let (ty, lend) = match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => (ty, lend.is_some()),
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => (output_type, false),
-		};
-		!contains_open_generic(parsed, ty) && (lend || !type_disqualifies(ty))
-	});
-	if !values_concrete {
-		return quote!();
+/// Which record wire an input claims and how its value is recovered. Base slots
+/// are the record edges whose layouts form the output; value slots are record
+/// edges read for their layout; plain and lazy slots are ordinary edges.
+enum SlotKind {
+	/// A generic record edge whose element is only known at runtime; the runtime
+	/// type is captured for the output wrap or the union.
+	BaseGeneric(String),
+	/// A concrete record carrier read for its layout.
+	BaseConcrete(Type),
+	/// A concrete record edge read for its layout only.
+	Value(Type),
+	/// A plain value edge.
+	Plain(Type),
+	/// A lazy node edge.
+	Lazy(Type),
+}
+
+impl SlotKind {
+	fn is_base(&self) -> bool {
+		matches!(self, SlotKind::BaseGeneric(_) | SlotKind::BaseConcrete(_))
 	}
+}
 
+/// The single registry row shared by record-io, routing, and opaque nodes: one
+/// instance covers the wire, each input's edge type and downcast follow its
+/// slot, and the output layout folds from the base slots.
+fn single_row_entries(parsed: &ParsedNodeFn, class: &Class, struct_name: &Ident, regular_fields: &[&ParsedField]) -> TokenStream2 {
 	let fn_name = &parsed.fn_name;
-	let entries_name = format_ident!("{}_entries", fn_name);
-	let arity = regular_fields.len();
-	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
-	let token_name = routing.generic.to_string();
+	let lend = |field: &ParsedField| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }));
 
-	let input_types = regular_fields.iter().map(|field| {
-		if is_source(field) {
-			return quote!(gcore::registry::generic_record_edge_type(#token_name));
-		}
-		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(gcore::registry::record_edge_type::<#ty>()),
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(gcore::registry::edge_type::<#output_type>()),
-		}
-	});
-	let source_layouts: Vec<Ident> = regular_fields
-		.iter()
-		.enumerate()
-		.filter(|(_, field)| is_source(field))
-		.map(|(index, _)| format_ident!("__layout_{index}"))
-		.collect();
-	let downcasts = regular_fields.iter().enumerate().map(|(index, field)| {
-		let name = &field.pat_ident.ident;
-		if is_source(field) {
-			let layout = format_ident!("__layout_{index}");
-			let handle = format_ident!("__handle_{index}");
-			let ty = format_ident!("__ty_{index}");
-			return quote! {
-				let #handle = inputs.next().unwrap();
-				let #ty = #handle.ty().clone();
-				let Some(#layout) = #handle.layout().cloned() else {
-					return Err(gcore::registry::ConstructionError::MissingLayout);
-				};
-				let #name = #handle.downcast_erased::<gcore::registry::ErasedRecordNode>(#ty.clone())?;
-			};
-		}
-		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => {
-				let handle = format_ident!("__handle_{index}");
-				let layout = format_ident!("__in_layout_{index}");
-				quote! {
-					let #handle = inputs.next().unwrap();
-					let Some(#layout) = #handle.layout().cloned() else {
-						return Err(gcore::registry::ConstructionError::MissingLayout);
+	let slots: Vec<SlotKind> = match class {
+		Class::RecordIo(shape) => {
+			let carrier_in_fields = !shape.skips_carrier();
+			regular_fields
+				.iter()
+				.enumerate()
+				.map(|(index, field)| {
+					let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
+						unreachable!("record nodes take no lazy inputs")
 					};
-					let #name = #handle.downcast_record::<#ty>()?;
-				}
-			}
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#output_type>()?;),
-		}
-	});
-	let value_layout_args = regular_fields
-		.iter()
-		.enumerate()
-		.filter(|(_, field)| !is_source(field) && matches!(field.ty, ParsedFieldType::Regular(_)))
-		.map(|(index, _)| {
-			let layout = format_ident!("__in_layout_{index}");
-			quote!(&#layout,)
-		});
-	let source_wraps = regular_fields.iter().enumerate().filter(|(_, field)| is_source(field)).map(|(index, field)| {
-		let name = &field.pat_ident.ident;
-		let layout = format_ident!("__layout_{index}");
-		quote!(let #name = gcore::record::RecordSource::new(#name, &#layout, &__union);)
-	});
-	let first_source_ty = regular_fields
-		.iter()
-		.enumerate()
-		.find(|(_, field)| is_source(field))
-		.map(|(index, _)| format_ident!("__ty_{index}"))
-		.expect("routing nodes have a source");
-
-	quote! {
-		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
-			vec![gcore::registry::RegistryEntry {
-				layout_meta: None,
-				io: gcore::registry::NodeIOTypes::new(
-					gcore::concrete!(gcore::context::ContextImpl<'static>),
-					gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed(#token_name)))),
-					vec![#(#input_types),*],
-				),
-				constructor: |inputs| {
-					if inputs.len() != #arity {
-						return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });
+					if carrier_in_fields && index == 0 {
+						return match &shape.carrier {
+							RecordCarrier::Token(token) => SlotKind::BaseGeneric(token.to_string()),
+							RecordCarrier::Read(carrier_ty) => SlotKind::BaseConcrete(carrier_ty.clone()),
+							RecordCarrier::None => unreachable!(),
+						};
 					}
-					let mut inputs = inputs.into_iter();
-					#(#downcasts)*
-					let __union = gcore::record::Layout::union(&[#(&#source_layouts),*]);
-					#(#source_wraps)*
-					let __node = #struct_name::new(#(#names,)* &__union, #(#value_layout_args)*);
-					Ok(gcore::registry::EdgeHandle::new_erased(
-						::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>,
-						#first_source_ty,
-					))
-				},
-			}]
+					match field.attribute_reads.is_empty() {
+						false => SlotKind::Value(ty.clone()),
+						true => SlotKind::Plain(ty.clone()),
+					}
+				})
+				.collect()
 		}
-	}
-}
+		Class::Routing(routing) => {
+			let is_source = |field: &ParsedField| {
+				let ty = match &field.ty {
+					ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
+				};
+				matches!(ty, Type::Path(path) if path.path.get_ident() == Some(&routing.generic))
+			};
+			regular_fields
+				.iter()
+				.map(|field| {
+					if is_source(field) {
+						return SlotKind::BaseGeneric(routing.generic.to_string());
+					}
+					match &field.ty {
+						ParsedFieldType::Regular(RegularParsedField { ty, .. }) => SlotKind::Value(ty.clone()),
+						ParsedFieldType::Node(NodeParsedField { output_type, .. }) => SlotKind::Lazy(output_type.clone()),
+					}
+				})
+				.collect()
+		}
+		Class::Opaque => {
+			let is_record = |field: &ParsedField| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_record_value(output_type));
+			regular_fields
+				.iter()
+				.map(|field| {
+					if is_record(field) {
+						return SlotKind::BaseGeneric("T".to_string());
+					}
+					match &field.ty {
+						ParsedFieldType::Regular(RegularParsedField { ty, .. }) => SlotKind::Plain(ty.clone()),
+						ParsedFieldType::Node(NodeParsedField { output_type, .. }) => SlotKind::Lazy(output_type.clone()),
+					}
+				})
+				.collect()
+		}
+		Class::Flip { .. } => unreachable!("flip has its own multi-row emitter"),
+	};
 
-fn record_opaque_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields: &[&ParsedField]) -> TokenStream2 {
-	let is_record = |field: &ParsedField| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_record_value(output_type));
-	let values_concrete = regular_fields.iter().filter(|field| !is_record(field)).all(|field| {
-		let (ty, lend) = match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => (ty, lend.is_some()),
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => (output_type, false),
-		};
-		!contains_open_generic(parsed, ty) && (lend || !type_disqualifies(ty))
+	// Every non-base value/plain/lazy input must be concrete.
+	let values_concrete = regular_fields.iter().zip(&slots).all(|(field, slot)| match slot {
+		SlotKind::BaseGeneric(_) | SlotKind::BaseConcrete(_) => true,
+		SlotKind::Value(ty) | SlotKind::Plain(ty) | SlotKind::Lazy(ty) => !contains_open_generic(parsed, ty) && (lend(field) || !type_disqualifies(ty)),
 	});
 	if !values_concrete {
 		return quote!();
 	}
 
-	let fn_name = &parsed.fn_name;
 	let entries_name = format_ident!("{}_entries", fn_name);
 	let arity = regular_fields.len();
 	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
 
-	let input_types = regular_fields.iter().map(|field| {
-		if is_record(field) {
-			return quote!(gcore::registry::generic_record_edge_type("T"));
-		}
-		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(gcore::registry::edge_type::<#ty>()),
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(gcore::registry::edge_type::<#ty>()),
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(gcore::registry::edge_type::<#output_type>()),
-		}
+	let input_types = slots.iter().map(|slot| match slot {
+		SlotKind::BaseGeneric(name) => quote!(gcore::registry::generic_record_edge_type(#name)),
+		SlotKind::BaseConcrete(ty) | SlotKind::Value(ty) => quote!(gcore::registry::record_edge_type::<#ty>()),
+		SlotKind::Plain(ty) | SlotKind::Lazy(ty) => quote!(gcore::registry::edge_type::<#ty>()),
 	});
-	let downcasts = regular_fields.iter().enumerate().map(|(index, field)| {
-		let name = &field.pat_ident.ident;
-		if is_record(field) {
-			let layout = format_ident!("__layout_{index}");
-			let handle = format_ident!("__handle_{index}");
-			let ty = format_ident!("__ty_{index}");
-			return quote! {
+
+	let downcasts = names.iter().zip(&slots).enumerate().map(|(index, (name, slot))| {
+		let handle = format_ident!("__handle_{index}");
+		let layout = format_ident!("__layout_{index}");
+		let ty = format_ident!("__ty_{index}");
+		match slot {
+			SlotKind::BaseGeneric(_) | SlotKind::BaseConcrete(_) => quote! {
 				let #handle = inputs.next().unwrap();
 				let #ty = #handle.ty().clone();
 				let Some(#layout) = #handle.layout().cloned() else {
 					return Err(gcore::registry::ConstructionError::MissingLayout);
 				};
 				let #name = #handle.downcast_erased::<gcore::registry::ErasedRecordNode>(#ty.clone())?;
-			};
-		}
-		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#output_type>()?;),
+			},
+			SlotKind::Value(value_ty) => quote! {
+				let #handle = inputs.next().unwrap();
+				let Some(#layout) = #handle.layout().cloned() else {
+					return Err(gcore::registry::ConstructionError::MissingLayout);
+				};
+				let #name = #handle.downcast_record::<#value_ty>()?;
+			},
+			SlotKind::Plain(value_ty) | SlotKind::Lazy(value_ty) => quote!(let #name = inputs.next().unwrap().downcast::<#value_ty>()?;),
 		}
 	});
-	let first_record = regular_fields.iter().position(|field| is_record(field)).expect("record-opaque nodes have a record input");
-	let record_layout = format_ident!("__layout_{first_record}");
-	let record_ty = format_ident!("__ty_{first_record}");
 
-	quote! {
-		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
-			vec![gcore::registry::RegistryEntry {
-				layout_meta: None,
-				io: gcore::registry::NodeIOTypes::new(
-					gcore::concrete!(gcore::context::ContextImpl<'static>),
-					gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed("T")))),
-					vec![#(#input_types),*],
-				),
-				constructor: |inputs| {
-					if inputs.len() != #arity {
-						return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });
-					}
-					let mut inputs = inputs.into_iter();
-					#(#downcasts)*
-					let __node = #struct_name::new(#(#names,)* &#record_layout);
-					Ok(gcore::registry::EdgeHandle::new_erased(
-						::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>,
-						#record_ty,
-					))
-				},
-			}]
+	let base_indices: Vec<usize> = slots.iter().enumerate().filter(|(_, slot)| slot.is_base()).map(|(index, _)| index).collect();
+	let value_indices: Vec<usize> = slots.iter().enumerate().filter(|(_, slot)| matches!(slot, SlotKind::Value(_))).map(|(index, _)| index).collect();
+	let value_layout_args = value_indices.iter().map(|index| {
+		let layout = format_ident!("__layout_{index}");
+		quote!(&#layout,)
+	});
+
+	let carried_meta = |sources: &[usize]| {
+		let sources = sources.iter().map(|index| *index as u8);
+		quote! {
+			Some(gcore::record::LayoutMeta {
+				sources: ::std::vec![#(#sources),*],
+				reads: ::std::vec::Vec::new(),
+				element: gcore::record::ElementSpec::Carried,
+				writes: ::std::vec::Vec::new(),
+				removes: ::std::vec::Vec::new(),
+				level_delta: 0,
+			})
 		}
-	}
-}
-
-fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields: &[&ParsedField]) -> TokenStream2 {
-	let Some(shape) = record_shape(parsed) else {
-		return quote!();
 	};
-	let carrier_in_fields = !shape.skips_carrier();
-	let values_concrete = regular_fields.iter().skip(carrier_in_fields as usize).all(|field| match &field.ty {
-		ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => !contains_open_generic(parsed, ty) && (lend.is_some() || !type_disqualifies(ty)),
-		_ => false,
-	});
-	if !values_concrete {
-		return quote!();
-	}
 
-	let fn_name = &parsed.fn_name;
-	let entries_name = format_ident!("{}_entries", fn_name);
-	let arity = regular_fields.len();
-	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
-	let reading_secondaries = reading_secondary_indices(regular_fields, &shape);
-
-	let input_types = regular_fields.iter().enumerate().map(|(index, field)| {
-		let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
-			unreachable!("record nodes take no lazy inputs")
-		};
-		if carrier_in_fields && index == 0 {
-			return match &shape.carrier {
-				RecordCarrier::Token(token) => {
-					let name = token.to_string();
-					quote!(gcore::registry::generic_record_edge_type(#name))
+	let (io_output, wrap, prelude, new_layout_args, layout_meta) = match class {
+		Class::RecordIo(shape) => {
+			let carrier_arg = (!shape.skips_carrier()).then(|| quote!(&__layout_0,));
+			let (io_output, wrap) = match (&shape.carrier, &shape.element_write) {
+				(RecordCarrier::Token(token), _) => {
+					let token_name = token.to_string();
+					(
+						quote!(gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed(#token_name))))),
+						quote!(Ok(gcore::registry::EdgeHandle::new_erased(::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>, __ty_0))),
+					)
 				}
-				RecordCarrier::Read(carrier_ty) => quote!(gcore::registry::record_edge_type::<#carrier_ty>()),
-				RecordCarrier::None => unreachable!(),
+				(_, Some(element)) => (
+					quote!(gcore::registry::record_type::<#element>()),
+					quote!(Ok(gcore::registry::EdgeHandle::new_record::<#element>(::std::sync::Arc::new(__node)))),
+				),
+				(_, None) => unreachable!("non-token record nodes write an element"),
 			};
+			let layout_meta_fn = format_ident!("{}_layout_meta", fn_name);
+			(io_output, wrap, quote!(), quote!(#carrier_arg #(#value_layout_args)*), quote!(Some(self::#layout_meta_fn())))
 		}
-		match field.attribute_reads.is_empty() {
-			true => quote!(gcore::registry::edge_type::<#ty>()),
-			false => quote!(gcore::registry::record_edge_type::<#ty>()),
-		}
-	});
-	let downcasts = regular_fields.iter().enumerate().map(|(index, field)| {
-		let name = &field.pat_ident.ident;
-		let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
-			unreachable!("record nodes take no lazy inputs")
-		};
-		if carrier_in_fields && index == 0 {
-			return quote! {
-				let __carrier_handle = inputs.next().unwrap();
-				let __carrier_ty = __carrier_handle.ty().clone();
-				let Some(__carrier_layout) = __carrier_handle.layout().cloned() else {
-					return Err(gcore::registry::ConstructionError::MissingLayout);
-				};
-				let #name = __carrier_handle.downcast_erased::<gcore::registry::ErasedRecordNode>(__carrier_ty.clone())?;
+		Class::Routing(routing) => {
+			let token_name = routing.generic.to_string();
+			let source_layouts = base_indices.iter().map(|index| format_ident!("__layout_{index}"));
+			let source_wraps = base_indices.iter().map(|index| {
+				let name = names[*index];
+				let layout = format_ident!("__layout_{index}");
+				quote!(let #name = gcore::record::RecordSource::new(#name, &#layout, &__union);)
+			});
+			let first_source_ty = format_ident!("__ty_{}", base_indices[0]);
+			let prelude = quote! {
+				let __union = gcore::record::Layout::union(&[#(&#source_layouts),*]);
+				#(#source_wraps)*
 			};
-		}
-		if !field.attribute_reads.is_empty() {
-			let layout_local = format_ident!("__in_layout_{index}");
-			return quote! {
-				let __in_handle = inputs.next().unwrap();
-				let __in_ty = __in_handle.ty().clone();
-				let Some(#layout_local) = __in_handle.layout().cloned() else {
-					return Err(gcore::registry::ConstructionError::MissingLayout);
-				};
-				let #name = __in_handle.downcast_erased::<gcore::registry::ErasedRecordNode>(__in_ty)?;
-			};
-		}
-		quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;)
-	});
-	let wire_layout_arg = carrier_in_fields.then(|| quote!(&__carrier_layout,)).into_iter();
-	let input_layout_args = reading_secondaries.iter().map(|index| {
-		let layout_local = format_ident!("__in_layout_{index}");
-		quote!(&#layout_local,)
-	});
-	let (io_output, construct_output) = match (&shape.carrier, &shape.element_write) {
-		(RecordCarrier::Token(token), _) => {
-			let name = token.to_string();
 			(
-				quote!(gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed(#name))))),
-				quote!(Ok(gcore::registry::EdgeHandle::new_erased(
-					::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>,
-					__carrier_ty,
-				))),
+				quote!(gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed(#token_name))))),
+				quote!(Ok(gcore::registry::EdgeHandle::new_erased(::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>, #first_source_ty))),
+				prelude,
+				quote!(&__union, #(#value_layout_args)*),
+				carried_meta(&base_indices),
 			)
 		}
-		(_, Some(element)) => (
-			quote!(gcore::registry::record_type::<#element>()),
-			quote!(Ok(gcore::registry::EdgeHandle::new_record::<#element>(::std::sync::Arc::new(__node)))),
-		),
-		(_, None) => unreachable!("non-token record nodes write an element"),
+		Class::Opaque => {
+			let first_record = base_indices[0];
+			let record_layout = format_ident!("__layout_{first_record}");
+			let record_ty = format_ident!("__ty_{first_record}");
+			(
+				quote!(gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed("T"))))),
+				quote!(Ok(gcore::registry::EdgeHandle::new_erased(::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>, #record_ty))),
+				quote!(),
+				quote!(&#record_layout),
+				carried_meta(&[first_record]),
+			)
+		}
+		Class::Flip { .. } => unreachable!("flip has its own multi-row emitter"),
 	};
 
-	let layout_meta_fn = format_ident!("{}_layout_meta", fn_name);
 	quote! {
 		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
 			vec![gcore::registry::RegistryEntry {
-				layout_meta: Some(self::#layout_meta_fn()),
+				layout_meta: #layout_meta,
 				io: gcore::registry::NodeIOTypes::new(
 					gcore::concrete!(gcore::context::ContextImpl<'static>),
 					#io_output,
@@ -490,8 +410,9 @@ fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fie
 					}
 					let mut inputs = inputs.into_iter();
 					#(#downcasts)*
-					let __node = #struct_name::new(#(#names,)* #(#wire_layout_arg)* #(#input_layout_args)*);
-					#construct_output
+					#prelude
+					let __node = #struct_name::new(#(#names,)* #new_layout_args);
+					#wrap
 				},
 			}]
 		}

@@ -249,18 +249,32 @@ pub fn empty_layout() -> &'static Layout {
 /// calls it over the proto graph instead.
 #[derive(Clone, Debug)]
 pub struct LayoutMeta {
-	/// Whether the node derives its layout from a carrier input; `false` writes
-	/// a fresh record from `Layout::default`.
-	pub carrier: bool,
-	/// The output element: a concrete write, or carried through from the carrier.
+	/// Input indices whose layouts union to form the base: `[]` writes a fresh
+	/// record, `[i]` derives from a single carrier, `[i, j, ..]` unions routing
+	/// sources.
+	pub sources: Vec<u8>,
+	/// Attributes read from each input. Unused by [`fold`](LayoutMeta::fold);
+	/// recorded for later compiler analysis (read-offset resolution, per-name
+	/// cache dependencies, residency).
+	pub reads: Vec<InputReads>,
+	/// The output element: a concrete write, or carried through from the base.
 	pub element: ElementSpec,
 	/// The attributes the node writes at its acting level.
 	pub writes: Vec<FieldWrite>,
-	/// The attributes removed from the carrier's layout, as `(name, level)`.
+	/// The attributes removed from the base layout, as `(name, level)`.
 	pub removes: Vec<(&'static str, u8)>,
-	/// The depth change the node applies to its carrier: `0` for elementwise and
-	/// flip nodes, `+1` for a creator, `-1` for a reducer.
+	/// The depth change the node applies: `0` for elementwise and flip nodes,
+	/// `+1` for a creator, `-1` for a reducer.
 	pub level_delta: i8,
+}
+
+/// The attributes a node reads from one input, recorded on [`LayoutMeta`] for
+/// later compiler analysis. A read and a write of an attribute carry the same
+/// [`FieldWrite`] descriptor; the direction is the position on the node.
+#[derive(Clone, Debug)]
+pub struct InputReads {
+	pub input: u8,
+	pub reads: Vec<FieldWrite>,
 }
 
 /// Where a node's output element comes from, for [`LayoutMeta`].
@@ -273,16 +287,21 @@ pub enum ElementSpec {
 }
 
 impl LayoutMeta {
-	/// Folds the node's output layout from its carrier's, reproducing what the
-	/// node's constructor derives at wiring. `carrier` is the carrier input's
-	/// layout, or `None` when the node writes a fresh record.
-	pub fn fold(&self, carrier: Option<&Layout>) -> Layout {
-		let carrier = carrier.filter(|_| self.carrier);
-		let base = carrier.map_or_else(Layout::default, |c| c.without(&self.removes));
-		let depth = (carrier.map_or(0, |c| c.depth) as i8 + self.level_delta).max(0) as u8;
+	/// Folds the node's output layout from its inputs', reproducing what the
+	/// node's constructor derives at wiring. `inputs` is indexed by proto-input
+	/// position; [`sources`](LayoutMeta::sources) selects the base layouts, which
+	/// union (empty writes a fresh record).
+	pub fn fold(&self, inputs: &[Option<&Layout>]) -> Layout {
+		let sources: Vec<&Layout> = self.sources.iter().map(|&i| inputs[i as usize].expect("layout fold source input has no layout")).collect();
+		let base = match sources.as_slice() {
+			[] => Layout::default(),
+			sources => Layout::union(sources),
+		}
+		.without(&self.removes);
+		let depth = (base.depth as i8 + self.level_delta).max(0) as u8;
 		let element = match &self.element {
 			ElementSpec::Concrete(element) => *element,
-			ElementSpec::Carried => carrier.map_or_else(ElementWrite::default, |c| c.element),
+			ElementSpec::Carried => base.element,
 		};
 		base.with_writes(depth, element, &self.writes)
 	}
