@@ -33,6 +33,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
+use vector_types::vector::style::GradientStops;
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::vector::{PointDomain, RegionDomain};
@@ -621,29 +622,40 @@ async fn attach_markers<I: 'n + Send + Clone>(
 	path: List<Vector>,
 	/// Artwork to be copied and attached at path vertices.
 	#[expose]
-	#[implementations(List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Color>, List<GradientStops<Color>>)]
 	marker: List<I>,
 	/// Place the marker at the first vertex of each subpath.
 	#[default(true)]
-	start: bool,
+	start: Item<bool>,
 	/// Place the marker at each interior vertex of each subpath.
 	#[default(false)]
-	mid: bool,
+	mid: Item<bool>,
 	/// Place the marker at the last vertex of each subpath.
 	#[default(true)]
-	end: bool,
+	end: Item<bool>,
 	/// Marker scale multiplier.
 	#[default(1)]
-	#[range((0., 10.))]
+	#[range]
+	#[soft(0..10)]
 	#[unit("x")]
-	scale: Multiplier,
+	scale: Item<Multiplier>,
 	/// Rotate markers to follow the path direction.
 	#[default(true)]
-	auto_orient: bool,
+	auto_orient: Item<bool>,
 	/// Additional marker rotation in degrees.
-	#[range((-360., 360.))]
-	angle_offset: Angle,
+	#[range]
+	#[soft(-360..360)]
+	angle_offset: Item<Angle>,
 ) -> List<I> {
+	let (start, mid, end, scale, auto_orient, angle_offset) = (
+		start.into_element(),
+		mid.into_element(),
+		end.into_element(),
+		scale.into_element(),
+		auto_orient.into_element(),
+		angle_offset.into_element(),
+	);
+
 	let placement = MarkerPlacement {
 		start,
 		mid,
