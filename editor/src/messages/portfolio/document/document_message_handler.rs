@@ -293,6 +293,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					network_interface: &mut self.network_interface,
 					collapsed: &mut self.collapsed,
 					node_graph: &mut self.node_graph_handler,
+					fonts,
 				};
 				let mut graph_operation_message_handler = GraphOperationMessageHandler {};
 				graph_operation_message_handler.process_message(message, responses, context);

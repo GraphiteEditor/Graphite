@@ -1,6 +1,8 @@
 use core_types::consts::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT};
 use core_types::list::{Item, List};
-use core_types::{ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_TEXT_ALIGN, Ctx};
+use core_types::{
+	ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OVERLINE, ATTR_STRIKETHROUGH, ATTR_TEXT_ALIGN, ATTR_UNDERLINE, Ctx,
+};
 use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
 pub use text_nodes::*;
@@ -59,12 +61,19 @@ fn text(
 	/// The horizontal alignment of each line of text within its surrounding box. To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: Item<TextAlign>,
+	/// Draws a line below each line of text at the font's underline position.
+	underline: Item<bool>,
+	/// Draws a line above each line of text at the font's ascent position.
+	overline: Item<bool>,
+	/// Draws a line through the middle of each line of text at the font's strikethrough position.
+	strikethrough: Item<bool>,
 ) -> Item<String> {
 	let text = text.into_element();
 	let font = font.into_element();
 	let (size, line_height, letter_spacing, letter_tilt) = (*size.element(), *line_height.element(), *letter_spacing.element(), *letter_tilt.element());
-	let (has_max_width, max_width, has_max_height, max_height) = (*has_max_width.element(), *max_width.element(), *has_max_height.element(), *max_height.element());
+	let (has_max_width, max_width, has_max_height, max_height) = (*has_max_width.element(), *max_width.element(), *has_max_height.element(), *has_max_height.element());
 	let align = align.into_element();
+	let (underline, overline, strikethrough) = (*underline.element(), *overline.element(), *strikethrough.element());
 
 	let mut item = Item::new_from_element(text);
 
@@ -91,6 +100,15 @@ fn text(
 	}
 	if align != TextAlign::default() {
 		item.set_attribute(ATTR_TEXT_ALIGN, align);
+	}
+	if underline {
+		item.set_attribute(ATTR_UNDERLINE, underline);
+	}
+	if overline {
+		item.set_attribute(ATTR_OVERLINE, overline);
+	}
+	if strikethrough {
+		item.set_attribute(ATTR_STRIKETHROUGH, strikethrough);
 	}
 
 	item
