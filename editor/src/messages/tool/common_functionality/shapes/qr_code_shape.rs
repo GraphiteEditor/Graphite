@@ -39,7 +39,7 @@ impl QrCode {
 			let side = (start.x - end.x).abs().max((start.y - end.y).abs());
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 3),
+				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::qr_code::SizeInput),
 				input: NodeInput::value(TaggedValue::F64(side), false),
 			});
 			responses.add(GraphOperationMessage::TransformSet {
