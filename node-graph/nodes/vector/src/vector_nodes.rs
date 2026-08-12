@@ -3,7 +3,7 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
+use core_types::list::{ATTR_APPEARANCE, ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
@@ -15,7 +15,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Graphic, IntoGraphicList};
+use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, stamp_coverage};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
@@ -252,13 +252,28 @@ where
 			};
 
 			let color = evaluator.evaluate(factor);
-			let paint = List::new_from_element(color).into_graphic_list();
+			let color_paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {
-				set_paint_attribute_at(vector_list, index, ATTR_FILL, paint.clone());
+				set_paint_attribute_at(vector_list, index, ATTR_FILL, color_paint.clone());
+				vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
+					if !appearance.set_paint_of(Cover::Fill, color_paint.clone()) {
+						appearance.replace_or_insert(Coverage::new_fill(), color_paint.clone(), CoverPlacement::Below);
+					}
+				});
 			}
 			if stroke && vector_list.element(index).is_some_and(|vector| vector.stroke.is_some()) {
-				set_paint_attribute_at(vector_list, index, ATTR_STROKE, paint.clone());
+				set_paint_attribute_at(vector_list, index, ATTR_STROKE, color_paint.clone());
+			}
+			// The appearance mirror of the stroke recolor, gated the same way on an existing stroke coverage
+			if stroke
+				&& vector_list
+					.attribute::<Appearance>(ATTR_APPEARANCE, index)
+					.is_some_and(|appearance| appearance.has_cover(Cover::Stroke))
+			{
+				vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
+					appearance.set_paint_of(Cover::Stroke, color_paint.clone());
+				});
 			}
 
 			i += 1;
@@ -339,7 +354,8 @@ where
 		}
 	}
 
-	content.set_vector_paint(ATTR_FILL, fill);
+	content.set_vector_paint(ATTR_FILL, fill.clone());
+	stamp_coverage(&mut content, Coverage::new_fill(), fill, CoverPlacement::Below);
 	content
 }
 
@@ -413,7 +429,16 @@ where
 	});
 
 	let paint = paint.into_graphic_list();
-	content.set_vector_paint(ATTR_STROKE, paint);
+	content.set_vector_paint(ATTR_STROKE, paint.clone());
+
+	// The coverage records the stroke's authoring space, so the item transform is composed in like `Vector.stroke`
+	let mut coverage_stroke = stroke;
+	coverage_stroke.transform *= content.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+	let placement = match paint_order {
+		PaintOrder::StrokeAbove => CoverPlacement::Above,
+		PaintOrder::StrokeBelow => CoverPlacement::Below,
+	};
+	stamp_coverage(&mut content, Coverage::new_stroke(&coverage_stroke), paint, placement);
 	content
 }
 
@@ -1630,6 +1655,10 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 				let mut fill_attributes = attributes.clone();
 				// No stroke remains on the fill row
 				fill_attributes.remove::<List<Graphic>>(ATTR_STROKE);
+				if let Some(mut appearance) = fill_attributes.remove::<Appearance>(ATTR_APPEARANCE) {
+					appearance.retain_cover(Cover::Fill);
+					fill_attributes.insert(ATTR_APPEARANCE, appearance);
+				}
 				Item::from_parts(vector, fill_attributes)
 			});
 
@@ -1637,6 +1666,10 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 			// Drop the original fill and use the stroke paint to fill the outlined stroke
 			stroke_attributes.remove::<List<Graphic>>(ATTR_FILL);
 			stroke_attributes.rename(ATTR_STROKE, ATTR_FILL);
+			if let Some(appearance) = stroke_attributes.remove::<Appearance>(ATTR_APPEARANCE) {
+				let stroke_paint = appearance.first_index_of(Cover::Stroke).and_then(|index| appearance.paint_at(index).cloned()).unwrap_or_default();
+				stroke_attributes.insert(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), stroke_paint));
+			}
 
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
 
@@ -1756,6 +1789,7 @@ pub async fn combine_paths<T: IntoGraphicList>(_: impl Ctx, #[implementations(Li
 
 		attributes.insert_cloned_from(&source_attributes, ATTR_FILL);
 		attributes.insert_cloned_from(&source_attributes, ATTR_STROKE);
+		attributes.insert_cloned_from(&source_attributes, ATTR_APPEARANCE);
 		// Adopt the last input item's layer (if any) so the editor can also bucket clicks under a contributing child layer
 		attributes.insert_cloned_from(&source_attributes, ATTR_EDITOR_LAYER_PATH);
 		bake_paint_transforms(&mut attributes, source_transform);
@@ -2662,6 +2696,36 @@ async fn morph<I: IntoGraphicList>(
 		graphic.map(List::new_from_element)
 	}
 
+	// Lerp between two appearances by paint-order position. Stroke parameter pairs interpolate; other coverage pairings step at the midpoint.
+	fn lerp_appearance(a: Option<&Appearance>, b: Option<&Appearance>, time: f64) -> Option<Appearance> {
+		if a.is_none() && b.is_none() {
+			return None;
+		}
+		let empty = Appearance::default();
+		let (a, b) = (a.unwrap_or(&empty), b.unwrap_or(&empty));
+
+		let mut result = Appearance::default();
+		for index in 0..a.len().max(b.len()) {
+			// An unmatched stroke steps out at the midpoint, matching the stroke geometry, while an unmatched fill persists and fades
+			let coverage = match (a.cover_at(index), b.cover_at(index)) {
+				(Some(source), Some(target)) if source.cover() == Cover::Stroke && target.cover() == Cover::Stroke => Coverage::new_stroke(&source.stroke_params().lerp(&target.stroke_params(), time)),
+				(Some(source), Some(target)) => (if time < 0.5 { source } else { target }).clone(),
+				(Some(source), None) if source.cover() == Cover::Stroke && time >= 0.5 => continue,
+				(None, Some(target)) if target.cover() == Cover::Stroke && time < 0.5 => continue,
+				(Some(source), None) => source.clone(),
+				(None, Some(target)) => target.clone(),
+				(None, None) => continue,
+			};
+
+			// An unmatched side falls to `None` here, which `lerp_graphic` fades against transparent
+			let paint = lerp_graphic(a.paint_at(index), b.paint_at(index), time).unwrap_or_default();
+
+			result.push_cover(coverage, paint);
+		}
+
+		Some(result)
+	}
+
 	let (progression, reverse, distribution) = (progression.into_element(), reverse.into_element(), distribution.into_element());
 
 	// Preserve original `List<Graphic>` as upstream data so this group layer's nested layers can be edited by the tools.
@@ -2946,6 +3010,11 @@ async fn morph<I: IntoGraphicList>(
 		let target = graphic_list_at(&content, target_index, ATTR_STROKE);
 		lerp_graphic(source.as_deref(), target.as_deref(), time)
 	};
+	let appearance = {
+		let source = content.attribute::<Appearance>(ATTR_APPEARANCE, source_index);
+		let target = content.attribute::<Appearance>(ATTR_APPEARANCE, target_index);
+		lerp_appearance(source, target, time)
+	};
 
 	// Work directly with manipulator groups, bypassing the BezPath intermediate representation.
 	// This avoids the full Vector → BezPath → interpolate → BezPath → Vector roundtrip each frame.
@@ -3119,6 +3188,9 @@ async fn morph<I: IntoGraphicList>(
 	}
 	if let Some(stroke) = stroke_paint {
 		item.set_attribute(ATTR_STROKE, stroke);
+	}
+	if let Some(appearance) = appearance {
+		item.set_attribute(ATTR_APPEARANCE, appearance);
 	}
 
 	item

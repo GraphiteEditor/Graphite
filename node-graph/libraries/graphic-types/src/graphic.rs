@@ -1,6 +1,7 @@
+use crate::appearance::Appearance;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, NodeIdPath};
+use core_types::list::{ATTR_APPEARANCE, ATTR_FILL, ATTR_PAINT, ATTR_STROKE, Item, ItemAttributeValues, List, NodeIdPath};
 use core_types::ops::FromAnchorPosition;
 use core_types::render_complexity::RenderComplexity;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
@@ -241,7 +242,7 @@ pub fn set_paint_attribute_at<T>(list: &mut List<T>, index: usize, key: &str, pa
 }
 
 /// Bake the provided transform into the per-item transforms of the paint graphics stored under the
-/// canonical `List<Graphic>` fill and stroke attributes.
+/// fill and stroke attributes and the appearance's paint attributes.
 pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DAffine2) {
 	fn bake_list_transform<T>(list: &mut List<T>, transform: DAffine2) {
 		for item_transform in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
@@ -249,24 +250,34 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 		}
 	}
 
-	fn bake_graphic_paint_transform(graphics: &mut List<Graphic>, transform: DAffine2) {
-		for graphic in graphics.iter_element_values_mut() {
-			match graphic {
-				Graphic::None => {}
-				Graphic::Graphic(list) => bake_list_transform(list, transform),
-				Graphic::Vector(list) => bake_list_transform(list, transform),
-				Graphic::RasterCPU(list) => bake_list_transform(list, transform),
-				Graphic::RasterGPU(list) => bake_list_transform(list, transform),
-				Graphic::Gradient(list) => bake_list_transform(list, transform),
-				Graphic::Text(list) => bake_list_transform(list, transform),
-				Graphic::Color(_) => {}
-			}
+	fn bake_graphic_transform(graphic: &mut Graphic, transform: DAffine2) {
+		match graphic {
+			Graphic::None => {}
+			Graphic::Graphic(list) => bake_list_transform(list, transform),
+			Graphic::Vector(list) => bake_list_transform(list, transform),
+			Graphic::RasterCPU(list) => bake_list_transform(list, transform),
+			Graphic::RasterGPU(list) => bake_list_transform(list, transform),
+			Graphic::Gradient(list) => bake_list_transform(list, transform),
+			Graphic::Text(list) => bake_list_transform(list, transform),
+			Graphic::Color(_) => {}
 		}
 	}
 
 	for paint_key in [ATTR_FILL, ATTR_STROKE] {
 		if let Some(graphics) = attributes.get_mut::<List<Graphic>>(paint_key) {
-			bake_graphic_paint_transform(graphics, transform);
+			for graphic in graphics.iter_element_values_mut() {
+				bake_graphic_transform(graphic, transform);
+			}
+		}
+	}
+
+	if let Some(appearance) = attributes.get_mut::<Appearance>(ATTR_APPEARANCE)
+		&& let Some(paints) = appearance.0.iter_attribute_values_mut::<List<Graphic>>(ATTR_PAINT)
+	{
+		for paint in paints {
+			for graphic in paint.iter_element_values_mut() {
+				bake_graphic_transform(graphic, transform);
+			}
 		}
 	}
 }

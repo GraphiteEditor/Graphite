@@ -28,7 +28,7 @@ use graphene_std::vector::style::{
 	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
-use graphene_std::{Artboard, Color, Context, Graphic};
+use graphene_std::{Appearance, Artboard, Color, Context, Cover, Coverage, Graphic};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -505,6 +505,45 @@ impl TableItemLayout for DashPattern {
 		self.value_page(data)
 	}
 	// Label the spreadsheet's element button with the inner list's identifier, like Artboard
+	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
+		self.0.value_widgets(target, data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.0.layout_with_breadcrumb(data)
+	}
+}
+
+impl TableItemLayout for Appearance {
+	fn type_name() -> &'static str {
+		"Appearance"
+	}
+	fn identifier(&self) -> String {
+		"Appearance".to_string()
+	}
+	// The wrapping `Item` already contributes the breadcrumb; the inner list supplies the next level
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
+	// Label the spreadsheet's element button with the inner list's identifier, like Artboard
+	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
+		self.0.value_widgets(target, data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.0.layout_with_breadcrumb(data)
+	}
+}
+
+impl TableItemLayout for Coverage {
+	fn type_name() -> &'static str {
+		"Coverage"
+	}
+	fn identifier(&self) -> String {
+		"Coverage".to_string()
+	}
+	// The wrapping row already contributes the breadcrumb; the inner item supplies the next level
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
 	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
 		self.0.value_widgets(target, data)
 	}
@@ -1019,6 +1058,7 @@ macro_rules! impl_table_item_layout_for_choice_enum {
 }
 impl_table_item_layout_for_choice_enum!(
 	BlendMode,
+	Cover,
 	GradientForm,
 	GradientSpread,
 	GradientSpace,
@@ -1231,6 +1271,9 @@ macro_rules! known_item_types {
 			Raster<GPU>,
 			Graphic,
 			Artboard,
+			Appearance,
+			Coverage,
+			Cover,
 			DashPattern,
 			BoxCorners,
 			BlendMode,

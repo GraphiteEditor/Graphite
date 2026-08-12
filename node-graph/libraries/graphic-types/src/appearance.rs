@@ -4,7 +4,7 @@
 
 use crate::graphic::{Graphic, is_paint_present};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_ALIGN, ATTR_CAP, ATTR_DASH_OFFSET, ATTR_DASH_PATTERN, ATTR_JOIN, ATTR_JOIN_MITER_LIMIT, ATTR_PAINT, ATTR_TRANSFORM, ATTR_WEIGHT, Item, List};
+use core_types::list::{ATTR_ALIGN, ATTR_APPEARANCE, ATTR_CAP, ATTR_DASH_OFFSET, ATTR_DASH_PATTERN, ATTR_JOIN, ATTR_JOIN_MITER_LIMIT, ATTR_PAINT, ATTR_TRANSFORM, ATTR_WEIGHT, Item, List};
 use vector_types::vector::style::{DashPattern, Stroke};
 
 /// The geometry-to-region operator a coverage applies before painting:
@@ -14,6 +14,15 @@ pub enum Cover {
 	#[default]
 	Fill,
 	Stroke,
+}
+
+impl std::fmt::Display for Cover {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Fill => write!(f, "Fill"),
+			Self::Stroke => write!(f, "Stroke"),
+		}
+	}
 }
 
 /// One paint pass of an [`Appearance`]: a [`Cover`] plus its cover-specific parameters, carried as
@@ -98,10 +107,19 @@ impl Coverage {
 	}
 }
 
+/// Builds an appearance row, eliding the paint attribute when it draws nothing.
+fn cover_row(coverage: Coverage, paint: List<Graphic>) -> Item<Coverage> {
+	let mut row = Item::new_from_element(coverage);
+	if is_paint_present(&paint) {
+		row.set_attribute(ATTR_PAINT, paint);
+	}
+	row
+}
+
 impl Appearance {
 	/// Creates an appearance holding a single coverage with the given paint.
 	pub fn new_single(coverage: Coverage, paint: List<Graphic>) -> Self {
-		Self(List::new_from_item(Item::new_from_element(coverage).with_attribute(ATTR_PAINT, paint)))
+		Self(List::new_from_item(cover_row(coverage, paint)))
 	}
 
 	/// The number of coverages in this appearance.
@@ -158,10 +176,7 @@ impl Appearance {
 			return;
 		}
 
-		let mut row = Item::new_from_element(coverage);
-		if is_paint_present(&paint) {
-			row.set_attribute(ATTR_PAINT, paint);
-		}
+		let row = cover_row(coverage, paint);
 		match placement {
 			CoverPlacement::Above => self.0.push(row),
 			CoverPlacement::Below => {
@@ -171,6 +186,32 @@ impl Appearance {
 			}
 		}
 	}
+
+	/// Appends a coverage at the top of the paint order, without replacing any existing same-cover coverage.
+	pub fn push_cover(&mut self, coverage: Coverage, paint: List<Graphic>) {
+		self.0.push(cover_row(coverage, paint));
+	}
+
+	/// Sets the paint of the first coverage of the given cover, leaving its other parameters untouched.
+	/// Returns `false` without changing anything if no coverage of that cover exists.
+	pub fn set_paint_of(&mut self, cover: Cover, paint: List<Graphic>) -> bool {
+		let Some(index) = self.first_index_of(cover) else { return false };
+		self.0.set_attribute(ATTR_PAINT, index, paint);
+		true
+	}
+
+	/// Discards every coverage that is not of the given cover, preserving the survivors' paint order.
+	pub fn retain_cover(&mut self, cover: Cover) {
+		self.0 = std::mem::take(&mut self.0).into_iter().filter(|row| row.element().cover() == cover).collect();
+	}
+}
+
+/// Stamps a coverage into the item's `ATTR_APPEARANCE` cell, creating the attribute if absent.
+/// The coverage replaces the first same-cover one in place, or lands at the placement end of the paint order.
+pub fn stamp_coverage<T>(item: &mut Item<T>, coverage: Coverage, paint: List<Graphic>, placement: CoverPlacement) {
+	let mut appearance = item.attribute_cloned_or_default::<Appearance>(ATTR_APPEARANCE);
+	appearance.replace_or_insert(coverage, paint, placement);
+	item.set_attribute(ATTR_APPEARANCE, appearance);
 }
 
 #[cfg(test)]
