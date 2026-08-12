@@ -3,7 +3,7 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_APPEARANCE, ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
+use core_types::list::{ATTR_APPEARANCE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
@@ -13,7 +13,7 @@ use core_types::{
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
-use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
+use graphic_types::graphic::{bake_paint_transforms, is_paint_present};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, stamp_coverage};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
@@ -72,18 +72,12 @@ impl VectorListIterMut for List<Vector> {
 /// single `Item<Vector>` or `Item<Graphic>`.
 trait VectorItemMut {
 	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut Vector, DAffine2));
-
-	fn set_vector_paint(&mut self, key: &str, paint: List<Graphic>);
 }
 
 impl VectorItemMut for Item<Vector> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
 		let transform = self.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 		f(self.element_mut(), transform);
-	}
-
-	fn set_vector_paint(&mut self, key: &str, paint: List<Graphic>) {
-		self.set_attribute(key, paint);
 	}
 }
 
@@ -93,13 +87,6 @@ impl VectorItemMut for Item<Graphic> {
 		let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
 		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
 			f(vector, *transform);
-		}
-	}
-
-	fn set_vector_paint(&mut self, key: &str, paint: List<Graphic>) {
-		let Some(vector_list) = self.element_mut().as_vector_mut() else { return };
-		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(key) {
-			*slot = paint.clone();
 		}
 	}
 }
@@ -255,17 +242,13 @@ where
 			let color_paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {
-				set_paint_attribute_at(vector_list, index, ATTR_FILL, color_paint.clone());
 				vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
 					if !appearance.set_paint_of(Cover::Fill, color_paint.clone()) {
 						appearance.replace_or_insert(Coverage::new_fill(), color_paint.clone(), CoverPlacement::Below);
 					}
 				});
 			}
-			if stroke && vector_list.element(index).is_some_and(|vector| vector.stroke.is_some()) {
-				set_paint_attribute_at(vector_list, index, ATTR_STROKE, color_paint.clone());
-			}
-			// The appearance mirror of the stroke recolor, gated the same way on an existing stroke coverage
+			// The stroke recolor is gated on an existing stroke coverage, since restyling never adds a stroke
 			if stroke
 				&& vector_list
 					.attribute::<Appearance>(ATTR_APPEARANCE, index)
@@ -354,7 +337,6 @@ where
 		}
 	}
 
-	content.set_vector_paint(ATTR_FILL, fill.clone());
 	stamp_coverage(&mut content, Coverage::new_fill(), fill, CoverPlacement::Below);
 	content
 }
@@ -422,16 +404,9 @@ where
 		paint_order,
 	};
 
-	content.for_each_vector_mut(|vector, transform| {
-		let mut stroke = stroke.clone();
-		stroke.transform *= transform;
-		vector.stroke = Some(stroke);
-	});
-
 	let paint = paint.into_graphic_list();
-	content.set_vector_paint(ATTR_STROKE, paint.clone());
 
-	// The coverage records the stroke's authoring space, so the item transform is composed in like `Vector.stroke`
+	// The coverage records the stroke's authoring space, so the item transform is composed in
 	let mut coverage_stroke = stroke;
 	coverage_stroke.transform *= content.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 	let placement = match paint_order {
@@ -568,10 +543,7 @@ async fn round_corners<V: MapVectorItems + 'n + Send>(
 		// Convert 0-100 to 0-0.5
 		let edge_length_limit = edge_length_limit * 0.005;
 
-		let mut result = Vector {
-			stroke: source.stroke.clone(),
-			..Default::default()
-		};
+		let mut result = Vector::default();
 
 		// Grab the initial point ID as a stable starting point
 		let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
@@ -948,8 +920,6 @@ async fn box_warp<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(
 				});
 			}
 
-			result.set_stroke_transform(DAffine2::IDENTITY);
-
 			// Reset the transform since we've applied it directly to the points
 			*row.element_mut() = result;
 			row.set_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY);
@@ -1111,10 +1081,7 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 		let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let (source, attributes) = source.into_parts();
 
-		let mut result = Vector {
-			stroke: source.stroke.clone(),
-			..Default::default()
-		};
+		let mut result = Vector::default();
 
 		for mut subpath in source.stroke_bezier_paths() {
 			subpath.apply_transform(transform);
@@ -1250,7 +1217,7 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 async fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
-		let mut result = content
+		let result = content
 			.element()
 			.bounding_box_rect()
 			.map(|bbox| {
@@ -1259,9 +1226,6 @@ async fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementati
 				vector
 			})
 			.unwrap_or_default();
-
-		result.stroke = std::mem::take(&mut content.element_mut().stroke);
-		result.set_stroke_transform(DAffine2::IDENTITY);
 
 		*content.element_mut() = result;
 		content
@@ -1506,11 +1470,7 @@ async fn offset_path<V: MapVectorItems + 'n + Send>(
 		let vector = std::mem::take(content.element_mut());
 
 		let bezpaths = vector.stroke_bezpath_iter();
-		let mut result = Vector {
-			stroke: vector.stroke.clone(),
-			..Default::default()
-		};
-		result.set_stroke_transform(DAffine2::IDENTITY);
+		let mut result = Vector::default();
 
 		// Perform operation on all subpaths in this shape.
 		for mut bezpath in bezpaths {
@@ -1593,16 +1553,28 @@ fn solidify_stroke_list_with_snapshot(source: List<Vector>) -> List<Vector> {
 /// Replaces each item's stroke with filled outline geometry, emitting a separate fill item beside it when the
 /// original carried a fill. Grows the item count by up to 2x.
 fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
-	// A fill exists when the canonical attribute carries paint
-	let has_fills: Vec<bool> = (0..content.len()).map(|index| has_paint_at(&content, index, ATTR_FILL)).collect();
+	// A fill exists when its coverage carries paint that draws something
+	let has_fills: Vec<bool> = (0..content.len())
+		.map(|index| {
+			content
+				.attribute::<Appearance>(ATTR_APPEARANCE, index)
+				.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill))
+		})
+		.collect();
 
 	content
 		.into_iter()
 		.zip(has_fills)
 		.flat_map(|(row, has_fill)| {
-			let (mut vector, attributes) = row.into_parts();
+			let (vector, attributes) = row.into_parts();
 
-			let stroke = vector.stroke.clone().unwrap_or_default();
+			let appearance = attributes.get::<Appearance>(ATTR_APPEARANCE).cloned().unwrap_or_default();
+			let stroke = appearance.first_coverage_of(Cover::Stroke).map(Coverage::stroke_params).unwrap_or_default();
+			// List order is paint order: a stroke coverage before the first fill coverage paints below it
+			let stroke_below = appearance
+				.first_index_of(Cover::Stroke)
+				.zip(appearance.first_index_of(Cover::Fill))
+				.is_some_and(|(stroke_index, fill_index)| stroke_index < fill_index);
 			let bezpaths = vector.stroke_bezpath_iter();
 			let mut solidified_stroke = Vector::default();
 
@@ -1618,9 +1590,8 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 				StrokeCap::Square => kurbo::Cap::Square,
 			};
 			let dash_offset = stroke.dash_offset;
-			let dash_pattern = stroke.dash_lengths;
+			let dash_pattern = stroke.dash_lengths.clone();
 			let miter_limit = stroke.join_miter_limit;
-			let paint_order = stroke.paint_order;
 
 			let stroke_style = kurbo::Stroke::new(stroke.weight)
 				.with_caps(cap)
@@ -1649,12 +1620,9 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 				solidified_stroke.append_bezpath(solidified);
 			}
 
-			// If the original vector has a fill, preserve it as a separate item with the stroke cleared.
+			// If the original vector has a fill, preserve it as a separate item with the stroke coverages dropped
 			let fill_row = has_fill.then(|| {
-				vector.stroke = None;
 				let mut fill_attributes = attributes.clone();
-				// No stroke remains on the fill row
-				fill_attributes.remove::<List<Graphic>>(ATTR_STROKE);
 				if let Some(mut appearance) = fill_attributes.remove::<Appearance>(ATTR_APPEARANCE) {
 					appearance.retain_cover(Cover::Fill);
 					fill_attributes.insert(ATTR_APPEARANCE, appearance);
@@ -1662,21 +1630,19 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 				Item::from_parts(vector, fill_attributes)
 			});
 
+			// The outlined stroke geometry becomes a fill painted with the original stroke's paint
 			let mut stroke_attributes = attributes;
-			// Drop the original fill and use the stroke paint to fill the outlined stroke
-			stroke_attributes.remove::<List<Graphic>>(ATTR_FILL);
-			stroke_attributes.rename(ATTR_STROKE, ATTR_FILL);
-			if let Some(appearance) = stroke_attributes.remove::<Appearance>(ATTR_APPEARANCE) {
+			if stroke_attributes.remove::<Appearance>(ATTR_APPEARANCE).is_some() {
 				let stroke_paint = appearance.first_index_of(Cover::Stroke).and_then(|index| appearance.paint_at(index).cloned()).unwrap_or_default();
 				stroke_attributes.insert(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), stroke_paint));
 			}
 
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
 
-			// Ordering based on the paint order. The first item in the `List` is rendered below the second.
-			match paint_order {
-				PaintOrder::StrokeAbove => fill_row.into_iter().chain(std::iter::once(stroke_row)).collect::<Vec<_>>(),
-				PaintOrder::StrokeBelow => std::iter::once(stroke_row).chain(fill_row).collect::<Vec<_>>(),
+			// The first item in the `List` is rendered below the second
+			match stroke_below {
+				false => fill_row.into_iter().chain(std::iter::once(stroke_row)).collect::<Vec<_>>(),
+				true => std::iter::once(stroke_row).chain(fill_row).collect::<Vec<_>>(),
 			}
 		})
 		.collect()
@@ -1700,7 +1666,6 @@ async fn separate_subpaths<V: ExpandVectorItems + 'n + Send>(_: impl Ctx, #[impl
 			return List::new_from_item(content);
 		}
 
-		let stroke = content.element().stroke.clone();
 		let (_, attributes) = content.into_parts();
 
 		bezpaths
@@ -1708,7 +1673,6 @@ async fn separate_subpaths<V: ExpandVectorItems + 'n + Send>(_: impl Ctx, #[impl
 			.map(|bezpath| {
 				let mut vector = Vector::default();
 				vector.append_bezpath(bezpath);
-				vector.stroke = stroke.clone();
 
 				Item::from_parts(vector, attributes.clone())
 			})
@@ -1776,10 +1740,6 @@ pub async fn combine_paths<T: IntoGraphicList>(_: impl Ctx, #[implementations(Li
 		let source_transform = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		output.concat(element, source_transform, collision_hash_seed);
 
-		// TODO: Make this instead use the first encountered stroke
-		// Use the last encountered stroke as the output stroke
-		output.stroke = element.stroke.clone();
-
 		primary_source = Some((index, source_transform));
 	}
 
@@ -1787,8 +1747,6 @@ pub async fn combine_paths<T: IntoGraphicList>(_: impl Ctx, #[implementations(Li
 		let source_attributes = flattened.clone_item_attributes(primary);
 		let mut attributes = ItemAttributeValues::new();
 
-		attributes.insert_cloned_from(&source_attributes, ATTR_FILL);
-		attributes.insert_cloned_from(&source_attributes, ATTR_STROKE);
 		attributes.insert_cloned_from(&source_attributes, ATTR_APPEARANCE);
 		// Adopt the last input item's layer (if any) so the editor can also bucket clicks under a contributing child layer
 		attributes.insert_cloned_from(&source_attributes, ATTR_EDITOR_LAYER_PATH);
@@ -1840,15 +1798,7 @@ async fn sample_polyline<V: MapVectorItems + 'n + Send>(
 			}
 		};
 
-		let mut result = Vector {
-			point_domain: Default::default(),
-			segment_domain: Default::default(),
-			region_domain: Default::default(),
-			colinear_manipulators: Default::default(),
-			stroke: std::mem::take(&mut content.element_mut().stroke),
-		};
-		// Transfer the stroke transform from the input vector content to the result.
-		result.set_stroke_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM));
+		let mut result = Vector::default();
 
 		for local_bezpath in content.element().stroke_bezpath_iter() {
 			// Apply the transform to compute sample locations in world space (for correct distance-based spacing)
@@ -1918,10 +1868,7 @@ async fn simplify<V: MapVectorItems + 'n + Send>(
 		let transform = Affine::new(transform_attribute.to_cols_array());
 		let inverse_transform = transform.inverse();
 
-		let mut result = Vector {
-			stroke: std::mem::take(&mut item.element_mut().stroke),
-			..Default::default()
-		};
+		let mut result = Vector::default();
 
 		for mut bezpath in item.element().stroke_bezpath_iter() {
 			bezpath.apply_affine(transform);
@@ -2015,10 +1962,7 @@ async fn decimate<V: MapVectorItems + 'n + Send>(
 		let transform = Affine::new(transform_attribute.to_cols_array());
 		let inverse_transform = transform.inverse();
 
-		let mut result = Vector {
-			stroke: std::mem::take(&mut content.element_mut().stroke),
-			..Default::default()
-		};
+		let mut result = Vector::default();
 
 		for mut bezpath in content.element().stroke_bezpath_iter() {
 			bezpath.apply_affine(transform);
@@ -2094,10 +2038,7 @@ async fn cut_path<V: MapVectorItems + 'n + Send>(
 		let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
 
 		if let Some(bezpath) = bezpaths.get(index).cloned() {
-			let mut result_vector = Vector {
-				stroke: content.element().stroke.clone(),
-				..Default::default()
-			};
+			let mut result_vector = Vector::default();
 
 			for (_, bezpath) in bezpaths.iter().enumerate().filter(|&(i, _)| i != index) {
 				result_vector.append_bezpath(bezpath.clone());
@@ -2306,10 +2247,6 @@ async fn scatter_points<V: MapVectorItems + 'n + Send>(
 				result.point_domain.push(PointId::generate(), point);
 			}
 		}
-
-		// Transfer the style from the input vector content to the result.
-		result.stroke = content.element().stroke.clone();
-		result.set_stroke_transform(DAffine2::IDENTITY);
 
 		*content.element_mut() = result;
 		content
@@ -2980,36 +2917,8 @@ async fn morph<I: IntoGraphicList>(
 		return Item::from_parts(endpoint_element.clone(), attributes);
 	}
 
-	let stroke = match (source_element.stroke.as_ref(), target_element.stroke.as_ref()) {
-		(Some(a), Some(b)) => Some(a.lerp(b, time)),
-		(Some(a), None) => {
-			if time < 0.5 {
-				Some(a.clone())
-			} else {
-				None
-			}
-		}
-		(None, Some(b)) => {
-			if time < 0.5 {
-				None
-			} else {
-				Some(b.clone())
-			}
-		}
-		(None, None) => None,
-	};
-	let mut vector = Vector { stroke, ..Default::default() };
+	let mut vector = Vector::default();
 
-	let fill_paint = {
-		let source = graphic_list_at(&content, source_index, ATTR_FILL);
-		let target = graphic_list_at(&content, target_index, ATTR_FILL);
-		lerp_graphic(source.as_deref(), target.as_deref(), time)
-	};
-	let stroke_paint = {
-		let source = graphic_list_at(&content, source_index, ATTR_STROKE);
-		let target = graphic_list_at(&content, target_index, ATTR_STROKE);
-		lerp_graphic(source.as_deref(), target.as_deref(), time)
-	};
 	let appearance = {
 		let source = content.attribute::<Appearance>(ATTR_APPEARANCE, source_index);
 		let target = content.attribute::<Appearance>(ATTR_APPEARANCE, target_index);
@@ -3183,12 +3092,6 @@ async fn morph<I: IntoGraphicList>(
 	}
 	item.set_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content);
 
-	if let Some(fill) = fill_paint {
-		item.set_attribute(ATTR_FILL, fill);
-	}
-	if let Some(stroke) = stroke_paint {
-		item.set_attribute(ATTR_STROKE, stroke);
-	}
 	if let Some(appearance) = appearance {
 		item.set_attribute(ATTR_APPEARANCE, appearance);
 	}
@@ -3976,12 +3879,13 @@ mod test {
 			v
 		};
 
+		let solid_fill = |color: Color| Appearance::new_single(Coverage::new_fill(), List::new_from_element(color).into_graphic_list());
 		let item_a = Item::new_from_element(rect())
 			.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY)
-			.with_attribute(ATTR_FILL, List::new_from_element(Color::RED).into_graphic_list());
+			.with_attribute(ATTR_APPEARANCE, solid_fill(Color::RED));
 		let item_b = Item::new_from_element(rect())
 			.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation((-100., -100.).into()))
-			.with_attribute(ATTR_FILL, List::new_from_element(Color::BLUE).into_graphic_list());
+			.with_attribute(ATTR_APPEARANCE, solid_fill(Color::BLUE));
 
 		let mut content = List::new_from_item(item_a);
 		content.push(item_b);
@@ -3997,7 +3901,8 @@ mod test {
 		.await;
 		let morphed = List::new_from_item(morphed);
 
-		let fill = graphic_list_at(&morphed, 0, ATTR_FILL).expect("Morph should keep the fill paint at the midpoint");
+		let appearance = morphed.attribute::<Appearance>(ATTR_APPEARANCE, 0).expect("Morph should keep the appearance at the midpoint");
+		let fill = appearance.first_paint_of(Cover::Fill).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
 		let Some(Graphic::Color(colors)) = fill.element(0) else {

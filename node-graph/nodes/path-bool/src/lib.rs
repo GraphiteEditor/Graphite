@@ -46,7 +46,15 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 
 		let result_vector = result_vector_list.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
-		result_vector.set_stroke_transform(DAffine2::IDENTITY);
+
+		// The geometry is baked into identity space, so a copied stroke authoring space would be stale
+		if let Some(appearance) = result_vector_list.attribute::<Appearance>(ATTR_APPEARANCE, 0) {
+			let mut appearance = appearance.clone();
+			for coverage in appearance.0.iter_element_values_mut() {
+				coverage.0.remove_attribute::<DAffine2>(ATTR_TRANSFORM);
+			}
+			result_vector_list.set_attribute(ATTR_APPEARANCE, 0, appearance);
+		}
 
 		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
 		// for editor click-target preservation.
@@ -143,12 +151,7 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 
 		bake_paint_transforms(&mut attributes, copy_from_transform);
 
-		let copy_from = vector.element(index).unwrap();
-		let element = Vector {
-			stroke: copy_from.stroke.clone(),
-			..Default::default()
-		};
-		Item::from_parts(element, attributes)
+		Item::from_parts(Vector::default(), attributes)
 	} else {
 		Item::<Vector>::default()
 	};

@@ -77,10 +77,6 @@ pub const ATTR_POSITION: &str = "position";
 /// Gradient stop's `f64` midpoint (implicit default `0.5`, linear), a factor from 0 to 1 across the distance to the next
 /// stop, on the `List<Color>` inside a `Gradient`. The final stop's midpoint is ignored if "gradient_cyclic" is false.
 pub const ATTR_MIDPOINT: &str = "midpoint";
-/// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
-pub const ATTR_FILL: &str = "fill";
-/// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
-pub const ATTR_STROKE: &str = "stroke";
 /// Item's ordered list of paint passes, of type `Appearance`. Earlier coverages paint first, compositing below later ones.
 pub const ATTR_APPEARANCE: &str = "appearance";
 // TODO: Add a "fill_rule" attribute as a sibling of "paint" on the coverage list (uniform across covers) once a FillRule type ships

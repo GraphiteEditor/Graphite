@@ -563,9 +563,9 @@ pub struct HandleId {
 impl std::fmt::Display for HandleId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self.ty {
-			// I haven't checked if "out" and "in" are reversed, or are accurate translations of the "primary" and "end" terms used in the `HandleType` enum, so this naming is an assumption.
-			HandleType::Primary => write!(f, "{} out", self.segment.inner()),
-			HandleType::End => write!(f, "{} in", self.segment.inner()),
+			// The primary handle sits at the segment's start anchor and the end handle at its end anchor
+			HandleType::Primary => write!(f, "Segment {} (start handle)", self.segment.inner()),
+			HandleType::End => write!(f, "Segment {} (end handle)", self.segment.inner()),
 		}
 	}
 }

@@ -1217,7 +1217,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 	let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 	let layer_bounds = vector.bounding_box().unwrap_or_default();
 	let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
-	let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY).unwrap_or(layer_bounds);
+	let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY, stroke_params.as_ref()).unwrap_or(layer_bounds);
 
 	let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
 	let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
@@ -1264,8 +1264,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 	let push_id = needs_separate_alignment_fill.then_some({
 		let id = format!("alignment-{}", generate_uuid());
 
-		let mut cloned_vector = vector.clone();
-		cloned_vector.stroke = None;
+		let cloned_vector = vector.clone();
 
 		// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 		// The wrapping SVG group (above) handles the user-set opacity.
@@ -1696,8 +1695,7 @@ impl Render for List<Vector> {
 				}
 				_ => {
 					if use_layer {
-						let mut cloned_element = element.clone();
-						cloned_element.stroke = None;
+						let cloned_element = element.clone();
 
 						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 						// The outer opacity/blend layer (above) handles the user-set opacity.
@@ -1906,7 +1904,8 @@ fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
-	let stroke_width = geometry.stroke.as_ref().map_or(0., |stroke| {
+	let stroke_width = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map_or(0., |coverage| {
+		let stroke = coverage.stroke_params();
 		if stroke.align.is_not_centered() && all_subpaths_closed {
 			stroke.weight * 2.
 		} else {

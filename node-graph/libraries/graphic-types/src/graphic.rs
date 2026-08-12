@@ -1,14 +1,15 @@
-use crate::appearance::{Appearance, Cover};
+use crate::appearance::{Appearance, Cover, Coverage};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_APPEARANCE, ATTR_FILL, ATTR_PAINT, ATTR_STROKE, Item, ItemAttributeValues, List, NodeIdPath};
+use core_types::list::{ATTR_APPEARANCE, ATTR_PAINT, Item, ItemAttributeValues, List, NodeIdPath};
+use core_types::math::quad::Quad;
 use core_types::ops::FromAnchorPosition;
 use core_types::render_complexity::RenderComplexity;
+use core_types::transform::Transform;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
-use std::borrow::Cow;
 use vector_types::Gradient;
 pub use vector_types::Vector;
 
@@ -232,32 +233,7 @@ pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 	graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
 }
 
-/// Look up the paint graphics stored under attribute for a vector item, in the canonical `List<Graphic>` form.
-pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str) -> Option<Cow<'a, List<Graphic>>> {
-	list.attribute::<List<Graphic>>(attribute, index)
-		.map(Cow::Borrowed)
-		// Treat a blank paint attribute as absent so an empty attribute doesn't count as painted
-		.filter(|graphic_list| is_paint_present(graphic_list))
-}
-
-/// Whether the item carries a non-blank canonical `List<Graphic>` paint attribute,
-/// checked by borrowing without cloning the renderable list.
-pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
-	list.attribute::<List<Graphic>>(attribute, index).is_some_and(is_paint_present)
-}
-
-/// Stores a paint attribute in its canonical `List<Graphic>` form, the only representation paint readers accept.
-pub fn set_paint_attribute(attributes: &mut ItemAttributeValues, key: &str, paint: impl IntoGraphicList) {
-	attributes.insert(key, paint.into_graphic_list());
-}
-
-/// Stores a paint attribute at a list index in its canonical `List<Graphic>` form, the only representation paint readers accept.
-pub fn set_paint_attribute_at<T>(list: &mut List<T>, index: usize, key: &str, paint: impl IntoGraphicList) {
-	list.set_attribute(key, index, paint.into_graphic_list());
-}
-
-/// Bake the provided transform into the per-item transforms of the paint graphics stored under the
-/// fill and stroke attributes and the appearance's paint attributes.
+/// Bake the provided transform into the per-item transforms of the appearance's paint graphics.
 pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DAffine2) {
 	fn bake_list_transform<T>(list: &mut List<T>, transform: DAffine2) {
 		for item_transform in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
@@ -275,14 +251,6 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 			Graphic::Gradient(list) => bake_list_transform(list, transform),
 			Graphic::Text(list) => bake_list_transform(list, transform),
 			Graphic::Color(_) => {}
-		}
-	}
-
-	for paint_key in [ATTR_FILL, ATTR_STROKE] {
-		if let Some(graphics) = attributes.get_mut::<List<Graphic>>(paint_key) {
-			for graphic in graphics.iter_element_values_mut() {
-				bake_graphic_transform(graphic, transform);
-			}
 		}
 	}
 
@@ -587,11 +555,47 @@ impl Graphic {
 	}
 }
 
+/// Combined bounding box of a vector list's rows, inflating each row by its appearance's stroke when `include_stroke`.
+/// Stroke parameters live on the row attribute, out of reach of the element-level impl.
+pub fn vector_list_bounding_box(list: &List<Vector>, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+	let mut combined_bounds: Option<[DVec2; 2]> = None;
+
+	for index in 0..list.len() {
+		let Some(element) = list.element(index) else { continue };
+		let item_transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+		let row_transform = transform * item_transform;
+
+		let Some(mut bounds) = element.bounding_box_with_transform(row_transform) else { continue };
+
+		// The full line width (not half) accounts for different styles of stroke caps
+		if include_stroke
+			&& let Some(stroke) = list
+				.attribute::<Appearance>(ATTR_APPEARANCE, index)
+				.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke))
+				.map(Coverage::stroke_params)
+		{
+			let scale = row_transform.scale_magnitudes();
+			let offset = DVec2::splat(stroke.weight() * scale.x.max(scale.y) * stroke.join_miter_limit);
+			bounds = [bounds[0] - offset, bounds[1] + offset];
+		}
+
+		combined_bounds = Some(match combined_bounds {
+			Some(existing) => Quad::combine_bounds(existing, bounds),
+			None => bounds,
+		});
+	}
+
+	match combined_bounds {
+		Some(bounds) => RenderBoundingBox::Rectangle(bounds),
+		None => RenderBoundingBox::None,
+	}
+}
+
 impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
 			Graphic::None => RenderBoundingBox::None,
-			Graphic::Vector(list) => list.bounding_box(transform, include_stroke),
+			Graphic::Vector(list) => vector_list_bounding_box(list, transform, include_stroke),
 			Graphic::RasterCPU(list) => list.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Graphic(list) => list.bounding_box(transform, include_stroke),
@@ -604,7 +608,7 @@ impl BoundingBox for Graphic {
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
 			Graphic::None => RenderBoundingBox::None,
-			Graphic::Vector(vector) => vector.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Vector(vector) => vector_list_bounding_box(vector, transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Graphic(graphic) => graphic.thumbnail_bounding_box(transform, include_stroke),

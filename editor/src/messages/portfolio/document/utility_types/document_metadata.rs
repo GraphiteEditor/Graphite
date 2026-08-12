@@ -228,10 +228,15 @@ impl DocumentMetadata {
 	/// stroke geometry when the layer is a vector with a stroke style. Falls back to the click-target-based
 	/// bounds for non-vector layers (groups, raster, text, color, gradient).
 	pub fn bounding_box_document_with_stroke(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
-		if let Some(vector) = self.layer_vector_data.get(&layer)
-			&& let Some(bounds) = vector.stroke_inclusive_bounding_box_with_transform(self.transform_to_document(layer))
-		{
-			return Some(bounds);
+		if let Some(vector) = self.layer_vector_data.get(&layer) {
+			let stroke = self
+				.layer_appearance_attributes
+				.get(&layer)
+				.and_then(|appearance| appearance.first_coverage_of(graphene_std::Cover::Stroke))
+				.map(graphene_std::Coverage::stroke_params);
+			if let Some(bounds) = vector.stroke_inclusive_bounding_box_with_transform(self.transform_to_document(layer), stroke.as_ref()) {
+				return Some(bounds);
+			}
 		}
 		self.bounding_box_document(layer)
 	}

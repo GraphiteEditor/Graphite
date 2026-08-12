@@ -94,10 +94,11 @@ pub mod migrations {
 		}
 
 		/// The legacy `fill` field is intentionally omitted because vector payload migration only
-		/// recovers editable vector data. The fill/stroke paints are migrated from the node inputs.
+		/// recovers editable vector data. The stroke parses solely to validate the legacy shape.
 		#[derive(serde::Deserialize)]
 		#[cfg_attr(test, derive(Default, serde::Serialize))]
 		pub(super) struct PathStyle {
+			#[allow(dead_code)]
 			pub stroke: Option<Stroke>,
 		}
 
@@ -105,6 +106,7 @@ pub mod migrations {
 		#[derive(serde::Deserialize)]
 		#[cfg_attr(test, derive(Default, serde::Serialize))]
 		pub(super) struct VectorData {
+			#[allow(dead_code)]
 			pub style: PathStyle,
 			pub colinear_manipulators: Vec<[HandleId; 2]>,
 			pub point_domain: PointDomain,
@@ -137,7 +139,6 @@ pub mod migrations {
 
 		Ok(match VectorFormat::deserialize(deserializer)? {
 			VectorFormat::OldVectorData(old) => Some(Vector {
-				stroke: old.style.stroke,
 				colinear_manipulators: old.colinear_manipulators,
 				point_domain: old.point_domain,
 				segment_domain: old.segment_domain,
@@ -188,8 +189,10 @@ pub mod migrations {
 		use super::*;
 		use vector_types::vector::style::Stroke;
 
+		/// The legacy `style` payload (including its stroke) must still parse so the untagged format
+		/// disambiguation succeeds, even though the geometry is all that survives.
 		#[test]
-		fn preserves_stroke_from_old_vector_data_style() {
+		fn recovers_geometry_from_old_vector_data_with_style() {
 			let old_vector = legacy::VectorData {
 				style: legacy::PathStyle { stroke: Some(Stroke::new(12.)) },
 				..Default::default()
@@ -204,22 +207,20 @@ pub mod migrations {
 				.as_object_mut()
 				.unwrap()
 				.insert("fill".into(), serde_json::to_value(legacy::LegacyFill::default()).unwrap());
-			let migrated = migrate_to_optional_vector(value).unwrap().unwrap();
 
-			assert_eq!(migrated.stroke.unwrap().weight, 12.);
+			assert!(migrate_to_optional_vector(value).unwrap().is_some(), "the legacy shape should parse into a vector");
 		}
 
 		#[test]
-		fn preserves_stroke_from_current_vector_data() {
-			let vector = Vector {
-				stroke: Some(Stroke::new(12.)),
-				..Default::default()
-			};
+		fn recovers_geometry_from_current_vector_data() {
+			use core_types::ops::FromAnchorPosition;
+
+			let vector = Vector::from_anchor_position(glam::DVec2::new(3., 4.));
 
 			let value = serde_json::to_value(&vector).unwrap();
 			let migrated = migrate_to_optional_vector(value).unwrap().unwrap();
 
-			assert_eq!(migrated.stroke.unwrap().weight, 12.);
+			assert_eq!(migrated.point_domain.positions(), [glam::DVec2::new(3., 4.)]);
 		}
 	}
 }
