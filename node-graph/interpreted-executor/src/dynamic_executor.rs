@@ -476,6 +476,7 @@ impl BorrowTree {
 					.clone()
 					.to_edge()
 					.map_err(|error| vec![GraphError::new(&proto_node, GraphErrorType::ConstructionFailed(error))])?;
+				debug_assert!(proto_node.resolved_layout().map_or(true, |expected| node.layout() == Some(expected)), "layout pass disagrees with construction for {}", proto_node.identifier.as_str());
 				self.store_node(node, id, path.into());
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
@@ -483,6 +484,7 @@ impl BorrowTree {
 				let construction_nodes = self.node_deps(ids);
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes).map_err(|error| vec![GraphError::new(&proto_node, GraphErrorType::ConstructionFailed(format!("{error:?}")))])?;
+				debug_assert!(proto_node.resolved_layout().map_or(true, |expected| node.layout() == Some(expected)), "layout pass disagrees with construction for {}", proto_node.identifier.as_str());
 				self.store_node(node, id, path.into());
 			}
 		};
