@@ -188,4 +188,3 @@ fn text_on_path(
 		*rtl.element(),
 	)
 }
-

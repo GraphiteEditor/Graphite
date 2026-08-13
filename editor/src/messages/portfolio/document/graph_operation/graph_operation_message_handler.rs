@@ -516,7 +516,15 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				// Pass identity so each leaf layer receives only its SVG-native transform from `abs_transform`.
 				// The placement offset is then applied once to the root group layer below.
-				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root().clone())), id, parent, insert_index, &gradient_info, &mut textpath_attrs);
+				import_usvg_node(
+					&mut modify_inputs,
+					&usvg::Node::Group(Box::new(tree.root().clone())),
+					id,
+					parent,
+					insert_index,
+					&gradient_info,
+					&mut textpath_attrs,
+				);
 
 				// After import, `layer_node` is set to the root group. Apply the placement transform to it
 				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
@@ -844,7 +852,13 @@ fn pre_parse_textpath_attrs(svg: &str) -> std::collections::HashMap<String, Vec<
 				text_length: node.attribute("textLength").and_then(|v| v.parse().ok()),
 				length_adjust: node.attribute("lengthAdjust").map(str::to_string),
 				path_length: node.attribute("pathLength").and_then(|v| v.parse().ok()),
-				direction: node.attribute("direction").or_else(|| node.attribute("style").and_then(|s| s.split(';').find(|p| p.trim().starts_with("direction")).and_then(|p| p.split(':').last()).map(|v| v.trim()))).map(str::to_string),
+				direction: node
+					.attribute("direction")
+					.or_else(|| {
+						node.attribute("style")
+							.and_then(|s| s.split(';').find(|p| p.trim().starts_with("direction")).and_then(|p| p.split(':').last()).map(|v| v.trim()))
+					})
+					.map(str::to_string),
 			});
 		}
 	}
@@ -864,7 +878,15 @@ fn textpath_href_id(node: usvg::roxmltree::Node) -> Option<String> {
 /// interact with any existing layers in the parent stack. All descendant layers use a lightweight
 /// O(n) import path that skips collision detection and instead calculates positions directly from
 /// the known tree structure.
-fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize, gradient_info: &SvgGradientInfo, textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>) {
+fn import_usvg_node(
+	modify_inputs: &mut ModifyInputsContext,
+	node: &usvg::Node,
+	id: NodeId,
+	parent: LayerNodeIdentifier,
+	insert_index: usize,
+	gradient_info: &SvgGradientInfo,
+	textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>,
+) {
 	let layer = modify_inputs.create_layer(id);
 
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);

@@ -1396,7 +1396,8 @@ impl Render for List<Vector> {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
 
-			if render_params.for_export && !text_on_path_exported
+			if render_params.for_export
+				&& !text_on_path_exported
 				&& let Some(ref meta) = vector.text_on_path_metadata
 			{
 				text_on_path_exported = true;
@@ -1404,7 +1405,11 @@ impl Render for List<Vector> {
 				write!(&mut render.svg_defs, r#"<path id="{path_id}" d="{}" fill="none"/>"#, escape_xml_attr(&meta.path_d)).unwrap();
 
 				let font_style_css = escape_xml_attr(&format!("font-family: {}; font-size: {}px; font-style: {};", meta.font_family, meta.font_size, meta.font_style));
-				let start_offset_attr = if meta.start_offset_percent { format!("{}%", meta.start_offset * 100.0) } else { format!("{}", meta.start_offset) };
+				let start_offset_attr = if meta.start_offset_percent {
+					format!("{}%", meta.start_offset * 100.0)
+				} else {
+					format!("{}", meta.start_offset)
+				};
 				let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 				let matrix = format_transform_matrix(item_transform);
 				let transform_attr = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
@@ -1420,7 +1425,17 @@ impl Render for List<Vector> {
 				// The text element carries the same paint the outlines would: the fill (and its opacity) set via a Fill node.
 				let fill_attr = graphic_list_at(self, index, ATTR_FILL)
 					.as_deref()
-					.map(|list| list.render(&mut render.svg_defs, item_transform, item_transform, item_transform, DAffine2::IDENTITY, &render_params, PaintTarget::Fill))
+					.map(|list| {
+						list.render(
+							&mut render.svg_defs,
+							item_transform,
+							item_transform,
+							item_transform,
+							DAffine2::IDENTITY,
+							&render_params,
+							PaintTarget::Fill,
+						)
+					})
 					.unwrap_or_default();
 				let opacity_attr = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 				let opacity_fill_attr = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);

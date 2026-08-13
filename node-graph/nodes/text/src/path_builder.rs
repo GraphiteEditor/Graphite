@@ -108,14 +108,7 @@ impl PathBuilder {
 	/// Draw a glyph outline in local space and bake the given final transform (position, rotation, scale)
 	/// directly into its geometry, appending it to the single-item vector list. Used by text-on-path
 	/// placement, where each glyph sits at an arbitrary position and angle along a path.
-	pub fn draw_glyph_with_transform(
-		&mut self,
-		glyph: &OutlineGlyph<'_>,
-		size: f32,
-		normalized_coords: &[NormalizedCoord],
-		style_skew: Option<DAffine2>,
-		final_transform: DAffine2,
-	) {
+	pub fn draw_glyph_with_transform(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, final_transform: DAffine2) {
 		let saved_origin = self.origin;
 		let saved_scale = self.scale;
 		self.origin = DVec2::ZERO;
@@ -142,14 +135,7 @@ impl PathBuilder {
 
 	/// Draw a glyph outline in local space and remap each of its points through the given function.
 	/// Used by text-on-path `method="stretch"`, which warps glyph outlines perpendicular to the path.
-	pub fn draw_glyph_with_mapping(
-		&mut self,
-		glyph: &OutlineGlyph<'_>,
-		size: f32,
-		normalized_coords: &[NormalizedCoord],
-		style_skew: Option<DAffine2>,
-		mapping_function: impl Fn(DVec2) -> DVec2,
-	) {
+	pub fn draw_glyph_with_mapping(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, mapping_function: impl Fn(DVec2) -> DVec2) {
 		let saved_origin = self.origin;
 		let saved_scale = self.scale;
 		self.origin = DVec2::ZERO;

@@ -269,12 +269,16 @@ pub fn place_text_on_path(
 	path_length: Option<f64>,
 	rtl: bool,
 ) -> List<Vector> {
-	let Some(original_bezpath) = path_list.element(0).and_then(|vector| vector.stroke_bezpath_iter().find(|p| p.segments().next().is_some())) else { return List::new() };
+	let Some(original_bezpath) = path_list.element(0).and_then(|vector| vector.stroke_bezpath_iter().find(|p| p.segments().next().is_some())) else {
+		return List::new();
+	};
 	let path_d_for_export = original_bezpath.to_svg();
 
 	let bezpath = maybe_reverse_path(original_bezpath, side);
 	let lut = ArcLengthLut::build(&bezpath, 100);
-	if lut.total_length < 1e-9 { return List::new(); }
+	if lut.total_length < 1e-9 {
+		return List::new();
+	}
 
 	let typesetting = crate::TypesettingConfig {
 		font_size,
@@ -339,10 +343,14 @@ pub fn place_text_on_path(
 				glyph_run.glyphs().for_each(|glyph| {
 					let scaled_advance = glyph.advance as f64 * advance_scale;
 					cumulative_offset += if glyph_index > 0 { spacing_delta } else { 0.0 };
-					
+
 					let glyph_x_offset = (run_x as f64 - glyph_run.offset() as f64 + glyph.x as f64) * advance_scale + cumulative_offset;
-					let mid = if rtl { line_start - glyph_x_offset - scaled_advance / 2.0 } else { line_start + glyph_x_offset + scaled_advance / 2.0 };
-					
+					let mid = if rtl {
+						line_start - glyph_x_offset - scaled_advance / 2.0
+					} else {
+						line_start + glyph_x_offset + scaled_advance / 2.0
+					};
+
 					let spacing_adj = text_path_spacing_adjustment(spacing, &lut, mid, scaled_advance);
 					let adjusted_mid = if rtl { mid - spacing_adj } else { mid + spacing_adj };
 
@@ -377,9 +385,7 @@ pub fn place_text_on_path(
 	let mut result = path_builder.finalize();
 
 	// Attach text-on-path metadata so SVG export can emit <text><textPath> instead of raw outlines
-	let (font_family, font_style) = crate::TextContext::with_thread_local(|ctx| {
-		ctx.get_font_info(font).map_or((String::new(), String::new()), |(family, info)| (family, info.style().to_string()))
-	});
+	let (font_family, font_style) = crate::TextContext::with_thread_local(|ctx| ctx.get_font_info(font).map_or((String::new(), String::new()), |(family, info)| (family, info.style().to_string())));
 	let metadata = Arc::new(TextOnPathMetadata {
 		text: text.to_string(),
 		font_family,
