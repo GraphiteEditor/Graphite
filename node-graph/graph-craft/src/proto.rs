@@ -124,6 +124,20 @@ impl ConstructionArgs {
 	}
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Resolved {
+	pub io: Option<NodeIOTypes>,
+	pub layout_meta: Option<core_types::record::LayoutMeta>,
+	pub layout: Option<core_types::record::Layout>,
+}
+
+impl PartialEq for Resolved {
+	fn eq(&self, _: &Self) -> bool {
+		true
+	}
+}
+impl Eq for Resolved {}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 /// A proto node is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]).
 /// At different stages in the compilation process, this struct will be transformed into a reduced (more restricted) form acting as a subset of its original form, but that restricted form is still valid in the earlier stage in the compilation process before it was transformed.
@@ -134,6 +148,8 @@ pub struct ProtoNode {
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
 	pub(crate) context_features: ContextDependencies,
+	#[serde(skip)]
+	pub(crate) resolved: Resolved,
 }
 
 impl Default for ProtoNode {
@@ -145,6 +161,7 @@ impl Default for ProtoNode {
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
 			context_features: Default::default(),
+			resolved: Default::default(),
 		}
 	}
 }
@@ -185,6 +202,7 @@ impl ProtoNode {
 			},
 			skip_deduplication: false,
 			context_features: Default::default(),
+			resolved: Default::default(),
 		}
 	}
 
@@ -201,6 +219,10 @@ impl ProtoNode {
 			ConstructionArgs::Nodes(nodes) => nodes.clone(),
 			_ => panic!("tried to unwrap nodes from non node construction args \n node: {self:#?}"),
 		}
+	}
+
+	pub fn resolved_layout(&self) -> Option<&core_types::record::Layout> {
+		self.resolved.layout.as_ref()
 	}
 }
 
@@ -301,6 +323,65 @@ impl ProtoNetwork {
 
 	pub fn source_ids(&self) -> Vec<SourceId> {
 		self.nodes.iter().flat_map(|(_, node)| node.context_features.sources().iter().copied()).collect()
+	}
+
+	pub fn resolve_types(&mut self, registry: &Registry) -> Result<(), String> {
+		self.reorder_ids()?;
+		for index in 0..self.nodes.len() {
+			let resolved = {
+				let node = &self.nodes[index].1;
+				match &node.construction_args {
+					ConstructionArgs::Value(value) => Resolved {
+						io: Some(NodeIOTypes::new(concrete!(Context), Type::Record(Box::new(value.ty())), vec![])),
+						..Default::default()
+					},
+					_ => {
+						let inputs: Vec<Type> = match &node.construction_args {
+							ConstructionArgs::Nodes(nodes) => nodes
+								.iter()
+								.map(|input| {
+									self.nodes[input.0 as usize]
+										.1
+										.resolved
+										.io
+										.as_ref()
+										.map(|io| io.ty())
+										.ok_or_else(|| format!("input {input:?} of {} is not yet typed", node.identifier.as_str()))
+								})
+								.collect::<Result<_, _>>()?,
+							ConstructionArgs::Inline(inline) => vec![inline.ty.clone()],
+							ConstructionArgs::Value(_) => unreachable!(),
+						};
+						let impls = registry.get(&node.identifier).ok_or_else(|| format!("no implementations for {}", node.identifier.as_str()))?;
+						let (io, entry) = resolve_entry(node, &inputs, impls).map_err(|errors| format!("{errors:?}"))?;
+						Resolved {
+							io: Some(io),
+							layout_meta: entry.layout_meta.clone(),
+							layout: None,
+						}
+					}
+				}
+			};
+			self.nodes[index].1.resolved = resolved;
+		}
+		Ok(())
+	}
+
+	pub fn compute_layouts(&mut self) {
+		for index in 0..self.nodes.len() {
+			let layout = {
+				let node = &self.nodes[index].1;
+				match &node.construction_args {
+					ConstructionArgs::Value(value) => value.element_write().map(|element| core_types::record::Layout::default().with_writes(0, element, &[])),
+					ConstructionArgs::Nodes(inputs) => node.resolved.layout_meta.as_ref().and_then(|meta| {
+						let input_layouts: Vec<Option<&core_types::record::Layout>> = inputs.iter().map(|input| self.nodes[input.0 as usize].1.resolved.layout.as_ref()).collect();
+						meta.sources.iter().all(|&source| input_layouts[source as usize].is_some()).then(|| meta.fold(&input_layouts))
+					}),
+					ConstructionArgs::Inline(_) => None,
+				}
+			};
+			self.nodes[index].1.resolved.layout = layout;
+		}
 	}
 
 	/// Inserts context nullification nodes to optimize caching.
@@ -643,21 +724,27 @@ impl Debug for GraphError {
 }
 pub type GraphErrors = Vec<GraphError>;
 
+pub type Registry = HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>;
+
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
 #[derive(Default, Clone, dyn_any::DynAny)]
 pub struct TypingContext {
-	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>>,
+	lookup: Cow<'static, Registry>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
 }
 
 impl TypingContext {
 	/// Creates a new `TypingContext` with the given lookup table.
-	pub fn new(lookup: &'static HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>) -> Self {
+	pub fn new(lookup: &'static Registry) -> Self {
 		Self {
 			lookup: Cow::Borrowed(lookup),
 			..Default::default()
 		}
+	}
+
+	pub fn registry(&self) -> &Registry {
+		&self.lookup
 	}
 
 	/// Updates the `TypingContext` with a given proto network. This will infer the types of the nodes
@@ -715,115 +802,113 @@ impl TypingContext {
 		};
 
 		// Get the node input type from the proto node declaration
-		let call_argument = &node.call_argument;
 		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
-		let candidates: Vec<(NodeIOTypes, NodeConstructor)> = impls.iter().map(|entry| (entry.io.clone(), entry.constructor)).collect();
+		let (node_io, entry) = resolve_entry(node, &inputs, impls)?;
+		self.inferred.insert(node_id, node_io.clone());
+		self.constructor.insert(node_id, entry.constructor);
+		Ok(node_io)
+	}
+}
 
-		if let Some(index) = inputs.iter().position(|p| {
-			matches!(p,
-			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
-		}) {
-			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, inputs })]);
+/// Selects the single registry entry matching the node's resolved input types,
+/// substituting generics. Stateless and stable-id-free.
+fn resolve_entry<'a>(node: &ProtoNode, inputs: &[Type], impls: &'a [RegistryEntry]) -> Result<(NodeIOTypes, &'a RegistryEntry), GraphErrors> {
+	let call_argument = &node.call_argument;
+	let candidates: Vec<(NodeIOTypes, &RegistryEntry)> = impls.iter().map(|entry| (entry.io.clone(), entry)).collect();
+
+	if let Some(index) = inputs.iter().position(|p| {
+		matches!(p,
+		Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
+	}) {
+		return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, inputs: inputs.to_vec() })]);
+	}
+
+	// List of all implementations that match the input types
+	let valid_output_types = candidates
+		.iter()
+		.filter(|(node_io, _)| valid_type(&node_io.call_argument, call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_type(p1, p2)))
+		.collect::<Vec<_>>();
+
+	// Attempt to substitute generic types with concrete types and save the list of results
+	let substitution_results = valid_output_types
+		.iter()
+		.map(|(node_io, entry)| {
+			let generics_lookup: Result<HashMap<_, _>, _> = collect_generics(node_io)
+				.iter()
+				.map(|generic| check_generic(node_io, call_argument, inputs, generic).map(|x| (generic.to_string(), x)))
+				.collect();
+
+			generics_lookup.map(|generics_lookup| {
+				let mut new_node_io = node_io.clone();
+				replace_generics(&mut new_node_io, &generics_lookup);
+				(new_node_io, *entry)
+			})
+		})
+		.collect::<Vec<_>>();
+
+	// Collect all substitutions that are valid
+	let valid_impls = substitution_results.iter().filter_map(|result| result.as_ref().ok()).collect::<Vec<_>>();
+
+	match valid_impls.as_slice() {
+		[] => {
+			let convert_node_index_offset = node.original_location.auto_convert_index.unwrap_or(0);
+			let mut best_errors = usize::MAX;
+			let mut error_inputs = Vec::new();
+			for (node_io, _) in &candidates {
+				// For errors on Convert nodes, offset the input index so it correctly corresponds to the node it is connected to.
+				let current_errors = [call_argument]
+					.into_iter()
+					.chain(inputs)
+					.cloned()
+					.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
+					.enumerate()
+					.filter(|(_, (p1, p2))| !valid_type(p1, p2))
+					.map(|(index, expected)| (index - 1 + convert_node_index_offset, expected))
+					.collect::<Vec<_>>();
+				if current_errors.len() < best_errors {
+					best_errors = current_errors.len();
+					error_inputs.clear();
+				}
+				if current_errors.len() <= best_errors {
+					error_inputs.push(current_errors);
+				}
+			}
+			let inputs = [call_argument]
+				.into_iter()
+				.chain(inputs)
+				.enumerate()
+				.filter_map(|(i, t)| {
+					if i == 0 {
+						None
+					} else {
+						let number = i + convert_node_index_offset;
+						Some(format!("• Input {number}: {t}"))
+					}
+				})
+				.collect::<Vec<_>>()
+				.join("\n");
+			Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
+		}
+		[(node_io, entry)] => Ok((node_io.clone(), *entry)),
+		// If two types are available and one of them accepts () an input, always choose that one
+		[first, second] => {
+			if first.0.call_argument != second.0.call_argument {
+				for (node_io, entry) in [first, second] {
+					if node_io.call_argument != concrete!(()) {
+						continue;
+					}
+					return Ok((node_io.clone(), *entry));
+				}
+			}
+			let inputs = [call_argument].into_iter().chain(inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
+			let valid = valid_output_types.into_iter().map(|(node_io, _)| node_io.clone()).collect();
+			Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 		}
 
-		// List of all implementations that match the input types
-		let valid_output_types = candidates
-			.iter()
-			.filter(|(node_io, _)| valid_type(&node_io.call_argument, call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_type(p1, p2)))
-			.collect::<Vec<_>>();
-
-		// Attempt to substitute generic types with concrete types and save the list of results
-		let substitution_results = valid_output_types
-			.iter()
-			.map(|(node_io, constructor)| {
-				let generics_lookup: Result<HashMap<_, _>, _> = collect_generics(node_io)
-					.iter()
-					.map(|generic| check_generic(node_io, call_argument, &inputs, generic).map(|x| (generic.to_string(), x)))
-					.collect();
-
-				generics_lookup.map(|generics_lookup| {
-					let mut new_node_io = node_io.clone();
-					replace_generics(&mut new_node_io, &generics_lookup);
-					(new_node_io, *constructor)
-				})
-			})
-			.collect::<Vec<_>>();
-
-		// Collect all substitutions that are valid
-		let valid_impls = substitution_results.iter().filter_map(|result| result.as_ref().ok()).collect::<Vec<_>>();
-
-		match valid_impls.as_slice() {
-			[] => {
-				let convert_node_index_offset = node.original_location.auto_convert_index.unwrap_or(0);
-				let mut best_errors = usize::MAX;
-				let mut error_inputs = Vec::new();
-				for (node_io, _) in &candidates {
-					// For errors on Convert nodes, offset the input index so it correctly corresponds to the node it is connected to.
-					let current_errors = [call_argument]
-						.into_iter()
-						.chain(&inputs)
-						.cloned()
-						.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
-						.enumerate()
-						.filter(|(_, (p1, p2))| !valid_type(p1, p2))
-						.map(|(index, expected)| (index - 1 + convert_node_index_offset, expected))
-						.collect::<Vec<_>>();
-					if current_errors.len() < best_errors {
-						best_errors = current_errors.len();
-						error_inputs.clear();
-					}
-					if current_errors.len() <= best_errors {
-						error_inputs.push(current_errors);
-					}
-				}
-				let inputs = [call_argument]
-					.into_iter()
-					.chain(&inputs)
-					.enumerate()
-					.filter_map(|(i, t)| {
-						if i == 0 {
-							None
-						} else {
-							let number = i + convert_node_index_offset;
-							Some(format!("• Input {number}: {t}"))
-						}
-					})
-					.collect::<Vec<_>>()
-					.join("\n");
-				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
-			}
-			[(node_io, constructor)] => {
-				let node_io = node_io.clone();
-
-				// Save the inferred type
-				self.inferred.insert(node_id, node_io.clone());
-				self.constructor.insert(node_id, *constructor);
-				Ok(node_io)
-			}
-			// If two types are available and one of them accepts () an input, always choose that one
-			[first, second] => {
-				if first.0.call_argument != second.0.call_argument {
-					for (node_io, constructor) in [first, second] {
-						if node_io.call_argument != concrete!(()) {
-							continue;
-						}
-
-						// Save the inferred type
-						self.inferred.insert(node_id, node_io.clone());
-						self.constructor.insert(node_id, *constructor);
-						return Ok(node_io.clone());
-					}
-				}
-				let inputs = [call_argument].into_iter().chain(&inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
-				let valid = valid_output_types.into_iter().map(|(node_io, _)| node_io.clone()).collect();
-				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
-			}
-
-			_ => {
-				let inputs = [call_argument].into_iter().chain(&inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
-				let valid = valid_output_types.into_iter().map(|(node_io, _)| node_io.clone()).collect();
-				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
-			}
+		_ => {
+			let inputs = [call_argument].into_iter().chain(inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
+			let valid = valid_output_types.into_iter().map(|(node_io, _)| node_io.clone()).collect();
+			Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 		}
 	}
 }

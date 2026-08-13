@@ -166,6 +166,7 @@ impl DocumentNode {
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
 			context_features: self.context_features,
+			resolved: Default::default(),
 		}
 	}
 }

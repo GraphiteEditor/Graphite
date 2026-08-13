@@ -263,6 +263,25 @@ macro_rules! tagged_value {
 				}
 			}
 
+			/// `None` for values whose element type is only known dynamically ([`Self::TypeDefault`]).
+			pub fn element_write(&self) -> Option<core_types::record::ElementWrite> {
+				Some(match self {
+					Self::None => core_types::record::element_write::<()>(),
+					Self::TypeDefault(_) => return None,
+					Self::F64Array(_) => core_types::record::element_write::<List<f64>>(),
+					Self::Color(_) => core_types::record::element_write::<List<Color>>(),
+					Self::Gradient(_) => core_types::record::element_write::<List<GradientStops>>(),
+					Self::BrushStrokes(_) => core_types::record::element_write::<List<BrushStroke>>(),
+					$( Self::$identifier(_) => core_types::record::element_write::<$ty>(), )*
+					Self::RenderOutput(_) => core_types::record::element_write::<RenderOutput>(),
+					Self::NodeIdPath(_) => core_types::record::element_write::<List<NodeId>>(),
+					Self::DocumentNode(_) => core_types::record::element_write::<DocumentNode>(),
+					Self::ContextModification(_) => core_types::record::element_write::<ContextModification>(),
+					Self::EditorApi(_) => core_types::record::element_write::<Arc<PlatformEditorApi>>(),
+					Self::ResourceHash(_) => core_types::record::element_write::<ResourceHash>(),
+				})
+			}
+
 			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a `ClonedNode` edge typed by [`Self::ty`].
 			pub fn to_edge(self) -> Result<EdgeHandle, String> {
 				match self {

@@ -10,7 +10,7 @@ pub fn load_network(document_string: &str) -> NodeNetwork {
 
 pub fn compile(network: NodeNetwork) -> ProtoNetwork {
 	let compiler = Compiler {};
-	compiler.compile_single(network).unwrap()
+	compiler.compile_single(network, None).unwrap()
 }
 
 pub fn load_from_name(name: &str) -> NodeNetwork {
