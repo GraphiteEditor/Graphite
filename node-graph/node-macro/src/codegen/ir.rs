@@ -1,7 +1,51 @@
 //! The intent IR: a node built from its signature, from which lowering derives.
 #![allow(dead_code)]
 
-use syn::{Ident, Type, TypeParamBound};
+use crate::codegen::classify::{Dialect, context_param, dialect};
+use crate::parsing::ParsedNodeFn;
+use syn::{GenericParam, Ident, Type, TypeParamBound};
+
+pub(crate) fn build(parsed: &ParsedNodeFn) -> Node {
+	Node {
+		kernel: Kernel { fn_name: parsed.fn_name.clone() },
+		generics: generics(parsed),
+		monomorphizations: Vec::new(),
+		inputs: Vec::new(),
+		output: Output {
+			shape: ItemShape {
+				element: Element::Concrete(parsed.output_type.clone()),
+				depth: 0,
+				attrs: Vec::new(),
+			},
+			removes: Vec::new(),
+		},
+		effect: effect(parsed),
+	}
+}
+
+fn generics(parsed: &ParsedNodeFn) -> Vec<Generic> {
+	let ctx = context_param(parsed).map(|param| param.ident.clone());
+	parsed
+		.fn_generics
+		.iter()
+		.filter_map(|param| match param {
+			GenericParam::Type(param) if Some(&param.ident) != ctx.as_ref() => Some(Generic {
+				ident: param.ident.clone(),
+				bounds: param.bounds.iter().cloned().collect(),
+			}),
+			_ => None,
+		})
+		.collect()
+}
+
+fn effect(parsed: &ParsedNodeFn) -> Effect {
+	match dialect(parsed) {
+		Dialect::Sync => Effect::Pure,
+		Dialect::Interrupt => Effect::Fallible,
+		Dialect::Poll => Effect::Progressive,
+		Dialect::AsyncFn | Dialect::Future | Dialect::FutureInterrupt => Effect::AsyncSource,
+	}
+}
 
 pub(crate) struct Node {
 	pub(crate) kernel: Kernel,
