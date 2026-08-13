@@ -7,9 +7,10 @@ authors = ["Graphite Authors <contact@graphite.art>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["serde"]
+default = ["serde", "vectorize"]
 serde = ["dep:serde", "core-types/serde"]
 wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
+vectorize = ["dep:vtracer", "dep:visioncortex"]
 
 [dependencies]
 # Local dependencies
@@ -36,6 +37,8 @@ tinyvec = { workspace = true }
 serde = { workspace = true, optional = true }
 tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
+vtracer = { workspace = true, optional = true }
+visioncortex = { workspace = true, optional = true }
 fixedbitset = "0.5.7"
 
 [dev-dependencies]

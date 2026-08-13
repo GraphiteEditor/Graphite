@@ -5,6 +5,8 @@ pub mod gradient;
 pub mod math;
 pub mod subpath;
 pub mod vector;
+#[cfg(feature = "vectorize")]
+pub mod vectorize_config;
 
 // Re-export commonly used types at the crate root
 pub use core_types as gcore;
