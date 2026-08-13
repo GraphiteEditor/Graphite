@@ -141,12 +141,12 @@ pub(crate) fn has_lazy_reads(parsed: &ParsedNodeFn) -> bool {
 
 /// The value inputs of a routing node (every regular field that is not a
 /// routing source), with their indices into the regular fields.
-pub(crate) fn routing_value_indices(regular_fields: &[&ParsedField], routing: &RoutingIo) -> Vec<usize> {
+pub(crate) fn routing_value_indices(regular_fields: &[&ParsedField], generic: &Ident) -> Vec<usize> {
 	regular_fields
 		.iter()
 		.enumerate()
 		.filter(|(_, field)| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => !matches!(ty, Type::Path(path) if path.path.get_ident() == Some(&routing.generic)),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => !matches!(ty, Type::Path(path) if path.path.get_ident() == Some(generic)),
 			ParsedFieldType::Node(_) => false,
 		})
 		.map(|(index, _)| index)

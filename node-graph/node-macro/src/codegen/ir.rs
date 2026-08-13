@@ -248,6 +248,7 @@ impl ValueBinding {
 	}
 }
 
+#[derive(Clone, Copy)]
 pub(crate) enum NodeKind {
 	Flip,
 	RecordIo,
