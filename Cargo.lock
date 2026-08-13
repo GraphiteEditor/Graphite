@@ -5950,6 +5950,7 @@ dependencies = [
  "glam",
  "graphene-hash",
  "graphene-resource",
+ "kurbo",
  "log",
  "node-macro",
  "parley",

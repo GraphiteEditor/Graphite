@@ -25,7 +25,7 @@ use graphene_std::raster::{
 	SelectiveColorChoice,
 };
 use graphene_std::raster_types::Image;
-use graphene_std::text::{Font, TextAlign};
+use graphene_std::text::{Font, LengthAdjust, TextAlign, TextAnchor, TextPathMethod, TextPathSide, TextPathSpacing};
 use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
@@ -326,6 +326,11 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<TextAnchor>(x) => enum_choice::<TextAnchor>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<TextPathSide>(x) => enum_choice::<TextPathSide>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<TextPathMethod>(x) => enum_choice::<TextPathMethod>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<TextPathSpacing>(x) => enum_choice::<TextPathSpacing>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<LengthAdjust>(x) => enum_choice::<LengthAdjust>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<MergeByDistanceAlgorithm>(x) => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<ExtrudeJoiningAlgorithm>(x) => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),

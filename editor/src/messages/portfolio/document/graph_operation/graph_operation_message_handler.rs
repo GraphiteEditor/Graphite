@@ -11,11 +11,10 @@ use crate::messages::tool::common_functionality::graph_modification_utils::get_c
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
-use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
+use graphene_std::renderer::convert_usvg_path::{convert_tiny_skia_path, convert_usvg_path};
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
-
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -472,7 +471,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				insert_index,
 				center,
 			} => {
-				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+				let mut options = usvg::Options::default();
+				options.font_family = "Source Sans Pro".to_string();
+
+				let svg = svg.replace("font-family=\"sans-serif\"", "font-family=\"Source Sans Pro\"");
+				let svg = svg.replace("font-family='sans-serif'", "font-family='Source Sans Pro'");
+				let svg = prepare_svg_textpath_direct_paths(&svg);
+
+				let tree = match usvg::Tree::from_str(&svg, &options) {
 					Ok(t) => t,
 					Err(e) => {
 						responses.add(DialogMessage::DisplayDialogError {
@@ -505,9 +511,20 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					spaces: extract_gradient_spaces(&svg),
 				};
 
+				// Pre-parse the raw SVG XML for <textPath> attributes that usvg doesn't expose
+				let mut textpath_attrs = pre_parse_textpath_attrs(&svg);
+
 				// Pass identity so each leaf layer receives only its SVG-native transform from `abs_transform`.
 				// The placement offset is then applied once to the root group layer below.
-				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root().clone())), id, parent, insert_index, &gradient_info);
+				import_usvg_node(
+					&mut modify_inputs,
+					&usvg::Node::Group(Box::new(tree.root().clone())),
+					id,
+					parent,
+					insert_index,
+					&gradient_info,
+					&mut textpath_attrs,
+				);
 
 				// After import, `layer_node` is set to the root group. Apply the placement transform to it
 				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
@@ -538,8 +555,10 @@ fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 }
 
 const GRAPHITE_NAMESPACE: &str = "https://graphite.art";
+const XLINK_NAMESPACE: &str = "http://www.w3.org/1999/xlink";
 
 /// Gradient information pre-parsed from the raw SVG XML, carrying what usvg's simplified tree drops.
+#[derive(Default)]
 struct SvgGradientInfo {
 	/// Real stops, keyed by gradient element `id`, for gradients Graphite exported with midpoint curve data.
 	graphite_stops: HashMap<String, Gradient>,
@@ -732,13 +751,142 @@ fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 	Some(Color::from_gamma_srgb_channels(r, g, b, opacity))
 }
 
+fn prepare_svg_textpath_direct_paths(svg: &str) -> String {
+	let doc = match usvg::roxmltree::Document::parse(svg) {
+		Ok(doc) => doc,
+		Err(_) => return svg.to_string(),
+	};
+
+	let mut edits = Vec::new();
+	let mut defs = String::new();
+	for (index, node) in doc.descendants().filter(|node| node.tag_name().name() == "textPath").enumerate() {
+		let Some(path_data) = node.attribute("path").filter(|path| !path.trim().is_empty()) else {
+			continue;
+		};
+
+		let path_id = format!("graphite-textpath-direct-{index}");
+		defs.push_str(&format!(r#"<path id="{path_id}" d="{}"/>"#, escape_xml_attr(path_data)));
+
+		if let Some(href_attr) = node
+			.attributes()
+			.find(|attr| attr.name() == "href" && (attr.namespace().is_none() || attr.namespace() == Some(XLINK_NAMESPACE)))
+		{
+			edits.push((href_attr.range_value(), format!("#{path_id}")));
+		} else if let Some(insert_at) = textpath_start_tag_name_end(svg, node) {
+			edits.push((insert_at..insert_at, format!(r##" href="#{path_id}""##)));
+		}
+	}
+
+	if defs.is_empty() {
+		return svg.to_string();
+	}
+
+	if let Some(insert_at) = svg_root_start_tag_end(svg, doc.root_element()) {
+		edits.push((insert_at..insert_at, format!("<defs>{defs}</defs>")));
+	}
+
+	apply_string_edits(svg, edits)
+}
+
+fn textpath_start_tag_name_end(svg: &str, node: usvg::roxmltree::Node) -> Option<usize> {
+	let start = node.range().start + 1;
+	svg.get(start..)?
+		.char_indices()
+		.find_map(|(offset, c)| matches!(c, ' ' | '\t' | '\n' | '\r' | '/' | '>').then_some(start + offset))
+}
+
+fn svg_root_start_tag_end(svg: &str, root: usvg::roxmltree::Node) -> Option<usize> {
+	let mut quote = None;
+	for (offset, c) in svg.get(root.range().start..)?.char_indices() {
+		match (quote, c) {
+			(Some(q), c) if c == q => quote = None,
+			(None, '"' | '\'') => quote = Some(c),
+			(None, '>') => return Some(root.range().start + offset + 1),
+			_ => {}
+		}
+	}
+	None
+}
+
+fn apply_string_edits(source: &str, mut edits: Vec<(std::ops::Range<usize>, String)>) -> String {
+	edits.sort_by_key(|(range, _)| range.start);
+	let mut result = source.to_string();
+	for (range, replacement) in edits.into_iter().rev() {
+		result.replace_range(range, &replacement);
+	}
+	result
+}
+
+fn escape_xml_attr(value: &str) -> String {
+	value.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+#[derive(Debug, Default, Clone)]
+struct TextPathAttrs {
+	pub start_offset: Option<String>,
+	pub method: Option<String>,
+	pub spacing: Option<String>,
+	pub side: Option<String>,
+	pub text_length: Option<f64>,
+	pub length_adjust: Option<String>,
+	pub path_length: Option<f64>,
+	pub direction: Option<String>,
+}
+
+fn pre_parse_textpath_attrs(svg: &str) -> std::collections::HashMap<String, Vec<TextPathAttrs>> {
+	let mut map = std::collections::HashMap::<String, Vec<TextPathAttrs>>::new();
+	let doc = match usvg::roxmltree::Document::parse(svg) {
+		Ok(doc) => doc,
+		Err(_) => return map,
+	};
+	for node in doc.descendants() {
+		if node.tag_name().name() == "textPath" {
+			let Some(path_id) = textpath_href_id(node) else {
+				continue;
+			};
+			map.entry(path_id).or_default().push(TextPathAttrs {
+				start_offset: node.attribute("startOffset").map(str::to_string),
+				method: node.attribute("method").map(str::to_string),
+				spacing: node.attribute("spacing").map(str::to_string),
+				side: node.attribute("side").map(str::to_string),
+				text_length: node.attribute("textLength").and_then(|v| v.parse().ok()),
+				length_adjust: node.attribute("lengthAdjust").map(str::to_string),
+				path_length: node.attribute("pathLength").and_then(|v| v.parse().ok()),
+				direction: node
+					.attribute("direction")
+					.or_else(|| {
+						node.attribute("style")
+							.and_then(|s| s.split(';').find(|p| p.trim().starts_with("direction")).and_then(|p| p.split(':').last()).map(|v| v.trim()))
+					})
+					.map(str::to_string),
+			});
+		}
+	}
+	map
+}
+
+fn textpath_href_id(node: usvg::roxmltree::Node) -> Option<String> {
+	node.attribute((XLINK_NAMESPACE, "href"))
+		.or_else(|| node.attribute("href"))
+		.and_then(|href| href.strip_prefix('#'))
+		.map(str::to_string)
+}
+
 /// Import a usvg node as the root of an SVG import operation.
 ///
 /// The root layer uses the full `move_layer_to_stack` (with push/collision logic) to correctly
 /// interact with any existing layers in the parent stack. All descendant layers use a lightweight
 /// O(n) import path that skips collision detection and instead calculates positions directly from
 /// the known tree structure.
-fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize, gradient_info: &SvgGradientInfo) {
+fn import_usvg_node(
+	modify_inputs: &mut ModifyInputsContext,
+	node: &usvg::Node,
+	id: NodeId,
+	parent: LayerNodeIdentifier,
+	insert_index: usize,
+	gradient_info: &SvgGradientInfo,
+	textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>,
+) {
 	let layer = modify_inputs.create_layer(id);
 
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
@@ -758,7 +906,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			modify_inputs.import = true;
 
 			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, gradient_info, &mut group_extents_map);
+				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, gradient_info, &mut group_extents_map, textpath_attrs);
 				child_extents_svg_order.push(extent);
 			}
 
@@ -783,9 +931,8 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			warn!("Skip image");
 		}
 		usvg::Node::Text(text) => {
-			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_color_set(Some(Color::BLACK));
+			log::info!("Importing node as Text: id={}", node.id());
+			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index, gradient_info, textpath_attrs);
 		}
 	}
 }
@@ -803,6 +950,7 @@ fn import_usvg_node_inner(
 	insert_index: usize,
 	gradient_info: &SvgGradientInfo,
 	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
+	textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>,
 ) -> u32 {
 	let layer = modify_inputs.create_layer(id);
 	modify_inputs.network_interface.move_layer_to_stack_for_import(layer, parent, insert_index, &[]);
@@ -812,7 +960,7 @@ fn import_usvg_node_inner(
 		usvg::Node::Group(group) => {
 			let mut child_extents: Vec<u32> = Vec::new();
 			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, gradient_info, group_extents_map);
+				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, gradient_info, group_extents_map, textpath_attrs);
 				child_extents.push(extent);
 			}
 			modify_inputs.layer_node = Some(layer);
@@ -826,18 +974,16 @@ fn import_usvg_node_inner(
 			group_extents_map.insert(layer, child_extents);
 			total_extent
 		}
-		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, layer, gradient_info);
-			0
-		}
 		usvg::Node::Image(_image) => {
 			warn!("Skip image");
 			0
 		}
 		usvg::Node::Text(text) => {
-			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_color_set(Some(Color::BLACK));
+			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index, gradient_info, textpath_attrs);
+			0
+		}
+		usvg::Node::Path(path) => {
+			import_usvg_path(modify_inputs, node, path, layer, gradient_info);
 			0
 		}
 	}
@@ -862,6 +1008,124 @@ fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	}
 	if let Some(stroke) = path.stroke() {
 		apply_usvg_stroke(stroke, modify_inputs, node_transform);
+	}
+}
+
+fn import_usvg_text(
+	modify_inputs: &mut ModifyInputsContext,
+	text: &usvg::Text,
+	transform: usvg::Transform,
+	layer: LayerNodeIdentifier,
+	_parent: LayerNodeIdentifier,
+	_insert_index: usize,
+	gradient_info: &SvgGradientInfo,
+	textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>,
+) {
+	log::info!("Importing usvg text node with {} chunks", text.chunks().len());
+
+	let chunks = text.chunks();
+	for (i, chunk) in chunks.iter().enumerate() {
+		let current_layer = if chunks.len() > 1 {
+			let new_id = NodeId::new();
+			let new_layer = modify_inputs.create_layer(new_id);
+			modify_inputs.network_interface.move_layer_to_stack_for_import(new_layer, layer, i, &[]);
+			new_layer
+		} else {
+			layer
+		};
+		modify_inputs.layer_node = Some(current_layer);
+
+		let font_family = chunk
+			.spans()
+			.first()
+			.and_then(|span| span.font().families().first().map(|f| f.to_string()))
+			.unwrap_or_else(|| graphene_std::consts::DEFAULT_FONT_FAMILY.to_string());
+		let font_style = graphene_std::consts::DEFAULT_FONT_STYLE.to_string();
+		let font = Font::new(font_family, font_style);
+
+		let font_size = chunk.spans().first().map(|s| s.font_size().get()).unwrap_or(24.0) as f64;
+		let letter_spacing = chunk.spans().first().map(|s| s.letter_spacing()).unwrap_or(0.0) as f64;
+
+		if let usvg::TextFlow::Path(text_path) = chunk.text_flow() {
+			let tp_id = text_path.id();
+			let tp_attrs = take_textpath_attrs(textpath_attrs, tp_id);
+			let path_subpaths = convert_tiny_skia_path(text_path.path());
+
+			let (start_offset, start_offset_percent) = match tp_attrs.start_offset.as_deref() {
+				Some(s) if s.ends_with('%') => (s.trim_end_matches('%').parse::<f64>().unwrap_or(0.0) / 100.0, true),
+				Some(s) => (s.parse::<f64>().unwrap_or(0.0), false),
+				None => (text_path.start_offset() as f64, false),
+			};
+
+			modify_inputs.insert_text_on_path(
+				chunk.text().to_string(),
+				font,
+				font_size,
+				letter_spacing,
+				path_subpaths,
+				start_offset,
+				start_offset_percent,
+				text_anchor(chunk.anchor()),
+				text_path_side(&tp_attrs),
+				text_path_method(&tp_attrs),
+				text_path_spacing(&tp_attrs),
+				tp_attrs.text_length,
+				text_length_adjust(&tp_attrs),
+				tp_attrs.path_length,
+				tp_attrs.direction.as_deref() == Some("rtl"),
+				usvg_transform(transform),
+				current_layer,
+			);
+			if let Some(fill) = chunk.spans().first().and_then(|span| span.fill()) {
+				apply_usvg_fill(fill, modify_inputs, gradient_info);
+			}
+		} else {
+			// Regular text fallback
+			modify_inputs.insert_text(chunk.text().to_string(), font, TypesettingConfig { font_size, ..Default::default() }, current_layer);
+			if let Some(fill) = chunk.spans().first().and_then(|span| span.fill()) {
+				apply_usvg_fill(fill, modify_inputs, gradient_info);
+			}
+		}
+	}
+}
+
+fn take_textpath_attrs(textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>, path_id: &str) -> TextPathAttrs {
+	textpath_attrs.get_mut(path_id).and_then(|attrs| (!attrs.is_empty()).then(|| attrs.remove(0))).unwrap_or_default()
+}
+
+fn text_anchor(anchor: usvg::TextAnchor) -> graphene_std::text::TextAnchor {
+	match anchor {
+		usvg::TextAnchor::Start => graphene_std::text::TextAnchor::Start,
+		usvg::TextAnchor::Middle => graphene_std::text::TextAnchor::Middle,
+		usvg::TextAnchor::End => graphene_std::text::TextAnchor::End,
+	}
+}
+
+fn text_path_side(attrs: &TextPathAttrs) -> graphene_std::text::TextPathSide {
+	match attrs.side.as_deref() {
+		Some("right") => graphene_std::text::TextPathSide::Right,
+		_ => graphene_std::text::TextPathSide::Left,
+	}
+}
+
+fn text_path_method(attrs: &TextPathAttrs) -> graphene_std::text::TextPathMethod {
+	match attrs.method.as_deref() {
+		Some("stretch") => graphene_std::text::TextPathMethod::Stretch,
+		_ => graphene_std::text::TextPathMethod::Align,
+	}
+}
+
+fn text_path_spacing(attrs: &TextPathAttrs) -> graphene_std::text::TextPathSpacing {
+	match attrs.spacing.as_deref() {
+		Some("auto") => graphene_std::text::TextPathSpacing::Auto,
+		_ => graphene_std::text::TextPathSpacing::Exact,
+	}
+}
+
+fn text_length_adjust(attrs: &TextPathAttrs) -> graphene_std::text::LengthAdjust {
+	match attrs.length_adjust.as_deref() {
+		Some("spacingAndGlyphs") => graphene_std::text::LengthAdjust::SpacingAndGlyphs,
+		_ => graphene_std::text::LengthAdjust::Spacing,
 	}
 }
 

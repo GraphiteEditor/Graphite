@@ -17,7 +17,8 @@ use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
-use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::text::{Font, LengthAdjust, TextAnchor, TextPathMethod, TextPathSide, TextPathSpacing, TypesettingConfig};
+use graphene_std::transform::Transform as _;
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
@@ -229,6 +230,98 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.insert_node(transform_id, transform, &[]);
 		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[], self.import);
 
+		let fill_id = NodeId::new();
+		self.network_interface.insert_node(fill_id, fill, &[]);
+		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[], self.import);
+	}
+
+	pub fn insert_text_on_path(
+		&mut self,
+		text: String,
+		font: Font,
+		font_size: f64,
+		character_spacing: f64,
+		path_subpaths: Vec<Subpath<PointId>>,
+		start_offset: f64,
+		start_offset_percent: bool,
+		text_anchor: TextAnchor,
+		side: TextPathSide,
+		method: TextPathMethod,
+		spacing: TextPathSpacing,
+		text_length: Option<f64>,
+		length_adjust: LengthAdjust,
+		path_length: Option<f64>,
+		rtl: bool,
+		transform: DAffine2,
+		layer: LayerNodeIdentifier,
+	) {
+		let font_resource_id = ResourceId::new();
+		let path_vector = Vector::from_subpaths(path_subpaths, true);
+		let path_modification = Box::new(VectorModification::create_from_vector(&path_vector));
+
+		// The Text On Path node takes its path as an `Item<Vector>`, which the Path node produces from a `VectorModification`.
+		let path_node = resolve_network_node_type("Path")
+			.expect("Path node does not exist")
+			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(path_modification), false))]);
+		let path_id = NodeId::new();
+		self.network_interface.insert_node(path_id, path_node, &[]);
+
+		let text_on_path_node = resolve_proto_node_type(graphene_std::text::text_on_path::IDENTIFIER)
+			.expect("Text On Path node does not exist")
+			.node_template_input_override([
+				Some(NodeInput::value(TaggedValue::String(text), false)),
+				Some(NodeInput::node(path_id, 0)),
+				Some(NodeInput::value(TaggedValue::Resource(font_resource_id), false)),
+				Some(NodeInput::value(TaggedValue::F64(font_size), false)),
+				Some(NodeInput::value(TaggedValue::F64(character_spacing), false)),
+				Some(NodeInput::value(TaggedValue::F64(start_offset), false)),
+				Some(NodeInput::value(TaggedValue::Bool(start_offset_percent), false)),
+				Some(NodeInput::value(TaggedValue::TextPathSide(side), false)),
+				Some(NodeInput::value(TaggedValue::TextAnchor(text_anchor), false)),
+				Some(NodeInput::value(TaggedValue::TextPathMethod(method), false)),
+				Some(NodeInput::value(TaggedValue::TextPathSpacing(spacing), false)),
+				Some(NodeInput::value(TaggedValue::Bool(text_length.is_some()), false)),
+				Some(NodeInput::value(TaggedValue::F64(text_length.unwrap_or(0.0)), false)),
+				Some(NodeInput::value(TaggedValue::LengthAdjust(length_adjust), false)),
+				Some(NodeInput::value(TaggedValue::Bool(path_length.is_some()), false)),
+				Some(NodeInput::value(TaggedValue::F64(path_length.unwrap_or(0.0)), false)),
+				Some(NodeInput::value(TaggedValue::Bool(rtl), false)),
+			]);
+
+		let text_on_path_id = NodeId::new();
+		self.network_interface.insert_node(text_on_path_id, text_on_path_node, &[]);
+		self.network_interface.move_node_to_chain_start(&text_on_path_id, layer, &[], self.import);
+
+		self.responses.add(DocumentMessage::Resource(ResourceMessage::AddFont { resource_id: font_resource_id, font }));
+
+		let (rotation, scale, skew): (f64, DVec2, f64) = transform.decompose_rotation_scale_skew();
+		let translation = transform.translation;
+		let rotation = rotation.to_degrees();
+		let skew = DVec2::new(skew.atan().to_degrees(), 0.);
+
+		let transform_node = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)
+			.expect("Transform node does not exist")
+			.node_template_input_override([
+				None,
+				Some(NodeInput::value(TaggedValue::DVec2(translation), false)),
+				Some(NodeInput::value(TaggedValue::F64(rotation), false)),
+				Some(NodeInput::value(TaggedValue::DVec2(scale), false)),
+				Some(NodeInput::value(TaggedValue::DVec2(skew), false)),
+			]);
+		let transform_id = NodeId::new();
+		self.network_interface.insert_node(transform_id, transform_node, &[]);
+		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[], self.import);
+
+		let stroke = resolve_proto_node_type(graphene_std::vector_nodes::stroke::IDENTIFIER)
+			.expect("Stroke node does not exist")
+			.default_node_template();
+		let stroke_id = NodeId::new();
+		self.network_interface.insert_node(stroke_id, stroke, &[]);
+		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[], self.import);
+
+		let fill = resolve_proto_node_type(graphene_std::vector_nodes::fill::IDENTIFIER)
+			.expect("Fill node does not exist")
+			.default_node_template();
 		let fill_id = NodeId::new();
 		self.network_interface.insert_node(fill_id, fill, &[]);
 		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[], self.import);

@@ -105,6 +105,64 @@ impl PathBuilder {
 		has_geometry
 	}
 
+	/// Draw a glyph outline in local space and bake the given final transform (position, rotation, scale)
+	/// directly into its geometry, appending it to the single-item vector list. Used by text-on-path
+	/// placement, where each glyph sits at an arbitrary position and angle along a path.
+	pub fn draw_glyph_with_transform(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, final_transform: DAffine2) {
+		let saved_origin = self.origin;
+		let saved_scale = self.scale;
+		self.origin = DVec2::ZERO;
+		self.scale = 1.;
+
+		let location_ref = LocationRef::new(normalized_coords);
+		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
+		glyph.draw(settings, self).unwrap();
+
+		self.origin = saved_origin;
+		self.scale = saved_scale;
+
+		for glyph_subpath in &mut self.glyph_subpaths {
+			if let Some(style_skew) = style_skew {
+				glyph_subpath.apply_transform(style_skew);
+			}
+			glyph_subpath.apply_transform(final_transform);
+		}
+
+		for subpath in self.glyph_subpaths.drain(..) {
+			self.vector_list.element_mut(0).unwrap().append_subpath(subpath, false);
+		}
+	}
+
+	/// Draw a glyph outline in local space and remap each of its points through the given function.
+	/// Used by text-on-path `method="stretch"`, which warps glyph outlines perpendicular to the path.
+	pub fn draw_glyph_with_mapping(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, mapping_function: impl Fn(DVec2) -> DVec2) {
+		let saved_origin = self.origin;
+		let saved_scale = self.scale;
+		self.origin = DVec2::ZERO;
+		self.scale = 1.;
+
+		let location_ref = LocationRef::new(normalized_coords);
+		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
+		glyph.draw(settings, self).unwrap();
+
+		self.origin = saved_origin;
+		self.scale = saved_scale;
+
+		let subpaths = std::mem::take(&mut self.glyph_subpaths);
+		for mut subpath in subpaths {
+			for manipulator_group in subpath.manipulator_groups_mut() {
+				let transform_point = |point: DVec2| {
+					let point = style_skew.map_or(point, |skew| skew.transform_point2(point));
+					mapping_function(point)
+				};
+				manipulator_group.anchor = transform_point(manipulator_group.anchor);
+				manipulator_group.in_handle = manipulator_group.in_handle.map(transform_point);
+				manipulator_group.out_handle = manipulator_group.out_handle.map(transform_point);
+			}
+			self.vector_list.element_mut(0).unwrap().append_subpath(subpath, false);
+		}
+	}
+
 	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, letter_tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
 		let mut run_x = glyph_run.offset() + x_offset;
 		let run_y = glyph_run.baseline();
