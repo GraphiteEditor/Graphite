@@ -100,36 +100,6 @@ pub(crate) fn analyze(parsed: &ParsedNodeFn) -> Option<NodeModel> {
 	Some(NodeModel { class, dialect: dialect(parsed) })
 }
 
-/// The per-field binding role, resolved once per regular field from the node
-/// class and field shape. Drives the eval bindings and the lazy-edge input
-/// types. The `lend` and `reads` axes stay field properties the value arms of
-/// `kernel_params`/`call_args`/`value_args` consult, since they cross roles.
-#[derive(Clone, Copy)]
-pub(crate) enum InputRole {
-	RecordCarrier,
-	FlipCarrier,
-	ReadingSecondary,
-	LendBorrow,
-	RecordValue,
-	PlainValue,
-	DeriveRoutingSource,
-	OpaqueRecordEdge,
-	FlipRawLazyEdge,
-	FlipLazy,
-	RawLazy,
-	Lazy,
-}
-
-impl InputRole {
-	/// A role that copies an element out of a record edge, so its record frame
-	/// must be reclaimed after the read. The step lowering wraps such a bind in
-	/// `mark`/`rewind`, making the stack discipline structural rather than
-	/// hand-threaded through each read-out arm.
-	pub(crate) fn reads_out(self) -> bool {
-		matches!(self, InputRole::ReadingSecondary | InputRole::RecordValue)
-	}
-}
-
 /// The tail form of a node's eval, selected from its class and dialect: forward
 /// the kernel's own record, assemble a record (io or flip carrier), or spawn a
 /// source and lift its completion.

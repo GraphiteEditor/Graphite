@@ -16,6 +16,7 @@ mod ir;
 mod metadata;
 pub(crate) use classify::*;
 use entries::entries_tokens;
+use ir::{LazyBinding, ValueBinding};
 use metadata::generate_node_input_references;
 
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
@@ -886,39 +887,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let routing_source = |ty: &Type| matches!((&routing, ty), (Some(routing), Type::Path(path)) if path.path.get_ident() == Some(&routing.generic));
 
-	let field_role = |index: usize, field: &ParsedField| match &field.ty {
-		ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => {
-			if record.is_some() && !skips_carrier && index == 0 {
-				InputRole::RecordCarrier
-			} else if carrier_flip && index == 0 {
-				InputRole::FlipCarrier
-			} else if flip && lend.is_some() {
-				InputRole::LendBorrow
-			} else if record.is_some() && !field.attribute_reads.is_empty() {
-				InputRole::ReadingSecondary
-			} else if flip || (routing.is_some() && !routing_source(ty)) {
-				InputRole::RecordValue
-			} else {
-				InputRole::PlainValue
-			}
-		}
-		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
-			if derive_routing && routing_source(output_type) {
-				InputRole::DeriveRoutingSource
-			} else if flip && raw_lazy {
-				InputRole::FlipRawLazyEdge
-			} else if flip {
-				InputRole::FlipLazy
-			} else if opaque && raw_lazy && is_record_value(output_type) {
-				InputRole::OpaqueRecordEdge
-			} else if raw_lazy {
-				InputRole::RawLazy
-			} else {
-				InputRole::Lazy
-			}
-		}
-	};
-	let roles: Vec<InputRole> = regular_fields.iter().enumerate().map(|(index, field)| field_role(index, field)).collect();
+	let node = crate::codegen::ir::build(parsed);
 
 	let lazy_read_out = |field: &ParsedField, output_type: &Type| {
 		let attr_tys = field.attribute_reads.iter().map(|read| {
@@ -950,26 +919,25 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
 					let source_generic = format_ident!("__Source{index}");
-					match roles[index] {
-						InputRole::DeriveRoutingSource => quote!(#pat: #core_types::record::RecordLazyInput<'_, '__record, #source_generic>),
-						InputRole::OpaqueRecordEdge => quote!(#pat: &#core_types::record::RecordEdgeInput<'_, #source_generic>),
-						InputRole::FlipRawLazyEdge => {
+					match (ir::lazy_binding(&node, index), raw_lazy) {
+						(LazyBinding::DeriveRouting, _) => quote!(#pat: #core_types::record::RecordLazyInput<'_, '__record, #source_generic>),
+						(LazyBinding::OpaqueRecord, _) => quote!(#pat: &#core_types::record::RecordEdgeInput<'_, #source_generic>),
+						(LazyBinding::Element, true) => {
 							let out = lazy_read_out(field, output_type);
 							quote!(#pat: &#core_types::record::ElementEdge<'_, #out, #source_generic>)
 						}
-						InputRole::FlipLazy => {
+						(LazyBinding::Element, false) => {
 							let out = lazy_read_out(field, output_type);
 							quote!(#pat: #core_types::record::ElementLazyInput<'_, #out, #source_generic>)
 						}
-						InputRole::RawLazy => {
+						(LazyBinding::Plain, true) => {
 							let bound = lazy_bound(output_type);
 							quote!(#pat: &impl #bound)
 						}
-						InputRole::Lazy => {
+						(LazyBinding::Plain, false) => {
 							let bound = lazy_bound(output_type);
 							quote!(#pat: #core_types::node::LazyInput<'_, impl #bound>)
 						}
-						_ => unreachable!("value role on a lazy input"),
 					}
 				}
 			}
@@ -1078,111 +1046,103 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let bind_body = |index: usize, field: &ParsedField| {
 		let name = &field.pat_ident.ident;
-		let regular_ty = || match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
-			_ => unreachable!("value role on a lazy input"),
-		};
-		let node_output = || match &field.ty {
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type.clone(),
-			_ => unreachable!("lazy role on a value input"),
-		};
-		match roles[index] {
-			// A carrier primary evaluates beyond the node's own frame (in the
-			// record/flip tail), and a raw poll edge is threaded straight through,
-			// so none bind here.
-			InputRole::RecordCarrier | InputRole::FlipCarrier | InputRole::RawLazy => quote!(),
-			// A reading secondary input claims a record edge: the element and
-			// the declared reads copy out right after its eval, before any
-			// later sibling eval can reuse the record stack.
-			InputRole::ReadingSecondary => {
-				let ty = regular_ty();
-				let slot = format_ident!("__in_{index}");
-				let rec_local = format_ident!("__rec_{index}");
-				let bindings: Vec<TokenStream2> = reads_of(index).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(#rec_local))).collect();
-				quote! {
+		match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match ir::value_binding(&node, index) {
+				// A carrier primary evaluates beyond the node's own frame (in the
+				// record/flip tail), so it does not bind here.
+				ValueBinding::Carrier => quote!(),
+				// A reading secondary input claims a record edge: the element and
+				// the declared reads copy out right after its eval, before any
+				// later sibling eval can reuse the record stack.
+				ValueBinding::ReadingSecondary => {
+					let slot = format_ident!("__in_{index}");
+					let rec_local = format_ident!("__rec_{index}");
+					let bindings: Vec<TokenStream2> = reads_of(index).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(#rec_local))).collect();
+					quote! {
+						let #name = match __cell.eval_input(#index, &self.#name, __input) {
+							Ok(value) => value,
+							Err(interrupt) => return interrupt.into(),
+						};
+						let #rec_local = self.#slot.rec(&#name);
+						#(#bindings)*
+						let #name: #ty = unsafe { #core_types::record::read_element(#rec_local) };
+					}
+				}
+				// The lend input's frame survives on the record stack until this
+				// node's frame is reclaimed, so the borrow stays valid in place.
+				ValueBinding::Lend => {
+					let slot = format_ident!("__in_{index}");
+					let record_local = format_ident!("__record_{index}");
+					quote! {
+						let #record_local = match __cell.eval_input(#index, &self.#name, __input) {
+							Ok(value) => value,
+							Err(interrupt) => return interrupt.into(),
+						};
+						let #name = unsafe { #core_types::record::borrow_element::<#ty>(self.#slot.rec(&#record_local)) };
+					}
+				}
+				// A flip value or a routing non-source value rides a record edge; the
+				// element copies out into `name`. The mark/rewind that reclaims the
+				// record's frame is applied by the step lowering (see `reads_out`).
+				ValueBinding::RecordElement => {
+					let slot = format_ident!("__in_{index}");
+					quote! {
+						let #name = match __cell.eval_input(#index, &self.#name, __input) {
+							Ok(value) => value,
+							Err(interrupt) => return interrupt.into(),
+						};
+						let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
+					}
+				}
+				ValueBinding::Plain => quote! {
 					let #name = match __cell.eval_input(#index, &self.#name, __input) {
 						Ok(value) => value,
 						Err(interrupt) => return interrupt.into(),
 					};
-					let #rec_local = self.#slot.rec(&#name);
-					#(#bindings)*
-					let #name: #ty = unsafe { #core_types::record::read_element(#rec_local) };
-				}
-			}
-			// The lend input's frame survives on the record stack until this
-			// node's frame is reclaimed, so the borrow stays valid in place.
-			InputRole::LendBorrow => {
-				let ty = regular_ty();
-				let slot = format_ident!("__in_{index}");
-				let record_local = format_ident!("__record_{index}");
-				quote! {
-					let #record_local = match __cell.eval_input(#index, &self.#name, __input) {
-						Ok(value) => value,
-						Err(interrupt) => return interrupt.into(),
-					};
-					let #name = unsafe { #core_types::record::borrow_element::<#ty>(self.#slot.rec(&#record_local)) };
-				}
-			}
-			// A flip value or a routing non-source value rides a record edge; the
-			// element copies out into `name`. The mark/rewind that reclaims the
-			// record's frame is applied by the step lowering (see `reads_out`).
-			InputRole::RecordValue => {
-				let ty = regular_ty();
-				let slot = format_ident!("__in_{index}");
-				quote! {
-					let #name = match __cell.eval_input(#index, &self.#name, __input) {
-						Ok(value) => value,
-						Err(interrupt) => return interrupt.into(),
-					};
-					let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
-				}
-			}
-			InputRole::PlainValue => quote! {
-				let #name = match __cell.eval_input(#index, &self.#name, __input) {
-					Ok(value) => value,
-					Err(interrupt) => return interrupt.into(),
-				};
+				},
 			},
-			InputRole::DeriveRoutingSource => quote! {
-				let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index);
-			},
-			InputRole::FlipRawLazyEdge => {
-				let output_type = node_output();
-				let slot = format_ident!("__in_{index}");
-				match field.attribute_reads.is_empty() {
-					true => quote! {
-						let #name = #core_types::record::ElementEdge::<#output_type, _>::new(&self.#name, &self.#slot);
-					},
-					false => {
-						let arr = format_ident!("__reads_{index}");
-						let read_fn = format_ident!("__{}_read_{}", fn_name, index);
-						quote! {
-							let #name = #core_types::record::ElementEdge::with_reads(&self.#name, &self.#slot, &self.#arr, self::#read_fn);
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => match (ir::lazy_binding(&node, index), raw_lazy) {
+				// A raw poll edge is threaded straight through, so it does not bind here.
+				(LazyBinding::Plain, true) => quote!(),
+				(LazyBinding::DeriveRouting, _) => quote! {
+					let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index);
+				},
+				(LazyBinding::Element, true) => {
+					let slot = format_ident!("__in_{index}");
+					match field.attribute_reads.is_empty() {
+						true => quote! {
+							let #name = #core_types::record::ElementEdge::<#output_type, _>::new(&self.#name, &self.#slot);
+						},
+						false => {
+							let arr = format_ident!("__reads_{index}");
+							let read_fn = format_ident!("__{}_read_{}", fn_name, index);
+							quote! {
+								let #name = #core_types::record::ElementEdge::with_reads(&self.#name, &self.#slot, &self.#arr, self::#read_fn);
+							}
 						}
 					}
 				}
-			}
-			InputRole::FlipLazy => {
-				let output_type = node_output();
-				let slot = format_ident!("__in_{index}");
-				match field.attribute_reads.is_empty() {
-					true => quote! {
-						let #name = #core_types::record::ElementLazyInput::<#output_type, _>::new(&self.#name, &__cell, #index, &self.#slot);
-					},
-					false => {
-						let arr = format_ident!("__reads_{index}");
-						let read_fn = format_ident!("__{}_read_{}", fn_name, index);
-						quote! {
-							let #name = #core_types::record::ElementLazyInput::with_reads(&self.#name, &__cell, #index, &self.#slot, &self.#arr, self::#read_fn);
+				(LazyBinding::Element, false) => {
+					let slot = format_ident!("__in_{index}");
+					match field.attribute_reads.is_empty() {
+						true => quote! {
+							let #name = #core_types::record::ElementLazyInput::<#output_type, _>::new(&self.#name, &__cell, #index, &self.#slot);
+						},
+						false => {
+							let arr = format_ident!("__reads_{index}");
+							let read_fn = format_ident!("__{}_read_{}", fn_name, index);
+							quote! {
+								let #name = #core_types::record::ElementLazyInput::with_reads(&self.#name, &__cell, #index, &self.#slot, &self.#arr, self::#read_fn);
+							}
 						}
 					}
 				}
-			}
-			InputRole::OpaqueRecordEdge => quote! {
-				let #name = #core_types::record::RecordEdgeInput::new(&self.#name, &self.__layout);
-			},
-			InputRole::Lazy => quote! {
-				let #name = #core_types::node::LazyInput::new(&self.#name, &__cell, #index);
+				(LazyBinding::OpaqueRecord, _) => quote! {
+					let #name = #core_types::record::RecordEdgeInput::new(&self.#name, &self.__layout);
+				},
+				(LazyBinding::Plain, false) => quote! {
+					let #name = #core_types::node::LazyInput::new(&self.#name, &__cell, #index);
+				},
 			},
 		}
 	};
@@ -1209,9 +1169,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			// evaluated value.
 			ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) if !flip => quote!(&#name),
 			ParsedFieldType::Regular(_) => quote!(#name),
-			ParsedFieldType::Node(_) => match roles[index] {
-				InputRole::FlipRawLazyEdge | InputRole::OpaqueRecordEdge => quote!(&#name),
-				InputRole::RawLazy => quote!(&self.#name),
+			ParsedFieldType::Node(_) => match (ir::lazy_binding(&node, index), raw_lazy) {
+				(LazyBinding::Element, true) | (LazyBinding::OpaqueRecord, _) => quote!(&#name),
+				(LazyBinding::Plain, true) => quote!(&self.#name),
 				_ => quote!(#name),
 			},
 		}
@@ -1869,7 +1829,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let eval_body = eval_steps.iter().map(|step| match step {
 		EvalStep::Bind(index, field) => {
 			let body = bind_body(*index, field);
-			match roles[*index].reads_out() {
+			let reads_out = matches!(&field.ty, ParsedFieldType::Regular(_)) && ir::value_binding(&node, *index).reads_out();
+			match reads_out {
 				false => body,
 				true => {
 					let mark = format_ident!("__mark_{index}");
