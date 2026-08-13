@@ -1,6 +1,6 @@
 use core_types::list::{Item, List};
 use core_types::registry::types::{Angle, PixelLength, PixelSize};
-use core_types::{CacheHash, Ctx};
+use core_types::{CacheHash, Ctx, ExtractFootprint};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
@@ -402,19 +402,29 @@ fn grid<T: GridSpacing>(
 
 #[node_macro::node(category("Vector: Shape"), name("Aperiodic Tiling"))]
 fn aperiodic_tiling(
-	_: impl Ctx,
+	ctx: impl Ctx + ExtractFootprint,
 	_primary: (),
 	#[unit(" px")]
 	#[default(10.)]
-	#[hard_min(1.)]
-	scale: f64,
+	#[hard(1..)]
+	scale: Item<f64>,
 	#[default(3)]
-	#[hard_min(1.)]
-	#[hard_max(6.)]
-	levels: u32,
-) -> Table<Vector> {
-	let vector = crate::aperiodic_tiling::generate_hat_tiling(levels, scale, None);
-	Table::new_from_element(vector)
+	#[hard(1..6)]
+	levels: Item<u32>,
+) -> Item<Vector> {
+	let (scale, levels) = (*scale.element(), *levels.element());
+
+	let viewport_bounds = ctx
+		.try_footprint()
+		.filter(|footprint| footprint.resolution.x > 0 && footprint.resolution.y > 0)
+		.map(|footprint| {
+			let bounds = footprint.viewport_bounds_in_local_space();
+			[bounds.start, bounds.end]
+		})
+		.filter(|[min, max]| min.is_finite() && max.is_finite());
+
+	let vector = crate::aperiodic_tiling::generate_hat_tiling(levels, scale, viewport_bounds);
+	Item::new_from_element(vector)
 }
 
 #[cfg(test)]
@@ -489,5 +499,33 @@ mod tests {
 		);
 		assert!(!qr.element().point_domain.ids().is_empty());
 		assert!(!qr.element().segment_domain.ids().is_empty());
+	}
+
+	#[test]
+	fn aperiodic_tiling_test() {
+		use core_types::transform::{Footprint, RenderQuality};
+		use core_types::{Context, OwnedContextImpl};
+		use glam::{DAffine2, UVec2};
+		use std::sync::Arc;
+
+		let ctx = |footprint: Option<Footprint>| -> Context {
+			let mut context = OwnedContextImpl::empty();
+			if let Some(footprint) = footprint {
+				context = context.with_footprint(footprint);
+			}
+			Some(Arc::new(context))
+		};
+
+		let full = aperiodic_tiling(ctx(None), (), item(10.), item(3_u32));
+		assert!(!full.element().region_domain.ids().is_empty());
+
+		let viewport = Footprint {
+			transform: DAffine2::IDENTITY,
+			resolution: UVec2::new(100, 100),
+			quality: RenderQuality::Full,
+		};
+		let bounded = aperiodic_tiling(ctx(Some(viewport)), (), item(10.), item(3_u32));
+		assert!(!bounded.element().region_domain.ids().is_empty());
+		assert!(bounded.element().region_domain.ids().len() < full.element().region_domain.ids().len());
 	}
 }

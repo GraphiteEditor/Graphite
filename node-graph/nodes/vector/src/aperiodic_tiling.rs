@@ -52,17 +52,8 @@ fn intersect(p1: DVec2, q1: DVec2, p2: DVec2, q2: DVec2) -> DVec2 {
 	p1 + ua * (q1 - p1)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum TileLabel {
-	H1,
-	H,
-	T,
-	P,
-	F,
-}
-
 enum TileType {
-	Hat(TileLabel),
+	Hat,
 	Meta(MetaTile),
 }
 
@@ -94,7 +85,7 @@ impl MetaTile {
 		let (xf, tile) = &self.children[n];
 		let outline = match tile.as_ref() {
 			TileType::Meta(m) => &m.outline,
-			TileType::Hat(_) => {
+			TileType::Hat => {
 				log::warn!("eval_child called on Hat leaf");
 				return DVec2::ZERO;
 			}
@@ -109,7 +100,7 @@ impl MetaTile {
 		let (xf, tile) = &self.children[n];
 		match tile.as_ref() {
 			TileType::Meta(m) => (xf, &m.outline),
-			TileType::Hat(_) => {
+			TileType::Hat => {
 				log::warn!("child_outline called on Hat leaf");
 				(xf, &[])
 			}
@@ -136,11 +127,11 @@ fn build_init_metatiles() -> (Rc<TileType>, Rc<TileType>, Rc<TileType>, Rc<TileT
 	let hr3 = 3.0_f64.sqrt() / 2.0;
 	let hat = hat_outline();
 
-	let h1_rc = Rc::new(TileType::Hat(TileLabel::H1));
-	let h_rc = Rc::new(TileType::Hat(TileLabel::H));
-	let t_rc = Rc::new(TileType::Hat(TileLabel::T));
-	let p_rc = Rc::new(TileType::Hat(TileLabel::P));
-	let f_rc = Rc::new(TileType::Hat(TileLabel::F));
+	let h1_rc = Rc::new(TileType::Hat);
+	let h_rc = Rc::new(TileType::Hat);
+	let t_rc = Rc::new(TileType::Hat);
+	let p_rc = Rc::new(TileType::Hat);
+	let f_rc = Rc::new(TileType::Hat);
 
 	let h_outline = vec![
 		DVec2::new(0., 0.),
@@ -341,9 +332,9 @@ fn construct_metatiles(patch: &MetaTile) -> (Rc<TileType>, Rc<TileType>, Rc<Tile
 }
 
 // Recursive hat collection
-fn collect_hat_transforms(tile: &TileType, parent_xform: &DAffine2, out: &mut Vec<(DAffine2, TileLabel)>, viewport_bounds: &Option<[DVec2; 2]>) {
+fn collect_hat_transforms(tile: &TileType, parent_xform: &DAffine2, out: &mut Vec<DAffine2>, viewport_bounds: &Option<[DVec2; 2]>) {
 	match tile {
-		TileType::Hat(label) => out.push((*parent_xform, *label)),
+		TileType::Hat => out.push(*parent_xform),
 		TileType::Meta(meta) => {
 			if let Some([vp_min, vp_max]) = viewport_bounds {
 				let global_centroid = parent_xform.transform_point2(DVec2::ZERO);
@@ -385,7 +376,7 @@ pub fn generate_hat_tiling(levels: u32, scale: f64, viewport_bounds: Option<[DVe
 	let hat = hat_outline();
 	let mut vector = Vector::default();
 
-	for (xf, _) in &transforms {
+	for xf in &transforms {
 		let mut vertices = [DVec2::ZERO; HAT_VERTEX_COUNT];
 		for i in 0..HAT_VERTEX_COUNT {
 			vertices[i] = xf.transform_point2(hat[i]) * scale;
