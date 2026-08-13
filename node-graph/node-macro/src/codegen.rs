@@ -1670,7 +1670,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => quote!(),
 	};
 
-	let entries = entries_tokens(parsed, &model.class, &struct_name, &data_field_generic_idents, &regular_fields);
+	let entries = entries_tokens(parsed, &struct_name, &data_field_generic_idents, &regular_fields);
 	let cfg = crate::shader_nodes::modify_cfg(&parsed.attributes);
 
 	let record_wiring = record.as_ref().map(|shape| {
