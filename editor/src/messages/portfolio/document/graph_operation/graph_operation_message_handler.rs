@@ -910,7 +910,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		}
 		usvg::Node::Text(text) => {
 			log::info!("Importing node as Text: id={}", node.id());
-			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index, textpath_attrs);
+			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index, gradient_info, textpath_attrs);
 		}
 	}
 }
@@ -957,7 +957,7 @@ fn import_usvg_node_inner(
 			0
 		}
 		usvg::Node::Text(text) => {
-			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index, textpath_attrs);
+			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index, gradient_info, textpath_attrs);
 			0
 		}
 		usvg::Node::Path(path) => {
@@ -996,6 +996,7 @@ fn import_usvg_text(
 	layer: LayerNodeIdentifier,
 	_parent: LayerNodeIdentifier,
 	_insert_index: usize,
+	gradient_info: &SvgGradientInfo,
 	textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>,
 ) {
 	log::info!("Importing usvg text node with {} chunks", text.chunks().len());
@@ -1054,13 +1055,13 @@ fn import_usvg_text(
 				current_layer,
 			);
 			if let Some(fill) = chunk.spans().first().and_then(|span| span.fill()) {
-				apply_usvg_fill(fill, modify_inputs, &SvgGradientInfo::default());
+				apply_usvg_fill(fill, modify_inputs, gradient_info);
 			}
 		} else {
 			// Regular text fallback
 			modify_inputs.insert_text(chunk.text().to_string(), font, TypesettingConfig { font_size, ..Default::default() }, current_layer);
 			if let Some(fill) = chunk.spans().first().and_then(|span| span.fill()) {
-				apply_usvg_fill(fill, modify_inputs, &SvgGradientInfo::default());
+				apply_usvg_fill(fill, modify_inputs, gradient_info);
 			}
 		}
 	}

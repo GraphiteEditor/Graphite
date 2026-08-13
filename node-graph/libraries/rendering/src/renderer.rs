@@ -1405,7 +1405,8 @@ impl Render for List<Vector> {
 
 				let font_style_css = escape_xml_attr(&format!("font-family: {}; font-size: {}px; font-style: {};", meta.font_family, meta.font_size, meta.font_style));
 				let start_offset_attr = if meta.start_offset_percent { format!("{}%", meta.start_offset * 100.0) } else { format!("{}", meta.start_offset) };
-				let matrix = format_transform_matrix(self.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index));
+				let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+				let matrix = format_transform_matrix(item_transform);
 				let transform_attr = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
 				let text_length_attr = meta.text_length.map(|tl| format!(r#" textLength="{tl}" lengthAdjust="{}""#, meta.length_adjust)).unwrap_or_default();
 				let side_attr = if meta.side == "right" { r#" side="right""# } else { "" };
@@ -1416,7 +1417,17 @@ impl Render for List<Vector> {
 				let path_length_attr = meta.path_length.map(|pl| format!(r#" pathLength="{pl}""#)).unwrap_or_default();
 				let text = escape_xml_text(&meta.text);
 
-				render.leaf_node(format!(r##"<text style="{font_style_css} {anchor_style}"{transform_attr}{direction_attr}><textPath href="#{path_id}" startOffset="{start_offset_attr}" method="{method}" spacing="{spacing}"{side_attr}{text_length_attr}{path_length_attr}>{text}</textPath></text>"##));
+				// The text element carries the same paint the outlines would: the fill (and its opacity) set via a Fill node.
+				let fill_attr = graphic_list_at(self, index, ATTR_FILL)
+					.as_deref()
+					.map(|list| list.render(&mut render.svg_defs, item_transform, item_transform, item_transform, DAffine2::IDENTITY, &render_params, PaintTarget::Fill))
+					.unwrap_or_default();
+				let opacity_attr = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+				let opacity_fill_attr = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+				let opacity = opacity_attr * opacity_fill_attr;
+				let opacity_attr_str = if opacity < 1. { format!(r#" opacity="{opacity}""#) } else { String::new() };
+
+				render.leaf_node(format!(r##"<text style="{font_style_css} {anchor_style}"{transform_attr}{direction_attr}{opacity_attr_str}{fill_attr}><textPath href="#{path_id}" startOffset="{start_offset_attr}" method="{method}" spacing="{spacing}"{side_attr}{text_length_attr}{path_length_attr}>{text}</textPath></text>"##));
 				continue;
 			}
 
