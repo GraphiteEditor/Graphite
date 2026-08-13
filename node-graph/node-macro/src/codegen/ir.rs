@@ -236,3 +236,165 @@ pub(crate) enum Effect {
 	Progressive,
 	AsyncSource,
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::codegen::classify::{Class, analyze};
+	use crate::parsing::parse_node_fn;
+	use proc_macro2::TokenStream as TokenStream2;
+	use quote::{ToTokens, quote};
+
+	/// The layout facts every emitter expresses, derived from either the intent
+	/// IR or the resolved class, so the two paths can be checked equal.
+	#[derive(Debug, PartialEq)]
+	struct Facts {
+		sources: Vec<usize>,
+		carried: bool,
+		writes: Vec<String>,
+		removes: Vec<String>,
+		delta: i8,
+	}
+
+	fn markers<'a>(types: impl IntoIterator<Item = &'a Type>) -> Vec<String> {
+		types.into_iter().map(|ty| ty.to_token_stream().to_string()).collect()
+	}
+
+	fn facts_from_ir(node: &Node) -> Facts {
+		let carried = match &node.output.shape.element {
+			Element::Opaque => true,
+			Element::Generic(_) => node.monomorphizations.is_empty(),
+			Element::Concrete(_) => false,
+		};
+		let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth as i8);
+		Facts {
+			sources: node.inputs.iter().enumerate().filter(|(_, input)| input.subject).map(|(index, _)| index).collect(),
+			carried,
+			writes: markers(node.output.shape.attrs.iter().map(|attr| &attr.marker)),
+			removes: markers(node.output.removes.iter().map(|attr| &attr.marker)),
+			delta: node.output.shape.depth as i8 - subject_depth,
+		}
+	}
+
+	fn facts_from_class(class: &Class, fields: &[&ParsedField]) -> Facts {
+		let source_ty = |field: &ParsedField| match &field.ty {
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type.clone(),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
+		};
+		match class {
+			Class::Flip { carrier } => Facts {
+				sources: if *carrier { vec![0] } else { vec![] },
+				carried: false,
+				writes: vec![],
+				removes: vec![],
+				delta: 0,
+			},
+			Class::Opaque => {
+				let record = fields.iter().position(|field| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_record_value(output_type)));
+				Facts {
+					sources: record.into_iter().collect(),
+					carried: true,
+					writes: vec![],
+					removes: vec![],
+					delta: 0,
+				}
+			}
+			Class::Routing(routing) => Facts {
+				sources: fields.iter().enumerate().filter(|(_, field)| bare_ident(&source_ty(field)) == Some(&routing.generic)).map(|(index, _)| index).collect(),
+				carried: true,
+				writes: vec![],
+				removes: vec![],
+				delta: 0,
+			},
+			Class::RecordIo(shape) => Facts {
+				sources: if shape.skips_carrier() { vec![] } else { vec![0] },
+				carried: shape.carries_element(),
+				writes: markers(&shape.write_markers),
+				removes: markers(&shape.removes),
+				delta: 0,
+			},
+		}
+	}
+
+	fn assert_bridge(attr: TokenStream2, item: TokenStream2) -> Node {
+		let mut parsed = parse_node_fn(attr, item).unwrap();
+		parsed.replace_impl_trait_in_input();
+		let model = analyze(&parsed).expect("representative resolves to a class");
+		let fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
+		let node = build(&parsed);
+		assert_eq!(facts_from_ir(&node), facts_from_class(&model.class, &fields));
+		node
+	}
+
+	#[test]
+	fn bridge_flip_concrete() {
+		assert_bridge(quote!(category("")), quote!(fn negate(_: impl Ctx, x: f64) -> f64 { -x }));
+	}
+
+	#[test]
+	fn bridge_flip_generic() {
+		assert_bridge(
+			quote!(category("")),
+			quote! {
+				fn add<A: core::ops::Add<B>, B>(_: impl Ctx, #[implementations(f64, u32)] augend: A, #[implementations(f64, u32)] addend: B) -> <A as core::ops::Add<B>>::Output { augend + addend }
+			},
+		);
+	}
+
+	#[test]
+	fn bridge_record_write() {
+		assert_bridge(quote!(category("")), quote!(fn set_opacity(_: impl Ctx, val: f64) -> (f64, Attr<Opacity>) { (val, Attr(1.)) }));
+	}
+
+	#[test]
+	fn bridge_record_remove() {
+		assert_bridge(quote!(category("")), quote!(fn strip(_: impl Ctx, val: f64) -> (f64, RemoveAttr<Opacity>) { (val, RemoveAttr) }));
+	}
+
+	#[test]
+	fn bridge_record_fresh() {
+		assert_bridge(quote!(category("")), quote!(fn make(_: impl Ctx, _: (), fill: f64) -> (f64, Attr<Opacity>) { (fill, Attr(1.)) }));
+	}
+
+	#[test]
+	fn bridge_routing() {
+		assert_bridge(
+			quote!(category("")),
+			quote! {
+				fn switch<T>(_: impl Ctx, condition: bool, off: impl Node<(), Output = T>, on: impl Node<(), Output = T>) -> T { if condition { on.eval(()) } else { off.eval(()) } }
+			},
+		);
+	}
+
+	#[test]
+	fn bridge_opaque() {
+		assert_bridge(
+			quote!(category("")),
+			quote! {
+				fn memo<'e>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>, Output = RecordValue<'e>>) -> GPoll<RecordValue<'e>> { content.eval(()) }
+			},
+		);
+	}
+
+	#[test]
+	fn monomorphizations_key_by_generic() {
+		let node = assert_bridge(
+			quote!(category("")),
+			quote! {
+				fn add<A: core::ops::Add<B>, B>(_: impl Ctx, #[implementations(f64, u32)] augend: A, #[implementations(f64, u32)] addend: B) -> <A as core::ops::Add<B>>::Output { augend + addend }
+			},
+		);
+		let rows: Vec<Vec<(String, String)>> = node
+			.monomorphizations
+			.iter()
+			.map(|row| row.assignments.iter().map(|(generic, ty)| (generic.to_string(), ty.to_token_stream().to_string())).collect())
+			.collect();
+		assert_eq!(
+			rows,
+			vec![
+				vec![("A".to_string(), "f64".to_string()), ("B".to_string(), "f64".to_string())],
+				vec![("A".to_string(), "u32".to_string()), ("B".to_string(), "u32".to_string())],
+			]
+		);
+	}
+}
