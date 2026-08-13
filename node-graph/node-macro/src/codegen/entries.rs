@@ -419,7 +419,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, class: &Class, struct_name: &Ident,
 	}
 }
 
-fn implementation_rows(parsed: &ParsedNodeFn, regular_fields: &[&ParsedField]) -> Option<Vec<Vec<Type>>> {
+pub(crate) fn implementation_rows(parsed: &ParsedNodeFn, regular_fields: &[&ParsedField]) -> Option<Vec<Vec<Type>>> {
 	let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
 	let open_generics: Vec<&Ident> = parsed
 		.fn_generics
