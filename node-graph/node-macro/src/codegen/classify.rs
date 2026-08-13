@@ -166,11 +166,11 @@ pub(crate) fn lazy_read_fields<'a>(regular_fields: &[&'a ParsedField]) -> Vec<(u
 
 /// The indices (into the unit-skipped regular fields) of value inputs whose
 /// reads resolve against their own wire rather than the carrier's.
-pub(crate) fn reading_secondary_indices(regular_fields: &[&ParsedField], shape: &RecordShape) -> Vec<usize> {
+pub(crate) fn reading_secondary_indices(regular_fields: &[&ParsedField], skips_carrier: bool) -> Vec<usize> {
 	regular_fields
 		.iter()
 		.enumerate()
-		.filter(|(index, field)| !field.attribute_reads.is_empty() && (shape.skips_carrier() || *index != 0))
+		.filter(|(index, field)| !field.attribute_reads.is_empty() && (skips_carrier || *index != 0))
 		.map(|(index, _)| index)
 		.collect()
 }
