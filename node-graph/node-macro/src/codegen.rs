@@ -12,6 +12,7 @@ use crate::shader_nodes::{ShaderCodegen, ShaderTokens};
 
 mod classify;
 mod entries;
+mod ir;
 mod metadata;
 pub(crate) use classify::*;
 use entries::entries_tokens;
