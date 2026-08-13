@@ -393,10 +393,11 @@ fn validate_primary_input_expose(parsed: &ParsedNodeFn) {
 fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 	let has_skip_impl = parsed.attributes.skip_impl;
 	let routing = crate::codegen::routing_io(parsed);
-	let record_token = crate::codegen::record_shape(parsed).and_then(|shape| match shape.carrier {
-		crate::codegen::RecordCarrier::Token(token) => Some(token),
+	let node = crate::codegen::ir::build(parsed);
+	let record_token = match (crate::codegen::ir::node_kind(&node), &node.output.shape.element) {
+		(crate::codegen::ir::NodeKind::RecordIo, crate::codegen::ir::Element::Generic(ident)) => Some(ident.clone()),
 		_ => None,
-	});
+	};
 	let opaque_record_generic = |ty: &Type| {
 		let ident = match ty {
 			Type::Path(path) => path.path.get_ident(),

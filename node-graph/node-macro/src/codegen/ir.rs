@@ -391,7 +391,7 @@ pub(crate) enum Effect {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::codegen::classify::{Class, Dialect, analyze, context_param, dialect};
+	use crate::codegen::classify::{Dialect, analyze, context_param, dialect, record_flip, record_opaque, unbounded_generic};
 	use crate::parsing::parse_node_fn;
 	use proc_macro2::TokenStream as TokenStream2;
 	use quote::{ToTokens, quote};
@@ -427,53 +427,87 @@ mod tests {
 		}
 	}
 
-	fn facts_from_class(class: &Class, fields: &[&ParsedField]) -> Facts {
+	/// The kinds a supported node resolves to, from the classify predicates in
+	/// `analyze`'s order; the frozen oracle the IR's `node_kind` must reproduce.
+	struct Kinds {
+		record_io: bool,
+		routing: bool,
+		flip: bool,
+		opaque: bool,
+	}
+
+	fn kinds(parsed: &ParsedNodeFn) -> Kinds {
+		let record_io = record_shape(parsed).is_some();
+		let routing = !record_io && routing_io(parsed).is_some();
+		let flip = !record_io && !routing && record_flip(parsed);
+		let opaque = !record_io && !routing && !flip && record_opaque(parsed);
+		Kinds { record_io, routing, flip, opaque }
+	}
+
+	fn skips_carrier(parsed: &ParsedNodeFn) -> bool {
+		record_shape(parsed).is_some_and(|shape| shape.skips_carrier())
+	}
+
+	fn routing_generic(parsed: &ParsedNodeFn) -> Option<Ident> {
+		kinds(parsed).routing.then(|| routing_io(parsed).map(|routing| routing.generic)).flatten()
+	}
+
+	fn token_carrier(parsed: &ParsedNodeFn) -> bool {
+		let element = record_writes(&slot_value_type(&parsed.output_type)).map_or_else(|| slot_value_type(&parsed.output_type), |writes| writes.element);
+		kinds(parsed).record_io && unbounded_generic(parsed, &element).is_some()
+	}
+
+	fn facts_from_signature(parsed: &ParsedNodeFn) -> Facts {
+		let fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
 		let source_ty = |field: &ParsedField| match &field.ty {
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type.clone(),
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
 		};
-		match class {
-			Class::Flip { carrier } => Facts {
-				sources: if *carrier { vec![0] } else { vec![] },
+		let kinds = kinds(parsed);
+		if kinds.flip {
+			Facts {
+				sources: if flip_carrier(parsed) { vec![0] } else { vec![] },
 				carried: false,
 				writes: vec![],
 				removes: vec![],
 				delta: 0,
-			},
-			Class::Opaque => {
-				let record = fields.iter().position(|field| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_record_value(output_type)));
-				Facts {
-					sources: record.into_iter().collect(),
-					carried: true,
-					writes: vec![],
-					removes: vec![],
-					delta: 0,
-				}
 			}
-			Class::Routing(routing) => Facts {
-				sources: fields.iter().enumerate().filter(|(_, field)| bare_ident(&source_ty(field)) == Some(&routing.generic)).map(|(index, _)| index).collect(),
+		} else if kinds.opaque {
+			let record = fields.iter().position(|field| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_record_value(output_type)));
+			Facts {
+				sources: record.into_iter().collect(),
 				carried: true,
 				writes: vec![],
 				removes: vec![],
 				delta: 0,
-			},
-			Class::RecordIo(shape) => Facts {
-				sources: if shape.skips_carrier() { vec![] } else { vec![0] },
-				carried: shape.carries_element(),
-				writes: markers(&shape.write_markers),
-				removes: markers(&shape.removes),
+			}
+		} else if kinds.routing {
+			let generic = routing_generic(parsed).expect("routing has a generic");
+			Facts {
+				sources: fields.iter().enumerate().filter(|(_, field)| bare_ident(&source_ty(field)) == Some(&generic)).map(|(index, _)| index).collect(),
+				carried: true,
+				writes: vec![],
+				removes: vec![],
 				delta: 0,
-			},
+			}
+		} else {
+			let (write_markers, removes) = record_writes(&slot_value_type(&parsed.output_type)).map_or((Vec::new(), Vec::new()), |writes| (writes.markers, writes.removes));
+			Facts {
+				sources: if skips_carrier(parsed) { vec![] } else { vec![0] },
+				carried: token_carrier(parsed),
+				writes: markers(write_markers.iter()),
+				removes: markers(removes.iter()),
+				delta: 0,
+			}
 		}
 	}
 
 	fn assert_bridge(attr: TokenStream2, item: TokenStream2) -> Node {
 		let mut parsed = parse_node_fn(attr, item).unwrap();
 		parsed.replace_impl_trait_in_input();
-		let model = analyze(&parsed).expect("representative resolves to a class");
-		let fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
+		analyze(&parsed).expect("representative resolves to a supported node");
 		let node = build(&parsed);
-		assert_eq!(facts_from_ir(&node), facts_from_class(&model.class, &fields));
+		assert_eq!(facts_from_ir(&node), facts_from_signature(&parsed));
 		node
 	}
 
@@ -536,15 +570,18 @@ mod tests {
 	}
 
 	/// The frozen `field_role` classification the IR bindings must reproduce.
-	fn reference_label(parsed: &ParsedNodeFn, class: &Class, raw: bool, index: usize, field: &ParsedField) -> &'static str {
-		let record = matches!(class, Class::RecordIo(_));
-		let skips_carrier = matches!(class, Class::RecordIo(shape) if shape.skips_carrier());
-		let carrier_flip = matches!(class, Class::Flip { carrier: true });
-		let flip = matches!(class, Class::Flip { .. });
-		let opaque = matches!(class, Class::Opaque);
-		let routing = matches!(class, Class::Routing(_));
+	fn reference_label(parsed: &ParsedNodeFn, raw: bool, index: usize, field: &ParsedField) -> &'static str {
+		let Kinds {
+			record_io: record,
+			routing,
+			flip,
+			opaque,
+		} = kinds(parsed);
+		let skips_carrier = skips_carrier(parsed);
+		let carrier_flip = flip && flip_carrier(parsed);
 		let derives = ctx_derives(parsed);
-		let routing_source = |ty: &Type| matches!(class, Class::Routing(routing) if bare_ident(ty) == Some(&routing.generic));
+		let generic = routing_generic(parsed);
+		let routing_source = |ty: &Type| generic.as_ref().is_some_and(|generic| bare_ident(ty) == Some(generic));
 		match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => {
 				if record && !skips_carrier && index == 0 {
@@ -602,14 +639,18 @@ mod tests {
 	fn assert_bindings(attr: TokenStream2, item: TokenStream2) {
 		let mut parsed = parse_node_fn(attr, item).unwrap();
 		parsed.replace_impl_trait_in_input();
-		let model = analyze(&parsed).expect("representative resolves to a class");
+		analyze(&parsed).expect("representative resolves to a supported node");
 		let raw = matches!(dialect(&parsed), Dialect::Poll);
 		let node = build(&parsed);
-		let expected_kind = match &model.class {
-			Class::RecordIo(_) => "record-io",
-			Class::Flip { .. } => "flip",
-			Class::Routing(_) => "routing",
-			Class::Opaque => "opaque",
+		let kinds = kinds(&parsed);
+		let expected_kind = if kinds.record_io {
+			"record-io"
+		} else if kinds.routing {
+			"routing"
+		} else if kinds.flip {
+			"flip"
+		} else {
+			"opaque"
 		};
 		let actual_kind = match node_kind(&node) {
 			NodeKind::RecordIo => "record-io",
@@ -622,7 +663,7 @@ mod tests {
 		for (index, field) in fields.iter().enumerate() {
 			assert_eq!(
 				ir_label(&node, index, field, raw),
-				reference_label(&parsed, &model.class, raw, index, field),
+				reference_label(&parsed, raw, index, field),
 				"field {index} of {}",
 				parsed.fn_name
 			);

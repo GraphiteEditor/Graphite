@@ -12,7 +12,7 @@ use crate::shader_nodes::{ShaderCodegen, ShaderTokens};
 
 mod classify;
 mod entries;
-mod ir;
+pub(crate) mod ir;
 mod metadata;
 pub(crate) use classify::*;
 use entries::entries_tokens;
@@ -681,7 +681,7 @@ pub(crate) struct NodeFields<'a> {
 	pub(crate) struct_type_params: Vec<Ident>,
 }
 
-pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn, model: &Option<NodeModel>, fields: NodeFields) -> syn::Result<NodePlan> {
+pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn, model: &Option<Dialect>, fields: NodeFields) -> syn::Result<NodePlan> {
 	let core_types = crate_ident.gcore()?;
 
 	let ctx_param = context_param(parsed);
@@ -692,8 +692,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let Some(model) = model.as_ref() else {
 		return Ok(NodePlan::default());
 	};
-	let async_fn = matches!(model.dialect, Dialect::AsyncFn);
-	let future_kernel = matches!(model.dialect, Dialect::Future | Dialect::FutureInterrupt);
+	let async_fn = matches!(*model, Dialect::AsyncFn);
+	let future_kernel = matches!(*model, Dialect::Future | Dialect::FutureInterrupt);
 	let async_source = async_fn || future_kernel;
 	let node = crate::codegen::ir::build(parsed);
 	let kind = crate::codegen::ir::node_kind(&node);
@@ -826,7 +826,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(false, None) if flip => syn::parse_quote!(#core_types::record::RecordValue<'__record>),
 		(false, None) => slot_value_type(&parsed.output_type),
 	};
-	let raw_lazy = matches!(model.dialect, Dialect::Poll);
+	let raw_lazy = matches!(*model, Dialect::Poll);
 	let injected_name = |ident: &Ident| async_source && (ident == "_runtime" || ident == "_source");
 	let where_predicates: Vec<TokenStream2> = parsed.where_clause.iter().flat_map(|clause| clause.predicates.iter()).map(|predicate| quote!(#predicate)).collect();
 
@@ -1294,7 +1294,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => quote!(#core_types::node::StatusCell::new()),
 	};
 	let kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #call_args)*));
-	let lift = match model.dialect {
+	let lift = match *model {
 		Dialect::Interrupt => quote! {
 			match #kernel_call {
 				Ok(value) => __cell.finish(value),
@@ -1443,7 +1443,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			true => Vec::new(),
 			false => reads_of(0).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(__src_rec))).collect(),
 		};
-		let kernel_value = match model.dialect {
+		let kernel_value = match *model {
 			Dialect::Interrupt => quote! {
 				match #record_kernel_call {
 					Ok(__value) => __value,
@@ -1507,7 +1507,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 	let flip_tail = flip.then(|| {
-		if matches!(model.dialect, Dialect::Poll) {
+		if matches!(*model, Dialect::Poll) {
 			return match &carried_prelude {
 				Some(prelude) => quote! {
 					#prelude
@@ -1523,7 +1523,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				},
 			};
 		}
-		let kernel_value = match model.dialect {
+		let kernel_value = match *model {
 			Dialect::Interrupt => quote! {
 				match #kernel_call {
 					Ok(value) => value,
@@ -1594,7 +1594,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				),
 				None => (quote!(), pending_return.clone()),
 			};
-			let acquire = match model.dialect {
+			let acquire = match *model {
 				Dialect::FutureInterrupt => quote! {
 					let __future = match #kernel_call {
 						Ok(future) => future,

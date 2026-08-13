@@ -1,53 +1,32 @@
 use super::*;
 
-/// How a record node's primary input lowers.
+/// How a record node's primary input lowers: `None` writes a fresh record,
+/// `Token` carries the element bytes through as `ElToken`, `Read` reads a
+/// concrete element at offset 0. The element and write set fold from the IR.
 #[derive(Clone)]
 pub(crate) enum RecordCarrier {
-	/// `_: ()`: no carrier edge, the kernel writes a fresh record.
 	None,
-	/// An unbounded generic returned in the element position: the element
-	/// bytes carry through the copy plan and the kernel sees `ElToken`.
-	Token(Ident),
-	/// An element type read at offset 0, monomorphized per its
-	/// implementations list where generic.
-	Read(Type),
+	Token,
+	Read,
 }
 
-/// The record io of a node fn: how the carrier lowers, the element write,
-/// and the markers written and removed. Present exactly when the signature
-/// declares attribute reads or writes in a shape the record tier supports;
-/// malformed record io is reported by validation and generates no node impl.
+/// A well-formed record-io node: only the carrier form is retained, so
+/// [`skips_carrier`] can gate the fresh-record path. Malformed record io yields
+/// `None` from [`record_shape`] and generates no node impl.
 #[derive(Clone)]
 pub(crate) struct RecordShape {
 	pub(crate) carrier: RecordCarrier,
-	pub(crate) element_write: Option<Type>,
-	pub(crate) write_markers: Vec<Type>,
-	pub(crate) removes: Vec<Type>,
 }
 
 impl RecordShape {
 	pub(crate) fn skips_carrier(&self) -> bool {
 		matches!(self.carrier, RecordCarrier::None)
 	}
-
-	pub(crate) fn carries_element(&self) -> bool {
-		self.element_write.is_none()
-	}
-}
-
-/// The record-tier lowering a node fn resolves to. Exactly one class per node,
-/// computed once by [`analyze`]; every downstream fragment reads the class
-/// instead of recomputing the classification predicates.
-pub(crate) enum Class {
-	RecordIo(RecordShape),
-	Routing(RoutingIo),
-	Flip { carrier: bool },
-	Opaque,
 }
 
 /// The effect/return axis of a node's kernel, resolved once from the signature.
-/// Orthogonal to [`Class`]: it selects the eval tail (finish / merge / spawn)
-/// and the kernel signature wrapping across every class.
+/// It selects the eval tail (finish / merge / spawn) and the kernel signature
+/// wrapping across every node kind.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Dialect {
 	Sync,
@@ -71,33 +50,22 @@ pub(crate) fn dialect(parsed: &ParsedNodeFn) -> Dialect {
 	}
 }
 
-/// The result of classifying a node fn. A node with no supported lowering
-/// (an async node with lazy inputs, malformed record io, or a signature no
-/// class accepts) yields `None` and generates a struct and metadata but no
-/// `Node` impl.
-pub(crate) struct NodeModel {
-	pub(crate) class: Class,
-	pub(crate) dialect: Dialect,
-}
-
-pub(crate) fn analyze(parsed: &ParsedNodeFn) -> Option<NodeModel> {
+/// The dialect of a node fn that lowers to a `Node` impl, or `None` when no
+/// lowering supports the signature (an async node with lazy inputs, malformed
+/// record io, or a shape no kind accepts). The kind itself is derived from the
+/// intent IR ([`crate::codegen::ir::node_kind`]); this only gates support.
+pub(crate) fn analyze(parsed: &ParsedNodeFn) -> Option<Dialect> {
 	if parsed.is_async && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
 		return None;
 	}
-	let class = if let Some(shape) = record_shape(parsed) {
-		Class::RecordIo(shape)
+	let supported = if record_shape(parsed).is_some() {
+		true
 	} else if has_record_io(parsed) {
 		return None;
-	} else if let Some(routing) = routing_io(parsed) {
-		Class::Routing(routing)
-	} else if record_flip(parsed) {
-		Class::Flip { carrier: flip_carrier(parsed) }
-	} else if record_opaque(parsed) {
-		Class::Opaque
 	} else {
-		return None;
+		routing_io(parsed).is_some() || record_flip(parsed) || record_opaque(parsed)
 	};
-	Some(NodeModel { class, dialect: dialect(parsed) })
+	supported.then(|| dialect(parsed))
 }
 
 /// The tail form of a node's eval, selected from its class and dialect: forward
@@ -317,43 +285,43 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 	let ParsedFieldType::Regular(RegularParsedField { ty, lend: None, implementations, .. }) = &carrier_field.ty else {
 		return None;
 	};
-	let carrier = match ty {
-		Type::Tuple(tuple) if tuple.elems.is_empty() => RecordCarrier::None,
+	let token = match ty {
+		Type::Tuple(tuple) if tuple.elems.is_empty() => None,
 		ty => match implementations.is_empty().then(|| unbounded_generic(parsed, ty)).flatten() {
-			Some(token) => RecordCarrier::Token(token),
+			Some(token) => Some(token),
 			None => {
 				if contains_open_generic(parsed, ty) {
 					return None;
 				}
-				RecordCarrier::Read(ty.clone())
+				None
 			}
 		},
 	};
-	let (element, write_markers, removes) = match writes {
+	let carrier = match ty {
+		Type::Tuple(tuple) if tuple.elems.is_empty() => RecordCarrier::None,
+		_ if token.is_some() => RecordCarrier::Token,
+		_ => RecordCarrier::Read,
+	};
+	let (element, _, removes) = match writes {
 		Some(RecordWrites { element, markers, removes }) => (element, markers, removes),
 		None => (value, Vec::new(), Vec::new()),
 	};
-	let element_write = match &carrier {
-		RecordCarrier::Token(token) => match bare_ident(&element) {
-			Some(ident) if ident == token => None,
-			_ => return None,
-		},
-		_ => {
+	match &token {
+		Some(token) => {
+			if !matches!(bare_ident(&element), Some(ident) if ident == token) {
+				return None;
+			}
+		}
+		None => {
 			if contains_open_generic(parsed, &element) {
 				return None;
 			}
-			Some(element)
 		}
-	};
+	}
 	if matches!(carrier, RecordCarrier::None) && !removes.is_empty() {
 		return None;
 	}
-	Some(RecordShape {
-		carrier,
-		element_write,
-		write_markers,
-		removes,
-	})
+	Some(RecordShape { carrier })
 }
 
 pub(crate) fn is_poll_kernel(output: &Type) -> bool {
