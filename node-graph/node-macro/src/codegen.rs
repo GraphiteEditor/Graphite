@@ -1549,12 +1549,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Tail::SpawnAsyncFn
 	} else if future_kernel {
 		Tail::SpawnFuture
-	} else if record.is_some() {
-		Tail::Record
-	} else if flip {
-		Tail::Flip
 	} else {
-		Tail::Forward
+		match ir::node_kind(&node) {
+			ir::NodeKind::RecordIo => Tail::Record,
+			ir::NodeKind::Flip => Tail::Flip,
+			ir::NodeKind::Routing | ir::NodeKind::Opaque => Tail::Forward,
+		}
 	};
 	let lower_tail = |form: Tail| match form {
 		Tail::Forward => lift.clone(),

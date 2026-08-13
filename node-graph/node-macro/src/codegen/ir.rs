@@ -248,14 +248,14 @@ impl ValueBinding {
 	}
 }
 
-enum NodeKind {
+pub(crate) enum NodeKind {
 	Flip,
 	RecordIo,
 	Routing,
 	Opaque,
 }
 
-fn node_kind(node: &Node) -> NodeKind {
+pub(crate) fn node_kind(node: &Node) -> NodeKind {
 	if matches!(node.output.shape.element, Element::Opaque) {
 		NodeKind::Opaque
 	} else if has_attr_io(node) {
@@ -604,6 +604,19 @@ mod tests {
 		let model = analyze(&parsed).expect("representative resolves to a class");
 		let raw = matches!(dialect(&parsed), Dialect::Poll);
 		let node = build(&parsed);
+		let expected_kind = match &model.class {
+			Class::RecordIo(_) => "record-io",
+			Class::Flip { .. } => "flip",
+			Class::Routing(_) => "routing",
+			Class::Opaque => "opaque",
+		};
+		let actual_kind = match node_kind(&node) {
+			NodeKind::RecordIo => "record-io",
+			NodeKind::Flip => "flip",
+			NodeKind::Routing => "routing",
+			NodeKind::Opaque => "opaque",
+		};
+		assert_eq!(actual_kind, expected_kind, "node_kind of {}", parsed.fn_name);
 		let fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
 		for (index, field) in fields.iter().enumerate() {
 			assert_eq!(
