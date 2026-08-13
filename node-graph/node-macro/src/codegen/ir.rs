@@ -6,6 +6,8 @@ use crate::codegen::classify::{
 };
 use crate::codegen::entries::implementation_rows;
 use crate::parsing::{AttributeRead, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RecordWrites, RegularParsedField, record_writes};
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
 use syn::{GenericArgument, GenericParam, Ident, PathArguments, Type, TypeParamBound};
 
 pub(crate) fn build(parsed: &ParsedNodeFn) -> Node {
@@ -163,6 +165,52 @@ fn ilist_inner(ty: &Type) -> Option<Type> {
 		GenericArgument::Type(inner) => Some(inner.clone()),
 		_ => None,
 	})
+}
+
+/// Emits the `LayoutMeta` literal from the IR. `element_spec` is supplied by the
+/// caller since it is the one row-dependent facet; the rest folds from the node.
+pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_types: &TokenStream2) -> TokenStream2 {
+	let sources = node.inputs.iter().enumerate().filter(|(_, input)| input.subject).map(|(index, _)| index as u8);
+	let reads = node.inputs.iter().enumerate().filter_map(|(index, input)| {
+		(!input.shape.attrs.is_empty()).then(|| {
+			let descs = field_writes(&input.shape.attrs, core_types);
+			let index = index as u8;
+			quote!(#core_types::record::InputReads { input: #index, reads: ::std::vec![#(#descs),*] })
+		})
+	});
+	let writes = field_writes(&node.output.shape.attrs, core_types);
+	let removes = node.output.removes.iter().map(|attr| {
+		let marker = &attr.marker;
+		let level = attr.level;
+		quote!((<#marker as #core_types::attribute::Attribute>::NAME, #level))
+	});
+	let level_delta = level_delta(node);
+	quote! {
+		#core_types::record::LayoutMeta {
+			sources: ::std::vec![#(#sources),*],
+			reads: ::std::vec![#(#reads),*],
+			element: #element_spec,
+			writes: ::std::vec![#(#writes),*],
+			removes: ::std::vec![#(#removes),*],
+			level_delta: #level_delta,
+		}
+	}
+}
+
+fn field_writes(attrs: &[LevelAttr], core_types: &TokenStream2) -> Vec<TokenStream2> {
+	attrs
+		.iter()
+		.map(|attr| {
+			let marker = &attr.marker;
+			let level = attr.level;
+			quote!(#core_types::record::FieldWrite::of::<#marker>(#level))
+		})
+		.collect()
+}
+
+fn level_delta(node: &Node) -> i8 {
+	let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth as i8);
+	node.output.shape.depth as i8 - subject_depth
 }
 
 pub(crate) struct Node {

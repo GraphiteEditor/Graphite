@@ -54,8 +54,8 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 	let arity = regular_fields.len();
 	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
 	let node_underscores: Vec<TokenStream2> = regular_fields.iter().map(|_| quote!(_)).collect();
-	let carrier_present = flip_carrier(parsed);
-	let sources = if carrier_present { quote!(::std::vec![0u8]) } else { quote!(::std::vec![]) };
+	let node = crate::codegen::ir::build(parsed);
+	let core_types = quote!(gcore);
 
 	// Shorthand associated types in the output only resolve against the
 	// generics' bounds, so rows name the output through a bounded alias. Only
@@ -142,16 +142,11 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 			let layout = format_ident!("__layout_{index}");
 			quote!(&#layout,)
 		});
+		let element_spec = quote!(gcore::record::ElementSpec::Concrete(gcore::record::element_write::<#row_output>()));
+		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, &core_types);
 		Some(quote! {
 			gcore::registry::RegistryEntry {
-				layout_meta: Some(gcore::record::LayoutMeta {
-					sources: #sources,
-					reads: ::std::vec::Vec::new(),
-					element: gcore::record::ElementSpec::Concrete(gcore::record::element_write::<#row_output>()),
-					writes: ::std::vec::Vec::new(),
-					removes: ::std::vec::Vec::new(),
-					level_delta: 0,
-				}),
+				layout_meta: Some(#layout_meta),
 				io: gcore::registry::NodeIOTypes::new(
 					gcore::concrete!(gcore::context::ContextImpl<'static>),
 					gcore::registry::record_type::<#row_output>(),
@@ -325,18 +320,11 @@ fn single_row_entries(parsed: &ParsedNodeFn, class: &Class, struct_name: &Ident,
 		quote!(&#layout,)
 	});
 
-	let carried_meta = |sources: &[usize]| {
-		let sources = sources.iter().map(|index| *index as u8);
-		quote! {
-			Some(gcore::record::LayoutMeta {
-				sources: ::std::vec![#(#sources),*],
-				reads: ::std::vec::Vec::new(),
-				element: gcore::record::ElementSpec::Carried,
-				writes: ::std::vec::Vec::new(),
-				removes: ::std::vec::Vec::new(),
-				level_delta: 0,
-			})
-		}
+	let node = crate::codegen::ir::build(parsed);
+	let core_types = quote!(gcore);
+	let carried_meta = |_sources: &[usize]| {
+		let meta = crate::codegen::ir::layout_meta_tokens(&node, quote!(gcore::record::ElementSpec::Carried), &core_types);
+		quote!(Some(#meta))
 	};
 
 	let (io_output, wrap, prelude, new_layout_args, layout_meta) = match class {
