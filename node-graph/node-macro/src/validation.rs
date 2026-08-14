@@ -15,6 +15,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_lend_fields,
 		validate_record_io,
 		validate_lazy_reads,
+		validate_materialized_ctx,
 	];
 
 	for validator in validators {
@@ -247,6 +248,30 @@ fn validate_async_source(parsed: &ParsedNodeFn) {
 				);
 			}
 		}
+	}
+}
+
+fn validate_materialized_ctx(parsed: &ParsedNodeFn) {
+	let materialized = parsed
+		.fields
+		.iter()
+		.any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) if *list_levels > 0));
+	if !materialized {
+		return;
+	}
+	let Some(ctx) = crate::codegen::classify::context_param(parsed) else { return };
+	let has = |name: &str| {
+		ctx.bounds
+			.iter()
+			.any(|bound| matches!(bound, syn::TypeParamBound::Trait(bound) if bound.path.segments.last().is_some_and(|segment| segment.ident == name)))
+	};
+	let missing: Vec<&str> = ["InjectIndex", "Copy"].into_iter().filter(|name| !has(name)).collect();
+	if !missing.is_empty() {
+		emit_error!(
+			parsed.input.pat_ident.span(),
+			"a node folding a ranked `List` input drives `eval_batch` over it, so its context must add `{}`; spell `impl Ctx + InjectIndex + Copy`",
+			missing.join(" + ")
+		);
 	}
 }
 

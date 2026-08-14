@@ -10,7 +10,7 @@ use syn::visit_mut::VisitMut;
 use syn::{GenericArgument, GenericParam, Ident, Lifetime, PatIdent, PathArguments, Type, TypeParam, TypeParamBound};
 use crate::shader_nodes::{ShaderCodegen, ShaderTokens};
 
-mod classify;
+pub(crate) mod classify;
 mod entries;
 pub(crate) mod ir;
 mod metadata;
