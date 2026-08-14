@@ -78,12 +78,12 @@ fn subject(index: usize, field: &ParsedField, carrier_subject: bool, routing: Op
 }
 
 fn output(parsed: &ParsedNodeFn, generics: &[Ident]) -> Output {
-	let value = slot_value_type(&parsed.output_type);
-	let (element, writes, removes) = match record_writes(&value) {
+	// Strip the `IList` rank markers first so the write set is read from the row.
+	let (row, depth) = strip_ilist(&slot_value_type(&parsed.output_type));
+	let (element, writes, removes) = match record_writes(&row) {
 		Some(RecordWrites { element, markers, removes }) => (element, markers, removes),
-		None => (value, Vec::new(), Vec::new()),
+		None => (row, Vec::new(), Vec::new()),
 	};
-	let (element, depth) = strip_ilist(&element);
 	Output {
 		shape: ItemShape {
 			element: element_of(&element, generics),
@@ -734,6 +734,24 @@ mod tests {
 			quote!(category("")),
 			quote!(fn memo<'e>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>, Output = RecordValue<'e>>) -> GPoll<RecordValue<'e>> { content.eval(()) }),
 		);
+	}
+
+	#[test]
+	fn creator_ilist_return_pushes_a_level() {
+		let mut parsed = parse_node_fn(
+			quote!(category(""), extent(repeat_extent)),
+			quote!(fn repeat<T>(_: impl Ctx, (element, transform): (T, Attr<Transform>), count: u32) -> IList<(T, Attr<Transform>)> { emit(element, Attr(count as f64)) }),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+		let node = build(&parsed);
+		// The `IList` return pushes one rank level, with the element and the
+		// written attribute read from the stripped row.
+		assert_eq!(node.output.shape.depth, 1);
+		assert!(matches!(node.output.shape.element, Element::Generic(_)));
+		assert_eq!(markers(node.output.shape.attrs.iter().map(|attr| &attr.marker)), vec!["Transform".to_string()]);
+		let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth);
+		assert_eq!(node.output.shape.depth as i8 - subject_depth as i8, 1, "creator level_delta is +1");
 	}
 
 	#[test]
