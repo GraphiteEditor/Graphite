@@ -1,5 +1,5 @@
 use crate::context::InjectIndex;
-use crate::gpoll::{Extent, Finality, GPoll, GraphError, Interrupt};
+use crate::gpoll::{Extent, Finality, GPoll, GraphError, Interrupt, Level};
 use std::cell::Cell;
 use std::mem::MaybeUninit;
 use std::ops::Range;
@@ -177,16 +177,25 @@ pub trait Node<Input> {
 
 	fn eval(&self, input: &Input) -> GPoll<Self::Output>;
 
-	fn extent(&self, _input: &Input) -> GPoll<Extent> {
-		GPoll::Final(Extent::Free)
-	}
-
 	/// The count of items at one absolute nesting level (innermost `0`). The
 	/// leveled primitive a structure node overrides to report a pushed level's
 	/// size; the scalar base is one item at every level. Uncertainty rides the
-	/// `GPoll` status axis, as with [`extent`](Node::extent).
+	/// `GPoll` status axis.
 	fn extent_at(&self, _input: &Input, _level: u8) -> GPoll<Extent> {
 		GPoll::Final(Extent::Exactly(1))
+	}
+
+	/// The composite domain query derived from [`extent_at`](Node::extent_at):
+	/// one level, the product of the levels below or above it, or the whole
+	/// domain's flat count. Consumers query this; nodes only write `extent_at`.
+	fn extent(&self, input: &Input, at: Level) -> GPoll<Extent> {
+		let product = |range: core::ops::Range<u8>| range.fold(GPoll::Final(Extent::Exactly(1)), |acc, level| Extent::mul(acc, self.extent_at(input, level)));
+		match at {
+			Level::At(level) => self.extent_at(input, level),
+			Level::Below(level) => product(0..level),
+			Level::Above(level) => product((level + 1)..self.depth()),
+			Level::Total => product(0..self.depth()),
+		}
 	}
 
 	/// The node's domain depth (number of nesting levels; `0` = scalar), baked
@@ -262,10 +271,6 @@ where
 		(**self).eval(input)
 	}
 
-	fn extent(&self, input: &Input) -> GPoll<Extent> {
-		(**self).extent(input)
-	}
-
 	fn extent_at(&self, input: &Input, level: u8) -> GPoll<Extent> {
 		(**self).extent_at(input, level)
 	}
@@ -296,10 +301,6 @@ where
 		(**self).eval(input)
 	}
 
-	fn extent(&self, input: &Input) -> GPoll<Extent> {
-		(**self).extent(input)
-	}
-
 	fn extent_at(&self, input: &Input, level: u8) -> GPoll<Extent> {
 		(**self).extent_at(input, level)
 	}
@@ -328,10 +329,6 @@ where
 
 	fn eval(&self, input: &Input) -> GPoll<Self::Output> {
 		(**self).eval(input)
-	}
-
-	fn extent(&self, input: &Input) -> GPoll<Extent> {
-		(**self).extent(input)
 	}
 
 	fn extent_at(&self, input: &Input, level: u8) -> GPoll<Extent> {

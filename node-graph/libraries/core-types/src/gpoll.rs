@@ -176,6 +176,26 @@ impl Extent {
 			(Extent::Exactly(n), Extent::Exactly(m)) => GPoll::fallback(Extent::Exactly(n.min(m)), "extent mismatch"),
 		})
 	}
+
+	/// The product of two extents, used to compose nested-level counts; an
+	/// unbounded operand leaves the product unbounded.
+	pub fn mul(a: GPoll<Extent>, b: GPoll<Extent>) -> GPoll<Extent> {
+		a.zip(b).map(|(a, b)| match (a, b) {
+			(Extent::Exactly(n), Extent::Exactly(m)) => Extent::Exactly(n * m),
+			_ => Extent::Free,
+		})
+	}
+}
+
+/// A query over a node's nesting levels: one level, the product below or above
+/// it, or the whole domain. The composite [`Node::extent`](crate::node::Node::extent)
+/// derives these from the per-level [`extent_at`](crate::node::Node::extent_at).
+#[derive(Clone, Copy, Debug)]
+pub enum Level {
+	At(u8),
+	Below(u8),
+	Above(u8),
+	Total,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

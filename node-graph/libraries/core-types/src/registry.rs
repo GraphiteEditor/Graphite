@@ -165,11 +165,6 @@ where
 		result
 	}
 
-	fn extent(&self, input: &Input) -> crate::gpoll::GPoll<crate::gpoll::Extent> {
-		// SAFETY: as in eval.
-		unsafe { self.ptr.as_ref() }.extent(input)
-	}
-
 	fn extent_at(&self, input: &Input, level: u8) -> crate::gpoll::GPoll<crate::gpoll::Extent> {
 		// SAFETY: as in eval.
 		unsafe { self.ptr.as_ref() }.extent_at(input, level)

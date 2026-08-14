@@ -45,11 +45,11 @@ fn memoize<'e>(
 	result
 }
 
-fn memoize_extent<C, NodeContent>(node: &MemoizeNode<NodeContent>, ctx: &C) -> GPoll<Extent>
+fn memoize_extent<C, NodeContent>(node: &MemoizeNode<NodeContent>, ctx: &C, level: u8) -> GPoll<Extent>
 where
 	NodeContent: Node<C>,
 {
-	node.content.extent(ctx)
+	node.content.extent_at(ctx, level)
 }
 
 #[node_macro::node(category(""), path(graphene_core::memo), extent(frame_memo_extent))]
@@ -95,11 +95,11 @@ fn frame_memo<'e>(
 	}
 }
 
-fn frame_memo_extent<C, NodeContent>(node: &FrameMemoNode<NodeContent>, ctx: &C) -> GPoll<Extent>
+fn frame_memo_extent<C, NodeContent>(node: &FrameMemoNode<NodeContent>, ctx: &C, level: u8) -> GPoll<Extent>
 where
 	NodeContent: Node<C>,
 {
-	node.content.extent(ctx)
+	node.content.extent_at(ctx, level)
 }
 
 type MonitorValue = Arc<Mutex<Option<IORecord<CtxSnapshot, RecordCapture>>>>;

@@ -1214,31 +1214,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 
-	let value_field_names: Vec<&Ident> = regular_fields
-		.iter()
-		.filter(|field| matches!(field.ty, ParsedFieldType::Regular(_)))
-		.map(|field| &field.pat_ident.ident)
-		.collect();
-
+	// The extent override is the leveled `extent_at`; consumers query the
+	// composite `extent(ctx, Level)`, which the trait derives from it. A node
+	// without `extent = fn` keeps the scalar default (one item at every level).
 	let extent_impl = match &parsed.attributes.extent {
 		Some(path) => quote! {
-			fn extent(&self, __input: &#ctx_ident) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
-				#path(self, __input)
+			fn extent_at(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
+				#path(self, __input, __level)
 			}
 		},
-		None if value_field_names.is_empty() => quote!(),
-		None => {
-			let first = value_field_names[0];
-			let mut meet = quote!(self.#first.extent(__input));
-			for name in &value_field_names[1..] {
-				meet = quote!(#core_types::gpoll::Extent::meet(#meet, self.#name.extent(__input)));
-			}
-			quote! {
-				fn extent(&self, __input: &#ctx_ident) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
-					#meet
-				}
-			}
-		}
+		None => quote!(),
 	};
 
 	let serialize_impl = match &parsed.attributes.serialize {
