@@ -8,5 +8,7 @@ pub enum EventMessage {
 	CanvasTransformed,
 	ToolAbort,
 	SelectionChanged,
+	/// The document graph's nodes or wires changed, so state derived from the selection's chains may be stale
+	GraphChanged,
 	WorkingColorChanged,
 }

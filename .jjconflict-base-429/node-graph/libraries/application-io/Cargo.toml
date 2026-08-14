@@ -1,0 +1,34 @@
+[package]
+name = "graphene-application-io"
+version = "0.1.0"
+edition = "2024"
+description = "graphene application io interface"
+authors = ["Graphite Authors <contact@graphite.art>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "core-types/serde", "vector-types/serde", "text-nodes/serde", "graphene-resource/serde"]
+wasm = ["dep:web-sys"]
+wgpu = ["dep:raster-types", "raster-types/wgpu"]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+core-types = { workspace = true }
+graphene-hash = { workspace = true, features = ["derive"] }
+vector-types = { workspace = true }
+text-nodes = { workspace = true }
+graphene-resource = { workspace = true }
+
+# Optional local dependencies
+raster-types = { workspace = true, optional = true }
+
+# Workspace dependencies
+blake3 = { workspace = true }
+glam = { workspace = true }
+log = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true }

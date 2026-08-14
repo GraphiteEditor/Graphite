@@ -1,0 +1,60 @@
+[package]
+name = "interpreted-executor"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors.workspace = true
+
+[features]
+default = []
+gpu = ["graphene-std/gpu", "graphene-std/wgpu"]
+wasm = ["graphene-std/wasm"]
+
+[dependencies]
+# Local dependencies
+graphene-std = { workspace = true }
+graph-craft = { workspace = true }
+graphene-core = { workspace = true }
+graphic-types = { workspace = true }
+wgpu-executor = { workspace = true }
+core-types = { workspace = true }
+dyn-any = { workspace = true }
+
+# Workspace dependencies
+log = { workspace = true }
+glam = { workspace = true }
+futures = { workspace = true }
+once_cell = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+# Workspace dependencies
+graph-craft = { workspace = true, features = ["loading"] }
+criterion = { workspace = true }
+gungraun = { workspace = true }
+preprocessor = { workspace = true }
+
+# Benchmarks
+[[bench]]
+name = "update_executor"
+harness = false
+
+[[bench]]
+name = "run_once"
+harness = false
+
+[[bench]]
+name = "run_cached"
+harness = false
+
+[[bench]]
+name = "update_executor_gungraun"
+harness = false
+
+[[bench]]
+name = "run_once_gungraun"
+harness = false
+
+[[bench]]
+name = "run_cached_gungraun"
+harness = false

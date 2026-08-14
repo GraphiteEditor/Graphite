@@ -156,6 +156,9 @@ impl DocumentToolData {
 pub struct EventToMessageMap {
 	pub canvas_transformed: Option<ToolMessage>,
 	pub selection_changed: Option<ToolMessage>,
+	/// Tools whose control bar mirrors the selection's node chains map this to the same message as
+	/// `selection_changed`, so a graph edit re-syncs the widgets the same way reselecting would.
+	pub graph_changed: Option<ToolMessage>,
 	pub tool_abort: Option<ToolMessage>,
 	pub working_color_changed: Option<ToolMessage>,
 	pub overlay_provider: Option<OverlayProvider>,
@@ -178,6 +181,7 @@ pub trait ToolTransition {
 		subscribe_message(event_to_tool_map.canvas_transformed, EventMessage::CanvasTransformed);
 		subscribe_message(event_to_tool_map.tool_abort, EventMessage::ToolAbort);
 		subscribe_message(event_to_tool_map.selection_changed, EventMessage::SelectionChanged);
+		subscribe_message(event_to_tool_map.graph_changed, EventMessage::GraphChanged);
 		subscribe_message(event_to_tool_map.working_color_changed, EventMessage::WorkingColorChanged);
 		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
 			responses.add(OverlaysMessage::AddProvider { provider: overlay_provider });
@@ -198,6 +202,7 @@ pub trait ToolTransition {
 		unsubscribe_message(event_to_tool_map.canvas_transformed, EventMessage::CanvasTransformed);
 		unsubscribe_message(event_to_tool_map.tool_abort, EventMessage::ToolAbort);
 		unsubscribe_message(event_to_tool_map.selection_changed, EventMessage::SelectionChanged);
+		unsubscribe_message(event_to_tool_map.graph_changed, EventMessage::GraphChanged);
 		unsubscribe_message(event_to_tool_map.working_color_changed, EventMessage::WorkingColorChanged);
 		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
 			responses.add(OverlaysMessage::RemoveProvider { provider: overlay_provider });

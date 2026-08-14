@@ -1,0 +1,313 @@
+.three-column-layout {
+	--aside-gap: 40px;
+	--aside-width: 300px;
+	--align-with-article-title-letter-cap-heights: 0.4em;
+	position: relative;
+	display: flex;
+	justify-content: space-between;
+	gap: var(--aside-gap);
+	// Creates a stacking context for the left popout sidebar's sticky positioning
+	transform: translate(0);
+
+	&.three-column-layout {
+		max-width: var(--max-extended-width);
+	}
+
+	.close-chapter-selection,
+	.open-chapter-selection {
+		display: none;
+		flex: 0 0 auto;
+		fill: var(--color-navy);
+		background: none;
+		border: none;
+		box-sizing: content-box;
+		padding: 6px;
+		font-size: 0;
+		cursor: pointer;
+
+		svg {
+			width: 36px;
+			height: 36px;
+		}
+	}
+
+	.reading-material {
+		flex: 1 2 100%;
+
+		article {
+			width: 100%;
+		}
+
+		.prev-next {
+			display: flex;
+			justify-content: space-between;
+			width: 100%;
+			gap: 20px;
+
+			a {
+				display: flex;
+				align-items: center;
+				gap: 20px;
+
+				svg {
+					fill: var(--color-navy);
+					flex: 0 0 auto;
+				}
+
+				&:last-of-type {
+					text-align: right;
+				}
+			}
+		}
+	}
+
+	@media print {
+		aside {
+			display: none;
+		}
+	}
+
+	// Page contents right sidebar is removed on smaller screens
+	@media screen and (max-width: 1200px) {
+		.contents {
+			display: none;
+		}
+	}
+
+	// Overlaid fold-out menu for chapter selection
+	@media screen and (max-width: 1000px) {
+		gap: 0;
+
+		.chapters {
+			position: sticky;
+			width: 0;
+			margin-top: calc(-120 * var(--variable-px));
+			overflow: visible;
+			z-index: 10;
+			height: 0;
+			transition: height 0.25s ease-in-out 0.25s;
+
+			&.open {
+				height: 100vh;
+				transition: height 0s;
+
+				.wrapper-outer {
+					left: 0;
+				}
+			}
+
+			.wrapper-outer {
+				position: absolute;
+				background: white;
+				top: 0;
+				bottom: 0;
+				padding-left: var(--page-edge-padding);
+				margin-left: calc(-1 * var(--page-edge-padding));
+				padding-bottom: calc(120 * var(--variable-px));
+				margin-bottom: calc(-120 * var(--variable-px));
+				padding-top: 16px;
+				margin-top: -16px;
+				border-right: var(--border-thickness) solid var(--color-walnut);
+				box-sizing: border-box;
+				transition: left 0.25s ease-in-out;
+				left: calc(-1 * (Min(var(--aside-width), 100vw) + 10px));
+				width: Min(var(--aside-width), 100vw);
+
+				&::after {
+					content: "";
+					position: absolute;
+					top: 0;
+					bottom: 0;
+					right: -10px;
+					width: 10px;
+					background: linear-gradient(to right, rgba(0, 0, 0, 0.2), transparent);
+				}
+
+				.wrapper-inner {
+					position: relative;
+					overflow-y: auto;
+					height: 100%;
+					padding-right: var(--page-edge-padding);
+					margin-left: -24px;
+
+					> ul:first-of-type {
+						margin-top: calc(120 * var(--variable-px) + var(--align-with-article-title-letter-cap-heights));
+					}
+
+					.close-chapter-selection {
+						display: block;
+						position: absolute;
+						top: calc(20px - 6px);
+						right: calc(20px - 6px);
+					}
+				}
+			}
+		}
+
+		.reading-material {
+			margin-left: auto;
+			margin-right: auto;
+			width: 100%;
+
+			.article-title {
+				display: flex;
+				white-space: nowrap;
+
+				h1 {
+					white-space: normal;
+					display: flex;
+
+					.open-chapter-selection {
+						display: inline-block;
+						padding-top: 0;
+						padding-bottom: 0;
+						margin-left: -6px;
+						margin-right: calc(20px - 6px);
+					}
+				}
+			}
+		}
+	}
+
+	aside {
+		position: sticky;
+		align-self: flex-start;
+		overflow-y: auto;
+		top: 0;
+		width: Min(var(--aside-width), 100vw);
+		max-height: 100vh;
+		margin-top: calc(-40 * var(--variable-px));
+		flex: 0 1 auto;
+		--level-indent: 0.75rem;
+
+		&.contents > ul,
+		.wrapper-inner > ul {
+			&:first-of-type {
+				margin-top: calc(40 * var(--variable-px) + var(--align-with-article-title-letter-cap-heights));
+			}
+
+			&:last-of-type {
+				margin-bottom: calc(40 * var(--variable-px));
+			}
+
+			> ul {
+				margin-left: 0;
+			}
+		}
+
+		&.contents > ul > ul :is(ul, li),
+		.wrapper-inner > ul > ul > ul,
+		.wrapper-inner > ul > ul > ul :is(ul, li) {
+			margin-top: 0.5rem;
+		}
+
+		ul {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+
+			&,
+			ul,
+			li {
+				margin-top: calc(40 * var(--variable-px));
+			}
+
+			ul {
+				margin-left: var(--level-indent);
+			}
+
+			li:has(> label > input:not(:checked)) + ul {
+				display: none;
+			}
+
+			li {
+				font-size: 0;
+
+				&:not(.title) a {
+					text-decoration: none;
+				}
+
+				&.title,
+				&.chapter {
+					font-weight: 700;
+				}
+
+				label {
+					display: inline-block;
+					position: relative;
+					user-select: none;
+					vertical-align: bottom;
+					margin-right: 4px;
+					width: 20px;
+					height: calc(1rem * 1.5);
+
+					&:has(input):hover {
+						background: var(--color-fog);
+					}
+
+					&:has(input)::before {
+						content: "";
+						background: url('data:image/svg+xml;utf8,\
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><polygon fill="%2316323f" points="4,0 1,0 6,5 1,10 4,10 9,5 4,0" /></svg>\
+							');
+						position: absolute;
+						margin: auto;
+						inset: 0;
+						width: 10px;
+						height: 10px;
+					}
+
+					&:has(input:checked)::before {
+						transform: rotate(90deg);
+					}
+
+					input {
+						display: none;
+					}
+				}
+
+				a {
+					color: var(--color-walnut);
+					font-size: 1rem;
+
+					&:hover {
+						color: var(--color-crimson);
+						text-decoration: underline;
+					}
+				}
+			}
+		}
+
+		&.chapters {
+			li.active,
+			li.active a {
+				color: var(--color-ale);
+			}
+
+			ul a {
+				display: inline-block;
+			}
+		}
+
+		&.contents {
+			li {
+				position: relative;
+				padding-left: 12px;
+
+				&.active::before {
+					content: "";
+					position: absolute;
+					top: 0;
+					bottom: 0;
+					left: 0;
+					width: 4px;
+					background: var(--color-ale);
+				}
+
+				a:not(:hover) span {
+					display: none;
+				}
+			}
+		}
+	}
+}

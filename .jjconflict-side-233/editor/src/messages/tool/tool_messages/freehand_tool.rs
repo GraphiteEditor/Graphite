@@ -216,6 +216,7 @@ impl ToolTransition for FreehandTool {
 			overlay_provider: Some(|context: OverlayContext| FreehandToolMessage::Overlays { context }.into()),
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
 			selection_changed: Some(FreehandToolMessage::SelectionChanged.into()),
+			graph_changed: Some(FreehandToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(FreehandToolMessage::WorkingColorChanged.into()),
 			..Default::default()
 		}
@@ -302,8 +303,9 @@ impl Fsm for FreehandToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
 				tool_options.drawing.fill.apply_fill(layer, responses);
+				tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
+				tool_options.drawing.apply_stroke_order_to_new_layer(layer, responses);
 				tool_data.layer = Some(layer);
 				tool_data.new_layer_viewport_start = Some(input.mouse.position);
 

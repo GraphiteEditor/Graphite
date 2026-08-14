@@ -715,7 +715,7 @@ impl SmoothPath {
 	}
 }
 
-/// Stepped holds each stop's color the whole way to the next stop, so the ramp jumps at stops and midpoints are inert.
+/// Stepped holds each stop's color the whole way to the next stop, so the ramp jumps at stops and midpoints are ignored.
 fn stepped_color(stops: &[GradientStop], t: f64, gradient_cyclic: bool) -> Color {
 	let (Some(first), Some(last)) = (stops.first(), stops.last()) else { return Color::BLACK };
 

@@ -1,0 +1,365 @@
+use super::IconName;
+use super::utility_types::{MouseCursorIcon, PersistedState};
+use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
+use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, RasterizedImage};
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
+use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::utility_types::{
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic,
+};
+use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
+use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
+use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
+use crate::messages::prelude::*;
+use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
+use graph_craft::document::NodeId;
+use graphene_std::color::SRGBA8;
+use graphene_std::vector::style::FillChoice;
+use std::path::PathBuf;
+
+#[cfg(not(target_family = "wasm"))]
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+
+#[impl_message(Message, Frontend)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize)]
+#[derivative(Debug, PartialEq)]
+pub enum FrontendMessage {
+	// Display prefix: make the frontend show something, like a dialog
+	DisplayDialog {
+		title: String,
+		icon: IconName,
+	},
+	DialogClose,
+	DisplayDialogPanic {
+		#[serde(rename = "panicInfo")]
+		panic_info: String,
+	},
+	DisplayEditableTextbox {
+		text: String,
+		#[serde(rename = "lineHeightRatio")]
+		line_height_ratio: f64,
+		#[serde(rename = "fontSize")]
+		font_size: f64,
+		color: String,
+		#[serde(rename = "fontData")]
+		font_data: serde_bytes::ByteBuf,
+		transform: [f64; 6],
+		#[serde(rename = "maxWidth")]
+		max_width: Option<f64>,
+		#[serde(rename = "maxHeight")]
+		max_height: Option<f64>,
+		align: String,
+		#[serde(rename = "alignLast")]
+		align_last: String,
+	},
+	DisplayEditableTextboxUpdateFontData {
+		#[serde(rename = "fontData")]
+		font_data: serde_bytes::ByteBuf,
+	},
+	DisplayEditableTextboxTransform {
+		transform: [f64; 6],
+	},
+	DisplayRemoveEditableTextbox,
+
+	// Send prefix: Send global, static data to the frontend that is never updated
+	SendUIMetadata {
+		#[serde(rename = "nodeDescriptions")]
+		node_descriptions: Vec<(String, String)>,
+		#[serde(rename = "nodeTypes")]
+		node_types: Vec<FrontendNodeType>,
+	},
+	SendShortcutFullscreen {
+		shortcut: Option<ActionShortcut>,
+		#[serde(rename = "shortcutMac")]
+		shortcut_mac: Option<ActionShortcut>,
+	},
+	SendShortcutAltClick {
+		shortcut: Option<ActionShortcut>,
+	},
+	SendShortcutShiftClick {
+		shortcut: Option<ActionShortcut>,
+	},
+
+	// Trigger prefix: cause a frontend specific API to do something
+	TriggerAboutGraphiteLocalizedCommitDate {
+		#[serde(rename = "commitDate")]
+		commit_date: String,
+	},
+	TriggerDisplayThirdPartyLicensesDialog,
+	TriggerSaveDocument {
+		document_id: DocumentId,
+		name: String,
+		path: Option<PathBuf>,
+		folder: Option<PathBuf>,
+		content: serde_bytes::ByteBuf,
+	},
+	TriggerSaveFile {
+		name: String,
+		folder: Option<PathBuf>,
+		content: serde_bytes::ByteBuf,
+	},
+	TriggerExportImage {
+		svg: String,
+		name: String,
+		mime: String,
+		size: (f64, f64),
+	},
+	TriggerFetchAndOpenDocument {
+		name: String,
+		filename: String,
+	},
+	TriggerPersistenceReadState,
+	TriggerPersistenceReadDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
+	},
+	TriggerPersistenceWriteState {
+		state: PersistedState,
+	},
+	TriggerPersistenceDeleteDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
+	},
+	TriggerPersistenceWriteDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
+		document: String,
+	},
+	TriggerOpenLaunchDocuments,
+	TriggerLoadPreferences,
+	TriggerOpen,
+	TriggerImport,
+	TriggerSavePreferences {
+		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
+		preferences: PreferencesMessageHandler,
+	},
+	TriggerTextCommit,
+	/// Asks the frontend to enter inline-rename mode for a layer in the graph view.
+	TriggerEditLayerNameInGraph {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+	},
+	TriggerVisitLink {
+		url: String,
+	},
+	TriggerClipboardRead,
+	TriggerClipboardWrite {
+		content: String,
+	},
+	TriggerSelectionRead {
+		cut: bool,
+	},
+	TriggerSelectionWrite {
+		content: String,
+	},
+
+	// Update prefix: give the frontend a new value or state for it to use
+	UpdateActiveDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
+	},
+	UpdateGradientStopColorPickerPosition {
+		color: SRGBA8, // TODO: Color (without `none`) -> Color (with `none`)
+		position: (f64, f64),
+	},
+	/// The Rust color picker handler picked a new color/gradient. The frontend `<ColorPicker />` forwards this as its `colorOrGradient` event.
+	ColorPickerColorChanged {
+		value: FillChoice<SRGBA8>,
+	},
+	/// The Rust color picker handler is starting an undo transaction. The frontend `<ColorPicker />` forwards this as its `startHistoryTransaction` event.
+	ColorPickerStartHistoryTransaction,
+	/// The Rust color picker handler is committing the in-flight undo transaction. The frontend `<ColorPicker />` forwards this as its `commitHistoryTransaction` event.
+	ColorPickerCommitHistoryTransaction,
+	UpdateImportsExports {
+		/// If the primary import is not visible, then it is None.
+		imports: Vec<Option<FrontendGraphOutput>>,
+		/// If the primary export is not visible, then it is None.
+		exports: Vec<Option<FrontendGraphInput>>,
+		/// The primary import location.
+		#[serde(rename = "importPosition")]
+		import_position: (i32, i32),
+		/// The primary export location.
+		#[serde(rename = "exportPosition")]
+		export_position: (i32, i32),
+		/// The document network does not have an add import or export button.
+		#[serde(rename = "addImportExport")]
+		add_import_export: bool,
+	},
+	UpdateInSelectedNetwork {
+		#[serde(rename = "inSelectedNetwork")]
+		in_selected_network: bool,
+	},
+	UpdateBox {
+		#[serde(rename = "box")]
+		box_selection: Option<BoxSelection>,
+	},
+	UpdateContextMenuInformation {
+		#[serde(rename = "contextMenuInformation")]
+		context_menu_information: Option<ContextMenuInformation>,
+	},
+	UpdateClickTargets {
+		#[serde(rename = "clickTargets")]
+		click_targets: Option<FrontendClickTargets>,
+	},
+	UpdateGraphViewOverlay {
+		open: bool,
+	},
+	UpdateWorkspacePanelLayout {
+		#[serde(rename = "panelLayout")]
+		panel_layout: WorkspacePanelLayout,
+	},
+	UpdateLayout {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		diff: Vec<WidgetDiff>, // TODO: Align this with what's generated
+	},
+	UpdateImportReorderIndex {
+		#[serde(rename = "importIndex")]
+		index: Option<usize>,
+	},
+	UpdateExportReorderIndex {
+		#[serde(rename = "exportIndex")]
+		index: Option<usize>,
+	},
+	UpdateLayerWidths {
+		#[serde(rename = "layerWidths")]
+		layer_widths: HashMap<NodeId, u32>,
+		#[serde(rename = "chainWidths")]
+		chain_widths: HashMap<NodeId, u32>,
+		#[serde(rename = "hasLeftInputWire")]
+		has_left_input_wire: HashMap<NodeId, bool>,
+	},
+	UpdateDocumentArtwork {
+		svg: String,
+	},
+	UpdateImageData {
+		image_data: Vec<RasterizedImage>,
+	},
+	UpdateDocumentLayerDetails {
+		data: LayerPanelEntry,
+	},
+	UpdateDocumentLayerStructure {
+		#[serde(rename = "layerStructure")]
+		layer_structure: Vec<LayerStructureEntry>,
+	},
+	UpdateDocumentRulers {
+		origin: (f64, f64),
+		spacing: f64,
+		interval: f64,
+		visible: bool,
+		tilt: f64,
+		flip: bool,
+		#[serde(rename = "selectionQuad")]
+		selection_quad: Option<[(f64, f64); 4]>,
+	},
+	UpdateDocumentScrollbars {
+		position: (f64, f64),
+		size: (f64, f64),
+		multiplier: (f64, f64),
+	},
+	UpdateEyedropperSamplingState {
+		image: Option<EyedropperPreviewImage>,
+		#[serde(rename = "mousePosition")]
+		mouse_position: Option<(f64, f64)>,
+		#[serde(rename = "primaryColor")]
+		primary_color: String,
+		#[serde(rename = "secondaryColor")]
+		secondary_color: String,
+		#[serde(rename = "setColorChoice")]
+		set_color_choice: Option<PrimarySecondary>,
+	},
+	UpdateGraphFadeArtwork {
+		percentage: f64,
+	},
+	UpdateMouseCursor {
+		cursor: MouseCursorIcon,
+	},
+	UpdateNodeGraphNodes {
+		nodes: Vec<FrontendNode>,
+	},
+	UpdateNodeGraphErrorDiagnostic {
+		error: Option<NodeGraphErrorDiagnostic>,
+	},
+	UpdateVisibleNodes {
+		nodes: Vec<NodeId>,
+	},
+	UpdateNodeGraphWires {
+		wires: Vec<WirePathUpdate>,
+	},
+	ClearAllNodeGraphWires,
+	UpdateNodeGraphSelection {
+		selected: Vec<NodeId>,
+	},
+	UpdateNodeGraphTransform {
+		translation: (f64, f64),
+		scale: f64,
+	},
+	UpdateNodeThumbnail {
+		id: NodeId,
+		value: String,
+	},
+	UpdateOpenDocumentsList {
+		#[serde(rename = "openDocuments")]
+		open_documents: Vec<DocumentInfo>,
+	},
+	UpdateWirePathInProgress {
+		#[serde(rename = "wirePath")]
+		wire_path: Option<WirePath>,
+	},
+	UpdatePlatform {
+		platform: AppWindowPlatform,
+	},
+	UpdateMaximized {
+		maximized: bool,
+	},
+	UpdateFullscreen {
+		fullscreen: bool,
+	},
+	UpdateViewportHolePunch {
+		active: bool,
+	},
+	#[cfg(not(target_family = "wasm"))]
+	UpdateViewportPhysicalBounds {
+		x: f64,
+		y: f64,
+		width: f64,
+		height: f64,
+	},
+	UpdateUIScale {
+		scale: f64,
+	},
+
+	#[cfg(not(target_family = "wasm"))]
+	RenderOverlays {
+		#[serde(skip, default = "OverlayContext::default")]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
+		context: OverlayContext,
+	},
+
+	// Window prefix: cause the application window to do something
+	#[cfg(not(target_family = "wasm"))]
+	WindowPointerLock,
+	WindowPointerLockMove {
+		position: (f64, f64),
+	},
+	#[cfg(not(target_family = "wasm"))]
+	WindowClose,
+	#[cfg(not(target_family = "wasm"))]
+	WindowMinimize,
+	#[cfg(not(target_family = "wasm"))]
+	WindowMaximize,
+	WindowFullscreen,
+	#[cfg(not(target_family = "wasm"))]
+	WindowDrag,
+	#[cfg(not(target_family = "wasm"))]
+	WindowHide,
+	#[cfg(not(target_family = "wasm"))]
+	WindowFocus,
+	#[cfg(not(target_family = "wasm"))]
+	WindowHideOthers,
+	#[cfg(not(target_family = "wasm"))]
+	WindowShowAll,
+	#[cfg(not(target_family = "wasm"))]
+	WindowRestart,
+}

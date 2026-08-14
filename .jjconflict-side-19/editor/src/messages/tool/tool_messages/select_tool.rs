@@ -448,6 +448,7 @@ impl ToolTransition for SelectTool {
 		EventToMessageMap {
 			tool_abort: Some(SelectToolMessage::Abort.into()),
 			selection_changed: Some(SelectToolMessage::SelectionChanged.into()),
+			graph_changed: Some(SelectToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(SelectToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| SelectToolMessage::Overlays { context }.into()),
 			..Default::default()

@@ -1,0 +1,599 @@
+use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
+use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+use crate::messages::prelude::*;
+use graphene_std::color::SRGBA8;
+use graphene_std::vector::style::FillChoice;
+use serde_json::Value;
+use std::collections::HashMap;
+
+#[derive(ExtractField)]
+pub struct LayoutMessageContext<'a> {
+	pub action_input_mapping: &'a dyn Fn(&MessageDiscriminant) -> Option<KeysGroup>,
+}
+
+#[derive(Debug, Clone, Default, ExtractField)]
+pub struct LayoutMessageHandler {
+	layouts: [Layout; LayoutTarget::_LayoutTargetLength as usize],
+}
+
+#[message_handler_data]
+impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHandler {
+	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, context: LayoutMessageContext) {
+		let action_input_mapping = &context.action_input_mapping;
+
+		match message {
+			LayoutMessage::ResendActiveWidget { layout_target, widget_id } => {
+				// Find the updated diff based on the specified layout target
+				let Some(diff) = Self::get_widget_path(&self.layouts[layout_target as usize], widget_id).map(|(widget, widget_path)| {
+					// Create a widget update diff for the relevant id
+					let new_value = DiffUpdate::Widget(widget.clone());
+					WidgetDiff { widget_path, new_value }
+				}) else {
+					return;
+				};
+				// Resend that diff
+				self.send_diff(vec![diff], layout_target, responses, action_input_mapping);
+			}
+			LayoutMessage::ResendAllLayouts => {
+				// Collect non-empty layouts and their indices, then clear the stored copies so diffs compute as full re-sends
+				let layouts_to_resend: Vec<_> = self
+					.layouts
+					.iter_mut()
+					.enumerate()
+					.filter(|(_, layout)| !layout.0.is_empty())
+					.map(|(i, layout)| (LayoutTarget::from(i as u8), std::mem::take(layout)))
+					.collect();
+
+				for (layout_target, layout) in layouts_to_resend {
+					self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
+				}
+			}
+			LayoutMessage::SendLayout { layout, layout_target } => {
+				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
+			}
+			LayoutMessage::DestroyLayout { layout_target } => {
+				if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
+					*layout = Layout::default();
+				}
+			}
+			LayoutMessage::WidgetValueCommit { layout_target, widget_id, value } => {
+				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Commit, responses);
+			}
+			LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value } => {
+				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Update, responses);
+			}
+			LayoutMessage::WidgetValueDragDrop { layout_target, widget_id } => {
+				let Some(layout) = self.layouts.get_mut(layout_target as usize) else {
+					warn!("WidgetValueDragDrop referenced an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				let Some(widget_instance) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
+					warn!("WidgetValueDragDrop referenced an invalid widget ID. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				if let Widget::IconButton(icon_button) = &mut *widget_instance.widget {
+					responses.add((icon_button.on_drag_drop.callback)(icon_button));
+				}
+			}
+		}
+	}
+
+	fn actions(&self) -> ActionList {
+		actions!(LayoutMessageDiscriminant;)
+	}
+}
+
+impl LayoutMessageHandler {
+	/// Get the widget path for the widget with the specified id
+	fn get_widget_path(widget_layout: &Layout, widget_id: WidgetId) -> Option<(&WidgetInstance, Vec<usize>)> {
+		let mut stack = widget_layout.0.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
+		while let Some((mut widget_path, layout_group)) = stack.pop() {
+			match layout_group {
+				// Check if any of the widgets in the current column or row have the correct id
+				LayoutGroup::Column(WidgetColumn { widgets }) | LayoutGroup::Row(WidgetRow { widgets }) => {
+					for (index, widget) in widgets.iter().enumerate() {
+						// Return if this is the correct ID
+						if widget.widget_id == widget_id {
+							widget_path.push(index);
+							return Some((widget, widget_path));
+						}
+
+						if let Widget::PopoverButton(popover) = &*widget.widget {
+							stack.extend(
+								popover
+									.popover_layout
+									.0
+									.iter()
+									.enumerate()
+									.map(|(child, val)| ([widget_path.as_slice(), &[index, child]].concat(), val)),
+							);
+						}
+					}
+				}
+				// A section contains more LayoutGroups which we add to the stack.
+				LayoutGroup::Section(WidgetSection { layout, .. }) => {
+					stack.extend(layout.0.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
+				}
+				LayoutGroup::Table(WidgetTable { rows, .. }) => {
+					for (row_index, row) in rows.iter().enumerate() {
+						for (cell_index, cell) in row.iter().enumerate() {
+							for (value_index, value) in cell.iter().enumerate() {
+								// Return if this is the correct ID
+								if value.widget_id == widget_id {
+									widget_path.push(row_index);
+									widget_path.push(cell_index);
+									widget_path.push(value_index);
+									return Some((value, widget_path));
+								}
+
+								if let Widget::PopoverButton(popover) = &*value.widget {
+									stack.extend(
+										popover
+											.popover_layout
+											.0
+											.iter()
+											.enumerate()
+											.map(|(child, val)| ([widget_path.as_slice(), &[row_index, cell_index, value_index, child]].concat(), val)),
+									);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		None
+	}
+
+	fn handle_widget_callback(&mut self, layout_target: LayoutTarget, widget_id: WidgetId, value: Value, action: WidgetValueAction, responses: &mut std::collections::VecDeque<Message>) {
+		let Some(layout) = self.layouts.get_mut(layout_target as usize) else {
+			warn!("handle_widget_callback was called referencing an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
+			return;
+		};
+
+		let Some(widget_instance) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
+			warn!("handle_widget_callback was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
+			return;
+		};
+
+		match &mut *widget_instance.widget {
+			Widget::BreadcrumbTrailButtons(breadcrumb_trail_buttons) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (breadcrumb_trail_buttons.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Some(update_value) = value.as_u64() else {
+							error!("BreadcrumbTrailButtons update was not of type: u64");
+							return;
+						};
+						(breadcrumb_trail_buttons.on_update.callback)(&update_value)
+					}
+				};
+				responses.add(callback_message);
+			}
+			Widget::CheckboxInput(checkbox_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (checkbox_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Some(update_value) = value.as_bool() else {
+							error!("CheckboxInput update was not of type: bool");
+							return;
+						};
+						checkbox_input.checked = update_value;
+						(checkbox_input.on_update.callback)(checkbox_input)
+					}
+				};
+				responses.add(callback_message);
+			}
+			Widget::ColorComparisonInput(color_comparison_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (color_comparison_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => (color_comparison_input.on_update.callback)(&()),
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::ColorInput(color_button) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(fill_choice) = serde_json::from_value::<FillChoice<SRGBA8>>(value) else {
+							warn!("ColorInput update was not able to be parsed as FillChoice<SRGBA8>: {color_button:?}");
+							return;
+						};
+						// The stored copy has to keep mirroring what the frontend was last sent, so the rebuilt layout still
+						// diffs against it and syncs picks that leave the swatch unchanged; the callback borrows the new one
+						let previous_value = std::mem::replace(&mut color_button.value, fill_choice);
+						let update_message = (color_button.on_update.callback)(color_button);
+						color_button.value = previous_value;
+						update_message
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::ColorPresetsInput(color_presets_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (color_presets_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<ColorPresetsInputUpdate>(value) else {
+							warn!("ColorPresetsInput update was not able to be parsed as ColorPresetsInputUpdate");
+							return;
+						};
+						(color_presets_input.on_update.callback)(&update)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::DropdownInput(dropdown_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => {
+						let Some(update_value) = value.as_u64() else {
+							error!("DropdownInput commit was not of type `u64`, found {value:?}");
+							return;
+						};
+						let Some(entry) = dropdown_input.entries.iter().flatten().nth(update_value as usize) else {
+							error!("DropdownInput commit was not able to find entry for index {update_value}");
+							return;
+						};
+						(entry.on_commit.callback)(&())
+					}
+					WidgetValueAction::Update => {
+						let Some(update_value) = value.as_u64() else {
+							error!("DropdownInput update was not of type `u64`, found {value:?}");
+							return;
+						};
+						dropdown_input.selected_index = Some(update_value as u32);
+						let Some(entry) = dropdown_input.entries.iter().flatten().nth(update_value as usize) else {
+							error!("DropdownInput update was not able to find entry for index {update_value}");
+							return;
+						};
+						(entry.on_update.callback)(&())
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::SpectrumInput(spectrum_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (spectrum_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<SpectrumInputUpdate>(value) else {
+							warn!("SpectrumInput update was not able to be parsed as SpectrumInputUpdate");
+							return;
+						};
+						// Don't mutate the stored widget here: leaving its old values lets the layout diff detect a change
+						// when the new layout is rebuilt with the updated state. Otherwise the frontend's stored layout
+						// keeps stale values for `activeMarkerIndex`, etc., and any other widget's diff (e.g. the position
+						// NumberInput) will trigger Svelte to re-spread those stale props onto SpectrumInput, clobbering
+						// its local `activeMarkerIndex` and making subsequent drags target the wrong stop.
+						(spectrum_input.on_update.callback)(&update)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::IconButton(icon_button) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (icon_button.on_commit.callback)(&()),
+					WidgetValueAction::Update => (icon_button.on_update.callback)(icon_button),
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::ImageButton(image_label) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (image_label.on_commit.callback)(&()),
+					WidgetValueAction::Update => (image_label.on_update.callback)(&()),
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::ImageLabel(_) => {}
+			Widget::ShortcutLabel(_) => {}
+			Widget::IconLabel(_) => {}
+			Widget::NodeCatalog(node_type_input) => match action {
+				WidgetValueAction::Commit => {
+					let callback_message = (node_type_input.on_commit.callback)(&());
+					responses.add(callback_message);
+				}
+				WidgetValueAction::Update => {
+					let Value::String(ref node_type) = value else {
+						error!("NodeCatalog update was not of type: String, found {value:?}");
+						return;
+					};
+					let callback_message = (node_type_input.on_update.callback)(&DefinitionIdentifier::from_serialized(node_type));
+					responses.add(callback_message);
+				}
+			},
+			Widget::NumberInput(number_input) => match action {
+				WidgetValueAction::Commit => {
+					let callback_message = (number_input.on_commit.callback)(&());
+					responses.add(callback_message);
+				}
+				WidgetValueAction::Update => match value {
+					Value::Number(ref num) => {
+						let Some(update_value) = num.as_f64() else {
+							error!("NumberInput update was not of type: f64, found {value:?}");
+							return;
+						};
+						number_input.value = Some(update_value);
+						let callback_message = (number_input.on_update.callback)(number_input);
+						responses.add(callback_message);
+					}
+					// A text-field commit sends the user's raw entry as a math expression to evaluate and validate.
+					Value::String(expression) => {
+						let Some(evaluated) = evaluate_and_validate_number_input(&expression, number_input) else { return };
+
+						// Skip the update (and its history transaction) when the value is unchanged, since the network interface would short-circuit it anyway.
+						if number_input.value == Some(evaluated) {
+							return;
+						}
+
+						// Snapshot the pre-change state for undo via `on_commit`, then apply the new value via `on_update`.
+						responses.add((number_input.on_commit.callback)(&()));
+						number_input.value = Some(evaluated);
+						responses.add((number_input.on_update.callback)(number_input));
+					}
+					// The increment arrows send `{ "increment": "Increase" | "Decrease" }` to invoke the backend's directional step callback.
+					Value::Object(ref command) => match command.get("increment").and_then(Value::as_str) {
+						Some("Increase") => responses.add((number_input.increment_callback_increase.callback)(number_input)),
+						Some("Decrease") => responses.add((number_input.increment_callback_decrease.callback)(number_input)),
+						_ => error!("NumberInput received an unrecognized command: {value:?}"),
+					},
+					_ => {}
+				},
+			},
+			Widget::ParameterExposeButton(parameter_expose_button) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (parameter_expose_button.on_commit.callback)(&()),
+					WidgetValueAction::Update => (parameter_expose_button.on_update.callback)(parameter_expose_button),
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::ReferencePointInput(reference_point_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (reference_point_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Some(update_value) = value.as_str() else {
+							error!("ReferencePointInput update was not of type: u64");
+							return;
+						};
+						reference_point_input.value = update_value.into();
+						(reference_point_input.on_update.callback)(reference_point_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::PopoverButton(_) => {}
+			Widget::RadioInput(radio_input) => {
+				let Some(update_value) = value.as_u64() else {
+					error!("RadioInput update was not of type: u64");
+					return;
+				};
+				radio_input.selected_index = Some(update_value as u32);
+				let callback_message = match action {
+					WidgetValueAction::Commit => (radio_input.entries[update_value as usize].on_commit.callback)(&()),
+					WidgetValueAction::Update => (radio_input.entries[update_value as usize].on_update.callback)(&()),
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::Separator(_) => {}
+			Widget::TextAreaInput(text_area_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (text_area_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Some(update_value) = value.as_str() else {
+							error!("TextAreaInput update was not of type: string");
+							return;
+						};
+						text_area_input.value = update_value.into();
+						(text_area_input.on_update.callback)(text_area_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::TextButton(text_button) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (text_button.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Some(value_path) = value.as_array() else {
+							error!("TextButton update was not of type: array");
+							return;
+						};
+
+						// Process the text button click, since no menu is involved if we're given an empty array.
+						if value_path.is_empty() {
+							(text_button.on_update.callback)(text_button)
+						}
+						// Process the text button's menu list entry click, since we have a path to the value of the contained menu entry.
+						else {
+							let mut current_submenu = &text_button.menu_list_children;
+							let mut final_entry: Option<&MenuListEntry> = None;
+
+							// Loop through all menu entry value strings in the path until we reach the final entry (which we store).
+							// Otherwise we exit early if we can't traverse the full path.
+							for value in value_path.iter().filter_map(|v| v.as_str().map(|s| s.to_string())) {
+								let Some(next_entry) = current_submenu.iter().flatten().find(|e| e.value == value) else { return };
+
+								current_submenu = &next_entry.children;
+								final_entry = Some(next_entry);
+							}
+
+							// If we've reached here without returning early, we have a final entry in the path and we should now execute its callback.
+							(final_entry.unwrap().on_commit.callback)(&())
+						}
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::TextInput(text_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (text_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Some(update_value) = value.as_str() else {
+							error!("TextInput update was not of type: string");
+							return;
+						};
+						text_input.value = update_value.into();
+						(text_input.on_update.callback)(text_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::TextLabel(_) => {}
+			Widget::VisualColorPickersInput(visual_color_pickers_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (visual_color_pickers_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<VisualColorPickersInputUpdate>(value) else {
+							warn!("VisualColorPickersInput update was not able to be parsed as VisualColorPickersInputUpdate");
+							return;
+						};
+						// Don't mutate the stored widget here: leaving its old values lets the layout diff detect a change
+						// when the new layout is rebuilt with the updated state, so the visual indicators (selection circle,
+						// hue/alpha needles, saturation-val ue gradient background) actually re-render after a drag.
+						(visual_color_pickers_input.on_update.callback)(&update)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::WorkingColorsInput(_) => {}
+		};
+	}
+
+	/// Diff the update and send to the frontend where necessary
+	fn diff_and_send_layout_to_frontend(
+		&mut self,
+		layout_target: LayoutTarget,
+		mut new_layout: Layout,
+		responses: &mut VecDeque<Message>,
+		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
+	) {
+		// Collect CheckboxId mappings from new layout
+		let mut checkbox_map = HashMap::new();
+		new_layout.collect_checkbox_ids(layout_target, &mut Vec::new(), &mut checkbox_map);
+
+		// Replace all IDs in new layout with deterministic ones
+		new_layout.replace_widget_ids(layout_target, &mut Vec::new(), &checkbox_map);
+
+		// Populate computed display fields on widgets that need derived values
+		populate_computed_display_fields(&mut new_layout);
+
+		// Diff with deterministic IDs
+		let mut widget_diffs = Vec::new();
+
+		self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
+
+		// Skip sending if no diff
+		if widget_diffs.is_empty() {
+			return;
+		}
+
+		// On Mac we need the full MenuBar layout to construct the native menu
+		#[cfg(target_os = "macos")]
+		if layout_target == LayoutTarget::MenuBar {
+			widget_diffs = vec![WidgetDiff {
+				widget_path: Vec::new(),
+				new_value: DiffUpdate::Layout(self.layouts[LayoutTarget::MenuBar as usize].clone()),
+			}];
+		}
+
+		self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
+	}
+
+	/// Send a diff to the frontend based on the layout target.
+	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
+
+		if matches!(layout_target, LayoutTarget::_LayoutTargetLength) {
+			panic!("`_LayoutTargetLength` is not a valid `LayoutTarget` and is used for array indexing");
+		}
+
+		responses.add(FrontendMessage::UpdateLayout { layout_target, diff });
+	}
+}
+
+enum WidgetValueAction {
+	Commit,
+	Update,
+}
+
+/// Walk all widgets in the layout and populate computed display fields (e.g., precomputed CSS gradient strings) so the frontend can render them without making Wasm round-trip calls. Mutates fields in place.
+fn populate_computed_display_fields(layout: &mut Layout) {
+	for instance in layout.iter_mut() {
+		match &mut *instance.widget {
+			Widget::ColorInput(color_input) => {
+				color_input.chosen_gradient = color_input.value.to_css_background_image();
+			}
+			Widget::SpectrumInput(spectrum_input) => {
+				// The track strip spans exactly 0 to 1, which no spread affects, so the widget carries no spread of its own
+				let settings = graphene_std::vector::style::GradientSettings {
+					spread: Default::default(),
+					cyclic: spectrum_input.track_cyclic,
+					space: spectrum_input.track_space,
+					hue_direction: spectrum_input.track_hue_direction,
+					interpolation: spectrum_input.track_interpolation,
+				};
+				let track_gradient = graphene_std::vector::style::Gradient::from(&spectrum_input.track);
+				spectrum_input.track_samples = track_gradient
+					.interpolated_samples_or_black(settings)
+					.into_iter()
+					.map(|(position, color, _)| SpectrumSample::new(position, color))
+					.collect();
+				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrapped interval's boundary-crossing color rather than the outermost stops'
+				let track_evaluator = track_gradient.evaluator(settings);
+				let cap = |t: f64| {
+					let color = track_evaluator.evaluate(t);
+					SRGBA8::from(color).to_css_hex()
+				};
+				spectrum_input.track_start_css = cap(0.);
+				spectrum_input.track_end_css = cap(1.);
+			}
+			Widget::ColorComparisonInput(comparison) => {
+				let contrasting = |color: Option<SRGBA8>| color.map_or(SRGBA8::BLACK, |color| color.contrasting_text_color()).to_css_hex();
+				comparison.new_color_css = comparison.new_color.map(|color| color.to_css_hex()).unwrap_or_default();
+				comparison.new_color_contrasting = contrasting(comparison.new_color);
+				comparison.old_color_css = comparison.old_color.map(|color| color.to_css_hex()).unwrap_or_default();
+				comparison.old_color_contrasting = contrasting(comparison.old_color);
+			}
+			_ => {}
+		}
+	}
+}
+
+/// Evaluates a math expression committed in a `NumberInput`'s text field, then clamps and rounds it to the widget's constraints.
+/// Returns `None` if the expression fails to parse, fails to evaluate, or yields a non-real number (such as `sqrt(-1)`).
+fn evaluate_and_validate_number_input(expression: &str, number_input: &NumberInput) -> Option<f64> {
+	let value = math_parser::evaluate(expression)
+		.inspect_err(|err| error!("Math parser error on \"{expression}\": {err}"))
+		.ok()?
+		.inspect_err(|err| error!("Math evaluate error on \"{expression}\": {err}"))
+		.ok()?;
+
+	let real = value.as_real()?;
+	if real.is_nan() {
+		return None;
+	}
+
+	let mut validated = real;
+	if let Some(min) = number_input.min {
+		validated = validated.max(min);
+	}
+	if let Some(max) = number_input.max {
+		validated = validated.min(max);
+	}
+	if number_input.is_integer {
+		validated = validated.round();
+	}
+
+	Some(validated)
+}
