@@ -242,11 +242,11 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 							*fill *= parent_fill;
 						}
 					}
-					if let Some(appearance) = &parent_appearance
-						&& graphic.iter_attribute_values::<Appearance>(ATTR_APPEARANCE).is_none()
-					{
+					if let Some(appearance) = &parent_appearance {
 						for value in graphic.iter_attribute_values_mut_or_default::<Appearance>(ATTR_APPEARANCE) {
-							*value = appearance.clone();
+							if value.is_empty() {
+								*value = appearance.clone();
+							}
 						}
 					}
 
