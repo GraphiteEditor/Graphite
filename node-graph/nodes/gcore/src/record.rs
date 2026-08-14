@@ -238,6 +238,30 @@ mod tests {
 	}
 
 	#[test]
+	fn creator_eval_indexes_the_copy() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+		let head = ctx.index_head();
+		let indexed = ctx.promoted(&head, 5);
+
+		let base = f64_layout(&[]);
+		let leveled = repeat_opacity_layout(&base);
+		reserve_for(&[&base, &leveled]);
+
+		let node = RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base);
+		assert_eq!(node.layout(), &leveled);
+		let GPoll::Final(value) = node.eval(&indexed) else {
+			panic!("expected a final record");
+		};
+		let rec = leveled.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 7.);
+		// The written opacity is this copy's own index (the head of the chain).
+		assert_eq!(unsafe { rec.read::<f64>(leveled.offset_of(Opacity::NAME, 0).unwrap()) }, 5.);
+	}
+
+	#[test]
 	fn layout_meta_folds_to_construction() {
 		let base = f64_layout(&[]);
 		let carried = multiply_opacity_layout(&base);
