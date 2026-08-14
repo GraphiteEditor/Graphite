@@ -257,7 +257,7 @@ impl RenderParams {
 	}
 
 	/// Params for rendering a child item, cascading this item's appearance to descendants lacking their own.
-	/// Callers only build these when the item carries an appearance, so an item without one clones nothing.
+	/// Callers only build these when the item carries a declared appearance, so an item without one clones nothing.
 	pub fn for_child_item(&self, item_appearance: &Appearance) -> Self {
 		Self {
 			inherited_appearance: Some(item_appearance.clone()),
@@ -952,8 +952,11 @@ impl Render for List<Graphic> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let element = self.element(index).unwrap();
-			// This item's appearance (if any) cascades to descendants lacking their own
-			let child_render_params = self.attribute::<Appearance>(ATTR_APPEARANCE, index).map(|appearance| render_params.for_child_item(appearance));
+			// This item's declared appearance (if any) cascades to descendants lacking their own
+			let child_render_params = self
+				.attribute::<Appearance>(ATTR_APPEARANCE, index)
+				.and_then(Appearance::declared)
+				.map(|appearance| render_params.for_child_item(appearance));
 			let render_params = child_render_params.as_ref().unwrap_or(render_params);
 
 			let matrix = format_transform_matrix(transform);
@@ -1024,8 +1027,11 @@ impl Render for List<Graphic> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let element = self.element(index).unwrap();
-			// This item's appearance (if any) cascades to descendants lacking their own
-			let child_render_params = self.attribute::<Appearance>(ATTR_APPEARANCE, index).map(|appearance| render_params.for_child_item(appearance));
+			// This item's declared appearance (if any) cascades to descendants lacking their own
+			let child_render_params = self
+				.attribute::<Appearance>(ATTR_APPEARANCE, index)
+				.and_then(Appearance::declared)
+				.map(|appearance| render_params.for_child_item(appearance));
 			let render_params = child_render_params.as_ref().unwrap_or(render_params);
 
 			let mut layer = false;
@@ -1102,7 +1108,7 @@ impl Render for List<Graphic> {
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 			// This item's appearance (if any) cascades to descendants lacking their own
-			let child_appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index).or(inherited_appearance);
+			let child_appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 
 			let mut footprint = footprint;
 			footprint.transform *= item_transform;
@@ -1122,7 +1128,7 @@ impl Render for List<Graphic> {
 			for index in 0..self.len() {
 				let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 				let element = self.element(index).unwrap();
-				let child_appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index).or(inherited_appearance);
+				let child_appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 
 				let mut new_click_targets = Vec::new();
 				element.add_upstream_click_targets(&mut new_click_targets, child_appearance);
@@ -1150,7 +1156,7 @@ impl Render for List<Graphic> {
 		for index in 0..self.len() {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let element = self.element(index).unwrap();
-			let child_appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index).or(inherited_appearance);
+			let child_appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 			let mut new_click_targets = Vec::new();
 
 			element.add_upstream_click_targets(&mut new_click_targets, child_appearance);
@@ -1167,7 +1173,7 @@ impl Render for List<Graphic> {
 		for index in 0..self.len() {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let element = self.element(index).unwrap();
-			let child_appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index).or(inherited_appearance);
+			let child_appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 			let mut new_outlines = Vec::new();
 
 			element.add_upstream_outline_targets(&mut new_outlines, child_appearance);
@@ -1199,8 +1205,8 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 	let opacity_attr: f64 = list.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 	let opacity_fill_attr: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-	// The item's own appearance wins over one cascading down from an ancestor
-	let own_appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, index);
+	// The item's own declared appearance wins over one cascading down from an ancestor
+	let own_appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, index).and_then(Appearance::declared);
 	let appearance = own_appearance.or(render_params.inherited_appearance.as_ref());
 	let FillAndStroke {
 		stroke: stroke_params,
@@ -1470,8 +1476,8 @@ impl Render for List<Vector> {
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let multiplied_transform = parent_transform * item_transform;
 
-			// The item's own appearance wins over one cascading down from an ancestor
-			let own_appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index);
+			// The item's own declared appearance wins over one cascading down from an ancestor
+			let own_appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index).and_then(Appearance::declared);
 			let appearance = own_appearance.or(render_params.inherited_appearance.as_ref());
 			let FillAndStroke {
 				stroke: stroke_params,
@@ -1797,7 +1803,7 @@ impl Render for List<Vector> {
 			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let layer = layer_path.iter_element_values().next_back().copied();
 			// The item's own appearance wins over one cascading down from an ancestor
-			let appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index).or(inherited_appearance);
+			let appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 
 			if let Some(element_id) = caller_element_id.or(layer) {
 				let reference_transform = *reference_transforms.entry(element_id).or_insert(transform);
@@ -1873,7 +1879,7 @@ impl Render for List<Vector> {
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index).or(inherited_appearance);
+			let appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 
 			// Use click-target override geometry if the item provides one (e.g. 'Text' node's per-glyph bounding boxes)
 			let vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
@@ -1887,7 +1893,7 @@ impl Render for List<Vector> {
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index).or(inherited_appearance);
+			let appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 
 			extend_targets_from_vector(outlines, appearance, source, transform);
 		}

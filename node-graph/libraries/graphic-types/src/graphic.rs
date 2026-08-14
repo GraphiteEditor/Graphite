@@ -137,14 +137,14 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 
 	fn flatten_recursive<T>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
 		for current_graphic_item in current_graphic_list.into_iter() {
-			// Whether the parent carries each attribute: a structural fact (column presence), never a value comparison.
+			// Whether the parent carries each composed attribute: a structural fact (column presence), never a value comparison.
 			// Flattening composes a parent attribute onto its children only when the parent has it,
 			// so an absent parent attribute never invents a column the children didn't already have.
 			let parent_has_transform = current_graphic_item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some();
 			let parent_has_opacity = current_graphic_item.attribute::<f64>(ATTR_OPACITY).is_some();
 			let parent_has_fill = current_graphic_item.attribute::<f64>(ATTR_OPACITY_FILL).is_some();
 			let parent_has_layer_path = current_graphic_item.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).is_some();
-			let parent_appearance = current_graphic_item.attribute::<Appearance>(ATTR_APPEARANCE).cloned();
+			let parent_appearance = current_graphic_item.attribute::<Appearance>(ATTR_APPEARANCE).and_then(Appearance::declared).cloned();
 
 			let layer_path: NodeIdPath = current_graphic_item.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 			let current_transform: DAffine2 = current_graphic_item.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -176,12 +176,12 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 							*v *= current_fill;
 						}
 					}
-					// Appearance cascades only into children lacking their own column, since a child's appearance wins wholesale
-					if let Some(appearance) = &parent_appearance
-						&& sub_list.iter_attribute_values::<Appearance>(ATTR_APPEARANCE).is_none()
-					{
+					// Appearance cascades into each child whose own is undeclared, since a declared child wins wholesale
+					if let Some(appearance) = &parent_appearance {
 						for v in sub_list.iter_attribute_values_mut_or_default::<Appearance>(ATTR_APPEARANCE) {
-							*v = appearance.clone();
+							if v.is_empty() {
+								*v = appearance.clone();
+							}
 						}
 					}
 
@@ -209,7 +209,7 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 								item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
 							}
 							if let Some(appearance) = &parent_appearance
-								&& item.attribute::<Appearance>(ATTR_APPEARANCE).is_none()
+								&& item.attribute::<Appearance>(ATTR_APPEARANCE).and_then(Appearance::declared).is_none()
 							{
 								item.set_attribute(ATTR_APPEARANCE, appearance.clone());
 							}
@@ -777,6 +777,33 @@ mod tests {
 		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
 		let flattened: List<Vector> = group.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
+	}
+
+	// A padded (empty) appearance cell is undeclared, so the parent's appearance cascades into it while a declared sibling keeps its own
+	#[test]
+	fn flatten_cascades_into_padded_empty_appearance_rows() {
+		use core_types::Color;
+
+		let solid = |color: Color| List::new_from_element(Graphic::Color(List::new_from_element(color)));
+
+		// Declaring an appearance on row 0 forces the column, padding row 1 with the empty appearance
+		let mut inner = List::new();
+		inner.push(Item::new_from_element(Vector::default()));
+		inner.push(Item::new_from_element(Vector::default()));
+		inner.set_attribute(ATTR_APPEARANCE, 0, Appearance::new_single(Coverage::new_fill(), solid(Color::BLACK)));
+
+		let mut outer = List::new_from_element(Graphic::Vector(inner));
+		outer.set_attribute(ATTR_APPEARANCE, 0, Appearance::new_single(Coverage::new_fill(), solid(Color::WHITE)));
+
+		let flattened: List<Vector> = outer.into_flattened_list();
+		let color_of = |index: usize| {
+			let appearance = flattened.attribute::<Appearance>(ATTR_APPEARANCE, index)?;
+			let Some(Graphic::Color(colors)) = appearance.paint_at(0)?.element(0) else { return None };
+			colors.element(0).copied()
+		};
+
+		assert_eq!(color_of(0), Some(Color::BLACK), "a declared row should keep its own appearance");
+		assert_eq!(color_of(1), Some(Color::WHITE), "a padded row should inherit the parent appearance");
 	}
 }
 

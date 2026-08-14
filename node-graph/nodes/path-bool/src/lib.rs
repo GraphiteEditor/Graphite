@@ -195,7 +195,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 			let parent_opacity: f64 = graphic_list.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let parent_fill: f64 = graphic_list.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let layer_path: NodeIdPath = graphic_list.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
-			let parent_appearance = graphic_list.attribute::<Appearance>(ATTR_APPEARANCE, index).cloned();
+			let parent_appearance = graphic_list.attribute::<Appearance>(ATTR_APPEARANCE, index).and_then(Appearance::declared).cloned();
 
 			let compose_parent = |mut item: Item<Vector>| {
 				if parent_has_transform || item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some() {
@@ -213,9 +213,9 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 				if parent_has_layer_path {
 					item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
 				}
-				// Appearance cascades only into children lacking their own, since a child's appearance wins wholesale
+				// Appearance cascades into each child whose own is undeclared, since a declared child wins wholesale
 				if let Some(appearance) = &parent_appearance
-					&& item.attribute::<Appearance>(ATTR_APPEARANCE).is_none()
+					&& item.attribute::<Appearance>(ATTR_APPEARANCE).and_then(Appearance::declared).is_none()
 				{
 					item.set_attribute(ATTR_APPEARANCE, appearance.clone());
 				}

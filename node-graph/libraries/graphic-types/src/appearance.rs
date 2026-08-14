@@ -33,6 +33,9 @@ pub struct Coverage(pub Item<Cover>);
 /// An item's ordered list of paint passes, stored in the `ATTR_APPEARANCE` attribute cell.
 /// Earlier coverages paint first, compositing below later ones. Each row's paint is the
 /// `ATTR_PAINT` attribute beside it.
+///
+/// The empty appearance is its elided attribute default form, and the state in which it is
+/// replaced by an inherited appearance from an outer level of the cascade.
 #[derive(Clone, Debug, Default, PartialEq, CacheHash)]
 pub struct Appearance(pub List<Coverage>);
 
@@ -131,9 +134,20 @@ impl Appearance {
 		self.0.len()
 	}
 
-	/// Whether this appearance holds no coverages, which paints nothing.
+	/// Whether this appearance holds no coverages, the undeclared state that defers to the cascade.
 	pub fn is_empty(&self) -> bool {
 		self.0.is_empty()
+	}
+
+	/// This appearance if it declares any coverages, or `None` for the undeclared (empty) state.
+	pub fn declared(&self) -> Option<&Self> {
+		(!self.is_empty()).then_some(self)
+	}
+
+	/// Resolves the cascade for one item: its own declared appearance wins, while an undeclared
+	/// (absent or empty) cell inherits the nearest ancestor's declared appearance.
+	pub fn cascade<'a>(own: Option<&'a Self>, inherited: Option<&'a Self>) -> Option<&'a Self> {
+		own.and_then(Self::declared).or(inherited)
 	}
 
 	/// Iterates the coverages in paint order.
@@ -302,6 +316,21 @@ mod tests {
 		assert_eq!(extracted.join_miter_limit, 7.);
 		assert_eq!(extracted.align, StrokeAlign::Inside);
 		assert_eq!(extracted.transform, DAffine2::from_scale(DVec2::new(2., 3.)));
+	}
+
+	#[test]
+	fn empty_appearance_is_undeclared_and_defers_to_the_cascade() {
+		let inherited = Appearance::new_single(Coverage::new_fill(), solid_paint(Color::BLACK));
+		let empty = Appearance::default();
+
+		assert!(empty.declared().is_none(), "an empty appearance should be undeclared");
+		assert!(inherited.declared().is_some(), "an appearance with a coverage should be declared");
+
+		assert_eq!(Appearance::cascade(Some(&empty), Some(&inherited)), Some(&inherited));
+		assert_eq!(Appearance::cascade(None, Some(&inherited)), Some(&inherited));
+		assert_eq!(Appearance::cascade(Some(&inherited), None), Some(&inherited));
+		assert_eq!(Appearance::cascade(Some(&empty), None), None);
+		assert_eq!(Appearance::cascade(None, None), None);
 	}
 
 	#[test]
