@@ -116,7 +116,7 @@ impl MapVectorItems for Graphic {
 			match graphic {
 				// Collecting from zero items would drop the attribute columns, so an empty list is left alone
 				Graphic::Vector(list) if !list.is_empty() => *list = std::mem::take(list).into_iter().map(&mut *f).collect(),
-				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| map_nested(nested, f)),
+				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| map_nested(nested, f)),
 				_ => {}
 			}
 		}
@@ -131,7 +131,7 @@ impl MapVectorItems for Graphic {
 		fn collect<'a>(graphic: &'a mut Graphic, elements: &mut Vec<&'a mut Vector>) {
 			match graphic {
 				Graphic::Vector(list) => elements.extend(list.iter_element_values_mut()),
-				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| collect(nested, elements)),
+				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| collect(nested, elements)),
 				_ => {}
 			}
 		}
@@ -166,7 +166,7 @@ impl ExpandVectorItems for Graphic {
 					}
 					*list = expanded;
 				}
-				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| expand_nested(nested, f)),
+				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| expand_nested(nested, f)),
 				_ => {}
 			}
 		}
@@ -1511,7 +1511,7 @@ impl SolidifyStroke for Graphic {
 		fn solidify_nested(graphic: &mut Graphic) {
 			match graphic {
 				Graphic::Vector(list) if !list.is_empty() => *list = solidify_stroke_list_with_snapshot(std::mem::take(list)),
-				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(solidify_nested),
+				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(solidify_nested),
 				_ => {}
 			}
 		}

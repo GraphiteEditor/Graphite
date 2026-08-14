@@ -983,7 +983,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 			match current_element {
 				// If we're allowed to recurse, flatten any graphics we encounter
-				Graphic::Graphic(mut current_element) if recurse => {
+				Graphic::GraphicList(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
 					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 						*graphic_transform = current_transform * *graphic_transform;
@@ -991,7 +991,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 					flatten_list(output_graphic_list, current_element, fully_flatten, recursion_depth + 1);
 				}
-				// Push any leaf elements we encounter: either `Graphic::Graphic(...)` values beyond the recursion depth, or non-`Graphic::Graphic` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`, `Graphic::Text`)
+				// Push any leaf elements we encounter: either `Graphic::GraphicList(...)` values beyond the recursion depth, or non-`Graphic::GraphicList` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`, `Graphic::Text`)
 				_ => {
 					let attributes = current_graphic_list.clone_item_attributes(index);
 					output_graphic_list.push(Item::from_parts(current_element, attributes));

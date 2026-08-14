@@ -655,7 +655,7 @@ impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.render_svg(render, render_params),
+			Graphic::GraphicList(list) => list.render_svg(render, render_params),
 			Graphic::Vector(list) => list.render_svg(render, render_params),
 			Graphic::RasterCPU(list) => list.render_svg(render, render_params),
 			Graphic::RasterGPU(_) => (),
@@ -668,7 +668,7 @@ impl Render for Graphic {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Vector(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterCPU(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterGPU(list) => list.render_to_vello(scene, transform, context, render_params),
@@ -682,7 +682,7 @@ impl Render for Graphic {
 		if let Some(element_id) = element_id {
 			match self {
 				Graphic::None => {}
-				Graphic::Graphic(_) => {
+				Graphic::GraphicList(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
 				Graphic::Vector(list) => {
@@ -742,7 +742,7 @@ impl Render for Graphic {
 
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::GraphicList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::Vector(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::RasterCPU(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
@@ -755,7 +755,7 @@ impl Render for Graphic {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::GraphicList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::Vector(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::RasterCPU(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
@@ -768,7 +768,7 @@ impl Render for Graphic {
 	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::GraphicList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::Vector(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::RasterCPU(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
@@ -781,7 +781,7 @@ impl Render for Graphic {
 	fn contains_artboard(&self) -> bool {
 		match self {
 			Graphic::None => false,
-			Graphic::Graphic(list) => list.contains_artboard(),
+			Graphic::GraphicList(list) => list.contains_artboard(),
 			Graphic::Vector(list) => list.contains_artboard(),
 			Graphic::RasterCPU(list) => list.contains_artboard(),
 			Graphic::RasterGPU(list) => list.contains_artboard(),
@@ -794,7 +794,7 @@ impl Render for Graphic {
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
+			Graphic::GraphicList(list) => list.new_ids_from_hash(reference),
 			Graphic::Vector(list) => list.new_ids_from_hash(reference),
 			Graphic::RasterCPU(_) => (),
 			Graphic::RasterGPU(_) => (),
@@ -841,7 +841,7 @@ impl Render for List<Artboard> {
 			render.parent_tag(
 				// SVG group tag
 				"g",
-				// Group tag attributes
+				// GraphicList tag attributes
 				|attributes| {
 					let matrix = format_transform_matrix(DAffine2::from_translation(location));
 					if !matrix.is_empty() {
@@ -1605,7 +1605,7 @@ impl Render for List<Vector> {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 						}
-						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
+						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
 							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 							paint.render_to_vello(scene, multiplied_transform, context, &paint_render_params);
 							scene.pop_layer();
@@ -1688,7 +1688,7 @@ impl Render for List<Vector> {
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 						}
-						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
+						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
@@ -2691,7 +2691,7 @@ pub fn graphic_list_bounding_box(list: &List<Graphic>, transform: DAffine2) -> R
 		let Some(graphic) = list.element(index) else { continue };
 		let bounds = match graphic {
 			Graphic::Text(text_list) => text_list_bounding_box(text_list, item_transform),
-			Graphic::Graphic(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
+			Graphic::GraphicList(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
 			other => other.thumbnail_bounding_box(item_transform, true),
 		};
 		match bounds {
