@@ -6,7 +6,7 @@
 //! wiring is by hand until the compiler pass constructs layouts.
 
 use core_types::attribute::{Attr, Opacity, RemoveAttr};
-use core_types::context::{ExtractArena, ExtractIndex};
+use core_types::context::{ExtractArena, ExtractIndex, InjectIndex};
 use core_types::gpoll::{ErrorKind, GraphError, Interrupt};
 use core_types::{Context, Ctx};
 
@@ -55,6 +55,11 @@ fn fade<T>(_: impl Ctx, (element, opacity): (T, Attr<Opacity>), factor: f64) -> 
 #[node_macro::node(category("Test"), extent(repeat_opacity_extent))]
 fn repeat_opacity(ctx: impl Ctx + ExtractIndex, element: f64, count: u32) -> IList<(f64, Attr<Opacity>)> {
 	emit(element, Attr(ctx.innermost_index() as f64))
+}
+
+#[node_macro::node(category("Test"))]
+fn sum(_: impl Ctx + InjectIndex + Copy, items: IList<f64>) -> f64 {
+	items.into_iter().sum()
 }
 
 /// The pushed level's extent is the copy count; other levels forward to the carrier.
@@ -286,6 +291,29 @@ mod tests {
 		let node = RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base);
 		// The pushed level (0, the only level) reports the copy count.
 		assert_eq!(node.extent_at(&ctx, 0), core_types::gpoll::GPoll::Final(core_types::gpoll::Extent::Exactly(3)));
+	}
+
+	#[test]
+	fn reducer_folds_a_repeated_level() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let base = f64_layout(&[]);
+		let leveled = repeat_opacity_layout(&base);
+		let out = f64_layout(&[]);
+		reserve_for(&[&base, &leveled, &out]);
+
+		let repeat = RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base);
+		let node = SumNode::new(repeat, &leveled);
+		assert_eq!(node.layout().depth, 0, "the reducer collapsed the rank level");
+
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		// sum(repeat(3, 7)) folds three copies of the element back to a scalar.
+		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 21.);
 	}
 
 	#[test]

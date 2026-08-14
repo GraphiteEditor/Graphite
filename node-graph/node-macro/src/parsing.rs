@@ -313,6 +313,8 @@ impl Parse for NumberRange {
 #[derive(Clone, Debug)]
 pub struct RegularParsedField {
 	pub ty: Type,
+	/// `IList` nesting stripped from `ty` at parse; `ty` holds the element row.
+	pub list_levels: u8,
 	/// The original reference tokens when the parameter was written `&T`; `ty` holds the peeled inner type.
 	pub lend: Option<syn::TypeReference>,
 	pub exposed: bool,
@@ -911,6 +913,7 @@ fn parse_node_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::
 }
 
 fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
+	let (ty, list_levels) = crate::codegen::ir::strip_ilist(&ty);
 	let ident = &pat_ident.ident;
 
 	// Checks for the #[data] attribute, indicating that this is a data field rather than an input parameter to the node.
@@ -1122,6 +1125,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				number_hard_max,
 				number_mode_range,
 				ty,
+				list_levels,
 				lend,
 				value_source,
 				implementations,
@@ -1236,6 +1240,7 @@ impl ParsedNodeFn {
 			widget_override: ParsedWidgetOverride::Hidden,
 			ty: ParsedFieldType::Regular(RegularParsedField {
 				ty,
+				list_levels: 0,
 				lend: None,
 				exposed: false,
 				value_source,
@@ -1410,6 +1415,7 @@ mod tests {
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
 					lend: None,
+					list_levels: 0,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
@@ -1504,6 +1510,7 @@ mod tests {
 					widget_override: ParsedWidgetOverride::None,
 					ty: ParsedFieldType::Regular(RegularParsedField {
 					lend: None,
+						list_levels: 0,
 						ty: parse_quote!(DVec2),
 						exposed: false,
 						value_source: ParsedValueSource::None,
@@ -1579,6 +1586,7 @@ mod tests {
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
 					lend: None,
+					list_levels: 0,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::Default(quote!(50.)),
@@ -1652,6 +1660,7 @@ mod tests {
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
 					lend: None,
+					list_levels: 0,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
@@ -1737,6 +1746,7 @@ mod tests {
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
 					lend: None,
+					list_levels: 0,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
@@ -1825,6 +1835,7 @@ mod tests {
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
 					lend: None,
+					list_levels: 0,
 					ty: parse_quote!(String),
 					exposed: true,
 					value_source: ParsedValueSource::None,

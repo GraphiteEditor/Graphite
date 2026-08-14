@@ -54,7 +54,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let model = analyze(parsed);
 	let node = crate::codegen::ir::build(parsed);
 	let kind = model.as_ref().map(|_| crate::codegen::ir::node_kind(&node));
-	let carrier_present = node.inputs.first().is_some_and(|input| input.subject);
+	let carrier_present = matches!(node.inputs.first(), Some(input) if input.subject && crate::codegen::ir::materialized_levels(&node, 0) == 0);
 	let record_io = matches!(kind, Some(crate::codegen::ir::NodeKind::RecordIo));
 	let flip = matches!(kind, Some(crate::codegen::ir::NodeKind::Flip));
 	let carrier_flip = flip && carrier_present;
@@ -722,7 +722,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let async_source = async_fn || future_kernel;
 	let node = crate::codegen::ir::build(parsed);
 	let kind = crate::codegen::ir::node_kind(&node);
-	let carrier_present = node.inputs.first().is_some_and(|input| input.subject);
+	let carrier_present = matches!(node.inputs.first(), Some(input) if input.subject && crate::codegen::ir::materialized_levels(&node, 0) == 0);
 	let flip = matches!(kind, crate::codegen::ir::NodeKind::Flip);
 	let carrier_flip = flip && carrier_present;
 	let opaque = matches!(kind, crate::codegen::ir::NodeKind::Opaque);
@@ -951,6 +951,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.map(|(index, field)| {
 			let pat = &field.pat_ident;
 			match &field.ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) if ir::materialized_levels(&node, index) > 0 => {
+					quote!(#pat: #core_types::node::List<'_, '_, #ty>)
+				}
 				ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.attribute_reads.is_empty() => read_tuple_param(field, quote!(#pat), quote!(#ty)),
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
@@ -1088,6 +1091,28 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				// A carrier primary evaluates beyond the node's own frame (in the
 				// record/flip tail), so it does not bind here.
 				ValueBinding::Carrier => quote!(),
+				ValueBinding::Materialized => {
+					let levels = ir::materialized_levels(&node, index);
+					quote! {
+						let __arena = #core_types::context::ExtractArena::arena(__input);
+						let __count = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Below(#levels)) {
+							#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => __count,
+							#core_types::gpoll::GPoll::Pending => return #core_types::gpoll::GPoll::Pending,
+							_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("reduce over a non-exact extent"))),
+						};
+						let __scratch = match __arena.alloc_scratch::<#core_types::record::RecordValue<'__record>>(__count) {
+							Some(__scratch) => __scratch,
+							None => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("reduce scratch allocation failed"))),
+						};
+						let __batch = match #core_types::node::Node::eval_batch(&self.#name, __input, 0..__count as u64, Some(__scratch)) {
+							#core_types::node::BatchStatus::Lent(__batch, _) | #core_types::node::BatchStatus::Filled(__batch, _) => __batch,
+							#core_types::node::BatchStatus::Pending => return #core_types::gpoll::GPoll::Pending,
+							#core_types::node::BatchStatus::Error(__error) => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(__error)),
+							_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("reduce batch failed"))),
+						};
+						let #name = unsafe { #core_types::node::List::<#ty>::new(__batch) };
+					}
+				}
 				// A reading secondary input claims a record edge: the element and
 				// the declared reads copy out right after its eval, before any
 				// later sibling eval can reuse the record stack.
@@ -1668,7 +1693,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		true => {
 			let mut bounds: Vec<TokenStream2> = regular_fields
 				.iter()
-				.filter_map(|field| match &field.ty {
+				.enumerate()
+				.filter(|(index, _)| ir::materialized_levels(&node, *index) == 0)
+				.filter_map(|(_, field)| match &field.ty {
 					// The conditional arena-park moves a lend element once.
 					ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => Some(quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static)),
 					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),

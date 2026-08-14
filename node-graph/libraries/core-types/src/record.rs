@@ -353,6 +353,13 @@ impl std::fmt::Debug for RecordValue<'_> {
 	}
 }
 
+// SAFETY: `element_write` requires the element `Send + Sync` and attribute payloads
+// are `Copy` or arena-backed, so the record bytes behind the pointer are thread-safe;
+// `'e` ties the pointer's validity to the shared arena and record-stack discipline.
+unsafe impl Send for RecordValue<'_> {}
+// SAFETY: as `Send`.
+unsafe impl Sync for RecordValue<'_> {}
+
 impl<'e> RecordValue<'e> {
 	#[doc(hidden)]
 	pub fn zeroed() -> Self {

@@ -1,6 +1,7 @@
 use crate::context::InjectIndex;
 use crate::gpoll::{Extent, Finality, GPoll, GraphError, Interrupt, Level};
 use std::cell::Cell;
+use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ops::Range;
 
@@ -169,6 +170,66 @@ impl<'e> RecordLane<'_, crate::record::RecordValue<'e>> {
 			Some(offset) => unsafe { self.rec().read::<A::Value<'e>>(offset) },
 			None => A::default(),
 		}
+	}
+}
+
+/// A materialized nesting level handed to a folding kernel: a thin element-typed
+/// view over the [`RecordBatch`] the level was collected into. `'a` is the batch
+/// view, `'e` the record payloads. The eventual `List` once `IList` is renamed.
+#[derive(Debug)]
+pub struct List<'a, 'e, T> {
+	batch: RecordBatch<'a, crate::record::RecordValue<'e>>,
+	_element: PhantomData<T>,
+}
+
+impl<'a, 'e, T: Copy> List<'a, 'e, T> {
+	/// # Safety
+	/// `T` must be the batch's record element type, proven at the consumer's wiring.
+	pub unsafe fn new(batch: RecordBatch<'a, crate::record::RecordValue<'e>>) -> Self {
+		Self { batch, _element: PhantomData }
+	}
+
+	pub fn len(&self) -> usize {
+		self.batch.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.batch.is_empty()
+	}
+
+	pub fn get(&self, index: usize) -> T {
+		// SAFETY: `List::new` established that `T` is the batch's element type.
+		self.batch.get(index, |lane| unsafe { lane.element::<T>() })
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
+		(0..self.len()).map(move |index| self.get(index))
+	}
+}
+
+impl<'a, 'e, T: Copy> IntoIterator for List<'a, 'e, T> {
+	type Item = T;
+	type IntoIter = ListIter<'a, 'e, T>;
+
+	fn into_iter(self) -> ListIter<'a, 'e, T> {
+		ListIter { list: self, position: 0 }
+	}
+}
+
+pub struct ListIter<'a, 'e, T> {
+	list: List<'a, 'e, T>,
+	position: usize,
+}
+
+impl<T: Copy> Iterator for ListIter<'_, '_, T> {
+	type Item = T;
+
+	fn next(&mut self) -> Option<T> {
+		(self.position < self.list.len()).then(|| {
+			let value = self.list.get(self.position);
+			self.position += 1;
+			value
+		})
 	}
 }
 

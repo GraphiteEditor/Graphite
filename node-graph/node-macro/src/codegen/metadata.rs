@@ -17,10 +17,9 @@ pub(crate) fn generate_node_input_references(
 
 		for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
 			let mut ty = match &parsed_input.ty {
-				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
-				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
-			}
-			.clone();
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type.clone(),
+			};
 
 			// We only want the necessary generics.
 			let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);

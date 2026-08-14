@@ -63,7 +63,7 @@ pub(crate) fn analyze(parsed: &ParsedNodeFn) -> Option<Dialect> {
 	} else if has_record_io(parsed) {
 		return None;
 	} else {
-		routing_io(parsed).is_some() || record_flip(parsed) || record_opaque(parsed)
+		routing_io(parsed).is_some() || record_flip(parsed) || record_opaque(parsed) || has_materialized_input(parsed)
 	};
 	supported.then(|| dialect(parsed))
 }
@@ -367,6 +367,13 @@ pub(crate) fn flip_carrier(parsed: &ParsedNodeFn) -> bool {
 /// fully-concrete value-input nodes in this cut; batch, shader, async, lend,
 /// lazy, and generic nodes keep the plain lowering until their record forms
 /// land.
+pub(crate) fn has_materialized_input(parsed: &ParsedNodeFn) -> bool {
+	parsed
+		.fields
+		.iter()
+		.any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) if *list_levels > 0))
+}
+
 pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 	if record_shape(parsed).is_some() || has_record_io(parsed) || routing_io(parsed).is_some() {
 		return false;

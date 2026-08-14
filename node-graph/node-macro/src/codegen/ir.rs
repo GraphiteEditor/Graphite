@@ -59,10 +59,14 @@ fn inputs(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &[Ident]) ->
 				ParsedFieldType::Node(_) => Evaluation::Lazy,
 				ParsedFieldType::Regular(_) => Evaluation::Eager,
 			};
+			let (element, depth) = match &field.ty {
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => strip_ilist(output_type),
+				ParsedFieldType::Regular(RegularParsedField { ty, list_levels, .. }) => (ty.clone(), *list_levels),
+			};
 			Input {
 				ident: field.pat_ident.ident.clone(),
 				evaluation,
-				shape: item_shape(field_element_type(field), &field.attribute_reads, generics),
+				shape: item_shape(&element, depth, &field.attribute_reads, generics),
 				subject: subject(index, field, carrier_subject, routing.as_ref()),
 				lend: matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. })),
 			}
@@ -135,10 +139,9 @@ fn field_element_type(field: &ParsedField) -> &Type {
 	}
 }
 
-fn item_shape(element: &Type, reads: &[AttributeRead], generics: &[Ident]) -> ItemShape {
-	let (element, depth) = strip_ilist(element);
+fn item_shape(element: &Type, depth: u8, reads: &[AttributeRead], generics: &[Ident]) -> ItemShape {
 	ItemShape {
-		element: element_of(&element, generics),
+		element: element_of(element, generics),
 		depth,
 		attrs: reads.iter().map(|read| LevelAttr { marker: read.marker.clone(), level: 0 }).collect(),
 	}
@@ -226,6 +229,7 @@ fn level_delta(node: &Node) -> i8 {
 /// How an eager value input binds in eval.
 pub(crate) enum ValueBinding {
 	Carrier,
+	Materialized,
 	Lend,
 	ReadingSecondary,
 	RecordElement,
@@ -282,10 +286,18 @@ fn has_attr_io(node: &Node) -> bool {
 	node.inputs.iter().any(|input| matches!(input.evaluation, Evaluation::Eager) && !input.shape.attrs.is_empty()) || !node.output.shape.attrs.is_empty() || !node.output.removes.is_empty()
 }
 
+/// Levels of `input[index]` the output does not carry; `> 0` folds the input
+/// into a `List` before the kernel.
+pub(crate) fn materialized_levels(node: &Node, index: usize) -> u8 {
+	node.inputs[index].shape.depth.saturating_sub(node.output.shape.depth)
+}
+
 pub(crate) fn value_binding(node: &Node, index: usize) -> ValueBinding {
 	let input = &node.inputs[index];
 	let kind = node_kind(node);
-	if matches!(kind, NodeKind::RecordIo | NodeKind::Flip) && index == 0 && input.subject {
+	if materialized_levels(node, index) > 0 {
+		ValueBinding::Materialized
+	} else if matches!(kind, NodeKind::RecordIo | NodeKind::Flip) && index == 0 && input.subject {
 		ValueBinding::Carrier
 	} else if matches!(kind, NodeKind::Flip) && input.lend {
 		ValueBinding::Lend
@@ -620,6 +632,7 @@ mod tests {
 		match &field.ty {
 			ParsedFieldType::Regular(_) => match value_binding(node, index) {
 				ValueBinding::Carrier => "carrier",
+			ValueBinding::Materialized => "materialized",
 				ValueBinding::Lend => "lend",
 				ValueBinding::ReadingSecondary => "reading",
 				ValueBinding::RecordElement => "record",
