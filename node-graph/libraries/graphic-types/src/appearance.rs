@@ -203,11 +203,6 @@ impl Appearance {
 		}
 	}
 
-	/// Appends a coverage at the top of the paint order, without replacing any existing same-cover coverage.
-	pub fn push_cover(&mut self, coverage: Coverage, paint: List<Graphic>) {
-		self.0.push(cover_row(coverage, paint));
-	}
-
 	/// Sets the paint of the first coverage of the given cover, leaving its other parameters untouched.
 	/// Returns `false` without changing anything if no coverage of that cover exists.
 	pub fn set_paint_of(&mut self, cover: Cover, paint: List<Graphic>) -> bool {
@@ -258,7 +253,6 @@ mod tests {
 			join_miter_limit: 7.,
 			align: StrokeAlign::Inside,
 			transform: DAffine2::from_scale(DVec2::new(2., 3.)),
-			..Stroke::default()
 		};
 
 		let coverage = Coverage::new_stroke(&stroke);

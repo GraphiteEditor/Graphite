@@ -193,8 +193,11 @@ pub mod migrations {
 		/// disambiguation succeeds, even though the geometry is all that survives.
 		#[test]
 		fn recovers_geometry_from_old_vector_data_with_style() {
+			use core_types::ops::FromAnchorPosition;
+
 			let old_vector = legacy::VectorData {
 				style: legacy::PathStyle { stroke: Some(Stroke::new(12.)) },
+				point_domain: Vector::from_anchor_position(glam::DVec2::new(3., 4.)).point_domain,
 				..Default::default()
 			};
 
@@ -208,7 +211,13 @@ pub mod migrations {
 				.unwrap()
 				.insert("fill".into(), serde_json::to_value(legacy::LegacyFill::default()).unwrap());
 
-			assert!(migrate_to_optional_vector(value).unwrap().is_some(), "the legacy shape should parse into a vector");
+			let migrated = migrate_to_optional_vector(value).unwrap().expect("the legacy shape should parse into a vector");
+
+			assert_eq!(
+				migrated.point_domain.positions(),
+				[glam::DVec2::new(3., 4.)],
+				"the legacy geometry should survive alongside the discarded style"
+			);
 		}
 
 		#[test]

@@ -2628,7 +2628,8 @@ async fn morph<I: IntoGraphicList>(
 		graphic.map(List::new_from_element)
 	}
 
-	// Lerp between two appearances by paint-order position. Stroke parameter pairs interpolate; other coverage pairings step at the midpoint.
+	// Lerp between two appearances, pairing coverages by cover so a fill and a stroke never interpolate into each other.
+	// Stroke parameter pairs interpolate; other coverage pairings and the paint order step at the midpoint.
 	fn lerp_appearance(a: Option<&Appearance>, b: Option<&Appearance>, time: f64) -> Option<Appearance> {
 		if a.is_none() && b.is_none() {
 			return None;
@@ -2636,23 +2637,34 @@ async fn morph<I: IntoGraphicList>(
 		let empty = Appearance::default();
 		let (a, b) = (a.unwrap_or(&empty), b.unwrap_or(&empty));
 
+		// The side holding the paint order at this time leads, so covers only the other side has follow behind it
+		let (leading, trailing) = if time < 0.5 { (a, b) } else { (b, a) };
+		let mut covers: Vec<Cover> = Vec::new();
+		for cover in leading.covers().chain(trailing.covers()).map(Coverage::cover) {
+			if !covers.contains(&cover) {
+				covers.push(cover);
+			}
+		}
+
 		let mut result = Appearance::default();
-		for index in 0..a.len().max(b.len()) {
+		for cover in covers {
+			let (source_index, target_index) = (a.first_index_of(cover), b.first_index_of(cover));
+
 			// An unmatched stroke steps out at the midpoint, matching the stroke geometry, while an unmatched fill persists and fades
-			let coverage = match (a.cover_at(index), b.cover_at(index)) {
-				(Some(source), Some(target)) if source.cover() == Cover::Stroke && target.cover() == Cover::Stroke => Coverage::new_stroke(&source.stroke_params().lerp(&target.stroke_params(), time)),
+			let coverage = match (source_index.and_then(|index| a.cover_at(index)), target_index.and_then(|index| b.cover_at(index))) {
+				(Some(source), Some(target)) if cover == Cover::Stroke => Coverage::new_stroke(&source.stroke_params().lerp(&target.stroke_params(), time)),
 				(Some(source), Some(target)) => (if time < 0.5 { source } else { target }).clone(),
-				(Some(source), None) if source.cover() == Cover::Stroke && time >= 0.5 => continue,
-				(None, Some(target)) if target.cover() == Cover::Stroke && time < 0.5 => continue,
+				(Some(_), None) if cover == Cover::Stroke && time >= 0.5 => continue,
+				(None, Some(_)) if cover == Cover::Stroke && time < 0.5 => continue,
 				(Some(source), None) => source.clone(),
 				(None, Some(target)) => target.clone(),
 				(None, None) => continue,
 			};
 
 			// An unmatched side falls to `None` here, which `lerp_graphic` fades against transparent
-			let paint = lerp_graphic(a.paint_at(index), b.paint_at(index), time).unwrap_or_default();
+			let paint = lerp_graphic(source_index.and_then(|index| a.paint_at(index)), target_index.and_then(|index| b.paint_at(index)), time).unwrap_or_default();
 
-			result.push_cover(coverage, paint);
+			result.replace_or_insert(coverage, paint, CoverPlacement::Above);
 		}
 
 		Some(result)
@@ -3905,6 +3917,64 @@ mod test {
 		};
 		let color = *colors.element(0).expect("Color present");
 		assert!(color.r() > 0. && color.b() > 0., "Fill should be a red-to-blue blend, got {color:?}");
+	}
+
+	#[tokio::test]
+	async fn morph_pairs_appearance_coverages_by_cover() {
+		let rect = || {
+			let mut v = Vector::default();
+			v.append_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
+			v
+		};
+
+		let paint_color = |appearance: &Appearance, cover| {
+			let paint = appearance.first_paint_of(cover).expect("Morph should keep both paints at the midpoint");
+			let Some(Graphic::Color(colors)) = paint.element(0) else {
+				panic!("Expected a solid color paint, got {:?}", paint.element(0));
+			};
+			*colors.element(0).expect("Color present")
+		};
+
+		// The two endpoints list their covers in opposite paint orders, which pairing by position would cross
+		let appearance = |fill: Color, stroke: Color, stroke_placement| {
+			let mut appearance = Appearance::default();
+			appearance.replace_or_insert(Coverage::new_fill(), List::new_from_element(fill).into_graphic_list(), CoverPlacement::Above);
+			appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), List::new_from_element(stroke).into_graphic_list(), stroke_placement);
+			appearance
+		};
+
+		let item_a = Item::new_from_element(rect())
+			.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY)
+			.with_attribute(ATTR_APPEARANCE, appearance(Color::RED, Color::BLACK, CoverPlacement::Above));
+		let item_b = Item::new_from_element(rect())
+			.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation((-100., -100.).into()))
+			.with_attribute(ATTR_APPEARANCE, appearance(Color::BLUE, Color::WHITE, CoverPlacement::Below));
+
+		let mut content = List::new_from_item(item_a);
+		content.push(item_b);
+
+		let morphed = super::morph(
+			Footprint::default(),
+			content,
+			Item::new_from_element(0.5),
+			Item::new_from_element(false),
+			Item::new_from_element(InterpolationDistribution::default()),
+			Item::default(),
+		)
+		.await;
+		let morphed = List::new_from_item(morphed);
+
+		let appearance = morphed.attribute::<Appearance>(ATTR_APPEARANCE, 0).expect("Morph should keep the appearance at the midpoint");
+		assert_eq!(appearance.len(), 2, "the midpoint should hold one fill and one stroke, not a duplicated cover");
+
+		let fill = paint_color(appearance, Cover::Fill);
+		assert!(fill.r() > 0. && fill.b() > 0. && fill.g() == 0., "the fill should interpolate against the other fill, got {fill:?}");
+
+		let stroke = paint_color(appearance, Cover::Stroke);
+		assert!(
+			stroke.r() > 0. && stroke.r() == stroke.g() && stroke.g() == stroke.b(),
+			"the stroke should interpolate against the other stroke, got {stroke:?}"
+		);
 	}
 
 	#[track_caller]

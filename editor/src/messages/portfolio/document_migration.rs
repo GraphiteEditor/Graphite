@@ -1835,7 +1835,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		// A wired paint order input cannot be evaluated statically, so it degrades to the default
+		// A wired paint order input cannot be evaluated statically, so it degrades to the default and leaves its source disconnected
 		let paint_order = match old_inputs.get(7).and_then(|input| input.as_value()) {
 			Some(&TaggedValue::PaintOrder(value)) => value,
 			_ => PaintOrder::StrokeAbove,

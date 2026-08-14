@@ -903,7 +903,7 @@ impl Render for List<Artboard> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>, _inherited_appearance: Option<&Appearance>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>, inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
@@ -925,7 +925,7 @@ impl Render for List<Artboard> {
 
 			let mut child_footprint = footprint;
 			child_footprint.transform *= DAffine2::from_translation(location);
-			content.collect_metadata(metadata, child_footprint, None, None);
+			content.collect_metadata(metadata, child_footprint, None, inherited_appearance);
 		}
 	}
 
@@ -1200,7 +1200,8 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 	let opacity_fill_attr: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
 	// The item's own appearance wins over one cascading down from an ancestor
-	let appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, index).or(render_params.inherited_appearance.as_ref());
+	let own_appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, index);
+	let appearance = own_appearance.or(render_params.inherited_appearance.as_ref());
 	let stroke_params = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params);
 	let fill_graphic_list = appearance.and_then(|appearance| appearance.first_paint_of(Cover::Fill));
 	let stroke_graphic_list = appearance.and_then(|appearance| appearance.first_paint_of(Cover::Stroke));
@@ -1211,7 +1212,10 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 
 	// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
-	let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
+	// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
+	let set_stroke_transform = has_real_stroke
+		.map(|stroke| if own_appearance.is_some() { stroke.transform } else { item_transform })
+		.filter(|transform| transform_is_invertible(*transform));
 	let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
 	let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 	let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
@@ -1468,7 +1472,8 @@ impl Render for List<Vector> {
 			let multiplied_transform = parent_transform * item_transform;
 
 			// The item's own appearance wins over one cascading down from an ancestor
-			let appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index).or(render_params.inherited_appearance.as_ref());
+			let own_appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index);
+			let appearance = own_appearance.or(render_params.inherited_appearance.as_ref());
 			let stroke_params = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params);
 			let fill_graphic_list = appearance.and_then(|appearance| appearance.first_paint_of(Cover::Fill));
 			let stroke_graphic_list = appearance.and_then(|appearance| appearance.first_paint_of(Cover::Stroke));
@@ -1478,7 +1483,10 @@ impl Render for List<Vector> {
 				.is_some_and(|(stroke_index, fill_index)| stroke_index < fill_index);
 
 			let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
-			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
+			// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
+			let set_stroke_transform = has_real_stroke
+				.map(|stroke| if own_appearance.is_some() { stroke.transform } else { item_transform })
+				.filter(|transform| transform_is_invertible(*transform));
 			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 			let mut element_transform = set_stroke_transform
 				.map(|stroke_transform| multiplied_transform * stroke_transform.inverse())

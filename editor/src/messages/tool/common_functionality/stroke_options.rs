@@ -200,8 +200,11 @@ pub fn apply_miter_limit(drawing: &mut DrawingToolState, limit: f64, document: &
 
 pub fn apply_paint_order(drawing: &mut DrawingToolState, order: PaintOrder, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.paint_order = Some(order);
+	// A mixed selection only grays the radio out when no layer can take the swap, so skip the ones that can't
 	for layer in graph_modification_utils::paintable_selected_layers(document) {
-		responses.add(GraphOperationMessage::StrokeOrderSet { layer, paint_order: order });
+		if graph_modification_utils::stroke_paint_order_applicable(layer, &document.network_interface) {
+			responses.add(GraphOperationMessage::StrokeOrderSet { layer, paint_order: order });
+		}
 	}
 }
 
