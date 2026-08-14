@@ -755,6 +755,18 @@ mod tests {
 	}
 
 	#[test]
+	fn reducer_ilist_input_collapses_a_level() {
+		let mut parsed = parse_node_fn(quote!(category("")), quote!(fn sum(_: impl Ctx, items: IList<f64>) -> f64 { items.into_iter().sum() })).unwrap();
+		parsed.replace_impl_trait_in_input();
+		let node = build(&parsed);
+		// The `IList` input is a depth-1 subject; the scalar output collapses it.
+		let subject = node.inputs.iter().find(|input| input.subject).expect("the reduced input is the subject");
+		assert_eq!(subject.shape.depth, 1);
+		assert_eq!(node.output.shape.depth, 0);
+		assert_eq!(node.output.shape.depth as i8 - subject.shape.depth as i8, -1, "the reducer collapses one level");
+	}
+
+	#[test]
 	fn monomorphizations_key_by_generic() {
 		let node = assert_bridge(
 			quote!(category("")),
