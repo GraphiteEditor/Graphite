@@ -92,17 +92,22 @@ impl Coverage {
 	/// Extracts the stroke parameters into a [`Stroke`], falling back to the default for any absent attribute.
 	/// Dash lengths are clamped to non-negative, matching what rendering accepts.
 	pub fn stroke_params(&self) -> Stroke {
-		let defaults = Stroke::default();
-		Stroke {
-			weight: self.0.attribute_cloned_or(ATTR_WEIGHT, defaults.weight),
-			dash_lengths: self.0.attribute::<DashPattern>(ATTR_DASH_PATTERN).map_or(defaults.dash_lengths, DashPattern::clamped_lengths),
-			dash_offset: self.0.attribute_cloned_or(ATTR_DASH_OFFSET, defaults.dash_offset),
-			cap: self.0.attribute_cloned_or(ATTR_CAP, defaults.cap),
-			join: self.0.attribute_cloned_or(ATTR_JOIN, defaults.join),
-			join_miter_limit: self.0.attribute_cloned_or(ATTR_JOIN_MITER_LIMIT, defaults.join_miter_limit),
-			align: self.0.attribute_cloned_or(ATTR_ALIGN, defaults.align),
-			transform: self.0.attribute_cloned_or(ATTR_TRANSFORM, defaults.transform),
+		// A single walk of the attribute pairs instead of one keyed scan per parameter, since this runs per item per render pass
+		let mut stroke = Stroke::default();
+		for (key, value) in self.0.attributes().iter_any() {
+			match key {
+				ATTR_WEIGHT => stroke.weight = value.downcast_ref().copied().unwrap_or(stroke.weight),
+				ATTR_DASH_PATTERN => stroke.dash_lengths = value.downcast_ref::<DashPattern>().map(DashPattern::clamped_lengths).unwrap_or(stroke.dash_lengths),
+				ATTR_DASH_OFFSET => stroke.dash_offset = value.downcast_ref().copied().unwrap_or(stroke.dash_offset),
+				ATTR_CAP => stroke.cap = value.downcast_ref().copied().unwrap_or(stroke.cap),
+				ATTR_JOIN => stroke.join = value.downcast_ref().copied().unwrap_or(stroke.join),
+				ATTR_JOIN_MITER_LIMIT => stroke.join_miter_limit = value.downcast_ref().copied().unwrap_or(stroke.join_miter_limit),
+				ATTR_ALIGN => stroke.align = value.downcast_ref().copied().unwrap_or(stroke.align),
+				ATTR_TRANSFORM => stroke.transform = value.downcast_ref().copied().unwrap_or(stroke.transform),
+				_ => {}
+			}
 		}
+		stroke
 	}
 }
 
@@ -168,6 +173,27 @@ impl Appearance {
 			.map(|(index, coverage)| (coverage, self.paint_at(index).filter(|paint| is_paint_present(paint))))
 	}
 
+	/// Gathers the renderer's per-item reads in one walk of the coverage list.
+	pub fn fill_and_stroke(&self) -> FillAndStroke<'_> {
+		let mut first_fill = None;
+		let mut first_stroke = None;
+		for (index, coverage) in self.covers().enumerate() {
+			match coverage.cover() {
+				Cover::Fill if first_fill.is_none() => first_fill = Some(index),
+				Cover::Stroke if first_stroke.is_none() => first_stroke = Some((index, coverage)),
+				_ => {}
+			}
+		}
+
+		let painted = |index| self.paint_at(index).filter(|paint| is_paint_present(paint));
+		FillAndStroke {
+			stroke: first_stroke.map(|(_, coverage)| coverage.stroke_params()),
+			fill_paint: first_fill.and_then(painted),
+			stroke_paint: first_stroke.and_then(|(index, _)| painted(index)),
+			stroke_below: first_stroke.zip(first_fill).is_some_and(|((stroke_index, _), fill_index)| stroke_index < fill_index),
+		}
+	}
+
 	/// Whether any coverage of the given cover exists, regardless of whether its paint draws anything.
 	pub fn has_cover(&self, cover: Cover) -> bool {
 		self.first_index_of(cover).is_some()
@@ -217,12 +243,21 @@ impl Appearance {
 	}
 }
 
+/// The first fill and stroke of an appearance in the form rendering consumes: the stroke's parameters,
+/// each cover's first paint (filtered to paint that draws something), and their relative paint order.
+#[derive(Debug, Default)]
+pub struct FillAndStroke<'a> {
+	pub stroke: Option<Stroke>,
+	pub fill_paint: Option<&'a List<Graphic>>,
+	pub stroke_paint: Option<&'a List<Graphic>>,
+	/// Whether the first stroke coverage sits before the first fill in the paint order, painting below it.
+	pub stroke_below: bool,
+}
+
 /// Stamps a coverage into the item's `ATTR_APPEARANCE` cell, creating the attribute if absent.
 /// The coverage replaces the first same-cover one in place, or lands at the placement end of the paint order.
 pub fn stamp_coverage<T>(item: &mut Item<T>, coverage: Coverage, paint: List<Graphic>, placement: CoverPlacement) {
-	let mut appearance = item.attribute_cloned_or_default::<Appearance>(ATTR_APPEARANCE);
-	appearance.replace_or_insert(coverage, paint, placement);
-	item.set_attribute(ATTR_APPEARANCE, appearance);
+	item.attribute_mut_or_insert_default::<Appearance>(ATTR_APPEARANCE).replace_or_insert(coverage, paint, placement);
 }
 
 #[cfg(test)]

@@ -694,6 +694,11 @@ impl ItemAttributeValues {
 		self.0.iter().find_map(|(existing_key, value)| if existing_key == key { Some((**value).as_any()) } else { None })
 	}
 
+	/// Returns an iterator over key and type-erased value pairs of all stored attributes, in insertion order.
+	pub fn iter_any(&self) -> impl Iterator<Item = (&str, &dyn std::any::Any)> {
+		self.0.iter().map(|(key, value)| (key.as_str(), (**value).as_any()))
+	}
+
 	/// Returns a debug-formatted string representation of the attribute value for the given key, if it exists.
 	/// The `overrides` function can provide custom formatting for specific type.
 	pub fn display_value(&self, key: &str, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {

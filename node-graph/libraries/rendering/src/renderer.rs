@@ -27,7 +27,7 @@ use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
-use graphic_types::{Appearance, Artboard, Cover, Coverage, Graphic, Vector};
+use graphic_types::{Appearance, Artboard, Cover, Coverage, FillAndStroke, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -1202,13 +1202,12 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 	// The item's own appearance wins over one cascading down from an ancestor
 	let own_appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, index);
 	let appearance = own_appearance.or(render_params.inherited_appearance.as_ref());
-	let stroke_params = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params);
-	let fill_graphic_list = appearance.and_then(|appearance| appearance.first_paint_of(Cover::Fill));
-	let stroke_graphic_list = appearance.and_then(|appearance| appearance.first_paint_of(Cover::Stroke));
-	// List order is paint order: a stroke coverage before the first fill coverage paints below it
-	let wants_stroke_below = appearance
-		.and_then(|appearance| appearance.first_index_of(Cover::Stroke).zip(appearance.first_index_of(Cover::Fill)))
-		.is_some_and(|(stroke_index, fill_index)| stroke_index < fill_index);
+	let FillAndStroke {
+		stroke: stroke_params,
+		fill_paint: fill_graphic_list,
+		stroke_paint: stroke_graphic_list,
+		stroke_below: wants_stroke_below,
+	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 
 	// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
@@ -1474,13 +1473,12 @@ impl Render for List<Vector> {
 			// The item's own appearance wins over one cascading down from an ancestor
 			let own_appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index);
 			let appearance = own_appearance.or(render_params.inherited_appearance.as_ref());
-			let stroke_params = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params);
-			let fill_graphic_list = appearance.and_then(|appearance| appearance.first_paint_of(Cover::Fill));
-			let stroke_graphic_list = appearance.and_then(|appearance| appearance.first_paint_of(Cover::Stroke));
-			// List order is paint order: a stroke coverage before the first fill coverage paints below it
-			let wants_stroke_below = appearance
-				.and_then(|appearance| appearance.first_index_of(Cover::Stroke).zip(appearance.first_index_of(Cover::Fill)))
-				.is_some_and(|(stroke_index, fill_index)| stroke_index < fill_index);
+			let FillAndStroke {
+				stroke: stroke_params,
+				fill_paint: fill_graphic_list,
+				stroke_paint: stroke_graphic_list,
+				stroke_below: wants_stroke_below,
+			} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 
 			let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
 			// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
