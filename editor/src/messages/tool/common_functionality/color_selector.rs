@@ -125,6 +125,9 @@ pub struct DrawingToolState {
 	pub miter_limit: Option<f64>,
 	/// Paint order from the selection. `None` = mixed.
 	pub paint_order: Option<PaintOrder>,
+	/// Whether any selected layer has a lone adjacent Fill/Stroke pair for the paint order to swap.
+	/// Stays true with an empty selection, where the radio still sets the default for new shapes.
+	pub paint_order_applicable: bool,
 	/// Dash lengths from the selection. `None` = mixed.
 	pub dash_lengths: Option<Vec<f64>>,
 	/// Dash offset from the selection. `None` = mixed.
@@ -150,6 +153,7 @@ impl DrawingToolState {
 			stroke_join: Some(StrokeJoin::default()),
 			miter_limit: Some(4.),
 			paint_order: Some(PaintOrder::default()),
+			paint_order_applicable: true,
 			dash_lengths: Some(Vec::new()),
 			dash_offset: Some(0.),
 			last_synced_selection: Vec::new(),
@@ -183,12 +187,20 @@ impl DrawingToolState {
 			cap: self.stroke_cap.unwrap_or_default(),
 			join: self.stroke_join.unwrap_or_default(),
 			join_miter_limit: self.miter_limit.unwrap_or(4.),
-			paint_order: self.paint_order.unwrap_or_default(),
 			dash_lengths: self.effective_dash_lengths(),
 			dash_offset: self.dash_offset.unwrap_or(0.),
 			transform: glam::DAffine2::IDENTITY,
 		};
 		responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
+	}
+
+	/// Queues the paint order rewrite for a freshly created `layer`. The order is the relative position of the
+	/// Stroke and Fill nodes in the chain, so this must run after both the stroke and fill have been applied.
+	pub fn apply_stroke_order_to_new_layer(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+		let paint_order = self.paint_order.unwrap_or_default();
+		if paint_order != PaintOrder::default() {
+			responses.add(GraphOperationMessage::StrokeOrderSet { layer, paint_order });
+		}
 	}
 }
 
@@ -304,12 +316,23 @@ pub fn sync_drawing_state(drawing: &mut DrawingToolState, natural_fill_enabled: 
 /// Reads the stroke proto-node inputs (align, cap, join, miter limit, paint order, dash lengths, dash offset) across the selection and updates
 /// the matching fields on `drawing`. Each field becomes `None` (mixed) when selected strokes disagree. With no selection, fields are left as-is.
 fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessageHandler) -> bool {
-	let strokes: Vec<_> = graph_modification_utils::paintable_selected_layers(document)
+	let layers = graph_modification_utils::paintable_selected_layers(document);
+
+	// The order radio only swaps a layer's lone adjacent Fill/Stroke pair, so it grays out when no selected
+	// layer has one; with nothing selected it still sets the default order for new shapes
+	let paint_order_applicable = layers.is_empty() || layers.iter().any(|&layer| graph_modification_utils::stroke_paint_order_applicable(layer, &document.network_interface));
+	let mut applicability_changed = false;
+	if drawing.paint_order_applicable != paint_order_applicable {
+		drawing.paint_order_applicable = paint_order_applicable;
+		applicability_changed = true;
+	}
+
+	let strokes: Vec<_> = layers
 		.into_iter()
 		.filter_map(|layer| graph_modification_utils::get_stroke_options(layer, &document.network_interface))
 		.collect();
 	if strokes.is_empty() {
-		return false;
+		return applicability_changed;
 	}
 
 	fn unanimous<T: PartialEq + Clone>(values: impl IntoIterator<Item = T>) -> Option<T> {
@@ -326,7 +349,7 @@ fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessag
 	let new_dash_lengths = unanimous(strokes.iter().map(|s| &s.dash_lengths)).cloned();
 	let new_dash_offset = unanimous(strokes.iter().map(|s| s.dash_offset));
 
-	let mut changed = false;
+	let mut changed = applicability_changed;
 
 	if drawing.stroke_align != new_align {
 		drawing.stroke_align = new_align;

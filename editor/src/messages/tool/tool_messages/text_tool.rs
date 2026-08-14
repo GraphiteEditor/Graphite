@@ -403,6 +403,7 @@ impl ToolTransition for TextTool {
 		EventToMessageMap {
 			canvas_transformed: None,
 			selection_changed: Some(TextToolMessage::SelectionChanged.into()),
+			graph_changed: None,
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| TextToolMessage::Overlays { context }.into()),

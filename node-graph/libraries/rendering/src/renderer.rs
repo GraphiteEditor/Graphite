@@ -7,7 +7,8 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::consts::DEFAULT_FONT_SIZE;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List, NodeIdPath};
+use core_types::list::ATTR_APPEARANCE;
+use core_types::list::{Item, List, NodeIdPath};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -21,13 +22,12 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::{Appearance, Artboard, Cover, Coverage, FillAndStroke, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -224,28 +224,45 @@ pub struct RenderParams {
 	/// Are we generating a mask for alignment? Used to prevent unnecessary transforms in masks
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
-	pub override_paint_order: bool,
+	/// Paint the stroke below the fill within the same SVG path element
+	pub stroke_below: bool,
 	/// Are we rendering for a pattern content
 	pub inside_pattern: bool,
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
+	/// The nearest ancestor's appearance, cascading to items that lack their own.
+	pub inherited_appearance: Option<Appearance>,
 }
 
 impl RenderParams {
 	pub fn for_clipper(&self) -> Self {
-		Self { for_mask: true, ..*self }
+		Self { for_mask: true, ..self.clone() }
 	}
 
 	pub fn for_alignment(&self, transform: DAffine2) -> Self {
 		Self {
 			alignment_parent_transform: Some(transform),
-			..*self
+			..self.clone()
 		}
 	}
 
 	pub fn for_pattern(&self) -> Self {
-		Self { inside_pattern: true, ..*self }
+		// A paint subtree supplies its own styling, so the painted element's appearance must not cascade into it
+		Self {
+			inside_pattern: true,
+			inherited_appearance: None,
+			..self.clone()
+		}
+	}
+
+	/// Params for rendering a child item, cascading this item's appearance to descendants lacking their own.
+	/// Callers only build these when the item carries a declared appearance, so an item without one clones nothing.
+	pub fn for_child_item(&self, item_appearance: &Appearance) -> Self {
+		Self {
+			inherited_appearance: Some(item_appearance.clone()),
+			..self.clone()
+		}
 	}
 
 	pub fn to_canvas(&self) -> bool {
@@ -552,12 +569,9 @@ pub struct RenderMetadata {
 	pub text_frames: HashMap<NodeId, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
-	/// Per-layer `ATTR_FILL` row attribute, exposed so message handlers can read it.
+	/// Per-layer `ATTR_APPEARANCE` row attribute, exposed so message handlers can read it.
 	#[cfg_attr(feature = "serde", serde(skip))]
-	pub fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
-	/// Per-layer `ATTR_STROKE` row attribute, exposed so message handlers can read it.
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub stroke_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+	pub appearance_attributes: HashMap<NodeId, Arc<Appearance>>,
 	pub backgrounds: Vec<Background>,
 }
 
@@ -581,8 +595,7 @@ impl RenderMetadata {
 			text_frames,
 			clip_targets,
 			vector_data,
-			fill_attributes,
-			stroke_attributes,
+			appearance_attributes,
 			backgrounds,
 		} = self;
 		upstream_footprints.extend(other.upstream_footprints.iter());
@@ -593,8 +606,7 @@ impl RenderMetadata {
 		text_frames.extend(other.text_frames.iter());
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
-		fill_attributes.extend(other.fill_attributes.iter().map(|(id, data)| (*id, data.clone())));
-		stroke_attributes.extend(other.stroke_attributes.iter().map(|(id, data)| (*id, data.clone())));
+		appearance_attributes.extend(other.appearance_attributes.iter().map(|(id, data)| (*id, data.clone())));
 
 		// TODO: Find a better non O(n^2) way to merge backgrounds
 		for background in &other.backgrounds {
@@ -618,18 +630,19 @@ pub trait Render: BoundingBox + RenderComplexity {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
 
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
-	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+	/// `inherited_appearance` is the nearest ancestor's appearance, cascading to items that lack their own, mirroring the render cascade.
+	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {}
 
 	/// Like `add_upstream_click_targets` but for visual outlines. `List<Vector>` overrides this to ignore `editor:click_target` so outlines reflect the actual geometry.
-	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
-		self.add_upstream_click_targets(outlines);
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
+		self.add_upstream_click_targets(outlines, inherited_appearance);
 	}
 
 	// TODO: Store all click targets in a vec which contains the AABB, click target, and path
 	// fn add_click_targets(&self, click_targets: &mut Vec<([DVec2; 2], ClickTarget, Vec<NodeId>)>, current_path: Option<NodeId>) {}
 
 	/// Recursively iterate over data in the render (including nested layer stacks upstream of a vector node, in the case of a boolean operation) to collect the footprints, click targets, and vector modify.
-	fn collect_metadata(&self, _metadata: &mut RenderMetadata, _footprint: Footprint, _element_id: Option<NodeId>) {}
+	fn collect_metadata(&self, _metadata: &mut RenderMetadata, _footprint: Footprint, _element_id: Option<NodeId>, _inherited_appearance: Option<&Appearance>) {}
 
 	fn contains_artboard(&self) -> bool {
 		false
@@ -665,7 +678,7 @@ impl Render for Graphic {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>, inherited_appearance: Option<&Appearance>) {
 		if let Some(element_id) = element_id {
 			match self {
 				Graphic::None => {}
@@ -729,39 +742,39 @@ impl Render for Graphic {
 
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.collect_metadata(metadata, footprint, element_id),
-			Graphic::Vector(list) => list.collect_metadata(metadata, footprint, element_id),
-			Graphic::RasterCPU(list) => list.collect_metadata(metadata, footprint, element_id),
-			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id),
-			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id),
-			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id),
-			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::Graphic(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::Vector(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::RasterCPU(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.add_upstream_click_targets(click_targets),
-			Graphic::Vector(list) => list.add_upstream_click_targets(click_targets),
-			Graphic::RasterCPU(list) => list.add_upstream_click_targets(click_targets),
-			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets),
-			Graphic::Color(list) => list.add_upstream_click_targets(click_targets),
-			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets),
-			Graphic::Text(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::Graphic(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::Vector(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::RasterCPU(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::Color(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::Text(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 		}
 	}
 
-	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.add_upstream_outline_targets(outlines),
-			Graphic::Vector(list) => list.add_upstream_outline_targets(outlines),
-			Graphic::RasterCPU(list) => list.add_upstream_outline_targets(outlines),
-			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines),
-			Graphic::Color(list) => list.add_upstream_outline_targets(outlines),
-			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines),
-			Graphic::Text(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::Graphic(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::Vector(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::RasterCPU(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::Color(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::Text(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 		}
 	}
 
@@ -890,7 +903,7 @@ impl Render for List<Artboard> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>, inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
@@ -912,11 +925,11 @@ impl Render for List<Artboard> {
 
 			let mut child_footprint = footprint;
 			child_footprint.transform *= DAffine2::from_translation(location);
-			content.collect_metadata(metadata, child_footprint, None);
+			content.collect_metadata(metadata, child_footprint, None, inherited_appearance);
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let dimensions: DVec2 = self.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
 			let subpath_rectangle = Subpath::new_rectangle(DVec2::ZERO, dimensions);
@@ -939,6 +952,12 @@ impl Render for List<Graphic> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let element = self.element(index).unwrap();
+			// This item's declared appearance (if any) cascades to descendants lacking their own
+			let child_render_params = self
+				.attribute::<Appearance>(ATTR_APPEARANCE, index)
+				.and_then(Appearance::declared)
+				.map(|appearance| render_params.for_child_item(appearance));
+			let render_params = child_render_params.as_ref().unwrap_or(render_params);
 
 			let matrix = format_transform_matrix(transform);
 			let next_clips = index + 1 < self.len() && self.element(index + 1).unwrap().had_clip_enabled();
@@ -1008,6 +1027,12 @@ impl Render for List<Graphic> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let element = self.element(index).unwrap();
+			// This item's declared appearance (if any) cascades to descendants lacking their own
+			let child_render_params = self
+				.attribute::<Appearance>(ATTR_APPEARANCE, index)
+				.and_then(Appearance::declared)
+				.map(|appearance| render_params.for_child_item(appearance));
+			let render_params = child_render_params.as_ref().unwrap_or(render_params);
 
 			let mut layer = false;
 
@@ -1076,21 +1101,23 @@ impl Render for List<Graphic> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>, inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
+			// This item's appearance (if any) cascades to descendants lacking their own
+			let child_appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 
 			let mut footprint = footprint;
 			footprint.transform *= item_transform;
 
 			if let Some(element_id) = layer {
-				element.collect_metadata(metadata, footprint, Some(element_id));
+				element.collect_metadata(metadata, footprint, Some(element_id), child_appearance);
 			} else {
 				// Recurse through anonymous wrapper items to reach nested content with editor:layer_path tags
-				element.collect_metadata(metadata, footprint, None);
+				element.collect_metadata(metadata, footprint, None, child_appearance);
 			}
 		}
 
@@ -1101,9 +1128,10 @@ impl Render for List<Graphic> {
 			for index in 0..self.len() {
 				let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 				let element = self.element(index).unwrap();
+				let child_appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 
 				let mut new_click_targets = Vec::new();
-				element.add_upstream_click_targets(&mut new_click_targets);
+				element.add_upstream_click_targets(&mut new_click_targets, child_appearance);
 
 				for click_target in new_click_targets.iter_mut() {
 					click_target.apply_transform(item_transform)
@@ -1112,7 +1140,7 @@ impl Render for List<Graphic> {
 				all_upstream_click_targets.extend(new_click_targets);
 
 				let mut new_outlines = Vec::new();
-				element.add_upstream_outline_targets(&mut new_outlines);
+				element.add_upstream_outline_targets(&mut new_outlines, child_appearance);
 				for outline in new_outlines.iter_mut() {
 					outline.apply_transform(item_transform)
 				}
@@ -1124,13 +1152,14 @@ impl Render for List<Graphic> {
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let element = self.element(index).unwrap();
+			let child_appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 			let mut new_click_targets = Vec::new();
 
-			element.add_upstream_click_targets(&mut new_click_targets);
+			element.add_upstream_click_targets(&mut new_click_targets, child_appearance);
 
 			for click_target in new_click_targets.iter_mut() {
 				click_target.apply_transform(item_transform)
@@ -1140,13 +1169,14 @@ impl Render for List<Graphic> {
 		}
 	}
 
-	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let element = self.element(index).unwrap();
+			let child_appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 			let mut new_outlines = Vec::new();
 
-			element.add_upstream_outline_targets(&mut new_outlines);
+			element.add_upstream_outline_targets(&mut new_outlines, child_appearance);
 
 			for outline in new_outlines.iter_mut() {
 				outline.apply_transform(item_transform)
@@ -1175,16 +1205,29 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 	let opacity_attr: f64 = list.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 	let opacity_fill_attr: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
+	// The item's own declared appearance wins over one cascading down from an ancestor
+	let own_appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, index).and_then(Appearance::declared);
+	let appearance = own_appearance.or(render_params.inherited_appearance.as_ref());
+	let FillAndStroke {
+		stroke: stroke_params,
+		fill_paint: fill_graphic_list,
+		stroke_paint: stroke_graphic_list,
+		stroke_below: wants_stroke_below,
+	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+
 	// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
-	let has_real_stroke = vector.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
-	let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
+	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
+	// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
+	let set_stroke_transform = has_real_stroke
+		.map(|stroke| if own_appearance.is_some() { stroke.transform } else { item_transform })
+		.filter(|transform| transform_is_invertible(*transform));
 	let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
 	let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 	let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
 	let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 	let layer_bounds = vector.bounding_box().unwrap_or_default();
 	let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
-	let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY).unwrap_or(layer_bounds);
+	let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY, stroke_params.as_ref()).unwrap_or(layer_bounds);
 
 	let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
 	let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
@@ -1196,26 +1239,22 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 		path.push_str(bezpath.to_svg().as_str());
 	}
 
-	let mask_type = if vector.stroke.as_ref().map(|x| x.align) == Some(StrokeAlign::Inside) {
+	let mask_type = if stroke_params.as_ref().map(|stroke| stroke.align) == Some(StrokeAlign::Inside) {
 		MaskType::Clip
 	} else {
 		MaskType::Mask
 	};
 
-	let fill_graphic_list = graphic_list_at(list, index, ATTR_FILL);
-	let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
-
-	let stroke_graphic_list = graphic_list_at(list, index, ATTR_STROKE);
-	let stroke_graphic = stroke_graphic_list.as_ref().and_then(|l| l.element(0));
+	let fill_graphic = fill_graphic_list.and_then(|l| l.element(0));
+	let stroke_graphic = stroke_graphic_list.and_then(|l| l.element(0));
 
 	let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
 	let can_draw_aligned_stroke = path_is_closed
-		&& vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
+		&& stroke_params.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 		&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
 	let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.covers_opaquely()) || mask_type == MaskType::Clip);
 
 	let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
-	let wants_stroke_below = vector.stroke.as_ref().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
 	let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
 	let use_face_fill = vector.use_face_fill();
 
@@ -1223,7 +1262,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 		emit_svg_fill_path(
 			render,
 			path.clone(),
-			fill_graphic_list.as_deref(),
+			fill_graphic_list,
 			item_transform,
 			element_transform,
 			applied_stroke_transform,
@@ -1235,13 +1274,13 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 	let push_id = needs_separate_alignment_fill.then_some({
 		let id = format!("alignment-{}", generate_uuid());
 
-		let mut cloned_vector = vector.clone();
-		cloned_vector.stroke = None;
+		let cloned_vector = vector.clone();
 
 		// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 		// The wrapping SVG group (above) handles the user-set opacity.
 		let mut mask_item = Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform);
-		set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+		let black_fill = List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK)));
+		mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
 		let vector_item = List::new_from_item(mask_item);
 
 		(id, mask_type, vector_item)
@@ -1255,7 +1294,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 			emit_svg_fill_path(
 				render,
 				face_d,
-				fill_graphic_list.as_deref(),
+				fill_graphic_list,
 				item_transform,
 				element_transform,
 				applied_stroke_transform,
@@ -1276,10 +1315,9 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 		if let Some((ref id, mask_type, ref vector_item)) = push_id {
 			let mut svg = SvgRender::new();
 			vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
-			let stroke = vector.stroke.as_ref().unwrap();
 			// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
 			let (largest_scale, _) = singular_values(applied_stroke_transform);
-			let inflation = stroke.max_aabb_inflation(true) * largest_scale;
+			let inflation = stroke_params.as_ref().map(|stroke| stroke.max_aabb_inflation(true)).unwrap_or_default() * largest_scale;
 			let quad = Quad::from_box(transformed_bounds).inflate(inflation);
 			let (x, y) = quad.top_left().into();
 			let (width, height) = (quad.bottom_right() - quad.top_left()).into();
@@ -1301,13 +1339,12 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 
 		let mut render_params = render_params.clone();
 		render_params.aligned_strokes = can_draw_aligned_stroke;
-		render_params.override_paint_order = override_paint_order;
+		render_params.stroke_below = override_paint_order || wants_stroke_below;
 
-		let stroke_shape_attribute = vector
-			.stroke
+		let stroke_shape_attribute = stroke_params
 			.as_ref()
 			.map(|stroke| {
-				if stroke_graphic_list.as_deref().is_some_and(is_paint_present) {
+				if stroke_graphic_list.is_some() {
 					stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
 				} else {
 					String::new()
@@ -1316,10 +1353,10 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 			.unwrap_or_default();
 
 		// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
-		let stroke_visible = vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
+		let stroke_visible = stroke_params.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
 		let stroke_attribute = if stroke_visible {
 			stroke_graphic_list
-				.as_deref()
+				.as_ref()
 				.map(|list| {
 					// Gradient should align with the fill path bbox so that a shared gradient lines up across fill and stroke.
 					// Only clipping-based paints need the stroke-inclusive bbox.
@@ -1338,7 +1375,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 			r#" fill="none""#.to_string()
 		} else {
 			fill_graphic_list
-				.as_deref()
+				.as_ref()
 				.map(|list| list.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Fill))
 				.unwrap_or_else(|| r#" fill="none""#.to_string())
 		};
@@ -1370,7 +1407,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 		emit_svg_fill_path(
 			render,
 			path.clone(),
-			fill_graphic_list.as_deref(),
+			fill_graphic_list,
 			item_transform,
 			element_transform,
 			applied_stroke_transform,
@@ -1425,17 +1462,35 @@ impl Render for List<Vector> {
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		let mut clip_masker: Option<List<Vector>> = None;
 
-		for index in 0..self.len() {
-			use graphic_types::vector_types::vector;
+		// A paint subtree supplies its own styling, so an element's appearance must not cascade into it
+		let paint_render_params = RenderParams {
+			inherited_appearance: None,
+			..render_params.clone()
+		};
 
+		for index in 0..self.len() {
 			let Some(element) = self.element(index) else { continue };
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let multiplied_transform = parent_transform * item_transform;
-			let has_real_stroke = element.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
-			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
+
+			// The item's own declared appearance wins over one cascading down from an ancestor
+			let own_appearance = self.attribute::<Appearance>(ATTR_APPEARANCE, index).and_then(Appearance::declared);
+			let appearance = own_appearance.or(render_params.inherited_appearance.as_ref());
+			let FillAndStroke {
+				stroke: stroke_params,
+				fill_paint: fill_graphic_list,
+				stroke_paint: stroke_graphic_list,
+				stroke_below: wants_stroke_below,
+			} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+
+			let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
+			// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
+			let set_stroke_transform = has_real_stroke
+				.map(|stroke| if own_appearance.is_some() { stroke.transform } else { item_transform })
+				.filter(|transform| transform_is_invertible(*transform));
 			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 			let mut element_transform = set_stroke_transform
 				.map(|stroke_transform| multiplied_transform * stroke_transform.inverse())
@@ -1458,9 +1513,6 @@ impl Render for List<Vector> {
 				}
 			}
 
-			let fill_graphic_list = graphic_list_at(self, index, ATTR_FILL);
-			let stroke_graphic_list = graphic_list_at(self, index, ATTR_STROKE);
-
 			// If we're using opacity or a blend mode, we need to push a layer
 			let blend_mode = match render_params.render_mode {
 				RenderMode::Outline => peniko::Mix::Normal,
@@ -1471,8 +1523,8 @@ impl Render for List<Vector> {
 			// Whether the renderer will engage the stroke-alignment compositing trick (non-Center align on a fully closed path).
 			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
 			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
-			let stroke = element.stroke.as_ref();
-			let stroke_fully_transparent = stroke_graphic_list.as_ref().is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
+			let stroke = stroke_params.as_ref();
+			let stroke_fully_transparent = stroke_graphic_list.is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
 			let can_draw_aligned_stroke =
 				!stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
@@ -1526,10 +1578,9 @@ impl Render for List<Vector> {
 			}
 
 			let use_layer = can_draw_aligned_stroke;
-			let wants_stroke_below = stroke.is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
 			let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
-				let Some(fill_graphic) = fill_graphic_list.as_deref() else { return };
+				let Some(fill_graphic) = fill_graphic_list else { return };
 
 				for paint_index in 0..fill_graphic.len() {
 					let Some(paint) = fill_graphic.element(paint_index) else { continue };
@@ -1556,7 +1607,7 @@ impl Render for List<Vector> {
 						}
 						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
 							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
-							paint.render_to_vello(scene, multiplied_transform, context, render_params);
+							paint.render_to_vello(scene, multiplied_transform, context, &paint_render_params);
 							scene.pop_layer();
 						}
 					};
@@ -1583,7 +1634,7 @@ impl Render for List<Vector> {
 			};
 
 			let do_stroke = |scene: &mut Scene, width_scale: f64, context: &mut RenderContext| {
-				let Some(stroke_graphic_list) = stroke_graphic_list.as_deref() else { return };
+				let Some(stroke_graphic_list) = stroke_graphic_list else { return };
 				let Some(stroke) = stroke else { return };
 
 				for paint_index in 0..stroke_graphic_list.len() {
@@ -1641,7 +1692,7 @@ impl Render for List<Vector> {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
-							stroke_graphic.render_to_vello(scene, multiplied_transform, context, render_params);
+							stroke_graphic.render_to_vello(scene, multiplied_transform, context, &paint_render_params);
 							scene.pop_layer();
 						}
 					};
@@ -1657,13 +1708,13 @@ impl Render for List<Vector> {
 				}
 				_ => {
 					if use_layer {
-						let mut cloned_element = element.clone();
-						cloned_element.stroke = None;
+						let cloned_element = element.clone();
 
 						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 						// The outer opacity/blend layer (above) handles the user-set opacity.
 						let mut mask_item = Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform);
-						set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+						let black_fill = List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK)));
+						mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
 						let vector_list = List::new_from_item(mask_item);
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
@@ -1711,7 +1762,7 @@ impl Render for List<Vector> {
 							Stroke,
 						}
 
-						let order = match stroke.is_some_and(|stroke| !stroke.paint_order.is_default()) {
+						let order = match wants_stroke_below {
 							true => [Op::Stroke, Op::Fill],
 							false => [Op::Fill, Op::Stroke], // Default
 						};
@@ -1738,7 +1789,7 @@ impl Render for List<Vector> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>, inherited_appearance: Option<&Appearance>) {
 		// Aggregate all items' targets per element_id so multi-item lists (e.g. the "Text to Vector Glyphs" node) produce hit areas for every glyph.
 		// Targets are baked relative to the first item carrying each element_id, since that is the transform recorded as its `local_transforms` entry.
 		let mut reference_transforms: HashMap<NodeId, DAffine2> = HashMap::new();
@@ -1751,6 +1802,8 @@ impl Render for List<Vector> {
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let layer = layer_path.iter_element_values().next_back().copied();
+			// The item's own appearance wins over one cascading down from an ancestor
+			let appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 
 			if let Some(element_id) = caller_element_id.or(layer) {
 				let reference_transform = *reference_transforms.entry(element_id).or_insert(transform);
@@ -1766,12 +1819,12 @@ impl Render for List<Vector> {
 				let item_relative_transform = reference_inverse * transform;
 
 				let mut click_targets_unwrapped = Vec::new();
-				extend_targets_from_vector(&mut click_targets_unwrapped, self, index, click_target_vector, item_relative_transform);
+				extend_targets_from_vector(&mut click_targets_unwrapped, appearance, click_target_vector, item_relative_transform);
 				accumulated_click_targets.entry(element_id).or_default().extend(click_targets_unwrapped.into_iter().map(Arc::new));
 
 				// Outlines always use source geometry so the visual outline reflects actual letterforms
 				let mut outlines_unwrapped = Vec::new();
-				extend_targets_from_vector(&mut outlines_unwrapped, self, index, source, item_relative_transform);
+				extend_targets_from_vector(&mut outlines_unwrapped, appearance, source, item_relative_transform);
 				accumulated_outlines.entry(element_id).or_default().extend(outlines_unwrapped.into_iter().map(Arc::new));
 
 				// Source geometry (not the click-target override) so editing tools work on letterforms.
@@ -1781,11 +1834,8 @@ impl Render for List<Vector> {
 				if let std::collections::hash_map::Entry::Vacant(e) = metadata.vector_data.entry(element_id) {
 					e.insert(Arc::new(source.clone()));
 
-					if let Some(fill_graphic) = graphic_list_at(self, index, ATTR_FILL) {
-						metadata.fill_attributes.insert(element_id, Arc::new(fill_graphic.into_owned()));
-					}
-					if let Some(stroke_graphic) = graphic_list_at(self, index, ATTR_STROKE) {
-						metadata.stroke_attributes.insert(element_id, Arc::new(stroke_graphic.into_owned()));
+					if let Some(appearance) = appearance {
+						metadata.appearance_attributes.insert(element_id, Arc::new(appearance.clone()));
 					}
 				}
 
@@ -1802,7 +1852,8 @@ impl Render for List<Vector> {
 			if !upstream_nested_layers.is_empty() {
 				let mut upstream_footprint = footprint;
 				upstream_footprint.transform *= transform;
-				upstream_nested_layers.collect_metadata(metadata, upstream_footprint, None);
+				// Snapshot layers carry their own styling, so the merged result's appearance must not cascade into them
+				upstream_nested_layers.collect_metadata(metadata, upstream_footprint, None, None);
 			}
 		}
 
@@ -1824,25 +1875,27 @@ impl Render for List<Vector> {
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 
 			// Use click-target override geometry if the item provides one (e.g. 'Text' node's per-glyph bounding boxes)
 			let vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
 
-			extend_targets_from_vector(click_targets, self, index, vector, transform);
+			extend_targets_from_vector(click_targets, appearance, vector, transform);
 		}
 	}
 
-	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 		// Source geometry only, ignoring `editor:click_target`, so outlines reflect actual letterforms
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let appearance = Appearance::cascade(self.attribute::<Appearance>(ATTR_APPEARANCE, index), inherited_appearance);
 
-			extend_targets_from_vector(outlines, self, index, source, transform);
+			extend_targets_from_vector(outlines, appearance, source, transform);
 		}
 	}
 
@@ -1855,15 +1908,17 @@ impl Render for List<Vector> {
 
 /// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
-fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector_list: &List<Vector>, index: usize, geometry: &Vector, transform: DAffine2) {
-	let filled = has_paint_at(vector_list, index, ATTR_FILL);
+fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, geometry: &Vector, transform: DAffine2) {
+	// A coverage whose paint is `Graphic::None` exists but paints nothing, so it does not close subpaths for hit testing
+	let filled = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
 
 	let mut subpaths: Vec<Subpath<_>> = geometry.stroke_bezier_paths().collect();
 	let all_subpaths_closed = subpaths.iter().all(|subpath| subpath.closed());
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
-	let stroke_width = geometry.stroke.as_ref().map_or(0., |stroke| {
+	let stroke_width = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map_or(0., |coverage| {
+		let stroke = coverage.stroke_params();
 		if stroke.align.is_not_centered() && all_subpaths_closed {
 			stroke.weight * 2.
 		} else {
@@ -2048,7 +2103,7 @@ impl Render for List<Raster<CPU>> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>, _inherited_appearance: Option<&Appearance>) {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 
@@ -2067,12 +2122,12 @@ impl Render for List<Raster<CPU>> {
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
 			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
 			if !upstream_nested_layers.is_empty() {
-				upstream_nested_layers.collect_metadata(metadata, footprint, None);
+				upstream_nested_layers.collect_metadata(metadata, footprint, None, None);
 			}
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			// The unit square is the raster's own space, so its placement only exists in the item transform
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
@@ -2149,7 +2204,7 @@ impl Render for List<Raster<GPU>> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>, _inherited_appearance: Option<&Appearance>) {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 
@@ -2168,12 +2223,12 @@ impl Render for List<Raster<GPU>> {
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
 			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
 			if !upstream_nested_layers.is_empty() {
-				upstream_nested_layers.collect_metadata(metadata, footprint, None);
+				upstream_nested_layers.collect_metadata(metadata, footprint, None, None);
 			}
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
@@ -2432,7 +2487,7 @@ impl Render for List<Gradient> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, _footprint: Footprint, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, _footprint: Footprint, element_id: Option<NodeId>, _inherited_appearance: Option<&Appearance>) {
 		let Some(element_id) = element_id else { return };
 		if self.is_empty() {
 			return;
@@ -2468,7 +2523,7 @@ impl Render for List<Gradient> {
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
 			if !gradient_control_interior_is_clickable(gradient_form) {
@@ -2482,7 +2537,7 @@ impl Render for List<Gradient> {
 		}
 	}
 
-	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
@@ -2813,7 +2868,7 @@ impl Render for List<String> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>, _inherited_appearance: Option<&Appearance>) {
 		// Click targets are baked relative to item 0's transform, which `Graphic::collect_metadata` records as `local_transforms[element_id]`.
 		let item_zero_transform: DAffine2 = if !self.is_empty() {
 			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
@@ -2853,7 +2908,7 @@ impl Render for List<String> {
 		}
 	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let Some((size, transform)) = text_item_size_and_transform(self, index) else { continue };
 			let subpath = Subpath::new_rectangle(DVec2::ZERO, size);

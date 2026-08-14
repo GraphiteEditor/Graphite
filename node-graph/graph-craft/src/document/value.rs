@@ -550,7 +550,6 @@ tagged_value! {
 	#[serde(alias = "LineJoin")]
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
-	PaintOrder(vector::style::PaintOrder),
 	#[serde(alias = "GradientType")] // TODO: Eventually remove this document upgrade code
 	GradientForm(vector::style::GradientForm),
 	#[serde(alias = "GradientSpreadMethod")] // TODO: Eventually remove this document upgrade code
@@ -564,8 +563,9 @@ tagged_value! {
 	TextAlign(text_nodes::TextAlign),
 	ScaleType(core_types::transform::ScaleType),
 	// Legacy
+	PaintOrder(vector::style::PaintOrder), // TODO: Eventually remove this document upgrade code
 	#[serde(alias = "Fill")]
-	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
+	LegacyFill(graphic_types::migrations::legacy::LegacyFill), // TODO: Eventually remove this document upgrade code
 }
 
 impl TaggedValue {

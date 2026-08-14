@@ -33,8 +33,8 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, PaintOrder, StrokeAlign, StrokeCap,
-	StrokeJoin, build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign, StrokeCap, StrokeJoin,
+	build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -322,7 +322,6 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<PaintOrder>(x) => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
@@ -2678,9 +2677,6 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		ParameterWidgetsInfo::new(node_id, MiterLimitInput, true, context),
 		NumberInput::default().min(0.).disabled(miter_limit_disabled),
 	);
-	let paint_order = enum_choice::<PaintOrder>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, PaintOrderInput, true, context))
-		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
 	let dash_lengths = dash_pattern_widget(ParameterWidgetsInfo::new(node_id, DashPatternInput, true, context), TextInput::default().centered(true));
 	let number_input = disabled_number_input;
@@ -2693,7 +2689,6 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		cap,
 		join,
 		LayoutGroup::row(miter_limit),
-		paint_order,
 		LayoutGroup::row(dash_lengths),
 		LayoutGroup::row(dash_offset),
 	]

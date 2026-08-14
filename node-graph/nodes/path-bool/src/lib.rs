@@ -1,6 +1,7 @@
-use core_types::list::{Item, List, NodeIdPath};
+use core_types::list::{ATTR_APPEARANCE, Item, List, NodeIdPath};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Ctx};
 use glam::{DAffine2, DVec2};
+use graphic_types::Appearance;
 use graphic_types::graphic::bake_paint_transforms;
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
@@ -45,7 +46,15 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 
 		let result_vector = result_vector_list.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
-		result_vector.set_stroke_transform(DAffine2::IDENTITY);
+
+		// The geometry is baked into identity space, so a copied stroke authoring space would be stale
+		if let Some(appearance) = result_vector_list.attribute::<Appearance>(ATTR_APPEARANCE, 0) {
+			let mut appearance = appearance.clone();
+			for coverage in appearance.0.iter_element_values_mut() {
+				coverage.0.remove_attribute::<DAffine2>(ATTR_TRANSFORM);
+			}
+			result_vector_list.set_attribute(ATTR_APPEARANCE, 0, appearance);
+		}
 
 		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
 		// for editor click-target preservation.
@@ -142,12 +151,7 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 
 		bake_paint_transforms(&mut attributes, copy_from_transform);
 
-		let copy_from = vector.element(index).unwrap();
-		let element = Vector {
-			stroke: copy_from.stroke.clone(),
-			..Default::default()
-		};
-		Item::from_parts(element, attributes)
+		Item::from_parts(Vector::default(), attributes)
 	} else {
 		Item::<Vector>::default()
 	};
@@ -191,6 +195,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 			let parent_opacity: f64 = graphic_list.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let parent_fill: f64 = graphic_list.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let layer_path: NodeIdPath = graphic_list.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let parent_appearance = graphic_list.attribute::<Appearance>(ATTR_APPEARANCE, index).and_then(Appearance::declared).cloned();
 
 			let compose_parent = |mut item: Item<Vector>| {
 				if parent_has_transform || item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some() {
@@ -207,6 +212,12 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 				}
 				if parent_has_layer_path {
 					item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+				}
+				// Appearance cascades into each child whose own is undeclared, since a declared child wins wholesale
+				if let Some(appearance) = &parent_appearance
+					&& item.attribute::<Appearance>(ATTR_APPEARANCE).and_then(Appearance::declared).is_none()
+				{
+					item.set_attribute(ATTR_APPEARANCE, appearance.clone());
 				}
 
 				item
@@ -229,6 +240,13 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					if parent_has_fill {
 						for fill in graphic.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY_FILL) {
 							*fill *= parent_fill;
+						}
+					}
+					if let Some(appearance) = &parent_appearance {
+						for value in graphic.iter_attribute_values_mut_or_default::<Appearance>(ATTR_APPEARANCE) {
+							if value.is_empty() {
+								*value = appearance.clone();
+							}
 						}
 					}
 
