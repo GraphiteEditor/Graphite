@@ -681,6 +681,31 @@ pub(crate) struct NodeFields<'a> {
 	pub(crate) struct_type_params: Vec<Ident>,
 }
 
+/// Rewrites a creator kernel's `emit(a, b, ..)` tail into the row tuple `(a, b, ..)`.
+/// `emit`'s parentheses double as the tuple constructor, so it is pure sugar.
+fn rewrite_emit(body: &TokenStream2) -> TokenStream2 {
+	let Ok(mut block) = syn::parse2::<syn::Block>(body.clone()) else {
+		return body.clone();
+	};
+	struct EmitToTuple;
+	impl VisitMut for EmitToTuple {
+		fn visit_expr_mut(&mut self, expr: &mut syn::Expr) {
+			if let syn::Expr::Call(call) = expr
+				&& matches!(&*call.func, syn::Expr::Path(path) if path.path.is_ident("emit"))
+			{
+				*expr = syn::Expr::Tuple(syn::ExprTuple {
+					attrs: Vec::new(),
+					paren_token: Default::default(),
+					elems: call.args.clone(),
+				});
+			}
+			syn::visit_mut::visit_expr_mut(self, expr);
+		}
+	}
+	EmitToTuple.visit_block_mut(&mut block);
+	block.to_token_stream()
+}
+
 pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn, model: &Option<Dialect>, fields: NodeFields) -> syn::Result<NodePlan> {
 	let core_types = crate_ident.gcore()?;
 
@@ -722,6 +747,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		crate::codegen::ir::Element::Concrete(ty) => Some(ty),
 		_ => None,
 	});
+	// A creator pushes rank levels: its `IList` return raises the output depth
+	// above its carrier's, so the layout writes one level deeper.
+	let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth);
+	let level_delta = node.output.shape.depth as i8 - subject_depth as i8;
+	let pushed_levels = level_delta.max(0) as u8;
+	let output_row = crate::codegen::ir::strip_ilist(&slot_value_type(&parsed.output_type)).0;
 	let snapshot_ctx = async_fn && matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
 
 	let mut ctx_bounds: Vec<TokenStream2> = match ctx_param {
@@ -1241,13 +1272,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let ctx_pat = &parsed.input.pat_ident;
 	let fn_where = &parsed.where_clause;
-	let body = &parsed.body;
+	let body = if level_delta > 0 { rewrite_emit(&parsed.body) } else { parsed.body.clone() };
 	let vis = &parsed.vis;
 	let kernel_fields: Vec<&&ParsedField> = regular_fields.iter().filter(|field| !injected_name(&field.pat_ident.ident)).collect();
 	// A bare `Attr<M>` in the return type cannot elide its lifetime, so the
 	// kernel gets a fresh one; reference-valued writes name their real
 	// lifetime explicitly and pass through untouched.
-	let kernel_output = record_io.then(|| inject_attr_lifetimes(&parsed.output_type)).flatten();
+	let kernel_output = record_io.then(|| inject_attr_lifetimes(&crate::codegen::ir::strip_ilist(&parsed.output_type).0)).flatten();
 	let attr_lifetime = kernel_output.is_some().then(|| quote!('__attr,));
 	let kernel_output = match derive_routing {
 		true => {
@@ -1461,7 +1492,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		// next write binder, a `RemoveAttr` binds nothing.
 		let slot_binders: Vec<TokenStream2> = {
 			let mut binders = attr_binders.iter();
-			match slot_value_type(&parsed.output_type) {
+			match output_row.clone() {
 				Type::Tuple(tuple) => tuple
 					.elems
 					.iter()
@@ -1701,7 +1732,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			},
 			false => quote! {
 				#vis fn #layout_fn(__carrier: &#core_types::record::Layout) -> #core_types::record::Layout {
-					__carrier #subtraction.with_writes(__carrier.depth, #element, &[#(#write_descs),*])
+					__carrier #subtraction.with_writes(__carrier.depth + #pushed_levels, #element, &[#(#write_descs),*])
 				}
 			},
 		};

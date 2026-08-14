@@ -154,7 +154,7 @@ fn element_of(ty: &Type, generics: &[Ident]) -> Element {
 	}
 }
 
-fn strip_ilist(ty: &Type) -> (Type, u8) {
+pub(crate) fn strip_ilist(ty: &Type) -> (Type, u8) {
 	let mut element = ty.clone();
 	let mut depth = 0;
 	while let Some(inner) = ilist_inner(&element) {

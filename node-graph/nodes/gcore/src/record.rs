@@ -6,7 +6,7 @@
 //! wiring is by hand until the compiler pass constructs layouts.
 
 use core_types::attribute::{Attr, Opacity, RemoveAttr};
-use core_types::context::ExtractArena;
+use core_types::context::{ExtractArena, ExtractIndex};
 use core_types::gpoll::{ErrorKind, GraphError, Interrupt};
 use core_types::{Context, Ctx};
 
@@ -48,6 +48,14 @@ fn scale(_: impl Ctx, (element, opacity): (f64, Attr<Opacity>), factor: &f64) ->
 #[node_macro::node(category("Test"))]
 fn fade<T>(_: impl Ctx, (element, opacity): (T, Attr<Opacity>), factor: f64) -> (T, Attr<Opacity>) {
 	(element, Attr(*opacity * factor))
+}
+
+/// Test-only structure creator: the `IList` return pushes one rank level and
+/// writes a per-copy opacity indexed by the copy's own index.
+#[node_macro::node(category("Test"))]
+fn repeat_opacity(ctx: impl Ctx + ExtractIndex, element: f64, count: u32) -> IList<(f64, Attr<Opacity>)> {
+	let _ = count;
+	emit(element, Attr(ctx.innermost_index() as f64))
 }
 
 #[node_macro::node(category("Test"))]
@@ -219,6 +227,14 @@ mod tests {
 			fields: vec![],
 			partial: false,
 		}
+	}
+
+	#[test]
+	fn creator_pushes_a_rank_level() {
+		let base = f64_layout(&[]);
+		let leveled = repeat_opacity_layout(&base);
+		assert_eq!(leveled.depth, 1, "the IList return pushed one rank level above the depth-0 carrier");
+		assert_eq!(repeat_opacity_layout_meta().fold(&[Some(&base)]), leveled, "the level_delta metadata folds to the same leveled layout");
 	}
 
 	#[test]
