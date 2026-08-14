@@ -52,10 +52,23 @@ fn fade<T>(_: impl Ctx, (element, opacity): (T, Attr<Opacity>), factor: f64) -> 
 
 /// Test-only structure creator: the `IList` return pushes one rank level and
 /// writes a per-copy opacity indexed by the copy's own index.
-#[node_macro::node(category("Test"))]
+#[node_macro::node(category("Test"), extent(repeat_opacity_extent))]
 fn repeat_opacity(ctx: impl Ctx + ExtractIndex, element: f64, count: u32) -> IList<(f64, Attr<Opacity>)> {
-	let _ = count;
 	emit(element, Attr(ctx.innermost_index() as f64))
+}
+
+/// The pushed level's extent is the copy count; other levels forward to the carrier.
+fn repeat_opacity_extent<C, In0, In1>(node: &RepeatOpacityNode<In0, In1>, ctx: &C, level: u8) -> core_types::gpoll::GPoll<core_types::gpoll::Extent>
+where
+	In0: core_types::node::Node<C>,
+	In1: core_types::node::Node<C, Output = u32>,
+{
+	use core_types::node::Node;
+	if level + 1 == node.__layout.depth {
+		node.count.eval(ctx).map(|count| core_types::gpoll::Extent::Exactly(count as usize))
+	} else {
+		node.element.extent_at(ctx, level)
+	}
 }
 
 #[node_macro::node(category("Test"))]
@@ -259,6 +272,20 @@ mod tests {
 		assert_eq!(unsafe { rec.element::<f64>() }, 7.);
 		// The written opacity is this copy's own index (the head of the chain).
 		assert_eq!(unsafe { rec.read::<f64>(leveled.offset_of(Opacity::NAME, 0).unwrap()) }, 5.);
+	}
+
+	#[test]
+	fn creator_extent_reports_the_count() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+		let base = f64_layout(&[]);
+		reserve_for(&[&base]);
+
+		let node = RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base);
+		// The pushed level (0, the only level) reports the copy count.
+		assert_eq!(node.extent_at(&ctx, 0), core_types::gpoll::GPoll::Final(core_types::gpoll::Extent::Exactly(3)));
 	}
 
 	#[test]
