@@ -225,7 +225,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 
 			match graphic.clone() {
 				Graphic::VectorList(vector) => vector.into_iter().map(compose_parent).collect::<Vec<_>>(),
-				Graphic::Text(text) => text_nodes::shape_text_list(&text, false).into_iter().map(compose_parent).collect::<Vec<_>>(),
+				Graphic::TextList(text) => text_nodes::shape_text_list(&text, false).into_iter().map(compose_parent).collect::<Vec<_>>(),
 				Graphic::GraphicList(mut graphic) => {
 					if parent_has_transform {
 						for transform in graphic.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {

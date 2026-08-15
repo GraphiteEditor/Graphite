@@ -991,7 +991,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 					flatten_list(output_graphic_list, current_element, fully_flatten, recursion_depth + 1);
 				}
-				// Push any leaf elements we encounter: either `Graphic::GraphicList(...)` values beyond the recursion depth, or non-`Graphic::GraphicList` variants (e.g. `Graphic::VectorList`, `Graphic::Raster*`, `Graphic::ColorList`, `Graphic::GradientList`, `Graphic::Text`)
+				// Push any leaf element: a group beyond the recursion depth, or any non-group variant
 				_ => {
 					let attributes = current_graphic_list.clone_item_attributes(index);
 					output_graphic_list.push(Item::from_parts(current_element, attributes));

@@ -25,7 +25,7 @@ pub enum Graphic {
 	RasterGPUList(List<Raster<GPU>>),
 	ColorList(List<Color>),
 	GradientList(List<Gradient>),
-	Text(List<String>),
+	TextList(List<String>),
 }
 
 // GraphicList
@@ -104,12 +104,12 @@ impl From<List<Gradient>> for Graphic {
 // String
 impl From<String> for Graphic {
 	fn from(text: String) -> Self {
-		Graphic::Text(List::new_from_element(text))
+		Graphic::TextList(List::new_from_element(text))
 	}
 }
 impl From<List<String>> for Graphic {
 	fn from(text: List<String>) -> Self {
-		Graphic::Text(text)
+		Graphic::TextList(text)
 	}
 }
 
@@ -249,7 +249,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 			Graphic::RasterCPUList(list) => bake_list_transform(list, transform),
 			Graphic::RasterGPUList(list) => bake_list_transform(list, transform),
 			Graphic::GradientList(list) => bake_list_transform(list, transform),
-			Graphic::Text(list) => bake_list_transform(list, transform),
+			Graphic::TextList(list) => bake_list_transform(list, transform),
 			Graphic::ColorList(_) => {}
 		}
 	}
@@ -297,7 +297,7 @@ impl TryFromGraphic for Gradient {
 
 impl TryFromGraphic for String {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Text(t) = graphic { Some(t) } else { None }
+		if let Graphic::TextList(t) = graphic { Some(t) } else { None }
 	}
 }
 
@@ -354,7 +354,7 @@ impl IntoGraphicList for List<Gradient> {
 
 impl IntoGraphicList for List<String> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		List::new_from_element(Graphic::Text(self))
+		List::new_from_element(Graphic::TextList(self))
 	}
 }
 
@@ -435,7 +435,7 @@ impl Graphic {
 			Graphic::RasterGPUList(list) => all_clipped(list),
 			Graphic::ColorList(list) => all_clipped(list),
 			Graphic::GradientList(list) => all_clipped(list),
-			Graphic::Text(list) => all_clipped(list),
+			Graphic::TextList(list) => all_clipped(list),
 		}
 	}
 
@@ -495,7 +495,7 @@ impl Graphic {
 			}
 			Graphic::ColorList(list) => list.element(0).is_some_and(|color| color.is_opaque()),
 			Graphic::GradientList(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
-			Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::Text(_) => false,
+			Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::TextList(_) => false,
 		}
 	}
 
@@ -530,7 +530,7 @@ impl Graphic {
 			}),
 			Graphic::ColorList(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::GradientList(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
-			Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::Text(_) => false,
+			Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::TextList(_) => false,
 		}
 	}
 
@@ -550,7 +550,7 @@ impl Graphic {
 			Graphic::GradientList(list) => list.is_empty(),
 			Graphic::RasterCPUList(list) => list.is_empty(),
 			Graphic::RasterGPUList(list) => list.is_empty(),
-			Graphic::Text(list) => list.is_empty(),
+			Graphic::TextList(list) => list.is_empty(),
 		}
 	}
 }
@@ -601,7 +601,7 @@ impl BoundingBox for Graphic {
 			Graphic::GraphicList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::ColorList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::GradientList(list) => list.bounding_box(transform, include_stroke),
-			Graphic::Text(list) => list.bounding_box(transform, include_stroke),
+			Graphic::TextList(list) => list.bounding_box(transform, include_stroke),
 		}
 	}
 
@@ -614,7 +614,7 @@ impl BoundingBox for Graphic {
 			Graphic::GraphicList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::ColorList(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::GradientList(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
-			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::TextList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 		}
 	}
 }
@@ -629,7 +629,7 @@ impl RenderComplexity for Graphic {
 			Self::RasterGPUList(list) => list.render_complexity(),
 			Self::ColorList(list) => list.render_complexity(),
 			Self::GradientList(list) => list.render_complexity(),
-			Self::Text(list) => list.render_complexity(),
+			Self::TextList(list) => list.render_complexity(),
 		}
 	}
 }

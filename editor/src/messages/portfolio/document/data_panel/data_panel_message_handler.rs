@@ -584,7 +584,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPUList(list) => list.identifier(),
 			Self::ColorList(list) => list.identifier(),
 			Self::GradientList(list) => list.identifier(),
-			Self::Text(list) => list.identifier(),
+			Self::TextList(list) => list.identifier(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -600,7 +600,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPUList(list) => list.layout_with_breadcrumb(data),
 			Self::ColorList(list) => list.layout_with_breadcrumb(data),
 			Self::GradientList(list) => list.layout_with_breadcrumb(data),
-			Self::Text(list) => list.layout_with_breadcrumb(data),
+			Self::TextList(list) => list.layout_with_breadcrumb(data),
 		}
 	}
 }

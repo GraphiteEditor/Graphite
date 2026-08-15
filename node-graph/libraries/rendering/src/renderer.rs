@@ -661,7 +661,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(_) => (),
 			Graphic::ColorList(list) => list.render_svg(render, render_params),
 			Graphic::GradientList(list) => list.render_svg(render, render_params),
-			Graphic::Text(list) => list.render_svg(render, render_params),
+			Graphic::TextList(list) => list.render_svg(render, render_params),
 		}
 	}
 
@@ -674,7 +674,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::ColorList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::GradientList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Text(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::TextList(list) => list.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
@@ -729,7 +729,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::Text(list) => {
+				Graphic::TextList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -748,7 +748,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::ColorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::GradientList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
-			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::TextList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 		}
 	}
 
@@ -761,7 +761,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::ColorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::GradientList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
-			Graphic::Text(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::TextList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 		}
 	}
 
@@ -774,7 +774,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::ColorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::GradientList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
-			Graphic::Text(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::TextList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 		}
 	}
 
@@ -787,7 +787,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.contains_artboard(),
 			Graphic::ColorList(list) => list.contains_artboard(),
 			Graphic::GradientList(list) => list.contains_artboard(),
-			Graphic::Text(list) => list.contains_artboard(),
+			Graphic::TextList(list) => list.contains_artboard(),
 		}
 	}
 
@@ -800,7 +800,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(_) => (),
 			Graphic::ColorList(_) => (),
 			Graphic::GradientList(_) => (),
-			Graphic::Text(_) => (),
+			Graphic::TextList(_) => (),
 		}
 	}
 }
@@ -1605,7 +1605,7 @@ impl Render for List<Vector> {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 						}
-						Graphic::VectorList(_) | Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
+						Graphic::VectorList(_) | Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::GraphicList(_) | Graphic::TextList(_) => {
 							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 							paint.render_to_vello(scene, multiplied_transform, context, &paint_render_params);
 							scene.pop_layer();
@@ -1688,7 +1688,7 @@ impl Render for List<Vector> {
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 						}
-						Graphic::VectorList(_) | Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
+						Graphic::VectorList(_) | Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::GraphicList(_) | Graphic::TextList(_) => {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
@@ -2680,7 +2680,7 @@ pub fn text_list_bounding_box(list: &List<String>, outer_transform: DAffine2) ->
 	}
 }
 
-/// Like `List<Graphic>::thumbnail_bounding_box`, but lays out `Graphic::Text` items, which the `BoundingBox` trait reports as `None`.
+/// Like `List<Graphic>::thumbnail_bounding_box`, but lays out `Graphic::TextList` items, which the `BoundingBox` trait reports as `None`.
 /// Used for layer thumbnails so text layers (whose content is a `List<Graphic>` wrapping the text) frame their content.
 pub fn graphic_list_bounding_box(list: &List<Graphic>, transform: DAffine2) -> RenderBoundingBox {
 	let mut combined: Option<[DVec2; 2]> = None;
@@ -2690,7 +2690,7 @@ pub fn graphic_list_bounding_box(list: &List<Graphic>, transform: DAffine2) -> R
 		let item_transform = transform * list.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index);
 		let Some(graphic) = list.element(index) else { continue };
 		let bounds = match graphic {
-			Graphic::Text(text_list) => text_list_bounding_box(text_list, item_transform),
+			Graphic::TextList(text_list) => text_list_bounding_box(text_list, item_transform),
 			Graphic::GraphicList(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
 			other => other.thumbnail_bounding_box(item_transform, true),
 		};
