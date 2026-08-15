@@ -2598,16 +2598,16 @@ async fn morph<I: IntoGraphicList>(
 		};
 
 		let graphic = match (a.element(0), b.element(0)) {
-			(Some(Graphic::Color(color_list_a)), Some(Graphic::Color(color_list_b))) => color_list_a
+			(Some(Graphic::ColorList(color_list_a)), Some(Graphic::ColorList(color_list_b))) => color_list_a
 				.element(0)
 				.zip(color_list_b.element(0))
 				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
-			(Some(Graphic::Color(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
+			(Some(Graphic::ColorList(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
 				let solid_to_gradient = stops_b.map_colors(|_| *color_a);
 				let stops = solid_to_gradient.lerp(stops_b, time);
 				gradient_with_stops(gradient_list_b.clone(), stops)
 			}),
-			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Color(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
+			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::ColorList(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
 				let gradient_to_solid = stops_a.map_colors(|_| *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
 				gradient_with_stops(gradient_list_a.clone(), stops)
@@ -3912,7 +3912,7 @@ mod test {
 		let fill = appearance.first_paint_of(Cover::Fill).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
-		let Some(Graphic::Color(colors)) = fill.element(0) else {
+		let Some(Graphic::ColorList(colors)) = fill.element(0) else {
 			panic!("Expected a solid color fill, got {:?}", fill.element(0));
 		};
 		let color = *colors.element(0).expect("Color present");
@@ -3929,7 +3929,7 @@ mod test {
 
 		let paint_color = |appearance: &Appearance, cover| {
 			let paint = appearance.first_paint_of(cover).expect("Morph should keep both paints at the midpoint");
-			let Some(Graphic::Color(colors)) = paint.element(0) else {
+			let Some(Graphic::ColorList(colors)) = paint.element(0) else {
 				panic!("Expected a solid color paint, got {:?}", paint.element(0));
 			};
 			*colors.element(0).expect("Color present")

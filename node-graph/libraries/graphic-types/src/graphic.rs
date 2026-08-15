@@ -23,7 +23,7 @@ pub enum Graphic {
 	VectorList(List<Vector>),
 	RasterCPUList(List<Raster<CPU>>),
 	RasterGPUList(List<Raster<GPU>>),
-	Color(List<Color>),
+	ColorList(List<Color>),
 	Gradient(List<Gradient>),
 	Text(List<String>),
 }
@@ -78,12 +78,12 @@ impl From<List<Raster<GPU>>> for Graphic {
 // Color
 impl From<Color> for Graphic {
 	fn from(color: Color) -> Self {
-		Graphic::Color(List::new_from_element(color))
+		Graphic::ColorList(List::new_from_element(color))
 	}
 }
 impl From<List<Color>> for Graphic {
 	fn from(color: List<Color>) -> Self {
-		Graphic::Color(color)
+		Graphic::ColorList(color)
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -250,7 +250,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 			Graphic::RasterGPUList(list) => bake_list_transform(list, transform),
 			Graphic::Gradient(list) => bake_list_transform(list, transform),
 			Graphic::Text(list) => bake_list_transform(list, transform),
-			Graphic::Color(_) => {}
+			Graphic::ColorList(_) => {}
 		}
 	}
 
@@ -285,7 +285,7 @@ impl TryFromGraphic for Raster<CPU> {
 
 impl TryFromGraphic for Color {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Color(t) = graphic { Some(t) } else { None }
+		if let Graphic::ColorList(t) = graphic { Some(t) } else { None }
 	}
 }
 
@@ -342,7 +342,7 @@ impl IntoGraphicList for List<Raster<GPU>> {
 
 impl IntoGraphicList for List<Color> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		List::new_from_element(Graphic::Color(self))
+		List::new_from_element(Graphic::ColorList(self))
 	}
 }
 
@@ -433,7 +433,7 @@ impl Graphic {
 			Graphic::GraphicList(list) => all_clipped(list),
 			Graphic::RasterCPUList(list) => all_clipped(list),
 			Graphic::RasterGPUList(list) => all_clipped(list),
-			Graphic::Color(list) => all_clipped(list),
+			Graphic::ColorList(list) => all_clipped(list),
 			Graphic::Gradient(list) => all_clipped(list),
 			Graphic::Text(list) => all_clipped(list),
 		}
@@ -493,7 +493,7 @@ impl Graphic {
 						opacity >= 1. - f64::EPSILON && fill_opaque && strokes_opaque_or_invisible
 					})
 			}
-			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
+			Graphic::ColorList(list) => list.element(0).is_some_and(|color| color.is_opaque()),
 			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
 			Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::Text(_) => false,
 		}
@@ -528,7 +528,7 @@ impl Graphic {
 
 				fills_invisible && strokes_invisible
 			}),
-			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
+			Graphic::ColorList(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
 			Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::Text(_) => false,
 		}
@@ -537,7 +537,7 @@ impl Graphic {
 	/// True if this paint opaquely covers the entire fill region.
 	/// Vector, Raster, and a nested Graphic may leave gaps, so they return false.
 	pub fn covers_opaquely(&self) -> bool {
-		matches!(self, Graphic::Color(_) | Graphic::Gradient(_)) && self.is_opaque()
+		matches!(self, Graphic::ColorList(_) | Graphic::Gradient(_)) && self.is_opaque()
 	}
 
 	/// Returns true if this graphic contains no content.
@@ -546,7 +546,7 @@ impl Graphic {
 			Graphic::None => true,
 			Graphic::GraphicList(list) => list.is_empty(),
 			Graphic::VectorList(list) => list.is_empty(),
-			Graphic::Color(list) => list.is_empty(),
+			Graphic::ColorList(list) => list.is_empty(),
 			Graphic::Gradient(list) => list.is_empty(),
 			Graphic::RasterCPUList(list) => list.is_empty(),
 			Graphic::RasterGPUList(list) => list.is_empty(),
@@ -599,7 +599,7 @@ impl BoundingBox for Graphic {
 			Graphic::RasterCPUList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::RasterGPUList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::GraphicList(list) => list.bounding_box(transform, include_stroke),
-			Graphic::Color(list) => list.bounding_box(transform, include_stroke),
+			Graphic::ColorList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Gradient(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.bounding_box(transform, include_stroke),
 		}
@@ -612,7 +612,7 @@ impl BoundingBox for Graphic {
 			Graphic::RasterCPUList(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterGPUList(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::GraphicList(list) => list.thumbnail_bounding_box(transform, include_stroke),
-			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::ColorList(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
 		}
@@ -627,7 +627,7 @@ impl RenderComplexity for Graphic {
 			Self::VectorList(list) => list.render_complexity(),
 			Self::RasterCPUList(list) => list.render_complexity(),
 			Self::RasterGPUList(list) => list.render_complexity(),
-			Self::Color(list) => list.render_complexity(),
+			Self::ColorList(list) => list.render_complexity(),
 			Self::Gradient(list) => list.render_complexity(),
 			Self::Text(list) => list.render_complexity(),
 		}
@@ -784,7 +784,7 @@ mod tests {
 	fn flatten_cascades_into_padded_empty_appearance_rows() {
 		use core_types::Color;
 
-		let solid = |color: Color| List::new_from_element(Graphic::Color(List::new_from_element(color)));
+		let solid = |color: Color| List::new_from_element(Graphic::ColorList(List::new_from_element(color)));
 
 		// Declaring an appearance on row 0 forces the column, padding row 1 with the empty appearance
 		let mut inner = List::new();
@@ -798,7 +798,7 @@ mod tests {
 		let flattened: List<Vector> = outer.into_flattened_list();
 		let color_of = |index: usize| {
 			let appearance = flattened.attribute::<Appearance>(ATTR_APPEARANCE, index)?;
-			let Some(Graphic::Color(colors)) = appearance.paint_at(0)?.element(0) else { return None };
+			let Some(Graphic::ColorList(colors)) = appearance.paint_at(0)?.element(0) else { return None };
 			colors.element(0).copied()
 		};
 
@@ -816,7 +816,7 @@ mod graphic_is_opaque_tests {
 
 	fn color_graphic(alpha: f64) -> Graphic {
 		let color = Color::from_rgbaf32(1., 0., 0., alpha as f32).unwrap();
-		Graphic::Color(List::new_from_element(color))
+		Graphic::ColorList(List::new_from_element(color))
 	}
 
 	fn gradient_graphic(gradient: Gradient) -> Graphic {
