@@ -15,7 +15,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, is_paint_present};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, stamp_coverage};
+use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, IntoPaint, stamp_coverage};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
@@ -239,7 +239,7 @@ where
 			};
 
 			let color = evaluator.evaluate(factor);
-			let color_paint = List::new_from_element(color).into_graphic_list();
+			let color_paint = Graphic::ColorList(List::new_from_element(color));
 
 			if fill {
 				vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
@@ -268,7 +268,7 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
+async fn fill<V, F: IntoPaint + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
 	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
@@ -276,8 +276,8 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	fill: F,
 	_backup_color: Item<Color>,
@@ -293,12 +293,10 @@ where
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
 
 	let mut content = content;
-	let mut fill = fill.into_graphic_list();
+	let mut fill = fill.into_paint();
 
 	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
-	for graphic in fill.iter_element_values_mut() {
-		let Graphic::GradientList(gradient) = graphic else { continue };
-
+	if let Graphic::GradientList(gradient) = &mut fill {
 		if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
 				*value = _gradient_form;
@@ -344,7 +342,7 @@ where
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, P: IntoGraphicList + 'n + Send + 'static>(
+async fn stroke<V, P: IntoPaint + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
 	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
@@ -352,8 +350,8 @@ async fn stroke<V, P: IntoGraphicList + 'n + Send + 'static>(
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	paint: P,
 	/// The stroke thickness.
@@ -400,7 +398,7 @@ where
 		transform: DAffine2::IDENTITY,
 	};
 
-	let paint = paint.into_graphic_list();
+	let paint = paint.into_paint();
 
 	// The coverage records the stroke's authoring space, so the item transform is composed in. Its translation
 	// cancels out in every consumer, so it is cleared to let an otherwise-identity capture elide.
@@ -2662,7 +2660,12 @@ async fn morph<I: IntoGraphicList>(
 			};
 
 			// An unmatched side falls to `None` here, which `lerp_graphic` fades against transparent
-			let paint = lerp_graphic(source_index.and_then(|index| a.paint_at(index)), target_index.and_then(|index| b.paint_at(index)), time).unwrap_or_default();
+			let source_paint = source_index.and_then(|index| a.paint_at(index)).map(|paint| List::new_from_element(paint.clone()));
+			let target_paint = target_index.and_then(|index| b.paint_at(index)).map(|paint| List::new_from_element(paint.clone()));
+			let paint = lerp_graphic(source_paint.as_ref(), target_paint.as_ref(), time)
+				.and_then(|list| list.into_iter().next())
+				.map(Item::into_element)
+				.unwrap_or_default();
 
 			result.replace_or_insert(coverage, paint, CoverPlacement::Above);
 		}
@@ -3886,7 +3889,7 @@ mod test {
 			v
 		};
 
-		let solid_fill = |color: Color| Appearance::new_single(Coverage::new_fill(), List::new_from_element(color).into_graphic_list());
+		let solid_fill = |color: Color| Appearance::new_single(Coverage::new_fill(), List::new_from_element(color).into_paint());
 		let item_a = Item::new_from_element(rect())
 			.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY)
 			.with_attribute(ATTR_APPEARANCE, solid_fill(Color::RED));
@@ -3912,8 +3915,8 @@ mod test {
 		let fill = appearance.first_paint_of(Cover::Fill).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
-		let Some(Graphic::ColorList(colors)) = fill.element(0) else {
-			panic!("Expected a solid color fill, got {:?}", fill.element(0));
+		let Graphic::ColorList(colors) = fill else {
+			panic!("Expected a solid color fill, got {fill:?}");
 		};
 		let color = *colors.element(0).expect("Color present");
 		assert!(color.r() > 0. && color.b() > 0., "Fill should be a red-to-blue blend, got {color:?}");
@@ -3929,8 +3932,8 @@ mod test {
 
 		let paint_color = |appearance: &Appearance, cover| {
 			let paint = appearance.first_paint_of(cover).expect("Morph should keep both paints at the midpoint");
-			let Some(Graphic::ColorList(colors)) = paint.element(0) else {
-				panic!("Expected a solid color paint, got {:?}", paint.element(0));
+			let Graphic::ColorList(colors) = paint else {
+				panic!("Expected a solid color paint, got {paint:?}");
 			};
 			*colors.element(0).expect("Color present")
 		};
@@ -3938,8 +3941,8 @@ mod test {
 		// The two endpoints list their covers in opposite paint orders, which pairing by position would cross
 		let appearance = |fill: Color, stroke: Color, stroke_placement| {
 			let mut appearance = Appearance::default();
-			appearance.replace_or_insert(Coverage::new_fill(), List::new_from_element(fill).into_graphic_list(), CoverPlacement::Above);
-			appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), List::new_from_element(stroke).into_graphic_list(), stroke_placement);
+			appearance.replace_or_insert(Coverage::new_fill(), List::new_from_element(fill).into_paint(), CoverPlacement::Above);
+			appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), List::new_from_element(stroke).into_paint(), stroke_placement);
 			appearance
 		};
 

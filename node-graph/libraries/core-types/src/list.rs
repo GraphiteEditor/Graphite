@@ -80,7 +80,7 @@ pub const ATTR_MIDPOINT: &str = "midpoint";
 /// Item's ordered list of paint passes, of type `Appearance`. Earlier coverages paint first, compositing below later ones.
 pub const ATTR_APPEARANCE: &str = "appearance";
 // TODO: Add a "fill_rule" attribute as a sibling of "paint" on the coverage list (uniform across covers) once a FillRule type ships
-/// Coverage's `List<Graphic>` paint (implicit default empty, painting nothing), on the
+/// Coverage's `Graphic` paint (implicit default `Graphic::None`, painting nothing), on the
 /// `List<Coverage>` inside an `Appearance`.
 pub const ATTR_PAINT: &str = "paint";
 /// Stroke coverage's line thickness (`f64`, implicit default `0.`), on the `Item<Cover>` inside a `Coverage`.

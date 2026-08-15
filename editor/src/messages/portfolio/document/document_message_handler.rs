@@ -2760,9 +2760,7 @@ impl DocumentMessageHandler {
 			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
 			let has_stroke = appearance.is_some_and(|appearance| {
 				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
-					&& appearance
-						.first_paint_of(Cover::Stroke)
-						.is_some_and(|paint| paint.element(0).is_some_and(|graphic| !graphic.is_fully_transparent()))
+					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_fully_transparent())
 			});
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.

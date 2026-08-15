@@ -1210,10 +1210,12 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 	let appearance = own_appearance.or(render_params.inherited_appearance.as_ref());
 	let FillAndStroke {
 		stroke: stroke_params,
-		fill_paint: fill_graphic_list,
-		stroke_paint: stroke_graphic_list,
+		fill_paint,
+		stroke_paint,
 		stroke_below: wants_stroke_below,
 	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+	let fill_graphic_list: Option<List<Graphic>> = fill_paint.map(|paint| List::new_from_element(paint.clone()));
+	let stroke_graphic_list: Option<List<Graphic>> = stroke_paint.map(|paint| List::new_from_element(paint.clone()));
 
 	// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
@@ -1245,8 +1247,8 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 		MaskType::Mask
 	};
 
-	let fill_graphic = fill_graphic_list.and_then(|l| l.element(0));
-	let stroke_graphic = stroke_graphic_list.and_then(|l| l.element(0));
+	let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
+	let stroke_graphic = stroke_graphic_list.as_ref().and_then(|l| l.element(0));
 
 	let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
 	let can_draw_aligned_stroke = path_is_closed
@@ -1262,7 +1264,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 		emit_svg_fill_path(
 			render,
 			path.clone(),
-			fill_graphic_list,
+			fill_graphic_list.as_ref(),
 			item_transform,
 			element_transform,
 			applied_stroke_transform,
@@ -1279,7 +1281,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 		// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 		// The wrapping SVG group (above) handles the user-set opacity.
 		let mut mask_item = Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform);
-		let black_fill = List::new_from_element(Graphic::ColorList(List::new_from_element(Color::BLACK)));
+		let black_fill = Graphic::ColorList(List::new_from_element(Color::BLACK));
 		mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
 		let vector_item = List::new_from_item(mask_item);
 
@@ -1294,7 +1296,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 			emit_svg_fill_path(
 				render,
 				face_d,
-				fill_graphic_list,
+				fill_graphic_list.as_ref(),
 				item_transform,
 				element_transform,
 				applied_stroke_transform,
@@ -1407,7 +1409,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 		emit_svg_fill_path(
 			render,
 			path.clone(),
-			fill_graphic_list,
+			fill_graphic_list.as_ref(),
 			item_transform,
 			element_transform,
 			applied_stroke_transform,
@@ -1481,10 +1483,12 @@ impl Render for List<Vector> {
 			let appearance = own_appearance.or(render_params.inherited_appearance.as_ref());
 			let FillAndStroke {
 				stroke: stroke_params,
-				fill_paint: fill_graphic_list,
-				stroke_paint: stroke_graphic_list,
+				fill_paint,
+				stroke_paint,
 				stroke_below: wants_stroke_below,
 			} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+			let fill_graphic_list: Option<List<Graphic>> = fill_paint.map(|paint| List::new_from_element(paint.clone()));
+			let stroke_graphic_list: Option<List<Graphic>> = stroke_paint.map(|paint| List::new_from_element(paint.clone()));
 
 			let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
 			// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
@@ -1524,7 +1528,7 @@ impl Render for List<Vector> {
 			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
 			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 			let stroke = stroke_params.as_ref();
-			let stroke_fully_transparent = stroke_graphic_list.is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
+			let stroke_fully_transparent = stroke_graphic_list.as_ref().is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
 			let can_draw_aligned_stroke =
 				!stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
@@ -1580,7 +1584,7 @@ impl Render for List<Vector> {
 			let use_layer = can_draw_aligned_stroke;
 
 			let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
-				let Some(fill_graphic) = fill_graphic_list else { return };
+				let Some(fill_graphic) = fill_graphic_list.as_ref() else { return };
 
 				for paint_index in 0..fill_graphic.len() {
 					let Some(paint) = fill_graphic.element(paint_index) else { continue };
@@ -1634,7 +1638,7 @@ impl Render for List<Vector> {
 			};
 
 			let do_stroke = |scene: &mut Scene, width_scale: f64, context: &mut RenderContext| {
-				let Some(stroke_graphic_list) = stroke_graphic_list else { return };
+				let Some(stroke_graphic_list) = stroke_graphic_list.as_ref() else { return };
 				let Some(stroke) = stroke else { return };
 
 				for paint_index in 0..stroke_graphic_list.len() {
@@ -1713,7 +1717,7 @@ impl Render for List<Vector> {
 						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 						// The outer opacity/blend layer (above) handles the user-set opacity.
 						let mut mask_item = Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform);
-						let black_fill = List::new_from_element(Graphic::ColorList(List::new_from_element(Color::BLACK)));
+						let black_fill = Graphic::ColorList(List::new_from_element(Color::BLACK));
 						mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
 						let vector_list = List::new_from_item(mask_item);
 
