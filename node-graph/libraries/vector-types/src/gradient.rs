@@ -21,7 +21,7 @@ pub enum GradientForm {
 /// attributes place each stop along the 0 to 1 range. Stops lacking the `position` attribute distribute evenly,
 /// and stops lacking the `midpoint` attribute interpolate linearly (`0.5`).
 #[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
-pub struct Gradient(List<Color>);
+pub struct Gradient(pub List<Color>);
 
 /// A gradient's per-stop parallel arrays, generic over color format: `GradientStops<Color>` nests inside the
 /// [`GradientRamp`] exchange struct, while `GradientStops<SRGBA8>` is the JS-boundary shape used by the color picker UI.
