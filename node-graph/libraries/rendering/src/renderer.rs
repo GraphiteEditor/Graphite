@@ -841,7 +841,7 @@ impl Render for List<Artboard> {
 			render.parent_tag(
 				// SVG group tag
 				"g",
-				// GraphicList tag attributes
+				// Group tag attributes
 				|attributes| {
 					let matrix = format_transform_matrix(DAffine2::from_translation(location));
 					if !matrix.is_empty() {
