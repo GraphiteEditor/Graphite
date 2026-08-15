@@ -261,7 +261,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					}
 				}
 				// Rasters, colors, and gradients bound no region, so they contribute no operand
-				Graphic::None | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) => Vec::new(),
+				Graphic::None | Graphic::RasterCPUList(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) => Vec::new(),
 			}
 		})
 		.collect()

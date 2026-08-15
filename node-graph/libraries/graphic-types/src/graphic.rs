@@ -21,7 +21,7 @@ pub enum Graphic {
 	None,
 	GraphicList(List<Graphic>),
 	VectorList(List<Vector>),
-	RasterCPU(List<Raster<CPU>>),
+	RasterCPUList(List<Raster<CPU>>),
 	RasterGPU(List<Raster<GPU>>),
 	Color(List<Color>),
 	Gradient(List<Gradient>),
@@ -52,12 +52,12 @@ impl From<List<Vector>> for Graphic {
 // Raster<CPU>
 impl From<Raster<CPU>> for Graphic {
 	fn from(raster: Raster<CPU>) -> Self {
-		Graphic::RasterCPU(List::new_from_element(raster))
+		Graphic::RasterCPUList(List::new_from_element(raster))
 	}
 }
 impl From<List<Raster<CPU>>> for Graphic {
 	fn from(raster: List<Raster<CPU>>) -> Self {
-		Graphic::RasterCPU(raster)
+		Graphic::RasterCPUList(raster)
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -246,7 +246,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 			Graphic::None => {}
 			Graphic::GraphicList(list) => bake_list_transform(list, transform),
 			Graphic::VectorList(list) => bake_list_transform(list, transform),
-			Graphic::RasterCPU(list) => bake_list_transform(list, transform),
+			Graphic::RasterCPUList(list) => bake_list_transform(list, transform),
 			Graphic::RasterGPU(list) => bake_list_transform(list, transform),
 			Graphic::Gradient(list) => bake_list_transform(list, transform),
 			Graphic::Text(list) => bake_list_transform(list, transform),
@@ -279,7 +279,7 @@ impl TryFromGraphic for Vector {
 
 impl TryFromGraphic for Raster<CPU> {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::RasterCPU(t) = graphic { Some(t) } else { None }
+		if let Graphic::RasterCPUList(t) = graphic { Some(t) } else { None }
 	}
 }
 
@@ -330,7 +330,7 @@ impl IntoGraphicList for List<Vector> {
 
 impl IntoGraphicList for List<Raster<CPU>> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		List::new_from_element(Graphic::RasterCPU(self))
+		List::new_from_element(Graphic::RasterCPUList(self))
 	}
 }
 
@@ -408,16 +408,16 @@ impl Graphic {
 		}
 	}
 
-	pub fn as_raster(&self) -> Option<&List<Raster<CPU>>> {
+	pub fn as_raster_cpu_list(&self) -> Option<&List<Raster<CPU>>> {
 		match self {
-			Graphic::RasterCPU(raster) => Some(raster),
+			Graphic::RasterCPUList(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster_mut(&mut self) -> Option<&mut List<Raster<CPU>>> {
+	pub fn as_raster_cpu_list_mut(&mut self) -> Option<&mut List<Raster<CPU>>> {
 		match self {
-			Graphic::RasterCPU(raster) => Some(raster),
+			Graphic::RasterCPUList(raster) => Some(raster),
 			_ => None,
 		}
 	}
@@ -431,7 +431,7 @@ impl Graphic {
 			Graphic::None => true,
 			Graphic::VectorList(list) => all_clipped(list),
 			Graphic::GraphicList(list) => all_clipped(list),
-			Graphic::RasterCPU(list) => all_clipped(list),
+			Graphic::RasterCPUList(list) => all_clipped(list),
 			Graphic::RasterGPU(list) => all_clipped(list),
 			Graphic::Color(list) => all_clipped(list),
 			Graphic::Gradient(list) => all_clipped(list),
@@ -495,7 +495,7 @@ impl Graphic {
 			}
 			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
 			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			Graphic::RasterCPUList(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
 		}
 	}
 
@@ -530,7 +530,7 @@ impl Graphic {
 			}),
 			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			Graphic::RasterCPUList(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
 		}
 	}
 
@@ -548,7 +548,7 @@ impl Graphic {
 			Graphic::VectorList(list) => list.is_empty(),
 			Graphic::Color(list) => list.is_empty(),
 			Graphic::Gradient(list) => list.is_empty(),
-			Graphic::RasterCPU(list) => list.is_empty(),
+			Graphic::RasterCPUList(list) => list.is_empty(),
 			Graphic::RasterGPU(list) => list.is_empty(),
 			Graphic::Text(list) => list.is_empty(),
 		}
@@ -596,7 +596,7 @@ impl BoundingBox for Graphic {
 		match self {
 			Graphic::None => RenderBoundingBox::None,
 			Graphic::VectorList(list) => vector_list_bounding_box(list, transform, include_stroke),
-			Graphic::RasterCPU(list) => list.bounding_box(transform, include_stroke),
+			Graphic::RasterCPUList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(list) => list.bounding_box(transform, include_stroke),
 			Graphic::GraphicList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Color(list) => list.bounding_box(transform, include_stroke),
@@ -609,7 +609,7 @@ impl BoundingBox for Graphic {
 		match self {
 			Graphic::None => RenderBoundingBox::None,
 			Graphic::VectorList(vector) => vector_list_bounding_box(vector, transform, include_stroke),
-			Graphic::RasterCPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::RasterCPUList(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::GraphicList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
@@ -625,7 +625,7 @@ impl RenderComplexity for Graphic {
 			Self::None => 0,
 			Self::GraphicList(list) => list.render_complexity(),
 			Self::VectorList(list) => list.render_complexity(),
-			Self::RasterCPU(list) => list.render_complexity(),
+			Self::RasterCPUList(list) => list.render_complexity(),
 			Self::RasterGPU(list) => list.render_complexity(),
 			Self::Color(list) => list.render_complexity(),
 			Self::Gradient(list) => list.render_complexity(),
