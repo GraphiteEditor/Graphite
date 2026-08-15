@@ -1,4 +1,6 @@
 node_modules/
 wrapper/pkg/
+wrapper/pkg-native/
 public/build/
 dist/
+node_modules.locked-*/

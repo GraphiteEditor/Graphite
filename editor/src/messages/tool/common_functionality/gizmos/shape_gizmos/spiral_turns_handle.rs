@@ -12,8 +12,7 @@ use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::NodeInputDecleration;
-use graphene_std::subpath::{calculate_growth_factor, spiral_point};
+use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
 use std::f64::consts::TAU;
@@ -190,15 +189,15 @@ impl SpiralTurns {
 				let new_outer_radius = (self.initial_outer_radius + outer_radius_change * sign).max(0.1);
 
 				responses.add(NodeGraphMessage::SetInput {
-					input_connector: InputConnector::node(node_id, StartAngleInput::INDEX),
+					input_connector: InputConnector::node(node_id, StartAngleInput),
 					input: NodeInput::value(TaggedValue::F64(self.initial_start_angle + total_delta), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
-					input_connector: InputConnector::node(node_id, TurnsInput::INDEX),
+					input_connector: InputConnector::node(node_id, TurnsInput),
 					input: NodeInput::value(TaggedValue::F64(new_turns), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
-					input_connector: InputConnector::node(node_id, OuterRadiusInput::INDEX),
+					input_connector: InputConnector::node(node_id, OuterRadiusInput),
 					input: NodeInput::value(TaggedValue::F64(new_outer_radius), false),
 				});
 			}
@@ -207,11 +206,11 @@ impl SpiralTurns {
 				let new_outer_radius = (self.initial_outer_radius + outer_radius_change).max(0.1);
 
 				responses.add(NodeGraphMessage::SetInput {
-					input_connector: InputConnector::node(node_id, TurnsInput::INDEX),
+					input_connector: InputConnector::node(node_id, TurnsInput),
 					input: NodeInput::value(TaggedValue::F64(new_turns), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
-					input_connector: InputConnector::node(node_id, OuterRadiusInput::INDEX),
+					input_connector: InputConnector::node(node_id, OuterRadiusInput),
 					input: NodeInput::value(TaggedValue::F64(new_outer_radius), false),
 				});
 			}

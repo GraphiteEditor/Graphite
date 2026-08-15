@@ -3,72 +3,71 @@
 pub use crate::gradient::*;
 use core_types::Color;
 use core_types::color::SRGBA8;
+use core_types::list::{Item, List};
 use core_types::transform::Transform;
 use dyn_any::DynAny;
 use glam::DAffine2;
 use std::f64::consts::{PI, TAU};
 
-/// Describes an editable fill choice, storing color or gradient stops without gradient placement metadata.
+/// The paint picker's choice of fill, generic over color format: `FillChoice<Color>` is the editor's in-memory
+/// form, while `FillChoice<SRGBA8>` is the JS-boundary shape used by the color picker UI. Stores a color or
+/// gradient ramp without gradient placement metadata, and is not stored in documents: paint inputs hold the
+/// picked value as a plain color, gradient, or no-paint type default.
 ///
-/// Can be None, a solid [Color], or a linear/radial [GradientStops].
+/// Can be None, a solid color, or the [`GradientRamp`] of a linear/radial gradient.
 ///
 /// In the future we'll probably also add a pattern fill.
-///
-/// Use [`FillChoiceUI`] at the JS boundary.
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum FillChoice {
-	#[default]
-	None,
-	Solid(Color),
-	Gradient(GradientStops),
-}
-
-// TODO: Deprecate [`FillChoice`] and keep this, renamed, as the main widget-controlling type
-/// JS-boundary version of [`FillChoice`] where the solid color is [`SRGBA8`] and the gradient is [`GradientStopsUI`].
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
-#[derive(Default, Debug, Clone, PartialEq, DynAny)]
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum FillChoiceUI {
+pub enum FillChoice<C = Color> {
 	#[default]
 	None,
-	Solid(SRGBA8),
-	Gradient(GradientStopsUI),
+	Solid(C),
+	Gradient(GradientRamp<C>),
 }
 
-impl From<&FillChoice> for FillChoiceUI {
+unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for FillChoice<C> {
+	type Static = FillChoice<C::Static>;
+}
+
+impl From<&FillChoice> for FillChoice<SRGBA8> {
 	fn from(value: &FillChoice) -> Self {
 		match value {
 			FillChoice::None => Self::None,
 			FillChoice::Solid(color) => Self::Solid(SRGBA8::from(*color)),
-			FillChoice::Gradient(stops) => Self::Gradient(GradientStopsUI::from(stops)),
+			FillChoice::Gradient(ramp) => Self::Gradient(ramp.into()),
 		}
 	}
 }
 
-impl From<&FillChoiceUI> for FillChoice {
-	fn from(value: &FillChoiceUI) -> Self {
+impl From<&FillChoice<SRGBA8>> for FillChoice {
+	fn from(value: &FillChoice<SRGBA8>) -> Self {
 		match value {
-			FillChoiceUI::None => Self::None,
-			FillChoiceUI::Solid(srgba) => Self::Solid(Color::from(*srgba)),
-			FillChoiceUI::Gradient(stops) => Self::Gradient(GradientStops::from(stops)),
+			FillChoice::None => Self::None,
+			FillChoice::Solid(srgba) => Self::Solid(Color::from(*srgba)),
+			FillChoice::Gradient(ramp) => Self::Gradient(ramp.into()),
 		}
 	}
 }
 
-impl FillChoiceUI {
-	pub fn as_solid(&self) -> Option<SRGBA8> {
-		let Self::Solid(c) = self else { return None };
-		Some(*c)
+impl<C: Copy> FillChoice<C> {
+	pub fn as_solid(&self) -> Option<C> {
+		let Self::Solid(color) = self else { return None };
+		Some(*color)
 	}
+}
 
-	pub fn as_gradient(&self) -> Option<&GradientStopsUI> {
-		let Self::Gradient(g) = self else { return None };
-		Some(g)
+impl<C> FillChoice<C> {
+	pub fn as_gradient(&self) -> Option<&GradientRamp<C>> {
+		let Self::Gradient(ramp) = self else { return None };
+		Some(ramp)
 	}
+}
 
-	/// Build a CSS `background-image` string (always a `linear-gradient(...)`) representing this fill, or `None` if the fill is [`FillChoiceUI::None`].
+impl FillChoice<SRGBA8> {
+	/// Build a CSS `background-image` string representing this fill, or `None` if the fill is [`FillChoice::None`].
 	/// Solid colors become a degenerate gradient between the same color so the CSS variable can always be assigned to a `background-image`.
 	pub fn to_css_background_image(&self) -> Option<String> {
 		match self {
@@ -77,31 +76,7 @@ impl FillChoiceUI {
 				let hex = srgba.to_rgba_hex();
 				Some(format!("linear-gradient(#{hex}, #{hex})"))
 			}
-			Self::Gradient(stops) => Some(stops.to_css_linear_gradient()),
-		}
-	}
-}
-
-impl FillChoice {
-	pub fn as_solid(&self) -> Option<Color> {
-		let Self::Solid(color) = self else { return None };
-		Some(*color)
-	}
-
-	pub fn as_gradient(&self) -> Option<&GradientStops> {
-		let Self::Gradient(gradient) = self else { return None };
-		Some(gradient)
-	}
-
-	/// Build a CSS `background-image` string (always a `linear-gradient(...)`) representing this fill, or `None` if the fill is [`FillChoice::None`]. Solid colors become a degenerate gradient between the same color so the CSS variable can always be assigned to a `background-image`.
-	pub fn to_css_background_image(&self) -> Option<String> {
-		match self {
-			Self::None => None,
-			Self::Solid(color) => {
-				let hex = SRGBA8::from(*color).to_rgba_hex();
-				Some(format!("linear-gradient(#{hex}, #{hex})"))
-			}
-			Self::Gradient(stops) => Some(stops.to_css_linear_gradient()),
+			Self::Gradient(ramp) => Some(ramp.stops.to_svg_background_image(ramp.into())),
 		}
 	}
 }
@@ -116,18 +91,18 @@ pub enum StrokeCap {
 	#[default]
 	#[icon("StrokeCapButt")]
 	Butt,
-	#[icon("StrokeCapRound")]
-	Round,
 	#[icon("StrokeCapSquare")]
 	Square,
+	#[icon("StrokeCapRound")]
+	Round,
 }
 
 impl StrokeCap {
 	pub fn svg_name(&self) -> &'static str {
 		match self {
 			StrokeCap::Butt => "butt",
-			StrokeCap::Round => "round",
 			StrokeCap::Square => "square",
+			StrokeCap::Round => "round",
 		}
 	}
 }
@@ -178,6 +153,8 @@ impl StrokeAlign {
 	}
 }
 
+// Backs the control bar's stroke popover radio and legacy document parsing: the relative order
+// of the Fill and Stroke nodes in the chain is what actually determines the paint order
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
@@ -201,6 +178,45 @@ fn daffine2_identity() -> DAffine2 {
 	DAffine2::IDENTITY
 }
 
+/// A stroke's dash pattern: a sequence of lengths that alternate dash, gap, dash, gap, and so on. An odd-length
+/// sequence repeats with the dash and gap roles swapped.
+///
+/// Wraps a `List<f64>` so the Data panel can introspect its lengths, mirroring how `Artboard` wraps a `List<Graphic>`,
+/// while remaining a single rank-0 value on the wire.
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+pub struct DashPattern(pub List<f64>);
+
+impl DashPattern {
+	/// Returns the dash lengths with any negative values clamped to zero.
+	pub fn clamped_lengths(&self) -> Vec<f64> {
+		self.0.iter_element_values().map(|length| length.max(0.)).collect()
+	}
+}
+
+impl From<f64> for DashPattern {
+	fn from(length: f64) -> Self {
+		Self(List::new_from_element(length))
+	}
+}
+
+impl From<Vec<f64>> for DashPattern {
+	fn from(lengths: Vec<f64>) -> Self {
+		Self(lengths.into_iter().map(Item::new_from_element).collect())
+	}
+}
+
+impl From<&str> for DashPattern {
+	fn from(text: &str) -> Self {
+		Self::from(core_types::misc::parse_f64_list(text))
+	}
+}
+
+impl From<String> for DashPattern {
+	fn from(text: String) -> Self {
+		Self::from(text.as_str())
+	}
+}
+
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
@@ -221,8 +237,6 @@ pub struct Stroke {
 	pub align: StrokeAlign,
 	#[cfg_attr(feature = "serde", serde(default = "daffine2_identity"))]
 	pub transform: DAffine2,
-	#[cfg_attr(feature = "serde", serde(default))]
-	pub paint_order: PaintOrder,
 }
 
 impl Stroke {
@@ -236,7 +250,6 @@ impl Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			paint_order: PaintOrder::StrokeAbove,
 		}
 	}
 
@@ -273,7 +286,6 @@ impl Stroke {
 				let skew = DAffine2::from_cols_array(&[1., 0., lerp(s_skew, t_skew), 1., 0., 0.]);
 				trs * skew
 			},
-			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
 
@@ -283,7 +295,7 @@ impl Stroke {
 	}
 
 	/// Get the effective stroke weight.
-	pub fn effective_width(&self) -> f64 {
+	pub(crate) fn effective_width(&self) -> f64 {
 		self.weight
 			* match self.align {
 				StrokeAlign::Center => 1.,
@@ -330,58 +342,12 @@ impl Stroke {
 		self.dash_offset
 	}
 
-	pub fn cap_index(&self) -> u32 {
-		self.cap as u32
-	}
-
-	pub fn join_index(&self) -> u32 {
-		self.join as u32
-	}
-
 	pub fn join_miter_limit(&self) -> f32 {
 		self.join_miter_limit as f32
 	}
 
 	pub fn with_weight(mut self, weight: f64) -> Self {
 		self.weight = weight;
-		self
-	}
-
-	pub fn with_dash_lengths(mut self, dash_lengths: &str) -> Option<Self> {
-		dash_lengths
-			.split(&[',', ' '])
-			.filter(|x| !x.is_empty())
-			.map(str::parse::<f64>)
-			.collect::<Result<Vec<_>, _>>()
-			.ok()
-			.map(|lengths| {
-				self.dash_lengths = lengths;
-				self
-			})
-	}
-
-	pub fn with_dash_offset(mut self, dash_offset: f64) -> Self {
-		self.dash_offset = dash_offset;
-		self
-	}
-
-	pub fn with_stroke_cap(mut self, stroke_cap: StrokeCap) -> Self {
-		self.cap = stroke_cap;
-		self
-	}
-
-	pub fn with_stroke_join(mut self, stroke_join: StrokeJoin) -> Self {
-		self.join = stroke_join;
-		self
-	}
-
-	pub fn with_stroke_join_miter_limit(mut self, limit: f64) -> Self {
-		self.join_miter_limit = limit;
-		self
-	}
-
-	pub fn with_stroke_align(mut self, stroke_align: StrokeAlign) -> Self {
-		self.align = stroke_align;
 		self
 	}
 
@@ -401,7 +367,6 @@ impl Default for Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			paint_order: PaintOrder::default(),
 		}
 	}
 }

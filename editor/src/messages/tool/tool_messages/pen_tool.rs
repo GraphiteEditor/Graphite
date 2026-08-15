@@ -18,11 +18,11 @@ use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsU
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, should_extend};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::subpath::pathseg_points;
+use graphene_std::vector::misc::pathseg_points;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::style::FillChoice;
-use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, StrokeId, Vector, VectorModificationType};
-use kurbo::{CubicBez, PathSeg};
+use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, Vector, VectorModificationType};
+use kurbo::{BezPath, CubicBez, PathSeg};
 
 #[derive(Default, ExtractField)]
 pub struct PenTool {
@@ -314,6 +314,7 @@ impl ToolTransition for PenTool {
 		EventToMessageMap {
 			tool_abort: Some(PenToolMessage::Abort.into()),
 			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
+			graph_changed: Some(PenToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(PenToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| PenToolMessage::Overlays { context }.into()),
 			..Default::default()
@@ -1352,8 +1353,9 @@ impl PenToolData {
 		let parent = document.new_layer_bounding_artboard(input, viewport);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 		self.current_layer = Some(layer);
-		tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
 		tool_options.drawing.fill.apply_fill(layer, responses);
+		tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
+		tool_options.drawing.apply_stroke_order_to_new_layer(layer, responses);
 		self.prior_segment = None;
 		self.prior_segments = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
@@ -1850,26 +1852,27 @@ impl Fsm for PenToolFsmState {
 						// We have the point. Join the 2 vertices and check if any path is closed.
 						if let Some(end) = closest_point {
 							let segment_id = SegmentId::generate();
-							vector.push(segment_id, start, end, (Some(handle_start), Some(handle_end)), StrokeId::ZERO);
+							vector.push(segment_id, start, end, (Some(handle_start), Some(handle_end)));
 
 							let grouped_segments = vector.auto_join_paths();
 							let closed_paths = grouped_segments.iter().filter(|path| path.is_closed() && path.contains(segment_id));
 
-							let subpaths: Vec<_> = closed_paths
-								.filter_map(|path| {
-									let segments = path.edges.iter().filter_map(|edge| {
-										vector
-											.segment_domain
-											.iter()
-											.find(|(id, _, _, _)| id == &edge.id)
-											.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
-									});
-									vector.subpath_from_segments_ignore_discontinuities(segments)
-								})
-								.collect();
+							let mut fill_region = BezPath::new();
+							for path in closed_paths {
+								let segments = path.edges.iter().filter_map(|edge| {
+									vector
+										.segment_domain
+										.iter()
+										.find(|(id, _, _, _)| id == &edge.id)
+										.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
+								});
+								if let Some(bezpath) = vector.bezpath_from_segments_ignore_discontinuities(segments) {
+									fill_region.extend(bezpath.elements().iter().copied());
+								}
+							}
 
 							let fill_color = COLOR_OVERLAY_BLUE_05;
-							overlay_context.fill_path(subpaths.iter(), transform, fill_color);
+							overlay_context.fill_path(&fill_region, transform, fill_color);
 						}
 					}
 				}

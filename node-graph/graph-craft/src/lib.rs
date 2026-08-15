@@ -3,7 +3,7 @@ extern crate log;
 #[macro_use]
 extern crate core_types;
 
-pub use core_types::{ProtoNodeIdentifier, Type, TypeDescriptor, concrete, descriptor, generic};
+pub use core_types::{ProtoNodeIdentifier, Type, TypeDescriptor, concrete, descriptor, generic, item, list};
 
 pub mod application_io;
 pub mod document;
