@@ -125,36 +125,28 @@ pub fn sequence<I: IntoIterator<Item = Expression>>(expressions: I) -> Sequence 
 
 	let worker_current = Arc::clone(&current);
 	let worker_killed = Arc::clone(&killed);
-	let worker = std::thread::spawn(move || {
+	let worker = std::thread::spawn(move || -> Result<(), Error> {
 		for expr in expressions {
 			if worker_killed.load(Ordering::SeqCst) {
-				return;
+				return Ok(());
 			}
-			let handle = match expr.start() {
-				Ok(h) => Arc::new(h),
-				Err(e) => {
-					eprintln!("sequence: failed to start step: {e}");
-					return;
-				}
-			};
+			let handle = Arc::new(expr.start().map_err(Error::Command)?);
 			{
 				let mut slot = worker_current.lock().unwrap();
 				if worker_killed.load(Ordering::SeqCst) {
 					let _ = handle.kill();
-					return;
+					return Ok(());
 				}
 				*slot = Some(Arc::clone(&handle));
 			}
-			let result = handle.wait().map(|_| ());
+			let result = handle.wait().map_err(Error::Command);
 			worker_current.lock().unwrap().take();
 			if worker_killed.load(Ordering::SeqCst) {
-				return;
+				return Ok(());
 			}
-			if let Err(e) = result {
-				eprintln!("sequence: step failed: {e}");
-				return;
-			}
+			result?;
 		}
+		Ok(())
 	});
 
 	Sequence {
@@ -167,7 +159,7 @@ pub fn sequence<I: IntoIterator<Item = Expression>>(expressions: I) -> Sequence 
 pub struct Sequence {
 	current: Arc<Mutex<Option<Arc<Handle>>>>,
 	killed: Arc<AtomicBool>,
-	worker: Option<JoinHandle<()>>,
+	worker: Option<JoinHandle<Result<(), Error>>>,
 }
 impl Sequence {
 	pub fn kill(&self) {
@@ -178,16 +170,39 @@ impl Sequence {
 		}
 	}
 
-	pub fn wait(&mut self) {
+	pub fn wait(&mut self) -> Result<(), Error> {
 		if let Some(w) = self.worker.take() {
-			let _ = w.join();
+			return w.join().map_err(|_| Error::Command(std::io::Error::other("sequence worker thread panicked")))?;
 		}
+		Ok(())
 	}
 }
 impl Drop for Sequence {
 	fn drop(&mut self) {
 		self.kill();
-		self.wait();
+		let _ = self.wait();
+	}
+}
+
+#[cfg(test)]
+mod sequence_tests {
+	use super::*;
+
+	#[test]
+	fn sequence_wait_reports_success() {
+		sequence([cmd!("rustc", "--version").stdout_null()]).wait().expect("successful sequence should succeed");
+	}
+
+	#[test]
+	fn sequence_wait_reports_failed_step() {
+		let result = sequence([cmd!("rustc", "--definitely-invalid-option").stderr_null()]).wait();
+		assert!(result.is_err(), "failed sequence step should fail the sequence");
+	}
+
+	#[test]
+	fn sequence_wait_reports_failed_start() {
+		let result = sequence([cmd!("graphite-command-that-does-not-exist")]).wait();
+		assert!(result.is_err(), "sequence step that cannot start should fail the sequence");
 	}
 }
 

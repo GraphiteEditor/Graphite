@@ -48,7 +48,7 @@ pub fn setup() -> Result<(), Error> {
 }
 
 pub fn build_wasm(release: bool, native: bool) -> Result<(), Error> {
-	sequence(build_wasm_steps(release, native)).wait();
+	sequence(build_wasm_steps(release, native)).wait()?;
 	Ok(())
 }
 
