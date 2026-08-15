@@ -1739,7 +1739,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			None => quote!(#core_types::record::ElementSpec::Carried),
 		};
 		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, core_types);
+		// A flipped shader node's struct and impl are std-gated; its layout meta must be too.
+		let cfg = crate::shader_nodes::modify_cfg(&parsed.attributes);
 		quote! {
+			#cfg
 			#vis fn #layout_meta_fn() -> #core_types::record::LayoutMeta {
 				#layout_meta
 			}
