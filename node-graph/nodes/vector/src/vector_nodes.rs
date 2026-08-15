@@ -15,7 +15,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, is_paint_present};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, IntoPaint, stamp_coverage};
+use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, stamp_coverage};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
@@ -303,18 +303,12 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<V, F: IntoPaint + 'n + Send + 'static>(
+async fn fill<V>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
-	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
+	#[implementations(Vector, Graphic)]
 	content: Item<V>,
-	/// The fill to paint the path with.
-	#[default(Color::BLACK)]
-	#[implementations(
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-	)]
-	fill: F,
+	#[default(Color::BLACK)] fill: Item<Graphic>,
 	_backup_color: Item<Color>,
 	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: Item<Gradient>,
 	_gradient_form: Item<GradientForm>,
@@ -328,46 +322,68 @@ where
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
 
 	let mut content = content;
-	let mut fill = fill.into_paint();
+	// The paint is the element alone: keeping the wire envelope's attributes would nest the paint as a group, changing how it renders
+	let mut fill = fill.into_element();
 
 	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
-	if let Graphic::GradientList(gradient) = &mut fill {
-		if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
-				*value = _gradient_form;
-			}
+	let (needs_form, needs_transform) = match &fill {
+		Graphic::Gradient(item) => (item.attribute::<GradientForm>(ATTR_GRADIENT_FORM).is_none(), item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none()),
+		Graphic::GradientList(list) => (
+			list.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none(),
+			list.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none(),
+		),
+		_ => (false, false),
+	};
+
+	let stamped_transform = needs_transform.then(|| {
+		// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
+		if _has_transform {
+			return _transform;
 		}
 
-		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
-			// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
-			let transform = if _has_transform {
-				_transform
-			} else {
-				let mut bounds: Option<[DVec2; 2]> = None;
-				content.for_each_vector_mut(|vector, _| {
-					if let Some([min, max]) = vector.bounding_box() {
-						bounds = Some(match bounds {
-							Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
-							None => [min, max],
-						});
-					}
+		let mut bounds: Option<[DVec2; 2]> = None;
+		content.for_each_vector_mut(|vector, _| {
+			if let Some([min, max]) = vector.bounding_box() {
+				bounds = Some(match bounds {
+					Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
+					None => [min, max],
 				});
+			}
+		});
 
-				// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
-				let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
-				if max.x - min.x < 1e-10 {
-					max.x = min.x + 1.;
-				}
-				if max.y - min.y < 1e-10 {
-					max.y = min.y + 1.;
-				}
-				initial_gradient_transform_for_bounding_box([min, max])
-			};
+		// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
+		let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		if max.x - min.x < 1e-10 {
+			max.x = min.x + 1.;
+		}
+		if max.y - min.y < 1e-10 {
+			max.y = min.y + 1.;
+		}
+		initial_gradient_transform_for_bounding_box([min, max])
+	});
 
-			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-				*value = transform;
+	match &mut fill {
+		Graphic::Gradient(item) => {
+			if needs_form {
+				item.set_attribute(ATTR_GRADIENT_FORM, _gradient_form);
+			}
+			if let Some(transform) = stamped_transform {
+				item.set_attribute(ATTR_TRANSFORM, transform);
 			}
 		}
+		Graphic::GradientList(list) => {
+			if needs_form {
+				for value in list.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
+					*value = _gradient_form;
+				}
+			}
+			if let Some(transform) = stamped_transform {
+				for value in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+					*value = transform;
+				}
+			}
+		}
+		_ => {}
 	}
 
 	// Appending follows the painter's algorithm: the most downstream paint node in the chain paints on top
@@ -377,18 +393,14 @@ where
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, P: IntoPaint + 'n + Send + 'static>(
+async fn stroke<V>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
-	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
+	#[implementations(Vector, Graphic)]
 	content: Item<V>,
 	/// The stroke paint.
 	#[default(Color::BLACK)]
-	#[implementations(
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-	)]
-	paint: P,
+	paint: Item<Graphic>,
 	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
@@ -433,7 +445,8 @@ where
 		transform: DAffine2::IDENTITY,
 	};
 
-	let paint = paint.into_paint();
+	// The wire envelope is dropped for the same reason as in `fill` above
+	let paint = paint.into_element();
 
 	// The coverage records the stroke's authoring space, so the item transform is composed in. Its translation
 	// cancels out in every consumer, so it is cleared to let an otherwise-identity capture elide.
@@ -3949,7 +3962,7 @@ mod test {
 			v
 		};
 
-		let solid_fill = |color: Color| Appearance::new_single(Coverage::new_fill(), List::new_from_element(color).into_paint());
+		let solid_fill = |color: Color| Appearance::new_single(Coverage::new_fill(), Graphic::from(List::new_from_element(color)));
 		let item_a = Item::new_from_element(rect())
 			.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY)
 			.with_attribute(ATTR_APPEARANCE, solid_fill(Color::RED));
@@ -4001,8 +4014,8 @@ mod test {
 		// The two endpoints list their covers in opposite paint orders, which pairing by position would cross
 		let appearance = |fill: Color, stroke: Color, stroke_placement| {
 			let mut appearance = Appearance::default();
-			appearance.replace_or_insert(Coverage::new_fill(), List::new_from_element(fill).into_paint(), CoverPlacement::Above);
-			appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), List::new_from_element(stroke).into_paint(), stroke_placement);
+			appearance.replace_or_insert(Coverage::new_fill(), Graphic::from(List::new_from_element(fill)), CoverPlacement::Above);
+			appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), Graphic::from(List::new_from_element(stroke)), stroke_placement);
 			appearance
 		};
 
