@@ -10,7 +10,7 @@ pub use raster_types;
 pub use vector_types;
 
 // Re-export commonly used types at the crate root
-pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
+pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, IntoPaint, stamp_coverage};
 pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 pub use markers::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_STROKE};

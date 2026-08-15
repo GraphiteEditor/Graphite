@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::portfolio::document::data_panel::{DataPanelMessage, PathStep};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
+use crate::messages::tool::common_functionality::shapes::shape_utility::{format_rounded, round_away_float_noise};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
@@ -13,12 +13,10 @@ use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{Item, List, NodeIdPath};
-use graphene_std::memo::IORecord;
 use graphene_std::raster::{
 	CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice,
 };
 use graphene_std::raster_types::{CPU, GPU, Raster};
-use graphene_std::subpath::BezierHandles;
 use graphene_std::text::TextAlign;
 use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{ReferencePoint, ScaleType};
@@ -26,10 +24,10 @@ use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
+	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
-use graphene_std::{Appearance, Artboard, Color, Context, Cover, Coverage, Graphic};
+use graphene_std::{Artboard, Color, Graphic};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -186,8 +184,8 @@ macro_rules! generate_layout_downcast {
 	($introspected_data:expr, $data:expr, [ $($ty:ty),* $(,)? ]) => {
 		if false { None }
 		$(
-			else if let Some(io) = $introspected_data.downcast_ref::<IORecord<Context, $ty>>() {
-				Some(io.output.layout_with_breadcrumb($data))
+			else if let Some(element) = $introspected_data.downcast_ref::<$ty>() {
+				Some(element.layout_with_breadcrumb($data))
 			}
 		)*
 		else { None }
@@ -197,8 +195,13 @@ macro_rules! generate_layout_downcast {
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// `Item<NodeIdPath>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
 	// `List` where each item's NodeId resolves against the prefix made up of the items above it.
-	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<NodeIdPath>>>() {
-		return Some(table_node_id_path_layout_with_breadcrumb(&io.output.element().0, data));
+	if let Some(list) = introspected_data.downcast_ref::<List<NodeId>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(list, data));
+	}
+	// The path's plain value form, produced by `path_of_subgraph` on leveled wires.
+	if let Some(path) = introspected_data.downcast_ref::<Vec<NodeId>>() {
+		let list: List<NodeId> = path.iter().copied().map(graphene_std::list::Item::new_from_element).collect();
+		return Some(table_node_id_path_layout_with_breadcrumb(&list, data));
 	}
 	generate_layout_downcast!(introspected_data, data, [
 		List<Artboard>,
@@ -229,6 +232,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<StrokeJoin>,
 		List<StrokeAlign>,
 		List<StrokeCap>,
+		List<PaintOrder>,
 		List<MergeByDistanceAlgorithm>,
 		List<ExtrudeJoiningAlgorithm>,
 		List<PointSpacingType>,
@@ -284,6 +288,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<StrokeJoin>,
 		Item<StrokeAlign>,
 		Item<StrokeCap>,
+		Item<PaintOrder>,
 		Item<MergeByDistanceAlgorithm>,
 		Item<ExtrudeJoiningAlgorithm>,
 		Item<PointSpacingType>,
@@ -476,7 +481,7 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 	}
 }
 
-impl TableItemLayout for Artboard {
+impl TableItemLayout for Artboard<'_> {
 	fn type_name() -> &'static str {
 		"Artboard"
 	}
@@ -512,45 +517,6 @@ impl TableItemLayout for DashPattern {
 	}
 }
 
-impl TableItemLayout for Appearance {
-	fn type_name() -> &'static str {
-		"Appearance"
-	}
-	fn identifier(&self) -> String {
-		"Appearance".to_string()
-	}
-	// The wrapping `Item` already contributes the breadcrumb; the inner list supplies the next level
-	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.value_page(data)
-	}
-	// Label the spreadsheet's element button with the inner list's identifier, like Artboard
-	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
-		self.0.value_widgets(target, data)
-	}
-	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.0.layout_with_breadcrumb(data)
-	}
-}
-
-impl TableItemLayout for Coverage {
-	fn type_name() -> &'static str {
-		"Coverage"
-	}
-	fn identifier(&self) -> String {
-		"Coverage".to_string()
-	}
-	// The wrapping row already contributes the breadcrumb; the inner item supplies the next level
-	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.value_page(data)
-	}
-	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
-		self.0.value_widgets(target, data)
-	}
-	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.0.layout_with_breadcrumb(data)
-	}
-}
-
 impl TableItemLayout for BoxCorners {
 	fn type_name() -> &'static str {
 		"BoxCorners"
@@ -571,20 +537,21 @@ impl TableItemLayout for BoxCorners {
 	}
 }
 
-impl TableItemLayout for Graphic {
+impl TableItemLayout for Graphic<'_> {
 	fn type_name() -> &'static str {
 		"Graphic"
 	}
 	fn identifier(&self) -> String {
 		match self {
 			Self::None => "None".to_string(),
-			Self::GraphicList(list) => list.identifier(),
-			Self::VectorList(list) => list.identifier(),
-			Self::RasterCPUList(list) => list.identifier(),
-			Self::RasterGPUList(list) => list.identifier(),
-			Self::ColorList(list) => list.identifier(),
-			Self::GradientList(list) => list.identifier(),
-			Self::TextList(list) => list.identifier(),
+			Self::Graphic(list) => list.identifier(),
+			Self::Vector(list) => list.identifier(),
+			Self::RasterCPU(list) => list.identifier(),
+			Self::RasterGPU(list) => list.identifier(),
+			Self::Color(list) => list.identifier(),
+			Self::Gradient(list) => list.identifier(),
+			Self::Text(list) => list.identifier(),
+			Self::Group(_) => "Group".to_string(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -594,13 +561,14 @@ impl TableItemLayout for Graphic {
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
 			Self::None => label("None"),
-			Self::GraphicList(list) => list.layout_with_breadcrumb(data),
-			Self::VectorList(list) => list.layout_with_breadcrumb(data),
-			Self::RasterCPUList(list) => list.layout_with_breadcrumb(data),
-			Self::RasterGPUList(list) => list.layout_with_breadcrumb(data),
-			Self::ColorList(list) => list.layout_with_breadcrumb(data),
-			Self::GradientList(list) => list.layout_with_breadcrumb(data),
-			Self::TextList(list) => list.layout_with_breadcrumb(data),
+			Self::Graphic(list) => list.layout_with_breadcrumb(data),
+			Self::Vector(list) => list.layout_with_breadcrumb(data),
+			Self::RasterCPU(list) => list.layout_with_breadcrumb(data),
+			Self::RasterGPU(list) => list.layout_with_breadcrumb(data),
+			Self::Color(list) => list.layout_with_breadcrumb(data),
+			Self::Gradient(list) => list.layout_with_breadcrumb(data),
+			Self::Text(list) => list.layout_with_breadcrumb(data),
+			Self::Group(_) => Vec::new(),
 		}
 	}
 }
@@ -619,7 +587,7 @@ impl TableItemLayout for Vector {
 		)
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let table_tab_entries = [VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Regions, VectorTableTab::Handles]
+		let table_tab_entries = [VectorTableTab::Properties, VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Regions]
 			.into_iter()
 			.map(|tab| {
 				RadioEntryData::new(format!("{tab:?}"))
@@ -631,49 +599,89 @@ impl TableItemLayout for Vector {
 
 		let mut table_rows = Vec::new();
 		match data.vector_table_tab {
-			VectorTableTab::Handles => {
-				table_rows.push(column_headings(&["", "colinear_manipulators[0]", "colinear_manipulators[1]"]));
-				table_rows.extend(self.colinear_manipulators.iter().enumerate().map(|(index, [a, b])| {
-					vec![
-						TextLabel::new(format!("{index}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("{a}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("{b}")).narrow(true).widget_instance(),
-					]
-				}));
+			VectorTableTab::Properties => {
+				table_rows.push(column_headings(&["property", "value"]));
+
+				if let Some(stroke) = self.stroke.as_ref() {
+					table_rows.push(vec![
+						TextLabel::new("Stroke Weight").narrow(true).widget_instance(),
+						TextLabel::new(format!("{} px", stroke.weight)).narrow(true).widget_instance(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Dash Lengths").narrow(true).widget_instance(),
+						TextLabel::new(if stroke.dash_lengths.is_empty() {
+							"-".to_string()
+						} else {
+							format!("[{}]", stroke.dash_lengths.iter().map(|x| format!("{x} px")).collect::<Vec<_>>().join(", "))
+						})
+						.narrow(true)
+						.widget_instance(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Dash Offset").narrow(true).widget_instance(),
+						TextLabel::new(format!("{}", stroke.dash_offset)).narrow(true).widget_instance(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Cap").narrow(true).widget_instance(),
+						TextLabel::new(stroke.cap.to_string()).narrow(true).widget_instance(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Join").narrow(true).widget_instance(),
+						TextLabel::new(stroke.join.to_string()).narrow(true).widget_instance(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Join Miter Limit").narrow(true).widget_instance(),
+						TextLabel::new(format!("{}", stroke.join_miter_limit)).narrow(true).widget_instance(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Align").narrow(true).widget_instance(),
+						TextLabel::new(stroke.align.to_string()).narrow(true).widget_instance(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Transform").narrow(true).widget_instance(),
+						TextLabel::new(format_transform_matrix(stroke.transform)).narrow(true).widget_instance(),
+					]);
+					table_rows.push(vec![
+						TextLabel::new("Stroke Paint Order").narrow(true).widget_instance(),
+						TextLabel::new(stroke.paint_order.to_string()).narrow(true).widget_instance(),
+					]);
+				}
+
+				let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
+				let colinear = if colinear.is_empty() { "-".to_string() } else { colinear };
+				table_rows.push(vec![
+					TextLabel::new("Colinear Handle IDs").narrow(true).widget_instance(),
+					TextLabel::new(colinear).narrow(true).widget_instance(),
+				]);
 			}
 			VectorTableTab::Points => {
 				table_rows.push(column_headings(&["", "position"]));
 				table_rows.extend(self.point_domain.iter().map(|(id, position)| {
+					let position = DVec2::new(round_away_float_noise(position.x), round_away_float_noise(position.y));
 					vec![
 						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format_dvec2(position)).narrow(true).widget_instance(),
+						TextLabel::new(format!("{position}")).narrow(true).widget_instance(),
 					]
 				}));
 			}
 			VectorTableTab::Segments => {
-				table_rows.push(column_headings(&["", "start_point", "end_point", "handles"]));
+				table_rows.push(column_headings(&["", "start_index", "end_index", "handles"]));
 				table_rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
-					let handles = match handles {
-						BezierHandles::Linear => "Linear".to_string(),
-						BezierHandles::Quadratic { handle } => format!("Quadratic — {}", format_dvec2(handle)),
-						BezierHandles::Cubic { handle_start, handle_end } => format!("Cubic — start: {}, end: {}", format_dvec2(handle_start), format_dvec2(handle_end)),
-					};
 					vec![
 						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format!("Point {start}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("Point {end}")).narrow(true).widget_instance(),
-						TextLabel::new(handles).narrow(true).widget_instance(),
+						TextLabel::new(format!("{start}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("{end}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("{handles:?}")).narrow(true).widget_instance(),
 					]
 				}));
 			}
 			VectorTableTab::Regions => {
-				table_rows.push(column_headings(&["", "segment_range"]));
-				table_rows.extend(self.region_domain.iter().map(|(id, segment_range, _)| {
+				table_rows.push(column_headings(&["", "segment_range", "fill"]));
+				table_rows.extend(self.region_domain.iter().map(|(id, segment_range, fill)| {
 					vec![
 						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format!("Segment {} – Segment {}", segment_range.start().inner(), segment_range.end().inner()))
-							.narrow(true)
-							.widget_instance(),
+						TextLabel::new(format!("{segment_range:?}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("{}", fill.inner())).narrow(true).widget_instance(),
 					]
 				}));
 			}
@@ -1017,7 +1025,6 @@ macro_rules! impl_table_item_layout_for_choice_enum {
 }
 impl_table_item_layout_for_choice_enum!(
 	BlendMode,
-	Cover,
 	GradientForm,
 	GradientSpread,
 	GradientSpace,
@@ -1026,6 +1033,7 @@ impl_table_item_layout_for_choice_enum!(
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
+	PaintOrder,
 	MergeByDistanceAlgorithm,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
@@ -1229,9 +1237,6 @@ macro_rules! known_item_types {
 			Raster<GPU>,
 			Graphic,
 			Artboard,
-			Appearance,
-			Coverage,
-			Cover,
 			DashPattern,
 			BoxCorners,
 			BlendMode,
@@ -1243,6 +1248,7 @@ macro_rules! known_item_types {
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,
+			PaintOrder,
 			MergeByDistanceAlgorithm,
 			ExtrudeJoiningAlgorithm,
 			PointSpacingType,
@@ -1354,6 +1360,11 @@ fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Ve
 	// resolves against the prefix made up of preceding items. Handled before the generic blanket impl.
 	if let Some(path) = any.downcast_ref::<NodeIdPath>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(&path.0, data));
+	}
+	// The path's plain value form, the layer-path marker's owned shape.
+	if let Some(path) = any.downcast_ref::<Vec<NodeId>>() {
+		let list: List<NodeId> = path.iter().copied().map(graphene_std::list::Item::new_from_element).collect();
+		return Some(table_node_id_path_layout_with_breadcrumb(&list, data));
 	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {

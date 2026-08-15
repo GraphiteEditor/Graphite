@@ -12,12 +12,21 @@ macro_rules! concrete {
 	};
 }
 
+/// The type's name with lifetime arguments stripped, so a lifetimed type
+/// keeps its pre-lifetime registry and document name.
+pub fn normalize_type_name<'a>(name: &'a str) -> std::borrow::Cow<'a, str> {
+	if !name.contains("<'") && !name.contains(", '") {
+		return std::borrow::Cow::Borrowed(name);
+	}
+	std::borrow::Cow::Owned(name.replace("<'_>", "").replace("<'_, ", "<").replace(", '_", ""))
+}
+
 #[macro_export]
 macro_rules! descriptor {
 	($type:ty) => {
 		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
+			name: $crate::normalize_type_name(std::any::type_name::<$type>()),
 			alias: None,
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
@@ -26,7 +35,7 @@ macro_rules! descriptor {
 	($type:ty, $name:ty) => {
 		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
+			name: $crate::normalize_type_name(std::any::type_name::<$type>()),
 			alias: Some($crate::Cow::Borrowed(stringify!($name))),
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
@@ -60,18 +69,6 @@ macro_rules! future {
 	};
 }
 
-#[macro_export]
-macro_rules! fn_type {
-	($type:ty) => {
-		$crate::Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
-	};
-	($in_type:ty, $type:ty, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type, $outname)))
-	};
-	($in_type:ty, $type:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
-	};
-}
 #[macro_export]
 macro_rules! fn_type_fut {
 	($type:ty) => {
@@ -192,13 +189,13 @@ pub struct TypeDescriptor {
 
 impl std::hash::Hash for TypeDescriptor {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.name.hash(state);
+		normalize_type_name(&self.name).hash(state);
 	}
 }
 
 impl graphene_hash::CacheHash for TypeDescriptor {
 	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
-		graphene_hash::CacheHash::cache_hash(&self.name, state);
+		graphene_hash::CacheHash::cache_hash(&normalize_type_name(&self.name), state);
 	}
 }
 
@@ -216,7 +213,7 @@ impl PartialEq for TypeDescriptor {
 			_ => {
 				// TODO: Add a flag to disable this warning
 				// warn!("TypeDescriptor::eq: comparing types without ids based on name");
-				self.name == other.name
+				normalize_type_name(&self.name) == normalize_type_name(&other.name)
 			}
 		}
 	}
@@ -235,6 +232,8 @@ pub enum Type {
 	Fn(Box<Type>, Box<Type>),
 	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
+	/// A packed record input over the element type; the layout stays node-resident metadata.
+	Record(Box<Type>),
 }
 
 impl Default for Type {
@@ -295,7 +294,7 @@ impl Type {
 	pub fn new<T: dyn_any::StaticType + Sized>() -> Self {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
-			name: Cow::Borrowed(std::any::type_name::<T::Static>()),
+			name: normalize_type_name(std::any::type_name::<T::Static>()),
 			alias: None,
 			size: size_of::<T>(),
 			align: align_of::<T>(),
@@ -308,6 +307,7 @@ impl Type {
 			Self::Concrete(ty) => Some(ty.size),
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
+			Self::Record(_) => None,
 		}
 	}
 
@@ -317,6 +317,7 @@ impl Type {
 			Self::Concrete(ty) => Some(ty.align),
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
+			Self::Record(_) => None,
 		}
 	}
 
@@ -326,6 +327,7 @@ impl Type {
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
 			Self::Future(output) => output.nested_type(),
+			Self::Record(inner) => inner.nested_type(),
 		}
 	}
 
@@ -338,6 +340,7 @@ impl Type {
 			Self::Concrete(_) => None,
 			Self::Fn(_, output) => output.replace_nested(f),
 			Self::Future(output) => output.replace_nested(f),
+			Self::Record(inner) => inner.replace_nested(f),
 		}
 	}
 
@@ -347,6 +350,7 @@ impl Type {
 			Type::Concrete(ty) => simplify_identifier_name(&ty.name),
 			Type::Fn(call_arg, return_value) => format!("{} called with {}", return_value.identifier_name(), call_arg.identifier_name()),
 			Type::Future(ty) => ty.identifier_name(),
+			Type::Record(ty) => ty.identifier_name(),
 		}
 	}
 }
@@ -361,7 +365,7 @@ pub fn simplify_identifier_name(ty: &str) -> String {
 /// Converts a Rust-internal type name to its user-facing form.
 pub fn make_type_user_readable(ty: &str) -> String {
 	let ty = ty
-		.replace("Option<Arc<OwnedContextImpl>>", "Context")
+		.replace("ContextImpl", "Context")
 		.replace("Raster<CPU>", "Raster")
 		.replace("Raster<GPU>", "Raster")
 		.replace("DAffine2", "Transform")
@@ -441,6 +445,7 @@ impl std::fmt::Display for Type {
 			Type::Concrete(ty) => write!(f, "{ty}"),
 			Type::Fn(_, return_value) => write!(f, "{return_value}"),
 			Type::Future(ty) => write!(f, "{ty}"),
+			Type::Record(ty) => write!(f, "{ty}"),
 		}
 	}
 }

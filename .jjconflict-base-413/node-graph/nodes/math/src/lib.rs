@@ -1,19 +1,19 @@
 use core_types::Context;
-use core_types::context::{CloneVarArgs, ExtractAll};
-use core_types::list::{Bundle, Item, List};
+use core_types::attribute::Attr;
+use core_types::gpoll::{GraphError, Interrupt};
+use core_types::list::{Item, List};
 use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
-use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
+use core_types::{Color, Ctx, ExtractIndex, InjectIndex, num_traits};
 use glam::{DAffine2, DVec2};
-use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Artboard, Graphic, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
-use vector_types::Gradient;
+use vector_types::GradientStops;
+use vector_types::markers::{GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -1216,81 +1216,8 @@ fn logical_not(
 
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
 #[node_macro::node(category("Math: Logic"))]
-async fn switch<T: 'n + Send>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
-	condition: Item<bool>,
-	#[expose]
-	#[implementations(
-		Context -> Item<String>,
-		Context -> Item<bool>,
-		Context -> Item<f32>,
-		Context -> Item<f64>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
-		Context -> Item<DVec2>,
-		Context -> Item<DAffine2>,
-		Context -> Item<Vector>,
-		Context -> Item<Graphic>,
-		Context -> Item<Raster<CPU>>,
-		Context -> Item<Raster<GPU>>,
-		Context -> Item<Color>,
-		Context -> Item<Gradient>,
-		Context -> Item<Artboard>,
-		Context -> Item<Bundle<String>>,
-		Context -> Item<Bundle<bool>>,
-		Context -> Item<Bundle<f32>>,
-		Context -> Item<Bundle<f64>>,
-		Context -> Item<Bundle<u32>>,
-		Context -> Item<Bundle<u64>>,
-		Context -> Item<Bundle<DVec2>>,
-		Context -> Item<Bundle<DAffine2>>,
-		Context -> Item<Bundle<Vector>>,
-		Context -> Item<Bundle<Graphic>>,
-		Context -> Item<Bundle<Raster<CPU>>>,
-		Context -> Item<Bundle<Raster<GPU>>>,
-		Context -> Item<Bundle<Color>>,
-		Context -> Item<Bundle<Gradient>>,
-		Context -> Item<Bundle<Artboard>>,
-	)]
-	if_true: impl Node<Context<'static>, Output = Item<T>>,
-	#[expose]
-	#[implementations(
-		Context -> Item<String>,
-		Context -> Item<bool>,
-		Context -> Item<f32>,
-		Context -> Item<f64>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
-		Context -> Item<DVec2>,
-		Context -> Item<DAffine2>,
-		Context -> Item<Vector>,
-		Context -> Item<Graphic>,
-		Context -> Item<Raster<CPU>>,
-		Context -> Item<Raster<GPU>>,
-		Context -> Item<Color>,
-		Context -> Item<Gradient>,
-		Context -> Item<Artboard>,
-		Context -> Item<Bundle<String>>,
-		Context -> Item<Bundle<bool>>,
-		Context -> Item<Bundle<f32>>,
-		Context -> Item<Bundle<f64>>,
-		Context -> Item<Bundle<u32>>,
-		Context -> Item<Bundle<u64>>,
-		Context -> Item<Bundle<DVec2>>,
-		Context -> Item<Bundle<DAffine2>>,
-		Context -> Item<Bundle<Vector>>,
-		Context -> Item<Bundle<Graphic>>,
-		Context -> Item<Bundle<Raster<CPU>>>,
-		Context -> Item<Bundle<Raster<GPU>>>,
-		Context -> Item<Bundle<Color>>,
-		Context -> Item<Bundle<Gradient>>,
-		Context -> Item<Bundle<Artboard>>,
-	)]
-	if_false: impl Node<Context<'static>, Output = Item<T>>,
-) -> Item<T> {
-	let ctx = OwnedContextImpl::from(ctx).into_context();
-
-	if *condition.element() { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
+fn switch<T>(ctx: impl Ctx + Copy, condition: bool, #[expose] if_true: impl Node<Context<'_>, Output = T>, #[expose] if_false: impl Node<Context<'_>, Output = T>) -> Result<T, Interrupt> {
+	if condition { if_true.eval(ctx) } else { if_false.eval(ctx) }
 }
 
 /// Constructs a bool value which may be set to true or false.
@@ -1366,38 +1293,45 @@ fn hsla_to_color(
 
 /// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce a transparent color.
 #[node_macro::node(category("Color"), name("Hex to Color"))]
-fn hex_to_color(_: impl Ctx, hex_code: Item<String>) -> Item<Color> {
-	let color = core_types::misc::parse_css_color(hex_code.element()).unwrap_or_default();
-	Item::new_from_element(color)
+fn hex_to_color(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, hex_code: String) -> Result<IList<Color>, Interrupt> {
+	// An invalid input serves an empty level: no color
+	match (core_types::misc::parse_css_color(&hex_code), ctx.index()) {
+		(Some(color), 0) => Ok(color),
+		_ => Err(GraphError::past_end().into()),
+	}
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>) -> Item<Gradient> {
+fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: GradientStops) -> GradientStops {
 	gradient
 }
 
 /// Sets the form (linear or radial) of each gradient in the input list.
 #[node_macro::node(category("Gradient"))]
-fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vector_types::GradientForm>) -> Item<Gradient> {
-	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_FORM, *gradient_form.element());
-	gradient
+fn gradient_form(_: impl Ctx, gradient: GradientStops, gradient_form: vector_types::GradientForm) -> (GradientStops, Attr<GradientFormAttr>) {
+	(gradient, Attr(gradient_form))
 }
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, Repeat, or Clear.
 #[node_macro::node(category("Gradient"))]
-fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<vector_types::GradientSpread>) -> Item<Gradient> {
+fn gradient_spread(_: impl Ctx, gradient: GradientStops, gradient_spread: vector_types::GradientSpread) -> (GradientStops, Attr<GradientSpreadAttr>) {
+	(gradient, Attr(gradient_spread))
+}
+
+/// Sets the color space in which each gradient in the input list interpolates between its stops.
+#[node_macro::node(category("Gradient"))]
+fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientSpace>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_SPREAD, *gradient_spread.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_SPACE, *space.element());
 	gradient
 }
 
-/// Sets the color space each gradient in the input list blends between its stops with: linear light or gamma-encoded sRGB.
+/// Sets which way around the hue wheel each gradient in the input list interpolates, for polar color spaces.
 #[node_macro::node(category("Gradient"))]
-fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, gradient_interpolation: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
+fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: Item<vector_types::GradientHueDirection>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *gradient_interpolation.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_HUE_DIRECTION, *hue_direction.element());
 	gradient
 }
 
@@ -1405,10 +1339,9 @@ fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, gradient_interp
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
 #[node_macro::node(category("Gradient"))]
-fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64>) -> Item<Gradient> {
-	let mut gradient = gradient;
+fn gradient_positions(_: impl Ctx, mut gradient: GradientStops, positions: List<f64>) -> GradientStops {
 	let positions: Vec<f64> = positions.iter_element_values().copied().collect();
-	gradient.element_mut().set_positions(&positions);
+	gradient.set_positions(&positions);
 	gradient
 }
 
@@ -1418,20 +1351,25 @@ fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
 #[node_macro::node(category("Gradient"))]
-fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64>) -> Item<Gradient> {
-	let mut gradient = gradient;
+fn gradient_midpoints(_: impl Ctx, mut gradient: GradientStops, midpoints: List<f64>) -> GradientStops {
 	let midpoints: Vec<f64> = midpoints.iter_element_values().copied().collect();
-	gradient.element_mut().set_midpoints(&midpoints);
+	gradient.set_midpoints(&midpoints);
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops blend in the gradient's `gradient_interpolation` color space.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
-	let gradient_spread = gradient.attribute_cloned_or_default::<vector_types::GradientSpread>(core_types::ATTR_GRADIENT_SPREAD);
-	let gradient_interpolation = gradient.attribute_cloned_or_default::<vector_types::GradientInterpolation>(core_types::ATTR_GRADIENT_INTERPOLATION);
-	let color = gradient.element().evaluate(*position.element(), gradient_spread, gradient_interpolation);
-	Item::new_from_element(color)
+fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: IList<GradientStops>, position: Fraction) -> Result<IList<Color>, Interrupt> {
+	// An unwired gradient serves an empty level: no color
+	if gradient.is_empty() || ctx.index() != 0 {
+		return Err(GraphError::past_end().into());
+	}
+
+	// Master reads the gradient spread off the item; ours rides the gradient's own lane.
+	let gradient_spread = gradient.lane(0).attr::<GradientSpreadAttr>();
+	let gradient_space = gradient.lane(0).attr::<GradientSpaceAttr>();
+	let gradient_hue_direction = gradient.lane(0).attr::<GradientHueDirectionAttr>();
+	Ok(gradient.element_ref(0).evaluate(position, gradient_spread, gradient_space, gradient_hue_direction))
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
@@ -1605,8 +1543,6 @@ fn normalize(_: impl Ctx, vec2: Item<DVec2>) -> Item<DVec2> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core_types::Node;
-	use core_types::generic::FnNode;
 
 	#[test]
 	pub fn dot_product_function() {
@@ -1790,12 +1726,6 @@ mod test {
 	}
 
 	#[test]
-	pub fn foo() {
-		let fnn = FnNode::new(|(a, b)| (b, a));
-		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
-	}
-
-	#[test]
 	pub fn add_vectors() {
 		assert_eq!(super::add((), Item::new_from_element(DVec2::ONE), Item::new_from_element(DVec2::ONE)).into_element(), DVec2::ONE * 2.);
 	}
@@ -1830,5 +1760,287 @@ mod test {
 			super::modulo((), Item::new_from_element(-5_f64), Item::new_from_element(2_f64), Item::new_from_element(false)).into_element(),
 			-1_f64
 		);
+	}
+}
+
+#[cfg(test)]
+mod graphene_test {
+	use super::*;
+	use core_types::arena::Arena;
+	use core_types::context::{ContextImpl, EvalScope};
+	use core_types::gpoll::{Finality, GPoll};
+	use core_types::node::{BatchStatus, Node};
+	use core_types::record::{Layout, LiftedSource, RecordValue, serve_input};
+	use core_types::registry::{ErasedRecordNode, construct};
+	use core_types::value::record_value_source;
+	use std::mem::MaybeUninit;
+
+	fn scope_fixture(arena: &Arena) -> EvalScope<'_> {
+		EvalScope::new(None, None, None, &[], arena)
+	}
+
+	fn frames_for(layouts: &[&Layout]) -> core_types::record::Frames<'static> {
+		core_types::record::test_frames(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12))
+	}
+
+	/// Lifts a plain-element test source onto a record input, returned beside its
+	/// element-only layout for the generated node's constructor.
+	fn lifted<T, F>(kernel: F) -> (LiftedSource<T, F>, Layout)
+	where
+		T: Clone + Send + Sync + core_types::StaticTypeSized + 'static,
+		<T as core_types::StaticTypeSized>::Static: Clone + Send + Sync,
+		F: for<'c> Fn(&ContextImpl<'c>) -> GPoll<T>,
+	{
+		let lift = LiftedSource::<T, _>::new(kernel);
+		let layout = Node::<ContextImpl>::layout(&lift).clone();
+		(lift, layout)
+	}
+
+	fn element<T: Copy>(layout: &Layout, value: &RecordValue<'_>) -> T {
+		unsafe { layout.rec(value).element::<T>() }
+	}
+
+	fn out_layout<T: Clone + Send + Sync + core_types::StaticTypeSized>() -> Layout
+	where
+		<T as core_types::StaticTypeSized>::Static: Clone + Send + Sync,
+	{
+		Layout::default().with_writes(0, core_types::record::element_write::<T>(), &[])
+	}
+
+	fn installed<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
+		node.set_layout(core_types::record::RecordLayout {
+			frame_bytes: layout.frame_bytes(),
+			plan: Vec::new(),
+			layout: layout.clone(),
+			lane_invariant: u32::MAX,
+		});
+		node
+	}
+
+	#[test]
+	fn generated_add_evaluates_through_the_node_path() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let (a, la) = lifted(|_: &ContextImpl| GPoll::Final(1.0f64));
+		let (b, lb) = lifted(|_: &ContextImpl| GPoll::Final(2.0f64));
+		let out = out_layout::<f64>();
+		let graph = installed(AddNode::<_, _, f64, f64>::new(a, b, &la, &lb), &out);
+		let frames = frames_for(&[&la, &lb, &out]);
+
+		let GPoll::Final(value) = serve_input(&graph, &ctx, &frames) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(element::<f64>(&out, &value), 3.0);
+	}
+
+	#[test]
+	fn generated_add_batches_through_the_erased_edge() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let (index, li) = lifted(|input: &ContextImpl| GPoll::Final(core_types::ExtractIndex::<0>::index(input) as f64));
+		let (src, ls) = lifted(|_: &ContextImpl| GPoll::Final(10.0f64));
+		let out = out_layout::<f64>();
+		let node = installed(AddNode::<_, _, f64, f64>::new(index, src, &li, &ls), &out);
+		let frames = frames_for(&[&li, &ls, &out]);
+
+		let erased: Box<ErasedRecordNode> = Box::new(node);
+		// One u64 word per lane at the element-only layout.
+		let mut scratch = [const { MaybeUninit::uninit() }; 4];
+		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch), &frames);
+		let BatchStatus::Filled(batch, finality, _) = status else {
+			panic!("expected filled, got {status:?}");
+		};
+		let mut got = Vec::new();
+		batch.share().for_each(|_, lane| got.push(unsafe { lane.element::<f64>() }));
+		assert_eq!(got, vec![12.0, 13.0, 14.0, 15.0]);
+		assert_eq!(finality, Finality::AllFinal);
+	}
+
+	#[test]
+	fn generated_wire_constructor_resolves_and_wires() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let entries = super::_logical_or_mod::logical_or_entries();
+		let mut wired = construct(&entries[0], vec![record_value_source(true), record_value_source(false)]).unwrap();
+		let layout = out_layout::<bool>();
+		wired.set_layout(core_types::record::RecordLayout {
+			frame_bytes: layout.frame_bytes(),
+			plan: Vec::new(),
+			layout: layout.clone(),
+			lane_invariant: u32::MAX,
+		});
+		let edge = wired.downcast_record::<bool>().unwrap();
+		let frames = frames_for(&[&layout]);
+
+		let GPoll::Final(value) = serve_input(&edge, &ctx, &frames) else {
+			panic!("expected a final record");
+		};
+		assert!(element::<bool>(&layout, &value));
+	}
+
+	#[test]
+	fn ctor_registration_populates_the_node_registry() {
+		let registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+		let rows = registry
+			.iter()
+			.find_map(|(id, rows)| id.as_str().ends_with("::AddNode").then_some(rows))
+			.expect("AddNode rows registered at startup");
+		assert_eq!(rows.len(), 6);
+	}
+
+	#[test]
+	fn generic_add_registers_one_entry_per_implementation() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let entries = super::_add_mod::add_entries();
+		assert_eq!(entries.len(), 6);
+		assert_eq!(
+			entries[0].io.inputs,
+			vec![core_types::registry::record_source_type::<f64>(), core_types::registry::record_source_type::<f64>()]
+		);
+		assert_eq!(entries[0].io.return_value, core_types::registry::record_type::<f64>());
+		assert_eq!(
+			entries[3].io.inputs,
+			vec![core_types::registry::record_source_type::<DVec2>(), core_types::registry::record_source_type::<DVec2>()]
+		);
+		assert_eq!(entries[3].io.return_value, core_types::registry::record_type::<DVec2>());
+
+		let mut wired = construct(&entries[0], vec![record_value_source(1.5f64), record_value_source(2.5f64)]).unwrap();
+		let layout = out_layout::<f64>();
+		wired.set_layout(core_types::record::RecordLayout {
+			frame_bytes: layout.frame_bytes(),
+			plan: Vec::new(),
+			layout: layout.clone(),
+			lane_invariant: u32::MAX,
+		});
+		let edge = wired.downcast_record::<f64>().unwrap();
+		let frames = frames_for(&[&layout]);
+
+		let GPoll::Final(value) = serve_input(&edge, &ctx, &frames) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(element::<f64>(&layout, &value), 4.0);
+	}
+
+	#[test]
+	fn switch_registers_one_erased_row() {
+		// Routing forwards the whole record, so the branch types need no rows.
+		let entries = super::_switch_mod::switch_entries();
+		assert_eq!(entries.len(), 1);
+		assert_eq!(entries[0].io.inputs[0], core_types::registry::record_source_type::<bool>());
+		assert!(matches!(&entries[0].io.return_value, core_types::Type::Record(element) if matches!(**element, core_types::Type::Generic(_))));
+		assert_eq!(entries[0].io.inputs.len(), 3);
+	}
+
+	#[test]
+	fn converted_switch_evaluates_only_the_taken_branch() {
+		use std::sync::Arc;
+		use std::sync::atomic::{AtomicU32, Ordering};
+
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let taken = Arc::new(AtomicU32::new(0));
+		let untaken = Arc::new(AtomicU32::new(0));
+		let (cond, lc) = lifted(|_: &ContextImpl| GPoll::Final(true));
+		let (if_true, lt) = lifted({
+			let runs = taken.clone();
+			move |_: &ContextImpl| {
+				runs.fetch_add(1, Ordering::Relaxed);
+				GPoll::Final(1.0)
+			}
+		});
+		let (if_false, lf) = lifted({
+			let runs = untaken.clone();
+			move |_: &ContextImpl| {
+				runs.fetch_add(1, Ordering::Relaxed);
+				GPoll::Final(2.0)
+			}
+		});
+		let union = core_types::record::Layout::union(&[&lt, &lf]);
+		let graph = SwitchNode::new(cond, if_true, if_false, &union, &lc);
+		let out = Node::<ContextImpl>::layout(&graph).clone();
+		let frames = frames_for(&[&lc, &lt, &lf, &out]);
+
+		let GPoll::Final(value) = serve_input(&graph, &ctx, &frames) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(element::<f64>(&out, &value), 1.0);
+		assert_eq!(taken.load(Ordering::Relaxed), 1);
+		assert_eq!(untaken.load(Ordering::Relaxed), 0);
+	}
+
+	#[test]
+	fn converted_switch_passes_branch_status_through() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let (c1, lc1) = lifted(|_: &ContextImpl| GPoll::Final(true));
+		let (p1, lp1) = lifted(|_: &ContextImpl| GPoll::<f64>::Pending);
+		let (pa1, lpa1) = lifted(|_: &ContextImpl| GPoll::Partial(7.0f64));
+		let pending = SwitchNode::new(c1, p1, pa1, &core_types::record::Layout::union(&[&lp1, &lpa1]), &lc1);
+
+		let (c2, lc2) = lifted(|_: &ContextImpl| GPoll::Final(false));
+		let (p2, lp2) = lifted(|_: &ContextImpl| GPoll::<f64>::Pending);
+		let (pa2, lpa2) = lifted(|_: &ContextImpl| GPoll::Partial(7.0f64));
+		let partial = SwitchNode::new(c2, p2, pa2, &core_types::record::Layout::union(&[&lp2, &lpa2]), &lc2);
+		let out = Node::<ContextImpl>::layout(&partial).clone();
+		let frames = frames_for(&[&lc1, &lp1, &lpa1, &lc2, &lp2, &lpa2, &out]);
+
+		assert!(matches!(serve_input(&pending, &ctx, &frames), GPoll::Pending));
+		let GPoll::Partial(value) = serve_input(&partial, &ctx, &frames) else {
+			panic!("expected a partial record");
+		};
+		assert_eq!(element::<f64>(&out, &value), 7.0);
+	}
+
+	#[test]
+	fn converted_switch_merges_condition_status_into_the_branch_result() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let (cond, lc) = lifted(|_: &ContextImpl| GPoll::Partial(true));
+		let (if_true, lt) = lifted(|_: &ContextImpl| GPoll::Final(1.0f64));
+		let (if_false, lf) = lifted(|_: &ContextImpl| GPoll::Final(2.0f64));
+		let union = core_types::record::Layout::union(&[&lt, &lf]);
+		let graph = SwitchNode::new(cond, if_true, if_false, &union, &lc);
+		let out = Node::<ContextImpl>::layout(&graph).clone();
+		let frames = frames_for(&[&lc, &lt, &lf, &out]);
+
+		let GPoll::Partial(value) = serve_input(&graph, &ctx, &frames) else {
+			panic!("expected a partial record");
+		};
+		assert_eq!(element::<f64>(&out, &value), 1.0);
+	}
+
+	#[test]
+	fn generated_eval_computes_on_stand_in_and_traces_fallback() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let (fallback, lfb) = lifted(|_: &ContextImpl| GPoll::fallback(0.0f64, "upstream failed"));
+		let (src, ls) = lifted(|_: &ContextImpl| GPoll::Final(5.0f64));
+		let out = out_layout::<f64>();
+		let graph = installed(AddNode::<_, _, f64, f64>::new(fallback, src, &lfb, &ls), &out);
+		let frames = frames_for(&[&lfb, &ls, &out]);
+
+		let GPoll::Fallback(boxed) = serve_input(&graph, &ctx, &frames) else {
+			panic!("fallback must propagate with the computed stand-in");
+		};
+		assert_eq!(element::<f64>(&out, &boxed.0), 5.0);
+		assert!(boxed.1.kind == "upstream failed");
+		assert_eq!(boxed.1.trace, vec![0]);
 	}
 }

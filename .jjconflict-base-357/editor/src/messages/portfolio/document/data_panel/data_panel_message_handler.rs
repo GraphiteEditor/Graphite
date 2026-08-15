@@ -3,7 +3,6 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::portfolio::document::data_panel::{DataPanelMessage, PathStep};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{format_rounded, round_away_float_noise};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
@@ -23,9 +22,7 @@ use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
-use graphene_std::vector::style::{
-	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin,
-};
+use graphene_std::vector::style::{DashPattern, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Artboard, Color, Graphic};
 use std::any::Any;
@@ -101,7 +98,6 @@ impl DataPanelMessageHandler {
 			desired_path: &mut self.element_path,
 			network_interface: &*network_interface,
 			node_lookup_network_path: Vec::new(),
-			gradient_settings: GradientSettings::default(),
 			breadcrumbs: Vec::new(),
 			vector_table_tab: self.active_vector_table_tab,
 		};
@@ -173,9 +169,6 @@ struct LayoutData<'a> {
 	/// Defaults to root (`&[]`); `List<NodeId>` rendering temporarily sets it to the path's prefix so nested
 	/// layers (e.g. inside a Ctrl+M-merged custom subgraph) resolve correctly.
 	node_lookup_network_path: Vec<NodeId>,
-	/// The whole-ramp settings to preview a `Gradient` element with, since they live in the attributes beside it
-	/// rather than in the stop list itself. The enclosing `Item`/`List` sets it to the owning row's attributes.
-	gradient_settings: GradientSettings,
 	breadcrumbs: Vec<String>,
 	vector_table_tab: VectorTableTab,
 }
@@ -222,11 +215,8 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<DVec2>,
 		List<DAffine2>,
 		List<BlendMode>,
-		List<GradientForm>,
-		List<GradientSpread>,
-		List<GradientSpace>,
-		List<GradientHueDirection>,
-		List<GradientInterpolation>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
 		List<DashPattern>,
 		List<BoxCorners>,
 		List<StrokeJoin>,
@@ -278,11 +268,8 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<DVec2>,
 		Item<DAffine2>,
 		Item<BlendMode>,
-		Item<GradientForm>,
-		Item<GradientSpread>,
-		Item<GradientSpace>,
-		Item<GradientHueDirection>,
-		Item<GradientInterpolation>,
+		Item<GradientType>,
+		Item<GradientSpreadMethod>,
 		Item<DashPattern>,
 		Item<BoxCorners>,
 		Item<StrokeJoin>,
@@ -323,10 +310,6 @@ fn column_headings(value: &[&str]) -> Vec<WidgetInstance> {
 	value.iter().map(|text| TextLabel::new(*text).widget_instance()).collect()
 }
 
-fn single_widget_cells(widgets: Vec<WidgetInstance>) -> Vec<Vec<WidgetInstance>> {
-	widgets.into_iter().map(|widget| vec![widget]).collect()
-}
-
 fn label(x: impl Into<String>) -> Vec<LayoutGroup> {
 	let error = vec![TextLabel::new(x).widget_instance()];
 	vec![LayoutGroup::row(error)]
@@ -339,20 +322,18 @@ trait TableItemLayout {
 		data.breadcrumbs.push(self.identifier());
 		self.value_page(data)
 	}
-	/// Renders this value as the inline widgets filling one table cell inside an item of a `List`.
-	/// `target` is the [`PathStep`] to push when a widget is clicked to drill into the value.
+	/// Renders this value as a single inline widget inside an item of a `List`.
+	/// `target` is the [`PathStep`] to push when the widget is clicked to drill into the value.
 	/// `data` provides shared context (notably `network_interface`) for types whose label or content
 	/// depends on lookup beyond their own value (e.g. `NodeId` resolving a node's display name).
-	/// The default is a single button labeled with `identifier()`. Types whose values are best shown
-	/// inline (colors, transforms, primitives, etc.) override this to ignore `target` and return a
-	/// richer non-navigating widget, optionally joined by companions like a drill-in button.
-	fn value_widgets(&self, target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![
-			TextButton::new(self.identifier())
-				.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
-				.narrow(true)
-				.widget_instance(),
-		]
+	/// The default is a button labeled with `identifier()`. Types whose values are best shown
+	/// inline (colors, transforms, primitives, etc.) override this to ignore `target` and
+	/// return a richer non-navigating widget.
+	fn value_widget(&self, target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextButton::new(self.identifier())
+			.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
+			.narrow(true)
+			.widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![]
@@ -393,23 +374,20 @@ impl<T: TableItemLayout> TableItemLayout for Item<T> {
 		let attribute_keys: Vec<String> = self.attributes().keys().map(str::to_string).collect();
 
 		// A single element, so no leading ID column, unlike the `List` table
-		let saved_gradient_settings = data.gradient_settings;
-		data.gradient_settings = GradientSettings::from_item_attributes(self);
-		let mut values = vec![self.element().value_widgets(PathStep::Element(0), data)];
-		data.gradient_settings = saved_gradient_settings;
+		let mut values = vec![self.element().value_widget(PathStep::Element(0), data)];
 		for key in &attribute_keys {
 			let target = PathStep::Attribute { row: 0, key: key.clone() };
-			let cell = self.attributes().get_any(key).and_then(|any| dispatch_value_widgets(any, target, data)).unwrap_or_else(|| {
+			let widget = self.attributes().get_any(key).and_then(|any| dispatch_value_widget(any, target, data)).unwrap_or_else(|| {
 				let text = self.attributes().display_value(key, display_value_override).unwrap_or_else(|| "-".to_string());
-				vec![TextLabel::new(text).narrow(true).widget_instance()]
+				TextLabel::new(text).narrow(true).widget_instance()
 			});
-			values.push(cell);
+			values.push(widget);
 		}
 
 		let mut column_names = vec!["element"];
 		column_names.extend(attribute_keys.iter().map(|s| s.as_str()));
 
-		vec![LayoutGroup::table_of_cells(vec![single_widget_cells(column_headings(&column_names)), values], false)]
+		vec![LayoutGroup::table(vec![column_headings(&column_names), values], false)]
 	}
 }
 
@@ -454,20 +432,14 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 		let mut rows = (0..self.len())
 			.map(|index| {
 				let element = self.element(index).unwrap();
-				let saved_gradient_settings = data.gradient_settings;
-				data.gradient_settings = GradientSettings::from_list_row_attributes(self, index);
-				let mut values = vec![
-					vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance()],
-					element.value_widgets(PathStep::Element(index), data),
-				];
-				data.gradient_settings = saved_gradient_settings;
+				let mut values = vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), element.value_widget(PathStep::Element(index), data)];
 				for key in &attribute_keys {
 					let target = PathStep::Attribute { row: index, key: key.clone() };
-					let cell = self.attribute_any(key, index).and_then(|any| dispatch_value_widgets(any, target, data)).unwrap_or_else(|| {
+					let widget = self.attribute_any(key, index).and_then(|any| dispatch_value_widget(any, target, data)).unwrap_or_else(|| {
 						let text = self.attribute_display_value(key, index, display_value_override).unwrap_or_else(|| "-".to_string());
-						vec![TextLabel::new(text).narrow(true).widget_instance()]
+						TextLabel::new(text).narrow(true).widget_instance()
 					});
-					values.push(cell);
+					values.push(widget);
 				}
 				values
 			})
@@ -475,9 +447,9 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 
 		let mut column_names = vec!["", "element"];
 		column_names.extend(attribute_keys.iter().map(|s| s.as_str()));
-		rows.insert(0, single_widget_cells(column_headings(&column_names)));
+		rows.insert(0, column_headings(&column_names));
 
-		vec![LayoutGroup::table_of_cells(rows, false)]
+		vec![LayoutGroup::table(rows, false)]
 	}
 }
 
@@ -509,8 +481,8 @@ impl TableItemLayout for DashPattern {
 		self.value_page(data)
 	}
 	// Label the spreadsheet's element button with the inner list's identifier, like Artboard
-	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
-		self.0.value_widgets(target, data)
+	fn value_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
+		self.0.value_widget(target, data)
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		self.0.layout_with_breadcrumb(data)
@@ -529,8 +501,8 @@ impl TableItemLayout for BoxCorners {
 		self.value_page(data)
 	}
 	// Label the spreadsheet's element button with the inner list's identifier, like Artboard
-	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
-		self.0.value_widgets(target, data)
+	fn value_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
+		self.0.value_widget(target, data)
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		self.0.layout_with_breadcrumb(data)
@@ -657,7 +629,6 @@ impl TableItemLayout for Vector {
 			VectorTableTab::Points => {
 				table_rows.push(column_headings(&["", "position"]));
 				table_rows.extend(self.point_domain.iter().map(|(id, position)| {
-					let position = DVec2::new(round_away_float_noise(position.x), round_away_float_noise(position.y));
 					vec![
 						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
 						TextLabel::new(format!("{position}")).narrow(true).widget_instance(),
@@ -742,17 +713,16 @@ impl TableItemLayout for Color {
 	fn identifier(&self) -> String {
 		format!("Color (#{})", SRGBA8::from(*self).to_rgba_hex())
 	}
-	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![
-			ColorInput::new(FillChoice::<SRGBA8>::from(&FillChoice::Solid(*self)))
-				.disabled(true)
-				.menu_direction(Some(MenuDirection::Top))
-				.narrow(true)
-				.widget_instance(),
-		]
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		ColorInput::new(FillChoiceUI::from(&FillChoice::Solid(*self)))
+			.disabled(true)
+			.menu_direction(Some(MenuDirection::Top))
+			.narrow(true)
+			.widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
+		let widgets = vec![self.value_widget(PathStep::Element(0), _data)];
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -763,27 +733,16 @@ impl TableItemLayout for Gradient {
 	fn identifier(&self) -> String {
 		format!("Gradient ({} stops)", self.len())
 	}
-	// The wrapping `Item` already contributes the breadcrumb; the inner list supplies the next level
-	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.value_page(data)
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		ColorInput::new(FillChoiceUI::from(&FillChoice::Gradient(self.clone())))
+			.menu_direction(Some(MenuDirection::Top))
+			.disabled(true)
+			.narrow(true)
+			.widget_instance()
 	}
-	// The preview widget doesn't navigate, so a drill-in button beside it opens the newtype's underlying color list
-	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![
-			TextButton::new(self.as_color_list().identifier())
-				.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
-				.narrow(true)
-				.widget_instance(),
-			Separator::new(SeparatorStyle::Related).widget_instance(),
-			ColorInput::new(FillChoice::<SRGBA8>::Gradient(GradientRamp::from(self).with_settings(data.gradient_settings)))
-				.menu_direction(Some(MenuDirection::Top))
-				.disabled(true)
-				.narrow(true)
-				.widget_instance(),
-		]
-	}
-	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.as_color_list().layout_with_breadcrumb(data)
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		let widgets = vec![self.value_widget(PathStep::Element(0), _data)];
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -899,11 +858,11 @@ impl TableItemLayout for bool {
 	fn identifier(&self) -> String {
 		"Bool".to_string()
 	}
-	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![CheckboxInput::new(*self).disabled(true).widget_instance()]
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		CheckboxInput::new(*self).disabled(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -933,11 +892,11 @@ impl TableItemLayout for Option<f64> {
 	fn identifier(&self) -> String {
 		"Option<f64>".to_string()
 	}
-	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![TextLabel::new(format!("{self:?}")).narrow(true).widget_instance()]
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(format!("{self:?}")).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -948,11 +907,11 @@ impl TableItemLayout for DVec2 {
 	fn identifier(&self) -> String {
 		"Vec2".to_string()
 	}
-	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![TextLabel::new(format_dvec2(*self)).narrow(true).widget_instance()]
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(format_dvec2(*self)).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -963,11 +922,11 @@ impl TableItemLayout for Vec2 {
 	fn identifier(&self) -> String {
 		"Vec2".to_string()
 	}
-	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![TextLabel::new(format_dvec2(DVec2::new(self.x as f64, self.y as f64))).narrow(true).widget_instance()]
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(format_dvec2(DVec2::new(self.x as f64, self.y as f64))).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -978,11 +937,11 @@ impl TableItemLayout for DAffine2 {
 	fn identifier(&self) -> String {
 		"Transform".to_string()
 	}
-	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![TextLabel::new(format_transform_matrix(*self)).narrow(true).widget_instance()]
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(format_transform_matrix(*self)).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -993,12 +952,12 @@ impl TableItemLayout for Affine2 {
 	fn identifier(&self) -> String {
 		"Transform".to_string()
 	}
-	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		let matrix = DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64));
-		vec![TextLabel::new(format_transform_matrix(matrix)).narrow(true).widget_instance()]
+		TextLabel::new(format_transform_matrix(matrix)).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -1013,11 +972,11 @@ macro_rules! impl_table_item_layout_for_choice_enum {
 				fn identifier(&self) -> String {
 					self.to_string()
 				}
-				fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-					vec![TextLabel::new(self.to_string()).narrow(true).widget_instance()]
+				fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+					TextLabel::new(self.to_string()).narrow(true).widget_instance()
 				}
 				fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-					vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
+					vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
 				}
 			}
 		)*
@@ -1025,11 +984,8 @@ macro_rules! impl_table_item_layout_for_choice_enum {
 }
 impl_table_item_layout_for_choice_enum!(
 	BlendMode,
-	GradientForm,
-	GradientSpread,
-	GradientSpace,
-	GradientHueDirection,
-	GradientInterpolation,
+	GradientType,
+	GradientSpreadMethod,
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
@@ -1070,11 +1026,11 @@ impl TableItemLayout for ReferencePoint {
 	fn identifier(&self) -> String {
 		format!("{self:?}")
 	}
-	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![TextLabel::new(self.identifier()).narrow(true).widget_instance()]
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(self.identifier()).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -1104,7 +1060,7 @@ impl TableItemLayout for NodeId {
 	// in the Node Graph / Layers panels. The lookup uses `data.node_lookup_network_path` (set by the enclosing
 	// `List<NodeId>` if rendering a path) so the resolution succeeds at any nesting depth. The button's icon
 	// signals layer-vs-node kind. Falls back to "Node {id}" with no icon if the lookup misses.
-	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
+	fn value_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
 		let label = node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path);
 		let mut button = TextButton::new(label)
 			.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
@@ -1113,7 +1069,7 @@ impl TableItemLayout for NodeId {
 			let icon = if data.network_interface.is_layer(self, &data.node_lookup_network_path) { "Layer" } else { "Node" };
 			button = button.icon(icon);
 		}
-		vec![button.widget_instance()]
+		button.widget_instance()
 	}
 	// The value page shows the node's kind, name (editable), lock/visibility toggles, and a "Select Layer/Node" action button.
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
@@ -1240,11 +1196,8 @@ macro_rules! known_item_types {
 			DashPattern,
 			BoxCorners,
 			BlendMode,
-			GradientForm,
-			GradientSpread,
-			GradientSpace,
-			GradientHueDirection,
-			GradientInterpolation,
+			GradientType,
+			GradientSpreadMethod,
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,
@@ -1291,20 +1244,20 @@ fn display_value_override(any: &dyn Any) -> Option<String> {
 	None
 }
 
-/// Type-dispatched cell widgets for displaying an attribute value in a `List<T>` item.
-/// Delegates to [`TableItemLayout::value_widgets`] so the same widget code is shared between
+/// Type-dispatched widget for displaying an attribute value in a `List<T>` item.
+/// Delegates to [`TableItemLayout::value_widget`] so the same widget code is shared between
 /// element-column rendering and attribute-column rendering. Returns `None` for unrecognized
 /// types so the caller can fall back to a debug-formatted [`TextLabel`].
-fn dispatch_value_widgets(any: &dyn Any, target: PathStep, data: &LayoutData) -> Option<Vec<WidgetInstance>> {
+fn dispatch_value_widget(any: &dyn Any, target: PathStep, data: &LayoutData) -> Option<WidgetInstance> {
 	// `NodeIdPath` (e.g. the `editor:layer_path` attribute) drills into its inner path list, matching `drilldown_attribute_layout`.
 	if let Some(path) = any.downcast_ref::<NodeIdPath>() {
-		return Some(path.0.value_widgets(target, data));
+		return Some(path.0.value_widget(target, data));
 	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {
 			$(
 				if let Some(value) = any.downcast_ref::<$ty>() {
-					return Some(value.value_widgets(target, data));
+					return Some(value.value_widget(target, data));
 				}
 			)*
 		};
@@ -1342,14 +1295,14 @@ fn table_node_id_path_layout_with_breadcrumb(path: &List<NodeId>, data: &mut Lay
 			let node_id = path.element(index).unwrap();
 			let prefix: Vec<NodeId> = path.iter_element_values().take(index).copied().collect();
 			let saved = std::mem::replace(&mut data.node_lookup_network_path, prefix);
-			let widgets = node_id.value_widgets(PathStep::Element(index), data);
+			let widget = node_id.value_widget(PathStep::Element(index), data);
 			data.node_lookup_network_path = saved;
-			vec![vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance()], widgets]
+			vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), widget]
 		})
 		.collect::<Vec<_>>();
-	rows.insert(0, single_widget_cells(column_headings(&["", "element"])));
+	rows.insert(0, column_headings(&["", "element"]));
 
-	vec![LayoutGroup::table_of_cells(rows, false)]
+	vec![LayoutGroup::table(rows, false)]
 }
 
 /// Type-dispatched recursion into an attribute value for the Data panel breadcrumb navigation.
@@ -1397,17 +1350,19 @@ fn format_transform_matrix(transform: DAffine2) -> String {
 	} else {
 		transform.to_scale_angle_translation()
 	};
-	let rotation = format_rounded(angle.to_degrees(), 3);
+	let rotation = if angle == -0. { 0. } else { angle.to_degrees() };
+	let round = |x: f64| (x * 1e3).round() / 1e3;
 
 	format!(
-		"Location: ({} px, {} px) — Rotation: {rotation}° — Scale: ({}x, {}x)",
-		format_rounded(translation.x, 3),
-		format_rounded(translation.y, 3),
-		format_rounded(scale.x, 3),
-		format_rounded(scale.y, 3)
+		"Location: ({} px, {} px) — Rotation: {rotation:2}° — Scale: ({}x, {}x)",
+		round(translation.x),
+		round(translation.y),
+		round(scale.x),
+		round(scale.y)
 	)
 }
 
 fn format_dvec2(value: DVec2) -> String {
-	format!("({} px, {} px)", format_rounded(value.x, 3), format_rounded(value.y, 3))
+	let round = |x: f64| (x * 1e3).round() / 1e3;
+	format!("({} px, {} px)", round(value.x), round(value.y))
 }

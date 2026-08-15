@@ -14,7 +14,7 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_SPREAD, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
 	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
@@ -39,7 +39,7 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::gradient::GradientSpread;
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -424,7 +424,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 
 	let gradient_type: GradientType = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-	let spread_method: GradientSpreadMethod = gradient_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
+	let gradient_spread: GradientSpread = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, 0);
 
 	let peniko_stops = peniko_color_stops(stops);
 
@@ -446,10 +446,10 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 			}
 			.into(),
 		},
-		extend: match spread_method {
-			GradientSpreadMethod::Pad => peniko::Extend::Pad,
-			GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
-			GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
+		extend: match gradient_spread {
+			GradientSpread::Pad => peniko::Extend::Pad,
+			GradientSpread::Reflect => peniko::Extend::Reflect,
+			GradientSpread::Repeat => peniko::Extend::Repeat,
 		},
 		stops: peniko_stops,
 		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
@@ -2094,7 +2094,7 @@ impl Render for List<Gradient> {
 			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, index);
+			let gradient_spread: GradientSpread = self.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, index);
 			let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, index);
 			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 			render.leaf_tag(tag, |attributes| {
@@ -2133,10 +2133,10 @@ impl Render for List<Gradient> {
 				};
 
 				let gradient_id = generate_uuid();
-				let spread_method_attribute = if spread_method == GradientSpreadMethod::Pad {
+				let gradient_spread_attribute = if gradient_spread == GradientSpread::Pad {
 					String::new()
 				} else {
-					format!(r#" spreadMethod="{}""#, spread_method.svg_name())
+					format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
 				};
 
 				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
@@ -2144,13 +2144,13 @@ impl Render for List<Gradient> {
 					GradientType::Linear => {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
+							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
 						);
 					}
 					GradientType::Radial => {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
 						);
 					}
 				}
@@ -2176,10 +2176,10 @@ impl Render for List<Gradient> {
 			return;
 		}
 
-		for (((index, gradient), spread_method), gradient_type) in self
+		for (((index, gradient), gradient_spread), gradient_type) in self
 			.iter_element_values()
 			.enumerate()
-			.zip(self.iter_attribute_values_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD))
+			.zip(self.iter_attribute_values_or_default::<GradientSpread>(ATTR_GRADIENT_SPREAD))
 			.zip(self.iter_attribute_values_or_default::<GradientType>(ATTR_GRADIENT_TYPE))
 		{
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
@@ -2193,10 +2193,10 @@ impl Render for List<Gradient> {
 
 			let stops = peniko_color_stops(gradient);
 
-			let extend = match spread_method {
-				GradientSpreadMethod::Pad => peniko::Extend::Pad,
-				GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
-				GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
+			let extend = match gradient_spread {
+				GradientSpread::Pad => peniko::Extend::Pad,
+				GradientSpread::Reflect => peniko::Extend::Reflect,
+				GradientSpread::Repeat => peniko::Extend::Repeat,
 			};
 
 			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.

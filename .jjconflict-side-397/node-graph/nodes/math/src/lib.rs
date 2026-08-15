@@ -13,7 +13,7 @@ use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::GradientStops;
-use vector_types::markers::{GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr};
+use vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod as SpreadMethodAttr};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -1307,32 +1307,16 @@ fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHIT
 	gradient
 }
 
-/// Sets the form (linear or radial) of each gradient in the input list.
+/// Sets the type (linear or radial) of each gradient in the input list.
 #[node_macro::node(category("Gradient"))]
-fn gradient_form(_: impl Ctx, gradient: GradientStops, gradient_form: vector_types::GradientForm) -> (GradientStops, Attr<GradientFormAttr>) {
-	(gradient, Attr(gradient_form))
+fn gradient_type(_: impl Ctx, gradient: GradientStops, gradient_type: vector_types::GradientType) -> (GradientStops, Attr<GradientTypeAttr>) {
+	(gradient, Attr(gradient_type))
 }
 
-/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, Repeat, or Clear.
+/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
 #[node_macro::node(category("Gradient"))]
-fn gradient_spread(_: impl Ctx, gradient: GradientStops, gradient_spread: vector_types::GradientSpread) -> (GradientStops, Attr<GradientSpreadAttr>) {
-	(gradient, Attr(gradient_spread))
-}
-
-/// Sets the color space in which each gradient in the input list interpolates between its stops.
-#[node_macro::node(category("Gradient"))]
-fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientSpace>) -> Item<Gradient> {
-	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_SPACE, *space.element());
-	gradient
-}
-
-/// Sets which way around the hue wheel each gradient in the input list interpolates, for polar color spaces.
-#[node_macro::node(category("Gradient"))]
-fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: Item<vector_types::GradientHueDirection>) -> Item<Gradient> {
-	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_HUE_DIRECTION, *hue_direction.element());
-	gradient
+fn spread_method(_: impl Ctx, gradient: GradientStops, spread_method: vector_types::GradientSpreadMethod) -> (GradientStops, Attr<SpreadMethodAttr>) {
+	(gradient, Attr(spread_method))
 }
 
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
@@ -1357,7 +1341,7 @@ fn gradient_midpoints(_: impl Ctx, mut gradient: GradientStops, midpoints: List<
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `spread_method` attribute: Pad (default), Reflect, or Repeat.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: IList<GradientStops>, position: Fraction) -> Result<IList<Color>, Interrupt> {
 	// An unwired gradient serves an empty level: no color
@@ -1365,11 +1349,9 @@ fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: 
 		return Err(GraphError::past_end().into());
 	}
 
-	// Master reads the gradient spread off the item; ours rides the gradient's own lane.
-	let gradient_spread = gradient.lane(0).attr::<GradientSpreadAttr>();
-	let gradient_space = gradient.lane(0).attr::<GradientSpaceAttr>();
-	let gradient_hue_direction = gradient.lane(0).attr::<GradientHueDirectionAttr>();
-	Ok(gradient.element_ref(0).evaluate(position, gradient_spread, gradient_space, gradient_hue_direction))
+	// Master reads the spread method off the item; ours rides the gradient's own lane.
+	let spread_method = gradient.lane(0).attr::<SpreadMethodAttr>();
+	Ok(gradient.element_ref(0).evaluate(position, spread_method))
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.

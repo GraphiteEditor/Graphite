@@ -3,24 +3,25 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
+use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig, Texture};
 use graphene_std::bounds::RenderBoundingBox;
-use graphene_std::core_types::gpoll::GPoll;
-use graphene_std::ops::ConvertAsync;
+use graphene_std::list::List;
+use graphene_std::memo::IORecord;
+use graphene_std::ops::Convert;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::runtime::{DynGraphRuntime, DynNotifier, DynSpawner, GraphRuntime, RuntimeHandle, SourceFuture, Spawner, poll_once};
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::{Artboard, Graphic};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
+use graphene_std::{Artboard, Context, Graphic};
+use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
 use std::sync::Arc;
@@ -39,9 +40,6 @@ pub struct NodeRuntime {
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
-	graph_runtime: Arc<DynGraphRuntime>,
-	/// The last plain render request, replayed when an async source completion marks the graph dirty.
-	last_render: Option<ExecutionRequest>,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
@@ -104,7 +102,7 @@ impl InternalNodeGraphUpdateSender {
 	}
 
 	fn send_execution_response(&self, response: ExecutionResponse) {
-		self.0.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response")
+		self.0.send(NodeGraphUpdate::ExecutionResponse(response)).expect("Failed to send response")
 	}
 
 	fn send_eyedropper_preview(&self, raster: Raster<CPU>) {
@@ -121,88 +119,20 @@ impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = once_cell::sync::Lazy::new(|| Mutex::new(None));
 
-#[cfg(not(target_family = "wasm"))]
-pub struct TokioSpawner(Option<tokio::runtime::Runtime>);
-
-#[cfg(not(target_family = "wasm"))]
-impl TokioSpawner {
-	pub fn new() -> Self {
-		Self(Some(tokio::runtime::Runtime::new().expect("Failed to start the async source runtime")))
-	}
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl Default for TokioSpawner {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl Spawner for TokioSpawner {
-	fn spawn(&self, mut task: SourceFuture) -> bool {
-		let runtime = self.0.as_ref().expect("runtime lives until drop");
-		let _guard = runtime.enter();
-		if poll_once(&mut task) {
-			return true;
-		}
-		runtime.spawn(task);
-		false
-	}
-}
-
-/// Dropping a tokio runtime blocks on its tasks, which panics inside an async context; the tests drop
-/// [`NodeRuntime`] from one, so shut down in the background instead.
-#[cfg(not(target_family = "wasm"))]
-impl Drop for TokioSpawner {
-	fn drop(&mut self) {
-		if let Some(runtime) = self.0.take() {
-			runtime.shutdown_background();
-		}
-	}
-}
-
-#[cfg(target_family = "wasm")]
-pub struct WasmSpawner;
-
-#[cfg(target_family = "wasm")]
-impl Spawner for WasmSpawner {
-	fn spawn(&self, mut task: SourceFuture) -> bool {
-		if poll_once(&mut task) {
-			return true;
-		}
-		wasm_bindgen_futures::spawn_local(task);
-		false
-	}
-}
-
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
-		#[cfg(not(target_family = "wasm"))]
-		// The box is a trait object, so `Box::default()` cannot name the concrete spawner.
-		#[allow(clippy::box_default)]
-		let spawner: Box<DynSpawner> = Box::new(TokioSpawner::new());
-		#[cfg(target_family = "wasm")]
-		let spawner: Box<DynSpawner> = Box::new(WasmSpawner);
-		let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(spawner));
-		let mut executor = DynamicExecutor::default();
-		executor.set_runtime(Arc::clone(&graph_runtime));
-
 		Self {
-			executor,
+			executor: DynamicExecutor::default(),
 			receiver,
 			sender: InternalNodeGraphUpdateSender(sender.clone()),
 			editor_preferences: EditorPreferences::default(),
 			old_graph: None,
 			resources: ResourceRegistry::default(),
 			update_thumbnails: true,
-			graph_runtime: Arc::clone(&graph_runtime),
-			last_render: None,
 
 			editor_api: PlatformEditorApi {
 				editor_preferences: Box::new(EditorPreferences::default()),
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
-				runtime: RuntimeHandle(graph_runtime),
 
 				#[cfg(not(test))]
 				application_io: None,
@@ -227,11 +157,6 @@ impl NodeRuntime {
 		}
 	}
 
-	#[cfg(test)]
-	pub fn take_dirty(&self) -> bool {
-		self.executor.take_dirty()
-	}
-
 	pub async fn run(&mut self) -> Option<Texture> {
 		let mut preferences = None;
 		let mut graph = None;
@@ -248,9 +173,6 @@ impl NodeRuntime {
 					}
 
 					let for_export = execution_request.render_config.for_export;
-					if !for_export {
-						self.last_render = Some(execution_request.clone());
-					}
 
 					execution = Some(request);
 
@@ -271,10 +193,6 @@ impl NodeRuntime {
 			eyedropper.render_config.pointer = execution.render_config.pointer;
 		}
 
-		if self.executor.take_dirty() && execution.is_none() {
-			execution = self.last_render.clone().map(GraphRuntimeRequest::ExecutionRequest);
-		}
-
 		let requests = [preferences, graph, eyedropper, execution].into_iter().flatten();
 
 		for request in requests {
@@ -285,12 +203,11 @@ impl NodeRuntime {
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
 						editor_preferences: Box::new(preferences),
-						runtime: self.editor_api.runtime.clone(),
 					}
 					.into();
 					if let Some(graph) = self.old_graph.clone() {
 						// We ignore this result as compilation errors should have been reported in an earlier iteration
-						let _ = self.update_network(graph);
+						let _ = self.update_network(graph).await;
 					}
 				}
 				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
@@ -305,7 +222,7 @@ impl NodeRuntime {
 					self.resources = resources;
 
 					self.node_graph_errors.clear();
-					let result = self.update_network(network);
+					let result = self.update_network(network).await;
 					let node_graph_errors = self.node_graph_errors.clone();
 
 					self.update_thumbnails = true;
@@ -320,7 +237,7 @@ impl NodeRuntime {
 						render_config.export_format = ExportFormat::Svg;
 					}
 
-					let result = self.execute_network(render_config);
+					let result = self.execute_network(render_config).await;
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
 					if !render_config.for_eyedropper {
@@ -341,10 +258,10 @@ impl NodeRuntime {
 								.application_io
 								.as_ref()
 								.unwrap()
-								.gpu_executor_arc()
+								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, wgpu_executor::WgpuExecutorHandle(executor)).await;
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -365,10 +282,10 @@ impl NodeRuntime {
 								.application_io
 								.as_ref()
 								.unwrap()
-								.gpu_executor_arc()
+								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, wgpu_executor::WgpuExecutorHandle(executor)).await;
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;
@@ -428,7 +345,7 @@ impl NodeRuntime {
 		None
 	}
 
-	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
 		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
@@ -439,7 +356,7 @@ impl NodeRuntime {
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 
 		let c = Compiler {};
-		let proto_network = match c.compile_single(scoped_network, &interpreted_executor::node_registry::NODE_REGISTRY) {
+		let proto_network = match c.compile_single(scoped_network) {
 			Ok(network) => network,
 			Err(e) => return Err((ResolvedDocumentNodeTypesDelta::default(), e)),
 		};
@@ -451,24 +368,20 @@ impl NodeRuntime {
 			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		self.executor.update(proto_network).map_err(|(types, e)| {
+		self.executor.update(proto_network).await.map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
 		})
 	}
 
-	fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
+	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 
-		match (&self.executor).execute(render_config).map_err(|e| e.to_string())? {
-			GPoll::Final(value) | GPoll::Partial(value) => Ok(value),
-			GPoll::Fallback(boxed) => {
-				let (value, error) = *boxed;
-				error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
-				Ok(value)
-			}
-			GPoll::Pending => Err("Node graph evaluation is pending".to_string()),
-			GPoll::Error(error) => Err(format!("Node graph evaluation failed: {error:?}")),
+		match self.executor.input_type() {
+			Some(t) if t == concrete!(RenderConfig) => (&self.executor).execute(render_config).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
+			Some(t) => Err(format!("Invalid input type {t:?}")),
+			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
 		}
 	}
 
@@ -493,71 +406,44 @@ impl NodeRuntime {
 				continue;
 			};
 
-			// Read the monitored run directly, inside the introspection window
-			let thumbnail_renders = &mut self.thumbnail_renders;
-			let vector_modify = &mut self.vector_modify;
-			let result = self.executor.introspect_with(monitor_node_path, |layout, batch, _arena| {
-				use graphene_std::core_types::record::{Group, GroupItem, RunView};
-				let type_id = layout.element.type_id;
-				// Graphic run: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
-				if type_id == std::any::TypeId::of::<Graphic>() {
-					if update_thumbnails {
-						// SAFETY: `introspect_with`'s closure is higher-ranked over the batch's
-						// lifetime, so the item cannot escape this read window, which the
-						// frames outlive.
-						let item = unsafe { GroupItem::from_resident(batch) };
-						let bounds = graphene_std::renderer::graphic_list_bounding_box(&RunView::<Graphic>::new(&item)?, DAffine2::IDENTITY);
-						let group = Graphic::Group(Group { row: None, content: item });
-						Self::render_thumbnail(thumbnail_renders, parent_network_node_id, &group, bounds, responses)
-					}
-					Some(())
-				}
-				// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
-				// clips content to those rectangles so anything outside isn't visible
-				else if type_id == std::any::TypeId::of::<Artboard>() {
-					if update_thumbnails {
-						// SAFETY: `introspect_with`'s closure is higher-ranked over the batch's
-						// lifetime, so the item cannot escape this read window, which the
-						// frames outlive.
-						let item = unsafe { GroupItem::from_resident(batch) };
-						let run = RunView::<Artboard>::new(&item)?;
-						let bounds = artboard_clip_bounds(&run);
-						Self::render_thumbnail(thumbnail_renders, parent_network_node_id, &run, bounds, responses)
-					}
-					Some(())
-				}
-				// Vector run: vector modifications
-				else if type_id == std::any::TypeId::of::<Vector>() {
-					// SAFETY: `introspect_with`'s closure is higher-ranked over the batch's
-					// lifetime, so the item cannot escape this read window, which the
-					// frames outlive.
-					let item = unsafe { GroupItem::from_resident(batch) };
-					let run = RunView::<Vector>::new(&item)?;
-					use graphene_std::core_types::lane::LaneSource;
-					vector_modify.insert(parent_network_node_id, run.element(0).cloned().unwrap_or_default());
-					Some(())
-				}
-				// String run: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
-				else if type_id == std::any::TypeId::of::<String>() {
-					if update_thumbnails {
-						// SAFETY: `introspect_with`'s closure is higher-ranked over the batch's
-						// lifetime, so the item cannot escape this read window, which the
-						// frames outlive.
-						let item = unsafe { GroupItem::from_resident(batch) };
-						let run = RunView::<String>::new(&item)?;
-						let bounds = graphene_std::renderer::text_list_bounding_box(&run, DAffine2::IDENTITY);
-						Self::render_thumbnail(thumbnail_renders, parent_network_node_id, &run, bounds, responses)
-					}
-					Some(())
-				} else {
-					log::warn!("Failed to read monitor node output {parent_network_node_id:?}");
-					Some(())
-				}
-			});
-			if let Err(_error) = result {
+			// Extract the monitor node's stored `Graphic` data
+			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else {
 				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
 				#[cfg(debug_assertions)]
-				warn!("Failed to introspect monitor node {}", _error);
+				warn!("Failed to introspect monitor node {}", self.executor.introspect(monitor_node_path).unwrap_err());
+				continue;
+			};
+
+			// Graphic list: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
+				if update_thumbnails {
+					let bounds = graphene_std::renderer::graphic_list_bounding_box(&io.output, DAffine2::IDENTITY);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
+				}
+			}
+			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
+			// clips content to those rectangles so anything outside isn't visible
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Artboard>>>() {
+				if update_thumbnails {
+					let bounds = artboard_clip_bounds(&io.output);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
+				}
+			}
+			// Vector list: vector modifications
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
+				// Insert the vector modify
+				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
+			}
+			// String list: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<String>>>() {
+				if update_thumbnails {
+					let bounds = graphene_std::renderer::text_list_bounding_box(&io.output, DAffine2::IDENTITY);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
+				}
+			}
+			// Other
+			else {
+				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");
 			}
 		}
 	}
@@ -625,12 +511,11 @@ impl NodeRuntime {
 
 /// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
 /// framing matches what's actually visible after clipping rather than the unclipped content extents.
-fn artboard_clip_bounds<'a, S: graphene_std::core_types::lane::LaneSource<Element = Artboard<'a>>>(artboards: &S) -> RenderBoundingBox {
-	use graphene_std::core_types::attribute::{Dimensions, Location};
+fn artboard_clip_bounds(artboards: &List<Artboard>) -> RenderBoundingBox {
 	let mut combined: Option<[DVec2; 2]> = None;
-	for index in 0..artboards.lane_count() {
-		let location: DVec2 = artboards.attr::<Location>(index);
-		let dimensions: DVec2 = artboards.attr::<Dimensions>(index);
+	for index in 0..artboards.len() {
+		let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);
+		let dimensions: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_DIMENSIONS, index);
 		let bounds = [location, location + dimensions];
 		combined = Some(match combined {
 			Some(existing) => [existing[0].min(bounds[0]), existing[1].max(bounds[1])],
@@ -659,6 +544,14 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 	[center - half, center + half]
 }
 
+pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
+	let runtime = NODE_RUNTIME.lock();
+	if let Some(ref mut runtime) = runtime.as_ref() {
+		return runtime.executor.introspect(path);
+	}
+	Err(IntrospectError::RuntimeNotReady)
+}
+
 pub async fn run_node_graph() -> (bool, Option<Texture>) {
 	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return (false, None) };
 	if let Some(ref mut runtime) = runtime.as_mut() {
@@ -678,20 +571,12 @@ pub(crate) fn replace_application_io(application_io: PlatformApplicationIo) {
 	}
 }
 
-pub fn set_completion_notifier(notifier: Arc<DynNotifier>) {
-	let node_runtime = NODE_RUNTIME.lock();
-	if let Some(node_runtime) = &*node_runtime {
-		node_runtime.graph_runtime.set_notifier(notifier);
-	}
-}
-
 impl NodeRuntime {
 	pub(crate) fn replace_application_io(&mut self, application_io: PlatformApplicationIo) {
 		self.editor_api = PlatformEditorApi {
 			application_io: Some(application_io.into()),
 			node_graph_message_sender: Box::new(self.sender.clone()),
 			editor_preferences: Box::new(self.editor_preferences.clone()),
-			runtime: self.editor_api.runtime.clone(),
 		}
 		.into();
 	}

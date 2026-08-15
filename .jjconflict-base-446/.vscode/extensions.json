@@ -1,0 +1,20 @@
+{
+	// NOTE: Keep this in sync with `.devcontainer/devcontainer.json`
+	"recommendations": [
+		// Rust
+		"rust-lang.rust-analyzer",
+		"tamasfe.even-better-toml",
+		// Web
+		"dbaeumer.vscode-eslint",
+		"svelte.svelte-vscode",
+		"vitaliymaz.vscode-svg-previewer",
+		// Code quality
+		"wayou.vscode-todo-highlight",
+		"streetsidesoftware.code-spell-checker",
+		// Git
+		"mhutchie.git-graph",
+		"qezhu.gitlink",
+		// Helpful
+		"wmaurer.change-case"
+	]
+}

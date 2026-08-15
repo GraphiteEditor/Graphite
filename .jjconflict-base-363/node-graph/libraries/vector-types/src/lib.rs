@@ -10,6 +10,7 @@ pub mod vector;
 // Re-export commonly used types at the crate root
 pub use core_types as gcore;
 pub use gradient::{Gradient, GradientForm, GradientHueDirection, GradientRamp, GradientSpace, GradientSpread, GradientStop};
+pub use markers::ATTR_EDITOR_CLICK_TARGET;
 pub use math::{QuadExt, RectExt};
 pub use subpath::Subpath;
 pub use vector::Vector;

@@ -9,7 +9,7 @@ use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
-use vector_types::gradient::{GradientForm, GradientSpread};
+use vector_types::gradient::{GradientSpreadMethod, GradientType};
 use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
@@ -567,8 +567,8 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<Gradient>,
 		List<Artboard>,
 		List<BlendMode>,
-		List<GradientForm>,
-		List<GradientSpread>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
 	)]
 	content: List<T>,
 	/// The attribute name (key) to write or replace.
@@ -713,35 +713,35 @@ fn read_attribute_blend_mode(
 	result
 }
 
-/// Reads a named `GradientForm` attribute from the input list, outputting each value as an element of a new `GradientForm[]`.
+/// Reads a named `GradientType` attribute from the input list, outputting each value as an element of a new `GradientType[]`.
 #[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_form(
+fn read_attribute_gradient_type(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: Item<String>,
-) -> List<GradientForm> {
+) -> List<GradientType> {
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientForm>(&name, index) else { continue };
+		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
 }
 
-/// Reads a named `GradientSpread` attribute from the input list, outputting each value as an element of a new `GradientSpread[]`.
+/// Reads a named `GradientSpreadMethod` attribute from the input list, outputting each value as an element of a new `GradientSpreadMethod[]`.
 #[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_spread(
+fn read_attribute_spread_method(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: Item<String>,
-) -> List<GradientSpread> {
+) -> List<GradientSpreadMethod> {
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientSpread>(&name, index) else { continue };
+		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result

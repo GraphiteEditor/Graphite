@@ -8,13 +8,11 @@ use core_types::uuid::generate_uuid;
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientForm;
-use graphic_types::vector_types::markers::{
-	GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
-};
+use graphic_types::vector_types::markers::{GradientForm as GradientFormAttr, GradientInterpolation as GradientInterpolationAttr, SpreadMethod};
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
-use vector_types::gradient::{GradientHueDirection, GradientSpace, GradientSpread};
+use vector_types::gradient::{GradientInterpolation, GradientSpread};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -112,11 +110,10 @@ pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientS
 		let Some(stops) = source.element(0) else { return 0 };
 		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(0);
 		let local_gradient_transform: DAffine2 = source.attr::<Transform>(0);
-		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(0);
-		let gradient_space: GradientSpace = source.attr::<GradientSpaceAttr>(0);
-		let gradient_hue_direction: GradientHueDirection = source.attr::<GradientHueDirectionAttr>(0);
+		let gradient_spread: GradientSpread = source.attr::<SpreadMethod>(0);
+		let gradient_interpolation: GradientInterpolation = source.attr::<GradientInterpolationAttr>(0);
 
-		let (samples, _) = spread_adjusted_samples(stops, gradient_spread, gradient_form, gradient_space, gradient_hue_direction, ClearGuardPlacement::SvgStopOrder);
+		let (samples, _) = spread_adjusted_samples(stops, gradient_spread, gradient_form, gradient_interpolation, ClearGuardPlacement::SvgStopOrder);
 
 		for (position, color, original_midpoint) in samples {
 			stop.push_str("<stop");

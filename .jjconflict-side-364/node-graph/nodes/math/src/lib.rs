@@ -1393,11 +1393,27 @@ fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<
 	gradient
 }
 
-/// Sets the color space each gradient in the input list blends between its stops with: linear light or gamma-encoded sRGB.
+/// Sets the color space in which each gradient in the input list interpolates between its stops.
 #[node_macro::node(category("Gradient"))]
-fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, gradient_interpolation: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
+fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientSpace>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *gradient_interpolation.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_SPACE, *space.element());
+	gradient
+}
+
+/// Sets whether each gradient in the input list treats its stops as a cycle, interpolating from the last stop back around to the first.
+#[node_macro::node(category("Gradient"))]
+fn gradient_cyclic(_: impl Ctx, gradient: Item<Gradient>, cyclic: Item<bool>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_CYCLIC, *cyclic.element());
+	gradient
+}
+
+/// Sets which way around the hue wheel each gradient in the input list interpolates, for polar color spaces.
+#[node_macro::node(category("Gradient"))]
+fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: Item<vector_types::GradientHueDirection>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_HUE_DIRECTION, *hue_direction.element());
 	gradient
 }
 
@@ -1414,7 +1430,7 @@ fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64
 
 /// Sets the interpolation midpoint for each interval between gradient stops, a factor from 0 to 1 where the 0.5 default means linear interpolation and another value skews the transition speed toward one stop or the other.
 ///
-/// The final stop belongs to no interval so its midpoint is ignored.
+/// The final stop's midpoint controls the wrap back around to the first stop when the gradient is cyclic, and is otherwise ignored.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
 #[node_macro::node(category("Gradient"))]
@@ -1425,12 +1441,16 @@ fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops blend in the gradient's `gradient_interpolation` color space.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
 	let gradient_spread = gradient.attribute_cloned_or_default::<vector_types::GradientSpread>(core_types::ATTR_GRADIENT_SPREAD);
-	let gradient_interpolation = gradient.attribute_cloned_or_default::<vector_types::GradientInterpolation>(core_types::ATTR_GRADIENT_INTERPOLATION);
-	let color = gradient.element().evaluate(*position.element(), gradient_spread, gradient_interpolation);
+	let gradient_space = gradient.attribute_cloned_or_default::<vector_types::GradientSpace>(core_types::ATTR_GRADIENT_SPACE);
+	let gradient_cyclic = gradient.attribute_cloned_or_default::<bool>(core_types::ATTR_GRADIENT_CYCLIC);
+	let gradient_hue_direction = gradient.attribute_cloned_or_default::<vector_types::GradientHueDirection>(core_types::ATTR_GRADIENT_HUE_DIRECTION);
+	let color = gradient
+		.element()
+		.evaluate(*position.element(), gradient_spread, gradient_cyclic, gradient_space, gradient_hue_direction);
 	Item::new_from_element(color)
 }
 

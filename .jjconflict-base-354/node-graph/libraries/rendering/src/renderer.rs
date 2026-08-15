@@ -7,14 +7,14 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::consts::DEFAULT_FONT_SIZE;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List, NodeIdPath};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPREAD, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD,
 	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
@@ -23,7 +23,7 @@ use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
-use graphic_types::vector_types::gradient::{Gradient, GradientForm};
+use graphic_types::vector_types::gradient::{Gradient, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
@@ -39,7 +39,7 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::GradientSpread;
+use vector_types::gradient::GradientSpreadMethod;
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -379,10 +379,10 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 /// non-uniform transform makes an ellipse), while linear is reduced to the equivalent non-sheared gradient line (the
 /// axis projected onto the band normal) so the iso-color bands keep following a sheared transform, which Vello can
 /// represent since it stores only two endpoints.
-pub(crate) fn gradient_placement(transform: DAffine2, gradient_form: GradientForm) -> DAffine2 {
-	match gradient_form {
-		GradientForm::Radial => transform,
-		GradientForm::Linear => {
+pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientType) -> DAffine2 {
+	match gradient_type {
+		GradientType::Radial => transform,
+		GradientType::Linear => {
 			let axis = transform.matrix2.x_axis;
 			let band_normal = transform.matrix2.y_axis.perp();
 			let line = if band_normal.length_squared() > 0. { axis.project_onto(band_normal) } else { axis };
@@ -394,51 +394,32 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_form: GradientFor
 	}
 }
 
-/// Converts a gradient's renderer samples to peniko color stops, duplicating an off-zero first stop at position 0 since Vello ignores the first stop's position and always treats it as 0.
-fn peniko_color_stops(gradient: &Gradient) -> peniko::ColorStops {
-	let mut peniko_stops = peniko::ColorStops::new();
-
-	for (position, color, _) in gradient.interpolated_samples() {
-		let color = peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color());
-
-		if peniko_stops.is_empty() && position > 0. {
-			peniko_stops.push(peniko::ColorStop { offset: 0., color });
-		}
-
-		peniko_stops.push(peniko::ColorStop { offset: position as f32, color });
-	}
-
-	// A gradient with no stops paints as solid black, matching `Gradient::evaluate`
-	if peniko_stops.is_empty() {
-		peniko_stops.push(peniko::ColorStop {
-			offset: 0.,
-			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(Color::BLACK).to_peniko_color()),
-		});
-	}
-
-	peniko_stops
-}
-
 fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
-	let gradient_form: GradientForm = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_FORM, 0);
+	let gradient_type: GradientType = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-	let gradient_spread: GradientSpread = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, 0);
+	let spread_method: GradientSpreadMethod = gradient_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
 
-	let peniko_stops = peniko_color_stops(stops);
+	let mut peniko_stops = peniko::ColorStops::new();
+	for (position, color, _) in stops.interpolated_samples() {
+		peniko_stops.push(peniko::ColorStop {
+			offset: position as f32,
+			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+		});
+	}
 
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
-	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_form));
+	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type));
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
-		kind: match gradient_form {
-			GradientForm::Linear => peniko::LinearGradientPosition {
+		kind: match gradient_type {
+			GradientType::Linear => peniko::LinearGradientPosition {
 				start: to_point(start),
 				end: to_point(end),
 			}
 			.into(),
-			GradientForm::Radial => peniko::RadialGradientPosition {
+			GradientType::Radial => peniko::RadialGradientPosition {
 				start_center: to_point(start),
 				start_radius: 0.,
 				end_center: to_point(start),
@@ -446,10 +427,10 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 			}
 			.into(),
 		},
-		extend: match gradient_spread {
-			GradientSpread::Pad => peniko::Extend::Pad,
-			GradientSpread::Reflect => peniko::Extend::Reflect,
-			GradientSpread::Repeat => peniko::Extend::Repeat,
+		extend: match spread_method {
+			GradientSpreadMethod::Pad => peniko::Extend::Pad,
+			GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
+			GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
 		},
 		stops: peniko_stops,
 		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
@@ -600,7 +581,7 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
-						let layer_path: List<NodeId> = list.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).0;
+						let layer_path: List<NodeId> = list.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
 						let layer = layer_path.iter_element_values().next_back().copied();
 						let transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 
@@ -819,7 +800,7 @@ impl Render for List<Artboard> {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
 
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let element_id = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = element_id {
@@ -991,7 +972,7 @@ impl Render for List<Graphic> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 
@@ -1073,9 +1054,9 @@ impl Render for List<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		let (elements, layers) = self.element_and_attribute_slices_mut::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH);
+		let (elements, layers) = self.element_and_attribute_slices_mut::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH);
 		for (element, layer) in elements.iter_mut().zip(layers.iter()) {
-			element.new_ids_from_hash(layer.0.iter_element_values().next_back().copied());
+			element.new_ids_from_hash(layer.iter_element_values().next_back().copied());
 		}
 	}
 }
@@ -1575,7 +1556,7 @@ impl Render for List<Vector> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
-		// Aggregate all items' targets per element_id so multi-item lists (e.g. the "Text to Vector Glyphs" node) produce hit areas for every glyph.
+		// Aggregate all items' targets per element_id so multi-item lists (e.g. 'Text' node with "Separate Glyphs" active) produce hit areas for every glyph.
 		// Targets are baked relative to item 0's transform since `Graphic::collect_metadata` records that as `local_transforms[element_id]`.
 		let item_zero_transform: DAffine2 = if !self.is_empty() {
 			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
@@ -1594,7 +1575,7 @@ impl Render for List<Vector> {
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
@@ -1642,7 +1623,7 @@ impl Render for List<Vector> {
 			}
 
 			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
-			// Combine Paths, Morph, or any other destructive merge), recurse into that snapshot so the editor can
+			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 			// surface the original child layers' click targets.
 			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, index);
 			if !upstream_nested_layers.is_empty() {
@@ -2094,8 +2075,8 @@ impl Render for List<Gradient> {
 			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let gradient_spread: GradientSpread = self.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, index);
-			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
+			let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, index);
+			let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, index);
 			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 			render.leaf_tag(tag, |attributes| {
 				if let Some((min, size)) = thumbnail_rect {
@@ -2133,24 +2114,24 @@ impl Render for List<Gradient> {
 				};
 
 				let gradient_id = generate_uuid();
-				let gradient_spread_attribute = if gradient_spread == GradientSpread::Pad {
+				let spread_method_attribute = if spread_method == GradientSpreadMethod::Pad {
 					String::new()
 				} else {
-					format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
+					format!(r#" spreadMethod="{}""#, spread_method.svg_name())
 				};
 
 				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
-				match gradient_form {
-					GradientForm::Linear => {
+				match gradient_type {
+					GradientType::Linear => {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
+							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
 						);
 					}
-					GradientForm::Radial => {
+					GradientType::Radial => {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
 						);
 					}
 				}
@@ -2176,11 +2157,11 @@ impl Render for List<Gradient> {
 			return;
 		}
 
-		for (((index, gradient), gradient_spread), gradient_form) in self
+		for (((index, gradient), spread_method), gradient_type) in self
 			.iter_element_values()
 			.enumerate()
-			.zip(self.iter_attribute_values_or_default::<GradientSpread>(ATTR_GRADIENT_SPREAD))
-			.zip(self.iter_attribute_values_or_default::<GradientForm>(ATTR_GRADIENT_FORM))
+			.zip(self.iter_attribute_values_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD))
+			.zip(self.iter_attribute_values_or_default::<GradientType>(ATTR_GRADIENT_TYPE))
 		{
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
@@ -2191,23 +2172,29 @@ impl Render for List<Gradient> {
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let stops = peniko_color_stops(gradient);
+			let mut stops: peniko::ColorStops = peniko::ColorStops::new();
+			for (position, color, _) in gradient.interpolated_samples() {
+				stops.push(peniko::ColorStop {
+					offset: position as f32,
+					color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+				})
+			}
 
-			let extend = match gradient_spread {
-				GradientSpread::Pad => peniko::Extend::Pad,
-				GradientSpread::Reflect => peniko::Extend::Reflect,
-				GradientSpread::Repeat => peniko::Extend::Repeat,
+			let extend = match spread_method {
+				GradientSpreadMethod::Pad => peniko::Extend::Pad,
+				GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
+				GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
 			};
 
 			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
 			// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.
-			let kind = match gradient_form {
-				GradientForm::Linear => peniko::LinearGradientPosition {
+			let kind = match gradient_type {
+				GradientType::Linear => peniko::LinearGradientPosition {
 					start: to_point(DVec2::ZERO),
 					end: to_point(DVec2::X),
 				}
 				.into(),
-				GradientForm::Radial => peniko::RadialGradientPosition {
+				GradientType::Radial => peniko::RadialGradientPosition {
 					start_center: to_point(DVec2::ZERO),
 					start_radius: 0.,
 					end_center: to_point(DVec2::ZERO),
@@ -2223,7 +2210,7 @@ impl Render for List<Gradient> {
 				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
 				..Default::default()
 			});
-			let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_form).to_cols_array());
+			let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_type).to_cols_array());
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 			let mut layer = false;
@@ -2585,7 +2572,7 @@ impl Render for List<String> {
 		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 
 		for index in 0..self.len() {
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let Some(element_id) = caller_element_id.or(layer) else { continue };
 

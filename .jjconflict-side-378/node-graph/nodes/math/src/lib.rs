@@ -1393,19 +1393,11 @@ fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<
 	gradient
 }
 
-/// Sets the color space in which each gradient in the input list interpolates between its stops.
+/// Sets the color space each gradient in the input list blends between its stops with: linear light or gamma-encoded sRGB.
 #[node_macro::node(category("Gradient"))]
-fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientSpace>) -> Item<Gradient> {
+fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, gradient_interpolation: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_SPACE, *space.element());
-	gradient
-}
-
-/// Sets which way around the hue wheel each gradient in the input list interpolates, for polar color spaces.
-#[node_macro::node(category("Gradient"))]
-fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: Item<vector_types::GradientHueDirection>) -> Item<Gradient> {
-	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_HUE_DIRECTION, *hue_direction.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *gradient_interpolation.element());
 	gradient
 }
 
@@ -1433,13 +1425,12 @@ fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops blend in the gradient's `gradient_interpolation` color space.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
 	let gradient_spread = gradient.attribute_cloned_or_default::<vector_types::GradientSpread>(core_types::ATTR_GRADIENT_SPREAD);
-	let gradient_space = gradient.attribute_cloned_or_default::<vector_types::GradientSpace>(core_types::ATTR_GRADIENT_SPACE);
-	let gradient_hue_direction = gradient.attribute_cloned_or_default::<vector_types::GradientHueDirection>(core_types::ATTR_GRADIENT_HUE_DIRECTION);
-	let color = gradient.element().evaluate(*position.element(), gradient_spread, gradient_space, gradient_hue_direction);
+	let gradient_interpolation = gradient.attribute_cloned_or_default::<vector_types::GradientInterpolation>(core_types::ATTR_GRADIENT_INTERPOLATION);
+	let color = gradient.element().evaluate(*position.element(), gradient_spread, gradient_interpolation);
 	Item::new_from_element(color)
 }
 

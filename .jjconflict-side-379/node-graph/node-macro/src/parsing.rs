@@ -7,8 +7,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, PathArguments, ReturnType, TraitBound,
-	Type, TypeImplTrait, TypeParam, TypeParamBound, Visibility, WhereClause, parse_quote,
+	AttrStyle, Attribute, Error, Expr, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, TraitBound, Type, TypeImplTrait, TypeParam,
+	TypeParamBound, Visibility, WhereClause, parse_quote,
 };
 
 use crate::codegen::generate_node_code;
@@ -33,96 +33,12 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) where_clause: Option<WhereClause>,
 	pub(crate) input: Input,
 	pub(crate) output_type: Type,
-	pub(crate) output_depth: u8,
+	/// The peeled `Item` element of `output_type`, if the node returns `Item<T>`.
+	pub(crate) output_element: Option<Type>,
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
-	/// The caller's frame claim, declared by a record-opaque kernel that
-	/// serves through it; not a wired input.
-	pub(crate) claim: Option<PatType>,
 	pub(crate) body: TokenStream2,
 	pub(crate) description: String,
-}
-
-/// An `Attr<Marker>` slot in a parameter's read tuple: a declared attribute
-/// read on that input, not a wired input of its own.
-#[derive(Clone, Debug)]
-pub(crate) struct AttributeRead {
-	pub(crate) pat_ident: PatIdent,
-	pub(crate) marker: Type,
-}
-
-/// One attribute write slot: the marker, and whether it crosses as an owned
-/// copy (`OwnedAttr<M>`) instead of an evaluation-lifetime value (`Attr<M>`).
-pub(crate) struct AttrWrite {
-	pub(crate) marker: Type,
-	pub(crate) owned: bool,
-}
-
-/// The write half of a record kernel's return: the element type in the first
-/// tuple slot, then the attribute markers written and the ones removed. `None`
-/// unless the value is a well-formed write tuple (a non-marker element first,
-/// then only `Attr`, `OwnedAttr` and `RemoveAttr` slots, at least one).
-pub(crate) struct RecordWrites {
-	pub(crate) element: Type,
-	pub(crate) markers: Vec<AttrWrite>,
-	pub(crate) removes: Vec<Type>,
-}
-
-pub(crate) fn record_writes(value: &Type) -> Option<RecordWrites> {
-	let Type::Tuple(tuple) = value else { return None };
-	let mut slots = tuple.elems.iter();
-	let element = slots.next()?;
-	if attr_marker(element).is_some() || owned_attr_marker(element).is_some() || remove_attr_marker(element).is_some() {
-		return None;
-	}
-	let mut markers = Vec::new();
-	let mut removes = Vec::new();
-	for slot in slots {
-		if let Some(marker) = attr_marker(slot) {
-			markers.push(AttrWrite { marker, owned: false });
-		} else if let Some(marker) = owned_attr_marker(slot) {
-			markers.push(AttrWrite { marker, owned: true });
-		} else if let Some(marker) = remove_attr_marker(slot) {
-			removes.push(marker);
-		} else {
-			return None;
-		}
-	}
-	(!markers.is_empty() || !removes.is_empty()).then(|| RecordWrites {
-		element: element.clone(),
-		markers,
-		removes,
-	})
-}
-
-/// Returns the marker type of an `Attr<Marker>` type, if `ty` is one.
-pub(crate) fn attr_marker(ty: &Type) -> Option<Type> {
-	marker_of(ty, "Attr")
-}
-
-/// Returns the marker type of an `OwnedAttr<Marker>` type, if `ty` is one.
-pub(crate) fn owned_attr_marker(ty: &Type) -> Option<Type> {
-	marker_of(ty, "OwnedAttr")
-}
-
-/// Returns the marker type of a `RemoveAttr<Marker>` type, if `ty` is one.
-pub(crate) fn remove_attr_marker(ty: &Type) -> Option<Type> {
-	marker_of(ty, "RemoveAttr")
-}
-
-fn marker_of(ty: &Type, wrapper: &str) -> Option<Type> {
-	let Type::Path(path) = ty else { return None };
-	let segment = path.path.segments.last()?;
-	if segment.ident != wrapper {
-		return None;
-	}
-	let PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
-	let mut types = args.args.iter().filter_map(|argument| match argument {
-		GenericArgument::Type(ty) => Some(ty),
-		_ => None,
-	});
-	let marker = types.next()?;
-	types.next().is_none().then(|| marker.clone())
 }
 
 #[derive(Debug, Default, Clone)]
@@ -142,18 +58,6 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) memoize: bool,
 	/// Whether this node provides a scope
 	pub(crate) inject_scope: bool,
-	/// Function producing a stand-in value while an async source node's real value is in flight
-	pub(crate) placeholder: Option<Path>,
-	/// Function overriding the generated `extent` method
-	pub(crate) extent: Option<Path>,
-	/// Function overriding the generated `extent` method with the raw node/ctx/level form
-	pub(crate) extent_raw: Option<Path>,
-	/// Function overriding the generated `eval_batch` method
-	pub(crate) batch: Option<Path>,
-	/// Whether partial upstream values are mapped to `Pending` instead of flowing into this node
-	pub(crate) no_partial: bool,
-	/// Whether this node keeps the plain-input lowering during the record transition
-	pub(crate) plain: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -162,7 +66,6 @@ pub enum ParsedValueSource {
 	None,
 	Default(TokenStream2),
 	Scope(Box<Expr>),
-	SourceId,
 }
 
 // #[widget(ParsedWidgetOverride::Hidden)]
@@ -217,15 +120,98 @@ pub struct ParsedField {
 	pub number_step: Option<LitFloat>,
 	pub unit: Option<LitStr>,
 	pub is_data_field: bool,
-	/// The attribute reads destructured from this input's tuple, resolved
-	/// against this input.
-	pub(crate) attribute_reads: Vec<AttributeRead>,
+}
+
+impl ParsedField {
+	/// Whether the field is environment rather than an argument: `#[data]` state or a `#[scope]`-injected wire.
+	/// Environment fields never classify the node, never supply the element-wise frame, and broadcast by clone.
+	pub(crate) fn is_environment(&self) -> bool {
+		self.is_data_field
+			|| matches!(
+				self.ty.regular(),
+				Some(RegularParsedField {
+					value_source: ParsedValueSource::Scope(_),
+					..
+				})
+			)
+	}
 }
 
 #[derive(Clone, Debug)]
 pub enum ParsedFieldType {
 	Regular(RegularParsedField),
+	/// Declared `Item<T>`: a rank-0 cell carrying element `T`; the field's `ty` keeps the full declared type.
+	Item {
+		field: RegularParsedField,
+		element: Type,
+	},
+	/// Declared `List<T>`: a whole-list wire carrying element `T`; the field's `ty` keeps the full declared type.
+	List {
+		field: RegularParsedField,
+		element: Type,
+	},
 	Node(NodeParsedField),
+}
+
+/// Extracts `T` from a wrapper type like `Item<T>` or `List<T>`, if the type's outermost segment matches the wrapper name.
+fn peel_wrapper(ty: &syn::Type, wrapper: &str) -> Option<syn::Type> {
+	let syn::Type::Path(type_path) = ty else { return None };
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != wrapper {
+		return None;
+	}
+
+	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else { return None };
+	match arguments.args.first()? {
+		syn::GenericArgument::Type(inner) => Some(inner.clone()),
+		_ => None,
+	}
+}
+
+pub(crate) fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
+	peel_wrapper(ty, "Item")
+}
+
+pub(crate) fn peel_list(ty: &syn::Type) -> Option<syn::Type> {
+	peel_wrapper(ty, "List")
+}
+
+impl ParsedFieldType {
+	/// Classifies a value field by its declared type: `Item<T>` and `List<T>` become the ranked variants carrying
+	/// element `T` (the field keeps the full declared type), and anything else stays `Regular`.
+	pub(crate) fn classify(field: RegularParsedField) -> ParsedFieldType {
+		if let Some(element) = peel_item(&field.ty) {
+			ParsedFieldType::Item { field, element }
+		} else if let Some(element) = peel_list(&field.ty) {
+			ParsedFieldType::List { field, element }
+		} else {
+			ParsedFieldType::Regular(field)
+		}
+	}
+
+	/// The shared value-field data, present for every value field (`Regular`, `Item`, `List`) but not a lazy `Node`.
+	pub fn regular(&self) -> Option<&RegularParsedField> {
+		match self {
+			ParsedFieldType::Regular(field) | ParsedFieldType::Item { field, .. } | ParsedFieldType::List { field, .. } => Some(field),
+			ParsedFieldType::Node(_) => None,
+		}
+	}
+
+	/// The element type `T` of a rank-0 `Item<T>` field, or `None` for any other shape.
+	pub fn item_element(&self) -> Option<&Type> {
+		match self {
+			ParsedFieldType::Item { element, .. } => Some(element),
+			_ => None,
+		}
+	}
+
+	/// The element type `T` of a whole-list `List<T>` field, or `None` for any other shape.
+	pub fn list_element(&self) -> Option<&Type> {
+		match self {
+			ParsedFieldType::List { element, .. } => Some(element),
+			_ => None,
+		}
+	}
 }
 
 /// A single numeric endpoint within a `#[soft(..)]` or `#[hard(..)]` bounds range.
@@ -333,10 +319,6 @@ impl Parse for NumberRange {
 #[derive(Clone, Debug)]
 pub struct RegularParsedField {
 	pub ty: Type,
-	/// `IList` nesting stripped from `ty` at parse; `ty` holds the element row.
-	pub list_levels: u8,
-	/// The original reference tokens when the parameter was written `&T`; `ty` holds the peeled inner type.
-	pub lend: Option<syn::TypeReference>,
 	pub exposed: bool,
 	pub value_source: ParsedValueSource,
 	pub number_soft_min: Option<NumberBound>,
@@ -354,6 +336,8 @@ pub struct RegularParsedField {
 pub struct NodeParsedField {
 	pub input_type: Type,
 	pub output_type: Type,
+	/// The peeled `Item` element of `output_type`, if the lazy input's `Output` is declared `Item<T>`.
+	pub output_element: Option<Type>,
 	pub implementations: Punctuated<Implementation, Comma>,
 }
 
@@ -362,7 +346,7 @@ pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
 	pub(crate) ty: Type,
 	pub(crate) implementations: Punctuated<Type, Comma>,
-	pub(crate) context_features: Vec<ContextFeatureDecl>,
+	pub(crate) context_features: Vec<Ident>,
 }
 
 impl Parse for Implementation {
@@ -417,12 +401,6 @@ impl Parse for NodeFnAttributes {
 		let mut serialize = None;
 		let mut memoize = false;
 		let mut inject_scope = false;
-		let mut placeholder = None;
-		let mut extent = None;
-		let mut extent_raw = None;
-		let mut batch = None;
-		let mut no_partial = false;
-		let mut plain = false;
 
 		let content = input;
 		// let content;
@@ -565,89 +543,13 @@ impl Parse for NodeFnAttributes {
 					}
 					inject_scope = true;
 				}
-				// Function producing a stand-in value for an async source node while the spawned future is in flight.
-				// The node reports `Partial` with the stand-in until the real value lands; without a placeholder it reports `Pending`.
-				//
-				// Example usage:
-				// #[node_macro::node(..., placeholder(empty_image), ...)]
-				"placeholder" => {
-					let meta = meta.require_list()?;
-					if placeholder.is_some() {
-						return Err(Error::new_spanned(meta, "Multiple 'placeholder' attributes are not allowed"));
-					}
-					let parsed_path: Path = meta
-						.parse_args()
-						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'placeholder', e.g., placeholder(empty_image)"))?;
-					placeholder = Some(parsed_path);
-				}
-				// Function overriding the generated `extent` method, replacing the default meet over the node's inputs.
-				//
-				// Example usage:
-				// #[node_macro::node(..., extent(my_extent), ...)]
-				"extent" => {
-					let meta = meta.require_list()?;
-					if extent.is_some() {
-						return Err(Error::new_spanned(meta, "Multiple 'extent' attributes are not allowed"));
-					}
-					let parsed_path: Path = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'extent', e.g., extent(my_extent)"))?;
-					extent = Some(parsed_path);
-				}
-				// Escape hatch for extent overrides needing arbitrary context access: the raw
-				// `(node, ctx, level)` form instead of the typed `extent(fn)` input surface.
-				//
-				// Example usage:
-				// #[node_macro::node(..., extent_raw(my_extent), ...)]
-				"extent_raw" => {
-					let meta = meta.require_list()?;
-					if extent_raw.is_some() {
-						return Err(Error::new_spanned(meta, "Multiple 'extent_raw' attributes are not allowed"));
-					}
-					let parsed_path: Path = meta
-						.parse_args()
-						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'extent_raw', e.g., extent_raw(my_extent)"))?;
-					extent_raw = Some(parsed_path);
-				}
-				// Function overriding the generated `eval_batch` method, replacing the trait's per-lane spec loop.
-				//
-				// Example usage:
-				// #[node_macro::node(..., batch(my_batch), ...)]
-				"batch" => {
-					let meta = meta.require_list()?;
-					if batch.is_some() {
-						return Err(Error::new_spanned(meta, "Multiple 'batch' attributes are not allowed"));
-					}
-					let parsed_path: Path = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'batch', e.g., batch(my_batch)"))?;
-					batch = Some(parsed_path);
-				}
-				// Keeps the plain-input lowering for this node during the record transition.
-				//
-				// Example usage:
-				// #[node_macro::node(..., plain, ...)]
-				"plain" => {
-					let path = meta.require_path_only()?;
-					if plain {
-						return Err(Error::new_spanned(path, "Multiple 'plain' attributes are not allowed"));
-					}
-					plain = true;
-				}
-				// Instructs the generated eval to report `Pending` instead of passing partial upstream values into this node.
-				//
-				// Example usage:
-				// #[node_macro::node(..., no_partial, ...)]
-				"no_partial" => {
-					let path = meta.require_path_only()?;
-					if no_partial {
-						return Err(Error::new_spanned(path, "Multiple 'no_partial' attributes are not allowed"));
-					}
-					no_partial = true;
-				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', 'inject_scope', 'placeholder', 'extent', 'extent_raw', 'batch', and 'no_partial'.
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -670,10 +572,6 @@ impl Parse for NodeFnAttributes {
 			));
 		}
 
-		if let (Some(_), Some(raw)) = (&extent, &extent_raw) {
-			return Err(Error::new_spanned(raw, "'extent' and 'extent_raw' are mutually exclusive"));
-		}
-
 		Ok(NodeFnAttributes {
 			category,
 			display_name,
@@ -685,12 +583,6 @@ impl Parse for NodeFnAttributes {
 			serialize,
 			memoize,
 			inject_scope,
-			placeholder,
-			extent,
-			extent_raw,
-			batch,
-			no_partial,
-			plain,
 		})
 	}
 }
@@ -706,8 +598,9 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 	let fn_generics = input_fn.sig.generics.params.into_iter().collect();
 	let is_async = input_fn.sig.asyncness.is_some();
 
-	let (input, fields, claim) = parse_inputs(&input_fn.sig.inputs)?;
-	let (output_type, output_depth) = crate::codegen::ir::strip_output_rank(&parse_output(&input_fn.sig.output)?);
+	let (input, fields) = parse_inputs(&input_fn.sig.inputs)?;
+	let output_type = parse_output(&input_fn.sig.output)?;
+	let output_element = peel_item(&output_type);
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
 	let description = input_fn
@@ -736,20 +629,18 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 		fn_generics,
 		input,
 		output_type,
-		output_depth,
+		output_element,
 		is_async,
 		fields,
-		claim,
 		where_clause,
 		body,
 		description,
 	})
 }
 
-fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<ParsedField>, Option<PatType>)> {
+fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<ParsedField>)> {
 	let mut fields = Vec::new();
 	let mut input = None;
-	let mut claim = None;
 
 	for (index, arg) in inputs.iter().enumerate() {
 		if let FnArg::Typed(PatType { pat, ty, attrs, .. }) = arg {
@@ -785,34 +676,7 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					context_features,
 				});
 			} else if let Pat::Ident(pat_ident) = &**pat {
-				if attr_marker(ty).is_some() {
-					return Err(Error::new_spanned(pat_ident, "an attribute read binds to an input: destructure it as `(value, Attr<..>)`"));
-				}
-				// The claim is the caller's, not an input: it reaches the kernel
-				// from the serve the node is lowered into.
-				if is_frame_claim(ty) {
-					claim = Some(PatType {
-						attrs: Vec::new(),
-						pat: pat.clone(),
-						colon_token: Default::default(),
-						ty: ty.clone(),
-					});
-					continue;
-				}
 				let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
-				fields.push(field);
-			} else if let Pat::Tuple(pat_tuple) = &**pat {
-				let field = parse_read_tuple(pat_tuple, ty, attrs, index)?;
-				fields.push(field);
-			} else if let Pat::Wild(wild) = &**pat {
-				let pat_ident = PatIdent {
-					attrs: wild.attrs.clone(),
-					by_ref: None,
-					mutability: None,
-					ident: format_ident!("_unit{}", index, span = wild.underscore_token.span),
-					subpat: None,
-				};
-				let field = parse_field(pat_ident, (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat, format!("Failed to parse argument: {e}")))?;
 				fields.push(field);
 			} else {
 				return Err(Error::new_spanned(pat, "Expected a simple identifier for the field name"));
@@ -823,131 +687,11 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 	}
 
 	let input = input.ok_or_else(|| Error::new_spanned(inputs, "Expected at least one input argument. The first argument should be the node input type."))?;
-	Ok((input, fields, claim))
-}
-
-/// Whether the parameter is the caller-provided frame claim a record-opaque
-/// kernel serves through.
-fn is_frame_claim(ty: &Type) -> bool {
-	matches!(ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "FrameClaim"))
-}
-
-/// Splits a lazy input's `Output = (T, Attr<..>..)` tuple into the element
-/// type (the input type) and the declared reads on that input. A tuple without
-/// `Attr` slots is an ordinary tuple output and passes through untouched.
-fn split_lazy_reads(output_type: Type) -> syn::Result<(Type, Vec<AttributeRead>)> {
-	let Type::Tuple(tuple) = &output_type else {
-		return Ok((output_type, Vec::new()));
-	};
-	if !tuple.elems.iter().any(|slot| attr_marker(slot).is_some()) {
-		return Ok((output_type, Vec::new()));
-	}
-	let spelling = "a lazy input with attribute reads declares `Output = (T, Attr<..>)`";
-	let mut slots = tuple.elems.iter();
-	let element = slots.next().ok_or_else(|| Error::new_spanned(tuple, spelling))?;
-	if attr_marker(element).is_some() {
-		return Err(Error::new_spanned(element, spelling));
-	}
-	let attribute_reads: Vec<AttributeRead> = slots
-		.enumerate()
-		.map(|(index, slot)| {
-			let marker = attr_marker(slot).ok_or_else(|| Error::new_spanned(slot, spelling))?;
-			Ok(AttributeRead {
-				pat_ident: PatIdent {
-					attrs: Vec::new(),
-					by_ref: None,
-					mutability: None,
-					ident: format_ident!("__lazy_read_{}", index, span = slot.span()),
-					subpat: None,
-				},
-				marker,
-			})
-		})
-		.collect::<syn::Result<_>>()?;
-	Ok((element.clone(), attribute_reads))
-}
-
-/// Parses a `(value, reads..): (T, Attr<..>..)` parameter: the value component
-/// is an ordinary field of the value type, each `Attr` component a read bound
-/// to this input.
-fn parse_read_tuple(pat_tuple: &syn::PatTuple, ty: &Type, attrs: &[Attribute], index: usize) -> syn::Result<ParsedField> {
-	let spelling = "an input with attribute reads destructures as `(value, Attr<..>)` over `(T, Attr<..>)`";
-	let Type::Tuple(ty_tuple) = ty else {
-		return Err(Error::new_spanned(ty, spelling));
-	};
-	if pat_tuple.elems.len() != ty_tuple.elems.len() || ty_tuple.elems.len() < 2 {
-		return Err(Error::new_spanned(pat_tuple, spelling));
-	}
-	let mut slots = pat_tuple.elems.iter().zip(ty_tuple.elems.iter());
-	let (value_pat, value_ty) = slots.next().expect("length checked above");
-	if attr_marker(value_ty).is_some() {
-		return Err(Error::new_spanned(value_ty, spelling));
-	}
-	let value_ident = match value_pat {
-		Pat::Ident(pat_ident) => pat_ident.clone(),
-		Pat::Wild(wild) => PatIdent {
-			attrs: wild.attrs.clone(),
-			by_ref: None,
-			mutability: None,
-			ident: format_ident!("_value{}", index, span = wild.underscore_token.span),
-			subpat: None,
-		},
-		_ => return Err(Error::new_spanned(value_pat, "Expected a simple identifier for the value component")),
-	};
-	let attribute_reads: Vec<AttributeRead> = slots
-		.map(|(pat, ty)| {
-			let marker = attr_marker(ty).ok_or_else(|| Error::new_spanned(ty, spelling))?;
-			let Pat::Ident(pat_ident) = pat else {
-				return Err(Error::new_spanned(pat, "Expected a simple identifier for the attribute read"));
-			};
-			Ok(AttributeRead { pat_ident: pat_ident.clone(), marker })
-		})
-		.collect::<syn::Result<_>>()?;
-	let mut field = parse_field(value_ident.clone(), value_ty.clone(), attrs).map_err(|e| Error::new_spanned(&value_ident, format!("Failed to parse argument '{}': {}", value_ident.ident, e)))?;
-	field.attribute_reads = attribute_reads;
-	Ok(field)
-}
-
-/// A declared context feature; `ExtractIndex` carries the index level it reads.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ContextFeatureDecl {
-	pub(crate) ident: Ident,
-	pub(crate) level: Option<u8>,
-}
-
-impl ContextFeatureDecl {
-	pub(crate) fn new(ident: Ident) -> Self {
-		Self { ident, level: None }
-	}
-}
-
-impl quote::ToTokens for ContextFeatureDecl {
-	fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-		let ident = &self.ident;
-		match self.level {
-			Some(level) => tokens.extend(quote::quote!(#ident(#level))),
-			None => ident.to_tokens(tokens),
-		}
-	}
-}
-
-/// The level of an `ExtractIndex<N>` bound, defaulting to the innermost.
-fn parse_index_level(segment: &syn::PathSegment) -> u8 {
-	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
-		return 0;
-	};
-	for argument in &arguments.args {
-		if let syn::GenericArgument::Const(syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Int(int), .. })) = argument
-			&& let Ok(level) = int.base10_parse::<u8>()
-		{
-			return level;
-		}
-	}
-	0
+	Ok((input, fields))
 }
 
 /// Parse context feature identifiers from the trait bounds of a context parameter.
-fn parse_context_feature_idents(ty: &Type) -> Vec<ContextFeatureDecl> {
+fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 	let mut features = Vec::new();
 
 	// Check if this is an impl trait (impl Ctx + ...)
@@ -957,38 +701,23 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<ContextFeatureDecl> {
 				// Extract the last segment of the trait path
 				if let Some(segment) = path.segments.last() {
 					match segment.ident.to_string().as_str() {
-						"ExtractIndex" => features.push(ContextFeatureDecl {
-							ident: segment.ident.clone(),
-							level: Some(parse_index_level(segment)),
-						}),
-						// Reading the chain without a statically known level keeps every level.
-						"ExtractIndices" => features.push(ContextFeatureDecl {
-							ident: format_ident!("ExtractIndex"),
-							level: Some(u8::MAX),
-						}),
 						"ExtractFootprint"
 						| "ExtractRealTime"
 						| "ExtractAnimationTime"
 						| "ExtractPointerPosition"
 						| "ExtractPosition"
+						| "ExtractIndex"
 						| "ExtractVarArgs"
 						| "InjectFootprint"
 						| "InjectRealTime"
 						| "InjectAnimationTime"
 						| "InjectPointerPosition"
 						| "InjectPosition"
+						| "InjectIndex"
 						| "InjectVarArgs" => {
-							features.push(ContextFeatureDecl::new(segment.ident.clone()));
+							features.push(segment.ident.clone());
 						}
-						// Modify* is conditionally transparent: the node rewrites the
-						// field only on its content's behalf, so it names no
-						// requirement of its own and the field nullifies early when
-						// nothing upstream reads it.
-						"ModifyFootprint" | "ModifyRealTime" | "ModifyAnimationTime" | "ModifyPointerPosition" | "ModifyPosition" | "ModifyIndex" | "ModifyVarArgs" => {}
-						// InjectIndex stays undeclared: a record node's injection
-						// re-addresses lanes derived from the incoming index, so it
-						// must not cancel the cone's index requirement in the
-						// nullification pass.
+						// Skip Modify* traits as they don't affect usage tracking
 						// Also ignore other traits like Ctx, ExtractAll, etc.
 						_ => {}
 					}
@@ -1028,14 +757,13 @@ fn parse_node_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::
 }
 
 fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
-	let (ty, list_levels) = crate::codegen::ir::strip_ilist(&ty);
 	let ident = &pat_ident.ident;
 
 	// Checks for the #[data] attribute, indicating that this is a data field rather than an input parameter to the node.
 	// Data fields act as internal state, using interior mutability to cache data between node evaluations.
 	//
 	// Normally, an input parameter is a construction argument to the node that is stored as a field on the node struct.
-	// Specifically, its struct field stores the connected upstream node (an evaluatable lambda that returns data of the connection's type).
+	// Specifically, its struct field stores the connected upstream node (an evaluatable lambda that returns data of the connection wire's type).
 	// By comparison, a data field is also stored as a field on the node struct, allowing it to persist state between evaluations.
 	// But it acts as internal state only, not exposed as a parameter in the UI or able to be wired to another node.
 	//
@@ -1169,10 +897,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			));
 		}
 
-		let input_type = node_input_type.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input>` or `impl Node<Input, Output = OutputType>`"))?;
-		// A subject named without an output is a whole-record input: the kernel
-		// serves it through its own claim rather than reading an element.
-		let output_type = node_output_type.unwrap_or_else(|| syn::parse_quote!(Served<'_>));
+		let (input_type, output_type) = node_input_type
+			.zip(node_output_type)
+			.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input, Output = OutputType>`"))?;
 		if !matches!(&value_source, ParsedValueSource::None) {
 			return Err(Error::new_spanned(&ty, "No default values for `impl Node` allowed"));
 		}
@@ -1181,12 +908,14 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.transpose()?
 			.unwrap_or_default();
 
-		let (output_type, attribute_reads) = split_lazy_reads(output_type)?;
+		let output_element = peel_item(&output_type);
+
 		Ok(ParsedField {
 			pat_ident,
 			ty: ParsedFieldType::Node(NodeParsedField {
 				input_type,
 				output_type,
+				output_element,
 				implementations,
 			}),
 			name,
@@ -1196,18 +925,12 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_step,
 			unit,
 			is_data_field,
-			attribute_reads,
 		})
 	} else {
 		let implementations = extract_attribute(attrs, "implementations")
 			.map(|attr| parse_implementations(attr, ident))
 			.transpose()?
 			.unwrap_or_default();
-
-		let (ty, lend) = match ty {
-			Type::Reference(reference) => ((*reference.elem).clone(), Some(reference)),
-			ty => (ty, None),
-		};
 
 		// Error if a float literal is given for a bound on an integer-typed field
 		if is_integer_type(&ty) {
@@ -1233,7 +956,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 
 		Ok(ParsedField {
 			pat_ident,
-			ty: ParsedFieldType::Regular(RegularParsedField {
+			ty: ParsedFieldType::classify(RegularParsedField {
 				exposed,
 				number_soft_min,
 				number_soft_max,
@@ -1241,8 +964,6 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				number_hard_max,
 				number_mode_range,
 				ty,
-				list_levels,
-				lend,
 				value_source,
 				implementations,
 				gpu_image,
@@ -1254,7 +975,6 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_step,
 			unit,
 			is_data_field,
-			attribute_reads: Vec::new(),
 		})
 	}
 }
@@ -1306,15 +1026,17 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
 	let crate_ident = CrateIdent::default();
 	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
 	parsed_node.replace_impl_trait_in_input();
-	if parsed_node.injects_async_source_fields() {
-		let core_types = crate_ident.gcore()?.clone();
-		parsed_node.inject_async_source_fields(&core_types);
-	}
 	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation error:\n{e}")))?;
 	generate_node_code(&crate_ident, &parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code:\n{e}")))
 }
 
 impl ParsedNodeFn {
+	/// The node's primary: the first argument (non-environment) field, whose declared shape classifies the node
+	/// as an element-wise kernel, aggregation, or generator. Returns the field with its index in `fields`.
+	pub(crate) fn primary_input_field(&self) -> Option<(usize, &ParsedField)> {
+		self.fields.iter().enumerate().find(|(_, field)| !field.is_environment())
+	}
+
 	pub fn replace_impl_trait_in_input(&mut self) {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());
@@ -1336,50 +1058,6 @@ impl ParsedNodeFn {
 		if self.input.pat_ident.ident == "_" {
 			self.input.pat_ident.ident = Ident::new("__ctx", self.input.pat_ident.ident.span());
 		}
-	}
-
-	pub fn injects_async_source_fields(&self) -> bool {
-		self.is_async || crate::codegen::is_source_kernel(&self.output_type)
-	}
-
-	pub fn inject_async_source_fields(&mut self, core_types: &TokenStream2) {
-		let hidden_field = |name: &str, ty: Type, value_source: ParsedValueSource| ParsedField {
-			pat_ident: PatIdent {
-				attrs: Vec::new(),
-				by_ref: None,
-				mutability: None,
-				ident: Ident::new(name, proc_macro2::Span::call_site()),
-				subpat: None,
-			},
-			name: None,
-			description: String::new(),
-			widget_override: ParsedWidgetOverride::Hidden,
-			ty: ParsedFieldType::Regular(RegularParsedField {
-				ty,
-				list_levels: 0,
-				lend: None,
-				exposed: false,
-				value_source,
-				number_soft_min: None,
-				number_soft_max: None,
-				number_hard_min: None,
-				number_hard_max: None,
-				number_mode_range: false,
-				implementations: Default::default(),
-				gpu_image: false,
-			}),
-			number_display_decimal_places: None,
-			number_step: None,
-			unit: None,
-			is_data_field: false,
-			attribute_reads: Vec::new(),
-		};
-		self.fields.push(hidden_field(
-			"_runtime",
-			parse_quote!(#core_types::runtime::RuntimeHandle),
-			ParsedValueSource::Scope(Box::new(parse_quote!("graphene_std::runtime::RuntimeNode"))),
-		));
-		self.fields.push(hidden_field("_source", parse_quote!(#core_types::SourceId), ParsedValueSource::SourceId));
 	}
 }
 
@@ -1505,12 +1183,6 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
-				placeholder: None,
-				extent: None,
-				extent_raw: None,
-				batch: None,
-				no_partial: false,
-				plain: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1524,17 +1196,14 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
-			output_depth: 0,
+			output_element: None,
 			is_async: false,
-			claim: None,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
 				name: None,
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
-					lend: None,
-					list_levels: 0,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
@@ -1550,7 +1219,6 @@ mod tests {
 				number_step: None,
 				unit: None,
 				is_data_field: false,
-				attribute_reads: Vec::new(),
 			}],
 			body: TokenStream2::new(),
 			description: String::from("Multi\nLine\n"),
@@ -1586,12 +1254,6 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
-				placeholder: None,
-				extent: None,
-				extent_raw: None,
-				batch: None,
-				no_partial: false,
-				plain: false,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1605,9 +1267,8 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(T),
-			output_depth: 0,
+			output_element: None,
 			is_async: false,
-			claim: None,
 			fields: vec![
 				ParsedField {
 					pat_ident: pat_ident("transform_target"),
@@ -1617,13 +1278,13 @@ mod tests {
 					ty: ParsedFieldType::Node(NodeParsedField {
 						input_type: parse_quote!(Footprint),
 						output_type: parse_quote!(T),
+						output_element: None,
 						implementations: Punctuated::new(),
 					}),
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
 					is_data_field: false,
-					attribute_reads: Vec::new(),
 				},
 				ParsedField {
 					pat_ident: pat_ident("translate"),
@@ -1631,8 +1292,6 @@ mod tests {
 					description: String::new(),
 					widget_override: ParsedWidgetOverride::None,
 					ty: ParsedFieldType::Regular(RegularParsedField {
-						lend: None,
-						list_levels: 0,
 						ty: parse_quote!(DVec2),
 						exposed: false,
 						value_source: ParsedValueSource::None,
@@ -1648,7 +1307,6 @@ mod tests {
 					number_step: None,
 					unit: None,
 					is_data_field: false,
-					attribute_reads: Vec::new(),
 				},
 			],
 			body: TokenStream2::new(),
@@ -1682,12 +1340,6 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
-				placeholder: None,
-				extent: None,
-				extent_raw: None,
-				batch: None,
-				no_partial: false,
-				plain: false,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1698,20 +1350,17 @@ mod tests {
 				pat_ident: pat_ident("_"),
 				ty: parse_quote!(impl Ctx + ExtractFootprint),
 				implementations: Punctuated::new(),
-				context_features: vec![ContextFeatureDecl::new(format_ident!("ExtractFootprint"))],
+				context_features: vec![format_ident!("ExtractFootprint")],
 			},
 			output_type: parse_quote!(Vector),
-			output_depth: 0,
+			output_element: None,
 			is_async: false,
-			claim: None,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("radius"),
 				name: None,
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
-					lend: None,
-					list_levels: 0,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::Default(quote!(50.)),
@@ -1727,7 +1376,6 @@ mod tests {
 				number_step: None,
 				unit: None,
 				is_data_field: false,
-				attribute_reads: Vec::new(),
 			}],
 			body: TokenStream2::new(),
 			description: "Test\n".into(),
@@ -1759,12 +1407,6 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
-				placeholder: None,
-				extent: None,
-				extent_raw: None,
-				batch: None,
-				no_partial: false,
-				plain: false,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1778,17 +1420,14 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(List<Raster<P>>),
-			output_depth: 0,
+			output_element: None,
 			is_async: false,
-			claim: None,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("shadows"),
 				name: None,
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
-					lend: None,
-					list_levels: 0,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
@@ -1809,7 +1448,6 @@ mod tests {
 				number_step: None,
 				unit: None,
 				is_data_field: false,
-				attribute_reads: Vec::new(),
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1848,12 +1486,6 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
-				placeholder: None,
-				extent: None,
-				extent_raw: None,
-				batch: None,
-				no_partial: false,
-				plain: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1867,17 +1499,14 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
-			output_depth: 0,
+			output_element: None,
 			is_async: false,
-			claim: None,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
 				name: None,
 				description: String::from("b"),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
-					lend: None,
-					list_levels: 0,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
@@ -1893,7 +1522,6 @@ mod tests {
 				number_step: None,
 				unit: None,
 				is_data_field: false,
-				attribute_reads: Vec::new(),
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1940,12 +1568,6 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
-				placeholder: None,
-				extent: None,
-				extent_raw: None,
-				batch: None,
-				no_partial: false,
-				plain: false,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1959,17 +1581,14 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(List<Raster<CPU>>),
-			output_depth: 0,
+			output_element: None,
 			is_async: true,
-			claim: None,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("path"),
 				name: None,
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
-					lend: None,
-					list_levels: 0,
 					ty: parse_quote!(String),
 					exposed: true,
 					value_source: ParsedValueSource::None,
@@ -1985,7 +1604,6 @@ mod tests {
 				number_step: None,
 				unit: None,
 				is_data_field: false,
-				attribute_reads: Vec::new(),
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -2017,12 +1635,6 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
-				placeholder: None,
-				extent: None,
-				extent_raw: None,
-				batch: None,
-				no_partial: false,
-				plain: false,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
@@ -2036,9 +1648,8 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(i32),
-			output_depth: 0,
+			output_element: None,
 			is_async: false,
-			claim: None,
 			fields: vec![],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -2127,10 +1738,10 @@ mod tests {
 				#[implementations(
 					() -> List<Raster<CPU>>,
 					() -> List<Color>,
-					() -> List<GradientStops>,
+					() -> List<Gradient>,
 					Footprint -> List<Raster<CPU>>,
 					Footprint -> List<Color>,
-					Footprint -> List<GradientStops>,
+					Footprint -> List<Gradient>,
 				)]
 				image: impl Node<F, Output = T>,
 			) -> T {

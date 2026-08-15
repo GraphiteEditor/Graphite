@@ -3,13 +3,13 @@ use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, SeedValue, SignedInteger};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
+use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
-use vector_types::gradient::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread};
+use vector_types::gradient::{GradientSpread, GradientType};
 use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
@@ -567,7 +567,7 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<Gradient>,
 		List<Artboard>,
 		List<BlendMode>,
-		List<GradientForm>,
+		List<GradientType>,
 		List<GradientSpread>,
 	)]
 	content: List<T>,
@@ -713,18 +713,18 @@ fn read_attribute_blend_mode(
 	result
 }
 
-/// Reads a named `GradientForm` attribute from the input list, outputting each value as an element of a new `GradientForm[]`.
+/// Reads a named `GradientType` attribute from the input list, outputting each value as an element of a new `GradientType[]`.
 #[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_form(
+fn read_attribute_gradient_type(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: Item<String>,
-) -> List<GradientForm> {
+) -> List<GradientType> {
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientForm>(&name, index) else { continue };
+		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -742,57 +742,6 @@ fn read_attribute_gradient_spread(
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientSpread>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
-}
-
-/// Reads a named `GradientSpace` attribute from the input list, outputting each value as an element of a new `GradientSpace[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_space(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: Item<String>,
-) -> List<GradientSpace> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientSpace>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
-}
-
-/// Reads a named `GradientInterpolation` attribute from the input list, outputting each value as an element of a new `GradientInterpolation[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_interpolation(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: Item<String>,
-) -> List<GradientInterpolation> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientInterpolation>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
-}
-
-/// Reads a named `GradientHueDirection` attribute from the input list, outputting each value as an element of a new `GradientHueDirection[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_hue_direction(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: Item<String>,
-) -> List<GradientHueDirection> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientHueDirection>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -1020,7 +969,7 @@ pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(L
 	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
 	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Combine Paths,
 	// TODO: Morph, Rasterize) become unnecessary.
-	if !output.is_empty() && !is_lone_anonymous_leaf(&graphic_list) {
+	if !output.is_empty() {
 		// Item 0 carries a composed transform inherited from the flattened input, but the merged_layers
 		// already holds the original transforms; pre-compensate by item 0's inverse so the renderer's
 		// `upstream_footprint *= item_0_transform` recursion cancels out and leaves the originals intact.
@@ -1057,16 +1006,10 @@ pub async fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations
 	content.into_flattened_list()
 }
 
-/// Constructs a gradient from a `Color[]`, where each color becomes a gradient stop. A `position` attribute on the colors places their stops along the ramp and a `midpoint` attribute skews each transition, while colors carrying neither are distributed evenly across the 0 to 1 range.
+/// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Gradient"), name("Colors to Gradient"))]
 fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> Item<Gradient> {
 	Item::new_from_element(Gradient::from(colors.into_flattened_list::<Color>()))
-}
-
-/// Unwraps a gradient into a `Color[]` of its stops, keeping any `position` and `midpoint` attributes that place them along the ramp. Attributes belonging to the gradient as a whole (like spread and interpolation), rather than its individual color stops, are not preserved.
-#[node_macro::node(category("Gradient"), name("Gradient to Colors"))]
-fn gradient_to_colors(_: impl Ctx, gradient: Item<Gradient>) -> List<Color> {
-	gradient.into_element().into_color_list()
 }
 
 #[cfg(test)]
@@ -1191,31 +1134,5 @@ mod test {
 	fn list_slice_yields_nothing_when_start_reaches_end() {
 		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(3.), Item::new_from_element(3.));
 		assert!(elements(&portion).is_empty());
-	}
-
-	#[test]
-	fn gradient_to_colors_round_trips_the_stops_with_their_placement() {
-		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
-		gradient.set_positions(&[0., 0.25, 1.]);
-		gradient.set_midpoints(&[0.3, 0.5, 0.5]);
-
-		let colors = gradient_to_colors((), Item::new_from_element(gradient.clone()));
-		assert_eq!(elements(&colors), [Color::RED, Color::GREEN, Color::BLUE], "every stop should come out as its color");
-
-		let restored = colors_to_gradient((), colors);
-		assert_eq!(
-			restored.element(),
-			&gradient,
-			"wrapping the stops back up should restore the uneven placement rather than redistributing them"
-		);
-	}
-
-	#[test]
-	fn gradient_to_colors_leaves_an_untouched_ramp_without_placement_attributes() {
-		let gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
-		assert!(!gradient.has_position_attribute(), "even spacing is stored as the attribute's absence");
-
-		let restored = colors_to_gradient((), gradient_to_colors((), Item::new_from_element(gradient.clone())));
-		assert_eq!(restored.element(), &gradient, "a default ramp should round trip without gaining attributes it never had");
 	}
 }

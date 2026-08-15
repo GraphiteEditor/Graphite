@@ -1,17 +1,26 @@
-use core_types::attribute::{Attr, BlendMode as BlendModeAttr, ClippingMask, Opacity, OpacityFill};
+use core_types::list::Item;
 use core_types::registry::types::Percentage;
-use core_types::{BlendMode, Ctx};
+use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, BlendMode, Color, Ctx};
+use graphic_types::Graphic;
+use graphic_types::Vector;
+use graphic_types::raster_types::{CPU, GPU, Raster};
+use vector_types::Gradient;
 
 /// Applies the blend mode to the input graphics. Setting this allows for customizing how overlapping content is composited together.
 #[node_macro::node(category("Blending"))]
 fn blend_mode<T>(
 	_: impl Ctx,
-	/// The layer stack that will be composited when rendering.
-	(element, _content_blend_mode): (T, Attr<BlendModeAttr>),
+	/// The content that will be composited when rendering.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
 	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
-	blend_mode: BlendMode,
-) -> (T, Attr<BlendModeAttr>) {
-	(element, Attr(blend_mode))
+	blend_mode: Item<BlendMode>,
+) -> Item<T> {
+	let mut content = content;
+	let blend_mode = *blend_mode.element();
+
+	content.set_attribute(ATTR_BLEND_MODE, blend_mode);
+	content
 }
 
 /// Modifies the opacity and/or fill of the input graphics by multiplying the existing values by these percentages.
@@ -20,8 +29,9 @@ fn blend_mode<T>(
 #[node_macro::node(category("Blending"))]
 fn opacity<T>(
 	_: impl Ctx,
-	/// The layer stack that will be composited when rendering.
-	(element, content_opacity, content_fill): (T, Attr<Opacity>, Attr<OpacityFill>),
+	/// The content that will be composited when rendering.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
 	/// Whether the *Opacity* property is enabled, multiplying the existing opacity by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	#[default(true)]
@@ -38,27 +48,37 @@ fn opacity<T>(
 	/// Ranges from 0% (fully transparent) to the default of 100% (fully opaque).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
 	#[default(100.)]
-	fill: Percentage,
-) -> (T, Attr<Opacity>, Attr<OpacityFill>) {
-	let opacity = match has_opacity {
-		true => *content_opacity * (opacity / 100.),
-		false => *content_opacity,
-	};
-	let fill = match has_fill {
-		true => *content_fill * (fill / 100.),
-		false => *content_fill,
-	};
-	(element, Attr(opacity), Attr(fill))
+	fill: Item<Percentage>,
+) -> Item<T> {
+	let mut content = content;
+	let (has_opacity, opacity, has_fill, fill) = (*has_opacity.element(), *opacity.element(), *has_fill.element(), *fill.element());
+
+	if has_opacity {
+		let multiplied = content.attribute_cloned_or(ATTR_OPACITY, 1.) * (opacity / 100.);
+		content.set_attribute(ATTR_OPACITY, multiplied);
+	}
+
+	if has_fill {
+		let multiplied = content.attribute_cloned_or(ATTR_OPACITY_FILL, 1.) * (fill / 100.);
+		content.set_attribute(ATTR_OPACITY_FILL, multiplied);
+	}
+
+	content
 }
 
 /// Sets whether the input graphics inherit the alpha of the content beneath them, "clipping" them to that content.
 #[node_macro::node(category("Blending"))]
 fn clipping_mask<T>(
 	_: impl Ctx,
-	/// The layer stack that will be composited when rendering.
-	(element, _content_clip): (T, Attr<ClippingMask>),
+	/// The content that will be composited when rendering.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
 	/// Whether the content inherits the alpha of the content beneath it.
-	clip: bool,
-) -> (T, Attr<ClippingMask>) {
-	(element, Attr(clip))
+	clip: Item<bool>,
+) -> Item<T> {
+	let mut content = content;
+	let clip = *clip.element();
+
+	content.set_attribute(ATTR_CLIPPING_MASK, clip);
+	content
 }
