@@ -47,14 +47,14 @@ trait VectorListIterMut {
 impl VectorListIterMut for List<Graphic> {
 	fn for_each_vector_list_mut(&mut self, mut f: impl FnMut(&mut List<Vector>)) {
 		for graphic in self.iter_element_values_mut() {
-			if let Some(vector_list) = graphic.as_vector_mut() {
+			if let Some(vector_list) = graphic.as_vector_list_mut() {
 				f(vector_list);
 			};
 		}
 	}
 
 	fn vector_count(&self) -> usize {
-		self.iter_element_values().filter_map(|element| element.as_vector()).map(|list| list.len()).sum()
+		self.iter_element_values().filter_map(|element| element.as_vector_list()).map(|list| list.len()).sum()
 	}
 }
 
@@ -83,7 +83,7 @@ impl VectorItemMut for Item<Vector> {
 
 impl VectorItemMut for Item<Graphic> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
-		let Some(vector_list) = self.element_mut().as_vector_mut() else { return };
+		let Some(vector_list) = self.element_mut().as_vector_list_mut() else { return };
 		let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
 		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
 			f(vector, *transform);
@@ -115,8 +115,8 @@ impl MapVectorItems for Graphic {
 		fn map_nested(graphic: &mut Graphic, f: &mut impl FnMut(Item<Vector>) -> Item<Vector>) {
 			match graphic {
 				// Collecting from zero items would drop the attribute columns, so an empty list is left alone
-				Graphic::Vector(list) if !list.is_empty() => *list = std::mem::take(list).into_iter().map(&mut *f).collect(),
-				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| map_nested(nested, f)),
+				Graphic::VectorList(list) if !list.is_empty() => *list = std::mem::take(list).into_iter().map(&mut *f).collect(),
+				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| map_nested(nested, f)),
 				_ => {}
 			}
 		}
@@ -130,8 +130,8 @@ impl MapVectorItems for Graphic {
 	fn vector_elements_mut(content: &mut Item<Graphic>) -> Vec<&mut Vector> {
 		fn collect<'a>(graphic: &'a mut Graphic, elements: &mut Vec<&'a mut Vector>) {
 			match graphic {
-				Graphic::Vector(list) => elements.extend(list.iter_element_values_mut()),
-				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| collect(nested, elements)),
+				Graphic::VectorList(list) => elements.extend(list.iter_element_values_mut()),
+				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| collect(nested, elements)),
 				_ => {}
 			}
 		}
@@ -159,14 +159,14 @@ impl ExpandVectorItems for Graphic {
 		fn expand_nested(graphic: &mut Graphic, f: &mut impl FnMut(Item<Vector>) -> List<Vector>) {
 			match graphic {
 				// Collecting from zero items would drop the attribute columns, so an empty list is left alone
-				Graphic::Vector(list) if !list.is_empty() => {
+				Graphic::VectorList(list) if !list.is_empty() => {
 					let mut expanded = List::with_capacity(list.len());
 					for item in std::mem::take(list) {
 						expanded.extend(f(item));
 					}
 					*list = expanded;
 				}
-				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| expand_nested(nested, f)),
+				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| expand_nested(nested, f)),
 				_ => {}
 			}
 		}
@@ -297,7 +297,7 @@ where
 
 	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
 	for graphic in fill.iter_element_values_mut() {
-		let Graphic::Gradient(gradient) = graphic else { continue };
+		let Graphic::GradientList(gradient) = graphic else { continue };
 
 		if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
@@ -1510,8 +1510,8 @@ impl SolidifyStroke for Graphic {
 	fn solidify_strokes(content: Item<Graphic>) -> List<Graphic> {
 		fn solidify_nested(graphic: &mut Graphic) {
 			match graphic {
-				Graphic::Vector(list) if !list.is_empty() => *list = solidify_stroke_list_with_snapshot(std::mem::take(list)),
-				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(solidify_nested),
+				Graphic::VectorList(list) if !list.is_empty() => *list = solidify_stroke_list_with_snapshot(std::mem::take(list)),
+				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(solidify_nested),
 				_ => {}
 			}
 		}
@@ -2594,25 +2594,25 @@ async fn morph<I: IntoGraphicList>(
 			} else {
 				gradient_list.push(Item::new_from_element(stops));
 			}
-			Graphic::Gradient(gradient_list)
+			Graphic::GradientList(gradient_list)
 		};
 
 		let graphic = match (a.element(0), b.element(0)) {
-			(Some(Graphic::Color(color_list_a)), Some(Graphic::Color(color_list_b))) => color_list_a
+			(Some(Graphic::ColorList(color_list_a)), Some(Graphic::ColorList(color_list_b))) => color_list_a
 				.element(0)
 				.zip(color_list_b.element(0))
 				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
-			(Some(Graphic::Color(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
+			(Some(Graphic::ColorList(color_list_a)), Some(Graphic::GradientList(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
 				let solid_to_gradient = stops_b.map_colors(|_| *color_a);
 				let stops = solid_to_gradient.lerp(stops_b, time);
 				gradient_with_stops(gradient_list_b.clone(), stops)
 			}),
-			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Color(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
+			(Some(Graphic::GradientList(gradient_list_a)), Some(Graphic::ColorList(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
 				let gradient_to_solid = stops_a.map_colors(|_| *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
 				gradient_with_stops(gradient_list_a.clone(), stops)
 			}),
-			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Gradient(gradient_list_b))) => gradient_list_a.element(0).zip(gradient_list_b.element(0)).map(|(stops_a, stops_b)| {
+			(Some(Graphic::GradientList(gradient_list_a)), Some(Graphic::GradientList(gradient_list_b))) => gradient_list_a.element(0).zip(gradient_list_b.element(0)).map(|(stops_a, stops_b)| {
 				let stops = stops_a.lerp(stops_b, time);
 				let metadata_source = if time < 0.5 { gradient_list_a } else { gradient_list_b };
 
@@ -3759,7 +3759,7 @@ mod test {
 			Item::new_from_element(0),
 		)
 		.await;
-		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(copy_to_points))).await);
+		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(copy_to_points))).await);
 		let combined_copy_to_points = combined.element(0).unwrap();
 
 		assert_eq!(combined_copy_to_points.region_manipulator_groups().count(), expected_points.len());
@@ -3912,7 +3912,7 @@ mod test {
 		let fill = appearance.first_paint_of(Cover::Fill).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
-		let Some(Graphic::Color(colors)) = fill.element(0) else {
+		let Some(Graphic::ColorList(colors)) = fill.element(0) else {
 			panic!("Expected a solid color fill, got {:?}", fill.element(0));
 		};
 		let color = *colors.element(0).expect("Color present");
@@ -3929,7 +3929,7 @@ mod test {
 
 		let paint_color = |appearance: &Appearance, cover| {
 			let paint = appearance.first_paint_of(cover).expect("Morph should keep both paints at the midpoint");
-			let Some(Graphic::Color(colors)) = paint.element(0) else {
+			let Some(Graphic::ColorList(colors)) = paint.element(0) else {
 				panic!("Expected a solid color paint, got {:?}", paint.element(0));
 			};
 			*colors.element(0).expect("Color present")

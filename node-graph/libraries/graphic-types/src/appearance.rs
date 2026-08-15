@@ -282,12 +282,12 @@ mod tests {
 	use vector_types::vector::style::{StrokeAlign, StrokeCap, StrokeJoin};
 
 	fn solid_paint(color: Color) -> List<Graphic> {
-		List::new_from_element(Graphic::Color(List::new_from_element(color)))
+		List::new_from_element(Graphic::ColorList(List::new_from_element(color)))
 	}
 
 	fn paint_color(appearance: &Appearance, index: usize) -> Option<Color> {
 		let paint = appearance.paint_at(index)?;
-		let Some(Graphic::Color(colors)) = paint.element(0) else { return None };
+		let Some(Graphic::ColorList(colors)) = paint.element(0) else { return None };
 		colors.element(0).copied()
 	}
 

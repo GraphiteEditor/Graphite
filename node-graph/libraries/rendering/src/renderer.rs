@@ -655,26 +655,26 @@ impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.render_svg(render, render_params),
-			Graphic::Vector(list) => list.render_svg(render, render_params),
-			Graphic::RasterCPU(list) => list.render_svg(render, render_params),
-			Graphic::RasterGPU(_) => (),
-			Graphic::Color(list) => list.render_svg(render, render_params),
-			Graphic::Gradient(list) => list.render_svg(render, render_params),
-			Graphic::Text(list) => list.render_svg(render, render_params),
+			Graphic::GraphicList(list) => list.render_svg(render, render_params),
+			Graphic::VectorList(list) => list.render_svg(render, render_params),
+			Graphic::RasterCPUList(list) => list.render_svg(render, render_params),
+			Graphic::RasterGPUList(_) => (),
+			Graphic::ColorList(list) => list.render_svg(render, render_params),
+			Graphic::GradientList(list) => list.render_svg(render, render_params),
+			Graphic::TextList(list) => list.render_svg(render, render_params),
 		}
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Vector(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterCPU(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterGPU(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Text(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::VectorList(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterCPUList(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterGPUList(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::ColorList(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::GradientList(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::TextList(list) => list.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
@@ -682,10 +682,10 @@ impl Render for Graphic {
 		if let Some(element_id) = element_id {
 			match self {
 				Graphic::None => {}
-				Graphic::Graphic(_) => {
+				Graphic::GraphicList(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
-				Graphic::Vector(list) => {
+				Graphic::VectorList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
@@ -697,7 +697,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, transform);
 					}
 				}
-				Graphic::RasterCPU(list) => {
+				Graphic::RasterCPUList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -705,7 +705,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::RasterGPU(list) => {
+				Graphic::RasterGPUList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -713,7 +713,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::Color(list) => {
+				Graphic::ColorList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -721,7 +721,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::Gradient(list) => {
+				Graphic::GradientList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -729,7 +729,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::Text(list) => {
+				Graphic::TextList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -742,65 +742,65 @@ impl Render for Graphic {
 
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
-			Graphic::Vector(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
-			Graphic::RasterCPU(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
-			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
-			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
-			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
-			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::GraphicList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::VectorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::RasterCPUList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::RasterGPUList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::ColorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::GradientList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::TextList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
-			Graphic::Vector(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
-			Graphic::RasterCPU(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
-			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
-			Graphic::Color(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
-			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
-			Graphic::Text(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::GraphicList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::VectorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::RasterCPUList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::RasterGPUList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::ColorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::GradientList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::TextList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 		}
 	}
 
 	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
-			Graphic::Vector(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
-			Graphic::RasterCPU(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
-			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
-			Graphic::Color(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
-			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
-			Graphic::Text(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::GraphicList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::VectorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::RasterCPUList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::RasterGPUList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::ColorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::GradientList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::TextList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
 		match self {
 			Graphic::None => false,
-			Graphic::Graphic(list) => list.contains_artboard(),
-			Graphic::Vector(list) => list.contains_artboard(),
-			Graphic::RasterCPU(list) => list.contains_artboard(),
-			Graphic::RasterGPU(list) => list.contains_artboard(),
-			Graphic::Color(list) => list.contains_artboard(),
-			Graphic::Gradient(list) => list.contains_artboard(),
-			Graphic::Text(list) => list.contains_artboard(),
+			Graphic::GraphicList(list) => list.contains_artboard(),
+			Graphic::VectorList(list) => list.contains_artboard(),
+			Graphic::RasterCPUList(list) => list.contains_artboard(),
+			Graphic::RasterGPUList(list) => list.contains_artboard(),
+			Graphic::ColorList(list) => list.contains_artboard(),
+			Graphic::GradientList(list) => list.contains_artboard(),
+			Graphic::TextList(list) => list.contains_artboard(),
 		}
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
-			Graphic::Vector(list) => list.new_ids_from_hash(reference),
-			Graphic::RasterCPU(_) => (),
-			Graphic::RasterGPU(_) => (),
-			Graphic::Color(_) => (),
-			Graphic::Gradient(_) => (),
-			Graphic::Text(_) => (),
+			Graphic::GraphicList(list) => list.new_ids_from_hash(reference),
+			Graphic::VectorList(list) => list.new_ids_from_hash(reference),
+			Graphic::RasterCPUList(_) => (),
+			Graphic::RasterGPUList(_) => (),
+			Graphic::ColorList(_) => (),
+			Graphic::GradientList(_) => (),
+			Graphic::TextList(_) => (),
 		}
 	}
 }
@@ -1279,7 +1279,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 		// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 		// The wrapping SVG group (above) handles the user-set opacity.
 		let mut mask_item = Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform);
-		let black_fill = List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK)));
+		let black_fill = List::new_from_element(Graphic::ColorList(List::new_from_element(Color::BLACK)));
 		mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
 		let vector_item = List::new_from_item(mask_item);
 
@@ -1361,7 +1361,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 					// Gradient should align with the fill path bbox so that a shared gradient lines up across fill and stroke.
 					// Only clipping-based paints need the stroke-inclusive bbox.
 					let paint_bounds = match list.element(0) {
-						Some(Graphic::Color(_)) | Some(Graphic::Gradient(_)) => bounds_matrix,
+						Some(Graphic::ColorList(_)) | Some(Graphic::GradientList(_)) => bounds_matrix,
 						_ => stroke_bounds_matrix,
 					};
 					list.render(defs, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
@@ -1429,7 +1429,7 @@ impl Render for List<Vector> {
 			let mut masked_by = None;
 
 			if next_clips && clip_mask_state.is_none() {
-				let masker = Graphic::Vector(List::new_from_item(Item::from_parts(vector.clone(), self.clone_item_attributes(index))));
+				let masker = Graphic::VectorList(List::new_from_item(Item::from_parts(vector.clone(), self.clone_item_attributes(index))));
 				let mask_type = if masker.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 				let uuid = generate_uuid();
 
@@ -1586,13 +1586,13 @@ impl Render for List<Vector> {
 					let Some(paint) = fill_graphic.element(paint_index) else { continue };
 					match paint {
 						Graphic::None => continue,
-						Graphic::Color(list) => {
+						Graphic::ColorList(list) => {
 							let Some(color) = list.element(0) else { continue };
 
 							let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 						}
-						Graphic::Gradient(list) => {
+						Graphic::GradientList(list) => {
 							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &multiplied_transform) else {
 								continue;
 							};
@@ -1605,7 +1605,7 @@ impl Render for List<Vector> {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 						}
-						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
+						Graphic::VectorList(_) | Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::GraphicList(_) | Graphic::TextList(_) => {
 							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 							paint.render_to_vello(scene, multiplied_transform, context, &paint_render_params);
 							scene.pop_layer();
@@ -1669,13 +1669,13 @@ impl Render for List<Vector> {
 
 					match stroke_graphic {
 						Graphic::None => continue,
-						Graphic::Color(list) => {
+						Graphic::ColorList(list) => {
 							let Some(color) = list.element(0) else { continue };
 							let brush = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
 						}
-						Graphic::Gradient(list) => {
+						Graphic::GradientList(list) => {
 							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &multiplied_transform) else {
 								continue;
 							};
@@ -1688,7 +1688,7 @@ impl Render for List<Vector> {
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 						}
-						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
+						Graphic::VectorList(_) | Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::GraphicList(_) | Graphic::TextList(_) => {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
@@ -1713,7 +1713,7 @@ impl Render for List<Vector> {
 						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 						// The outer opacity/blend layer (above) handles the user-set opacity.
 						let mut mask_item = Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform);
-						let black_fill = List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK)));
+						let black_fill = List::new_from_element(Graphic::ColorList(List::new_from_element(Color::BLACK)));
 						mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
 						let vector_list = List::new_from_item(mask_item);
 
@@ -2680,7 +2680,7 @@ pub fn text_list_bounding_box(list: &List<String>, outer_transform: DAffine2) ->
 	}
 }
 
-/// Like `List<Graphic>::thumbnail_bounding_box`, but lays out `Graphic::Text` items, which the `BoundingBox` trait reports as `None`.
+/// Like `List<Graphic>::thumbnail_bounding_box`, but lays out `Graphic::TextList` items, which the `BoundingBox` trait reports as `None`.
 /// Used for layer thumbnails so text layers (whose content is a `List<Graphic>` wrapping the text) frame their content.
 pub fn graphic_list_bounding_box(list: &List<Graphic>, transform: DAffine2) -> RenderBoundingBox {
 	let mut combined: Option<[DVec2; 2]> = None;
@@ -2690,8 +2690,8 @@ pub fn graphic_list_bounding_box(list: &List<Graphic>, transform: DAffine2) -> R
 		let item_transform = transform * list.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index);
 		let Some(graphic) = list.element(index) else { continue };
 		let bounds = match graphic {
-			Graphic::Text(text_list) => text_list_bounding_box(text_list, item_transform),
-			Graphic::Graphic(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
+			Graphic::TextList(text_list) => text_list_bounding_box(text_list, item_transform),
+			Graphic::GraphicList(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
 			other => other.thumbnail_bounding_box(item_transform, true),
 		};
 		match bounds {
