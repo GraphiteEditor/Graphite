@@ -660,7 +660,7 @@ impl Render for Graphic {
 			Graphic::RasterCPUList(list) => list.render_svg(render, render_params),
 			Graphic::RasterGPUList(_) => (),
 			Graphic::ColorList(list) => list.render_svg(render, render_params),
-			Graphic::Gradient(list) => list.render_svg(render, render_params),
+			Graphic::GradientList(list) => list.render_svg(render, render_params),
 			Graphic::Text(list) => list.render_svg(render, render_params),
 		}
 	}
@@ -673,7 +673,7 @@ impl Render for Graphic {
 			Graphic::RasterCPUList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterGPUList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::ColorList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::GradientList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Text(list) => list.render_to_vello(scene, transform, context, render_params),
 		}
 	}
@@ -721,7 +721,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::Gradient(list) => {
+				Graphic::GradientList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -747,7 +747,7 @@ impl Render for Graphic {
 			Graphic::RasterCPUList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::RasterGPUList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::ColorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
-			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::GradientList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 		}
 	}
@@ -760,7 +760,7 @@ impl Render for Graphic {
 			Graphic::RasterCPUList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::RasterGPUList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::ColorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
-			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::GradientList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::Text(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 		}
 	}
@@ -773,7 +773,7 @@ impl Render for Graphic {
 			Graphic::RasterCPUList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::RasterGPUList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::ColorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
-			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::GradientList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::Text(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 		}
 	}
@@ -786,7 +786,7 @@ impl Render for Graphic {
 			Graphic::RasterCPUList(list) => list.contains_artboard(),
 			Graphic::RasterGPUList(list) => list.contains_artboard(),
 			Graphic::ColorList(list) => list.contains_artboard(),
-			Graphic::Gradient(list) => list.contains_artboard(),
+			Graphic::GradientList(list) => list.contains_artboard(),
 			Graphic::Text(list) => list.contains_artboard(),
 		}
 	}
@@ -799,7 +799,7 @@ impl Render for Graphic {
 			Graphic::RasterCPUList(_) => (),
 			Graphic::RasterGPUList(_) => (),
 			Graphic::ColorList(_) => (),
-			Graphic::Gradient(_) => (),
+			Graphic::GradientList(_) => (),
 			Graphic::Text(_) => (),
 		}
 	}
@@ -1361,7 +1361,7 @@ fn render_vector_item_svg(list: &List<Vector>, index: usize, vector: &Vector, re
 					// Gradient should align with the fill path bbox so that a shared gradient lines up across fill and stroke.
 					// Only clipping-based paints need the stroke-inclusive bbox.
 					let paint_bounds = match list.element(0) {
-						Some(Graphic::ColorList(_)) | Some(Graphic::Gradient(_)) => bounds_matrix,
+						Some(Graphic::ColorList(_)) | Some(Graphic::GradientList(_)) => bounds_matrix,
 						_ => stroke_bounds_matrix,
 					};
 					list.render(defs, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
@@ -1592,7 +1592,7 @@ impl Render for List<Vector> {
 							let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 						}
-						Graphic::Gradient(list) => {
+						Graphic::GradientList(list) => {
 							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &multiplied_transform) else {
 								continue;
 							};
@@ -1675,7 +1675,7 @@ impl Render for List<Vector> {
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
 						}
-						Graphic::Gradient(list) => {
+						Graphic::GradientList(list) => {
 							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &multiplied_transform) else {
 								continue;
 							};

@@ -243,7 +243,7 @@ impl RenderExt for List<Graphic> {
 
 		match fill_graphic {
 			Some(Graphic::ColorList(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
-			Some(Graphic::Gradient(gradient_list)) => {
+			Some(Graphic::GradientList(gradient_list)) => {
 				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}

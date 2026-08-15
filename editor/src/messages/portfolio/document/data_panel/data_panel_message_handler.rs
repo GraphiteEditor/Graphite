@@ -583,7 +583,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterCPUList(list) => list.identifier(),
 			Self::RasterGPUList(list) => list.identifier(),
 			Self::ColorList(list) => list.identifier(),
-			Self::Gradient(list) => list.identifier(),
+			Self::GradientList(list) => list.identifier(),
 			Self::Text(list) => list.identifier(),
 		}
 	}
@@ -599,7 +599,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterCPUList(list) => list.layout_with_breadcrumb(data),
 			Self::RasterGPUList(list) => list.layout_with_breadcrumb(data),
 			Self::ColorList(list) => list.layout_with_breadcrumb(data),
-			Self::Gradient(list) => list.layout_with_breadcrumb(data),
+			Self::GradientList(list) => list.layout_with_breadcrumb(data),
 			Self::Text(list) => list.layout_with_breadcrumb(data),
 		}
 	}

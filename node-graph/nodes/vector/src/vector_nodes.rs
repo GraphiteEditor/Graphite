@@ -297,7 +297,7 @@ where
 
 	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
 	for graphic in fill.iter_element_values_mut() {
-		let Graphic::Gradient(gradient) = graphic else { continue };
+		let Graphic::GradientList(gradient) = graphic else { continue };
 
 		if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
@@ -2594,7 +2594,7 @@ async fn morph<I: IntoGraphicList>(
 			} else {
 				gradient_list.push(Item::new_from_element(stops));
 			}
-			Graphic::Gradient(gradient_list)
+			Graphic::GradientList(gradient_list)
 		};
 
 		let graphic = match (a.element(0), b.element(0)) {
@@ -2602,17 +2602,17 @@ async fn morph<I: IntoGraphicList>(
 				.element(0)
 				.zip(color_list_b.element(0))
 				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
-			(Some(Graphic::ColorList(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
+			(Some(Graphic::ColorList(color_list_a)), Some(Graphic::GradientList(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
 				let solid_to_gradient = stops_b.map_colors(|_| *color_a);
 				let stops = solid_to_gradient.lerp(stops_b, time);
 				gradient_with_stops(gradient_list_b.clone(), stops)
 			}),
-			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::ColorList(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
+			(Some(Graphic::GradientList(gradient_list_a)), Some(Graphic::ColorList(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
 				let gradient_to_solid = stops_a.map_colors(|_| *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
 				gradient_with_stops(gradient_list_a.clone(), stops)
 			}),
-			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Gradient(gradient_list_b))) => gradient_list_a.element(0).zip(gradient_list_b.element(0)).map(|(stops_a, stops_b)| {
+			(Some(Graphic::GradientList(gradient_list_a)), Some(Graphic::GradientList(gradient_list_b))) => gradient_list_a.element(0).zip(gradient_list_b.element(0)).map(|(stops_a, stops_b)| {
 				let stops = stops_a.lerp(stops_b, time);
 				let metadata_source = if time < 0.5 { gradient_list_a } else { gradient_list_b };
 
