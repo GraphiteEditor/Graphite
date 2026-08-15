@@ -569,6 +569,7 @@ mod test {
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
+		core_types::record::stack::reserve(layout.frame_bytes());
 		let GPoll::Final(value) = edge.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -617,6 +618,7 @@ mod test {
 			.unwrap()
 			.downcast_record::<graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>>()
 			.unwrap();
+		core_types::record::stack::reserve(executor.tree().stack_need());
 		let result = edge.eval(&ctx);
 		assert!(matches!(result, GPoll::Final(_)), "the flipped clone must evaluate over record wires, got a non-final poll");
 	}
@@ -646,6 +648,7 @@ mod test {
 			.unwrap()
 			.downcast_record::<graphene_std::list::List<graphene_std::raster::color::Color>>()
 			.unwrap();
+		core_types::record::stack::reserve(executor.tree().stack_need());
 		let result = edge.eval(&ctx);
 		assert!(matches!(result, GPoll::Final(_)), "the palette must evaluate through its record wires, got a non-final poll");
 	}
