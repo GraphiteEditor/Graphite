@@ -1163,6 +1163,7 @@ impl NodeNetwork {
 				inputs: Vec::new(),
 				output: node_id,
 				nodes,
+				..Default::default()
 			}]
 			.into_iter();
 		}
@@ -1179,6 +1180,7 @@ impl NodeNetwork {
 						// inputs: self.imports.clone(),
 						output: node_id,
 						nodes: nodes.clone(),
+						..Default::default()
 					})
 				} else {
 					None
@@ -1443,6 +1445,7 @@ mod test {
 			]
 			.into_iter()
 			.collect(),
+			..Default::default()
 		};
 		let network = flat_network();
 		let mut resolved_network = network.into_proto_networks().collect::<Vec<_>>();

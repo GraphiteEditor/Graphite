@@ -278,29 +278,21 @@ pub struct BorrowTree {
 impl BorrowTree {
 	pub fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, GraphErrors> {
 		let mut nodes = BorrowTree::default();
-		let output = proto_network.output;
-		let mut deps = HashMap::new();
+		let stack_need = proto_network.stack_need;
 		for (id, node) in proto_network.nodes {
-			if let ConstructionArgs::Nodes(ids) = &node.construction_args {
-				deps.insert(id, ids.clone());
-			}
 			nodes.push_node(id, node, typing_context)?
 		}
-		nodes.stack_need = stack_peak(output, &deps, &|id| nodes.frame_bytes(id));
+		nodes.stack_need = stack_need;
 		Ok(nodes)
 	}
 
 	/// Pushes new nodes into the tree and return orphaned nodes
 	pub fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
-		let output = proto_network.output;
+		let stack_need = proto_network.stack_need;
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
 		let mut new_nodes: Vec<_> = Vec::new();
-		let mut deps = HashMap::new();
 		// TODO: Problem: When a passthrough node is connected directly to an export the first input to the passthrough node is not added to the proto network, while the second input is. This means the primary input does not have a type.
 		for (id, node) in proto_network.nodes {
-			if let ConstructionArgs::Nodes(ids) = &node.construction_args {
-				deps.insert(id, ids.clone());
-			}
 			if !self.nodes.contains_key(&id) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 				self.push_node(id, node, typing_context)?;
@@ -309,7 +301,7 @@ impl BorrowTree {
 			}
 			old_nodes.remove(&id);
 		}
-		self.stack_need = stack_peak(output, &deps, &|id| self.frame_bytes(id));
+		self.stack_need = stack_need;
 		Ok((new_nodes, old_nodes))
 	}
 
@@ -497,37 +489,10 @@ impl BorrowTree {
 		&self.source_map
 	}
 
-	/// The record-stack reserve of an evaluation, folded from the graph at
-	/// construction (see [`stack_peak`]).
+	/// The record-stack reserve of an evaluation, folded from the resolved layouts by the layout pass.
 	pub fn stack_need(&self) -> usize {
 		self.stack_need
 	}
-
-	fn frame_bytes(&self, id: NodeId) -> usize {
-		self.nodes.get(&id).map_or(0, |(handle, _)| handle.layout().frame_bytes())
-	}
-}
-
-/// Peak record-stack bytes for evaluating `output`'s cone. A node holds its
-/// inputs' frames until it returns, so its need is its own frame plus every
-/// input's frame plus the deepest input's peak. Memoized over shared cones.
-fn stack_peak(output: NodeId, deps: &HashMap<NodeId, Vec<NodeId>>, frame_bytes: &dyn Fn(NodeId) -> usize) -> usize {
-	fn peak(id: NodeId, deps: &HashMap<NodeId, Vec<NodeId>>, frame_bytes: &dyn Fn(NodeId) -> usize, memo: &mut HashMap<NodeId, usize>) -> usize {
-		if let Some(&cached) = memo.get(&id) {
-			return cached;
-		}
-		let mut held = 0;
-		let mut deepest = 0;
-		for &child in deps.get(&id).map_or(&[][..], Vec::as_slice) {
-			let child_frame = frame_bytes(child);
-			held += child_frame;
-			deepest = deepest.max(peak(child, deps, frame_bytes, memo).saturating_sub(child_frame));
-		}
-		let need = frame_bytes(id) + held + deepest;
-		memo.insert(id, need);
-		need
-	}
-	peak(output, deps, frame_bytes, &mut HashMap::new())
 }
 
 #[cfg(test)]
@@ -544,19 +509,6 @@ mod test {
 		fn spawn(&self, _task: SourceFuture) -> bool {
 			false
 		}
-	}
-
-	#[test]
-	fn stack_peak_folds_a_diamond_chain() {
-		// S3 <- S2 <- S1 <- S0, each consuming the node below on both inputs.
-		let deps = HashMap::from([
-			(NodeId(1), vec![NodeId(0), NodeId(0)]),
-			(NodeId(2), vec![NodeId(1), NodeId(1)]),
-			(NodeId(3), vec![NodeId(2), NodeId(2)]),
-		]);
-		let frame = |_: NodeId| 1;
-		assert_eq!(stack_peak(NodeId(0), &deps, &frame), 1);
-		assert_eq!(stack_peak(NodeId(3), &deps, &frame), 7);
 	}
 
 	#[test]
@@ -610,7 +562,7 @@ mod test {
 		let context = TypingContext::default();
 		tree.push_node(NodeId(0), val_1_protonode, &context).unwrap();
 		let handle = tree.get(NodeId(0)).unwrap();
-		let layout = handle.layout().unwrap().clone();
+		let layout = handle.layout().clone();
 		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
 
 		let arena = Arena::new(64).unwrap();
@@ -621,6 +573,12 @@ mod test {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { core_types::record::read_element::<u32>(layout.rec(&value)) }, 2);
+	}
+
+	fn build_executor(mut network: ProtoNetwork) -> DynamicExecutor {
+		network.resolve_types(&node_registry::NODE_REGISTRY).unwrap();
+		network.compute_layouts();
+		DynamicExecutor::new(network).unwrap()
 	}
 
 	fn proto_node(identifier: &'static str, args: Vec<NodeId>) -> ProtoNode {
@@ -639,6 +597,7 @@ mod test {
 	fn the_clone_node_clones_the_element_out_of_its_record_wire() {
 		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
 		let network = ProtoNetwork {
+			stack_need: 0,
 			inputs: vec![],
 			output: NodeId(1),
 			nodes: vec![
@@ -647,7 +606,7 @@ mod test {
 			],
 		};
 
-		let executor = DynamicExecutor::new(network).unwrap();
+		let executor = build_executor(network);
 		let arena = Arena::new(1 << 20).unwrap();
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
@@ -666,6 +625,7 @@ mod test {
 	fn a_flipped_ref_parameter_reads_the_borrow_from_its_record_wire() {
 		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
 		let network = ProtoNetwork {
+			stack_need: 0,
 			inputs: vec![],
 			output: NodeId(2),
 			nodes: vec![
@@ -675,7 +635,7 @@ mod test {
 			],
 		};
 
-		let executor = DynamicExecutor::new(network).unwrap();
+		let executor = build_executor(network);
 		let arena = Arena::new(1 << 12).unwrap();
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
@@ -693,15 +653,16 @@ mod test {
 	#[test]
 	fn a_value_edge_is_a_record_wire_end_to_end() {
 		let network = ProtoNetwork {
+			stack_need: 0,
 			inputs: vec![],
 			output: NodeId(0),
 			nodes: vec![(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![]))],
 		};
 
-		let executor = DynamicExecutor::new(network).unwrap();
+		let executor = build_executor(network);
 		let value = executor.tree().get(NodeId(0)).unwrap();
 		assert_eq!(value.ty(), &core_types::registry::record_edge_type::<f64>());
-		assert!(value.layout().is_some());
+		assert_eq!(value.layout().depth, 0);
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
 	}
 
@@ -710,12 +671,13 @@ mod test {
 		let mut monitor = proto_node("graphene_core::memo::MonitorNode", vec![NodeId(0)]);
 		monitor.original_location.path = Some(vec![NodeId(9)]);
 		let network = ProtoNetwork {
+			stack_need: 0,
 			inputs: vec![],
 			output: NodeId(1),
 			nodes: vec![(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])), (NodeId(1), monitor)],
 		};
 
-		let executor = DynamicExecutor::new(network).unwrap();
+		let executor = build_executor(network);
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
 		let element = executor.introspect(&[NodeId(9)]).unwrap();
 		let element = element.downcast_ref::<f64>().expect("a record capture materializes to its element");
@@ -725,6 +687,7 @@ mod test {
 	#[test]
 	fn a_memoize_row_wires_generically_and_replays_over_record_wires() {
 		let network = ProtoNetwork {
+			stack_need: 0,
 			inputs: vec![],
 			output: NodeId(1),
 			nodes: vec![
@@ -733,7 +696,7 @@ mod test {
 			],
 		};
 
-		let executor = DynamicExecutor::new(network).unwrap();
+		let executor = build_executor(network);
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::String(String::from("cached"))));
 		assert_eq!(
 			(&executor).execute(()).unwrap(),
@@ -750,6 +713,7 @@ mod test {
 	#[test]
 	fn a_context_modification_row_wires_over_a_value_wire() {
 		let network = ProtoNetwork {
+			stack_need: 0,
 			inputs: vec![],
 			output: NodeId(2),
 			nodes: vec![
@@ -759,13 +723,14 @@ mod test {
 			],
 		};
 
-		let executor = DynamicExecutor::new(network).unwrap();
+		let executor = build_executor(network);
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
 	}
 
 	#[test]
 	fn nested_context_modifications_forward_the_layout() {
 		let network = ProtoNetwork {
+			stack_need: 0,
 			inputs: vec![],
 			output: NodeId(4),
 			nodes: vec![
@@ -777,13 +742,14 @@ mod test {
 			],
 		};
 
-		let executor = DynamicExecutor::new(network).unwrap();
+		let executor = build_executor(network);
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
 	}
 
 	#[test]
 	fn stacked_frame_memos_replay_over_record_wires() {
 		let network = ProtoNetwork {
+			stack_need: 0,
 			inputs: vec![],
 			output: NodeId(2),
 			nodes: vec![
@@ -793,7 +759,7 @@ mod test {
 			],
 		};
 
-		let executor = DynamicExecutor::new(network).unwrap();
+		let executor = build_executor(network);
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::String("memoized".to_string())));
 		assert_eq!(
 			(&executor).execute(()).unwrap(),

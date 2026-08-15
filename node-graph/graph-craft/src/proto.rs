@@ -19,6 +19,9 @@ pub struct ProtoNetwork {
 	pub output: NodeId,
 	/// A list of nodes stored in a Vec to allow for sorting.
 	pub nodes: Vec<(NodeId, ProtoNode)>,
+	/// Peak record-stack bytes for an evaluation, folded from the resolved layouts by [`compute_layouts`](ProtoNetwork::compute_layouts).
+	#[serde(default)]
+	pub stack_need: usize,
 }
 
 impl core::fmt::Display for ProtoNetwork {
@@ -249,6 +252,7 @@ impl ProtoNetwork {
 			inputs: vec![node_id],
 			output: node_id,
 			nodes: vec![(node_id, proto_node.clone())],
+			..Default::default()
 		};
 		(proto_network, node_id, proto_node)
 	}
@@ -390,6 +394,34 @@ impl ProtoNetwork {
 			};
 			self.nodes[index].1.resolved.layout = layout;
 		}
+		self.stack_need = self.fold_stack_peak();
+	}
+
+	/// Peak record-stack bytes for evaluating [`output`](Self::output)'s cone. A node holds its
+	/// inputs' frames until it returns, so its need is its own frame plus every input's frame plus
+	/// the deepest input's peak. Memoized over shared cones. Runs while node IDs are still indices.
+	fn fold_stack_peak(&self) -> usize {
+		fn peak(index: usize, network: &ProtoNetwork, memo: &mut [Option<usize>]) -> usize {
+			if let Some(cached) = memo[index] {
+				return cached;
+			}
+			let frame = |i: usize| network.nodes[i].1.resolved.layout.as_ref().map_or(0, |resolved| resolved.frame_bytes);
+			let mut held = 0;
+			let mut deepest = 0;
+			if let ConstructionArgs::Nodes(inputs) = &network.nodes[index].1.construction_args {
+				for input in inputs {
+					let child = input.0 as usize;
+					let child_frame = frame(child);
+					held += child_frame;
+					deepest = deepest.max(peak(child, network, memo).saturating_sub(child_frame));
+				}
+			}
+			let need = frame(index) + held + deepest;
+			memo[index] = Some(need);
+			need
+		}
+		let mut memo = vec![None; self.nodes.len()];
+		peak(self.output.0 as usize, self, &mut memo)
 	}
 
 	/// Inserts context nullification nodes to optimize caching.
@@ -1016,6 +1048,37 @@ mod test {
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 
 	#[test]
+	fn stack_peak_folds_a_diamond_chain() {
+		// S3 <- S2 <- S1 <- S0, each consuming the node below on both inputs; every frame is one byte.
+		let node = |index: u64| {
+			let args = if index == 0 {
+				ConstructionArgs::Value(value::TaggedValue::U32(0).into())
+			} else {
+				ConstructionArgs::Nodes(vec![NodeId(index - 1), NodeId(index - 1)])
+			};
+			ProtoNode {
+				construction_args: args,
+				resolved: Resolved {
+					layout: Some(core_types::record::RecordLayout {
+						frame_bytes: 1,
+						..Default::default()
+					}),
+					..Default::default()
+				},
+				..Default::default()
+			}
+		};
+		let mut network = ProtoNetwork {
+			output: NodeId(3),
+			nodes: (0..4).map(|index| (NodeId(index), node(index))).collect(),
+			..Default::default()
+		};
+		assert_eq!(network.fold_stack_peak(), 7);
+		network.output = NodeId(0);
+		assert_eq!(network.fold_stack_peak(), 1);
+	}
+
+	#[test]
 	fn topological_sort() {
 		let construction_network = test_network();
 		let (sorted, _) = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
@@ -1205,6 +1268,7 @@ mod test {
 			]
 			.into_iter()
 			.collect(),
+			..Default::default()
 		}
 	}
 
@@ -1243,6 +1307,7 @@ mod test {
 			]
 			.into_iter()
 			.collect(),
+			..Default::default()
 		}
 	}
 
@@ -1272,6 +1337,7 @@ mod test {
 			]
 			.into_iter()
 			.collect(),
+			..Default::default()
 		}
 	}
 }
