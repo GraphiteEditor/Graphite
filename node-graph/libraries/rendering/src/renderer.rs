@@ -658,7 +658,7 @@ impl Render for Graphic {
 			Graphic::GraphicList(list) => list.render_svg(render, render_params),
 			Graphic::VectorList(list) => list.render_svg(render, render_params),
 			Graphic::RasterCPUList(list) => list.render_svg(render, render_params),
-			Graphic::RasterGPU(_) => (),
+			Graphic::RasterGPUList(_) => (),
 			Graphic::Color(list) => list.render_svg(render, render_params),
 			Graphic::Gradient(list) => list.render_svg(render, render_params),
 			Graphic::Text(list) => list.render_svg(render, render_params),
@@ -671,7 +671,7 @@ impl Render for Graphic {
 			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::VectorList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterCPUList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterGPU(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterGPUList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Text(list) => list.render_to_vello(scene, transform, context, render_params),
@@ -705,7 +705,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::RasterGPU(list) => {
+				Graphic::RasterGPUList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -745,7 +745,7 @@ impl Render for Graphic {
 			Graphic::GraphicList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::VectorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::RasterCPUList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
-			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::RasterGPUList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
@@ -758,7 +758,7 @@ impl Render for Graphic {
 			Graphic::GraphicList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::VectorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::RasterCPUList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
-			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::RasterGPUList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::Color(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::Text(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
@@ -771,7 +771,7 @@ impl Render for Graphic {
 			Graphic::GraphicList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::VectorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::RasterCPUList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
-			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::RasterGPUList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::Color(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::Text(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
@@ -784,7 +784,7 @@ impl Render for Graphic {
 			Graphic::GraphicList(list) => list.contains_artboard(),
 			Graphic::VectorList(list) => list.contains_artboard(),
 			Graphic::RasterCPUList(list) => list.contains_artboard(),
-			Graphic::RasterGPU(list) => list.contains_artboard(),
+			Graphic::RasterGPUList(list) => list.contains_artboard(),
 			Graphic::Color(list) => list.contains_artboard(),
 			Graphic::Gradient(list) => list.contains_artboard(),
 			Graphic::Text(list) => list.contains_artboard(),
@@ -797,7 +797,7 @@ impl Render for Graphic {
 			Graphic::GraphicList(list) => list.new_ids_from_hash(reference),
 			Graphic::VectorList(list) => list.new_ids_from_hash(reference),
 			Graphic::RasterCPUList(_) => (),
-			Graphic::RasterGPU(_) => (),
+			Graphic::RasterGPUList(_) => (),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(_) => (),
 			Graphic::Text(_) => (),
@@ -1605,7 +1605,7 @@ impl Render for List<Vector> {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 						}
-						Graphic::VectorList(_) | Graphic::RasterCPUList(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
+						Graphic::VectorList(_) | Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
 							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 							paint.render_to_vello(scene, multiplied_transform, context, &paint_render_params);
 							scene.pop_layer();
@@ -1688,7 +1688,7 @@ impl Render for List<Vector> {
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 						}
-						Graphic::VectorList(_) | Graphic::RasterCPUList(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
+						Graphic::VectorList(_) | Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
