@@ -194,22 +194,20 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::to_graphic::IDENTIFIER,
+		node: graphene_std::graphic::into_group::IDENTIFIER,
 		aliases: &[
-			"graphene_core::ToGraphicGroupNode",
-			"graphene_core::graphic_element::ToGroupNode",
-			"graphene_core::graphic_types::ToGroupNode",
-			"graphene_core::graphic::ToGraphicNode",
-		],
-	},
-	NodeReplacement {
-		node: graphene_std::graphic::wrap_graphic::IDENTIFIER,
-		aliases: &[
-			// Converted from "To Element"
+			// Converted from "To Element", then "Wrap Graphic"
 			"graphene_core::ToGraphicElementNode",
 			"graphene_core::graphic_element::ToElementNode",
 			"graphene_core::graphic_types::ToElementNode",
 			"graphene_core::graphic::WrapGraphicNode",
+			"graphic_nodes::graphic::WrapGraphicNode",
+			// Converted from "To Graphic", whose grouping of non-graphical content this node now carries alone
+			"graphene_core::ToGraphicGroupNode",
+			"graphene_core::graphic_element::ToGroupNode",
+			"graphene_core::graphic_types::ToGroupNode",
+			"graphene_core::graphic::ToGraphicNode",
+			"graphic_nodes::graphic::ToGraphicNode",
 		],
 	},
 	// ================================
@@ -1068,6 +1066,12 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 		|| document_serialized_content.contains("graphene_core::graphic::graphic::SourceNodeIdNode")
 		|| document_serialized_content.contains("graphene_core::graphic::SourceNodeIdNode")
 	{
+		return true;
+	}
+
+	// Every Merge layer network is built from the two nodes that became "As Graphic" and "Into Group", so their definitions
+	// are reset to pick up the current plumbing instead of the alias migration meant for standalone copies of those nodes.
+	if document_serialized_content.contains("ToGraphicNode") || document_serialized_content.contains("WrapGraphicNode") {
 		return true;
 	}
 

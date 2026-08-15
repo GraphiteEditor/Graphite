@@ -927,10 +927,10 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	base
 }
 
-/// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.
+/// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
 /// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"))]
-pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
+pub async fn into_group<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
@@ -948,23 +948,11 @@ pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	Item::new_from_element(content.into())
 }
 
-/// Converts a list of graphical content into a `Graphic[]` by placing it into an element of a new wrapper `Graphic[]`.
-/// If it is already a `Graphic[]`, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
+/// Type-asserts a value to be graphical content, converting each item of other content types into its matching form.
+/// Use the 'Into Group' node instead to collect the content into a single group.
 #[node_macro::node(category("General"))]
-pub async fn to_graphic<T: IntoGraphicList>(
-	_: impl Ctx,
-	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<Gradient>,
-		List<String>,
-	)]
-	content: T,
-) -> List<Graphic> {
-	content.into_graphic_list()
+pub async fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
+	value
 }
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
