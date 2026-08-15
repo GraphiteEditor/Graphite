@@ -17,6 +17,7 @@ mod editor_commands {
 	use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 	use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 	use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
+	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 	use editor::messages::portfolio::utility_types::PanelGroupId;
@@ -390,9 +391,9 @@ mod editor_commands {
 	}
 
 	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker />` opens).
-	fn open_color_picker(initial_value: FillChoiceUI, allow_none: bool, disabled: bool) -> Message {
+	fn open_color_picker(initial_value: FillChoiceSRGBA8, allow_none: bool, disabled: bool) -> Message {
 		ColorPickerMessage::Open {
-			initial_value: FillChoice::from(&initial_value),
+			initial_value: FillChoice::from(&initial_value.0),
 			allow_none,
 			disabled,
 		}
@@ -515,11 +516,11 @@ mod editor_commands {
 	}
 
 	/// Creates a new document node in the node graph
-	fn create_node(node_type: Any, x: i32, y: i32) -> Message {
+	fn create_node(node_type: String, x: i32, y: i32) -> Message {
 		let id = NodeId::new();
 		NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(id),
-			node_type: node_type.cast(),
+			node_type: DefinitionIdentifier::from_serialized(&node_type),
 			xy: Some((x / 24, y / 24)),
 			add_transaction: true,
 		}
@@ -659,6 +660,17 @@ mod editor_commands {
 	}
 }
 
+#[cfg(feature = "editor")]
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(from_wasm_abi)]
+pub struct FillChoiceSRGBA8(
+	/// Concrete wasm boundary form of the generic [`FillChoice`], since a `#[wasm_bindgen]` argument's TS declaration names its type without the generic's argument.
+	#[tsify(type = "FillChoice<SRGBA8>")]
+	pub graphene_std::vector::style::FillChoice<graphene_std::color::SRGBA8>,
+);
+#[cfg(not(feature = "editor"))]
+pub type FillChoiceSRGBA8 = Any;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
 pub struct Any(#[tsify(type = "any")] serde_json::Value);
@@ -685,5 +697,4 @@ editor_proxy_types! {
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
 	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;
 	SRGBA8 = graphene_std::color::SRGBA8;
-	FillChoiceUI = graphene_std::vector::style::FillChoiceUI;
 }

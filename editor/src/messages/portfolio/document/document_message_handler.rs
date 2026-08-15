@@ -38,7 +38,7 @@ use graph_craft::application_io::wgpu_available;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graph_craft::list;
-use graphene_std::graphic::is_paint_present;
+use graphene_std::Cover;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
@@ -1507,9 +1507,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_vector_data(layer_vector_data);
 			}
-			DocumentMessage::UpdateFillAttributes { fill_attributes } => {
+			DocumentMessage::UpdateAppearanceAttributes { appearance_attributes } => {
 				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
-				let layer_fill_attributes = fill_attributes
+				let layer_appearance_attributes = appearance_attributes
 					.into_iter()
 					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
 					.filter_map(|(node_id, attrs)| {
@@ -1519,21 +1519,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						})
 					})
 					.collect();
-				self.network_interface.update_fill_attributes(layer_fill_attributes);
-			}
-			DocumentMessage::UpdateStrokeAttributes { stroke_attributes } => {
-				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
-				let layer_stroke_attributes = stroke_attributes
-					.into_iter()
-					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
-					.filter_map(|(node_id, attrs)| {
-						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
-							(layer, attrs)
-						})
-					})
-					.collect();
-				self.network_interface.update_stroke_attributes(layer_stroke_attributes);
+				self.network_interface.update_appearance_attributes(layer_appearance_attributes);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -1717,7 +1703,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					self.network_interface.all_nodes_bounding_box(&self.breadcrumb_network_path).cloned()
+					self.network_interface.all_nodes_bounding_box(&self.breadcrumb_network_path)
 				} else {
 					self.network_interface.document_bounds_document_space(true)
 				};
@@ -2419,22 +2405,26 @@ impl DocumentMessageHandler {
 		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, true, responses);
 	}
 
-	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.history.pop_undo()?;
-
+	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
+	fn install_history_snapshot(&mut self, mut network_interface: NodeNetworkInterface, viewport: &ViewportMessageHandler) -> NodeNetworkInterface {
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
 		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
 
-		//Update the metadata transform based on document PTZ
+		// Update the metadata transform based on document PTZ
 		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
 		network_interface.set_document_to_viewport_transform(transform);
 
 		// Ensure document structure is loaded so that updating the selected nodes has the correct metadata
 		network_interface.load_structure();
 
-		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
+		std::mem::replace(&mut self.network_interface, network_interface)
+	}
+
+	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
+		// If there is no history return and don't broadcast SelectionChanged
+		let network_interface = self.history.pop_undo()?;
+		let previous_network = self.install_history_snapshot(network_interface, viewport);
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -2459,17 +2449,9 @@ impl DocumentMessageHandler {
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.history.pop_redo()?;
+		let network_interface = self.history.pop_redo()?;
+		let previous_network = self.install_history_snapshot(network_interface, viewport);
 
-		// Set the previous network navigation metadata to the current navigation metadata
-		network_interface.copy_all_navigation_metadata(&self.network_interface);
-		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
-
-		//Update the metadata transform based on document PTZ
-		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		network_interface.set_document_to_viewport_transform(transform);
-
-		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
@@ -2622,7 +2604,11 @@ impl DocumentMessageHandler {
 
 				// If there's already a boolean operation on the selected layer, update it with the new operation
 				if let (Some(upstream_boolean_op), Some(only_selected_layer)) = (upstream_boolean_op, only_selected_layer) {
-					network_interface.set_input(&InputConnector::node(upstream_boolean_op, 1), NodeInput::value(TaggedValue::BooleanOperation(operation), false), &[]);
+					network_interface.set_input(
+						&InputConnector::node(upstream_boolean_op, graphene_std::path_bool_nodes::boolean_operation::OperationInput),
+						NodeInput::value(TaggedValue::BooleanOperation(operation), false),
+						&[],
+					);
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 
@@ -2768,20 +2754,19 @@ impl DocumentMessageHandler {
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
 		for layer in selected_layers {
-			let Some(vector_data) = self.network_interface.document_metadata().layer_vector_data.get(&layer) else {
+			if !self.network_interface.document_metadata().layer_vector_data.contains_key(&layer) {
 				resulting_layers.push(layer.to_node());
 				continue;
-			};
-			let stroke = vector_data.stroke.as_ref();
+			}
 
-			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
-			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
+			let appearance = self.network_interface.document_metadata().layer_appearance_attributes.get(&layer);
 
-			let has_fill = fill_graphic_list.is_some_and(|list| is_paint_present(list));
-			// `Vector.stroke` captures stroke geometry, even with weight 0 or transparent paint.
-			// So stroke visibility must be checked from `ATTR_STROKE`, the paint source of truth.
-			let stroke_visible = stroke_graphic_list.is_some_and(|list| list.element(0).is_some_and(|g| !g.is_fully_transparent()));
-			let has_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
+			let has_fill = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
+			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
+			let has_stroke = appearance.is_some_and(|appearance| {
+				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
+					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_fully_transparent())
+			});
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
 			if !has_stroke {
@@ -2823,7 +2808,8 @@ impl DocumentMessageHandler {
 				self.network_interface.insert_node(new_index_id, new_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);
 
-				self.network_interface.create_wire(&OutputConnector::node(solidify_id, 0), &InputConnector::node(new_index_id, 0), &[]);
+				self.network_interface
+					.create_wire(&OutputConnector::primary_output(solidify_id), &InputConnector::primary_input(new_index_id), &[]);
 
 				resulting_layers.push(layer.to_node());
 				resulting_layers.push(new_layer.to_node());
@@ -3413,6 +3399,11 @@ impl DocumentMessageHandler {
 		let selected_nodes = self.network_interface.selected_nodes();
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
 
+		// A layer whose chain cannot carry blending nodes has nowhere to put the value, so it disqualifies the whole selection
+		let all_layers_support_blending = selected_nodes
+			.selected_layers_except_artboards(&self.network_interface)
+			.all(|layer| self.network_interface.layer_hosts_blending_nodes(&layer.to_node(), &[]));
+
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
 		let mut blending_options = selected_layers_except_artboards.map(|layer| {
 			(
@@ -3424,8 +3415,8 @@ impl DocumentMessageHandler {
 		let first_blending_options = blending_options.next();
 		let result_blending_options = blending_options;
 
-		// If there are no selected layers, disable the opacity and blend mode widgets.
-		let disabled = first_blending_options.is_none();
+		// If there are no selected layers, or any of them cannot host the nodes, disable the opacity and blend mode widgets.
+		let disabled = first_blending_options.is_none() || !all_layers_support_blending;
 
 		// Amongst the selected layers, check if the opacities and blend modes are identical across all layers.
 		// The result is setting `option` and `blend_mode` to Some value if all their values are identical, or None if they are not.
@@ -3588,7 +3579,7 @@ impl DocumentMessageHandler {
 					// Showing only compatible types for the layer based on the output type of the node upstream from its horizontal input
 					let compatible_type = selected_layer.and_then(|layer| {
 						self.network_interface
-							.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[])
+							.upstream_output_connector(&InputConnector::layer_secondary_input(layer.to_node()), &[])
 							.and_then(|upstream_output| self.network_interface.output_type(&upstream_output, &[]).add_node_string())
 					});
 
@@ -4340,13 +4331,18 @@ mod document_message_handler_tests {
 
 		let instrumented = editor.eval_graph().await.unwrap();
 
+		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass vacuously
 		let base_lengths: Vec<usize> = instrumented
-			.grab_all_input::<graphene_std::graphic::extend::BaseInput<graphene_std::Graphic>>(&editor.runtime)
+			.grab_all_input::<graphene_std::graphic::extend::BaseInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
 			.map(|base| base.len())
 			.collect();
+		assert!(!base_lengths.is_empty(), "Instrumentation should have recorded at least one stack base");
 		assert!(base_lengths.iter().all(|&len| len == 0), "Every stack base should be empty, found lengths {base_lengths:?}");
 
-		let news: Vec<graphene_std::list::List<graphene_std::Graphic>> = instrumented.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Graphic>>(&editor.runtime).collect();
+		let news: Vec<graphene_std::list::List<graphene_std::Graphic>> = instrumented
+			.grab_all_input::<graphene_std::graphic::extend::NewInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
+			.collect();
+		assert!(!news.is_empty(), "Instrumentation should have recorded at least one stacked element list");
 		let phantom_count = news
 			.iter()
 			.flat_map(|new| new.iter_element_values())

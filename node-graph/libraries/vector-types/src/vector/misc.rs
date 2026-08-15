@@ -77,21 +77,6 @@ impl BoxCorners {
 	}
 }
 
-// `List<f64>` is a runtime-only wire type, so serialize the corners as their bare values to keep documents stable
-#[cfg(feature = "serde")]
-impl serde::Serialize for BoxCorners {
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		serializer.collect_seq(self.0.iter_element_values())
-	}
-}
-
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for BoxCorners {
-	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		Ok(Self::from(<Vec<f64> as serde::Deserialize>::deserialize(deserializer)?))
-	}
-}
-
 impl From<f64> for BoxCorners {
 	fn from(value: f64) -> Self {
 		Self(List::new_from_element(value))
@@ -106,12 +91,7 @@ impl From<Vec<f64>> for BoxCorners {
 
 impl From<&str> for BoxCorners {
 	fn from(text: &str) -> Self {
-		Self::from(
-			text.split([',', ' '])
-				.filter(|piece| !piece.is_empty())
-				.filter_map(|piece| piece.parse::<f64>().ok())
-				.collect::<Vec<f64>>(),
-		)
+		Self::from(core_types::misc::parse_f64_list(text))
 	}
 }
 
@@ -175,9 +155,12 @@ pub enum GridType {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum ArcType {
+	/// Leaves the two ends of the arc unconnected.
 	#[default]
 	Open = 0,
+	/// Connects the two ends of the arc with a straight line.
 	Closed,
+	/// Connects the two ends of the arc to its center, forming a wedge.
 	PieSlice,
 }
 
@@ -580,9 +563,9 @@ pub struct HandleId {
 impl std::fmt::Display for HandleId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self.ty {
-			// I haven't checked if "out" and "in" are reversed, or are accurate translations of the "primary" and "end" terms used in the `HandleType` enum, so this naming is an assumption.
-			HandleType::Primary => write!(f, "{} out", self.segment.inner()),
-			HandleType::End => write!(f, "{} in", self.segment.inner()),
+			// The primary handle sits at the segment's start anchor and the end handle at its end anchor
+			HandleType::Primary => write!(f, "Segment {} (start handle)", self.segment.inner()),
+			HandleType::End => write!(f, "Segment {} (end handle)", self.segment.inner()),
 		}
 	}
 }

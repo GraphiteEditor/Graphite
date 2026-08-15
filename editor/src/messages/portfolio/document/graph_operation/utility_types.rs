@@ -1,23 +1,26 @@
 use super::transform_utils;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{
+	ARTBOARD_DIMENSIONS_INPUT_INDEX, ARTBOARD_LOCATION_INPUT_INDEX, DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
+};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input};
+use crate::messages::tool::common_functionality::graph_modification_utils::{
+	ReplaceablePaintChain, get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
+};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::brush::brush_stroke::BrushStroke;
-use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
-use graphene_std::vector::{Gradient, PointId, Vector, VectorModification, VectorModificationType};
-use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
+use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
+use graphene_std::vector::{Gradient, GradientRamp, PointId, Vector, VectorModification, VectorModificationType};
+use graphene_std::{Artboard, Color, Graphic};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -56,72 +59,6 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut document = Self::new(network_interface, responses);
 		document.layer_node = Some(layer);
 		Some(document)
-	}
-
-	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node InputConnector and pre node OutputConnector
-	/// Non layer nodes directly upstream of a layer are treated as part of that layer. See insert_index == 2 in the diagram
-	///       -----> Post node
-	///      |      if insert_index == 0, return (Post node, Some(Layer1))
-	/// -> Layer1
-	///      ↑      if insert_index == 1, return (Layer1, Some(Layer2))
-	/// -> Layer2
-	///      ↑
-	/// -> NonLayerNode
-	///      ↑      if insert_index == 2, return (NonLayerNode, Some(Layer3))
-	/// -> Layer3
-	///             if insert_index == 3, return (Layer3, None)
-	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> InputConnector {
-		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
-			InputConnector::Export(0)
-		} else {
-			InputConnector::node(parent.to_node(), 1)
-		};
-		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
-		let mut current_index = 0;
-
-		// Set the post node to the layer node at insert_index
-		loop {
-			if current_index == insert_index {
-				break;
-			}
-			let next_node_in_stack_id = network_interface
-				.input_from_connector(&post_node_input_connector, &[])
-				.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
-
-			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
-				// Only increment index for layer nodes
-				if network_interface.is_layer(next_node_in_stack_id, &[]) {
-					current_index += 1;
-				}
-				// Input as a sibling to the Layer node above
-				post_node_input_connector = InputConnector::node(*next_node_in_stack_id, 0);
-			} else {
-				log::error!("Error getting post node: insert_index out of bounds");
-				break;
-			};
-		}
-
-		let layer_input_connector = post_node_input_connector;
-
-		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
-		loop {
-			let pre_node_output_connector = network_interface.upstream_output_connector(&post_node_input_connector, &[]);
-
-			match pre_node_output_connector {
-				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id, &[]) => {
-					// Update post_node_input_connector for the next iteration
-					post_node_input_connector = InputConnector::node(pre_node_id, 0);
-					// Insert directly under layer if moving to the end of a layer stack that ends with a non layer node that does not have an exposed primary input
-					let primary_is_exposed = network_interface.input_from_connector(&post_node_input_connector, &[]).is_some_and(|input| input.is_exposed());
-					if !primary_is_exposed {
-						return layer_input_connector;
-					}
-				}
-				_ => break, // Break if pre_node_output_connector is None or if pre_node_id is a layer
-			}
-		}
-
-		post_node_input_connector
 	}
 
 	/// Creates a new layer and adds it to the document network. network_interface.move_layer_to_stack should be called after
@@ -297,14 +234,41 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[], self.import);
 	}
 
-	pub fn insert_color_value(&mut self, color: Color, layer: LayerNodeIdentifier) {
+	pub fn insert_color_value(&mut self, color: Color, layer: LayerNodeIdentifier, attachment_input: InputConnector) -> NodeId {
 		let color_value = resolve_proto_node_type(graphene_std::math_nodes::color_value::IDENTIFIER)
 			.expect("Color Value node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::Color(color), false))]);
 
 		let color_value_id = NodeId::new();
 		self.network_interface.insert_node(color_value_id, color_value, &[]);
-		self.network_interface.move_node_to_chain_start(&color_value_id, layer, &[], self.import);
+		self.start_paint_chain(&color_value_id, layer, attachment_input);
+
+		color_value_id
+	}
+
+	/// Clear the whole-expanse paint one tool left on a layer so the other can start its own chain there.
+	/// Severing at the attachment detaches the layer from whatever the walk stopped at, which is the only part a node
+	/// the rest of the graph also draws from is subjected to, since such a node is never among those deleted.
+	fn clear_paint_chain(&mut self, paint_chain: &ReplaceablePaintChain) {
+		self.network_interface.disconnect_input(&paint_chain.attachment_input, &[]);
+
+		if !paint_chain.nodes.is_empty() {
+			self.network_interface.delete_nodes(paint_chain.nodes.clone(), false, &[]);
+		}
+	}
+
+	/// Wire a node that paints the layer's whole expanse into the start of its chain,
+	/// or past the 'Transform' nodes a blank layer already carries so those go on applying to the paint.
+	fn start_paint_chain(&mut self, node_id: &NodeId, layer: LayerNodeIdentifier, attachment_input: InputConnector) {
+		let layer_content_input = InputConnector::layer_secondary_input(layer.to_node());
+
+		if attachment_input == layer_content_input {
+			self.network_interface.move_node_to_chain_start(node_id, layer, &[], self.import);
+			return;
+		}
+
+		self.network_interface.set_input(&attachment_input, NodeInput::node(*node_id, 0), &[]);
+		self.network_interface.set_chain_position(node_id, &[]);
 	}
 
 	pub fn insert_image_data(&mut self, image: Image<Color>, layer: LayerNodeIdentifier) {
@@ -383,6 +347,16 @@ impl<'a> ModifyInputsContext<'a> {
 		self.existing_node_id(&DefinitionIdentifier::ProtoNode(reference), create_if_nonexistent)
 	}
 
+	/// The same as [`Self::existing_proto_node_id`], but yielding `None` on layers whose chain cannot host the node.
+	fn existing_chain_hosted_node_id(&mut self, reference: ProtoNodeIdentifier, create_if_nonexistent: bool) -> Option<NodeId> {
+		let output_layer = self.get_output_layer()?;
+		if !self.network_interface.layer_chain_hosts_node(&output_layer.to_node(), &[], &reference) {
+			return None;
+		}
+
+		self.existing_proto_node_id(reference, create_if_nonexistent)
+	}
+
 	/// Gets the node id of a document node with a specific reference that is upstream from the layer node, and optionally creates it if it does not exist.
 	fn existing_node_id(&mut self, reference: &DefinitionIdentifier, create_if_nonexistent: bool) -> Option<NodeId> {
 		// Start from the layer node or export
@@ -433,10 +407,13 @@ impl<'a> ModifyInputsContext<'a> {
 			return None;
 		};
 
+		// Without a secondary input there is no chain to hold the node, so inserting it would strand it at the graph origin
+		self.network_interface.input_from_connector(&InputConnector::layer_secondary_input(output_layer.to_node()), &[])?;
+
 		// If inserting a 'Path' node, insert a 'Combine Paths' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on `List` data by utilizing the reference (index or ID?) for each item.
 		if node_definition.identifier == "Path" {
-			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]);
+			let layer_input_type = self.network_interface.input_type(&InputConnector::layer_secondary_input(output_layer.to_node()), &[]);
 			if layer_input_type.compiled_element_name().as_deref() == Some("Graphic") {
 				let Some(combine_paths_definition) = resolve_proto_node_type(graphene_std::vector_nodes::combine_paths::IDENTIFIER) else {
 					log::error!("Combine Paths does not exist in ModifyInputsContext::existing_node_id");
@@ -454,11 +431,12 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn fill_color_set(&mut self, color: Option<Color>) {
-		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
+		let existing_fill_node_id = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, false);
+		let Some(fill_node_id) = existing_fill_node_id.or_else(|| self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true)) else {
 			return;
 		};
-		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX);
-		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupColorInput::INDEX);
+		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput);
+		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupColorInput);
 
 		// The backup remembers the last solid color, so the red-slash "none" choice leaves it untouched
 		if let Some(color) = color {
@@ -466,20 +444,26 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 		let fill_value = color.map_or_else(TaggedValue::no_paint, TaggedValue::Color);
 		self.set_input_with_refresh(input_connector, NodeInput::value(fill_value, false), false);
+
+		if existing_fill_node_id.is_none() {
+			self.restore_default_stroke_order();
+		}
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: DAffine2) {
-		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: DAffine2) {
+		let existing_fill_node_id = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, false);
+		let Some(fill_node_id) = existing_fill_node_id.or_else(|| self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true)) else {
 			return;
 		};
-		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput::INDEX);
+		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput);
 
-		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Gradient(gradient.clone()), false), true);
+		let ramp = GradientRamp::from(gradient).with_settings(settings);
+		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp.clone()), false), true);
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
 		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX),
-			NodeInput::value(TaggedValue::Gradient(gradient), false),
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput),
+			NodeInput::value(TaggedValue::GradientRamp(ramp), false),
 			true,
 		);
 
@@ -489,54 +473,63 @@ impl<'a> ModifyInputsContext<'a> {
 			.document_network()
 			.nodes
 			.get(&fill_node_id)
-			.and_then(|node| node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX))
+			.and_then(|node| node.input(graphene_std::vector::fill::TransformInput))
 			.is_some_and(|input| input.as_value().is_some());
 		if transform_is_value {
 			self.set_input_with_refresh(
-				InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput::INDEX),
+				InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput),
 				NodeInput::value(TaggedValue::Bool(true), false),
 				true,
 			);
 			self.set_input_with_refresh(
-				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
+				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput),
 				NodeInput::value(TaggedValue::DAffine2(transform), false),
 				true,
 			);
 		}
 
 		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientTypeInput::INDEX),
-			NodeInput::value(TaggedValue::GradientType(gradient_type), false),
-			true,
-		);
-
-		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::SpreadMethodInput::INDEX),
-			NodeInput::value(TaggedValue::GradientSpreadMethod(spread_method), false),
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientFormInput),
+			NodeInput::value(TaggedValue::GradientForm(gradient_form), false),
 			false,
 		);
+
+		if existing_fill_node_id.is_none() {
+			self.restore_default_stroke_order();
+		}
+	}
+
+	/// A freshly created Fill node lands at the chain start, downstream of any Stroke node, where it would
+	/// paint over the stroke. This hops the stroke back downstream so it keeps painting above by default.
+	fn restore_default_stroke_order(&mut self) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+		let Some(stroke_node_id) = Self::locate_node_in_layer_chain(&stroke_reference, output_layer, self.network_interface) else {
+			return;
+		};
+		set_stroke_paint_order(self.network_interface, &[], stroke_node_id, PaintOrder::StrokeAbove);
 	}
 
 	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
-		let Some(blend_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::blend_mode::IDENTIFIER, true) else {
+		let Some(blend_node_id) = self.existing_chain_hosted_node_id(graphene_std::blending_nodes::blend_mode::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(blend_node_id, graphene_std::blending_nodes::blend_mode::BlendModeInput::INDEX);
+		let input_connector = InputConnector::node(blend_node_id, graphene_std::blending_nodes::blend_mode::BlendModeInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
 	}
 
 	pub fn opacity_set(&mut self, opacity: f64) {
-		let Some(opacity_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::opacity::IDENTIFIER, true) else {
+		let Some(opacity_node_id) = self.existing_chain_hosted_node_id(graphene_std::blending_nodes::opacity::IDENTIFIER, true) else {
 			return;
 		};
 		// Enable the `has_opacity` checkbox so the value is applied
 		self.set_input_with_refresh(
-			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasOpacityInput::INDEX),
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasOpacityInput),
 			NodeInput::value(TaggedValue::Bool(true), false),
 			false,
 		);
 		self.set_input_with_refresh(
-			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::OpacityInput::INDEX),
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::OpacityInput),
 			NodeInput::value(TaggedValue::F64(opacity * 100.), false),
 			false,
 		);
@@ -545,30 +538,53 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn opacity_fill_set(&mut self, fill: f64) {
 		// Reuse an existing Opacity node to avoid a redundant chain walk on slider drags
 		let identifier = graphene_std::blending_nodes::opacity::IDENTIFIER;
-		let existing = self.existing_proto_node_id(identifier.clone(), false);
+		let existing = self.existing_chain_hosted_node_id(identifier.clone(), false);
 		let existed = existing.is_some();
-		let Some(opacity_node_id) = existing.or_else(|| self.existing_proto_node_id(identifier, true)) else {
+		let Some(opacity_node_id) = existing.or_else(|| self.existing_chain_hosted_node_id(identifier, true)) else {
 			return;
 		};
 		// Freshly-created node defaults to opacity enabled; disable it so the fill slider works independently
 		if !existed {
 			self.set_input_with_refresh(
-				InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasOpacityInput::INDEX),
+				InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasOpacityInput),
 				NodeInput::value(TaggedValue::Bool(false), false),
 				false,
 			);
 		}
 		// Enable the `has_fill` checkbox so the value is applied
 		self.set_input_with_refresh(
-			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasFillInput::INDEX),
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasFillInput),
 			NodeInput::value(TaggedValue::Bool(true), false),
 			false,
 		);
 		self.set_input_with_refresh(
-			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::FillInput::INDEX),
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::FillInput),
 			NodeInput::value(TaggedValue::F64(fill * 100.), false),
 			false,
 		);
+	}
+
+	/// Update the chain's 'Color Value' node, or start a chain with one on an empty layer, painting the layer's whole expanse.
+	pub fn color_value_set(&mut self, color: Color) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+
+		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		if let Some(node_id) = self.existing_proto_node_id_at(&target_input, graphene_std::math_nodes::color_value::IDENTIFIER, false) {
+			let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::color_value::ColorInput);
+			self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
+			return;
+		}
+
+		// The 'Color Value' node discards its primary input, so only a blank 'Merge' layer may start a chain with one,
+		// which any whole-expanse paint the other tool left behind is cleared off to become
+		let Some(paint_chain) = replaceable_paint_chain(output_layer, self.network_interface) else {
+			return;
+		};
+		self.clear_paint_chain(&paint_chain);
+
+		let color_value_id = self.insert_color_value(color, output_layer, paint_chain.attachment_input);
+		let input_connector = InputConnector::node(color_value_id, graphene_std::math_nodes::color_value::ColorInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
 	}
 
 	/// Write the gradient stops to the 'Gradient Value' node feeding the layer.
@@ -579,13 +595,21 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(id) => id,
 			None => {
 				let target = gradient_chain_target_input(output_layer, self.network_interface);
-				let starts_layer_chain = target == InputConnector::node(output_layer.to_node(), 1);
+				let starts_layer_chain = target == InputConnector::layer_secondary_input(output_layer.to_node());
 
-				// The Gradient Value node discards its primary input, so starting a chain ahead of existing layer content would drop that content; refuse instead
-				if starts_layer_chain && self.network_interface.upstream_output_connector(&target, &[]).is_some() {
-					log::error!("Refusing to start a gradient chain ahead of existing layer content");
-					return;
-				}
+				// The 'Gradient Value' node discards its primary input, so only a blank 'Merge' layer may start a chain
+				// with one, which any whole-expanse paint the other tool left behind is cleared off to become
+				let paint_chain = if starts_layer_chain {
+					let Some(paint_chain) = replaceable_paint_chain(output_layer, self.network_interface) else {
+						log::error!("Refusing to start a gradient chain on anything but a blank 'Merge' layer");
+						return;
+					};
+					self.clear_paint_chain(&paint_chain);
+
+					Some(paint_chain)
+				} else {
+					None
+				};
 
 				let Some(node_definition) = resolve_proto_node_type(graphene_std::math_nodes::gradient_value::IDENTIFIER) else {
 					return;
@@ -593,9 +617,9 @@ impl<'a> ModifyInputsContext<'a> {
 				let node_id = NodeId::new();
 				self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
 
-				if starts_layer_chain {
+				if let Some(paint_chain) = paint_chain {
 					// No Fill node: the new node starts the layer's chain
-					self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[], self.import);
+					self.start_paint_chain(&node_id, output_layer, paint_chain.attachment_input);
 				} else {
 					// Feeding a Fill node's paint input: wire it up and place it one chain-width left and a step below the Fill
 					self.network_interface.set_input(&target, NodeInput::node(node_id, 0), &[]);
@@ -612,8 +636,65 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		};
 
-		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(stops), false), false);
+		// Only the stops are being replaced, so the ramp's other settings stay as the value node already holds them
+		let ramp = GradientRamp {
+			stops: (&stops).into(),
+			..self.gradient_value_ramp(gradient_value_id).unwrap_or_default()
+		};
+
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
+	}
+
+	/// Update the last 'Gradient Positions' node in the chain when one exists, so on-canvas stop drags stay live even
+	/// though that node would otherwise override the stops value's own placement. Never inserts one: the stops value
+	/// carries placement itself, and these setter nodes are user-authored procedural overrides. A wired input is
+	/// procedural authorship too, so it is likewise left untouched.
+	pub fn gradient_positions_set(&mut self, positions: Vec<f64>) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+
+		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		let identifier = graphene_std::math_nodes::gradient_positions::IDENTIFIER;
+		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, false) else {
+			return;
+		};
+
+		let current_input = self
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&node_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::gradient_positions::PositionsInput));
+		if !current_input.is_some_and(|input| input.as_value().is_some()) {
+			return;
+		}
+
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_positions::PositionsInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64Array(positions), false), false);
+	}
+
+	/// The 'Gradient Midpoints' counterpart of [`Self::gradient_positions_set`], likewise update-only.
+	pub fn gradient_midpoints_set(&mut self, midpoints: Vec<f64>) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+
+		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		let identifier = graphene_std::math_nodes::gradient_midpoints::IDENTIFIER;
+		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, false) else {
+			return;
+		};
+
+		let current_input = self
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&node_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::gradient_midpoints::MidpointsInput));
+		if !current_input.is_some_and(|input| input.as_value().is_some()) {
+			return;
+		}
+
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_midpoints::MidpointsInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64Array(midpoints), false), false);
 	}
 
 	/// Update the transform to map the unit gradient ((0,0), (1, 0)) to the geometry's local space.
@@ -678,69 +759,128 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	/// Write the gradient type to the last 'Gradient Type' node in the chain, inserting one only when the value differs
+	/// Write the Gradient Form to the last 'Gradient Form' node in the chain, inserting one only when the value differs
 	/// from the default (`Linear`).
-	pub fn gradient_type_set(&mut self, gradient_type: GradientType) {
+	pub fn gradient_form_set(&mut self, gradient_form: GradientForm) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 
 		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
-		let identifier = graphene_std::math_nodes::gradient_type::IDENTIFIER;
-		let create_if_nonexistent = gradient_type != GradientType::default();
+		let identifier = graphene_std::math_nodes::gradient_form::IDENTIFIER;
+		let create_if_nonexistent = gradient_form != GradientForm::default();
 		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, create_if_nonexistent) else {
 			return;
 		};
 
-		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_type::GradientTypeInput::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientType(gradient_type), false), false);
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_form::GradientFormInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientForm(gradient_form), false), false);
 	}
 
-	/// Write the spread method to the last 'Spread Method' node in the chain, inserting one only when the value differs
-	/// from the default (`Pad`).
-	pub fn gradient_spread_method_set(&mut self, spread_method: GradientSpreadMethod) {
+	/// Set the spread on the chain's gradient value, which is where the ramp carries it.
+	pub fn gradient_spread_set(&mut self, gradient_spread: GradientSpread) {
 		let Some(output_layer) = self.get_output_layer() else { return };
-
-		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
-		let identifier = graphene_std::math_nodes::spread_method::IDENTIFIER;
-		let create_if_nonexistent = spread_method != GradientSpreadMethod::default();
-		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, create_if_nonexistent) else {
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
 			return;
 		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
 
-		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::spread_method::SpreadMethodInput::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientSpreadMethod(spread_method), false), false);
+		let ramp = GradientRamp { gradient_spread, ..ramp };
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
+	}
+
+	/// The ramp currently held by a 'Gradient Value' node.
+	fn gradient_value_ramp(&self, gradient_value_id: NodeId) -> Option<GradientRamp> {
+		let node = self.network_interface.document_network().nodes.get(&gradient_value_id)?;
+		let TaggedValue::GradientRamp(ramp) = node.input(graphene_std::math_nodes::gradient_value::GradientInput)?.as_value()? else {
+			return None;
+		};
+		Some(ramp.clone())
+	}
+
+	/// Set the space on the chain's gradient value, which is where the ramp carries it. Never touches a
+	/// 'Gradient Space' node: that one is a user-authored procedural override, not something the tools manage.
+	pub fn gradient_space_set(&mut self, gradient_space: GradientSpace) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
+			return;
+		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
+
+		let ramp = GradientRamp { gradient_space, ..ramp };
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
+	}
+
+	/// Set the cyclic wrap flag on the chain's gradient value, which is where the ramp carries it. This holds the existing
+	/// stops in place by reading their positions under the old flag, so batch it before any stops write rather than after one,
+	/// or it would reinterpret incoming stops already authored under the new flag.
+	pub fn gradient_cyclic_set(&mut self, gradient_cyclic: bool) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
+			return;
+		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
+
+		let ramp = ramp.with_cyclic(gradient_cyclic);
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
+	}
+
+	/// Set the interpolation on the chain's gradient value, which is where the ramp carries it.
+	pub fn gradient_interpolation_set(&mut self, gradient_interpolation: GradientInterpolation) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
+			return;
+		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
+
+		let ramp = GradientRamp { gradient_interpolation, ..ramp };
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
+	}
+
+	/// Set the hue direction on the chain's gradient value, which is where the ramp carries it.
+	pub fn gradient_hue_direction_set(&mut self, gradient_hue_direction: GradientHueDirection) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
+			return;
+		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
+
+		let ramp = GradientRamp { gradient_hue_direction, ..ramp };
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
 		let clip = !clip_mode.unwrap_or(false);
-		let Some(clip_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::clipping_mask::IDENTIFIER, true) else {
+		let Some(clip_node_id) = self.existing_chain_hosted_node_id(graphene_std::blending_nodes::clipping_mask::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(clip_node_id, graphene_std::blending_nodes::clipping_mask::ClipInput::INDEX);
+		let input_connector = InputConnector::node(clip_node_id, graphene_std::blending_nodes::clipping_mask::ClipInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Bool(clip), false), false);
 	}
 
 	pub fn stroke_set(&mut self, color: Option<Color>, stroke: Stroke) {
-		let Some(stroke_node_id) = self.existing_proto_node_id(graphene_std::vector::stroke::IDENTIFIER, true) else {
+		let Some(stroke_node_id) = self.existing_chain_hosted_node_id(graphene_std::vector::stroke::IDENTIFIER, true) else {
 			return;
 		};
 
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(color.map_or_else(TaggedValue::no_paint, TaggedValue::Color), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeAlign(stroke.align), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::CapInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::CapInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeCap(stroke.cap), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::JoinInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::JoinInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeJoin(stroke.join), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::MiterLimitInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::MiterLimitInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashPatternInput::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::DashPattern(stroke.dash_lengths.into()), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashPatternInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::DashPattern(stroke.dash_lengths), false), true);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
 	}
 
@@ -841,7 +981,11 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(brush_node_id) = self.existing_proto_node_id(graphene_std::brush::brush::brush::IDENTIFIER, true) else {
 			return;
 		};
-		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
+		self.set_input_with_refresh(
+			InputConnector::node(brush_node_id, graphene_std::brush::brush::brush::TraceInput),
+			NodeInput::value(TaggedValue::BrushStrokes(strokes), false),
+			false,
+		);
 	}
 
 	pub fn resize_artboard(&mut self, location: DVec2, dimensions: DVec2) {
@@ -860,8 +1004,16 @@ impl<'a> ModifyInputsContext<'a> {
 			dimensions.y = -dimensions.y;
 			location.y -= dimensions.y;
 		}
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::DVec2(location), false), false);
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::DVec2(dimensions), false), false);
+		self.set_input_with_refresh(
+			InputConnector::node_at_index(artboard_node_id, ARTBOARD_LOCATION_INPUT_INDEX),
+			NodeInput::value(TaggedValue::DVec2(location), false),
+			false,
+		);
+		self.set_input_with_refresh(
+			InputConnector::node_at_index(artboard_node_id, ARTBOARD_DIMENSIONS_INPUT_INDEX),
+			NodeInput::value(TaggedValue::DVec2(dimensions), false),
+			false,
+		);
 	}
 
 	/// Set the input, refresh the Properties panel, and run the document graph if skip_rerender is false
@@ -872,4 +1024,61 @@ impl<'a> ModifyInputsContext<'a> {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
 	}
+}
+
+/// The wires feeding off a node's primary output.
+fn primary_output_consumers(network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], node_id: NodeId) -> Vec<InputConnector> {
+	network_interface
+		.outward_wires(network_path)
+		.and_then(|wires| wires.get(&OutputConnector::node(node_id, 0)).cloned())
+		.unwrap_or_default()
+}
+
+/// Swaps a chain's directly adjacent Stroke and Fill nodes when their order disagrees with the requested
+/// paint order: both nodes append their cover, so the downstream one of the pair paints on top, following
+/// the painter's algorithm. Without a fill wired directly to the stroke, nothing changes.
+/// Returns whether the graph changed.
+pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], stroke_node_id: NodeId, paint_order: PaintOrder) -> bool {
+	let fill_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+	let is_fill = |network_interface: &NodeNetworkInterface, node_id: &NodeId| network_interface.reference(node_id, network_path).as_ref() == Some(&fill_reference);
+
+	// Find the fill wired directly to the stroke on either side; the downstream one of the pair paints on top
+	let stroke_primary_source = match network_interface.input_from_connector(&InputConnector::node_at_index(stroke_node_id, 0), network_path) {
+		Some(NodeInput::Node { node_id, output_index: 0, .. }) => Some(*node_id),
+		_ => None,
+	};
+	let (fill_node_id, currently_above) = if let Some(source) = stroke_primary_source.filter(|source| is_fill(network_interface, source)) {
+		(source, true)
+	} else {
+		let consumers = primary_output_consumers(network_interface, network_path, stroke_node_id);
+		let fill_consumer = consumers.iter().find_map(|connector| match connector {
+			InputConnector::Node { node_id, input_index: 0 } if is_fill(network_interface, node_id) => Some(*node_id),
+			_ => None,
+		});
+		let Some(fill_node_id) = fill_consumer else { return false };
+		(fill_node_id, false)
+	};
+
+	if (paint_order == PaintOrder::StrokeAbove) == currently_above {
+		return false;
+	}
+
+	// Swap the pair in place: the downstream node takes the upstream one's source, consumers of the
+	// downstream node move over to the upstream one, and the wire linking the pair reverses direction
+	let (upstream, downstream) = if currently_above { (fill_node_id, stroke_node_id) } else { (stroke_node_id, fill_node_id) };
+	let Some(upstream_source) = network_interface.input_from_connector(&InputConnector::node_at_index(upstream, 0), network_path).cloned() else {
+		return false;
+	};
+	let downstream_consumers = primary_output_consumers(network_interface, network_path, downstream);
+
+	network_interface.set_input(&InputConnector::node_at_index(downstream, 0), upstream_source, network_path);
+	network_interface.set_input(&InputConnector::node_at_index(upstream, 0), NodeInput::node(downstream, 0), network_path);
+	for consumer in &downstream_consumers {
+		if matches!(consumer, InputConnector::Node { node_id, .. } if *node_id == upstream || *node_id == downstream) {
+			continue;
+		}
+		network_interface.set_input(consumer, NodeInput::node(upstream, 0), network_path);
+	}
+
+	true
 }

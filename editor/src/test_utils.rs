@@ -9,8 +9,6 @@ use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::{DVec2, UVec2};
-use graph_craft::document::DocumentNode;
-use graphene_std::InputAccessor;
 use graphene_std::raster::color::Color;
 use graphene_std::uuid::NodeId;
 
@@ -76,6 +74,10 @@ impl EditorTestUtils {
 		if let Err(e) = self.eval_graph().await {
 			panic!("Failed to evaluate graph: {e}");
 		}
+
+		// Sweep the network interface's structural invariants so any desync fails at the message that caused it
+		let violations = self.active_document().network_interface.validate_invariants();
+		assert!(violations.is_empty(), "Network interface invariant violations:\n{}", violations.join("\n"));
 
 		frontend_messages_from_msg
 	}
@@ -168,15 +170,6 @@ impl EditorTestUtils {
 
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
 		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap()
-	}
-
-	pub fn get_node<'a, T: InputAccessor<'a, DocumentNode>>(&'a self) -> impl Iterator<Item = T> + 'a {
-		self.active_document()
-			.network_interface
-			.document_network()
-			.recursive_nodes()
-			.inspect(|(_, node, _)| println!("{:#?}", node.implementation))
-			.filter_map(move |(_, document, _)| T::new_with_source(document))
 	}
 
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
@@ -320,11 +313,19 @@ impl EditorTestUtils {
 	}
 
 	pub async fn create_node_by_name(&mut self, node_type: DefinitionIdentifier) -> NodeId {
+		self.create_node(node_type, None).await
+	}
+
+	pub async fn create_node_by_name_at(&mut self, node_type: DefinitionIdentifier, x: i32, y: i32) -> NodeId {
+		self.create_node(node_type, Some((x, y))).await
+	}
+
+	async fn create_node(&mut self, node_type: DefinitionIdentifier, xy: Option<(i32, i32)>) -> NodeId {
 		let node_id = NodeId::new();
 		self.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(node_id),
 			node_type,
-			xy: None,
+			xy,
 			add_transaction: true,
 		})
 		.await;
@@ -365,7 +366,6 @@ pub mod test_prelude {
 	pub use graph_craft::document::DocumentNode;
 	pub use graphene_std::raster::{Color, Image};
 	pub use graphene_std::transform::Footprint;
-	pub use graphene_std::{InputAccessor, InputAccessorSource};
 
 	#[macro_export]
 	macro_rules! float_eq {

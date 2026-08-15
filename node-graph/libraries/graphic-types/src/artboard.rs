@@ -12,7 +12,7 @@ use glam::DAffine2;
 /// enclosing `List<Artboard>`, not as fields here. This keeps `Artboard` a pure type-system boundary
 /// that prevents arbitrary `List<List<...<Graphic>>>` nesting.
 #[derive(Clone, Debug, Default, CacheHash, PartialEq, DynAny)]
-pub struct Artboard(List<Graphic>);
+pub struct Artboard(pub List<Graphic>);
 
 impl Artboard {
 	pub fn new(content: List<Graphic>) -> Self {

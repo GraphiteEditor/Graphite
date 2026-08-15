@@ -385,8 +385,8 @@ mod tests {
 	#[test]
 	fn item_list_wire_pair_collapses_to_list() {
 		let registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
-		let identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
-		let implementations = registry.get(&identifier).expect("Bounding Box should be registered");
+		let identifier = ProtoNodeIdentifier::new("core_types::vector::DimensionsNode");
+		let implementations = registry.get(&identifier).expect("Dimensions should be registered");
 
 		let primary_types: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.inputs[0].clone()).collect();
 		assert_eq!(primary_types.len(), 2, "An element-wise node should register Item and List wire variants for its primary input");

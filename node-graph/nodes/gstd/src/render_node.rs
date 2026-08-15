@@ -47,7 +47,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
-	data.collect_metadata(&mut metadata, footprint, None);
+	data.collect_metadata(&mut metadata, footprint, None, None);
 	let intermediate = match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => {
 			let mut scene = vello::Scene::new();

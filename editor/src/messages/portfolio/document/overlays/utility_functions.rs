@@ -2,16 +2,14 @@ use super::utility_types::{DrawHandles, OverlayContext};
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
-use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
+pub use crate::messages::portfolio::document::utility_types::text_metrics::text_width;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
 use graphene_std::subpath::{Bezier, BezierHandles};
-use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
 
@@ -220,24 +218,6 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 			overlay_context.manipulator_anchor(position, is_selected(selected, ManipulatorPointId::Anchor(point)), None);
 		}
 	}
-}
-
-pub static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
-
-pub fn text_width(text: &str, font_size: f64) -> f64 {
-	let typesetting = TypesettingConfig {
-		font_size,
-		line_height_ratio: 1.2,
-		letter_spacing: 0.,
-		letter_tilt: 0.,
-		max_width: None,
-		max_height: None,
-		align: TextAlign::AlignLeft,
-	};
-
-	let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
-	let bounds = text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
-	bounds.x
 }
 
 pub fn hex_to_rgba_u8(hex: &str) -> [u8; 4] {

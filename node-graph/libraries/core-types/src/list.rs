@@ -55,14 +55,48 @@ pub const ATTR_DIMENSIONS: &str = "dimensions";
 pub const ATTR_BACKGROUND: &str = "background";
 /// `bool` for whether an artboard clips content to its bounds.
 pub const ATTR_CLIP: &str = "clip";
-/// Gradient's `GradientSpreadMethod` (`Pad`, `Reflect`, or `Repeat`).
-pub const ATTR_SPREAD_METHOD: &str = "spread_method";
-/// Gradient's `GradientType` (`Linear` or `Radial`).
-pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
-/// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
-pub const ATTR_FILL: &str = "fill";
-/// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
-pub const ATTR_STROKE: &str = "stroke";
+// TODO: Consider adding "gradient_spread_left" and "gradient_spread_right" override attributes to allow setting different gradient spreads on each side of a gradient
+/// Gradient's `GradientSpread` (`Pad`, `Reflect`, `Repeat`, or `Clear`).
+pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
+/// Gradient's `GradientForm` (`Linear` or `Radial`).
+pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
+/// Gradient's `GradientSpace`, the color space its stops interpolate in.
+pub const ATTR_GRADIENT_SPACE: &str = "gradient_space";
+/// Gradient's `GradientHueDirection` (`Shorter`, `Longer`, `Increasing`, or `Decreasing`), which way around the
+/// hue wheel the stops interpolate when the gradient space is polar.
+pub const ATTR_GRADIENT_HUE_DIRECTION: &str = "gradient_hue_direction";
+/// Gradient's `GradientInterpolation` (`Stepped`, `Linear`, or `Smooth`), the path its stops interpolate along
+/// and thus whether the ramp jumps, turns corners, or flows smoothly through them.
+pub const ATTR_GRADIENT_INTERPOLATION: &str = "gradient_interpolation";
+/// Gradient's `bool` (implicit default `false`) for treating the stop list as a cycle, where a wrapped interval
+/// interpolates from the last stop through the 1|0 boundary back to the first.
+pub const ATTR_GRADIENT_CYCLIC: &str = "gradient_cyclic";
+/// Gradient stop's `f64` position from 0 to 1 along the gradient, on the `List<Color>` inside a `Gradient`.
+/// When the attribute is absent, stops distribute evenly across the 0 to 1 range.
+pub const ATTR_POSITION: &str = "position";
+/// Gradient stop's `f64` midpoint (implicit default `0.5`, linear), a factor from 0 to 1 across the distance to the next
+/// stop, on the `List<Color>` inside a `Gradient`. The final stop's midpoint is ignored if "gradient_cyclic" is false.
+pub const ATTR_MIDPOINT: &str = "midpoint";
+/// Item's ordered list of paint passes, of type `Appearance`. Earlier coverages paint first, compositing below later ones.
+pub const ATTR_APPEARANCE: &str = "appearance";
+// TODO: Add a "fill_rule" attribute as a sibling of "paint" on the coverage list (uniform across covers) once a FillRule type ships
+/// Coverage's `Graphic` paint (implicit default `Graphic::None`, painting nothing), on the
+/// `List<Coverage>` inside an `Appearance`.
+pub const ATTR_PAINT: &str = "paint";
+/// Stroke coverage's line thickness (`f64`, implicit default `0.`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_WEIGHT: &str = "weight";
+/// Stroke coverage's `DashPattern` (implicit default empty, a solid line), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_DASH_PATTERN: &str = "dash_pattern";
+/// Stroke coverage's dash phase offset distance (`f64`, implicit default `0.`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_DASH_OFFSET: &str = "dash_offset";
+/// Stroke coverage's `StrokeCap` (implicit default `Butt`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_CAP: &str = "cap";
+/// Stroke coverage's `StrokeJoin` (implicit default `Miter`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_JOIN: &str = "join";
+/// Stroke coverage's miter limit threshold (`f64`, implicit default `4.`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_JOIN_MITER_LIMIT: &str = "join_miter_limit";
+/// Stroke coverage's `StrokeAlign` (implicit default `Center`), on the `Item<Cover>` inside a `Coverage`.
+pub const ATTR_ALIGN: &str = "align";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
 /// Text item's font, as a `Resource` of the loaded font file.
@@ -73,7 +107,8 @@ pub const ATTR_LINE_HEIGHT: &str = "line_height";
 pub const ATTR_LETTER_SPACING: &str = "letter_spacing";
 /// Text item's maximum line-wrap width in document-space units (`Option<f64>`, implicit default `None`).
 pub const ATTR_MAX_WIDTH: &str = "max_width";
-/// Text item's maximum block height in document-space units, past which lines are not drawn (`Option<f64>`, implicit default `None`).
+/// Text item's maximum block height in document-space units, past which lines are not drawn
+/// (`Option<f64>`, implicit default `None`).
 pub const ATTR_MAX_HEIGHT: &str = "max_height";
 /// Text item's faux-italic letter tilt angle in degrees (`f64`, implicit default `0.`).
 pub const ATTR_LETTER_TILT: &str = "letter_tilt";
@@ -136,6 +171,7 @@ unsafe impl<T: StaticTypeSized> StaticType for Bundle<T> {
 fn implicit_default_value(key: &str) -> Option<Box<dyn AnyAttributeValue>> {
 	match key {
 		ATTR_OPACITY | ATTR_OPACITY_FILL => Some(Box::new(1_f64)),
+		ATTR_MIDPOINT => Some(Box::new(0.5_f64)),
 		_ => None,
 	}
 }
@@ -656,6 +692,11 @@ impl ItemAttributeValues {
 	/// Returns a type-erased reference to the value of the attribute with the given key, if it exists.
 	pub fn get_any(&self, key: &str) -> Option<&dyn std::any::Any> {
 		self.0.iter().find_map(|(existing_key, value)| if existing_key == key { Some((**value).as_any()) } else { None })
+	}
+
+	/// Returns an iterator over key and type-erased value pairs of all stored attributes, in insertion order.
+	pub fn iter_any(&self) -> impl Iterator<Item = (&str, &dyn std::any::Any)> {
+		self.0.iter().map(|(key, value)| (key.as_str(), (**value).as_any()))
 	}
 
 	/// Returns a debug-formatted string representation of the attribute value for the given key, if it exists.
@@ -1220,7 +1261,7 @@ impl<T: CacheHash> CacheHash for List<T> {
 		self.element.cache_hash(state);
 
 		// Hash every attribute attribute (key + values) rather than just the well-known ones, so changes to user-defined keys
-		// (e.g., gradient_type, spread_method) invalidate downstream graph caches as expected
+		// (e.g., gradient_form, gradient_spread) invalidate downstream graph caches as expected
 		for (key, attribute) in &self.attributes.attributes {
 			std::hash::Hash::hash(key.as_str(), state);
 			attribute.cache_hash_dyn(state);

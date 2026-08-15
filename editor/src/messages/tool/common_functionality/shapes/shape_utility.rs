@@ -16,7 +16,6 @@ use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::NodeInputDecleration;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
@@ -214,7 +213,7 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 	let new_layer = NodeGraphLayer::new(layer, &document.network_interface);
 
 	if new_layer
-		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER), 1)
+		.parameter_value(graphene_std::vector::generator_nodes::regular_polygon::SidesInput)
 		.unwrap_or(&TaggedValue::U32(0))
 		.to_u32()
 		% 2 == 1
@@ -224,14 +223,14 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(polygon_node_id, 2),
+			input_connector: InputConnector::node(polygon_node_id, graphene_std::vector::generator_nodes::regular_polygon::RadiusInput),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
 		});
 		return;
 	}
 
 	if new_layer
-		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER), 1)
+		.parameter_value(graphene_std::vector::generator_nodes::star::SidesInput)
 		.unwrap_or(&TaggedValue::U32(0))
 		.to_u32()
 		% 2 == 1
@@ -241,11 +240,11 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, 2),
+			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius1Input),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, 3),
+			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius2Input),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.25), false),
 		});
 	}
@@ -353,7 +352,7 @@ pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &Doc
 pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(SpiralType, f64, f64, f64, f64, f64)> {
 	use graphene_std::vector::generator_nodes::spiral::*;
 
-	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::spiral::IDENTIFIER))?;
+	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
 	let (
 		Some(&TaggedValue::SpiralType(spiral_type)),
@@ -363,12 +362,12 @@ pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &Document
 		Some(&TaggedValue::F64(turns)),
 		Some(&TaggedValue::F64(angle_resolution)),
 	) = (
-		node_inputs.get(SpiralTypeInput::INDEX)?.as_value(),
-		node_inputs.get(StartAngleInput::INDEX)?.as_value(),
-		node_inputs.get(InnerRadiusInput::INDEX)?.as_value(),
-		node_inputs.get(OuterRadiusInput::INDEX)?.as_value(),
-		node_inputs.get(TurnsInput::INDEX)?.as_value(),
-		node_inputs.get(AngularResolutionInput::INDEX)?.as_value(),
+		parameters.value(SpiralTypeInput),
+		parameters.value(StartAngleInput),
+		parameters.value(InnerRadiusInput),
+		parameters.value(OuterRadiusInput),
+		parameters.value(TurnsInput),
+		parameters.value(AngularResolutionInput),
 	)
 	else {
 		return None;
@@ -571,7 +570,37 @@ pub fn wrap_to_tau(angle: f64) -> f64 {
 }
 
 pub fn format_rounded(value: f64, precision: usize) -> String {
-	format!("{value:.precision$}").trim_end_matches('0').trim_end_matches('.').to_string()
+	// Denoised values within floating point noise of zero (including -0) display as unsigned zero, unless the precision is fine enough to display them
+	let value = round_away_float_noise(value);
+	let value = if value.abs() < f64::min(1e-12, 0.5 * 10_f64.powi(-(precision as i32))) { 0. } else { value };
+	let formatted = format!("{value:.precision$}");
+
+	// Trailing zeros are trimmed only when the display is exact, so a truncated value keeps its decimal places (like "0.00" or "3.10") to indicate the truncation
+	if formatted.parse::<f64>() == Ok(value) {
+		formatted.trim_end_matches('0').trim_end_matches('.').to_string()
+	} else {
+		formatted
+	}
+}
+
+/// Recovers the intended number from floating point imprecision noise when that can be done reliably, e.g. 0.30000000000000004 -> 0.3.
+/// Rounding to each significant digit count from 1 to 12, the first candidate within a relative 1e-13 of the original is accepted.
+/// Actual high-precision values (like 0.3333333333333333) never pass the tolerance and are returned unchanged.
+pub fn round_away_float_noise(value: f64) -> f64 {
+	if value == 0. || !value.is_finite() {
+		return if value == 0. { 0. } else { value };
+	}
+
+	let exponent = value.abs().log10().floor() as i32;
+	for significant_digits in 1..=12 {
+		let scale = 10_f64.powi(significant_digits - 1 - exponent);
+		let rounded = (value * scale).round() / scale;
+		if ((rounded - value) / value).abs() < 1e-13 {
+			return rounded;
+		}
+	}
+
+	value
 }
 
 /// Gives the approximated angle to display in degrees, given an angle in degrees.
@@ -599,17 +628,92 @@ pub fn calculate_arc_text_transform(angle: f64, offset_angle: f64, center: DVec2
 pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(GridType, DVec2, u32, u32, DVec2)> {
 	use graphene_std::vector::generator_nodes::grid::*;
 
-	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER))?;
+	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
 	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::U32(columns)), Some(&TaggedValue::U32(rows)), Some(&TaggedValue::DVec2(angles))) = (
-		node_inputs.get(GridTypeInput::INDEX)?.as_value(),
-		node_inputs.get(SpacingInput::<f64>::INDEX)?.as_value(),
-		node_inputs.get(ColumnsInput::INDEX)?.as_value(),
-		node_inputs.get(RowsInput::INDEX)?.as_value(),
-		node_inputs.get(AnglesInput::INDEX)?.as_value(),
+		parameters.value(GridTypeInput),
+		parameters.value(SpacingInput),
+		parameters.value(ColumnsInput),
+		parameters.value(RowsInput),
+		parameters.value(AnglesInput),
 	) else {
 		return None;
 	};
 
 	Some((grid_type, spacing, columns, rows, angles))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn round_away_float_noise_snaps_noisy_values() {
+		assert_eq!(round_away_float_noise(0.1 + 0.2), 0.3);
+		assert_eq!(round_away_float_noise(0.3000000000000012), 0.3);
+		assert_eq!(round_away_float_noise(2.99999999999993), 3.);
+		assert_eq!(round_away_float_noise(45.00000000000001), 45.);
+	}
+
+	#[test]
+	fn round_away_float_noise_keeps_honest_values() {
+		assert_eq!(round_away_float_noise(1. / 3.), 1. / 3.);
+		assert_eq!(round_away_float_noise(0.2394023940209349), 0.2394023940209349);
+		assert_eq!(round_away_float_noise(0.25), 0.25);
+		assert_eq!(round_away_float_noise(-17.5), -17.5);
+	}
+
+	#[test]
+	fn round_away_float_noise_keeps_deliberate_values_with_zero_runs() {
+		assert_eq!(round_away_float_noise(0.30000005), 0.30000005);
+		assert_eq!(round_away_float_noise(0.3000000000001), 0.3000000000001);
+		assert_eq!(round_away_float_noise(1.00000001), 1.00000001);
+		assert_eq!(round_away_float_noise(2.9999993), 2.9999993);
+	}
+
+	#[test]
+	fn round_away_float_noise_normalizes_zero() {
+		let result = round_away_float_noise(-0.);
+		assert_eq!(result, 0.);
+		assert!(result.is_sign_positive());
+	}
+
+	#[test]
+	fn format_rounded_trims_trailing_zeros_when_exact() {
+		assert_eq!(format_rounded(0.25, 2), "0.25");
+		assert_eq!(format_rounded(3.1, 2), "3.1");
+		assert_eq!(format_rounded(45., 2), "45");
+	}
+
+	#[test]
+	fn format_rounded_keeps_decimal_places_when_truncated() {
+		assert_eq!(format_rounded(0.0003, 2), "0.00");
+		assert_eq!(format_rounded(-0.0003, 2), "-0.00");
+		assert_eq!(format_rounded(0.0003, 3), "0.000");
+		assert_eq!(format_rounded(3.10001, 2), "3.10");
+		assert_eq!(format_rounded(45.001, 2), "45.00");
+		assert_eq!(format_rounded(std::f64::consts::PI, 2), "3.14");
+	}
+
+	#[test]
+	fn format_rounded_denoises_before_judging_exactness() {
+		assert_eq!(format_rounded(29.999999999999996, 2), "30");
+		assert_eq!(format_rounded(45.00000000000001, 2), "45");
+	}
+
+	#[test]
+	fn format_rounded_shows_true_and_noise_zeros_plainly() {
+		assert_eq!(format_rounded(0., 2), "0");
+		assert_eq!(format_rounded(-0., 2), "0");
+		assert_eq!(format_rounded(1e-15, 2), "0");
+		assert_eq!(format_rounded(-1e-15, 2), "0");
+	}
+
+	#[test]
+	fn format_rounded_keeps_tiny_values_at_displayable_precision() {
+		assert_eq!(format_rounded(5e-13, 20), "0.0000000000005");
+		assert_eq!(format_rounded(-5e-13, 20), "-0.0000000000005");
+		assert_eq!(format_rounded(0., 20), "0");
+		assert_eq!(format_rounded(-0., 20), "0");
+	}
 }

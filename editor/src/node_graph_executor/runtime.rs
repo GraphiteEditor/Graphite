@@ -102,7 +102,7 @@ impl InternalNodeGraphUpdateSender {
 	}
 
 	fn send_execution_response(&self, response: ExecutionResponse) {
-		self.0.send(NodeGraphUpdate::ExecutionResponse(response)).expect("Failed to send response")
+		self.0.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response")
 	}
 
 	fn send_eyedropper_preview(&self, raster: Raster<CPU>) {
@@ -414,7 +414,7 @@ impl NodeRuntime {
 				continue;
 			};
 
-			// Graphic list: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
+			// Graphic list: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::TextList` content)
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
 				if update_thumbnails {
 					let bounds = graphene_std::renderer::graphic_list_bounding_box(&io.output, DAffine2::IDENTITY);
