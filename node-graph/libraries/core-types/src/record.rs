@@ -287,6 +287,19 @@ pub enum ElementSpec {
 }
 
 impl LayoutMeta {
+	/// The meta of an elementwise carrier flip that retypes input 0's element,
+	/// preserving its depth and attributes: what an `Into`/`Convert` coercion derives.
+	pub fn retype(element: ElementWrite) -> Self {
+		Self {
+			sources: vec![0],
+			reads: Vec::new(),
+			element: ElementSpec::Concrete(element),
+			writes: Vec::new(),
+			removes: Vec::new(),
+			level_delta: 0,
+		}
+	}
+
 	/// Folds the node's output layout from its inputs', reproducing what the
 	/// node's constructor derives at wiring. `inputs` is indexed by proto-input
 	/// position; [`sources`](LayoutMeta::sources) selects the base layouts, which

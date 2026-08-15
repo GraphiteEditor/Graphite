@@ -179,7 +179,7 @@ mod node_registry_macros {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::IntoNode<", stringify!($to), ">"]),
 				RegistryEntry {
-					layout_meta: None,
+					layout_meta: Some(core_types::record::LayoutMeta::retype(core_types::record::element_write::<$to>())),
 					io: NodeIOTypes::new(
 						concrete!(Context),
 						core_types::registry::record_type::<$to>(),
@@ -247,7 +247,7 @@ mod node_registry_macros {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
 				RegistryEntry {
-					layout_meta: None,
+					layout_meta: Some(core_types::record::LayoutMeta::retype(core_types::record::element_write::<$to>())),
 					io: NodeIOTypes::new(
 						concrete!(Context),
 						core_types::registry::record_type::<$to>(),
@@ -293,7 +293,7 @@ mod node_registry_macros {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
 				RegistryEntry {
-					layout_meta: None,
+					layout_meta: Some(core_types::record::LayoutMeta::retype(core_types::record::element_write::<$to>())),
 					io: NodeIOTypes::new(
 						concrete!(Context),
 						core_types::registry::record_type::<$to>(),

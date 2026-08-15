@@ -263,11 +263,20 @@ macro_rules! tagged_value {
 				}
 			}
 
-			/// `None` for values whose element type is only known dynamically ([`Self::TypeDefault`]).
+			/// `None` for a [`Self::TypeDefault`] whose named type is outside `for_each_type_default!`.
 			pub fn element_write(&self) -> Option<core_types::record::ElementWrite> {
 				Some(match self {
 					Self::None => core_types::record::element_write::<()>(),
-					Self::TypeDefault(_) => return None,
+					Self::TypeDefault(td) => {
+						let name = td.name.as_ref();
+						macro_rules! check {
+							($type_default:ty) => {
+								if name == std::any::type_name::<$type_default>() { return Some(core_types::record::element_write::<$type_default>()); }
+							};
+						}
+						for_each_type_default!(check);
+						return None;
+					}
 					Self::F64Array(_) => core_types::record::element_write::<List<f64>>(),
 					Self::Color(_) => core_types::record::element_write::<List<Color>>(),
 					Self::Gradient(_) => core_types::record::element_write::<List<GradientStops>>(),
