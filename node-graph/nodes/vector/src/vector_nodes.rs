@@ -3975,10 +3975,10 @@ mod test {
 		let fill = appearance.first_paint_of(Cover::Fill).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
-		let Graphic::ColorList(colors) = fill else {
+		let Graphic::Color(color) = fill else {
 			panic!("Expected a solid color fill, got {fill:?}");
 		};
-		let color = *colors.element(0).expect("Color present");
+		let color = *color.element();
 		assert!(color.r() > 0. && color.b() > 0., "Fill should be a red-to-blue blend, got {color:?}");
 	}
 
@@ -3992,10 +3992,10 @@ mod test {
 
 		let paint_color = |appearance: &Appearance, cover| {
 			let paint = appearance.first_paint_of(cover).expect("Morph should keep both paints at the midpoint");
-			let Graphic::ColorList(colors) = paint else {
+			let Graphic::Color(color) = paint else {
 				panic!("Expected a solid color paint, got {paint:?}");
 			};
-			*colors.element(0).expect("Color present")
+			*color.element()
 		};
 
 		// The two endpoints list their covers in opposite paint orders, which pairing by position would cross

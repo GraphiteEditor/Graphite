@@ -52,7 +52,12 @@ impl From<List<Graphic>> for Graphic {
 // Vector
 impl From<Vector> for Graphic {
 	fn from(vector: Vector) -> Self {
-		Graphic::VectorList(List::new_from_element(vector))
+		Graphic::Vector(Box::new(Item::new_from_element(vector)))
+	}
+}
+impl From<Item<Vector>> for Graphic {
+	fn from(vector: Item<Vector>) -> Self {
+		Graphic::Vector(Box::new(vector))
 	}
 }
 impl From<List<Vector>> for Graphic {
@@ -66,7 +71,12 @@ impl From<List<Vector>> for Graphic {
 // Raster<CPU>
 impl From<Raster<CPU>> for Graphic {
 	fn from(raster: Raster<CPU>) -> Self {
-		Graphic::RasterCPUList(List::new_from_element(raster))
+		Graphic::RasterCPU(Box::new(Item::new_from_element(raster)))
+	}
+}
+impl From<Item<Raster<CPU>>> for Graphic {
+	fn from(raster: Item<Raster<CPU>>) -> Self {
+		Graphic::RasterCPU(Box::new(raster))
 	}
 }
 impl From<List<Raster<CPU>>> for Graphic {
@@ -79,7 +89,12 @@ impl From<List<Raster<CPU>>> for Graphic {
 // Raster<GPU>
 impl From<Raster<GPU>> for Graphic {
 	fn from(raster: Raster<GPU>) -> Self {
-		Graphic::RasterGPUList(List::new_from_element(raster))
+		Graphic::RasterGPU(Item::new_from_element(raster))
+	}
+}
+impl From<Item<Raster<GPU>>> for Graphic {
+	fn from(raster: Item<Raster<GPU>>) -> Self {
+		Graphic::RasterGPU(raster)
 	}
 }
 impl From<List<Raster<GPU>>> for Graphic {
@@ -92,7 +107,12 @@ impl From<List<Raster<GPU>>> for Graphic {
 // Color
 impl From<Color> for Graphic {
 	fn from(color: Color) -> Self {
-		Graphic::ColorList(List::new_from_element(color))
+		Graphic::Color(Item::new_from_element(color))
+	}
+}
+impl From<Item<Color>> for Graphic {
+	fn from(color: Item<Color>) -> Self {
+		Graphic::Color(color)
 	}
 }
 impl From<List<Color>> for Graphic {
@@ -106,7 +126,12 @@ impl From<List<Color>> for Graphic {
 // Gradient
 impl From<Gradient> for Graphic {
 	fn from(gradient: Gradient) -> Self {
-		Graphic::GradientList(List::new_from_element(gradient))
+		Graphic::Gradient(Item::new_from_element(gradient))
+	}
+}
+impl From<Item<Gradient>> for Graphic {
+	fn from(gradient: Item<Gradient>) -> Self {
+		Graphic::Gradient(gradient)
 	}
 }
 impl From<List<Gradient>> for Graphic {
@@ -118,7 +143,12 @@ impl From<List<Gradient>> for Graphic {
 // String
 impl From<String> for Graphic {
 	fn from(text: String) -> Self {
-		Graphic::TextList(List::new_from_element(text))
+		Graphic::Text(Item::new_from_element(text))
+	}
+}
+impl From<Item<String>> for Graphic {
+	fn from(text: Item<String>) -> Self {
+		Graphic::Text(text)
 	}
 }
 impl From<List<String>> for Graphic {
@@ -877,7 +907,7 @@ impl<T: Clone> OmitIndex for List<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::list::List;
+	use core_types::list::{ATTR_POSITION, List};
 	use core_types::uuid::NodeId;
 
 	fn vector_graphic() -> Graphic {
@@ -973,6 +1003,26 @@ mod tests {
 
 		assert_eq!(color_of(0), Some(Color::BLACK), "a declared item should keep its own appearance");
 		assert_eq!(color_of(1), Some(Color::WHITE), "a padded item should inherit the parent appearance");
+	}
+
+	#[test]
+	fn embedded_item_keeps_its_attributes_inside_the_variant() {
+		let color = Item::new_from_element(Color::RED).with_attribute(ATTR_POSITION, 0.25_f64);
+
+		let Graphic::Color(inner) = Graphic::from(color) else { panic!("expected a color graphic") };
+		assert_eq!(inner.element(), &Color::RED);
+		assert_eq!(inner.attribute::<f64>(ATTR_POSITION), Some(&0.25));
+	}
+
+	#[test]
+	fn embedded_list_becomes_one_graphic_holding_every_element() {
+		let mut colors = List::new_from_element(Color::RED);
+		colors.push(Item::new_from_element(Color::BLUE));
+
+		let Graphic::ColorList(inner) = Graphic::from(colors) else {
+			panic!("expected a color list graphic")
+		};
+		assert_eq!(inner.len(), 2, "a whole list embeds as one graphic holding all its elements");
 	}
 }
 
