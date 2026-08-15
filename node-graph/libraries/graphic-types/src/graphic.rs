@@ -20,7 +20,7 @@ pub enum Graphic {
 	#[default]
 	None,
 	GraphicList(List<Graphic>),
-	Vector(List<Vector>),
+	VectorList(List<Vector>),
 	RasterCPU(List<Raster<CPU>>),
 	RasterGPU(List<Raster<GPU>>),
 	Color(List<Color>),
@@ -38,12 +38,12 @@ impl From<List<Graphic>> for Graphic {
 // Vector
 impl From<Vector> for Graphic {
 	fn from(vector: Vector) -> Self {
-		Graphic::Vector(List::new_from_element(vector))
+		Graphic::VectorList(List::new_from_element(vector))
 	}
 }
 impl From<List<Vector>> for Graphic {
 	fn from(vector: List<Vector>) -> Self {
-		Graphic::Vector(vector)
+		Graphic::VectorList(vector)
 	}
 }
 
@@ -245,7 +245,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 		match graphic {
 			Graphic::None => {}
 			Graphic::GraphicList(list) => bake_list_transform(list, transform),
-			Graphic::Vector(list) => bake_list_transform(list, transform),
+			Graphic::VectorList(list) => bake_list_transform(list, transform),
 			Graphic::RasterCPU(list) => bake_list_transform(list, transform),
 			Graphic::RasterGPU(list) => bake_list_transform(list, transform),
 			Graphic::Gradient(list) => bake_list_transform(list, transform),
@@ -273,7 +273,7 @@ pub trait TryFromGraphic: Clone + Sized {
 
 impl TryFromGraphic for Vector {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Vector(t) = graphic { Some(t) } else { None }
+		if let Graphic::VectorList(t) = graphic { Some(t) } else { None }
 	}
 }
 
@@ -324,7 +324,7 @@ impl IntoGraphicList for List<Vector> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		// A synthetic container, not a real group layer, so it carries no `editor:layer_path` that would
 		// overwrite the inner items' own stamps when flattened back out
-		List::new_from_element(Graphic::Vector(self))
+		List::new_from_element(Graphic::VectorList(self))
 	}
 }
 
@@ -374,7 +374,7 @@ impl From<Item<DAffine2>> for Graphic {
 // DVec2
 impl From<Item<DVec2>> for Graphic {
 	fn from(position: Item<DVec2>) -> Self {
-		Graphic::Vector(List::new_from_element(Vector::from_anchor_position(position.into_element())))
+		Graphic::VectorList(List::new_from_element(Vector::from_anchor_position(position.into_element())))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -394,16 +394,16 @@ impl Graphic {
 		}
 	}
 
-	pub fn as_vector(&self) -> Option<&List<Vector>> {
+	pub fn as_vector_list(&self) -> Option<&List<Vector>> {
 		match self {
-			Graphic::Vector(vector) => Some(vector),
+			Graphic::VectorList(vector) => Some(vector),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_mut(&mut self) -> Option<&mut List<Vector>> {
+	pub fn as_vector_list_mut(&mut self) -> Option<&mut List<Vector>> {
 		match self {
-			Graphic::Vector(vector) => Some(vector),
+			Graphic::VectorList(vector) => Some(vector),
 			_ => None,
 		}
 	}
@@ -429,7 +429,7 @@ impl Graphic {
 
 		match self {
 			Graphic::None => true,
-			Graphic::Vector(list) => all_clipped(list),
+			Graphic::VectorList(list) => all_clipped(list),
 			Graphic::GraphicList(list) => all_clipped(list),
 			Graphic::RasterCPU(list) => all_clipped(list),
 			Graphic::RasterGPU(list) => all_clipped(list),
@@ -441,7 +441,7 @@ impl Graphic {
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
-			Graphic::Vector(vector) => (0..vector.len()).all(|index| {
+			Graphic::VectorList(vector) => (0..vector.len()).all(|index| {
 				let opacity: f64 = vector.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 				let appearance = vector.attribute::<Appearance>(ATTR_APPEARANCE, index);
 
@@ -469,7 +469,7 @@ impl Graphic {
 		match self {
 			Graphic::None => false,
 			Graphic::GraphicList(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
-			Graphic::Vector(list) => {
+			Graphic::VectorList(list) => {
 				!list.is_empty()
 					&& (0..list.len()).all(|i| {
 						let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
@@ -503,7 +503,7 @@ impl Graphic {
 		match self {
 			Graphic::None => true,
 			Graphic::GraphicList(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
-			Graphic::Vector(list) => (0..list.len()).all(|i| {
+			Graphic::VectorList(list) => (0..list.len()).all(|i| {
 				let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 				if opacity <= f64::EPSILON {
 					return true;
@@ -545,7 +545,7 @@ impl Graphic {
 		match self {
 			Graphic::None => true,
 			Graphic::GraphicList(list) => list.is_empty(),
-			Graphic::Vector(list) => list.is_empty(),
+			Graphic::VectorList(list) => list.is_empty(),
 			Graphic::Color(list) => list.is_empty(),
 			Graphic::Gradient(list) => list.is_empty(),
 			Graphic::RasterCPU(list) => list.is_empty(),
@@ -595,7 +595,7 @@ impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
 			Graphic::None => RenderBoundingBox::None,
-			Graphic::Vector(list) => vector_list_bounding_box(list, transform, include_stroke),
+			Graphic::VectorList(list) => vector_list_bounding_box(list, transform, include_stroke),
 			Graphic::RasterCPU(list) => list.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(list) => list.bounding_box(transform, include_stroke),
 			Graphic::GraphicList(list) => list.bounding_box(transform, include_stroke),
@@ -608,7 +608,7 @@ impl BoundingBox for Graphic {
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
 			Graphic::None => RenderBoundingBox::None,
-			Graphic::Vector(vector) => vector_list_bounding_box(vector, transform, include_stroke),
+			Graphic::VectorList(vector) => vector_list_bounding_box(vector, transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::GraphicList(list) => list.thumbnail_bounding_box(transform, include_stroke),
@@ -624,7 +624,7 @@ impl RenderComplexity for Graphic {
 		match self {
 			Self::None => 0,
 			Self::GraphicList(list) => list.render_complexity(),
-			Self::Vector(list) => list.render_complexity(),
+			Self::VectorList(list) => list.render_complexity(),
 			Self::RasterCPU(list) => list.render_complexity(),
 			Self::RasterGPU(list) => list.render_complexity(),
 			Self::Color(list) => list.render_complexity(),
@@ -712,7 +712,7 @@ mod tests {
 	use core_types::uuid::NodeId;
 
 	fn vector_graphic() -> Graphic {
-		Graphic::Vector(List::new_from_element(Vector::default()))
+		Graphic::VectorList(List::new_from_element(Vector::default()))
 	}
 
 	fn vector_list_stamped_with_layers(layers: [u64; 2]) -> List<Vector> {
@@ -792,7 +792,7 @@ mod tests {
 		inner.push(Item::new_from_element(Vector::default()));
 		inner.set_attribute(ATTR_APPEARANCE, 0, Appearance::new_single(Coverage::new_fill(), solid(Color::BLACK)));
 
-		let mut outer = List::new_from_element(Graphic::Vector(inner));
+		let mut outer = List::new_from_element(Graphic::VectorList(inner));
 		outer.set_attribute(ATTR_APPEARANCE, 0, Appearance::new_single(Coverage::new_fill(), solid(Color::WHITE)));
 
 		let flattened: List<Vector> = outer.into_flattened_list();
@@ -839,7 +839,7 @@ mod graphic_is_opaque_tests {
 
 	#[test]
 	fn vector_is_not_opaque() {
-		let g = Graphic::Vector(List::default());
+		let g = Graphic::VectorList(List::default());
 		assert!(!g.is_opaque());
 	}
 

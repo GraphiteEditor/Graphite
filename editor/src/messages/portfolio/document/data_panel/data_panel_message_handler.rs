@@ -579,7 +579,7 @@ impl TableItemLayout for Graphic {
 		match self {
 			Self::None => "None".to_string(),
 			Self::GraphicList(list) => list.identifier(),
-			Self::Vector(list) => list.identifier(),
+			Self::VectorList(list) => list.identifier(),
 			Self::RasterCPU(list) => list.identifier(),
 			Self::RasterGPU(list) => list.identifier(),
 			Self::Color(list) => list.identifier(),
@@ -595,7 +595,7 @@ impl TableItemLayout for Graphic {
 		match self {
 			Self::None => label("None"),
 			Self::GraphicList(list) => list.layout_with_breadcrumb(data),
-			Self::Vector(list) => list.layout_with_breadcrumb(data),
+			Self::VectorList(list) => list.layout_with_breadcrumb(data),
 			Self::RasterCPU(list) => list.layout_with_breadcrumb(data),
 			Self::RasterGPU(list) => list.layout_with_breadcrumb(data),
 			Self::Color(list) => list.layout_with_breadcrumb(data),

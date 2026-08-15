@@ -656,7 +656,7 @@ impl Render for Graphic {
 		match self {
 			Graphic::None => (),
 			Graphic::GraphicList(list) => list.render_svg(render, render_params),
-			Graphic::Vector(list) => list.render_svg(render, render_params),
+			Graphic::VectorList(list) => list.render_svg(render, render_params),
 			Graphic::RasterCPU(list) => list.render_svg(render, render_params),
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(list) => list.render_svg(render, render_params),
@@ -669,7 +669,7 @@ impl Render for Graphic {
 		match self {
 			Graphic::None => (),
 			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Vector(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::VectorList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterCPU(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterGPU(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
@@ -685,7 +685,7 @@ impl Render for Graphic {
 				Graphic::GraphicList(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
-				Graphic::Vector(list) => {
+				Graphic::VectorList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
@@ -743,7 +743,7 @@ impl Render for Graphic {
 		match self {
 			Graphic::None => (),
 			Graphic::GraphicList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
-			Graphic::Vector(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::VectorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::RasterCPU(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
@@ -756,7 +756,7 @@ impl Render for Graphic {
 		match self {
 			Graphic::None => (),
 			Graphic::GraphicList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
-			Graphic::Vector(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::VectorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::RasterCPU(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::Color(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
@@ -769,7 +769,7 @@ impl Render for Graphic {
 		match self {
 			Graphic::None => (),
 			Graphic::GraphicList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
-			Graphic::Vector(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::VectorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::RasterCPU(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::Color(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
@@ -782,7 +782,7 @@ impl Render for Graphic {
 		match self {
 			Graphic::None => false,
 			Graphic::GraphicList(list) => list.contains_artboard(),
-			Graphic::Vector(list) => list.contains_artboard(),
+			Graphic::VectorList(list) => list.contains_artboard(),
 			Graphic::RasterCPU(list) => list.contains_artboard(),
 			Graphic::RasterGPU(list) => list.contains_artboard(),
 			Graphic::Color(list) => list.contains_artboard(),
@@ -795,7 +795,7 @@ impl Render for Graphic {
 		match self {
 			Graphic::None => (),
 			Graphic::GraphicList(list) => list.new_ids_from_hash(reference),
-			Graphic::Vector(list) => list.new_ids_from_hash(reference),
+			Graphic::VectorList(list) => list.new_ids_from_hash(reference),
 			Graphic::RasterCPU(_) => (),
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(_) => (),
@@ -1429,7 +1429,7 @@ impl Render for List<Vector> {
 			let mut masked_by = None;
 
 			if next_clips && clip_mask_state.is_none() {
-				let masker = Graphic::Vector(List::new_from_item(Item::from_parts(vector.clone(), self.clone_item_attributes(index))));
+				let masker = Graphic::VectorList(List::new_from_item(Item::from_parts(vector.clone(), self.clone_item_attributes(index))));
 				let mask_type = if masker.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 				let uuid = generate_uuid();
 
@@ -1605,7 +1605,7 @@ impl Render for List<Vector> {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 						}
-						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
+						Graphic::VectorList(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
 							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 							paint.render_to_vello(scene, multiplied_transform, context, &paint_render_params);
 							scene.pop_layer();
@@ -1688,7 +1688,7 @@ impl Render for List<Vector> {
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 						}
-						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
+						Graphic::VectorList(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) => {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);

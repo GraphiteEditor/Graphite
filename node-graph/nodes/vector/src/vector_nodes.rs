@@ -47,14 +47,14 @@ trait VectorListIterMut {
 impl VectorListIterMut for List<Graphic> {
 	fn for_each_vector_list_mut(&mut self, mut f: impl FnMut(&mut List<Vector>)) {
 		for graphic in self.iter_element_values_mut() {
-			if let Some(vector_list) = graphic.as_vector_mut() {
+			if let Some(vector_list) = graphic.as_vector_list_mut() {
 				f(vector_list);
 			};
 		}
 	}
 
 	fn vector_count(&self) -> usize {
-		self.iter_element_values().filter_map(|element| element.as_vector()).map(|list| list.len()).sum()
+		self.iter_element_values().filter_map(|element| element.as_vector_list()).map(|list| list.len()).sum()
 	}
 }
 
@@ -83,7 +83,7 @@ impl VectorItemMut for Item<Vector> {
 
 impl VectorItemMut for Item<Graphic> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
-		let Some(vector_list) = self.element_mut().as_vector_mut() else { return };
+		let Some(vector_list) = self.element_mut().as_vector_list_mut() else { return };
 		let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
 		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
 			f(vector, *transform);
@@ -115,7 +115,7 @@ impl MapVectorItems for Graphic {
 		fn map_nested(graphic: &mut Graphic, f: &mut impl FnMut(Item<Vector>) -> Item<Vector>) {
 			match graphic {
 				// Collecting from zero items would drop the attribute columns, so an empty list is left alone
-				Graphic::Vector(list) if !list.is_empty() => *list = std::mem::take(list).into_iter().map(&mut *f).collect(),
+				Graphic::VectorList(list) if !list.is_empty() => *list = std::mem::take(list).into_iter().map(&mut *f).collect(),
 				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| map_nested(nested, f)),
 				_ => {}
 			}
@@ -130,7 +130,7 @@ impl MapVectorItems for Graphic {
 	fn vector_elements_mut(content: &mut Item<Graphic>) -> Vec<&mut Vector> {
 		fn collect<'a>(graphic: &'a mut Graphic, elements: &mut Vec<&'a mut Vector>) {
 			match graphic {
-				Graphic::Vector(list) => elements.extend(list.iter_element_values_mut()),
+				Graphic::VectorList(list) => elements.extend(list.iter_element_values_mut()),
 				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| collect(nested, elements)),
 				_ => {}
 			}
@@ -159,7 +159,7 @@ impl ExpandVectorItems for Graphic {
 		fn expand_nested(graphic: &mut Graphic, f: &mut impl FnMut(Item<Vector>) -> List<Vector>) {
 			match graphic {
 				// Collecting from zero items would drop the attribute columns, so an empty list is left alone
-				Graphic::Vector(list) if !list.is_empty() => {
+				Graphic::VectorList(list) if !list.is_empty() => {
 					let mut expanded = List::with_capacity(list.len());
 					for item in std::mem::take(list) {
 						expanded.extend(f(item));
@@ -1510,7 +1510,7 @@ impl SolidifyStroke for Graphic {
 	fn solidify_strokes(content: Item<Graphic>) -> List<Graphic> {
 		fn solidify_nested(graphic: &mut Graphic) {
 			match graphic {
-				Graphic::Vector(list) if !list.is_empty() => *list = solidify_stroke_list_with_snapshot(std::mem::take(list)),
+				Graphic::VectorList(list) if !list.is_empty() => *list = solidify_stroke_list_with_snapshot(std::mem::take(list)),
 				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(solidify_nested),
 				_ => {}
 			}
@@ -3759,7 +3759,7 @@ mod test {
 			Item::new_from_element(0),
 		)
 		.await;
-		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(copy_to_points))).await);
+		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(copy_to_points))).await);
 		let combined_copy_to_points = combined.element(0).unwrap();
 
 		assert_eq!(combined_copy_to_points.region_manipulator_groups().count(), expected_points.len());
