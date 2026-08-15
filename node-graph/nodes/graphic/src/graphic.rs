@@ -934,10 +934,10 @@ pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
-	 	List<Vector>,
+		List<Vector>,
 		List<Raster<CPU>>,
-	 	List<Raster<GPU>>,
-	 	List<Color>,
+		List<Raster<GPU>>,
+		List<Color>,
 		List<Gradient>,
 		List<String>,
 		Item<DAffine2>,
@@ -980,6 +980,12 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 			let current_transform: DAffine2 = current_graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			let recurse = fully_flatten || recursion_depth == 0;
+
+			// A boxed single graphic is the rank-0 spelling of the same nesting, so it flattens through the list path
+			let current_element = match current_element {
+				Graphic::Graphic(item) if recurse => Graphic::GraphicList(List::new_from_item(*item)),
+				element => element,
+			};
 
 			match current_element {
 				// If we're allowed to recurse, flatten any graphics we encounter

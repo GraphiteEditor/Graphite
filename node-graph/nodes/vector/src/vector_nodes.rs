@@ -117,6 +117,8 @@ impl MapVectorItems for Graphic {
 				// Collecting from zero items would drop the attribute columns, so an empty list is left alone
 				Graphic::VectorList(list) if !list.is_empty() => *list = std::mem::take(list).into_iter().map(&mut *f).collect(),
 				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| map_nested(nested, f)),
+				Graphic::Vector(item) => **item = f(std::mem::take(&mut **item)),
+				Graphic::Graphic(item) => map_nested(item.element_mut(), f),
 				_ => {}
 			}
 		}
@@ -132,6 +134,8 @@ impl MapVectorItems for Graphic {
 			match graphic {
 				Graphic::VectorList(list) => elements.extend(list.iter_element_values_mut()),
 				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| collect(nested, elements)),
+				Graphic::Vector(item) => elements.push(item.element_mut()),
+				Graphic::Graphic(item) => collect(item.element_mut(), elements),
 				_ => {}
 			}
 		}
@@ -167,6 +171,12 @@ impl ExpandVectorItems for Graphic {
 					*list = expanded;
 				}
 				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| expand_nested(nested, f)),
+				// One item expanding into many is a rank raise, so the leaf becomes the list it grew into
+				Graphic::Vector(item) => {
+					let expanded = f(std::mem::take(&mut **item));
+					*graphic = Graphic::VectorList(expanded);
+				}
+				Graphic::Graphic(item) => expand_nested(item.element_mut(), f),
 				_ => {}
 			}
 		}
@@ -1510,6 +1520,12 @@ impl SolidifyStroke for Graphic {
 			match graphic {
 				Graphic::VectorList(list) if !list.is_empty() => *list = solidify_stroke_list_with_snapshot(std::mem::take(list)),
 				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(solidify_nested),
+				// Solidifying can split one path into separate fill and stroke items, so the leaf becomes a list
+				Graphic::Vector(item) => {
+					let solidified = solidify_stroke_list_with_snapshot(List::new_from_item(std::mem::take(&mut **item)));
+					*graphic = Graphic::VectorList(solidified);
+				}
+				Graphic::Graphic(item) => solidify_nested(item.element_mut()),
 				_ => {}
 			}
 		}
@@ -2571,6 +2587,25 @@ async fn morph<I: IntoGraphicList>(
 		build_transform_with_y_preservation(metadata_source_transform, start, end)
 	}
 
+	/// The two paint kinds that can interpolate, read from either rank so the pairings below stay at four cases.
+	/// A gradient normalizes to the list form because the interpolation carries its placement attributes along.
+	enum InterpolablePaint<'a> {
+		Color(&'a Color),
+		Gradient(List<Gradient>),
+	}
+
+	impl<'a> InterpolablePaint<'a> {
+		fn from_graphic(graphic: &'a Graphic) -> Option<Self> {
+			match graphic {
+				Graphic::Color(item) => Some(InterpolablePaint::Color(item.element())),
+				Graphic::ColorList(list) => list.element(0).map(InterpolablePaint::Color),
+				Graphic::Gradient(item) => Some(InterpolablePaint::Gradient(List::new_from_item(item.clone()))),
+				Graphic::GradientList(list) => list.element(0).is_some().then(|| InterpolablePaint::Gradient(list.clone())),
+				_ => None,
+			}
+		}
+	}
+
 	// Lerp between two graphics. Solid color and gradient pairings interpolate; all other pairings step at the midpoint.
 	fn lerp_graphic(a: Option<&List<Graphic>>, b: Option<&List<Graphic>>, time: f64) -> Option<List<Graphic>> {
 		let transparent = List::new_from_element(Color::TRANSPARENT).into_graphic_list();
@@ -2595,30 +2630,30 @@ async fn morph<I: IntoGraphicList>(
 			Graphic::GradientList(gradient_list)
 		};
 
-		let graphic = match (a.element(0), b.element(0)) {
-			(Some(Graphic::ColorList(color_list_a)), Some(Graphic::ColorList(color_list_b))) => color_list_a
-				.element(0)
-				.zip(color_list_b.element(0))
-				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
-			(Some(Graphic::ColorList(color_list_a)), Some(Graphic::GradientList(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
+		let graphic = match (a.element(0).and_then(InterpolablePaint::from_graphic), b.element(0).and_then(InterpolablePaint::from_graphic)) {
+			(Some(InterpolablePaint::Color(color_a)), Some(InterpolablePaint::Color(color_b))) => Some(Graphic::from(color_a.lerp(color_b, time as f32))),
+			(Some(InterpolablePaint::Color(color_a)), Some(InterpolablePaint::Gradient(gradient_list_b))) => gradient_list_b.element(0).cloned().map(|stops_b| {
 				let solid_to_gradient = stops_b.map_colors(|_| *color_a);
-				let stops = solid_to_gradient.lerp(stops_b, time);
-				gradient_with_stops(gradient_list_b.clone(), stops)
+				let stops = solid_to_gradient.lerp(&stops_b, time);
+				gradient_with_stops(gradient_list_b, stops)
 			}),
-			(Some(Graphic::GradientList(gradient_list_a)), Some(Graphic::ColorList(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
+			(Some(InterpolablePaint::Gradient(gradient_list_a)), Some(InterpolablePaint::Color(color_b))) => gradient_list_a.element(0).cloned().map(|stops_a| {
 				let gradient_to_solid = stops_a.map_colors(|_| *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
-				gradient_with_stops(gradient_list_a.clone(), stops)
+				gradient_with_stops(gradient_list_a, stops)
 			}),
-			(Some(Graphic::GradientList(gradient_list_a)), Some(Graphic::GradientList(gradient_list_b))) => gradient_list_a.element(0).zip(gradient_list_b.element(0)).map(|(stops_a, stops_b)| {
-				let stops = stops_a.lerp(stops_b, time);
-				let metadata_source = if time < 0.5 { gradient_list_a } else { gradient_list_b };
+			(Some(InterpolablePaint::Gradient(gradient_list_a)), Some(InterpolablePaint::Gradient(gradient_list_b))) => gradient_list_a
+				.element(0)
+				.zip(gradient_list_b.element(0))
+				.map(|(stops_a, stops_b)| stops_a.lerp(stops_b, time))
+				.map(|stops| {
+					let transform = lerp_gradient_transform(&gradient_list_a, &gradient_list_b, time);
 
-				let mut gradient_list = metadata_source.clone();
-				gradient_list.set_attribute(ATTR_TRANSFORM, 0, lerp_gradient_transform(gradient_list_a, gradient_list_b, time));
+					let mut gradient_list = if time < 0.5 { gradient_list_a } else { gradient_list_b };
+					gradient_list.set_attribute(ATTR_TRANSFORM, 0, transform);
 
-				gradient_with_stops(gradient_list, stops)
-			}),
+					gradient_with_stops(gradient_list, stops)
+				}),
 			// Pairings beyond solid colors and gradients (raster, vector, or mixed) can't be interpolated, so step at the midpoint
 			_ => return Some(if time < 0.5 { a.clone() } else { b.clone() }),
 		};
