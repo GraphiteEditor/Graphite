@@ -1,15 +1,15 @@
-use core_types::list::List;
+use core_types::gpoll::Interrupt;
+use core_types::list::{Item, List};
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
-use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
+use core_types::{Color, Context, Ctx, DeriveCtx, ExtractFootprint, ExtractIndex, ExtractVarArgs, InjectIndex, VarArgLink, VarArgSlots, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
-use vector_types::Gradient;
-use wgpu_executor::{RenderContext, WgpuExecutor};
+use vector_types::GradientStops;
+use wgpu_executor::RenderContext;
 
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
@@ -22,33 +22,11 @@ pub struct RenderIntermediate {
 	pub(crate) metadata: RenderMetadata,
 }
 
-#[node_macro::node(category(""))]
-async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
-	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
-	#[implementations(
-		Context -> List<Artboard>,
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Color>,
-		Context -> List<Gradient>,
-		Context -> List<String>,
-	)]
-	data: impl Node<Context<'static>, Output = T>,
-) -> RenderIntermediate {
-	let render_params = ctx
-		.vararg(0)
-		.expect("Did not find var args")
-		.downcast_ref::<RenderParams>()
-		.expect("Downcasting render params yielded invalid type");
-
-	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
-	let data = data.eval(ctx).await;
-
+fn intermediate_of<R: Render>(data: &R, render_params: &RenderParams) -> RenderIntermediate {
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
 	data.collect_metadata(&mut metadata, footprint, None);
-	match &render_params.render_output_type {
+	let intermediate = match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => {
 			let mut scene = vello::Scene::new();
 
@@ -70,15 +48,62 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 				metadata,
 			}
 		}
-	}
+	};
+
+	Item::new_from_element(intermediate)
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n>(
+fn render_intermediate<T: dyn_any::StaticTypeSized + 'static + Render + WasmNotSend + Send + Sync>(
+	ctx: impl Ctx + ExtractVarArgs + DeriveCtx,
+	#[implementations(
+		Context -> List<Artboard>,
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Color>,
+		Context -> List<GradientStops>,
+		Context -> List<String>,
+	)]
+	data: impl Node<Context<'_>, Output = T>,
+) -> Result<RenderIntermediate, Interrupt> {
+	let data = data.eval(&ctx.derived())?;
+	let render_params = ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderParams>()
+		.expect("Downcasting render params yielded invalid type");
+
+	Ok(intermediate_of(&data, render_params))
+}
+
+/// The leveled form of `render_intermediate`: the input's records materialize
+/// into a run, which renders directly.
+#[node_macro::node(category(""))]
+fn render_intermediate_leveled<T: Clone + Send + Sync + core_types::CacheHash + dyn_any::StaticTypeSized + 'static>(
+	ctx: impl Ctx + ExtractVarArgs + ExtractIndex + InjectIndex + Copy,
+	#[implementations(Artboard, Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] data: IList<T>,
+) -> Result<RenderIntermediate, Interrupt>
+where
+	for<'a> core_types::record::RunView<'a, T>: Render,
+{
+	let item = data.as_group_item();
+	let run = core_types::record::RunView::<T>::new(&item).expect("the run holds the row's element type");
+	let render_params = ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderParams>()
+		.expect("Downcasting render params yielded invalid type");
+
+	Ok(intermediate_of(&run, render_params))
+}
+
+#[node_macro::node(category(""))]
+fn render(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
-	data: RenderIntermediate,
-) -> RenderOutput {
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<wgpu_executor::WgpuExecutorHandle>>,
+	data: Item<RenderIntermediate>,
+) -> Item<RenderOutput> {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -88,7 +113,7 @@ async fn render<'a: 'n>(
 	let mut render_params = render_params.clone();
 	render_params.footprint = *footprint;
 
-	let RenderIntermediate { ty, mut metadata } = data;
+	let RenderIntermediate { ty, mut metadata } = data.into_element();
 	metadata.apply_transform(footprint.transform);
 
 	let data = match (render_params.render_output_type, ty) {
@@ -131,24 +156,26 @@ async fn render<'a: 'n>(
 			}
 
 			let texture = executor
+				.into_element()
 				.expect("GPU executor not available")
 				.render_vello_scene(&transformed_scene, footprint.resolution, context, None)
-				.await
 				.expect("Failed to render Vello scene");
 			RenderOutputType::Texture(texture)
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 
-	RenderOutput { data, metadata }
+	Item::new_from_element(RenderOutput { data, metadata })
 }
 
 #[node_macro::node(category(""))]
-async fn create_context<'a: 'n>(
-	// Context injections are defined in the wrap_network_in_scope function
-	render_config: RenderConfig,
-	data: impl Node<Context<'static>, Output = RenderOutput>,
-) -> RenderOutput {
+fn create_context(ctx: impl Ctx + ExtractVarArgs + DeriveCtx, data: impl Node<Context<'_>, Output = RenderOutput>) -> Result<RenderOutput, Interrupt> {
+	let render_config = *ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderConfig>()
+		.expect("Downcasting render config yielded invalid type");
+
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
 		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
@@ -169,16 +196,98 @@ async fn create_context<'a: 'n>(
 		..Default::default()
 	};
 
-	let ctx = OwnedContextImpl::default()
-		.with_footprint(footprint)
-		.with_real_time(render_config.time.time)
-		.with_animation_time(render_config.time.animation_time.as_secs_f64())
-		.with_pointer_position(render_config.pointer)
-		.with_vararg(Box::new(render_params))
-		.into_context();
-
-	let mut result = data.eval(ctx).await;
+	let scope = ctx
+		.scope()
+		.with_real_time(Some(render_config.time.time))
+		.with_animation_time(Some(render_config.time.animation_time.as_secs_f64()))
+		.with_pointer_position(Some(render_config.pointer));
+	let varargs = VarArgLink {
+		args: VarArgSlots::Single(&render_params),
+		outer: None,
+	};
+	let scoped = ctx.with_scope(&scope);
+	let with_params = scoped.with_varargs(&varargs);
+	let mut result = data.eval(&with_params.with_footprint(&footprint))?;
 
 	result.metadata.apply_transform(glam::DAffine2::from_scale(glam::DVec2::splat(1. / render_config.scale)));
-	result
+	Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core_types::arena::Arena;
+	use core_types::context::{ContextImpl, EvalScope, VarArgsResult};
+	use core_types::gpoll::GPoll;
+	use core_types::node::Node;
+	use core_types::{ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime};
+	use graphene_application_io::TimingInformation;
+
+	fn probe(ctx: &ContextImpl) -> GPoll<RenderOutput> {
+		let render_params = ctx.vararg(0).unwrap().downcast_ref::<RenderParams>().expect("the vararg chain must start with RenderParams");
+		assert_eq!(render_params.scale, 2.0);
+		assert!(matches!(ctx.vararg(1), Err(VarArgsResult::IndexOutOfBounds)), "the RenderConfig must not leak downstream");
+		assert_eq!(ctx.footprint().transform, glam::DAffine2::from_scale(glam::DVec2::splat(2.0)) * Footprint::DEFAULT.transform);
+		assert_eq!(ctx.try_real_time(), Some(1.5));
+		assert_eq!(ctx.try_animation_time(), Some(2.0));
+		assert_eq!(ctx.try_pointer_position(), Some(glam::DVec2::new(3.0, 4.0)));
+		GPoll::Final(RenderOutput {
+			data: RenderOutputType::Buffer {
+				data: Vec::new(),
+				width: 0,
+				height: 0,
+			},
+			metadata: RenderMetadata::default(),
+		})
+	}
+
+	#[test]
+	fn create_context_builds_the_render_context_from_the_root_vararg() {
+		let arena = Arena::new(4096).unwrap();
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let root = ContextImpl::root(&scope);
+		let render_config = RenderConfig {
+			scale: 2.0,
+			time: TimingInformation {
+				time: 1.5,
+				animation_time: std::time::Duration::from_secs(2),
+			},
+			pointer: glam::DVec2::new(3.0, 4.0),
+			..Default::default()
+		};
+		let varargs = VarArgLink {
+			args: VarArgSlots::Single(&render_config),
+			outer: None,
+		};
+		let ctx = root.with_varargs(&varargs);
+
+		let probe = core_types::record::LiftedSource::<RenderOutput, _>::new(probe);
+		let layout = Node::<ContextImpl>::layout(&probe).clone();
+		let frames = core_types::record::test_frames(layout.frame_bytes().max(1 << 12));
+		let mut graph = CreateContextNode::new(probe, &layout);
+		// The executor resolves and installs the node's own layout at wiring;
+		// without it the flip tail writes through the default empty layout.
+		Node::<ContextImpl>::set_layout(
+			&mut graph,
+			core_types::record::RecordLayout {
+				frame_bytes: layout.frame_bytes(),
+				plan: Vec::new(),
+				layout: layout.clone(),
+				lane_invariant: u32::MAX,
+			},
+		);
+		let GPoll::Final(result) = core_types::record::serve_input(&graph, &ctx, &frames) else {
+			panic!("create_context must complete synchronously");
+		};
+		let output: &RenderOutput = unsafe { core_types::record::borrow_element(layout.rec(&result)) };
+		assert_eq!(
+			output.data,
+			RenderOutputType::Buffer {
+				data: Vec::new(),
+				width: 0,
+				height: 0
+			}
+		);
+	}
 }

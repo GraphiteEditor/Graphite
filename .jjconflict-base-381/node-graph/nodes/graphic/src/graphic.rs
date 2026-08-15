@@ -9,8 +9,8 @@ use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
-use vector_types::gradient::{GradientSpread, GradientType};
-use vector_types::{Gradient, ReferencePoint};
+use vector_types::gradient::{GradientSpreadMethod, GradientType};
+use vector_types::{Gradient, GradientStop, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
@@ -568,7 +568,7 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<Artboard>,
 		List<BlendMode>,
 		List<GradientType>,
-		List<GradientSpread>,
+		List<GradientSpreadMethod>,
 	)]
 	content: List<T>,
 	/// The attribute name (key) to write or replace.
@@ -730,18 +730,18 @@ fn read_attribute_gradient_type(
 	result
 }
 
-/// Reads a named `GradientSpread` attribute from the input list, outputting each value as an element of a new `GradientSpread[]`.
+/// Reads a named `GradientSpreadMethod` attribute from the input list, outputting each value as an element of a new `GradientSpreadMethod[]`.
 #[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_spread(
+fn read_attribute_spread_method(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: Item<String>,
-) -> List<GradientSpread> {
+) -> List<GradientSpreadMethod> {
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientSpread>(&name, index) else { continue };
+		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -1007,9 +1007,47 @@ pub async fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations
 }
 
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
-#[node_macro::node(category("Gradient"), name("Colors to Gradient"))]
+#[node_macro::node(category("Color"), name("Colors to Gradient"))]
 fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> Item<Gradient> {
-	Item::new_from_element(Gradient::from(colors.into_flattened_list::<Color>()))
+	let colors = colors.into_flattened_list::<Color>();
+	let total_colors = colors.len();
+
+	if total_colors == 0 {
+		return Item::new_from_element(Gradient::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: Color::BLACK,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: Color::BLACK,
+			},
+		]));
+	}
+
+	if let (1, Some(&single_color)) = (total_colors, colors.element(0)) {
+		return Item::new_from_element(Gradient::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: single_color,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: single_color,
+			},
+		]));
+	}
+
+	let colors = colors.into_iter().enumerate().map(|(index, row)| GradientStop {
+		position: index as f64 / (total_colors - 1) as f64,
+		midpoint: 0.5,
+		color: row.into_element(),
+	});
+	Item::new_from_element(Gradient::new(colors))
 }
 
 #[cfg(test)]

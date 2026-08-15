@@ -551,13 +551,8 @@ tagged_value! {
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
-	#[serde(alias = "GradientType")] // TODO: Eventually remove this document upgrade code
-	GradientForm(vector::style::GradientForm),
-	#[serde(alias = "GradientSpreadMethod")] // TODO: Eventually remove this document upgrade code
-	GradientSpread(vector::style::GradientSpread),
-	GradientSpace(vector::style::GradientSpace),
-	GradientHueDirection(vector::style::GradientHueDirection),
-	GradientInterpolation(vector::style::GradientInterpolation),
+	GradientType(vector::style::GradientType),
+	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),
@@ -808,15 +803,11 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					.and_then(|c| c.get("element").or_else(|| c.get("instance")).or_else(|| c.get("instances")))
 					.and_then(|element| element.as_array());
 
-				// An empty legacy table wrapper carries no gradient, degrading to the default (in the era's gamma) rather than failing the document load
+				// An empty legacy table wrapper carries no gradient, degrading to the default rather than failing the document load
 				if let Some(array) = table_element
 					&& array.is_empty()
 				{
-					let ramp = GradientRamp {
-						gradient_space: vector::style::GradientSpace::RgbGamma,
-						..Default::default()
-					};
-					return Ok(MemoHash::new(TaggedValue::GradientRamp(ramp)));
+					return Ok(MemoHash::new(TaggedValue::GradientRamp(GradientRamp::default())));
 				}
 
 				let payload = table_element.and_then(|array| array.first()).unwrap_or(content);
@@ -1030,7 +1021,7 @@ mod paint_default_parsing {
 
 #[cfg(test)]
 mod gradient_shape_migration {
-	use graphic_types::vector_types::{GradientSpace, GradientSpread};
+	use graphic_types::vector_types::GradientSpreadMethod;
 
 	use super::*;
 
@@ -1051,29 +1042,13 @@ mod gradient_shape_migration {
 		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		gradient.set_positions(&[0.2, 0.9]);
 		let value = TaggedValue::GradientRamp(GradientRamp {
-			gradient_spread: GradientSpread::Reflect,
+			spread_method: GradientSpreadMethod::Reflect,
 			..GradientRamp::from(gradient)
 		});
 
 		let json = serde_json::to_value(&value).unwrap();
 		assert!(json.get("GradientRamp").and_then(|payload| payload.get("stops")).is_some(), "the payload should nest its stops: {json}");
-		assert_eq!(
-			json.get("GradientRamp").and_then(|payload| payload.get("gradient_space")),
-			Some(&serde_json::json!("OkLab")),
-			"the space should serialize even at its default, marking the ramp as post-legacy: {json}"
-		);
 		assert_eq!(load(json), value);
-	}
-
-	// TODO: Eventually remove this document upgrade code
-	#[test]
-	fn ramp_without_space_field_reads_as_legacy_gamma() {
-		let json = serde_json::json!({ "GradientRamp": { "stops": { "color": [white(), white()] } } });
-		let TaggedValue::GradientRamp(ramp) = load(json) else {
-			panic!("the ramp payload should become a gradient ramp value")
-		};
-
-		assert_eq!(ramp.gradient_space, GradientSpace::RgbGamma, "a ramp saved before the field existed should read as gamma");
 	}
 
 	// TODO: Eventually remove this document upgrade code
@@ -1083,10 +1058,9 @@ mod gradient_shape_migration {
 		let TaggedValue::GradientRamp(ramp) = load(json) else {
 			panic!("the flat stops should become a gradient ramp value")
 		};
-		assert_eq!(ramp.gradient_space, GradientSpace::RgbGamma, "the pre-ramp flat form should carry the era's gamma");
 
 		let gradient = Gradient::from(ramp);
-		assert_eq!(gradient.positions(false), vec![0., 0.25]);
+		assert_eq!(gradient.positions(), vec![0., 0.25]);
 		assert!(gradient.has_midpoint_attribute(), "the flat form must parse faithfully");
 	}
 
@@ -1097,10 +1071,9 @@ mod gradient_shape_migration {
 		let TaggedValue::GradientRamp(ramp) = load(json) else {
 			panic!("the tuple stops should become a gradient ramp value")
 		};
-		assert_eq!(ramp.gradient_space, GradientSpace::RgbGamma, "the pre-ramp tuple form should carry the era's gamma");
 
 		let gradient = Gradient::from(ramp);
-		assert_eq!(gradient.positions(false), vec![0., 1.]);
+		assert_eq!(gradient.positions(), vec![0., 1.]);
 		assert!(!gradient.has_position_attribute(), "even legacy tuple positions should elide");
 	}
 
@@ -1108,11 +1081,7 @@ mod gradient_shape_migration {
 	#[test]
 	fn empty_legacy_gradient_table_degrades_to_the_default() {
 		let json = serde_json::json!({ "GradientTable": { "element": [] } });
-		let expected = GradientRamp {
-			gradient_space: GradientSpace::RgbGamma,
-			..Default::default()
-		};
-		assert_eq!(load(json), TaggedValue::GradientRamp(expected));
+		assert_eq!(load(json), TaggedValue::GradientRamp(GradientRamp::default()));
 	}
 
 	// TODO: Eventually remove this document upgrade code
@@ -1122,10 +1091,6 @@ mod gradient_shape_migration {
 		let TaggedValue::LegacyGradient(legacy) = load(json) else {
 			panic!("the ancient full struct should become a legacy gradient value")
 		};
-		assert_eq!(
-			Gradient::from(legacy.stops).positions(false),
-			vec![0., 1.],
-			"the nested tuple stops should parse through the field adapter"
-		);
+		assert_eq!(Gradient::from(legacy.stops).positions(), vec![0., 1.], "the nested tuple stops should parse through the field adapter");
 	}
 }

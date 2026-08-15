@@ -7,11 +7,11 @@ use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::GradientStops;
-use graphic_types::vector_types::gradient::{GradientSpread, GradientForm, GradientInterpolation};
+use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use graphic_types::vector_types::{ATTR_GRADIENT_FORM, ATTR_GRADIENT_INTERPOLATION, ATTR_SPREAD_METHOD};
+use graphic_types::vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use graphic_types::{ATTR_FILL, ATTR_STROKE, Graphic, IntoGraphicList, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
@@ -324,14 +324,11 @@ fn gradient_paint_row(stops: GradientStops, mut attributes: core_types::list::It
 	if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
 		gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
 	}
-	if let Some(gradient_form) = attributes.remove::<GradientForm>(ATTR_GRADIENT_FORM) {
-		gradient_paint.set_attribute(ATTR_GRADIENT_FORM, 0, gradient_form);
+	if let Some(gradient_type) = attributes.remove::<GradientType>(ATTR_GRADIENT_TYPE) {
+		gradient_paint.set_attribute(ATTR_GRADIENT_TYPE, 0, gradient_type);
 	}
-	if let Some(spread_method) = attributes.remove::<GradientSpread>(ATTR_SPREAD_METHOD) {
+	if let Some(spread_method) = attributes.remove::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
 		gradient_paint.set_attribute(ATTR_SPREAD_METHOD, 0, spread_method);
-	}
-	if let Some(gradient_interpolation) = attributes.remove::<GradientInterpolation>(ATTR_GRADIENT_INTERPOLATION) {
-		gradient_paint.set_attribute(ATTR_GRADIENT_INTERPOLATION, 0, gradient_interpolation);
 	}
 	attributes.insert(ATTR_FILL, Some(gradient_paint));
 

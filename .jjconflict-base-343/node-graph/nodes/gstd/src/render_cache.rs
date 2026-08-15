@@ -1,7 +1,6 @@
 //! Tile-based render caching for efficient viewport panning.
 
 use core_types::gpoll::Interrupt;
-use core_types::list::Item;
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{Ctx, DeriveCtx, ExtractAll};
@@ -324,11 +323,11 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 #[node_macro::node(category(""))]
 pub fn render_output_cache(
 	ctx: impl Ctx + ExtractAll + DeriveCtx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<wgpu_executor::WgpuExecutorHandle>>,
-	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: Item<std::sync::Arc<PlatformEditorApi>>,
-	data: impl Node<Context<'_>, Output = Item<RenderOutput>>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<wgpu_executor::WgpuExecutorHandle>,
+	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: std::sync::Arc<PlatformEditorApi>,
+	data: impl Node<Context<'_>, Output = RenderOutput>,
 	#[data] tile_cache: TileCache,
-) -> Result<Item<RenderOutput>, Interrupt> {
+) -> Result<RenderOutput, Interrupt> {
 	let footprint = *ctx.footprint();
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()) else {
 		log::warn!("render_output_cache: missing or invalid render params, falling back to direct render");
@@ -350,7 +349,7 @@ pub fn render_output_cache(
 		end: footprint.resolution.as_dvec2() - device_origin_offset,
 	};
 
-	let max_region_area = editor_api.into_element().editor_preferences.max_render_region_area();
+	let max_region_area = editor_api.editor_preferences.max_render_region_area();
 
 	let cache_key = CacheKey::new(
 		max_region_area,
@@ -417,15 +416,15 @@ pub fn render_output_cache(
 		return data.eval(&ctx.derived());
 	}
 
-	let executor = executor.into_element().expect("GPU executor not available");
+	let executor = executor.expect("GPU executor not available");
 	let output_texture = executor.request_texture(physical_resolution);
 
 	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, &executor);
 
-	Ok(Item::new_from_element(RenderOutput {
+	Ok(RenderOutput {
 		data: RenderOutputType::Texture(output_texture),
 		metadata: combined_metadata,
-	}))
+	})
 }
 
 fn composite_cached_regions(

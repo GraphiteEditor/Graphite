@@ -2,11 +2,10 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
-use brush_nodes::brush_stroke::BrushStroke;
+use brush_nodes::brush_stroke::{BrushStroke, BrushTrace};
 use core_types::color::SRGBA8;
-use core_types::list::{Item, List};
+use core_types::list::{Item, List, NodeIdPath};
 use core_types::transform::Footprint;
-use core_types::uuid::NodeId;
 use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
@@ -87,17 +86,21 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 			F64Array(Vec<f64>),
+			/// Stored compactly as a `Vec<f64>` of dash lengths, materializes as an `Item<DashPattern>` at runtime via `to_dynany`/`to_any`.
+			DashPattern(Vec<f64>),
+			/// Stored compactly as a `Vec<f64>` of corner values, materializes as an `Item<BoxCorners>` at runtime via `to_dynany`/`to_any`.
+			BoxCorners(Vec<f64>),
 			/// A plain, always-present color. Aliases recover legacy on-disk shapes; a legacy `null` payload (the old "no color")
 			/// is routed to [`TaggedValue::no_paint`] by `deserialize_tagged_value_with_legacy_migration`.
 			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 			Color(Color),
-			/// Stored compactly as a `Gradient`, materializes as a single-row `List<Gradient>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			/// Stored compactly as a `Gradient`, materializing as an `Item<Gradient>` at runtime. Aliases recover legacy on-disk shapes.
 			/// (Old documents that stored a full `Gradient` struct under this same `"Gradient"` tag are routed to `LegacyGradient` by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			Gradient(Gradient),
-			/// Stored compactly as a `Vec<BrushStroke>`, materializes as `List<BrushStroke>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			/// Stored compactly as a `Vec<BrushStroke>`, materializes as the single-value `Item<BrushTrace>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
 			BrushStrokes(Vec<BrushStroke>),
@@ -110,9 +113,9 @@ macro_rules! tagged_value {
 			// =======================
 			#[serde(skip)]
 			RenderOutput(RenderOutput),
-			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`. Materializes a `List<NodeId>` at runtime via `to_dynany`/`to_any` during graph flattening.
+			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`. Materializes an `Item<NodeIdPath>` at runtime via `to_dynany`/`to_any` during graph flattening, matching the ranked connectors it feeds.
 			#[serde(skip)]
-			NodeIdPath(Vec<NodeId>),
+			NodeIdPath(NodeIdPath),
 			/// The `DocumentNode` value carried by an `Extract` proto node, populated at flatten time by `resolve_extract_nodes`. The on-disk placeholder uses `TypeDefault(concrete!(DocumentNode))`.
 			#[serde(skip)]
 			DocumentNode(DocumentNode),
@@ -140,13 +143,15 @@ macro_rules! tagged_value {
 					// =======================
 					$( Self::$identifier(x) => { x.cache_hash(state) }),*
 					Self::F64Array(values) => values.cache_hash(state),
+					Self::DashPattern(lengths) => lengths.cache_hash(state),
+					Self::BoxCorners(values) => values.cache_hash(state),
 					Self::Color(color) => color.cache_hash(state),
 					Self::Gradient(stops) => stops.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::NodeIdPath(path) => path.hash(state),
+					Self::NodeIdPath(path) => path.cache_hash(state),
 					Self::DocumentNode(node) => node.cache_hash(state),
 					Self::ContextFeatures(features) => features.cache_hash(state),
 					Self::RenderOutput(x) => x.cache_hash(state),
@@ -202,28 +207,24 @@ macro_rules! tagged_value {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
-					Self::Color(color) => Box::new(List::<Color>::new_from_element(color)),
-					Self::Gradient(stops) => Box::new(List::<Gradient>::new_from_element(stops)),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
-					}
+					Self::DashPattern(lengths) => Box::new(Item::new_from_element(DashPattern::from(lengths))),
+					Self::BoxCorners(values) => Box::new(Item::new_from_element(BoxCorners::from(values))),
+					Self::Color(color) => Box::new(Item::new_from_element(color)),
+					Self::Gradient(stops) => Box::new(Item::new_from_element(stops)),
+					Self::BrushStrokes(strokes) => Box::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(x) => Box::new(x), )*
+					$( Self::$identifier(x) => Box::new(Item::new_from_element(x)), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(x) => Box::new(x),
-					Self::NodeIdPath(path) => {
-						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
-					}
+					Self::RenderOutput(x) => Box::new(Item::new_from_element(x)),
+					Self::NodeIdPath(path) => Box::new(Item::new_from_element(path)),
 					Self::DocumentNode(node) => Box::new(node),
-					Self::ContextFeatures(features) => Box::new(features),
+					Self::ContextFeatures(features) => Box::new(Item::new_from_element(features)),
 					Self::EditorApi(x) => Box::new(x),
-					Self::ResourceHash(x) => Box::new(x),
+					Self::ResourceHash(x) => Box::new(Item::new_from_element(x)),
 				}
 			}
 
@@ -270,28 +271,24 @@ macro_rules! tagged_value {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
-					Self::Color(color) => Arc::new(List::<Color>::new_from_element(color)),
-					Self::Gradient(stops) => Arc::new(List::<Gradient>::new_from_element(stops)),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
-					}
+					Self::DashPattern(lengths) => Arc::new(Item::new_from_element(DashPattern::from(lengths))),
+					Self::BoxCorners(values) => Arc::new(Item::new_from_element(BoxCorners::from(values))),
+					Self::Color(color) => Arc::new(Item::new_from_element(color)),
+					Self::Gradient(stops) => Arc::new(Item::new_from_element(stops)),
+					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(x) => Arc::new(x), )*
+					$( Self::$identifier(x) => Arc::new(Item::new_from_element(x)), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(x) => Arc::new(x),
-					Self::NodeIdPath(path) => {
-						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
-					}
+					Self::RenderOutput(x) => Arc::new(Item::new_from_element(x)),
+					Self::NodeIdPath(path) => Arc::new(Item::new_from_element(path)),
 					Self::DocumentNode(node) => Arc::new(node),
-					Self::ContextFeatures(features) => Arc::new(features),
+					Self::ContextFeatures(features) => Arc::new(Item::new_from_element(features)),
 					Self::EditorApi(x) => Arc::new(x),
-					Self::ResourceHash(x) => Arc::new(x),
+					Self::ResourceHash(x) => Arc::new(Item::new_from_element(x)),
 				}
 			}
 
@@ -303,23 +300,25 @@ macro_rules! tagged_value {
 					// ===============
 					Self::None => concrete!(()),
 					Self::TypeDefault(td) => td.clone(),
-					Self::F64Array(_) => concrete!(List<f64>),
-					Self::Color(_) => concrete!(List<Color>),
-					Self::Gradient(_) => concrete!(List<Gradient>),
-					Self::BrushStrokes(_) => concrete!(List<BrushStroke>),
+					Self::F64Array(_) => list!(f64),
+					Self::DashPattern(_) => item!(DashPattern),
+					Self::BoxCorners(_) => item!(BoxCorners),
+					Self::Color(_) => item!(Color),
+					Self::Gradient(_) => item!(Gradient),
+					Self::BrushStrokes(_) => item!(BrushTrace),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(_) => concrete!($ty), )*
+					$( Self::$identifier(_) => item!($ty), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(_) => concrete!(RenderOutput),
-					Self::NodeIdPath(_) => concrete!(List<NodeId>),
+					Self::RenderOutput(_) => item!(RenderOutput),
+					Self::NodeIdPath(_) => item!(NodeIdPath),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
-					Self::ContextFeatures(_) => concrete!(ContextFeatures),
-					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
-					Self::ResourceHash(_) => concrete!(ResourceHash),
+					Self::ContextFeatures(_) => item!(ContextFeatures),
+					Self::EditorApi(_) => item!(&PlatformEditorApi),
+					Self::ResourceHash(_) => item!(ResourceHash),
 				};
 
 				// Defensively converges any remaining name-encoded ranked type (e.g. an opaque macro capture) to the structural form
@@ -335,15 +334,29 @@ macro_rules! tagged_value {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
+					// The manual variants convert from both their payload and wire forms, with the newtypes flattening to their stored `Vec<f64>` form
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
+					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::F64Array(*downcast(input).unwrap())),
+					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::F64Array(downcast::<List<f64>>(input).unwrap().iter_element_values().copied().collect())),
+					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(downcast::<DashPattern>(input).unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(downcast::<Item<DashPattern>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(downcast::<Item<BoxCorners>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Color>() => Ok(TaggedValue::Color(*downcast(input).unwrap())),
+					x if x == TypeId::of::<Item<Color>>() => Ok(TaggedValue::Color(downcast::<Item<Color>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::Gradient(*downcast(input).unwrap())),
+					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::Gradient(downcast::<Item<Gradient>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
+					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(downcast::<Item<BrushTrace>>(input).unwrap().into_element().0.iter_element_values().cloned().collect())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
+					$( x if x == TypeId::of::<Item<$ty>>() => Ok(TaggedValue::$identifier(downcast::<Item<$ty>>(input).unwrap().into_element())), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
+					x if x == TypeId::of::<Item<RenderOutput>>() => Ok(TaggedValue::RenderOutput(downcast::<Item<RenderOutput>>(input).unwrap().into_element())),
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 				}
@@ -357,22 +370,36 @@ macro_rules! tagged_value {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
+					// The manual variants convert from both their payload and wire forms, with the newtypes flattening to their stored `Vec<f64>` form
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
+					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::F64Array(input.downcast_ref::<Vec<f64>>().unwrap().clone())),
+					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::F64Array(input.downcast_ref::<List<f64>>().unwrap().iter_element_values().copied().collect())),
+					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<DashPattern>().unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<Item<DashPattern>>().unwrap().element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<Item<BoxCorners>>().unwrap().element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Color>() => Ok(TaggedValue::Color(*input.downcast_ref::<Color>().unwrap())),
+					x if x == TypeId::of::<Item<Color>>() => Ok(TaggedValue::Color(*input.downcast_ref::<Item<Color>>().unwrap().element())),
+					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::Gradient(input.downcast_ref::<Gradient>().unwrap().clone())),
+					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::Gradient(input.downcast_ref::<Item<Gradient>>().unwrap().element().clone())),
+					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
+					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Item<BrushTrace>>().unwrap().element().0.iter_element_values().cloned().collect())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(<$ty as Clone>::clone(input.downcast_ref().unwrap()))), )*
+					$( x if x == TypeId::of::<Item<$ty>>() => Ok(TaggedValue::$identifier(Item::<$ty>::clone(input.downcast_ref().unwrap()).into_element())), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(RenderOutput::clone(input.downcast_ref().unwrap()))),
+					x if x == TypeId::of::<Item<RenderOutput>>() => Ok(TaggedValue::RenderOutput(Item::<RenderOutput>::clone(input.downcast_ref().unwrap()).into_element())),
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", std::any::type_name_of_val(input))),
 				}
 			}
 
 			/// Returns a TaggedValue from the type, where that value is its type's `Default::default()`.
-			/// Dispatches by the type's name (the field that round-trips through serde) so it works for both
-			/// freshly constructed types and types deserialized from disk where the runtime `TypeId` is unavailable.
+			/// Dispatches by name for concrete types and structurally by element for ranked types, where the name
+			/// field is what round-trips through serde so it works even for types deserialized from disk.
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => None,
@@ -381,12 +408,12 @@ macro_rules! tagged_value {
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
-						// List-wrapped types need a single-item default with the element's default, not an empty list
-						if name == std::any::type_name::<List<Color>>() { return Some(TaggedValue::Color(Color::default())) }
-						if name == std::any::type_name::<List<Gradient>>() { return Some(TaggedValue::Gradient(Gradient::default())) }
+						if name == std::any::type_name::<Color>() { return Some(TaggedValue::Color(Color::default())) }
+						if name == std::any::type_name::<Gradient>() { return Some(TaggedValue::Gradient(Gradient::default())) }
+						if name == std::any::type_name::<DashPattern>() { return Some(TaggedValue::DashPattern(Vec::new())) }
+						if name == std::any::type_name::<BoxCorners>() { return Some(TaggedValue::BoxCorners(Vec::new())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
-						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
-						if name == std::any::type_name::<List<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == std::any::type_name::<BrushTrace>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						// Unranked types without a variant route through `TypeDefault`, with `to_dynany`/`to_any` constructing the actual default at execution time
 						macro_rules! check_bare {
 							($type_default:ty) => {
@@ -436,6 +463,8 @@ macro_rules! tagged_value {
 					Self::None => "()".to_string(),
 					Self::TypeDefault(td) => format!("TypeDefault({td})"),
 					Self::F64Array(values) => format!("F64Array({values:?})"),
+					Self::DashPattern(lengths) => format!("DashPattern({lengths:?})"),
+					Self::BoxCorners(values) => format!("BoxCorners({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::Gradient(stops) => format!("Gradient({stops:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
@@ -502,8 +531,6 @@ tagged_value! {
 	LegacyOptionalDAffine2(Option<DAffine2>),
 	#[serde(alias = "FillGradient")]
 	LegacyGradient(graphic_types::migrations::legacy::LegacyGradient),
-	#[serde(alias = "Fill")]
-	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
 	// ==========
 	// ENUM TYPES
 	// ==========
@@ -536,8 +563,6 @@ tagged_value! {
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
-	DashPattern(vector::style::DashPattern),
-	BoxCorners(vector::misc::BoxCorners),
 	GradientType(vector::style::GradientType),
 	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),
@@ -545,6 +570,9 @@ tagged_value! {
 	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
 	ScaleType(core_types::transform::ScaleType),
+	// Legacy
+	#[serde(alias = "Fill")]
+	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
 }
 
 impl TaggedValue {
@@ -677,15 +705,13 @@ impl TaggedValue {
 					() if ty == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					// `Color` (not in a `List`) is still currently needed by `BlackAndWhiteNode` and `ColorOverlayNode` GPU `shader_node(PerPixelAdjust)` variants
 					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
-					() if ty == TypeId::of::<List<Color>>() => to_color(string).map(TaggedValue::Color)?,
-					// The Fill and Stroke nodes' paint connectors default to `List<Graphic>`, their first registered implementation row
-					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(TaggedValue::Color)?,
-					() if ty == TypeId::of::<List<Gradient>>() => to_gradient(string).map(TaggedValue::Gradient)?,
+					// The Fill/Stroke paint wires carry `Graphic` or `Gradient` elements, so a paint default parses through the element recursion as a color or gradient literal
+					() if ty == TypeId::of::<Graphic>() => to_color(string).map(TaggedValue::Color)?,
+					() if ty == TypeId::of::<Gradient>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
-					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
-					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(BoxCorners::from(string)),
+					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(core_types::misc::parse_f64_list(string)),
+					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(core_types::misc::parse_f64_list(string)),
 					_ => return None,
 				};
 				Some(ty)
@@ -847,7 +873,7 @@ impl<'i, T: 'i + AsRef<U> + Sync + Send, U: 'i + StaticType + Sync + Send> Node<
 	type Output = FutureAny<'i>;
 	#[inline(always)]
 	fn eval(&'i self, _: DAny<'i>) -> Self::Output {
-		Box::pin(async move { Box::new(self.0.as_ref()) as DAny<'i> })
+		Box::pin(async move { Box::new(Item::new_from_element(self.0.as_ref())) as DAny<'i> })
 	}
 }
 
@@ -970,6 +996,24 @@ mod typedefault_dispatch {
 #[cfg(test)]
 mod paint_default_parsing {
 	use super::*;
+	use core_types::{item, list};
+
+	/// A Fill/Stroke paint wire carries `Graphic` elements, so its `Color::BLACK` default must parse through the
+	/// element recursion into a `Color` for a fresh Fill node's paint to resolve.
+	#[test]
+	fn paint_wire_parses_color_default_through_its_element() {
+		let black = Some(TaggedValue::Color(Color::BLACK));
+		assert_eq!(
+			TaggedValue::from_primitive_string("Color::BLACK", &list!(Graphic)),
+			black,
+			"a `List<Graphic>` paint wire should resolve its color default"
+		);
+		assert_eq!(
+			TaggedValue::from_primitive_string("Color::BLACK", &item!(Graphic)),
+			black,
+			"an `Item<Graphic>` paint wire should resolve its color default"
+		);
+	}
 
 	/// Table-era documents stored the red-slash "no paint" fill as an empty color table, which must keep
 	/// deserializing to [`TaggedValue::no_paint`] rather than collapsing to a transparent color.

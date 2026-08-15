@@ -23,6 +23,9 @@ pub trait ApplicationIo {
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
 		None
 	}
+	fn gpu_executor_arc(&self) -> Option<Arc<Self::Executor>> {
+		None
+	}
 	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture<'_>;
 }
 
@@ -31,6 +34,10 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 
 	fn gpu_executor(&self) -> Option<&T::Executor> {
 		(**self).gpu_executor()
+	}
+
+	fn gpu_executor_arc(&self) -> Option<Arc<T::Executor>> {
+		(**self).gpu_executor_arc()
 	}
 
 	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture<'_> {
@@ -114,6 +121,7 @@ pub struct EditorApi<Io> {
 	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender + Send + Sync>,
 	/// Editor preferences made available to the graph through the `PlatformEditorApi`.
 	pub editor_preferences: Box<dyn GetEditorPreferences + Send + Sync>,
+	pub runtime: core_types::runtime::RuntimeHandle,
 }
 
 impl<Io> Eq for EditorApi<Io> {}
@@ -124,6 +132,7 @@ impl<Io: Default> Default for EditorApi<Io> {
 			application_io: None,
 			node_graph_message_sender: Box::new(Logger),
 			editor_preferences: Box::new(DummyPreferences),
+			runtime: Default::default(),
 		}
 	}
 }

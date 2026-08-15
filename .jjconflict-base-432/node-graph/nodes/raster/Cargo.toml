@@ -1,0 +1,76 @@
+[package]
+name = "raster-nodes"
+version = "0.1.0"
+edition = "2024"
+description = "Raster operation nodes for Graphene"
+authors = ["Graphite Authors <contact@graphite.art>"]
+license = "MIT OR Apache-2.0"
+
+[lints]
+workspace = true
+
+[features]
+default = ["std"]
+serde = ["dep:serde", "core-types?/serde", "raster-types?/serde", "vector-types?/serde"]
+shader-nodes = ["std", "dep:raster-nodes-shaders", "dep:wgpu-executor"]
+std = [
+	"serde",
+	"dep:core-types",
+	"dep:dyn-any",
+	"dep:graphene-resource",
+	"dep:graphene-hash",
+	"dep:raster-types",
+	"dep:vector-types",
+	"dep:image",
+	"dep:ndarray",
+	"dep:rand",
+	"dep:rand_chacha",
+	"dep:fastnoise-lite",
+	"dep:kurbo",
+]
+wasm = [
+	"core-types/wasm",
+	"raster-types/wasm",
+	"vector-types/wasm",
+	"tsify",
+	"wasm-bindgen",
+]
+
+[dependencies]
+# Local dependencies
+no-std-types = { workspace = true }
+node-macro = { workspace = true }
+
+# Local std dependencies
+dyn-any = { workspace = true, optional = true }
+core-types = { workspace = true, optional = true }
+graphene-resource = { workspace = true, optional = true }
+graphene-hash = { workspace = true, optional = true }
+raster-types = { workspace = true, optional = true }
+vector-types = { workspace = true, optional = true }
+wgpu-executor = { workspace = true, optional = true }
+raster-nodes-shaders = { path = "./shaders", optional = true }
+
+# Workspace dependencies
+bytemuck = { workspace = true }
+glam = { workspace = true }
+spirv-std = { workspace = true }
+num-traits = { workspace = true }
+num_enum = { workspace = true }
+
+# Workspace std dependencies
+image = { workspace = true, optional = true }
+ndarray = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+rand_chacha = { workspace = true, optional = true }
+fastnoise-lite = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+kurbo = { workspace = true, optional = true }
+
+# Workspace Wasm dependencies
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+futures = { workspace = true }

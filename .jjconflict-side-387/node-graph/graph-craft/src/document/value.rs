@@ -1,25 +1,31 @@
 use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
-use crate::proto::{Any as DAny, FutureAny};
+use crate::proto::Any as DAny;
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::color::SRGBA8;
+use core_types::context::Context;
+use core_types::gpoll::GPoll;
 use core_types::list::List;
+use core_types::registry::SourceHandle;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
-use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
+use core_types::value::{leveled_record_value_source, record_value_source};
+use core_types::{CacheHash, Color, ContextModification, MemoHash, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::resource::ResourceHash;
+use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
+use graphic_types::vector_types::vector::misc::BoxCorners;
+use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::Gradient;
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
 use text_nodes::Font;
@@ -28,15 +34,38 @@ use vector::VectorModification;
 
 pub struct TaggedValueTypeError;
 
-/// List of types routed through [`TaggedValue::TypeDefault`] instead of another dedicated variant.
+/// Item-cell element types routed through [`TaggedValue::TypeDefault`] instead of another dedicated variant, stored as the concrete `Item<T>` wire type.
 /// Consumed by [`TaggedValue::from_type`] (which creates `TypeDefault` values) and [`TaggedValue::to_dynany`]/[`TaggedValue::to_any`] (which unwrap them into real default values).
-macro_rules! for_each_type_default {
+macro_rules! for_each_item_type_default {
 	($action:ident) => {
-		$action!(List<Graphic>);
-		$action!(List<Artboard>);
-		$action!(List<Raster<CPU>>);
-		$action!(List<Vector>);
-		$action!(List<String>);
+		$action!(Vector);
+		$action!(f64);
+		$action!(Raster<CPU>);
+		$action!(Graphic);
+		$action!(Color);
+		$action!(Gradient);
+		$action!(Artboard);
+		$action!(String);
+	};
+}
+
+/// List element types routed through [`TaggedValue::TypeDefault`], stored as the structural [`Type::List`] form.
+/// `List<f64>` is absent because it stores as `TaggedValue::F64Array`.
+macro_rules! for_each_list_type_default {
+	($action:ident) => {
+		$action!(Graphic);
+		$action!(Artboard);
+		$action!(Raster<CPU>);
+		$action!(Vector);
+		$action!(String);
+		$action!(Color);
+		$action!(Gradient);
+	};
+}
+
+/// Unranked types routed through [`TaggedValue::TypeDefault`], stored as their concrete type.
+macro_rules! for_each_bare_type_default {
+	($action:ident) => {
 		$action!(DocumentNode);
 		$action!(Resource);
 	};
@@ -54,8 +83,9 @@ macro_rules! tagged_value {
 			// ===============
 			None,
 			/// Stores a type, from which its `Default::default()` value can be obtained, rather than storing an actual type's value.
-			/// Example: `TaggedValue::TypeDefault(descriptor!(String))` stores the type `String` but no specific string value.
-			TypeDefault(TypeDescriptor),
+			/// Example: `TaggedValue::TypeDefault(concrete!(String))` stores the type `String` but no specific string value.
+			/// (Old documents stored a bare `TypeDescriptor` payload, routed to this shape by `deserialize_tagged_value_with_legacy_migration`.)
+			TypeDefault(Type),
 			/// Stored compactly as a `Vec<f64>`, materializes as `List<f64>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
@@ -65,12 +95,12 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 			Color(Color),
-			/// Stored compactly as a `Gradient`, materializes as a single-row `List<Gradient>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			/// Stored compactly as a `Gradient`, materializing as an `Item<Gradient>` at runtime. Aliases recover legacy on-disk shapes.
 			/// (Old documents that stored a full `Gradient` struct under this same `"Gradient"` tag are routed to `LegacyGradient` by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			Gradient(Gradient),
-			/// Stored compactly as a `Vec<BrushStroke>`, materializes as `List<BrushStroke>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			/// Stored compactly as a `Vec<BrushStroke>`, materializes as the single-value `Item<BrushTrace>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
 			BrushStrokes(Vec<BrushStroke>),
@@ -83,15 +113,15 @@ macro_rules! tagged_value {
 			// =======================
 			#[serde(skip)]
 			RenderOutput(RenderOutput),
-			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`. Materializes a `List<NodeId>` at runtime via `to_dynany`/`to_any` during graph flattening.
+			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`. Materializes an `Item<NodeIdPath>` at runtime via `to_dynany`/`to_any` during graph flattening, matching the ranked connectors it feeds.
 			#[serde(skip)]
-			NodeIdPath(Vec<NodeId>),
-			/// The `DocumentNode` value carried by an `Extract` proto node, populated at flatten time by `resolve_extract_nodes`. The on-disk placeholder uses `TypeDefault(descriptor!(DocumentNode))`.
+			NodeIdPath(NodeIdPath),
+			/// The `DocumentNode` value carried by an `Extract` proto node, populated at flatten time by `resolve_extract_nodes`. The on-disk placeholder uses `TypeDefault(concrete!(DocumentNode))`.
 			#[serde(skip)]
 			DocumentNode(DocumentNode),
 			/// Carried by context nullification proto nodes constructed at proto node compilation time in `insert_context_nullification_nodes`.
 			#[serde(skip)]
-			ContextFeatures(ContextFeatures),
+			ContextModification(ContextModification),
 			#[serde(skip)]
 			EditorApi(Arc<PlatformEditorApi>),
 			/// Only used by the `resource` node, should never be serialized
@@ -119,9 +149,9 @@ macro_rules! tagged_value {
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::NodeIdPath(path) => path.hash(state),
+					Self::NodeIdPath(path) => path.cache_hash(state),
 					Self::DocumentNode(node) => node.cache_hash(state),
-					Self::ContextFeatures(features) => features.cache_hash(state),
+					Self::ContextModification(modification) => modification.cache_hash(state),
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 					Self::ResourceHash(x) => x.cache_hash(state),
@@ -144,38 +174,31 @@ macro_rules! tagged_value {
 						let name = td.name.as_ref();
 						macro_rules! check {
 							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Box::new(<$type_default>::default()); }
+								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Box::new(<$type_default>::default()); }
 							};
 						}
-						for_each_type_default!(check);
-						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
+						Self::from_type_or_none(&td).to_dynany()
 					}
 					Self::F64Array(values) => {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
-					Self::Color(color) => Box::new(List::<Color>::new_from_element(color)),
-					Self::Gradient(stops) => Box::new(List::<Gradient>::new_from_element(stops)),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
-					}
+					Self::Color(color) => Box::new(Item::new_from_element(color)),
+					Self::Gradient(stops) => Box::new(Item::new_from_element(stops)),
+					Self::BrushStrokes(strokes) => Box::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(x) => Box::new(x), )*
+					$( Self::$identifier(x) => Box::new(Item::new_from_element(x)), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::RenderOutput(x) => Box::new(x),
-					Self::NodeIdPath(path) => {
-						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
-					}
+					Self::NodeIdPath(path) => Box::new(path),
 					Self::DocumentNode(node) => Box::new(node),
-					Self::ContextFeatures(features) => Box::new(features),
+					Self::ContextModification(modification) => Box::new(modification),
 					Self::EditorApi(x) => Box::new(x),
-					Self::ResourceHash(x) => Box::new(x),
+					Self::ResourceHash(x) => Box::new(Item::new_from_element(x)),
 				}
 			}
 
@@ -191,67 +214,189 @@ macro_rules! tagged_value {
 						let name = td.name.as_ref();
 						macro_rules! check {
 							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Arc::new(<$type_default>::default()); }
+								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Arc::new(<$type_default>::default()); }
 							};
 						}
-						for_each_type_default!(check);
-						Self::from_type_or_none(&Type::Concrete(td)).to_any()
+						Self::from_type_or_none(&td).to_any()
 					}
 					Self::F64Array(values) => {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
-					Self::Color(color) => Arc::new(List::<Color>::new_from_element(color)),
-					Self::Gradient(stops) => Arc::new(List::<Gradient>::new_from_element(stops)),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
-					}
+					Self::Color(color) => Arc::new(Item::new_from_element(color)),
+					Self::Gradient(stops) => Arc::new(Item::new_from_element(stops)),
+					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(x) => Arc::new(x), )*
+					$( Self::$identifier(x) => Arc::new(Item::new_from_element(x)), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::RenderOutput(x) => Arc::new(x),
-					Self::NodeIdPath(path) => {
-						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
-					}
+					Self::NodeIdPath(path) => Arc::new(path),
 					Self::DocumentNode(node) => Arc::new(node),
-					Self::ContextFeatures(features) => Arc::new(features),
+					Self::ContextModification(modification) => Arc::new(modification),
 					Self::EditorApi(x) => Arc::new(x),
-					Self::ResourceHash(x) => Arc::new(x),
+					Self::ResourceHash(x) => Arc::new(Item::new_from_element(x)),
 				}
 			}
 
-			/// Creates a core_types::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
+			/// Creates the wire [`Type`] of the value inside the tagged value, with ranked types in their structural form.
 			pub fn ty(&self) -> Type {
-				match self {
+				let ty = match self {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
 					Self::None => concrete!(()),
-					Self::TypeDefault(td) => Type::Concrete(td.clone()),
-					Self::F64Array(_) => concrete!(List<f64>),
-					Self::Color(_) => concrete!(List<Color>),
-					Self::Gradient(_) => concrete!(List<Gradient>),
-					Self::BrushStrokes(_) => concrete!(List<BrushStroke>),
+					// The list-typed defaults type by their element: depth is not a
+					// `Type` axis, it rides the layout proven at wiring.
+					Self::TypeDefault(td) => {
+						let name = td.name.as_ref();
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Graphic>>()) { return concrete!(Graphic); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Artboard>>()) { return concrete!(Artboard); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Raster<CPU>>>()) { return concrete!(Raster<CPU>); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) { return concrete!(Vector); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<String>>()) { return concrete!(String); }
+						Type::Concrete(td.clone())
+					}
+					Self::F64Array(_) => concrete!(f64),
+					Self::Color(_) => concrete!(Color),
+					Self::Gradient(_) => concrete!(GradientStops),
+					Self::BrushStrokes(_) => concrete!(BrushStroke),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(_) => concrete!($ty), )*
+					$( Self::$identifier(_) => item!($ty), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::RenderOutput(_) => concrete!(RenderOutput),
-					Self::NodeIdPath(_) => concrete!(List<NodeId>),
+					Self::NodeIdPath(_) => concrete!(Vec<NodeId>),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
-					Self::ContextFeatures(_) => concrete!(ContextFeatures),
-					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
+					Self::ContextModification(_) => concrete!(ContextModification),
+					Self::EditorApi(_) => concrete!(Arc<PlatformEditorApi>),
 					Self::ResourceHash(_) => concrete!(ResourceHash),
 				}
+			}
+
+			/// The record layout of this value's source: leveled for the list-carrying
+			/// variants, element-only at rank 0 otherwise. `None` for a
+			/// [`Self::TypeDefault`] whose named type is outside `for_each_type_default!`.
+			pub fn value_layout(&self) -> Option<core_types::record::Layout> {
+				fn leveled<T: Clone + Send + Sync + CacheHash + PartialEq + dyn_any::StaticTypeSized>() -> Option<core_types::record::Layout>
+				where
+					T::Static: Clone + Send + Sync,
+				{
+					Some(core_types::record::Layout::default().with_writes(1, core_types::record::element_write_hashed::<T>(), &[]))
+				}
+				fn scalar<T: Clone + Send + Sync + dyn_any::StaticTypeSized>() -> Option<core_types::record::Layout>
+				where
+					T::Static: Clone + Send + Sync,
+				{
+					Some(core_types::record::Layout::default().with_writes(0, core_types::record::element_write::<T>(), &[]))
+				}
+				match self {
+					Self::None => scalar::<()>(),
+					Self::TypeDefault(td) => {
+						let name = td.name.as_ref();
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Graphic>>()) { return leveled::<Graphic>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Artboard>>()) { return leveled::<Artboard>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Raster<CPU>>>()) { return leveled::<Raster<CPU>>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) { return leveled::<Vector>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<String>>()) { return leveled::<String>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<DocumentNode>()) { return scalar::<DocumentNode>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<Resource>()) { return scalar::<Resource>(); }
+						None
+					}
+					Self::F64Array(_) => leveled::<f64>(),
+					Self::Color(_) => leveled::<Color>(),
+					Self::Gradient(_) => leveled::<GradientStops>(),
+					Self::BrushStrokes(_) => leveled::<BrushStroke>(),
+					$( Self::$identifier(_) => scalar::<$ty>(), )*
+					Self::RenderOutput(_) => scalar::<RenderOutput>(),
+					Self::NodeIdPath(_) => scalar::<Vec<NodeId>>(),
+					Self::DocumentNode(_) => scalar::<DocumentNode>(),
+					Self::ContextModification(_) => scalar::<ContextModification>(),
+					Self::EditorApi(_) => scalar::<Arc<PlatformEditorApi>>(),
+					Self::ResourceHash(_) => scalar::<ResourceHash>(),
+				}
+			}
+
+			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a value source typed by [`Self::ty`].
+			pub fn to_edge(self) -> Result<SourceHandle, String> {
+				match self {
+					// ===============
+					// MANUAL VARIANTS
+					// ===============
+					Self::None => Ok(record_value_source(())),
+					Self::TypeDefault(td) => {
+						let name = td.name.as_ref();
+						// The list-typed defaults serve an empty level; the rest construct
+						// their default directly, mirroring `to_dynany`'s recursion guard.
+						macro_rules! check_level {
+							($list:ty, $element:ty) => {
+								if name == core_types::normalize_type_name(std::any::type_name::<$list>()) {
+									return Ok(leveled_record_value_source(Vec::<$element>::new()));
+								}
+							};
+						}
+						check_level!(List<Graphic>, Graphic);
+						check_level!(List<Artboard>, Artboard);
+						check_level!(List<Raster<CPU>>, Raster<CPU>);
+						// One default lane rather than an empty level: an unwired path input
+						// starts from a blank vector, as the legacy path modify synthesized itself.
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) { return Ok(leveled_record_value_source(vec![Vector::default()])); }
+						check_level!(List<String>, String);
+						if name == core_types::normalize_type_name(std::any::type_name::<DocumentNode>()) { return Ok(record_value_source(DocumentNode::default())); }
+						if name == core_types::normalize_type_name(std::any::type_name::<Resource>()) { return Ok(record_value_source(Resource::default())); }
+						Self::from_type_or_none(&Type::Concrete(td)).to_edge()
+					}
+					Self::F64Array(values) => Ok(leveled_record_value_source(values)),
+					Self::Color(color) => Ok(leveled_record_value_source(color.into_iter().collect::<Vec<_>>())),
+					Self::Gradient(stops) => Ok(leveled_record_value_source(vec![stops])),
+					Self::BrushStrokes(strokes) => Ok(leveled_record_value_source(strokes)),
+					// =======================
+					// AUTO-GENERATED VARIANTS
+					// =======================
+					$( Self::$identifier(x) => Ok(record_value_source(x)), )*
+					// =======================
+					// NON-SERIALIZED VARIANTS
+					// =======================
+					Self::RenderOutput(x) => Ok(record_value_source(x)),
+					Self::NodeIdPath(path) => Ok(record_value_source(path)),
+					Self::DocumentNode(node) => Ok(record_value_source(node)),
+					Self::ContextModification(modification) => Ok(record_value_source(modification)),
+					Self::EditorApi(x) => Ok(record_value_source(x)),
+					Self::ResourceHash(x) => Ok(record_value_source(x)),
+				}
+			}
+
+			/// Evaluates a typed source and converts the landed value into a tagged value, with the coverage of [`Self::try_from_any`].
+			pub fn from_edge<'f>(handle: SourceHandle, ctx: &Context<'f>, frames: &core_types::record::Frames<'f>) -> Result<GPoll<Self>, String> {
+				let ty = handle.ty().clone();
+				// =======================
+				// RECORD WIRES, WHICH LAND AS THEIR ELEMENT
+				// =======================
+				if ty == core_types::registry::record_source_type::<()>() {
+					let edge = handle.downcast_record::<()>().map_err(|e| format!("{e:?}"))?;
+					return Ok(core_types::record::serve_input(&edge, ctx, frames).map(|_| TaggedValue::None));
+				}
+				$(
+					if ty == core_types::registry::record_source_type::<$ty>() {
+						let layout = handle.layout().clone();
+						let edge = handle.downcast_record::<$ty>().map_err(|e| format!("{e:?}"))?;
+						return Ok(core_types::record::serve_input(&edge, ctx, frames)
+							.map(|value| TaggedValue::$identifier(unsafe { core_types::record::read_element::<$ty>(layout.rec(&value)) })));
+					}
+				)*
+				if ty == core_types::registry::record_source_type::<RenderOutput>() {
+					let layout = handle.layout().clone();
+					let edge = handle.downcast_record::<RenderOutput>().map_err(|e| format!("{e:?}"))?;
+					return Ok(core_types::record::serve_input(&edge, ctx, frames)
+						.map(|value| TaggedValue::RenderOutput(unsafe { core_types::record::read_element::<RenderOutput>(layout.rec(&value)) })));
+				}
+				Err(format!("Cannot convert edge of type {ty} to TaggedValue"))
 			}
 
 			/// Attempts to downcast the dynamic type to a tagged value
@@ -268,10 +413,11 @@ macro_rules! tagged_value {
 					// AUTO-GENERATED VARIANTS
 					// =======================
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
+					$( x if x == TypeId::of::<Item<$ty>>() => Ok(TaggedValue::$identifier(downcast::<Item<$ty>>(input).unwrap().into_element())), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
+					x if x == TypeId::of::<Item<RenderOutput>>() => Ok(TaggedValue::RenderOutput(downcast::<Item<RenderOutput>>(input).unwrap().into_element())),
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 				}
@@ -290,42 +436,76 @@ macro_rules! tagged_value {
 					// AUTO-GENERATED VARIANTS
 					// =======================
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(<$ty as Clone>::clone(input.downcast_ref().unwrap()))), )*
+					$( x if x == TypeId::of::<Item<$ty>>() => Ok(TaggedValue::$identifier(Item::<$ty>::clone(input.downcast_ref().unwrap()).into_element())), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(RenderOutput::clone(input.downcast_ref().unwrap()))),
+					x if x == TypeId::of::<Item<RenderOutput>>() => Ok(TaggedValue::RenderOutput(Item::<RenderOutput>::clone(input.downcast_ref().unwrap()).into_element())),
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", std::any::type_name_of_val(input))),
 				}
 			}
 
 			/// Returns a TaggedValue from the type, where that value is its type's `Default::default()`.
-			/// Dispatches by the type's name (the field that round-trips through serde) so it works for both
-			/// freshly constructed types and types deserialized from disk where the runtime `TypeId` is unavailable.
+			/// Dispatches by name for concrete types and structurally by element for ranked types, where the name
+			/// field is what round-trips through serde so it works even for types deserialized from disk.
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => None,
+					Type::Record(inner) => Self::from_type(inner),
 					Type::Concrete(concrete_type) => {
 						let name = concrete_type.name.as_ref();
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
-						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
+						if name == core_types::normalize_type_name(std::any::type_name::<()>()) { return Some(TaggedValue::None) }
 						// List-wrapped types need a single-item default with the element's default, not an empty list
-						if name == std::any::type_name::<List<Color>>() { return Some(TaggedValue::Color(Color::default())) }
-						if name == std::any::type_name::<List<Gradient>>() { return Some(TaggedValue::Gradient(Gradient::default())) }
-						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
-						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
-						if name == std::any::type_name::<List<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Color>>()) { return Some(TaggedValue::Color(Some(Color::default()))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<GradientStops>>()) { return Some(TaggedValue::Gradient(GradientStops::default())) }
+						$( if name == core_types::normalize_type_name(std::any::type_name::<$ty>()) { return Some(TaggedValue::$identifier(Default::default())) } )*
+						if name == core_types::normalize_type_name(std::any::type_name::<List<f64>>()) { return Some(TaggedValue::F64Array(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<BrushStroke>>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						// Leveled inputs type by their element; each element name maps to the
+						// same tagged default as its legacy list form.
+						if name == core_types::normalize_type_name(std::any::type_name::<Color>()) { return Some(TaggedValue::Color(Some(Color::default()))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<GradientStops>()) { return Some(TaggedValue::Gradient(GradientStops::default())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<BrushStroke>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Graphic>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Graphic>))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Artboard>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Artboard>))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Raster<CPU>>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Raster<CPU>>))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Vector>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Vector>))) }
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
 						macro_rules! check {
 							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())); }
+								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Some(TaggedValue::TypeDefault(concrete_type.clone())); }
 							};
 						}
-						for_each_type_default!(check);
+						for_each_bare_type_default!(check_bare);
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
 					Type::Future(output) => TaggedValue::from_type(output),
+					// Element types with a dedicated variant use it directly (the variant's value is a rank-0 cell); the rest store the structural type
+					Type::Item(element) => TaggedValue::from_type(element).or_else(|| {
+						macro_rules! check {
+							($type_default:ty) => {
+								if **element == concrete!($type_default) { return Some(TaggedValue::TypeDefault(input.clone())); }
+							};
+						}
+						for_each_item_type_default!(check);
+						None
+					}),
+					// Structural lists match by element; `List<f64>` stays the dedicated `F64Array` variant
+					Type::List(element) => {
+						if **element == concrete!(f64) {
+							return Some(TaggedValue::F64Array(Vec::new()));
+						}
+						macro_rules! check {
+							($type_default:ty) => {
+								if **element == concrete!($type_default) { return Some(TaggedValue::TypeDefault(input.clone())); }
+							};
+						}
+						for_each_list_type_default!(check);
+						None
+					}
 				}
 			}
 
@@ -339,7 +519,7 @@ macro_rules! tagged_value {
 					// MANUAL VARIANTS
 					// ===============
 					Self::None => "()".to_string(),
-					Self::TypeDefault(td) => format!("TypeDefault({})", td.name),
+					Self::TypeDefault(td) => format!("TypeDefault({td})"),
 					Self::F64Array(values) => format!("F64Array({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::Gradient(stops) => format!("Gradient({stops:?})"),
@@ -354,7 +534,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
 					Self::NodeIdPath(path) => format!("NodeIdPath({path:?})"),
 					Self::DocumentNode(node) => format!("DocumentNode({node:?})"),
-					Self::ContextFeatures(features) => format!("ContextFeatures({features:?})"),
+					Self::ContextModification(modification) => format!("ContextModification({modification:?})"),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
 					Self::ResourceHash(hash) => format!("ResourceHash({hash:?})"),
 				}
@@ -397,19 +577,19 @@ tagged_value! {
 	DVec2(DVec2),
 	#[serde(alias = "Affine2")]
 	DAffine2(DAffine2),
-	OptionalDAffine2(Option<DAffine2>),
-	#[serde(alias = "FillGradient")]
-	LegacyGradient(graphic_types::migrations::legacy::LegacyGradient),
 	Font(Font),
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
-	Resource(graphene_application_io::resource::ResourceId),
+	Resource(ResourceId),
+	// Legacy
+	#[serde(alias = "OptionalDAffine2")]
+	LegacyOptionalDAffine2(Option<DAffine2>),
+	#[serde(alias = "FillGradient")]
+	LegacyGradient(graphic_types::migrations::legacy::LegacyGradient),
 	// ==========
 	// ENUM TYPES
 	// ==========
-	#[serde(alias = "Fill")]
-	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
 	BlendMode(core_types::blending::BlendMode),
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
@@ -439,6 +619,8 @@ tagged_value! {
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
+	DashPattern(vector::style::DashPattern),
+	BoxCorners(vector::misc::BoxCorners),
 	GradientType(vector::style::GradientType),
 	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),
@@ -446,6 +628,9 @@ tagged_value! {
 	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
 	ScaleType(core_types::transform::ScaleType),
+	// Legacy
+	#[serde(alias = "Fill")]
+	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
 }
 
 impl TaggedValue {
@@ -564,6 +749,8 @@ impl TaggedValue {
 
 		match ty {
 			Type::Generic(_) => None,
+			// A leveled input's default is its element's default, as in `from_type`.
+			Type::Record(inner) => TaggedValue::from_primitive_string(string, inner),
 			Type::Concrete(concrete_type) => {
 				let ty = concrete_type.id?;
 				use std::any::TypeId;
@@ -578,19 +765,21 @@ impl TaggedValue {
 					() if ty == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					// `Color` (not in a `List`) is still currently needed by `BlackAndWhiteNode` and `ColorOverlayNode` GPU `shader_node(PerPixelAdjust)` variants
 					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
-					() if ty == TypeId::of::<List<Color>>() => to_color(string).map(TaggedValue::Color)?,
-					// The Fill and Stroke nodes' paint connectors default to `List<Graphic>`, their first registered implementation row
-					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(TaggedValue::Color)?,
-					() if ty == TypeId::of::<List<Gradient>>() => to_gradient(string).map(TaggedValue::Gradient)?,
+					// The Fill/Stroke paint wires carry `Graphic` or `Gradient` elements, so a paint default parses through the element recursion as a color or gradient literal
+					() if ty == TypeId::of::<Graphic>() => to_color(string).map(TaggedValue::Color)?,
+					() if ty == TypeId::of::<Gradient>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
+					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
+					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(BoxCorners::from(string)),
 					_ => return None,
 				};
 				Some(ty)
 			}
 			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
 			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
+			Type::Item(element) => TaggedValue::from_primitive_string(string, element),
+			Type::List(element) => TaggedValue::from_primitive_string(string, element),
 		}
 	}
 
@@ -603,12 +792,12 @@ impl TaggedValue {
 
 	/// The stored form of a paint input's red-slash "no paint" choice: the `List<Graphic>` type default, materializing as an empty paint list.
 	pub fn no_paint() -> Self {
-		TaggedValue::TypeDefault(descriptor!(List<Graphic>))
+		TaggedValue::TypeDefault(list!(Graphic))
 	}
 
 	/// Whether this is the `List<Graphic>` type default created by [`Self::no_paint`] (and by disconnecting a paint wire).
 	pub fn is_no_paint(&self) -> bool {
-		matches!(self, TaggedValue::TypeDefault(td) if *td == descriptor!(List<Graphic>))
+		matches!(self, TaggedValue::TypeDefault(td) if *td == list!(Graphic))
 	}
 }
 
@@ -617,15 +806,16 @@ impl TaggedValue {
 /// Routes legacy variant names into modern variants, in typed Rust. Each legacy name is also matched against the historical `#[serde(alias = "...")]` spellings the deleted variant accepted, so old-shape inner payloads are caught:
 ///
 /// - `BrushCache` → `TaggedValue::None` (purely runtime cache; no payload to preserve)
-/// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(descriptor!(List<Graphic>))`
-/// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(descriptor!(List<Artboard>))`
+/// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(list!(Graphic))`
+/// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(list!(Artboard))`
 /// - `Raster` (or alias `ImageFrame`/`RasterData`/`Image`):
 ///     - non-empty (the legacy `image` proto's input 1, where the inner `Raster<CPU>` serializes as the embedded `Image<Color>`) → `TaggedValue::ImageData(<inner Image<Color>>)`
-///     - empty → `TaggedValue::TypeDefault(descriptor!(List<Raster<CPU>>))`
+///     - empty → `TaggedValue::TypeDefault(list!(Raster<CPU>))`
 /// - `Vector` (or alias `VectorData`):
 ///     - non-empty → `TaggedValue::VectorModification(<built from first element>)` (the document_migration's Path pass disambiguates this between SVG-import legacy and a discardable modern baked value via the input's `exposed` flag)
-///     - empty → `TaggedValue::TypeDefault(descriptor!(List<Vector>))`
+///     - empty → `TaggedValue::TypeDefault(list!(Vector))`
 /// - `FillChoice` → `TaggedValue::Color` (solid), `TaggedValue::Gradient` (gradient), or `TaggedValue::no_paint()` (none)
+/// - `TypeDefault` with the old bare-`TypeDescriptor` payload → the same variant wrapping a `Type` (name-encoded `List` normalized to structural)
 ///
 /// All other tags (including ones with the modern shape) fall through to the standard derived `Deserialize` for `TaggedValue`.
 // TODO: Eventually remove this migration document upgrade code
@@ -640,8 +830,8 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 	{
 		match tag.as_str() {
 			"BrushCache" => return Ok(MemoHash::new(TaggedValue::None)),
-			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Graphic>)))),
-			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Artboard>)))),
+			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Graphic)))),
+			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Artboard)))),
 			"Raster" | "ImageFrame" | "RasterData" | "Image" => {
 				let first_element = content
 					.as_object()
@@ -652,7 +842,7 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					let image: Image<Color> = serde_json::from_value(image_value.clone()).map_err(serde::de::Error::custom)?;
 					return Ok(MemoHash::new(TaggedValue::ImageData(image)));
 				}
-				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Raster<CPU>>))));
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Raster<CPU>))));
 			}
 			"Vector" | "VectorData" => {
 				let vector = graphic_types::migrations::migrate_to_optional_vector(content.clone()).map_err(serde::de::Error::custom)?;
@@ -660,7 +850,12 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					let modification = Box::new(VectorModification::create_from_vector(&vector));
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
-				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Vector>))));
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Vector))));
+			}
+			// The `TypeDefault` payload used to be a bare `TypeDescriptor`; it now carries a `Type`
+			"TypeDefault" if content.as_object().is_some_and(|c| c.contains_key("name")) => {
+				let descriptor: TypeDescriptor = serde_json::from_value(content.clone()).map_err(serde::de::Error::custom)?;
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(Type::Concrete(descriptor).normalize_rank())));
 			}
 			// The `Color` tag used to carry `Option<Color>`, where a `null` payload (or an empty legacy color table) was the red-slash "no paint" choice
 			"Color" | "ColorTable" | "OptionalColor" | "ColorNotInTable"
@@ -712,39 +907,6 @@ impl Display for TaggedValue {
 			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
 			_ => panic!("Cannot convert to string"),
 		}
-	}
-}
-
-pub struct UpcastNode {
-	value: MemoHash<TaggedValue>,
-}
-impl<'input> Node<'input, DAny<'input>> for UpcastNode {
-	type Output = FutureAny<'input>;
-
-	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		let memo_clone = MemoHash::clone(&self.value);
-		Box::pin(async move { memo_clone.into_inner().as_ref().clone().to_dynany() })
-	}
-}
-impl UpcastNode {
-	pub fn new(value: MemoHash<TaggedValue>) -> Self {
-		Self { value }
-	}
-}
-#[derive(Default, Debug, Clone, Copy)]
-pub struct UpcastAsRefNode<T: AsRef<U> + Sync + Send, U: Sync + Send>(pub T, PhantomData<U>);
-
-impl<'i, T: 'i + AsRef<U> + Sync + Send, U: 'i + StaticType + Sync + Send> Node<'i, DAny<'i>> for UpcastAsRefNode<T, U> {
-	type Output = FutureAny<'i>;
-	#[inline(always)]
-	fn eval(&'i self, _: DAny<'i>) -> Self::Output {
-		Box::pin(async move { Box::new(self.0.as_ref()) as DAny<'i> })
-	}
-}
-
-impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
-	pub const fn new(value: T) -> UpcastAsRefNode<T, U> {
-		UpcastAsRefNode(value, PhantomData)
 	}
 }
 
@@ -809,41 +971,76 @@ impl CacheHash for RenderOutput {
 #[cfg(test)]
 mod typedefault_dispatch {
 	use super::*;
-	use core_types::descriptor;
+	use core_types::{concrete, item, list};
 
-	/// Round-trips every type listed in [`for_each_type_default`] through `TaggedValue::TypeDefault → to_dynany / to_any` and asserts the resulting concrete type matches the descriptor.
+	/// Round-trips every type in the type-default lists through `TaggedValue::TypeDefault → to_dynany / to_any` and asserts the resulting concrete type matches the stored type.
 	///
 	/// This guards against the only way to break the recursion invariant in the unwrap functions: someone hand-rolling a `TypeDefault`-yielding case in `from_type` (or the macro's expansion in one of the unwrap sites silently failing to match a name). If it fails, the message points at the specific type and the structural reason.
 	#[test]
 	fn typedefault_dispatch_terminates() {
 		macro_rules! check {
-			($type_default:ty) => {{
-				let descriptor = descriptor!($type_default);
+			($type_default:ty, $stored:expr) => {{
+				let ty: Type = $stored;
 				let expected_type_id = std::any::TypeId::of::<$type_default>();
-				let dyn_value = TaggedValue::TypeDefault(descriptor.clone()).to_dynany();
+				let dyn_value = TaggedValue::TypeDefault(ty.clone()).to_dynany();
 				assert_eq!(
 					DynAny::type_id(&*dyn_value),
 					expected_type_id,
 					"`to_dynany(TypeDefault({0}))` did not produce a `{0}` — `for_each_type_default!` lists this type but the unwrap site doesn't handle it. Without a match, `to_dynany` falls back to `from_type_or_none`, which returns `TypeDefault({0})` again and recurses forever.",
-					std::any::type_name::<$type_default>(),
+					core_types::normalize_type_name(std::any::type_name::<$type_default>()),
 				);
 
-				let arc_value = TaggedValue::TypeDefault(descriptor).to_any();
+				let arc_value = TaggedValue::TypeDefault(ty).to_any();
 				assert_eq!(
 					(*arc_value).type_id(),
 					expected_type_id,
 					"`to_any(TypeDefault({0}))` did not produce a `{0}` — same recursion hazard as above for the `to_any` path.",
-					std::any::type_name::<$type_default>(),
+					core_types::normalize_type_name(std::any::type_name::<$type_default>()),
 				);
 			}};
 		}
-		for_each_type_default!(check);
+		macro_rules! check_item {
+			($element:ty) => {
+				check!(Item<$element>, item!($element));
+			};
+		}
+		macro_rules! check_list {
+			($element:ty) => {
+				check!(List<$element>, list!($element));
+			};
+		}
+		macro_rules! check_bare {
+			($type_default:ty) => {
+				check!($type_default, concrete!($type_default));
+			};
+		}
+		for_each_item_type_default!(check_item);
+		for_each_list_type_default!(check_list);
+		for_each_bare_type_default!(check_bare);
 	}
 }
 
 #[cfg(test)]
 mod paint_default_parsing {
 	use super::*;
+	use core_types::{item, list};
+
+	/// A Fill/Stroke paint wire carries `Graphic` elements, so its `Color::BLACK` default must parse through the
+	/// element recursion into a `Color` for a fresh Fill node's paint to resolve.
+	#[test]
+	fn paint_wire_parses_color_default_through_its_element() {
+		let black = Some(TaggedValue::Color(Color::BLACK));
+		assert_eq!(
+			TaggedValue::from_primitive_string("Color::BLACK", &list!(Graphic)),
+			black,
+			"a `List<Graphic>` paint wire should resolve its color default"
+		);
+		assert_eq!(
+			TaggedValue::from_primitive_string("Color::BLACK", &item!(Graphic)),
+			black,
+			"an `Item<Graphic>` paint wire should resolve its color default"
+		);
+	}
 
 	/// Table-era documents stored the red-slash "no paint" fill as an empty color table, which must keep
 	/// deserializing to [`TaggedValue::no_paint`] rather than collapsing to a transparent color.
@@ -854,5 +1051,64 @@ mod paint_default_parsing {
 			let value = deserialize_tagged_value_with_legacy_migration(&mut deserializer).expect("The legacy payload should deserialize");
 			assert!(value.is_no_paint(), "The legacy payload `{payload}` should migrate to the no-paint choice");
 		}
+	}
+}
+
+#[cfg(test)]
+mod leveled_edges {
+	use super::*;
+	use core_types::descriptor;
+	use core_types::registry::record_source_type;
+
+	#[test]
+	fn list_variants_produce_leveled_edges_typed_by_element() {
+		let edge = TaggedValue::F64Array(vec![1., 2., 3.]).to_edge().unwrap();
+		assert_eq!(edge.ty(), &record_source_type::<f64>());
+		assert_eq!(edge.layout().depth, 1);
+
+		let edge = TaggedValue::Color(Some(Color::default())).to_edge().unwrap();
+		assert_eq!(edge.ty(), &record_source_type::<Color>());
+		assert_eq!(edge.layout().depth, 1);
+
+		let edge = TaggedValue::TypeDefault(descriptor!(List<Graphic>)).to_edge().unwrap();
+		assert_eq!(edge.ty(), &record_source_type::<Graphic>());
+		assert_eq!(edge.layout().depth, 1);
+	}
+
+	#[test]
+	fn scalar_variants_keep_their_rank_zero_edges() {
+		let edge = TaggedValue::Bool(true).to_edge().unwrap();
+		assert_eq!(edge.ty(), &record_source_type::<bool>());
+		assert_eq!(edge.layout().depth, 0);
+	}
+
+	#[test]
+	fn the_value_layout_matches_the_edge_layout() {
+		for value in [
+			TaggedValue::F64Array(vec![1.]),
+			TaggedValue::Bool(true),
+			TaggedValue::TypeDefault(descriptor!(List<Vector>)),
+			TaggedValue::Gradient(Default::default()),
+		] {
+			let layout = value.value_layout().unwrap();
+			let edge = value.to_edge().unwrap();
+			assert_eq!(&layout, edge.layout());
+		}
+	}
+}
+
+#[cfg(test)]
+mod record_defaults {
+	use super::*;
+	use core_types::registry::record_source_type;
+
+	// The registry can present a record row first (wasm registration order),
+	// so primitive defaults must parse through the record wrapping.
+	#[test]
+	fn primitive_defaults_parse_through_record_wires() {
+		let leveled = core_types::registry::record_type::<f64>();
+		assert_eq!(TaggedValue::from_primitive_string("2.", &leveled), Some(TaggedValue::F64(2.)));
+		assert_eq!(TaggedValue::from_primitive_string("5", &record_source_type::<u32>()), Some(TaggedValue::U32(5)));
+		assert_eq!(TaggedValue::from_primitive_string("true", &record_source_type::<bool>()), Some(TaggedValue::Bool(true)));
 	}
 }

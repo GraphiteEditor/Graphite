@@ -8,7 +8,7 @@ use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::gradient::{GradientSpreadMethod, GradientType};
-use vector_types::{GradientStop, GradientStops, ReferencePoint};
+use vector_types::{GradientStop, Gradient, ReferencePoint};
 
 /// Returns the value at the specified index in the list.
 /// If no value exists at that index, the type's default value is returned.
@@ -23,7 +23,7 @@ pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<String>,
 		List<f64>,
 		List<u8>,
@@ -55,7 +55,7 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 	)]
 	list: T,
 	/// The index of the item to remove, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
@@ -83,7 +83,7 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 		List<u8>,
 		List<NodeId>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<Vector>,
 		List<Raster<CPU>>,
 		List<Graphic>,
@@ -115,7 +115,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		List<Vector>,
 		List<Raster<CPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<String>,
 	)]
 	content: List<Item>,
@@ -124,7 +124,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		Context -> List<Vector>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 		Context -> List<String>,
 	)]
 	mapped: impl Node<Context<'static>, Output = List<Item>>,
@@ -151,7 +151,7 @@ async fn mirror<T: 'n + Send + Clone>(
 		List<String>,
 		List<Raster<CPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 	)]
 	content: List<T>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
@@ -238,7 +238,7 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<Vector>,
 		List<Raster<CPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<f64>,
 		List<bool>,
 		List<String>,
@@ -275,7 +275,7 @@ fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<Vector>,
 		List<Raster<CPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<f64>,
 		List<bool>,
 		List<String>,
@@ -447,17 +447,17 @@ fn read_attribute_spread_method(
 	result
 }
 
-/// Reads a named `GradientStops` attribute from the input list, outputting each value as an element of a new `GradientStops[]`.
+/// Reads a named `Gradient` attribute from the input list, outputting each value as an element of a new `Gradient[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_gradient_stops(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> List<GradientStops> {
+) -> List<Gradient> {
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientStops>(&name, index) else { continue };
+		let Some(value) = content.attribute::<Gradient>(&name, index) else { continue };
 		result.push(Item::new_from_element(value.clone()));
 	}
 	result
@@ -500,11 +500,11 @@ fn read_attribute_raster(
 pub async fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The `List` whose items will appear at the start of the extended `List`.
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
 	base: List<T>,
 	/// The `List` whose items will appear at the end of the extended `List`.
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
 	new: List<T>,
 ) -> List<T> {
 	let mut base = base;
@@ -519,9 +519,9 @@ pub async fn extend<T: 'n + Send + Clone>(
 #[node_macro::node(category(""))]
 pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)] base: List<T>,
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)] base: List<T>,
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
 	new: List<T>,
 	nested_node_path: List<NodeId>,
 ) -> List<T> {
@@ -552,7 +552,7 @@ pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 		List<Raster<CPU>>,
 	 	List<Raster<GPU>>,
 	 	List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<String>,
 		DAffine2,
 		DVec2,
@@ -573,7 +573,7 @@ pub async fn to_graphic<T: IntoGraphicList>(
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<String>,
 	)]
 	content: T,
@@ -663,20 +663,20 @@ pub async fn flatten_color<T: IntoGraphicList>(_: impl Ctx, #[implementations(Li
 	content.into_flattened_list()
 }
 
-/// Converts a `Graphic[]` into a `GradientStops[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
+/// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
-pub async fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<GradientStops>)] content: T) -> List<GradientStops> {
+pub async fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Gradient>)] content: T) -> List<Gradient> {
 	content.into_flattened_list()
 }
 
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"))]
-fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> List<GradientStops> {
+fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> List<Gradient> {
 	let colors = colors.into_flattened_list::<Color>();
 	let total_colors = colors.len();
 
 	if total_colors == 0 {
-		return List::new_from_element(GradientStops::new(vec![
+		return List::new_from_element(Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -691,7 +691,7 @@ fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Gr
 	}
 
 	if let (1, Some(&single_color)) = (total_colors, colors.element(0)) {
-		return List::new_from_element(GradientStops::new(vec![
+		return List::new_from_element(Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -710,5 +710,5 @@ fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Gr
 		midpoint: 0.5,
 		color: row.into_element(),
 	});
-	List::new_from_element(GradientStops::new(colors))
+	List::new_from_element(Gradient::new(colors))
 }

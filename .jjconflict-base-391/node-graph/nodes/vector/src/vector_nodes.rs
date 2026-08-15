@@ -3,13 +3,13 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
+use core_types::list::{ATTR_FILL, ATTR_GRADIENT_INTERPOLATION, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, CloneVarArgs,
-	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
+	ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -20,9 +20,10 @@ use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
+use vector_types::GradientForm;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
-use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
@@ -31,9 +32,9 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{DashPattern, Gradient, GradientInterpolation, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
-use vector_types::{GradientSpreadMethod, GradientType};
+use vector_types::vector::{PointDomain, RegionDomain};
 
 /// Implemented for `List` types that contain vector items reachable via mutable access.
 /// Used by the whole-collection Assign Colors node so it can apply to either `List<Graphic>` or `List<Vector>`.
@@ -117,6 +118,7 @@ async fn assign_colors<T>(
 	/// Whether to style the stroke.
 	stroke: Item<bool>,
 	/// The range of colors to select from.
+	#[default(Color::BLACK, Color::WHITE)]
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
 	gradient: Item<Gradient>,
 	/// Whether to reverse the gradient.
@@ -139,6 +141,7 @@ where
 
 	let mut content = content;
 	let length = content.vector_count();
+	let gradient_interpolation = gradient.attribute_cloned_or_default::<GradientInterpolation>(ATTR_GRADIENT_INTERPOLATION);
 	let element = gradient.into_element();
 	let gradient = if reverse { element.reversed() } else { element };
 
@@ -156,7 +159,8 @@ where
 				},
 			};
 
-			let color = gradient.evaluate(factor);
+			// The factor spans 0..=1 inclusively, so the spread deliberately stays Pad (Repeat would wrap the final element onto the first stop's color)
+			let color = gradient.evaluate(factor, Default::default(), gradient_interpolation);
 			let paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {
@@ -188,16 +192,15 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	)]
 	fill: F,
 	_backup_color: Item<Color>,
-	_backup_gradient: Item<Gradient>,
-	_gradient_type: Item<GradientType>,
-	_spread_method: Item<GradientSpreadMethod>,
+	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: Item<Gradient>,
+	_gradient_form: Item<GradientForm>,
 	_has_transform: Item<bool>,
 	_transform: Item<DAffine2>,
 ) -> Item<V>
 where
 	Item<V>: VectorItemMut + 'n + Send,
 {
-	let (_gradient_type, _spread_method) = (_gradient_type.into_element(), _spread_method.into_element());
+	let _gradient_form = _gradient_form.into_element();
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
 
 	let mut content = content;
@@ -207,15 +210,9 @@ where
 	for graphic in fill.iter_element_values_mut() {
 		let Graphic::Gradient(gradient) = graphic else { continue };
 
-		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
-				*value = _gradient_type;
-			}
-		}
-
-		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-				*value = _spread_method;
+		if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
+			for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
+				*value = _gradient_form;
 			}
 		}
 
@@ -1190,6 +1187,168 @@ async fn points_to_polyline(_: impl Ctx, points: Item<Vector>, #[default(true)] 
 	points
 }
 
+/// Evens out the distances between points by applying Lloyd's relaxation, moving every interior point toward the center of its Voronoi cell.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn relax_points(
+	_: impl Ctx,
+	/// A vector path or point cloud to relax.
+	source: Item<Vector>,
+	/// The number of relaxation steps to apply. A fractional value runs the whole steps and then blends partway toward one more step, so the amount of relaxation can be animated smoothly.
+	#[default(1.)]
+	#[hard(0..1000)]
+	iterations: Item<f64>,
+) -> Item<Vector> {
+	let mut source = source;
+	let iterations = *iterations.element();
+
+	let vector = source.element_mut();
+	let relaxed = crate::voronoi::relax_sites(vector.point_domain.positions(), iterations);
+	for ((_, position), new_position) in vector.point_domain.positions_mut().zip(relaxed) {
+		*position = new_position;
+	}
+
+	source
+}
+
+/// Builds a Voronoi diagram from the anchor points. Each point claims the region of space closest to it, and those regions tessellate the plane. Cells around the outside are clipped to the convex hull of the points so the diagram stays finite.
+///
+/// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh with no fillable regions.
+#[node_macro::node(category("Vector"), path(core_types::vector))]
+async fn voronoi_cells(_: impl Ctx, source: Item<Vector>, connect_cells: Item<bool>) -> Item<Vector> {
+	let mut source = source;
+	let connect_cells = *connect_cells.element();
+
+	let vector = source.element_mut();
+	let sites = vector.point_domain.positions().to_vec();
+	let cells = crate::voronoi::voronoi_cells(&sites);
+	if !cells.is_empty() {
+		replace_with_polygons(vector, cells, connect_cells);
+	}
+
+	source
+}
+
+/// Builds a Delaunay triangulation connecting the anchor points. It is the geometric dual of the **Voronoi** node: a mesh of triangles in which no point lies inside any triangle's circumscribed circle.
+///
+/// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh with no fillable regions.
+#[node_macro::node(category("Vector"), path(core_types::vector))]
+async fn triangulate(_: impl Ctx, source: Item<Vector>, connect_cells: Item<bool>) -> Item<Vector> {
+	let mut source = source;
+	let connect_cells = *connect_cells.element();
+
+	let vector = source.element_mut();
+	let sites = vector.point_domain.positions().to_vec();
+	let triangles = crate::voronoi::delaunay_triangles(&sites);
+	if !triangles.is_empty() {
+		// `delaunator` emits triangle vertices clockwise; reverse to `[a, c, b]` so triangles wind counter-clockwise to
+		// match the Voronoi cells and the rest of the framework's fill winding.
+		let polygons = triangles.iter().map(|&[a, b, c]| vec![sites[a], sites[c], sites[b]]).collect();
+		replace_with_polygons(vector, polygons, connect_cells);
+	}
+
+	source
+}
+
+/// Replaces a vector's geometry (points, segments, and regions) with the given closed polygons, preserving its style.
+///
+/// Without `connect_cells`, each polygon becomes its own closed subpath with a fillable region.
+/// With it, coincident vertices are welded and each shared edge is emitted once, producing a connected mesh with no regions.
+pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2>>, connect_cells: bool) {
+	let mut point_domain = PointDomain::new();
+	let mut segment_domain = SegmentDomain::new();
+	let mut region_domain = RegionDomain::new();
+	let mut next_point = PointId::ZERO;
+	let mut next_segment = SegmentId::ZERO;
+	let mut next_region = RegionId::ZERO;
+
+	if !connect_cells {
+		for polygon in &polygons {
+			if polygon.len() < 3 {
+				continue;
+			}
+
+			let base = point_domain.ids().len();
+			for &position in polygon {
+				point_domain.push(next_point.next_id(), position);
+			}
+
+			let count = polygon.len();
+			let mut first_segment = None;
+			let mut last_segment = None;
+			for i in 0..count {
+				let start = base + i;
+				let end = base + (i + 1) % count;
+				let id = next_segment.next_id();
+				first_segment.get_or_insert(id);
+				last_segment = Some(id);
+				segment_domain.push(id, start, end, BezierHandles::Linear, StrokeId::ZERO);
+			}
+
+			if let (Some(first), Some(last)) = (first_segment, last_segment) {
+				region_domain.push(next_region.next_id(), first..=last, FillId::ZERO);
+			}
+		}
+	} else {
+		// Weld vertices that fall in the same quantization cell so adjacent polygons share points,
+		// and emit each undirected edge only once so adjacent polygons share segments.
+		let tolerance = mesh_weld_tolerance(&polygons);
+		let mut vertex_lookup: HashMap<(i64, i64), usize> = HashMap::new();
+		let mut seen_edges: HashSet<(usize, usize)> = HashSet::new();
+
+		for polygon in &polygons {
+			if polygon.len() < 2 {
+				continue;
+			}
+
+			let indices: Vec<usize> = polygon
+				.iter()
+				.map(|&position| {
+					let key = ((position.x / tolerance).round() as i64, (position.y / tolerance).round() as i64);
+					*vertex_lookup.entry(key).or_insert_with(|| {
+						let index = point_domain.ids().len();
+						point_domain.push(next_point.next_id(), position);
+						index
+					})
+				})
+				.collect();
+
+			let count = indices.len();
+			for i in 0..count {
+				let start = indices[i];
+				let end = indices[(i + 1) % count];
+				if start == end {
+					continue;
+				}
+				let edge = if start < end { (start, end) } else { (end, start) };
+				if seen_edges.insert(edge) {
+					segment_domain.push(next_segment.next_id(), start, end, BezierHandles::Linear, StrokeId::ZERO);
+				}
+			}
+		}
+	}
+
+	vector.point_domain = point_domain;
+	vector.segment_domain = segment_domain;
+	vector.region_domain = region_domain;
+}
+
+/// The distance below which two mesh vertices are welded into one, scaled to the diagram's size so it tracks coordinate magnitude.
+fn mesh_weld_tolerance(polygons: &[Vec<DVec2>]) -> f64 {
+	let mut min = DVec2::splat(f64::MAX);
+	let mut max = DVec2::splat(f64::MIN);
+	for polygon in polygons {
+		for &position in polygon {
+			min = min.min(position);
+			max = max.max(position);
+		}
+	}
+
+	let diagonal = (max - min).length();
+	// Floor the tolerance so an extremely tiny diagram can't underflow `diagonal * 1e-6` to zero, which would divide by
+	// zero when quantizing vertices and weld everything into a single point.
+	if diagonal.is_finite() && diagonal > 0. { (diagonal * 1e-6).max(1e-12) } else { 1e-6 }
+}
+
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("offset_path_properties"))]
 async fn offset_path(_: impl Ctx, content: Item<Vector>, distance: Item<f64>, join: Item<StrokeJoin>, #[default(4.)] miter_limit: Item<f64>) -> Item<Vector> {
 	let mut content = content;
@@ -1397,9 +1556,8 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Item<Vec
 }
 
 /// Combines every vector path across the input into a single compound path.
-// TODO: Rename to "Combine Paths" with a document migration
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> Item<Vector> {
+pub async fn combine_paths<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> Item<Vector> {
 	let graphic_list = content.into_graphic_list();
 	let flattened = graphic_list.clone().into_flattened_list::<Vector>();
 
@@ -2292,14 +2450,12 @@ async fn morph<I: IntoGraphicList>(
 				.zip(color_list_b.element(0))
 				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
 			(Some(Graphic::Color(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
-				let mut solid_to_gradient = stops_b.clone();
-				solid_to_gradient.color.iter_mut().for_each(|color| *color = *color_a);
+				let solid_to_gradient = stops_b.map_colors(|_| *color_a);
 				let stops = solid_to_gradient.lerp(stops_b, time);
 				gradient_with_stops(gradient_list_b.clone(), stops)
 			}),
 			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Color(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
-				let mut gradient_to_solid = stops_a.clone();
-				gradient_to_solid.color.iter_mut().for_each(|color| *color = *color_b);
+				let gradient_to_solid = stops_a.map_colors(|_| *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
 				gradient_with_stops(gradient_list_a.clone(), stops)
 			}),
@@ -3231,6 +3387,153 @@ mod test {
 		Item::new_from_element(row).with_attribute(ATTR_TRANSFORM, transform)
 	}
 
+	fn item<T>(value: T) -> Item<T> {
+		Item::new_from_element(value)
+	}
+
+	fn vector_item_from_points(points: &[DVec2]) -> Item<Vector> {
+		let mut vector = Vector::default();
+		let mut next_point = PointId::ZERO;
+		for &position in points {
+			vector.point_domain.push(next_point.next_id(), position);
+		}
+		Item::new_from_element(vector)
+	}
+
+	const SQUARE_WITH_CENTER: [DVec2; 5] = [DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(10., 10.), DVec2::new(0., 10.), DVec2::new(5., 5.)];
+
+	#[tokio::test]
+	async fn offset_path_does_not_duplicate_closing_anchors() {
+		// Offsetting closed triangles must not leave each subpath with a redundant start/end anchor (a Kurbo offset
+		// contour returns to approximately, not exactly, its start; that near-coincident point must close, not duplicate).
+		let delaunay = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
+		let offset = super::offset_path((), delaunay, item(0.5), item(StrokeJoin::Miter), item(4.)).await;
+		let result = offset.element();
+
+		let mut subpaths = 0;
+		for (group, closed) in result.stroke_manipulator_groups() {
+			subpaths += 1;
+			assert!(closed, "offset of a closed triangle should stay closed");
+			let first = group.first().unwrap().anchor;
+			let last = group.last().unwrap().anchor;
+			assert!(first.distance(last) > 1e-6, "closed subpath has a duplicated start/end anchor: {first:?} ~= {last:?}");
+		}
+		assert!(subpaths > 0);
+	}
+
+	#[tokio::test]
+	async fn delaunay_disconnected_cells_make_one_region_per_triangle() {
+		let result = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
+		let vector = result.element();
+		// The square plus its center tessellates into four triangles, each its own closed subpath.
+		assert_eq!(vector.region_domain.ids().len(), 4);
+		assert_eq!(vector.segment_domain.ids().len(), 4 * 3);
+		assert_eq!(vector.point_domain.ids().len(), 4 * 3);
+	}
+
+	#[tokio::test]
+	async fn delaunay_and_voronoi_cells_share_winding() {
+		fn signed_area(anchors: &[DVec2]) -> f64 {
+			(0..anchors.len()).map(|i| anchors[i].perp_dot(anchors[(i + 1) % anchors.len()])).sum::<f64>() / 2.
+		}
+		fn subpath_winding_signs(vector: &Vector) -> Vec<f64> {
+			vector
+				.stroke_manipulator_groups()
+				.map(|(group, _)| signed_area(&group.iter().map(|g| g.anchor).collect::<Vec<_>>()).signum())
+				.collect()
+		}
+
+		// The Rectangle and Ellipse generators define the framework's fill winding convention; each is built from these
+		// subpath constructors (`Subpath::new_rectangle` / `Subpath::new_ellipse`), so their winding is the source of truth.
+		use vector_types::subpath::Subpath;
+		let rectangle = Vector::from_subpath(Subpath::new_rectangle(DVec2::new(-50., -50.), DVec2::new(50., 50.)));
+		let ellipse = Vector::from_subpath(Subpath::new_ellipse(DVec2::new(-50., -25.), DVec2::new(50., 25.)));
+		let expected = subpath_winding_signs(&rectangle)[0];
+		assert_eq!(subpath_winding_signs(&ellipse)[0], expected, "Rectangle and Ellipse should agree on winding");
+
+		// Delaunay and Voronoi must emit subpaths that wind the same way as those generators.
+		let delaunay = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
+		let voronoi = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
+		for sign in subpath_winding_signs(delaunay.element()) {
+			assert_eq!(sign, expected, "Delaunay subpath winding should match the Rectangle/Ellipse generators");
+		}
+		for sign in subpath_winding_signs(voronoi.element()) {
+			assert_eq!(sign, expected, "Voronoi subpath winding should match the Rectangle/Ellipse generators");
+		}
+	}
+
+	#[tokio::test]
+	async fn delaunay_shared_mesh_welds_points_and_shares_edges() {
+		let result = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true)).await;
+		let vector = result.element();
+		// The connected mesh reuses the five input points and shares edges, with no fillable regions.
+		assert_eq!(vector.region_domain.ids().len(), 0);
+		assert_eq!(vector.point_domain.ids().len(), 5);
+		// Four hull edges plus four spokes to the center, each emitted once.
+		assert_eq!(vector.segment_domain.ids().len(), 8);
+	}
+
+	#[tokio::test]
+	async fn voronoi_disconnected_cells_make_a_region_per_cell() {
+		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
+		let vector = result.element();
+		let regions = vector.region_domain.ids().len();
+		assert!(regions > 0, "expected at least one Voronoi region");
+		// Every region is a closed subpath, so segments and points come in matched per-region loops.
+		assert_eq!(vector.segment_domain.ids().len(), vector.point_domain.ids().len());
+
+		// Clipping to the convex hull keeps all cell vertices within the input bounds.
+		for &position in vector.point_domain.positions() {
+			assert!(position.x >= -1e-6 && position.x <= 10. + 1e-6);
+			assert!(position.y >= -1e-6 && position.y <= 10. + 1e-6);
+		}
+	}
+
+	#[tokio::test]
+	async fn voronoi_shared_mesh_has_no_regions() {
+		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true)).await;
+		let vector = result.element();
+		assert_eq!(vector.region_domain.ids().len(), 0);
+		assert!(vector.segment_domain.ids().len() > 0);
+	}
+
+	#[tokio::test]
+	async fn voronoi_leaves_degenerate_input_untouched() {
+		// Two points cannot form a diagram, so the element passes through unchanged.
+		let points = [DVec2::new(0., 0.), DVec2::new(1., 1.)];
+		let result = super::voronoi_cells((), vector_item_from_points(&points), item(false)).await;
+		let vector = result.element();
+		assert_eq!(vector.point_domain.ids().len(), 2);
+		assert_eq!(vector.segment_domain.ids().len(), 0);
+	}
+
+	#[tokio::test]
+	async fn relax_points_redistributes_anchors() {
+		// Four hull corners plus two off-center interior points.
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(3., 4.),
+			DVec2::new(7., 5.),
+		];
+		let result = super::relax_points((), vector_item_from_points(&points), item(2.)).await;
+		let vector = result.element();
+
+		// Relaxation preserves the point count but repositions the interior anchors within the hull.
+		assert_eq!(vector.point_domain.ids().len(), points.len());
+		assert_ne!(vector.point_domain.positions(), &points[..]);
+		// The convex-hull corners are pinned.
+		for i in 0..4 {
+			assert_eq!(vector.point_domain.positions()[i], points[i], "hull corner {i} should be pinned");
+		}
+		for &point in vector.point_domain.positions() {
+			assert!(point.x >= -1e-6 && point.x <= 10. + 1e-6);
+			assert!(point.y >= -1e-6 && point.y <= 10. + 1e-6);
+		}
+	}
+
 	#[tokio::test]
 	async fn bounding_box() {
 		let bounding_box = super::bounding_box((), Item::new_from_element(Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)))).await;
@@ -3287,12 +3590,12 @@ mod test {
 			Item::new_from_element(0),
 		)
 		.await;
-		let flatten_path = List::new_from_item(super::flatten_path(Footprint::default(), List::new_from_element(Graphic::Vector(copy_to_points))).await);
-		let flattened_copy_to_points = flatten_path.element(0).unwrap();
+		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(copy_to_points))).await);
+		let combined_copy_to_points = combined.element(0).unwrap();
 
-		assert_eq!(flattened_copy_to_points.region_manipulator_groups().count(), expected_points.len());
+		assert_eq!(combined_copy_to_points.region_manipulator_groups().count(), expected_points.len());
 
-		for (index, (_, manipulator_groups)) in flattened_copy_to_points.region_manipulator_groups().enumerate() {
+		for (index, (_, manipulator_groups)) in combined_copy_to_points.region_manipulator_groups().enumerate() {
 			let offset = expected_points[index];
 			let manipulator_groups_anchors = manipulator_groups.iter().map(|manipulators| manipulators.anchor).collect::<Vec<DVec2>>();
 			assert_eq!(

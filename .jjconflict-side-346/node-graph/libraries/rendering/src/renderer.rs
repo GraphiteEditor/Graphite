@@ -7,7 +7,7 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::consts::DEFAULT_FONT_SIZE;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List, NodeIdPath};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -394,31 +394,6 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 	}
 }
 
-/// Converts a gradient's renderer samples to peniko color stops, duplicating an off-zero first stop at position 0 since Vello ignores the first stop's position and always treats it as 0.
-fn peniko_color_stops(gradient: &Gradient) -> peniko::ColorStops {
-	let mut peniko_stops = peniko::ColorStops::new();
-
-	for (position, color, _) in gradient.interpolated_samples() {
-		let color = peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color());
-
-		if peniko_stops.is_empty() && position > 0. {
-			peniko_stops.push(peniko::ColorStop { offset: 0., color });
-		}
-
-		peniko_stops.push(peniko::ColorStop { offset: position as f32, color });
-	}
-
-	// A gradient with no stops paints as solid black, matching `Gradient::evaluate`
-	if peniko_stops.is_empty() {
-		peniko_stops.push(peniko::ColorStop {
-			offset: 0.,
-			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(Color::BLACK).to_peniko_color()),
-		});
-	}
-
-	peniko_stops
-}
-
 fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
@@ -426,7 +401,13 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 	let spread_method: GradientSpreadMethod = gradient_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
 
-	let peniko_stops = peniko_color_stops(stops);
+	let mut peniko_stops = peniko::ColorStops::new();
+	for (position, color, _) in stops.interpolated_samples() {
+		peniko_stops.push(peniko::ColorStop {
+			offset: position as f32,
+			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+		});
+	}
 
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
 	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type));
@@ -600,7 +581,7 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
-						let layer_path: List<NodeId> = list.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).0;
+						let layer_path: List<NodeId> = list.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
 						let layer = layer_path.iter_element_values().next_back().copied();
 						let transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 
@@ -819,7 +800,7 @@ impl Render for List<Artboard> {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
 
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let element_id = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = element_id {
@@ -991,7 +972,7 @@ impl Render for List<Graphic> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 
@@ -1073,9 +1054,9 @@ impl Render for List<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		let (elements, layers) = self.element_and_attribute_slices_mut::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH);
+		let (elements, layers) = self.element_and_attribute_slices_mut::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH);
 		for (element, layer) in elements.iter_mut().zip(layers.iter()) {
-			element.new_ids_from_hash(layer.0.iter_element_values().next_back().copied());
+			element.new_ids_from_hash(layer.iter_element_values().next_back().copied());
 		}
 	}
 }
@@ -1575,7 +1556,7 @@ impl Render for List<Vector> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
-		// Aggregate all items' targets per element_id so multi-item lists (e.g. the "Text to Vector Glyphs" node) produce hit areas for every glyph.
+		// Aggregate all items' targets per element_id so multi-item lists (e.g. 'Text' node with "Separate Glyphs" active) produce hit areas for every glyph.
 		// Targets are baked relative to item 0's transform since `Graphic::collect_metadata` records that as `local_transforms[element_id]`.
 		let item_zero_transform: DAffine2 = if !self.is_empty() {
 			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
@@ -1594,7 +1575,7 @@ impl Render for List<Vector> {
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
@@ -1642,7 +1623,7 @@ impl Render for List<Vector> {
 			}
 
 			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
-			// Combine Paths, Morph, or any other destructive merge), recurse into that snapshot so the editor can
+			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 			// surface the original child layers' click targets.
 			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, index);
 			if !upstream_nested_layers.is_empty() {
@@ -2191,7 +2172,13 @@ impl Render for List<Gradient> {
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let stops = peniko_color_stops(gradient);
+			let mut stops: peniko::ColorStops = peniko::ColorStops::new();
+			for (position, color, _) in gradient.interpolated_samples() {
+				stops.push(peniko::ColorStop {
+					offset: position as f32,
+					color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+				})
+			}
 
 			let extend = match spread_method {
 				GradientSpreadMethod::Pad => peniko::Extend::Pad,
@@ -2585,7 +2572,7 @@ impl Render for List<String> {
 		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 
 		for index in 0..self.len() {
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let Some(element_id) = caller_element_id.or(layer) else { continue };
 

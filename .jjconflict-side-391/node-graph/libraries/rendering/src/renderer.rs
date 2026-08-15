@@ -394,6 +394,31 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 	}
 }
 
+/// Converts a gradient's renderer samples to peniko color stops, duplicating an off-zero first stop at position 0 since Vello ignores the first stop's position and always treats it as 0.
+fn peniko_color_stops(gradient: &Gradient) -> peniko::ColorStops {
+	let mut peniko_stops = peniko::ColorStops::new();
+
+	for (position, color, _) in gradient.interpolated_samples() {
+		let color = peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color());
+
+		if peniko_stops.is_empty() && position > 0. {
+			peniko_stops.push(peniko::ColorStop { offset: 0., color });
+		}
+
+		peniko_stops.push(peniko::ColorStop { offset: position as f32, color });
+	}
+
+	// A gradient with no stops paints as solid black, matching `Gradient::evaluate`
+	if peniko_stops.is_empty() {
+		peniko_stops.push(peniko::ColorStop {
+			offset: 0.,
+			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(Color::BLACK).to_peniko_color()),
+		});
+	}
+
+	peniko_stops
+}
+
 fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
@@ -401,13 +426,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 	let spread_method: GradientSpreadMethod = gradient_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
 
-	let mut peniko_stops = peniko::ColorStops::new();
-	for (position, color, _) in stops.interpolated_samples() {
-		peniko_stops.push(peniko::ColorStop {
-			offset: position as f32,
-			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
-		});
-	}
+	let peniko_stops = peniko_color_stops(stops);
 
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
 	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type));
@@ -1623,7 +1642,7 @@ impl Render for List<Vector> {
 			}
 
 			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
-			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
+			// Combine Paths, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 			// surface the original child layers' click targets.
 			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, index);
 			if !upstream_nested_layers.is_empty() {
@@ -2172,13 +2191,7 @@ impl Render for List<Gradient> {
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let mut stops: peniko::ColorStops = peniko::ColorStops::new();
-			for (position, color, _) in gradient.interpolated_samples() {
-				stops.push(peniko::ColorStop {
-					offset: position as f32,
-					color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
-				})
-			}
+			let stops = peniko_color_stops(gradient);
 
 			let extend = match spread_method {
 				GradientSpreadMethod::Pad => peniko::Extend::Pad,

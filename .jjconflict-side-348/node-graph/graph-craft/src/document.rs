@@ -5,9 +5,10 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 use core_types::memo::MemoHashGuard;
 pub use core_types::uuid::NodeId;
 pub use core_types::uuid::generate_uuid;
-use core_types::{Context, ContextDependencies, Cow, MemoHash, NodeParameter, ProtoNodeIdentifier, Type};
+use core_types::{Context, ContextDependencies, Cow, MemoHash, ProtoNodeIdentifier, Type};
 use dyn_any::DynAny;
 use glam::IVec2;
+use log::Metadata;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
@@ -57,8 +58,7 @@ pub struct DocumentNode {
 	#[serde(default)]
 	pub skip_deduplication: bool,
 	/// List of Extract and Inject annotations for the Context.
-	/// Resolved from the registry at compile time; only code-built wrapper nodes carry a declaration here.
-	#[serde(skip)]
+	#[serde(default)]
 	pub context_features: ContextDependencies,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
 	#[serde(skip)]
@@ -121,21 +121,6 @@ impl OriginalLocation {
 	}
 }
 impl DocumentNode {
-	/// The input slot named by the given parameter symbol, e.g. `node.input(stroke::WeightInput)`.
-	pub fn input<P: NodeParameter>(&self, _parameter: P) -> Option<&NodeInput> {
-		self.inputs.get(P::INDEX)
-	}
-
-	/// Mutable access to the input slot named by the given parameter symbol.
-	pub fn input_mut<P: NodeParameter>(&mut self, _parameter: P) -> Option<&mut NodeInput> {
-		self.inputs.get_mut(P::INDEX)
-	}
-
-	/// The stored value of the given parameter, if that input currently holds a value rather than a wire.
-	pub fn input_value<P: NodeParameter>(&self, parameter: P) -> Option<&TaggedValue> {
-		self.input(parameter)?.as_value()
-	}
-
 	/// Normalizes this node's stored types (call argument, `Import` input types, `TypeDefault` value payloads, and any nested network) to their structural form.
 	/// Applied once at ingestion (document migration and clipboard paste) so no name-encoded ranked type enters a live document.
 	pub fn normalize_stored_types(&mut self) {
@@ -194,8 +179,6 @@ impl DocumentNode {
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
 			context_features: self.context_features,
-			lane_invariant_inputs: 0,
-			resolved: Default::default(),
 		}
 	}
 }
@@ -244,14 +227,12 @@ impl InlineRust {
 #[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum DocumentNodeMetadata {
 	DocumentNodePath,
-	SourceId,
 }
 
 impl DocumentNodeMetadata {
 	pub fn ty(&self) -> Type {
 		match self {
-			DocumentNodeMetadata::DocumentNodePath => concrete!(Vec<NodeId>),
-			DocumentNodeMetadata::SourceId => concrete!(u64),
+			DocumentNodeMetadata::DocumentNodePath => item!(core_types::list::NodeIdPath),
 		}
 	}
 }
@@ -305,7 +286,7 @@ impl NodeInput {
 			NodeInput::Import { import_type, .. } => import_type.clone(),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 			NodeInput::Scope(_) => panic!("ty() called on NodeInput::Scope"),
-			NodeInput::Reflection(metadata) => metadata.ty(),
+			NodeInput::Reflection(_) => concrete!(Metadata),
 		}
 	}
 
@@ -343,7 +324,7 @@ pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
 	/// This describes a (document) node implemented as a proto node.
 	///
-	/// A proto node identifier, resolved against `NODE_REGISTRY` in `core-types/src/registry.rs`.
+	/// A proto node identifier which can be found in `node_registry.rs`.
 	#[serde(alias = "Unresolved")] // TODO: Eventually remove this alias document upgrade code
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special: it invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
@@ -937,7 +918,7 @@ impl NodeNetwork {
 
 		// Replace value inputs with dedicated value nodes
 		if node.implementation != DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")) {
-			Self::replace_value_inputs_with_nodes(&mut node.inputs, &mut self.nodes, &path, gen_id, map_ids, id, Some(&mut node.context_features));
+			Self::replace_value_inputs_with_nodes(&mut node.inputs, &mut self.nodes, &path, gen_id, map_ids, id);
 		}
 
 		let DocumentNodeImplementation::Network(mut inner_network) = node.implementation else {
@@ -956,7 +937,6 @@ impl NodeNetwork {
 			gen_id,
 			map_ids,
 			id,
-			None,
 		);
 
 		// Connect all network inputs to either the parent network nodes, or newly created value nodes for the parent node.
@@ -1037,12 +1017,6 @@ impl NodeNetwork {
 		}
 	}
 
-	fn source_id_for_path(path: &[NodeId]) -> u64 {
-		let mut hasher = graphene_hash::FxHasher64::new();
-		path.hash(&mut hasher);
-		hasher.finish()
-	}
-
 	#[inline(never)]
 	fn replace_value_inputs_with_nodes(
 		inputs: &mut [NodeInput],
@@ -1051,7 +1025,6 @@ impl NodeNetwork {
 		gen_id: impl Fn() -> NodeId + Copy,
 		map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy,
 		id: NodeId,
-		mut context_features: Option<&mut ContextDependencies>,
 	) {
 		// Replace value exports and imports with value nodes, added inside the nested network
 		for export in inputs {
@@ -1061,14 +1034,7 @@ impl NodeNetwork {
 			let (tagged_value, exposed) = match previous_export {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
-					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(path.to_vec()).into(), false),
-					DocumentNodeMetadata::SourceId => {
-						let source_id = Self::source_id_for_path(path);
-						if let Some(context_features) = context_features.as_deref_mut() {
-							context_features.add_sources(&[source_id]);
-						}
-						(TaggedValue::U64(source_id).into(), false)
-					}
+					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(core_types::list::NodeIdPath::from(path.to_vec())).into(), false),
 				},
 				previous_export => {
 					*export = previous_export;
@@ -1219,7 +1185,6 @@ impl NodeNetwork {
 				inputs: Vec::new(),
 				output: node_id,
 				nodes,
-				..Default::default()
 			}]
 			.into_iter();
 		}
@@ -1236,7 +1201,6 @@ impl NodeNetwork {
 						// inputs: self.imports.clone(),
 						output: node_id,
 						nodes: nodes.clone(),
-						..Default::default()
 					})
 				} else {
 					None
@@ -1283,9 +1247,7 @@ fn migrate_call_argument<'de, D: serde::Deserializer<'de>>(deserializer: D) -> R
 		Old(Option<Type>),
 	}
 
-	// TODO: Eventually remove this migration document upgrade code
 	Ok(match CallArg::deserialize(deserializer)? {
-		CallArg::New(Type::Concrete(descriptor)) if descriptor.name.ends_with("OwnedContextImpl>>") => concrete!(Context),
 		CallArg::New(ty) => ty,
 		CallArg::Old(ty) => ty.unwrap_or_default(),
 	})
@@ -1501,7 +1463,6 @@ mod test {
 			]
 			.into_iter()
 			.collect(),
-			..Default::default()
 		};
 		let network = flat_network();
 		let mut resolved_network = network.into_proto_networks().collect::<Vec<_>>();

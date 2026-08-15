@@ -400,31 +400,6 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 	}
 }
 
-/// Converts a gradient's renderer samples to peniko color stops, duplicating an off-zero first stop at position 0 since Vello ignores the first stop's position and always treats it as 0.
-fn peniko_color_stops(gradient: &GradientStops) -> peniko::ColorStops {
-	let mut peniko_stops = peniko::ColorStops::new();
-
-	for (position, color, _) in gradient.interpolated_samples() {
-		let color = peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color());
-
-		if peniko_stops.is_empty() && position > 0. {
-			peniko_stops.push(peniko::ColorStop { offset: 0., color });
-		}
-
-		peniko_stops.push(peniko::ColorStop { offset: position as f32, color });
-	}
-
-	// A gradient with no stops paints as solid black, matching `Gradient::evaluate`
-	if peniko_stops.is_empty() {
-		peniko_stops.push(peniko::ColorStop {
-			offset: 0.,
-			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(Color::BLACK).to_peniko_color()),
-		});
-	}
-
-	peniko_stops
-}
-
 fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
@@ -432,7 +407,13 @@ fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient
 	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
 	let spread_method: GradientSpreadMethod = gradient_list.attr::<SpreadMethod>(0);
 
-	let peniko_stops = peniko_color_stops(stops);
+	let mut peniko_stops = peniko::ColorStops::new();
+	for (position, color, _) in stops.interpolated_samples() {
+		peniko_stops.push(peniko::ColorStop {
+			offset: position as f32,
+			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+		});
+	}
 
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
 	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type));
@@ -571,7 +552,6 @@ pub trait Render: BoundingBox + RenderComplexity {
 impl Render for Graphic<'_> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			Graphic::None => (),
 			Graphic::Graphic(list) => list.render_svg(render, render_params),
 			Graphic::Vector(vector) => render_vector_svg(&Single(vector), render, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_svg(&Single(raster), render, render_params),
@@ -585,7 +565,6 @@ impl Render for Graphic<'_> {
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
-			Graphic::None => (),
 			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Vector(vector) => render_vector_vello(&Single(vector), scene, transform, context, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_vello(&Single(raster), scene, transform, render_params),
@@ -611,7 +590,6 @@ impl Render for Graphic<'_> {
 
 	fn contains_artboard(&self) -> bool {
 		match self {
-			Graphic::None => false,
 			Graphic::Graphic(list) => list.contains_artboard(),
 			_ => false,
 		}
@@ -619,7 +597,6 @@ impl Render for Graphic<'_> {
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
-			Graphic::None => (),
 			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
 			Graphic::Vector(vector) => vector.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default()),
 			_ => (),
@@ -1844,7 +1821,7 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(source: &S, metadata
 		}
 
 		// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
-		// Combine Paths, Morph, or any other destructive merge), recurse into that snapshot so the editor can
+		// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 		// surface the original child layers' click targets.
 		if let Some(upstream_nested_layers) = source.attr::<EditorMergedLayers>(index).filter(|layers| !layers.is_empty()) {
 			let mut upstream_footprint = footprint;
@@ -2417,7 +2394,13 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 		let blend_mode = blend_mode_attr.to_peniko();
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-		let stops = peniko_color_stops(gradient);
+		let mut stops: peniko::ColorStops = peniko::ColorStops::new();
+		for (position, color, _) in gradient.interpolated_samples() {
+			stops.push(peniko::ColorStop {
+				offset: position as f32,
+				color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+			})
+		}
 
 		let extend = match spread_method {
 			GradientSpreadMethod::Pad => peniko::Extend::Pad,

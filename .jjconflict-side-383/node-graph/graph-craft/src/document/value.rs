@@ -552,8 +552,7 @@ tagged_value! {
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
 	GradientType(vector::style::GradientType),
-	#[serde(alias = "GradientSpreadMethod")] // TODO: Eventually remove this document upgrade code
-	GradientSpread(vector::style::GradientSpread),
+	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),
@@ -1022,7 +1021,7 @@ mod paint_default_parsing {
 
 #[cfg(test)]
 mod gradient_shape_migration {
-	use graphic_types::vector_types::GradientSpread;
+	use graphic_types::vector_types::GradientSpreadMethod;
 
 	use super::*;
 
@@ -1043,7 +1042,7 @@ mod gradient_shape_migration {
 		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		gradient.set_positions(&[0.2, 0.9]);
 		let value = TaggedValue::GradientRamp(GradientRamp {
-			gradient_spread: GradientSpread::Reflect,
+			spread_method: GradientSpreadMethod::Reflect,
 			..GradientRamp::from(gradient)
 		});
 

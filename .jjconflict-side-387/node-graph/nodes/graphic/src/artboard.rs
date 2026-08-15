@@ -5,7 +5,7 @@ use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::Gradient;
+use vector_types::GradientStops;
 
 /// Constructs a single-element `Artboard[]` with the given content and metadata stored as row attributes.
 #[node_macro::node(category(""))]
@@ -19,7 +19,7 @@ pub async fn create_artboard<T: IntoGraphicList>(
 		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
-		Context -> List<Gradient>,
+		Context -> List<GradientStops>,
 		Context -> DAffine2,
 	)]
 	content: impl Node<Context<'static>, Output = T>,

@@ -84,7 +84,7 @@ struct ExecutionContext {
 	/// Set when this execution is a gradient-migration measurement run, carrying the "Fill" node (addressed by its enclosing
 	/// network path) and its original relative gradient. The evaluated geometry is read back from the inspect result to size the
 	/// gradient; such runs never touch the visible artwork. Carrying the entry keeps a stale re-dispatched response paired with the fill it measured.
-	measure_fill: Option<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)>,
+	measure_fill: Option<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
 }
 
 // TODO: Eventually remove this document upgrade code
@@ -94,7 +94,7 @@ struct ExecutionContext {
 #[derive(Debug, Clone)]
 struct GradientMigration {
 	document_id: DocumentId,
-	remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)>,
+	remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
 	resolution: UVec2,
 	scale: f64,
 }
@@ -507,7 +507,7 @@ impl NodeGraphExecutor {
 		}
 
 		// Snapshot the queue but leave `pending_gradient_bbox_bake` populated, so subsequent render requests keep deferring here (and hit the guard above); each entry is removed from the document as its bake lands.
-		let remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
+		let remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
 		let Some((first_network_path, first_fill, first_gradient)) = remaining.front().cloned() else {
 			return false;
 		};
@@ -534,7 +534,7 @@ impl NodeGraphExecutor {
 		document_id: DocumentId,
 		network_path: Vec<NodeId>,
 		fill_node_id: NodeId,
-		gradient: graphic_types::migrations::legacy::LegacyGradient,
+		gradient: graphic_types::migrations::legacy::Gradient,
 		resolution: UVec2,
 		scale: f64,
 		responses: &mut VecDeque<Message>,
@@ -603,7 +603,7 @@ impl NodeGraphExecutor {
 		&mut self,
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
-		bake_target: (Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient),
+		bake_target: (Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient),
 		inspect_result: Option<InspectResult>,
 		responses: &mut VecDeque<Message>,
 	) {
@@ -625,14 +625,10 @@ impl NodeGraphExecutor {
 				if fill_transform_unbaked(document, &network_path, fill_node_id) {
 					let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
 					let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();
-					let has_transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput::INDEX);
-					let transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
+					let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
 					document
 						.network_interface
-						.set_input(&has_transform_input, NodeInput::value(TaggedValue::Bool(true), false), &network_path);
-					document
-						.network_interface
-						.set_input(&transform_input, NodeInput::value(TaggedValue::DAffine2(gradient_transform), false), &network_path);
+						.set_input(&input, NodeInput::value(TaggedValue::OptionalDAffine2(Some(gradient_transform)), false), &network_path);
 				}
 
 				// The transform is settled, so its entry no longer needs to persist for a retry on the next open
@@ -844,8 +840,8 @@ fn fill_transform_unbaked(document: &DocumentMessageHandler, network_path: &[Nod
 	};
 	let Some(node) = network.nodes.get(&fill_node_id) else { return false };
 	matches!(
-		node.inputs.get(graphene_std::vector::fill::HasTransformInput::INDEX).and_then(|input| input.as_value()),
-		Some(TaggedValue::Bool(false))
+		node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()),
+		Some(TaggedValue::OptionalDAffine2(None))
 	)
 }
 

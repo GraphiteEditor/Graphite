@@ -1,6 +1,5 @@
 use core_types::ExtractVarArgs;
 use core_types::color::Linear;
-use core_types::list::Item;
 use core_types::transform::Footprint;
 use core_types::uuid::generate_uuid;
 use core_types::{Ctx, ExtractFootprint};
@@ -13,11 +12,7 @@ use wgpu::util::DeviceExt;
 use wgpu_executor::{WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-fn render_background(
-	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
-	data: Item<RenderOutput>,
-) -> Item<RenderOutput> {
+fn render_background(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, #[scope(composite_background_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache, data: RenderOutput) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -29,14 +24,14 @@ fn render_background(
 		return data;
 	}
 
-	let RenderOutput { data: foreground_data, metadata } = data.into_element();
+	let RenderOutput { data: foreground_data, metadata } = data;
 	let mut render_params = render_params.clone();
 	render_params.footprint = *footprint;
 
 	let data = match foreground_data {
 		RenderOutputType::Texture(foreground_texture) => {
 			let doc_to_screen = render_params.footprint.transform.as_affine2();
-			let blended = pipeline.into_element().run::<CompositeBackground>(&CompositeBackgroundArgs {
+			let blended = pipeline.run::<CompositeBackground>(&CompositeBackgroundArgs {
 				foreground: foreground_texture.as_ref(),
 				backgrounds: &metadata.backgrounds,
 				document_to_screen: doc_to_screen,
@@ -116,19 +111,19 @@ fn render_background(
 		_ => unreachable!("Render background node received unsupported render output type"),
 	};
 
-	Item::new_from_element(RenderOutput { data, metadata })
+	RenderOutput { data, metadata }
 }
 
 #[node_macro::node(category(""), inject_scope)]
 fn composite_background_pipeline(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<wgpu_executor::WgpuExecutorHandle>>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<wgpu_executor::WgpuExecutorHandle>,
 	#[data] pipeline: WgpuPipelineCache,
-) -> Item<WgpuPipelineCache> {
-	if let Some(executor) = executor.into_element() {
+) -> WgpuPipelineCache {
+	if let Some(executor) = executor {
 		executor.pipeline_init::<CompositeBackground>(pipeline);
 	}
-	Item::new_from_element(pipeline.clone())
+	pipeline.clone()
 }
 
 pub struct CompositeBackground {
