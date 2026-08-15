@@ -8,7 +8,7 @@ use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	let network = load_from_name(name);
-	let proto_network = compile(network);
+	let proto_network = compile(network, &interpreted_executor::node_registry::NODE_REGISTRY);
 
 	c.bench_function(name, |b| {
 		b.iter_batched(
@@ -28,7 +28,7 @@ fn update_executor_demo(c: &mut Criterion) {
 
 fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	let network = load_from_name(name);
-	let proto_network = compile(network);
+	let proto_network = compile(network, &interpreted_executor::node_registry::NODE_REGISTRY);
 
 	let executor = DynamicExecutor::new(proto_network).unwrap();
 	let footprint = Footprint::default();

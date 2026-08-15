@@ -2008,6 +2008,7 @@ dependencies = [
  "graphene-hash",
  "graphic-types",
  "gungraun",
+ "interpreted-executor",
  "js-sys",
  "log",
  "mmap-io",

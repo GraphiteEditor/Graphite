@@ -74,6 +74,7 @@ mmap-io = { workspace = true }
 [dev-dependencies]
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
+interpreted-executor = { workspace = true }
 pretty_assertions = { workspace = true }
 criterion = { workspace = true }
 gungraun = { workspace = true }

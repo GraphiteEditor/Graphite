@@ -5,7 +5,7 @@ use std::error::Error;
 pub struct Compiler {}
 
 impl Compiler {
-	pub fn compile<'r>(&self, mut network: NodeNetwork, registry: Option<&'r Registry>) -> impl Iterator<Item = Result<ProtoNetwork, String>> + 'r {
+	pub fn compile<'r>(&self, mut network: NodeNetwork, registry: &'r Registry) -> impl Iterator<Item = Result<ProtoNetwork, String>> + 'r {
 		network.resolve_scope_inputs();
 		network.generate_node_paths(&[]);
 		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
@@ -19,15 +19,13 @@ impl Compiler {
 
 		proto_networks.map(move |mut proto_network| {
 			proto_network.insert_context_nullification_nodes()?;
-			if let Some(registry) = registry {
-				let _ = proto_network.resolve_types(registry);
-				proto_network.compute_layouts();
-			}
+			let _ = proto_network.resolve_types(registry);
+			proto_network.compute_layouts();
 			proto_network.generate_stable_node_ids();
 			Ok(proto_network)
 		})
 	}
-	pub fn compile_single(&self, network: NodeNetwork, registry: Option<&Registry>) -> Result<ProtoNetwork, String> {
+	pub fn compile_single(&self, network: NodeNetwork, registry: &Registry) -> Result<ProtoNetwork, String> {
 		assert_eq!(network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 		let Some(proto_network) = self.compile(network, registry).next() else {
 			return Err("Failed to convert graph into proto graph".to_string());

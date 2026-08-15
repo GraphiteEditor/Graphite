@@ -438,7 +438,7 @@ impl NodeRuntime {
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 
 		let c = Compiler {};
-		let proto_network = match c.compile_single(scoped_network, None) {
+		let proto_network = match c.compile_single(scoped_network, &interpreted_executor::node_registry::NODE_REGISTRY) {
 			Ok(network) => network,
 			Err(e) => return Err((ResolvedDocumentNodeTypesDelta::default(), e)),
 		};

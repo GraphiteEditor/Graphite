@@ -314,7 +314,7 @@ fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: 
 	}
 
 	let compiler = Compiler {};
-	compiler.compile_single(network, Some(&interpreted_executor::node_registry::NODE_REGISTRY)).map_err(|x| x.into())
+	compiler.compile_single(network, &interpreted_executor::node_registry::NODE_REGISTRY).map_err(|x| x.into())
 }
 
 fn create_executor(proto_network: ProtoNetwork, runtime: Arc<DynGraphRuntime>) -> Result<DynamicExecutor, Box<dyn Error>> {

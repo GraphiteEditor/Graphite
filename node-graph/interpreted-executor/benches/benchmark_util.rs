@@ -12,7 +12,7 @@ pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	let mut network = wrap_network_in_scope(network, editor_api);
 	let preprocessor = preprocessor::Preprocessor::new();
 	preprocessor.preprocess(&mut network, &|_| None).unwrap();
-	let proto_network = compile(network);
+	let proto_network = compile(network, &interpreted_executor::node_registry::NODE_REGISTRY);
 	let executor = DynamicExecutor::new(proto_network.clone()).unwrap();
 	(executor, proto_network)
 }
