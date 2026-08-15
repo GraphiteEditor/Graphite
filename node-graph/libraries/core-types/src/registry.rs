@@ -113,7 +113,6 @@ pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {
 pub enum ConstructionError {
 	Arity { expected: usize, got: usize },
 	Type { expected: Box<Type>, found: Box<Type> },
-	MissingLayout,
 }
 
 pub struct SharedEdge<N: ?Sized> {
@@ -193,7 +192,8 @@ pub struct EdgeHandle {
 	node: Box<DynEdge>,
 	share: fn(&DynEdge) -> Box<DynEdge>,
 	serialize: fn(&DynEdge) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
-	layout: fn(&DynEdge) -> Option<&crate::record::Layout>,
+	layout: fn(&DynEdge) -> &crate::record::Layout,
+	set_layout: fn(&mut DynEdge, crate::record::RecordLayout),
 	ty: Type,
 }
 
@@ -228,7 +228,12 @@ impl EdgeHandle {
 			node: Box::new(SharedEdge::new(node)),
 			share: |edge| Box::new(edge.downcast_ref::<SharedEdge<N>>().expect("share hook matches the stored edge type").share()),
 			serialize: |edge| Node::<ContextImpl>::serialize(edge.downcast_ref::<SharedEdge<N>>().expect("serialize hook matches the stored edge type")),
-			layout: |edge| Some(Node::<ContextImpl>::layout(edge.downcast_ref::<SharedEdge<N>>().expect("layout hook matches the stored edge type"))),
+			layout: |edge| Node::<ContextImpl>::layout(edge.downcast_ref::<SharedEdge<N>>().expect("layout hook matches the stored edge type")),
+			set_layout: |edge, layout| {
+				let shared = edge.downcast_mut::<SharedEdge<N>>().expect("set_layout hook matches the stored edge type");
+				let node = std::sync::Arc::get_mut(&mut shared.own).expect("layout is installed before the node is shared");
+				Node::<ContextImpl>::set_layout(node, layout);
+			},
 			ty,
 		}
 	}
@@ -243,6 +248,7 @@ impl EdgeHandle {
 			share: self.share,
 			serialize: self.serialize,
 			layout: self.layout,
+			set_layout: self.set_layout,
 			ty: self.ty.clone(),
 		}
 	}
@@ -251,8 +257,12 @@ impl EdgeHandle {
 		(self.serialize)(&*self.node)
 	}
 
-	pub fn layout(&self) -> Option<&crate::record::Layout> {
+	pub fn layout(&self) -> &crate::record::Layout {
 		(self.layout)(&*self.node)
+	}
+
+	pub fn set_layout(&mut self, layout: crate::record::RecordLayout) {
+		(self.set_layout)(&mut *self.node, layout);
 	}
 
 	pub fn downcast<T: 'static>(self) -> Result<SharedEdge<ErasedNode<T>>, ConstructionError> {

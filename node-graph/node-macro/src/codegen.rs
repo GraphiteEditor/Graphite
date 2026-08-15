@@ -403,19 +403,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.into_iter()
 		.flatten();
-	let flip_prelude = flip
-		.then(|| match carrier_flip {
-			true => quote! {
-				let __layout = __in_0.with_writes(__in_0.depth, gcore::record::element_write::<#slot_value_type>(), &[]);
-				let __plan = gcore::record::copy_plan(__in_0, &__layout, false, &[]);
-				let __frame_bytes = __layout.frame_bytes();
-			},
-			false => quote! {
-				let __layout = gcore::record::Layout::default().with_writes(0, gcore::record::element_write::<#slot_value_type>(), &[]);
-				let __frame_bytes = __layout.frame_bytes();
-			},
-		})
-		.into_iter();
+	// The output layout, frame size, and copy plan are installed by `set_layout`.
 	let flip_read_bindings = flip
 		.then(|| {
 			lazy_read_fields(&struct_regular_fields).into_iter().map(|(index, field)| {
@@ -441,15 +429,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.flatten();
 	let flip_output_inits = flip
 		.then(|| {
-			let plan = carrier_flip.then(|| quote!(__plan,));
-			match flip_generic_idents.is_empty() {
-				true => quote!(__layout, __frame_bytes, #plan),
-				false => quote!(__layout, __frame_bytes, #plan __marker: ::core::marker::PhantomData,),
-			}
+			let plan = carrier_flip.then(|| quote!(__plan: ::std::vec::Vec::new(),));
+			let marker = (!flip_generic_idents.is_empty()).then(|| quote!(__marker: ::core::marker::PhantomData,));
+			quote!(__layout: ::core::default::Default::default(), __frame_bytes: 0, #plan #marker)
 		})
 		.into_iter();
-	// The flip prelude's `element_write` instantiates the erased glue at the
-	// output type, so `new` carries the bounds the glue needs.
+	// `new` carries the bounds the erased glue needs at the output type.
 	let new_where = flip
 		.then(|| {
 			let existing = parsed.where_clause.iter().flat_map(|clause| clause.predicates.iter());
@@ -463,7 +448,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			{
 				#[allow(clippy::too_many_arguments)]
 				pub fn new(#(#new_args,)* #(#routing_layout_param)* #(#routing_in_params)* #(#flip_layout_params)*) -> Self {
-					#(#flip_prelude)*
 					#(#flip_read_bindings)*
 					Self {
 						#(#all_field_inits,)*
@@ -747,8 +731,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		crate::codegen::ir::Element::Concrete(ty) => Some(ty),
 		_ => None,
 	});
-	// A creator pushes rank levels: its `IList` return raises the output depth
-	// above its carrier's, so the layout writes one level deeper.
 	let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth);
 	let level_delta = node.output.shape.depth as i8 - subject_depth as i8;
 	let pushed_levels = level_delta.max(0) as u8;
@@ -1709,14 +1691,60 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => Vec::new(),
 	};
 
+	let set_layout_body = if flip {
+		let plan = carrier_flip.then(|| quote!(self.__plan = __resolved.plan;));
+		Some(quote! {
+			self.__frame_bytes = __resolved.frame_bytes;
+			#plan
+			self.__layout = __resolved.layout;
+		})
+	} else if record_io {
+		let write_installs = write_markers.iter().enumerate().map(|(index, marker)| {
+			let slot = format_ident!("__write_{index}");
+			quote! {
+				self.#slot = __resolved.layout.offset_of(<#marker as #core_types::attribute::Attribute>::NAME, 0).expect("a written attribute is always part of the wired layout");
+			}
+		});
+		let plan = (!skips_carrier).then(|| quote!(self.__plan = __resolved.plan;));
+		Some(quote! {
+			#(#write_installs)*
+			self.__frame_bytes = __resolved.frame_bytes;
+			#plan
+			self.__layout = __resolved.layout;
+		})
+	} else {
+		None
+	};
+	let set_layout_method = set_layout_body.map(|body| {
+		quote! {
+			fn set_layout(&mut self, __resolved: #core_types::record::RecordLayout) {
+				#body
+			}
+		}
+	});
 	let record_layout_impl = match record_io || routing_generic.is_some() || flip || opaque {
 		true => quote! {
 			fn layout(&self) -> &#core_types::record::Layout {
 				&self.__layout
 			}
+			#set_layout_method
 		},
 		false => quote!(),
 	};
+	let flip_meta_concrete = flip && !element_write.is_some_and(|ty| crate::codegen::classify::contains_open_generic(parsed, ty));
+	let flip_layout_meta_fn = flip_meta_concrete.then(|| {
+		let layout_meta_fn = format_ident!("{}_layout_meta", fn_name);
+		let element_spec = match element_write {
+			Some(ty) => quote!(#core_types::record::ElementSpec::Concrete(#core_types::record::element_write::<#ty>())),
+			None => quote!(#core_types::record::ElementSpec::Carried),
+		};
+		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, core_types);
+		quote! {
+			#vis fn #layout_meta_fn() -> #core_types::record::LayoutMeta {
+				#layout_meta
+			}
+		}
+	});
 
 	let entries = entries_tokens(parsed, &struct_name, &data_field_generic_idents, &regular_fields);
 	let cfg = crate::shader_nodes::modify_cfg(&parsed.attributes);
@@ -1769,13 +1797,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let slot = format_ident!("__in_{index}");
 			quote!(#slot: &#core_types::record::Layout,)
 		});
-		let layout_binding = match skips_carrier {
-			true => quote!(let __layout = self::#layout_fn();),
-			false => quote!(let __layout = self::#layout_fn(__carrier_layout);),
-		};
-		let carry_element = element_write.is_none();
-		let plan_binding =
-			(!skips_carrier).then(|| quote!(let __plan = #core_types::record::copy_plan(__carrier_layout, &__layout, #carry_element, &[#(#remove_pairs),*]);));
 		let read_inits = flat_reads.iter().enumerate().map(|(slot, (owner, read))| {
 			let marker = &read.marker;
 			let slot = format_ident!("__read_{slot}");
@@ -1784,14 +1805,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				false => format_ident!("__in_{owner}").to_token_stream(),
 			};
 			quote!(let #slot = #source.offset_of(<#marker as #core_types::attribute::Attribute>::NAME, 0);)
-		});
-		let write_inits = write_markers.iter().enumerate().map(|(index, marker)| {
-			let slot = format_ident!("__write_{index}");
-			quote! {
-				let #slot = __layout
-					.offset_of(<#marker as #core_types::attribute::Attribute>::NAME, 0)
-					.expect("a written attribute is always part of the wired layout");
-			}
 		});
 		let data_inits = data_names.iter().map(|name| quote!(#name: ::core::default::Default::default(),));
 		let edge_inits = regular_fields.iter().map(|field| {
@@ -1803,9 +1816,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let slot = format_ident!("__in_{index}");
 			quote!(#slot: #slot.clone(),)
 		});
-		let plan_init = (!skips_carrier).then(|| quote!(__plan,)).into_iter();
+		let plan_default = (!skips_carrier).then(|| quote!(__plan: ::std::vec::Vec::new(),)).into_iter();
 		let read_names = (0..flat_reads.len()).map(|index| format_ident!("__read_{index}")).map(|slot| quote!(#slot,));
-		let write_names = (0..write_markers.len()).map(|index| format_ident!("__write_{index}")).map(|slot| quote!(#slot,));
+		let write_defaults = (0..write_markers.len()).map(|index| format_ident!("__write_{index}")).map(|slot| quote!(#slot: 0,));
 		quote! {
 			#layout_def
 			#layout_meta_def
@@ -1814,21 +1827,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			impl<#(#data_field_generic_idents,)* #(#node_generics,)*> #mod_name::#struct_name<#(#struct_type_params,)*> {
 				#[allow(clippy::too_many_arguments)]
 				#vis fn new(#(#edge_args,)* #(#carrier_layout_param)* #(#input_layout_params)*) -> Self {
-					#layout_binding
-					#plan_binding
 					#(#read_inits)*
-					#(#write_inits)*
-					let __frame_bytes = __layout.frame_bytes();
 					Self {
 						#(#data_inits)*
 						#(#edge_inits)*
 						#(#carrier_init)*
 						#(#input_layout_inits)*
-						__layout,
-						#(#plan_init)*
-						__frame_bytes,
+						__layout: ::core::default::Default::default(),
+						#(#plan_default)*
+						__frame_bytes: 0,
 						#(#read_names)*
-						#(#write_names)*
+						#(#write_defaults)*
 					}
 				}
 			}
@@ -1968,7 +1977,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	Ok(NodePlan {
 		kernel,
 		lazy_read_fns: quote!(#(#lazy_read_fns)*),
-		record_ctor: quote!(#record_wiring),
+		record_ctor: quote!(#record_wiring #flip_layout_meta_fn),
 		node_impl: top_level,
 		entries,
 		..Default::default()

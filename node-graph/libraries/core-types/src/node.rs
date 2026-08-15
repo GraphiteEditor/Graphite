@@ -278,6 +278,9 @@ pub trait Node<Input> {
 		crate::record::empty_layout()
 	}
 
+	/// Installs this node's resolved record layout; a no-op unless it produces records.
+	fn set_layout(&mut self, _layout: crate::record::RecordLayout) {}
+
 	fn eval_batch<'a>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
 	where
 		Input: InjectIndex + Copy,

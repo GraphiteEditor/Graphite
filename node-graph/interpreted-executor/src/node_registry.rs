@@ -191,9 +191,7 @@ mod node_registry_macros {
 						}
 						let mut inputs = inputs.into_iter();
 						let handle = inputs.next().unwrap();
-						let Some(layout) = handle.layout().cloned() else {
-							return Err(ConstructionError::MissingLayout);
-						};
+						let layout = handle.layout().clone();
 						let node = graphene_std::ops::IntoNode::<$to, _, $from>::new(handle.downcast_record::<$from>()?, &layout);
 						Ok(EdgeHandle::new_record::<$to>(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>))
 					},
@@ -265,10 +263,8 @@ mod node_registry_macros {
 						let mut inputs = inputs.into_iter();
 						let mut claim = || {
 							let handle = inputs.next().unwrap();
-							let Some(layout) = handle.layout().cloned() else {
-								return Err(ConstructionError::MissingLayout);
-							};
-							Ok((handle, layout))
+							let layout = handle.layout().clone();
+							Ok::<_, ConstructionError>((handle, layout))
 						};
 						let (value, value_layout) = claim()?;
 						let (converter, converter_layout) = claim()?;
@@ -305,13 +301,9 @@ mod node_registry_macros {
 						}
 						let mut inputs = inputs.into_iter();
 						let value = inputs.next().unwrap();
-						let Some(value_layout) = value.layout().cloned() else {
-							return Err(ConstructionError::MissingLayout);
-						};
+						let value_layout = value.layout().clone();
 						let converter = inputs.next().unwrap();
-						let Some(converter_layout) = converter.layout().cloned() else {
-							return Err(ConstructionError::MissingLayout);
-						};
+						let converter_layout = converter.layout().clone();
 						let node = graphene_std::ops::ConvertNode::<$to, _, _, $from, $convert>::new(
 							value.downcast_record::<$from>()?,
 							converter.downcast_record::<$convert>()?,

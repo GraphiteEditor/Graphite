@@ -132,9 +132,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 			let layout = format_ident!("__layout_{index}");
 			quote! {
 				let #handle = inputs.next().unwrap();
-				let Some(#layout) = #handle.layout().cloned() else {
-					return Err(gcore::registry::ConstructionError::MissingLayout);
-				};
+				let #layout = #handle.layout().clone();
 				let #name = #handle.downcast_record::<#ty>()?;
 			}
 		});
@@ -261,16 +259,12 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 			SlotKind::BaseGeneric(_) | SlotKind::BaseConcrete(_) => quote! {
 				let #handle = inputs.next().unwrap();
 				let #ty = #handle.ty().clone();
-				let Some(#layout) = #handle.layout().cloned() else {
-					return Err(gcore::registry::ConstructionError::MissingLayout);
-				};
+				let #layout = #handle.layout().clone();
 				let #name = #handle.downcast_erased::<gcore::registry::ErasedRecordNode>(#ty.clone())?;
 			},
 			SlotKind::Value(value_ty) => quote! {
 				let #handle = inputs.next().unwrap();
-				let Some(#layout) = #handle.layout().cloned() else {
-					return Err(gcore::registry::ConstructionError::MissingLayout);
-				};
+				let #layout = #handle.layout().clone();
 				let #name = #handle.downcast_record::<#value_ty>()?;
 			},
 			SlotKind::Plain(value_ty) | SlotKind::Lazy(value_ty) => quote!(let #name = inputs.next().unwrap().downcast::<#value_ty>()?;),

@@ -128,7 +128,7 @@ impl ConstructionArgs {
 pub(crate) struct Resolved {
 	pub io: Option<NodeIOTypes>,
 	pub layout_meta: Option<core_types::record::LayoutMeta>,
-	pub layout: Option<core_types::record::Layout>,
+	pub layout: Option<core_types::record::RecordLayout>,
 }
 
 impl PartialEq for Resolved {
@@ -221,7 +221,7 @@ impl ProtoNode {
 		}
 	}
 
-	pub fn resolved_layout(&self) -> Option<&core_types::record::Layout> {
+	pub fn resolved_layout(&self) -> Option<&core_types::record::RecordLayout> {
 		self.resolved.layout.as_ref()
 	}
 }
@@ -372,10 +372,18 @@ impl ProtoNetwork {
 			let layout = {
 				let node = &self.nodes[index].1;
 				match &node.construction_args {
-					ConstructionArgs::Value(value) => value.element_write().map(|element| core_types::record::Layout::default().with_writes(0, element, &[])),
+					ConstructionArgs::Value(value) => value.element_write().map(|element| {
+						let layout = core_types::record::Layout::default().with_writes(0, element, &[]);
+						core_types::record::RecordLayout {
+							frame_bytes: layout.frame_bytes(),
+							plan: Vec::new(),
+							layout,
+						}
+					}),
 					ConstructionArgs::Nodes(inputs) => node.resolved.layout_meta.as_ref().and_then(|meta| {
-						let input_layouts: Vec<Option<&core_types::record::Layout>> = inputs.iter().map(|input| self.nodes[input.0 as usize].1.resolved.layout.as_ref()).collect();
-						meta.sources.iter().all(|&source| input_layouts[source as usize].is_some()).then(|| meta.fold(&input_layouts))
+						let input_layouts: Vec<Option<&core_types::record::Layout>> =
+							inputs.iter().map(|input| self.nodes[input.0 as usize].1.resolved.layout.as_ref().map(|resolved| &resolved.layout)).collect();
+						meta.sources.iter().all(|&source| input_layouts[source as usize].is_some()).then(|| meta.resolve(&input_layouts))
 					}),
 					ConstructionArgs::Inline(_) => None,
 				}

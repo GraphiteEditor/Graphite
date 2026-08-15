@@ -476,15 +476,16 @@ impl BorrowTree {
 					.clone()
 					.to_edge()
 					.map_err(|error| vec![GraphError::new(&proto_node, GraphErrorType::ConstructionFailed(error))])?;
-				debug_assert!(proto_node.resolved_layout().map_or(true, |expected| node.layout() == Some(expected)), "layout pass disagrees with construction for {}", proto_node.identifier.as_str());
 				self.store_node(node, id, path.into());
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
 				let construction_nodes = self.node_deps(ids);
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
-				let node = constructor(construction_nodes).map_err(|error| vec![GraphError::new(&proto_node, GraphErrorType::ConstructionFailed(format!("{error:?}")))])?;
-				debug_assert!(proto_node.resolved_layout().map_or(true, |expected| node.layout() == Some(expected)), "layout pass disagrees with construction for {}", proto_node.identifier.as_str());
+				let mut node = constructor(construction_nodes).map_err(|error| vec![GraphError::new(&proto_node, GraphErrorType::ConstructionFailed(format!("{error:?}")))])?;
+				if let Some(layout) = proto_node.resolved_layout() {
+					node.set_layout(layout.clone());
+				}
 				self.store_node(node, id, path.into());
 			}
 		};
@@ -503,7 +504,7 @@ impl BorrowTree {
 	}
 
 	fn frame_bytes(&self, id: NodeId) -> usize {
-		self.nodes.get(&id).and_then(|(handle, _)| handle.layout()).map_or(0, |layout| layout.frame_bytes())
+		self.nodes.get(&id).map_or(0, |(handle, _)| handle.layout().frame_bytes())
 	}
 }
 

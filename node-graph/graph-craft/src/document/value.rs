@@ -372,7 +372,7 @@ macro_rules! tagged_value {
 				}
 				$(
 					if ty == core_types::registry::record_edge_type::<$ty>() {
-						let layout = handle.layout().ok_or_else(|| "a record edge must carry its layout".to_string())?.clone();
+						let layout = handle.layout().clone();
 						return Ok(handle
 							.downcast_record::<$ty>()
 							.map_err(|e| format!("{e:?}"))?
@@ -381,7 +381,7 @@ macro_rules! tagged_value {
 					}
 				)*
 				if ty == core_types::registry::record_edge_type::<RenderOutput>() {
-					let layout = handle.layout().ok_or_else(|| "a record edge must carry its layout".to_string())?.clone();
+					let layout = handle.layout().clone();
 					return Ok(handle
 						.downcast_record::<RenderOutput>()
 						.map_err(|e| format!("{e:?}"))?

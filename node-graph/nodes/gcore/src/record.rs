@@ -232,6 +232,21 @@ mod tests {
 		stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12));
 	}
 
+	fn install<N: Node<ContextImpl<'static>>>(mut node: N, meta: core_types::record::LayoutMeta, inputs: &[Option<&Layout>]) -> N {
+		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, meta.resolve(inputs));
+		node
+	}
+
+	fn install_flip<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
+		let bundle = core_types::record::RecordLayout {
+			frame_bytes: layout.frame_bytes(),
+			plan: Vec::new(),
+			layout: layout.clone(),
+		};
+		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, bundle);
+		node
+	}
+
 	fn lifted_value<T: Clone + Send + Sync + 'static>(value: T) -> (core_types::record::RecordLift<T, ValueNode<T>>, Layout) {
 		let lift = core_types::record::RecordLift::<T, _>::new(ValueNode(value));
 		let layout = Node::<ContextImpl>::layout(&lift).clone();
@@ -268,7 +283,7 @@ mod tests {
 		let leveled = repeat_opacity_layout(&base);
 		reserve_for(&[&base, &leveled]);
 
-		let node = RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base);
+		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
 		assert_eq!(node.layout(), &leveled);
 		let GPoll::Final(value) = node.eval(&indexed) else {
 			panic!("expected a final record");
@@ -288,7 +303,7 @@ mod tests {
 		let base = f64_layout(&[]);
 		reserve_for(&[&base]);
 
-		let node = RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base);
+		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
 		// The pushed level (0, the only level) reports the copy count.
 		assert_eq!(node.extent_at(&ctx, 0), core_types::gpoll::GPoll::Final(core_types::gpoll::Extent::Exactly(3)));
 	}
@@ -305,8 +320,8 @@ mod tests {
 		let out = f64_layout(&[]);
 		reserve_for(&[&base, &leveled, &out]);
 
-		let repeat = RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base);
-		let node = SumNode::new(repeat, &leveled);
+		let repeat = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let node = install_flip(SumNode::new(repeat, &leveled), &out);
 		assert_eq!(node.layout().depth, 0, "the reducer collapsed the rank level");
 
 		let GPoll::Final(value) = node.eval(&ctx) else {
@@ -342,7 +357,15 @@ mod tests {
 		let stacked = multiply_opacity_layout(&modified);
 		reserve_for(&[&source_layout, &modified, &stacked]);
 
-		let chain = MultiplyOpacityNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout), ValueNode(0.5), &modified);
+		let chain = install(
+			MultiplyOpacityNode::new(
+				install(MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout), multiply_opacity_layout_meta(), &[Some(&source_layout)]),
+				ValueNode(0.5),
+				&modified,
+			),
+			multiply_opacity_layout_meta(),
+			&[Some(&modified)],
+		);
 		assert_eq!(chain.layout(), &stacked);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
@@ -363,7 +386,7 @@ mod tests {
 		let measured = measure_layout(&source_layout);
 		reserve_for(&[&source_layout, &measured]);
 
-		let chain = MeasureNode::new(bare_source(&source_layout, -2.), &source_layout);
+		let chain = install(MeasureNode::new(bare_source(&source_layout, -2.), &source_layout), measure_layout_meta(), &[Some(&source_layout)]);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -384,7 +407,14 @@ mod tests {
 		let measured = measure_layout(&modified);
 		reserve_for(&[&source_layout, &modified, &measured]);
 
-		let chain = MeasureNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, -2.), ValueNode(0.5), &source_layout), &modified);
+		let chain = install(
+			MeasureNode::new(
+				install(MultiplyOpacityNode::new(bare_source(&source_layout, -2.), ValueNode(0.5), &source_layout), multiply_opacity_layout_meta(), &[Some(&source_layout)]),
+				&modified,
+			),
+			measure_layout_meta(),
+			&[Some(&modified)],
+		);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -405,13 +435,20 @@ mod tests {
 		let shaded = shade_layout(&modified);
 		reserve_for(&[&source_layout, &modified, &shaded]);
 
-		let bare = ShadeNode::new(bare_source(&source_layout, 4.), &source_layout);
+		let bare = install(ShadeNode::new(bare_source(&source_layout, 4.), &source_layout), shade_layout_meta(), &[Some(&source_layout)]);
 		let GPoll::Final(value) = bare.eval(&ctx) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { source_layout.rec(&value).element::<f64>() }, 4.);
 
-		let chain = ShadeNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout), &modified);
+		let chain = install(
+			ShadeNode::new(
+				install(MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout), multiply_opacity_layout_meta(), &[Some(&source_layout)]),
+				&modified,
+			),
+			shade_layout_meta(),
+			&[Some(&modified)],
+		);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -433,7 +470,7 @@ mod tests {
 		let u32_faded = fade_layout(&u32_source);
 		reserve_for(&[&f64_source, &f64_faded, &u32_source, &u32_faded]);
 
-		let wide = FadeNode::new(bare_source(&f64_source, 8.), ValueNode(0.5), &f64_source);
+		let wide = install(FadeNode::new(bare_source(&f64_source, 8.), ValueNode(0.5), &f64_source), fade_layout_meta(), &[Some(&f64_source)]);
 		let GPoll::Final(value) = wide.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -441,15 +478,19 @@ mod tests {
 		assert_eq!(unsafe { rec.element::<f64>() }, 8.);
 		assert_eq!(unsafe { rec.read::<f64>(f64_faded.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 
-		let narrow = FadeNode::new(
-			RecordSourceNode {
-				layout: u32_source.clone(),
-				element: 7u32,
-				fields: vec![],
-				partial: false,
-			},
-			ValueNode(0.25),
-			&u32_source,
+		let narrow = install(
+			FadeNode::new(
+				RecordSourceNode {
+					layout: u32_source.clone(),
+					element: 7u32,
+					fields: vec![],
+					partial: false,
+				},
+				ValueNode(0.25),
+				&u32_source,
+			),
+			fade_layout_meta(),
+			&[Some(&u32_source)],
 		);
 		let GPoll::Final(value) = narrow.eval(&ctx) else {
 			panic!("expected a final record");
@@ -469,7 +510,7 @@ mod tests {
 		let layout = source_opacity_layout();
 		reserve_for(&[&layout]);
 
-		let node = SourceOpacityNode::new(ValueNode(3.), ValueNode(0.25));
+		let node = install(SourceOpacityNode::new(ValueNode(3.), ValueNode(0.25)), source_opacity_layout_meta(), &[]);
 		assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
 		let GPoll::Final(value) = node.eval(&ctx) else {
 			panic!("expected a final record");
@@ -490,15 +531,19 @@ mod tests {
 		let modified = multiply_opacity_layout(&source_layout);
 		reserve_for(&[&source_layout, &modified]);
 
-		let chain = MultiplyOpacityNode::new(
-			RecordSourceNode {
-				layout: source_layout.clone(),
-				element: 1.,
-				fields: vec![],
-				partial: true,
-			},
-			ValueNode(0.5),
-			&source_layout,
+		let chain = install(
+			MultiplyOpacityNode::new(
+				RecordSourceNode {
+					layout: source_layout.clone(),
+					element: 1.,
+					fields: vec![],
+					partial: true,
+				},
+				ValueNode(0.5),
+				&source_layout,
+			),
+			multiply_opacity_layout_meta(),
+			&[Some(&source_layout)],
 		);
 		let GPoll::Partial(value) = chain.eval(&ctx) else {
 			panic!("expected a partial record");
@@ -517,13 +562,13 @@ mod tests {
 		let modified = checked_multiply_opacity_layout(&source_layout);
 		reserve_for(&[&source_layout, &modified]);
 
-		let ok = CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(0.5), &source_layout);
+		let ok = install(CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(0.5), &source_layout), checked_multiply_opacity_layout_meta(), &[Some(&source_layout)]);
 		let GPoll::Final(value) = ok.eval(&ctx) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { modified.rec(&value).read::<f64>(modified.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 
-		let failing = CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(-1.), &source_layout);
+		let failing = install(CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(-1.), &source_layout), checked_multiply_opacity_layout_meta(), &[Some(&source_layout)]);
 		let GPoll::Error(error) = failing.eval(&ctx) else {
 			panic!("expected an error");
 		};
@@ -542,7 +587,15 @@ mod tests {
 		let scaled = scale_layout(&modified);
 		reserve_for(&[&source_layout, &modified, &scaled]);
 
-		let chain = ScaleNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout), ValueNode(3.), &modified);
+		let chain = install(
+			ScaleNode::new(
+				install(MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout), multiply_opacity_layout_meta(), &[Some(&source_layout)]),
+				ValueNode(3.),
+				&modified,
+			),
+			scale_layout_meta(),
+			&[Some(&modified)],
+		);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -563,11 +616,15 @@ mod tests {
 		let transferred = transfer_opacity_layout(&carrier_layout);
 		reserve_for(&[&carrier_layout, &secondary_layout, &transferred]);
 
-		let chain = TransferOpacityNode::new(
-			f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.5)]),
-			f64_record_source(&secondary_layout, 3., vec![(secondary_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
-			&carrier_layout,
-			&secondary_layout,
+		let chain = install(
+			TransferOpacityNode::new(
+				f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.5)]),
+				f64_record_source(&secondary_layout, 3., vec![(secondary_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+				&carrier_layout,
+				&secondary_layout,
+			),
+			transfer_opacity_layout_meta(),
+			&[Some(&carrier_layout), None],
 		);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
@@ -577,11 +634,15 @@ mod tests {
 		assert_eq!(unsafe { rec.read::<f64>(transferred.offset_of(Opacity::NAME, 0).unwrap()) }, 0.125);
 
 		let bare_secondary = f64_layout(&[]);
-		let defaulted = TransferOpacityNode::new(
-			f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.5)]),
-			bare_source(&bare_secondary, 3.),
-			&carrier_layout,
-			&bare_secondary,
+		let defaulted = install(
+			TransferOpacityNode::new(
+				f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.5)]),
+				bare_source(&bare_secondary, 3.),
+				&carrier_layout,
+				&bare_secondary,
+			),
+			transfer_opacity_layout_meta(),
+			&[Some(&carrier_layout), None],
 		);
 		let GPoll::Final(value) = defaulted.eval(&ctx) else {
 			panic!("expected a final record");
@@ -602,11 +663,15 @@ mod tests {
 		let factor_layout = Node::<ContextImpl>::layout(&factor).clone();
 		reserve_for(&[&source_layout]);
 
-		let node = BoostNode::new(
-			f64_record_source(&source_layout, 2., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
-			factor,
-			&source_layout,
-			&factor_layout,
+		let node = install(
+			BoostNode::new(
+				f64_record_source(&source_layout, 2., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+				factor,
+				&source_layout,
+				&factor_layout,
+			),
+			boost_layout_meta(),
+			&[Some(&source_layout)],
 		);
 		let out_layout = Node::<ContextImpl>::layout(&node).clone();
 		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the primary input's fields pass through to the output");
@@ -629,11 +694,15 @@ mod tests {
 		let (factor, factor_layout) = lifted_value(3.);
 		reserve_for(&[&source_layout]);
 
-		let node = BoostPollNode::new(
-			f64_record_source(&source_layout, 2., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
-			factor,
-			&source_layout,
-			&factor_layout,
+		let node = install(
+			BoostPollNode::new(
+				f64_record_source(&source_layout, 2., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+				factor,
+				&source_layout,
+				&factor_layout,
+			),
+			boost_poll_layout_meta(),
+			&[Some(&source_layout)],
 		);
 		let out_layout = Node::<ContextImpl>::layout(&node).clone();
 		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the primary input's fields pass through the poll kernel");
@@ -657,11 +726,15 @@ mod tests {
 		assert!(by_layout.frame_bytes() != 0, "the borrow must point into a spilled frame to exercise the park");
 		reserve_for(&[&carrier_layout, &by_layout]);
 
-		let node = OffsetNode::new(
-			f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
-			f64_record_source(&by_layout, 40., vec![]),
-			&carrier_layout,
-			&by_layout,
+		let node = install(
+			OffsetNode::new(
+				f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+				f64_record_source(&by_layout, 40., vec![]),
+				&carrier_layout,
+				&by_layout,
+			),
+			offset_layout_meta(),
+			&[Some(&carrier_layout)],
 		);
 		let out_layout = Node::<ContextImpl>::layout(&node).clone();
 		let GPoll::Final(value) = node.eval(&ctx) else {
@@ -694,13 +767,17 @@ mod tests {
 		let (source_id, source_id_layout) = lifted_value(7 as SourceId);
 		reserve_for(&[&source_layout]);
 
-		let node = DoubleAsyncNode::new(
-			f64_record_source(&source_layout, 3., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
-			runtime,
-			source_id,
-			&source_layout,
-			&runtime_layout,
-			&source_id_layout,
+		let node = install(
+			DoubleAsyncNode::new(
+				f64_record_source(&source_layout, 3., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+				runtime,
+				source_id,
+				&source_layout,
+				&runtime_layout,
+				&source_id_layout,
+			),
+			double_async_layout_meta(),
+			&[Some(&source_layout)],
 		);
 		let out_layout = Node::<ContextImpl>::layout(&node).clone();
 		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the carrier's fields pass through the async source");
@@ -774,9 +851,20 @@ mod tests {
 		let shaded = shade_layout(&stripped);
 		reserve_for(&[&source_layout, &modified, &stripped, &shaded]);
 
-		let chain = ShadeNode::new(
-			StripOpacityNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout), &modified),
-			&stripped,
+		let chain = install(
+			ShadeNode::new(
+				install(
+					StripOpacityNode::new(
+						install(MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout), multiply_opacity_layout_meta(), &[Some(&source_layout)]),
+						&modified,
+					),
+					strip_opacity_layout_meta(),
+					&[Some(&modified)],
+				),
+				&stripped,
+			),
+			shade_layout_meta(),
+			&[Some(&stripped)],
 		);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
@@ -796,13 +884,17 @@ mod tests {
 		assert!(relengthed.offset_of(Opacity::NAME, 0).is_none());
 		reserve_for(&[&source_layout, &relengthed]);
 
-		let chain = RelengthNode::new(
-			f64_record_source(
+		let chain = install(
+			RelengthNode::new(
+				f64_record_source(
+					&source_layout,
+					3.,
+					vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25), (source_layout.offset_of("length", 0).unwrap(), 9.)],
+				),
 				&source_layout,
-				3.,
-				vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25), (source_layout.offset_of("length", 0).unwrap(), 9.)],
 			),
-			&source_layout,
+			relength_layout_meta(),
+			&[Some(&source_layout)],
 		);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
@@ -824,10 +916,14 @@ mod tests {
 		let relabeled = label_layout(&labeled);
 		reserve_for(&[&source_layout, &labeled, &relabeled]);
 
-		let chain = LabelNode::new(
-			LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout),
-			ValueNode(String::from("b")),
-			&labeled,
+		let chain = install(
+			LabelNode::new(
+				install(LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout), label_layout_meta(), &[Some(&source_layout)]),
+				ValueNode(String::from("b")),
+				&labeled,
+			),
+			label_layout_meta(),
+			&[Some(&labeled)],
 		);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
@@ -1187,7 +1283,7 @@ mod tests {
 		let labeled = label_layout(&source_layout);
 		reserve_for(&[&labeled, &labeled]);
 
-		let chain = LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout);
+		let chain = install(LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout), label_layout_meta(), &[Some(&source_layout)]);
 		let memo = crate::memo::MemoizeNode::new(chain, &labeled);
 
 		let first_arena = Arena::new(1024).unwrap();

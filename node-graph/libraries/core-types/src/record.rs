@@ -243,6 +243,14 @@ pub fn empty_layout() -> &'static Layout {
 }
 
 /// Declarative record-io metadata for a node type, emitted by the macro into
+/// A record node's output layout with the frame size and carrier copy plan derived from it.
+#[derive(Clone, Debug, Default)]
+pub struct RecordLayout {
+	pub layout: Layout,
+	pub frame_bytes: usize,
+	pub plan: Vec<(usize, usize, usize)>,
+}
+
 /// its registry entry so the compiler can fold each wire's layout without
 /// running the node's constructor. [`fold`](LayoutMeta::fold) reproduces the
 /// layout the constructor derives at wiring today; the compiler layout pass
@@ -287,8 +295,7 @@ pub enum ElementSpec {
 }
 
 impl LayoutMeta {
-	/// The meta of an elementwise carrier flip that retypes input 0's element,
-	/// preserving its depth and attributes: what an `Into`/`Convert` coercion derives.
+	/// Keeps input 0's layout but replaces its element.
 	pub fn retype(element: ElementWrite) -> Self {
 		Self {
 			sources: vec![0],
@@ -317,6 +324,23 @@ impl LayoutMeta {
 			ElementSpec::Carried => base.element,
 		};
 		base.with_writes(depth, element, &self.writes)
+	}
+
+	/// [`fold`](LayoutMeta::fold) with the frame size and carrier copy plan derived from it.
+	pub fn resolve(&self, inputs: &[Option<&Layout>]) -> RecordLayout {
+		let layout = self.fold(inputs);
+		let frame_bytes = layout.frame_bytes();
+		let plan = match self.sources.first() {
+			// A reducer collapses its carrier's levels, so it writes a fresh record rather than copying fields down.
+			Some(&source) if self.level_delta >= 0 => {
+				let from = inputs[source as usize].expect("layout resolve source input has no layout");
+				let carry_element = matches!(self.element, ElementSpec::Carried);
+				let removes: Vec<(&str, u8)> = self.removes.clone();
+				copy_plan(from, &layout, carry_element, &removes)
+			}
+			_ => Vec::new(),
+		};
+		RecordLayout { layout, frame_bytes, plan }
 	}
 }
 
