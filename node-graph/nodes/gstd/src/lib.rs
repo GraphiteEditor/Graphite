@@ -12,7 +12,7 @@ pub use graphene_application_io as application_io;
 pub use graphene_core;
 pub use graphene_core::debug;
 pub use graphic_nodes;
-pub use graphic_types::{Artboard, Graphic, Vector};
+pub use graphic_types::{Appearance, Artboard, Cover, CoverPlacement, Coverage, Graphic, Vector, stamp_coverage};
 pub use math_nodes;
 pub use path_bool_nodes;
 pub use raster_nodes;
@@ -32,7 +32,7 @@ pub mod vector {
 	pub use vector_types::vector::algorithms;
 	pub use vector_types::vector::click_target;
 	pub use vector_types::vector::misc::HandleId;
-	pub use vector_types::vector::{PointId, RegionId, SegmentId, StrokeId};
+	pub use vector_types::vector::{PointId, SegmentId};
 	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap, serialize_hashmap_as_sorted_object};
 
 	// Re-export HandleExt trait and NoHashBuilder
@@ -53,12 +53,8 @@ pub mod artboard {
 	pub use graphic_types::artboard::*;
 }
 
-pub mod subpath {
-	pub use vector_types::subpath::*;
-}
-
 pub mod gradient {
-	pub use vector_types::{GradientStop, GradientStops};
+	pub use vector_types::{Gradient, GradientStop};
 }
 
 pub mod transform {
@@ -71,10 +67,11 @@ pub mod repeat {
 }
 
 pub mod math {
+	pub use core_types::math::float_noise;
 	pub use core_types::math::quad;
 
 	pub mod math_ext {
-		pub use vector_types::{QuadExt, RectExt};
+		pub use vector_types::QuadExt;
 	}
 }
 

@@ -205,6 +205,10 @@
 			textarea {
 				color: var(--color-8-uppergray);
 			}
+
+			input {
+				pointer-events: none;
+			}
 		}
 	}
 </style>

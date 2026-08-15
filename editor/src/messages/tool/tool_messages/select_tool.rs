@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{
-	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, swap_fill_and_stroke, sync_drawing_state,
+	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, has_paintable_selection, swap_fill_and_stroke, sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -28,8 +28,8 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
-use graphene_std::subpath::Subpath;
 use graphene_std::transform::ReferencePoint;
+use graphene_std::vector::algorithms::shapes::polyline_bezpath;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::style::FillChoice;
 use std::fmt;
@@ -236,8 +236,8 @@ impl LayoutHolder for SelectTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = Vec::new();
 
-		// Fill/Stroke widget set (only shown when there's a selection to apply edits to)
-		if self.tool_data.selected_layers_count > 0 {
+		// Fill/Stroke widget set (only shown when there's a paintable selection to apply edits to)
+		if self.tool_data.paintable_layers_selected {
 			widgets.append(&mut self.drawing.fill.create_widgets(
 				"Fill:",
 				|checkbox: &CheckboxInput| {
@@ -448,6 +448,7 @@ impl ToolTransition for SelectTool {
 		EventToMessageMap {
 			tool_abort: Some(SelectToolMessage::Abort.into()),
 			selection_changed: Some(SelectToolMessage::SelectionChanged.into()),
+			graph_changed: Some(SelectToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(SelectToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| SelectToolMessage::Overlays { context }.into()),
 			..Default::default()
@@ -509,6 +510,8 @@ struct SelectToolData {
 	skew_edge: EdgeBool,
 	nested_selection_behavior: NestedSelectionBehavior,
 	selected_layers_count: usize,
+	/// Whether any selected layer can take paint, controlling the visibility of the fill/stroke widget row.
+	paintable_layers_selected: bool,
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
@@ -572,7 +575,7 @@ impl SelectToolData {
 		if self.lasso_polygon.len() < 2 {
 			return Vec::new();
 		}
-		let polygon = Subpath::from_anchors(self.lasso_polygon.clone(), true);
+		let polygon = polyline_bezpath(self.lasso_polygon.iter().copied(), true);
 		document.intersect_polygon_no_artboards(polygon, viewport).collect()
 	}
 
@@ -580,7 +583,7 @@ impl SelectToolData {
 		if self.lasso_polygon.len() < 2 {
 			return false;
 		}
-		let polygon = Subpath::from_anchors(self.lasso_polygon.clone(), true);
+		let polygon = polyline_bezpath(self.lasso_polygon.iter().copied(), true);
 		document.is_layer_fully_inside_polygon(layer, viewport, polygon)
 	}
 
@@ -738,8 +741,10 @@ impl Fsm for SelectToolFsmState {
 				crate::messages::tool::common_functionality::layer_origin_cross::draw_for_selected_layers(&mut overlay_context, document);
 
 				let selected_layers_count = document.network_interface.selected_nodes().selected_unlocked_layers(&document.network_interface).count();
-				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
+				let paintable_layers_selected = has_paintable_selection(document);
+				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count || paintable_layers_selected != tool_data.paintable_layers_selected;
 				tool_data.selected_layers_count = selected_layers_count;
+				tool_data.paintable_layers_selected = paintable_layers_selected;
 
 				// Outline selected layers, but not artboards
 				if overlay_context.visibility_settings.selection_outline() {
@@ -2058,6 +2063,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 			.parent(document.metadata())
 			.is_some_and(|parent| document.network_interface.selected_nodes().selected_layers_contains(parent, document.metadata()))
 	}) else {
+		edit_layer_deepest_manipulation(layer, &document.network_interface, responses);
 		return;
 	};
 

@@ -3,7 +3,7 @@
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import { fillChoiceUIColor, sRgba8ToRgbaCSS } from "/src/utility-functions/colors";
+	import { fillChoiceColor, sRgba8ToRgbaCSS } from "/src/utility-functions/colors";
 	import type { SRGBA8, EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const editor = getContext<EditorWrapper>("editor");
@@ -42,7 +42,7 @@
 			on:open={({ detail }) => (primaryOpen = detail)}
 			colorOrGradient={{ Solid: primary }}
 			on:colorOrGradient={({ detail }) => {
-				const color = fillChoiceUIColor(detail);
+				const color = fillChoiceColor(detail);
 				if (color) primaryColorChanged(color);
 			}}
 			direction="Right"
@@ -55,7 +55,7 @@
 			on:open={({ detail }) => (secondaryOpen = detail)}
 			colorOrGradient={{ Solid: secondary }}
 			on:colorOrGradient={({ detail }) => {
-				const color = fillChoiceUIColor(detail);
+				const color = fillChoiceColor(detail);
 				if (color) secondaryColorChanged(color);
 			}}
 			direction="Right"

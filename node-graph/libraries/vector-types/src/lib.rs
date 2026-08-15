@@ -3,14 +3,12 @@ extern crate log;
 
 pub mod gradient;
 pub mod math;
-pub mod subpath;
 pub mod vector;
 
 // Re-export commonly used types at the crate root
 pub use core_types as gcore;
-pub use gradient::{GradientSpreadMethod, GradientStop, GradientStops, GradientType};
-pub use math::{QuadExt, RectExt};
-pub use subpath::Subpath;
+pub use gradient::{Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStop};
+pub use math::QuadExt;
 pub use vector::Vector;
 pub use vector::reference_point::ReferencePoint;
 

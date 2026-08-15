@@ -14,8 +14,7 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::NodeInputDecleration;
-use graphene_std::subpath::{calculate_growth_factor, spiral_point};
+use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
 
@@ -140,12 +139,11 @@ impl Spiral {
 			return;
 		};
 
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::spiral::IDENTIFIER))
-		else {
+		let Some(parameters) = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(graphene_std::vector::generator_nodes::spiral::IDENTIFIER) else {
 			return;
 		};
 
-		let Some(&TaggedValue::SpiralType(spiral_type)) = node_inputs.get(SpiralTypeInput::INDEX).unwrap().as_value() else {
+		let Some(&TaggedValue::SpiralType(spiral_type)) = parameters.value(SpiralTypeInput) else {
 			return;
 		};
 
@@ -157,7 +155,7 @@ impl Spiral {
 		responses.add(window_aligned_transform_set(document, layer, viewport_drag_start, DVec2::ONE));
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, OuterRadiusInput::INDEX),
+			input_connector: InputConnector::node(node_id, OuterRadiusInput),
 			input: NodeInput::value(TaggedValue::F64(new_radius), false),
 		});
 	}
@@ -167,8 +165,7 @@ impl Spiral {
 	pub fn update_turns(decrease: bool, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		use graphene_std::vector::generator_nodes::spiral::*;
 
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::spiral::IDENTIFIER))
-		else {
+		let Some(parameters) = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(graphene_std::vector::generator_nodes::spiral::IDENTIFIER) else {
 			return;
 		};
 
@@ -176,7 +173,7 @@ impl Spiral {
 			return;
 		};
 
-		let Some(&TaggedValue::F64(mut turns)) = node_inputs.get(TurnsInput::INDEX).unwrap().as_value() else {
+		let Some(&TaggedValue::F64(mut turns)) = parameters.value(TurnsInput) else {
 			return;
 		};
 
@@ -191,7 +188,7 @@ impl Spiral {
 		});
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, TurnsInput::INDEX),
+			input_connector: InputConnector::node(node_id, TurnsInput),
 			input: NodeInput::value(TaggedValue::F64(turns), false),
 		});
 	}
