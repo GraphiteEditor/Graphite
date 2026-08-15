@@ -2,10 +2,13 @@
 //! Data uniform across all covers (the paint) rides the outer `List<Coverage>` so columnar presence holds,
 //! while cover-specific data rides the inner `Item<Cover>`, reusing `ATTR_TRANSFORM` for the stroke-authoring space.
 
-use crate::graphic::{Graphic, is_paint_present};
+use crate::graphic::Graphic;
+use core_types::Color;
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_ALIGN, ATTR_APPEARANCE, ATTR_CAP, ATTR_DASH_OFFSET, ATTR_DASH_PATTERN, ATTR_JOIN, ATTR_JOIN_MITER_LIMIT, ATTR_PAINT, ATTR_TRANSFORM, ATTR_WEIGHT, Item, List};
+use raster_types::{CPU, GPU, Raster};
 use vector_types::vector::style::{DashPattern, Stroke};
+use vector_types::{Gradient, Vector};
 
 /// The geometry-to-region operator a coverage applies before painting:
 /// the interior of the geometry (fill) or the region swept along its outline (stroke).
@@ -114,10 +117,10 @@ impl Coverage {
 	}
 }
 
-/// Builds an appearance row, eliding the paint attribute when it draws nothing.
-fn cover_row(coverage: Coverage, paint: List<Graphic>) -> Item<Coverage> {
+/// Builds an appearance row, eliding the paint attribute when it is the default none-paint.
+fn cover_row(coverage: Coverage, paint: Graphic) -> Item<Coverage> {
 	let mut row = Item::new_from_element(coverage);
-	if is_paint_present(&paint) {
+	if paint != Graphic::default() {
 		row.set_attribute(ATTR_PAINT, paint);
 	}
 	row
@@ -125,7 +128,7 @@ fn cover_row(coverage: Coverage, paint: List<Graphic>) -> Item<Coverage> {
 
 impl Appearance {
 	/// Creates an appearance holding a single coverage with the given paint.
-	pub fn new_single(coverage: Coverage, paint: List<Graphic>) -> Self {
+	pub fn new_single(coverage: Coverage, paint: Graphic) -> Self {
 		Self(List::new_from_item(cover_row(coverage, paint)))
 	}
 
@@ -161,8 +164,8 @@ impl Appearance {
 	}
 
 	/// The paint of the coverage at the given index, or `None` if the paint attribute is absent.
-	pub fn paint_at(&self, index: usize) -> Option<&List<Graphic>> {
-		self.0.attribute::<List<Graphic>>(ATTR_PAINT, index)
+	pub fn paint_at(&self, index: usize) -> Option<&Graphic> {
+		self.0.attribute::<Graphic>(ATTR_PAINT, index)
 	}
 
 	/// The index of the first coverage of the given cover in paint order.
@@ -176,15 +179,13 @@ impl Appearance {
 	}
 
 	/// The paint of the first coverage of the given cover, filtered to paint that draws something.
-	pub fn first_paint_of(&self, cover: Cover) -> Option<&List<Graphic>> {
-		self.first_index_of(cover).and_then(|index| self.paint_at(index)).filter(|paint| is_paint_present(paint))
+	pub fn first_paint_of(&self, cover: Cover) -> Option<&Graphic> {
+		self.first_index_of(cover).and_then(|index| self.paint_at(index)).filter(|paint| !paint.is_empty())
 	}
 
 	/// Iterates the coverages in paint order together with their paint, which is `None` when absent or drawing nothing.
-	pub fn covers_with_paints(&self) -> impl Iterator<Item = (&Coverage, Option<&List<Graphic>>)> {
-		self.covers()
-			.enumerate()
-			.map(|(index, coverage)| (coverage, self.paint_at(index).filter(|paint| is_paint_present(paint))))
+	pub fn covers_with_paints(&self) -> impl Iterator<Item = (&Coverage, Option<&Graphic>)> {
+		self.covers().enumerate().map(|(index, coverage)| (coverage, self.paint_at(index).filter(|paint| !paint.is_empty())))
 	}
 
 	/// Gathers the renderer's per-item reads in one walk of the coverage list.
@@ -199,7 +200,7 @@ impl Appearance {
 			}
 		}
 
-		let painted = |index| self.paint_at(index).filter(|paint| is_paint_present(paint));
+		let painted = |index| self.paint_at(index).filter(|paint| !paint.is_empty());
 		FillAndStroke {
 			stroke: first_stroke.map(|(_, coverage)| coverage.stroke_params()),
 			fill_paint: first_fill.and_then(painted),
@@ -218,12 +219,12 @@ impl Appearance {
 	pub fn has_painted_cover(&self, cover: Cover) -> bool {
 		self.covers()
 			.enumerate()
-			.any(|(index, coverage)| coverage.cover() == cover && self.paint_at(index).is_some_and(is_paint_present))
+			.any(|(index, coverage)| coverage.cover() == cover && self.paint_at(index).is_some_and(|paint| !paint.is_empty()))
 	}
 
 	/// Replaces the first coverage of the incoming cover in place (keeping its position in the paint order),
 	/// or inserts a new row at the requested end of the paint order if none exists.
-	pub fn replace_or_insert(&mut self, coverage: Coverage, paint: List<Graphic>, placement: CoverPlacement) {
+	pub fn replace_or_insert(&mut self, coverage: Coverage, paint: Graphic, placement: CoverPlacement) {
 		if let Some(index) = self.first_index_of(coverage.cover()) {
 			if let Some(element) = self.0.element_mut(index) {
 				*element = coverage;
@@ -245,7 +246,7 @@ impl Appearance {
 
 	/// Sets the paint of the first coverage of the given cover, leaving its other parameters untouched.
 	/// Returns `false` without changing anything if no coverage of that cover exists.
-	pub fn set_paint_of(&mut self, cover: Cover, paint: List<Graphic>) -> bool {
+	pub fn set_paint_of(&mut self, cover: Cover, paint: Graphic) -> bool {
 		let Some(index) = self.first_index_of(cover) else { return false };
 		self.0.set_attribute(ATTR_PAINT, index, paint);
 		true
@@ -262,32 +263,117 @@ impl Appearance {
 #[derive(Debug, Default)]
 pub struct FillAndStroke<'a> {
 	pub stroke: Option<Stroke>,
-	pub fill_paint: Option<&'a List<Graphic>>,
-	pub stroke_paint: Option<&'a List<Graphic>>,
+	pub fill_paint: Option<&'a Graphic>,
+	pub stroke_paint: Option<&'a Graphic>,
 	/// Whether the first stroke coverage sits before the first fill in the paint order, painting below it.
 	pub stroke_below: bool,
 }
 
 /// Stamps a coverage into the item's `ATTR_APPEARANCE` cell, creating the attribute if absent.
 /// The coverage replaces the first same-cover one in place, or lands at the placement end of the paint order.
-pub fn stamp_coverage<T>(item: &mut Item<T>, coverage: Coverage, paint: List<Graphic>, placement: CoverPlacement) {
+pub fn stamp_coverage<T>(item: &mut Item<T>, coverage: Coverage, paint: Graphic, placement: CoverPlacement) {
 	item.attribute_mut_or_insert_default::<Appearance>(ATTR_APPEARANCE).replace_or_insert(coverage, paint, placement);
+}
+
+// ================
+// TRAIT: IntoPaint
+// ================
+
+/// Converts the types accepted by a paint input into the canonical `Graphic` stored in the `ATTR_PAINT` attribute.
+/// `List<Graphic>` deliberately has no impl: a multi-element paint is a type error.
+pub trait IntoPaint: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static {
+	fn into_paint(self) -> Graphic;
+}
+
+impl IntoPaint for Item<Graphic> {
+	fn into_paint(self) -> Graphic {
+		// Wrapping to keep the record's attributes would nest the paint as a group, changing how it renders
+		self.into_element()
+	}
+}
+
+impl IntoPaint for Item<Vector> {
+	fn into_paint(self) -> Graphic {
+		Graphic::VectorList(List::new_from_item(self))
+	}
+}
+
+impl IntoPaint for Item<Raster<CPU>> {
+	fn into_paint(self) -> Graphic {
+		Graphic::RasterCPUList(List::new_from_item(self))
+	}
+}
+
+// No Item<Raster<GPU>> impl: GPU rasters have no Default, which the trait bounds require of the element
+
+impl IntoPaint for Item<Color> {
+	fn into_paint(self) -> Graphic {
+		Graphic::ColorList(List::new_from_item(self))
+	}
+}
+
+impl IntoPaint for Item<Gradient> {
+	fn into_paint(self) -> Graphic {
+		Graphic::GradientList(List::new_from_item(self))
+	}
+}
+
+impl IntoPaint for Item<String> {
+	fn into_paint(self) -> Graphic {
+		Graphic::TextList(List::new_from_item(self))
+	}
+}
+
+impl IntoPaint for List<Vector> {
+	fn into_paint(self) -> Graphic {
+		Graphic::VectorList(self)
+	}
+}
+
+impl IntoPaint for List<Raster<CPU>> {
+	fn into_paint(self) -> Graphic {
+		Graphic::RasterCPUList(self)
+	}
+}
+
+impl IntoPaint for List<Raster<GPU>> {
+	fn into_paint(self) -> Graphic {
+		Graphic::RasterGPUList(self)
+	}
+}
+
+impl IntoPaint for List<Color> {
+	fn into_paint(self) -> Graphic {
+		Graphic::ColorList(self)
+	}
+}
+
+impl IntoPaint for List<Gradient> {
+	fn into_paint(self) -> Graphic {
+		Graphic::GradientList(self)
+	}
+}
+
+impl IntoPaint for List<String> {
+	fn into_paint(self) -> Graphic {
+		Graphic::TextList(self)
+	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::Color;
+	use core_types::list::ATTR_POSITION;
 	use glam::{DAffine2, DVec2};
 	use vector_types::vector::style::{StrokeAlign, StrokeCap, StrokeJoin};
 
-	fn solid_paint(color: Color) -> List<Graphic> {
-		List::new_from_element(Graphic::ColorList(List::new_from_element(color)))
+	fn solid_paint(color: Color) -> Graphic {
+		Graphic::ColorList(List::new_from_element(color))
 	}
 
 	fn paint_color(appearance: &Appearance, index: usize) -> Option<Color> {
 		let paint = appearance.paint_at(index)?;
-		let Some(Graphic::ColorList(colors)) = paint.element(0) else { return None };
+		let Graphic::ColorList(colors) = paint else { return None };
 		colors.element(0).copied()
 	}
 
@@ -374,7 +460,7 @@ mod tests {
 	#[test]
 	fn painted_cover_distinguishes_none_paint_from_absence() {
 		let mut appearance = Appearance::default();
-		appearance.replace_or_insert(Coverage::new_fill(), List::new_from_element(Graphic::None), CoverPlacement::Above);
+		appearance.replace_or_insert(Coverage::new_fill(), Graphic::None, CoverPlacement::Above);
 
 		assert!(appearance.has_cover(Cover::Fill), "a none-painted coverage still exists");
 		assert!(!appearance.has_painted_cover(Cover::Fill), "a none-painted coverage draws nothing");
@@ -383,5 +469,25 @@ mod tests {
 
 		appearance.replace_or_insert(Coverage::new_fill(), solid_paint(Color::RED), CoverPlacement::Above);
 		assert!(appearance.has_painted_cover(Cover::Fill));
+	}
+
+	#[test]
+	fn list_paint_becomes_one_graphic_holding_every_element() {
+		let mut colors = List::new_from_element(Color::RED);
+		colors.push(Item::new_from_element(Color::BLUE));
+
+		let paint = colors.into_paint();
+		let Graphic::ColorList(inner) = &paint else { panic!("expected a color graphic") };
+		assert_eq!(inner.len(), 2, "a list paint is one graphic holding all its elements");
+	}
+
+	#[test]
+	fn item_paint_keeps_its_attributes_on_the_inner_row() {
+		let color = Item::new_from_element(Color::RED).with_attribute(ATTR_POSITION, 0.25_f64);
+
+		let paint = color.into_paint();
+		let Graphic::ColorList(inner) = &paint else { panic!("expected a color graphic") };
+		assert_eq!(inner.len(), 1);
+		assert_eq!(inner.attribute::<f64>(ATTR_POSITION, 0), Some(&0.25));
 	}
 }

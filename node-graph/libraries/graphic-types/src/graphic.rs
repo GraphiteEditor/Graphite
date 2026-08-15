@@ -255,12 +255,10 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 	}
 
 	if let Some(appearance) = attributes.get_mut::<Appearance>(ATTR_APPEARANCE)
-		&& let Some(paints) = appearance.0.iter_attribute_values_mut::<List<Graphic>>(ATTR_PAINT)
+		&& let Some(paints) = appearance.0.iter_attribute_values_mut::<Graphic>(ATTR_PAINT)
 	{
 		for paint in paints {
-			for graphic in paint.iter_element_values_mut() {
-				bake_graphic_transform(graphic, transform);
-			}
+			bake_graphic_transform(paint, transform);
 		}
 	}
 }
@@ -449,14 +447,14 @@ impl Graphic {
 					appearance
 						.covers_with_paints()
 						.filter(|(coverage, _)| coverage.cover() == Cover::Fill)
-						.all(|(_, paint)| paint.is_none_or(|paint| paint.element(0).is_none_or(Graphic::is_opaque)))
+						.all(|(_, paint)| paint.is_none_or(Graphic::is_opaque))
 				});
 
 				let strokes_invisible_or_transparent = appearance.is_none_or(|appearance| {
 					appearance
 						.covers_with_paints()
 						.filter(|(coverage, _)| coverage.cover() == Cover::Stroke)
-						.all(|(coverage, paint)| !coverage.stroke_params().has_renderable_stroke() || paint.is_none_or(|paint| paint.element(0).is_none_or(Graphic::is_fully_transparent)))
+						.all(|(coverage, paint)| !coverage.stroke_params().has_renderable_stroke() || paint.is_none_or(Graphic::is_fully_transparent))
 				});
 
 				opacity > 1. - f64::EPSILON && fills_opaque_or_absent && strokes_invisible_or_transparent
@@ -480,14 +478,14 @@ impl Graphic {
 							&& appearance.is_some_and(|appearance| {
 								appearance
 									.covers_with_paints()
-									.any(|(coverage, paint)| coverage.cover() == Cover::Fill && paint.is_some_and(|paint| paint.element(0).is_some_and(Graphic::is_opaque)))
+									.any(|(coverage, paint)| coverage.cover() == Cover::Fill && paint.is_some_and(Graphic::is_opaque))
 							});
 
 						let strokes_opaque_or_invisible = appearance.is_none_or(|appearance| {
 							appearance
 								.covers_with_paints()
 								.filter(|(coverage, _)| coverage.cover() == Cover::Stroke)
-								.all(|(coverage, paint)| !coverage.stroke_params().has_renderable_stroke() || paint.is_some_and(|paint| paint.element(0).is_some_and(Graphic::is_opaque)))
+								.all(|(coverage, paint)| !coverage.stroke_params().has_renderable_stroke() || paint.is_some_and(Graphic::is_opaque))
 						});
 
 						opacity >= 1. - f64::EPSILON && fill_opaque && strokes_opaque_or_invisible
@@ -516,14 +514,14 @@ impl Graphic {
 						appearance
 							.covers_with_paints()
 							.filter(|(coverage, _)| coverage.cover() == Cover::Fill)
-							.all(|(_, paint)| paint.is_none_or(|paint| paint.element(0).is_none_or(Graphic::is_fully_transparent)))
+							.all(|(_, paint)| paint.is_none_or(Graphic::is_fully_transparent))
 					});
 
 				let strokes_invisible = appearance.is_none_or(|appearance| {
 					appearance
 						.covers_with_paints()
 						.filter(|(coverage, _)| coverage.cover() == Cover::Stroke)
-						.all(|(coverage, paint)| !coverage.stroke_params().has_renderable_stroke() || paint.is_none_or(|paint| paint.element(0).is_none_or(Graphic::is_fully_transparent)))
+						.all(|(coverage, paint)| !coverage.stroke_params().has_renderable_stroke() || paint.is_none_or(Graphic::is_fully_transparent))
 				});
 
 				fills_invisible && strokes_invisible
@@ -773,7 +771,7 @@ mod tests {
 		let flattened: List<Vector> = graphics.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
 
-		let mut group = List::new_from_element(Graphic::GraphicList(GraphicList(List::new_from_element(vector_graphic()))));
+		let mut group = List::new_from_element(Graphic::GraphicList(List::new_from_element(vector_graphic())));
 		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
 		let flattened: List<Vector> = group.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
@@ -784,7 +782,7 @@ mod tests {
 	fn flatten_cascades_into_padded_empty_appearance_rows() {
 		use core_types::Color;
 
-		let solid = |color: Color| List::new_from_element(Graphic::ColorList(List::new_from_element(color)));
+		let solid = |color: Color| Graphic::ColorList(List::new_from_element(color));
 
 		// Declaring an appearance on row 0 forces the column, padding row 1 with the empty appearance
 		let mut inner = List::new();
@@ -798,7 +796,7 @@ mod tests {
 		let flattened: List<Vector> = outer.into_flattened_list();
 		let color_of = |index: usize| {
 			let appearance = flattened.attribute::<Appearance>(ATTR_APPEARANCE, index)?;
-			let Some(Graphic::ColorList(colors)) = appearance.paint_at(0)?.element(0) else { return None };
+			let Graphic::ColorList(colors) = appearance.paint_at(0)? else { return None };
 			colors.element(0).copied()
 		};
 

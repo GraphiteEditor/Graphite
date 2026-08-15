@@ -10,7 +10,7 @@ use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
-use graph_craft::{Type, item};
+use graph_craft::{Type, item, list};
 use graphene_std::Color;
 use graphene_std::ParameterRef;
 use graphene_std::ProtoNodeIdentifier;
@@ -1892,6 +1892,28 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashPatternInput), migrated, network_path);
+	}
+
+	// The stored no-paint sentinel was the `List<Graphic>` type default before the paint connectors ranked down to `Item<Graphic>`.
+	// This must run before the stale-List-default cleanup below, which would otherwise adopt the definition's default paint.
+	{
+		let legacy_no_paint = TaggedValue::TypeDefault(list!(graphene_std::Graphic));
+		let paint_parameters: &[ParameterRef] = &[graphene_std::vector::fill::FillInput.into(), graphene_std::vector::stroke::PaintInput.into()];
+		for parameter in paint_parameters {
+			if reference != DefinitionIdentifier::ProtoNode(parameter.node_identifier.clone()) {
+				continue;
+			}
+			let Some(NodeInput::Value { tagged_value, exposed }) = node.inputs.get(parameter.input_index) else {
+				continue;
+			};
+			if **tagged_value == legacy_no_paint {
+				document.network_interface.set_input(
+					&InputConnector::node_at_index(*node_id, parameter.input_index),
+					NodeInput::value(TaggedValue::no_paint(), *exposed),
+					network_path,
+				);
+			}
+		}
 	}
 
 	// The corner radius became the `BoxCorners` value type; convert any already-shaped rectangle that still stores a legacy corner input
