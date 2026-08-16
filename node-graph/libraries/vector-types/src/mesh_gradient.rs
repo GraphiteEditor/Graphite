@@ -241,6 +241,13 @@ impl From<&Item<MeshGradient>> for MeshGradientSurface {
 	}
 }
 
+/// Returns the affine that fits the mesh gradient geometry to the provided bounds.
+pub fn initial_mesh_gradient_transform_for_bounding_box(bounds: [DVec2; 2]) -> DAffine2 {
+	let [min, max] = bounds;
+	let size = max - min;
+	DAffine2::from_cols(DVec2::new(size.x, 0.), DVec2::new(0., size.y), min)
+}
+
 /// Mesh gradient defined by multiple coons patches.
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

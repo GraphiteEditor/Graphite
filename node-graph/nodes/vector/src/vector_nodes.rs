@@ -21,7 +21,7 @@ use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArcle
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
-use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
+use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box, initial_mesh_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
@@ -282,8 +282,7 @@ where
 			if max.y - min.y < 1e-10 {
 				max.y = min.y + 1.;
 			}
-			let size = max - min;
-			DAffine2::from_cols(DVec2::new(size.x, 0.), DVec2::new(0., size.y), min)
+			initial_mesh_gradient_transform_for_bounding_box([min, max])
 		};
 
 		for value in mesh_gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {

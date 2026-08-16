@@ -5,7 +5,7 @@ use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
-pub use crate::mesh_gradient::{MeshGradient, MeshGradientCorner, MeshGradientEdge, MeshGradientEvaluator, MeshGradientSurface, MeshPatch};
+pub use crate::mesh_gradient::{MeshGradient, MeshGradientCorner, MeshGradientEdge, MeshGradientEvaluator, MeshGradientSurface, MeshPatch, initial_mesh_gradient_transform_for_bounding_box};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]

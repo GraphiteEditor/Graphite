@@ -6,8 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	ReplaceablePaintChain, get_fill_input_node_id, get_fill_node_id_with_direct_fill_input, get_upstream_gradient_value_node_id, get_upstream_mesh_gradient_value_node_id, gradient_chain_target_input,
-	replaceable_paint_chain,
+	ReplaceablePaintChain, get_fill_input_node_id, get_upstream_gradient_value_node_id, get_upstream_mesh_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
 };
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
@@ -555,12 +554,9 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
 	}
 
-	/// Write the mesh gradient to the Fill node's direct value.
+	/// Write the mesh gradient to the Fill node's direct value, adding a 'Fill' node to the layer when it has none.
 	pub fn fill_mesh_gradient_set(&mut self, mesh_gradient: MeshGradientSurface) {
-		let Some(fill_node_id) = self
-			.get_output_layer()
-			.and_then(|output_layer| get_fill_node_id_with_direct_fill_input(output_layer, self.network_interface))
-		else {
+		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
 		self.set_input_with_refresh(

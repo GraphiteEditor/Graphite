@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasi
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_fill_node_id_with_direct_fill_input, get_upstream_mesh_gradient_value_node_id};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_upstream_mesh_gradient_value_node_id};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graphene_std::color::SRGBA8;
@@ -98,7 +98,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Mesh
 					self.options.interpolation = surface.gradient_interpolation;
 					self.refresh_options(responses);
 				}
-				self.fsm_state.process_event(message, &mut self.data, context, &(), responses, false);
+				self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
 			}
 			ToolMessage::MeshGradient(MeshGradientToolMessage::StartTransactionForColorStop) => {
 				if self.data.color_picker_transaction_open {
@@ -133,7 +133,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Mesh
 				self.data.color_picker_editing_color_stop = None;
 			}
 			_ => {
-				self.fsm_state.process_event(message, &mut self.data, context, &(), responses, false);
+				self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
 			}
 		}
 	}
@@ -213,6 +213,15 @@ fn first_selected_mesh_gradient_surface(document: &DocumentMessageHandler) -> Op
 			let Graphic::MeshGradient(meshes) = graphic else { return None };
 			meshes.element(0).map(|mesh| mesh_gradient_surface(meshes, 0, mesh))
 		})
+}
+
+/// Whether the layer's fill already paints a mesh gradient.
+fn layer_paints_mesh_gradient(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> bool {
+	document
+		.metadata()
+		.layer_fill_attributes
+		.get(&layer)
+		.is_some_and(|fill| fill.iter_element_values().any(|graphic| matches!(graphic, Graphic::MeshGradient(meshes) if !meshes.is_empty())))
 }
 
 /// Rewrites the settings of the first mesh gradient of every selected layer, leaving its geometry and colors alone.
@@ -448,14 +457,14 @@ struct MeshGradientToolData {
 
 impl Fsm for MeshGradientToolFsmState {
 	type ToolData = MeshGradientToolData;
-	type ToolOptions = ();
+	type ToolOptions = MeshGradientOptions;
 
 	fn transition(
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
 		tool_action_data: &mut ToolActionMessageContext,
-		_tool_options: &Self::ToolOptions,
+		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		let ToolActionMessageContext { document, input, viewport, .. } = tool_action_data;
@@ -864,6 +873,35 @@ impl Fsm for MeshGradientToolFsmState {
 					}
 				}
 
+				// No gizmo was under the cursor, so the click falls through to the layer beneath it
+				let Some(layer) = document.click_based_on_position(document_mouse) else { return self };
+				if NodeGraphLayer::is_raster_layer(layer, &mut document.network_interface) {
+					return self;
+				}
+
+				if !document.network_interface.selected_nodes().selected_layers_contains(layer, document.metadata()) {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+				}
+
+				// A layer already painted with a mesh gradient is only selected, leaving its mesh as it stands to be edited
+				if layer_paints_mesh_gradient(document, layer) {
+					responses.add(OverlaysMessage::Draw);
+					return self;
+				}
+
+				// Otherwise the layer's paint, whatever it was, gives way to a fresh mesh gradient held as the Fill node's value
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(GraphOperationMessage::FillMeshGradientSet {
+					layer,
+					mesh_gradient: MeshGradientSurface {
+						mesh: MeshGradient::default(),
+						gradient_space: tool_options.space,
+						gradient_interpolation: tool_options.interpolation,
+					},
+				});
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(OverlaysMessage::Draw);
+
 				self
 			}
 			(MeshGradientToolFsmState::Dragging, MeshGradientToolMessage::PointerMove { constrain_axis, lock_angle }) => {
@@ -1058,7 +1096,7 @@ impl Fsm for MeshGradientToolFsmState {
 		let hint_data = match self {
 			MeshGradientToolFsmState::Ready { hovering, selected } => {
 				let mut groups = match hovering {
-					MeshGradientHoverTarget::None => vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Edit Mesh")])],
+					MeshGradientHoverTarget::None => vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Paint Layer with Mesh")])],
 					MeshGradientHoverTarget::Corner => vec![
 						HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Corner")]),
 						HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Edit Color")]),

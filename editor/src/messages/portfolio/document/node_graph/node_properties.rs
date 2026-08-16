@@ -643,7 +643,20 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 }
 
 pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widgets: &mut Vec<LayoutGroup>) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
+
+	let store = update_value_at_index(|transform: &DAffine2| TaggedValue::DAffine2(*transform), node_id, index);
+	transform_widget_custom(parameter_widgets_info, extra_widgets, None, move |transform| store(&transform))
+}
+
+pub fn transform_widget_custom(
+	parameter_widgets_info: ParameterWidgetsInfo,
+	extra_widgets: &mut Vec<LayoutGroup>,
+	displayed: Option<DAffine2>,
+	store: impl Fn(DAffine2) -> Message + 'static + Send + Sync,
+) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, index, .. } = parameter_widgets_info;
+	let store = std::sync::Arc::new(store);
 
 	let mut location_widgets = start_widgets(&parameter_widgets_info);
 	location_widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
@@ -662,7 +675,12 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 		return Vec::new().into();
 	};
 
-	let widgets = if let Some(&TaggedValue::DAffine2(transform)) = input.as_non_exposed_value() {
+	let stored = match input.as_non_exposed_value() {
+		Some(&TaggedValue::DAffine2(transform)) => Some(transform),
+		_ => None,
+	};
+
+	let widgets = if let Some(transform) = stored.map(|stored| displayed.unwrap_or(stored)) {
 		let translation = transform.translation;
 		let (rotation, scale, skew) = transform.decompose_rotation_scale_skew();
 		let skew_matrix = DAffine2::from_cols_array(&[1., 0., skew, 1., 0., 0.]);
@@ -671,22 +689,28 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(translation.x))
 				.label("X")
 				.unit(" px")
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| {
-					let mut transform = transform;
-					transform.translation.x = x.value.unwrap_or(transform.translation.x);
-					TaggedValue::DAffine2(transform)
-				}))
+				.on_update({
+					let store = store.clone();
+					move |x: &NumberInput| {
+						let mut transform = transform;
+						transform.translation.x = x.value.unwrap_or(transform.translation.x);
+						store(transform)
+					}
+				})
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(translation.y))
 				.label("Y")
 				.unit(" px")
-				.on_update(parameter_widgets_info.update_value(move |y: &NumberInput| {
-					let mut transform = transform;
-					transform.translation.y = y.value.unwrap_or(transform.translation.y);
-					TaggedValue::DAffine2(transform)
-				}))
+				.on_update({
+					let store = store.clone();
+					move |y: &NumberInput| {
+						let mut transform = transform;
+						transform.translation.y = y.value.unwrap_or(transform.translation.y);
+						store(transform)
+					}
+				})
 				.on_commit(commit_value)
 				.widget_instance(),
 		]);
@@ -696,14 +720,10 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			.mode(NumberInputMode::Range)
 			.range_min(Some(-180.))
 			.range_max(Some(180.))
-			.on_update(update_value_at_index(
-				move |r: &NumberInput| {
-					let transform = DAffine2::from_scale_angle_translation(scale, r.value.map(|r| r.to_radians()).unwrap_or(rotation), translation) * skew_matrix;
-					TaggedValue::DAffine2(transform)
-				},
-				node_id,
-				index,
-			))
+			.on_update({
+				let store = store.clone();
+				move |r: &NumberInput| store(DAffine2::from_scale_angle_translation(scale, r.value.map(|r| r.to_radians()).unwrap_or(rotation), translation) * skew_matrix)
+			})
 			.on_commit(commit_value)
 			.widget_instance()]);
 
@@ -711,28 +731,20 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(scale.x))
 				.label("W")
 				.unit("x")
-				.on_update(update_value_at_index(
-					move |w: &NumberInput| {
-						let transform = DAffine2::from_scale_angle_translation(DVec2::new(w.value.unwrap_or(scale.x), scale.y), rotation, translation) * skew_matrix;
-						TaggedValue::DAffine2(transform)
-					},
-					node_id,
-					index,
-				))
+				.on_update({
+					let store = store.clone();
+					move |w: &NumberInput| store(DAffine2::from_scale_angle_translation(DVec2::new(w.value.unwrap_or(scale.x), scale.y), rotation, translation) * skew_matrix)
+				})
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(scale.y))
 				.label("H")
 				.unit("x")
-				.on_update(update_value_at_index(
-					move |h: &NumberInput| {
-						let transform = DAffine2::from_scale_angle_translation(DVec2::new(scale.x, h.value.unwrap_or(scale.y)), rotation, translation) * skew_matrix;
-						TaggedValue::DAffine2(transform)
-					},
-					node_id,
-					index,
-				))
+				.on_update({
+					let store = store.clone();
+					move |h: &NumberInput| store(DAffine2::from_scale_angle_translation(DVec2::new(scale.x, h.value.unwrap_or(scale.y)), rotation, translation) * skew_matrix)
+				})
 				.on_commit(commit_value)
 				.widget_instance(),
 		]);
@@ -2382,6 +2394,14 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 /// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
 /// is only loaded for the root document network, so a `LayerNodeIdentifier` can't be constructed there.
+/// Where the 'Fill' node places a mesh gradient on its own, mirroring the automatic fit its kernel applies while no
+/// explicit mesh transform is set. The panel shows this instead of the unset input's identity, so its numbers describe
+/// where the mesh actually sits and raising the placement flag leaves the mesh where it already was.
+fn automatic_mesh_transform(layer: Option<LayerNodeIdentifier>, context: &NodePropertiesContext) -> DAffine2 {
+	let bounds = layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer));
+	graphene_std::vector::style::initial_mesh_gradient_transform_for_bounding_box(bounds)
+}
+
 fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContext) -> Option<LayerNodeIdentifier> {
 	if !context.selection_network_path.is_empty() {
 		return None;
@@ -2677,6 +2697,39 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				.widget_instance(),
 		]);
 		widgets.push(LayoutGroup::row(interpolation_row));
+
+		// Until the mesh carries a placement of its own it rides the kernel's automatic fit, so the rows show that fit and
+		// the first edit promotes it to an explicit placement by raising the flag alongside the transform it writes
+		let placed = matches!(
+			get_document_node(node_id, context).ok().and_then(|document_node| document_node.input_value(HasMeshTransformInput)),
+			Some(TaggedValue::Bool(true))
+		);
+		let displayed = (!placed).then(|| automatic_mesh_transform(layer, context));
+
+		let mut preceding_rows = Vec::new();
+		let last_row = transform_widget_custom(
+			ParameterWidgetsInfo::new(node_id, MeshTransformInput, true, context),
+			&mut preceding_rows,
+			displayed,
+			move |transform| Message::Batched {
+				messages: Box::new([
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: HasMeshTransformInput::INDEX,
+						value: TaggedValue::Bool(true).into(),
+					}
+					.into(),
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: MeshTransformInput::INDEX,
+						value: TaggedValue::DAffine2(transform).into(),
+					}
+					.into(),
+				]),
+			},
+		);
+		widgets.extend(preceding_rows);
+		widgets.push(last_row);
 	}
 
 	if let ResolvedFill::Gradient {
