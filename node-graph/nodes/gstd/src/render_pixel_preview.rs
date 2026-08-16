@@ -177,7 +177,7 @@ impl AsyncWgpuPipeline for PixelPreview {
 		let context = &executor.context();
 		let &PixelPreviewArgs { source, transform, size } = args;
 
-		let output = executor.request_texture(size).await;
+		let output = executor.request_texture(size);
 
 		let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
 		let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
