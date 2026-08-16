@@ -9,7 +9,7 @@ use image::ImageEncoder;
 use kurbo::{BezPath, Shape};
 use vector_types::GradientInterpolation;
 use vector_types::{
-	gradient::{GradientSpace, MeshGradient},
+	gradient::GradientSpace,
 	mesh_gradient::{MeshGradientEvaluator, MeshPatchEvaluator},
 };
 use vello::{Scene, peniko};
@@ -20,8 +20,10 @@ pub(super) const MESH_POSITION_ERROR_TOLERANCE: f64 = 1.5;
 pub(super) const MESH_COLOR_ERROR_TOLERANCE: f32 = 2. / 255.;
 /// Maximum subpatches one mesh may divide into, bounding what a color field the tolerance cannot reach can allocate.
 pub(super) const MESH_MAXIMUM_SUBPATCHES: usize = 4096;
-/// Patch padding in viewport pixels for hiding anti-aliasing gaps.
-pub(super) const PATCH_INFLATION_IN_VIEWPORT_PX: f64 = 1.;
+/// Smallest uv stride a region may refine to.
+const MINIMUM_SUBPATCH_STRIDE: f64 = 1. / 4096.;
+/// Patch padding size for hiding anti-aliasing gaps.
+pub(super) const PATCH_INFLATION_SIZE: f64 = 1.;
 
 /// Width and height of each generated displacement map.
 const DISPLACEMENT_MAP_SIZE: usize = 128;
@@ -453,7 +455,89 @@ pub(super) struct MeshSubpatch {
 	uv_bounds: [DVec2; 2],
 }
 
-/// Recursively subdivides regions until their parallelogram approximation is within the position and color tolerances.
+/// One region of a patch's uv square, kept alongside the error of approximating it with a single parallelogram.
+struct PendingRegion {
+	patch_index: usize,
+	uv_start: DVec2,
+	stride: f64,
+	corner_positions: [DVec2; 4],
+	/// Error as a multiple of the tolerances, so position and color rank on one scale. At most 1 is within tolerance.
+	error: f64,
+}
+
+/// How far an error overruns its tolerance. A zero tolerance admits only a zero error.
+fn tolerance_overrun(error: f64, tolerance: f64) -> f64 {
+	if tolerance > 0. {
+		error / tolerance
+	} else if error > 0. {
+		f64::INFINITY
+	} else {
+		0.
+	}
+}
+
+/// Measures how far the rendered approximation of one region goes from the patch it covers.
+/// `None` when the patch evaluates to a non-finite value there, which no amount of subdivision repairs.
+fn measure_region(
+	patch: &MeshPatchEvaluator,
+	patch_index: usize,
+	uv_start: DVec2,
+	stride: f64,
+	mesh_transform: DAffine2,
+	parent_transform: DAffine2,
+	position_error_tolerance: f64,
+	color_error_tolerance: f32,
+) -> Option<PendingRegion> {
+	const SAMPLES: [f64; 5] = [0., 0.25, 0.5, 0.75, 1.];
+
+	let corner_positions = [DVec2::ZERO, DVec2::new(stride, 0.), DVec2::new(0., stride), DVec2::splat(stride)]
+		.map(|offset| uv_start + offset)
+		.map(|uv| mesh_transform.transform_point2(patch.evaluate_position(uv.x, uv.y)));
+	let [top_left_pos, top_right_pos, bottom_left_pos, _bottom_right_pos] = corner_positions;
+
+	let color_weight_func = subpatch_color_weight(patch, uv_start.as_vec2(), (uv_start + DVec2::splat(stride)).as_vec2());
+
+	let mut error = 0_f64;
+	for &local_v in &SAMPLES {
+		for &local_u in &SAMPLES {
+			let u = uv_start.x + local_u * stride;
+			let v = uv_start.y + local_v * stride;
+			let expected_pos = mesh_transform.transform_point2(patch.evaluate_position(u, v));
+			let expected_color = Vec4::from_array(patch.evaluate_color(u as f32, v as f32));
+			// Approximate the position with the rendered parallelogram, then the color and alpha with the two
+			// passes that actually paint them: the color pass blends the edge rows by the projected weight,
+			// while the alpha pass ramps between them linearly.
+			let approximated_pos = top_left_pos + (top_right_pos - top_left_pos) * local_u + (bottom_left_pos - top_left_pos) * local_v;
+			let top_color = Vec4::from_array(patch.evaluate_color(u as f32, uv_start.y as f32));
+			let bottom_color = Vec4::from_array(patch.evaluate_color(u as f32, (uv_start.y + stride) as f32));
+			let approximated_color = bottom_color.lerp(top_color, color_weight_func(v as f32));
+			let approximated_alpha = top_color.w + (bottom_color.w - top_color.w) * local_v as f32;
+
+			let position_error = parent_transform.transform_vector2(expected_pos - approximated_pos).length();
+			let color_error = (expected_color.truncate() - approximated_color.truncate())
+				.abs()
+				.max_element()
+				.max((expected_color.w - approximated_alpha).abs());
+			if !position_error.is_finite() || !color_error.is_finite() {
+				return None;
+			}
+
+			error = error
+				.max(tolerance_overrun(position_error, position_error_tolerance))
+				.max(tolerance_overrun(color_error as f64, color_error_tolerance as f64));
+		}
+	}
+
+	Some(PendingRegion {
+		patch_index,
+		uv_start,
+		stride,
+		corner_positions,
+		error,
+	})
+}
+
+/// Subdivides the patches until every region's parallelogram approximation is within the position and color tolerances, or the subpatch budget runs out.
 pub(super) fn subdivide_patches_adaptive(
 	evaluator: &MeshGradientEvaluator,
 	mesh_transform: DAffine2,
@@ -465,85 +549,49 @@ pub(super) fn subdivide_patches_adaptive(
 		return None;
 	}
 
-	let samples = [0., 0.25, 0.5, 0.75, 1.];
-	let mut subpatches = Vec::new();
-	let patch_count = evaluator.patch_evaluators().count();
-	let minimum_subpatch_stride = ((patch_count as f64 / MESH_MAXIMUM_SUBPATCHES as f64).sqrt()).min(1.);
-	for (patch_index, patch) in evaluator.patch_evaluators().enumerate() {
-		// Every later patch still owes at least its own root region, so reserve that before spending the budget here.
-		let patches_after_this = patch_count - patch_index - 1;
-		let mut pending = vec![(0., 0., 1.)];
-		while let Some((u_start, v_start, stride)) = pending.pop() {
-			let corner_uvs = [
-				DVec2::new(u_start, v_start),
-				DVec2::new(u_start + stride, v_start),
-				DVec2::new(u_start, v_start + stride),
-				DVec2::new(u_start + stride, v_start + stride),
-			];
-			let corner_positions = corner_uvs.map(|uv| mesh_transform.transform_point2(patch.evaluate_position(uv.x, uv.y)));
-			let [top_left_pos, top_right_pos, bottom_left_pos, _bottom_right_pos] = corner_positions;
+	let patches = evaluator.patch_evaluators().collect::<Vec<_>>();
+	let measure = |patch_index: usize, uv_start, stride| {
+		measure_region(
+			patches[patch_index],
+			patch_index,
+			uv_start,
+			stride,
+			mesh_transform,
+			parent_transform,
+			position_error_tolerance,
+			color_error_tolerance,
+		)
+	};
 
-			let reached_minimum_stride = stride <= minimum_subpatch_stride;
-			// Each split replaces one pending region with four, so stop refining once the budget cannot absorb another.
-			let budget_spent = subpatches.len() + pending.len() + patches_after_this + 4 > MESH_MAXIMUM_SUBPATCHES;
+	let mut regions = (0..patches.len()).map(|patch_index| measure(patch_index, DVec2::ZERO, 1.)).collect::<Option<Vec<_>>>()?;
 
-			let stop_refining = reached_minimum_stride || budget_spent;
+	// Each split replaces one region with four, so stop once the budget cannot absorb another
+	while regions.len() + 3 <= MESH_MAXIMUM_SUBPATCHES {
+		let worst = regions
+			.iter()
+			.enumerate()
+			.filter(|(_, region)| region.error > 1. && region.stride > MINIMUM_SUBPATCH_STRIDE)
+			.max_by(|(_, first), (_, second)| first.error.total_cmp(&second.error))
+			.map(|(index, _)| index);
+		let Some(worst) = worst else { break };
 
-			let uv_min = DVec2::new(u_start, v_start).as_vec2();
-			let uv_max = DVec2::new(u_start + stride, v_start + stride).as_vec2();
-			let color_weight_func = (!stop_refining).then(|| subpatch_color_weight(patch, uv_min, uv_max));
-
-			let mut within_tolerance = true;
-			'error_samples: for &local_v in &samples {
-				let Some(color_weight_func) = &color_weight_func else { break 'error_samples };
-				for &local_u in &samples {
-					let u = u_start + local_u * stride;
-					let v = v_start + local_v * stride;
-					let expected_pos = mesh_transform.transform_point2(patch.evaluate_position(u, v));
-					let expected_color = Vec4::from_array(patch.evaluate_color(u as f32, v as f32));
-					// Approximate the position with the rendered parallelogram, then the color and alpha with the two
-					// passes that actually paint them: the color pass blends the edge rows by the projected weight,
-					// while the alpha pass ramps between them linearly.
-					let approximated_pos = top_left_pos + (top_right_pos - top_left_pos) * local_u + (bottom_left_pos - top_left_pos) * local_v;
-					let top_color = Vec4::from_array(patch.evaluate_color(u as f32, v_start as f32));
-					let bottom_color = Vec4::from_array(patch.evaluate_color(u as f32, (v_start + stride) as f32));
-					let approximated_color = bottom_color.lerp(top_color, color_weight_func(v as f32));
-					let approximated_alpha = top_color.w + (bottom_color.w - top_color.w) * local_v as f32;
-
-					let position_error = parent_transform.transform_vector2(expected_pos - approximated_pos).length();
-					let color_error = (expected_color.truncate() - approximated_color.truncate())
-						.abs()
-						.max_element()
-						.max((expected_color.w - approximated_alpha).abs());
-					if !position_error.is_finite() || !color_error.is_finite() {
-						return None;
-					}
-					if position_error > position_error_tolerance || color_error > color_error_tolerance {
-						within_tolerance = false;
-						break 'error_samples;
-					}
-				}
-			}
-
-			if within_tolerance || stop_refining {
-				subpatches.push(MeshSubpatch {
-					corner_positions,
-					patch_index,
-					uv_bounds: [DVec2::new(u_start, v_start), DVec2::new(u_start + stride, v_start + stride)],
-				});
-			} else {
-				let half_stride = stride / 2.;
-				pending.extend([
-					(u_start + half_stride, v_start + half_stride, half_stride),
-					(u_start, v_start + half_stride, half_stride),
-					(u_start + half_stride, v_start, half_stride),
-					(u_start, v_start, half_stride),
-				]);
-			}
+		let region = regions.swap_remove(worst);
+		let half_stride = region.stride / 2.;
+		for offset in [DVec2::ZERO, DVec2::new(half_stride, 0.), DVec2::new(0., half_stride), DVec2::splat(half_stride)] {
+			regions.push(measure(region.patch_index, region.uv_start + offset, half_stride)?);
 		}
 	}
 
-	Some(subpatches)
+	Some(
+		regions
+			.into_iter()
+			.map(|region| MeshSubpatch {
+				corner_positions: region.corner_positions,
+				patch_index: region.patch_index,
+				uv_bounds: [region.uv_start, region.uv_start + DVec2::splat(region.stride)],
+			})
+			.collect(),
+	)
 }
 
 /// Returns the affine approximation of a subpatch, rejecting folded or degenerate geometry.
@@ -552,18 +600,6 @@ pub(super) fn mesh_subpatch_transform(subpatch: &MeshSubpatch) -> Option<DAffine
 	let transform = DAffine2::from_cols(top_right - top_left, bottom_left - top_left, top_left);
 	let determinant = transform.matrix2.determinant();
 	(determinant.is_finite() && determinant > 0.).then_some(transform)
-}
-
-/// Returns the union of all patch boundary paths in mesh-local coordinates.
-pub(super) fn mesh_boundary_path(mesh_gradient: &MeshGradient) -> BezPath {
-	let mut mesh_boundary = BezPath::new();
-	for patch in mesh_gradient.patches().flatten() {
-		let [top, bottom, left, right] = patch.edges;
-		let mut patch_boundary = BezPath::from_path_segments([top, right, bottom.reverse(), left.reverse()].into_iter());
-		patch_boundary.close_path();
-		mesh_boundary.extend(patch_boundary);
-	}
-	mesh_boundary
 }
 
 /// Returns the local clip and paint inflation needed to hide gaps around a transformed subpatch.

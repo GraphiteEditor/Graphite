@@ -26,10 +26,23 @@ pub struct MeshGradientTool {
 	options: MeshGradientOptions,
 }
 
-#[derive(Default)]
 pub struct MeshGradientOptions {
 	space: GradientSpace,
 	interpolation: GradientInterpolation,
+}
+
+impl Default for MeshGradientOptions {
+	fn default() -> Self {
+		let MeshGradientSurface {
+			gradient_space,
+			gradient_interpolation,
+			..
+		} = MeshGradientSurface::default();
+		Self {
+			space: gradient_space,
+			interpolation: gradient_interpolation,
+		}
+	}
 }
 
 #[impl_message(Message, ToolMessage, MeshGradient)]
@@ -40,15 +53,13 @@ pub enum MeshGradientToolMessage {
 	Abort,
 	Overlays { context: OverlayContext },
 	SelectionChanged,
-	WorkingColorChanged,
 
 	// Tool-specific messages
 	DeleteEdge,
 	DoubleClick,
-	InsertStop,
 	PointerDown,
-	PointerMove { constrain_axis: Key, lock_angle: Key },
-	PointerOutsideViewport { constrain_axis: Key, lock_angle: Key },
+	PointerMove { constrain_axis: Key },
+	PointerOutsideViewport { constrain_axis: Key },
 	PointerUp,
 	StartTransactionForColorStop,
 	CommitTransactionForColorStop,
@@ -86,9 +97,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Mesh
 					MeshGradientOptionsUpdate::Interpolation(interpolation) => self.options.interpolation = interpolation,
 				}
 
-				apply_mesh_gradient_options(context, responses, |surface| {
-					surface.gradient_space = self.options.space;
-					surface.gradient_interpolation = self.options.interpolation;
+				// Write back only the setting that actually changed, so a layer whose other setting differs keeps it
+				apply_mesh_gradient_options(context, responses, |surface| match &options {
+					MeshGradientOptionsUpdate::Space(space) => surface.gradient_space = *space,
+					MeshGradientOptionsUpdate::Interpolation(interpolation) => surface.gradient_interpolation = *interpolation,
 				});
 				self.refresh_options(responses);
 			}
@@ -385,27 +397,36 @@ fn approximate_valid_region_bounds(initial_position: DVec2, [min, max]: [DVec2; 
 	Some([bounds_min, bounds_max])
 }
 
-fn constrain_to_valid_region(target: DVec2, valid_region_center: DVec2, candidate: impl Fn(DVec2) -> Option<MeshGradient>) -> Option<MeshGradient> {
-	candidate(target).or_else(|| {
-		const BINARY_SEARCH_ITERATIONS: usize = 12;
-		let mut valid_t = 0.;
-		let mut invalid_t = 1.;
-		let mut valid_gradient = candidate(valid_region_center)?;
+/// Walks back from `target` toward the valid region's center for the furthest position that keeps the mesh free of foldovers.
+fn constrain_to_valid_region(
+	target: DVec2,
+	valid_region_center: &mut Option<DVec2>,
+	resolve_center: impl FnOnce() -> DVec2,
+	candidate: impl Fn(DVec2) -> Option<MeshGradient>,
+) -> Option<MeshGradient> {
+	if let Some(gradient) = candidate(target) {
+		return Some(gradient);
+	}
 
-		for _ in 0..BINARY_SEARCH_ITERATIONS {
-			let mid_t = (valid_t + invalid_t) / 2.;
-			let mid_position = valid_region_center.lerp(target, mid_t);
+	const BINARY_SEARCH_ITERATIONS: usize = 12;
+	let center = *valid_region_center.get_or_insert_with(resolve_center);
+	let mut valid_t = 0.;
+	let mut invalid_t = 1.;
+	let mut valid_gradient = candidate(center)?;
 
-			if let Some(gradient) = candidate(mid_position) {
-				valid_t = mid_t;
-				valid_gradient = gradient;
-			} else {
-				invalid_t = mid_t;
-			}
+	for _ in 0..BINARY_SEARCH_ITERATIONS {
+		let mid_t = (valid_t + invalid_t) / 2.;
+		let mid_position = center.lerp(target, mid_t);
+
+		if let Some(gradient) = candidate(mid_position) {
+			valid_t = mid_t;
+			valid_gradient = gradient;
+		} else {
+			invalid_t = mid_t;
 		}
+	}
 
-		Some(valid_gradient)
-	})
+	Some(valid_gradient)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -414,19 +435,22 @@ enum MeshGradientTarget {
 		corner_index: usize,
 		initial_mouse: DVec2,
 		initial_corner: DVec2,
-		valid_region_center: DVec2,
+		/// Resolved on the first frame the drag leaves the valid region, then reused for the rest of the drag.
+		valid_region_center: Option<DVec2>,
 	},
 	Segment {
 		segment_id: SegmentId,
 		initial_mouse: DVec2,
 		initial_handles: [DVec2; 2],
-		valid_region_center: DVec2,
+		/// Resolved on the first frame the drag leaves the valid region, then reused for the rest of the drag.
+		valid_region_center: Option<DVec2>,
 	},
 	Handle {
 		handle_id: HandleId,
 		initial_mouse: DVec2,
 		initial_handle: DVec2,
-		valid_region_center: DVec2,
+		/// Resolved on the first frame the drag leaves the valid region, then reused for the rest of the drag.
+		valid_region_center: Option<DVec2>,
 	},
 }
 
@@ -435,7 +459,6 @@ impl ToolTransition for MeshGradientTool {
 		EventToMessageMap {
 			tool_abort: Some(MeshGradientToolMessage::Abort.into()),
 			selection_changed: Some(MeshGradientToolMessage::SelectionChanged.into()),
-			working_color_changed: Some(MeshGradientToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| MeshGradientToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
@@ -615,9 +638,12 @@ impl Fsm for MeshGradientToolFsmState {
 
 			(_state @ MeshGradientToolFsmState::Ready { .. }, MeshGradientToolMessage::DeleteEdge) => {
 				let Some(selected_mesh) = tool_data.selected_mesh.as_mut() else { return self };
-				if let MeshGradientTarget::Segment { segment_id, .. } = selected_mesh.target {
-					selected_mesh.surface.mesh.remove_edge(segment_id);
-				};
+				let MeshGradientTarget::Segment { segment_id, .. } = selected_mesh.target else { return self };
+				let mut mesh = selected_mesh.surface.mesh.clone();
+				if mesh.remove_edge(segment_id).is_none() {
+					return self;
+				}
+				selected_mesh.surface.mesh = mesh;
 
 				responses.add(DocumentMessage::StartTransaction);
 				selected_mesh.update_gradient_in_graph(responses);
@@ -721,18 +747,6 @@ impl Fsm for MeshGradientToolFsmState {
 
 								if distance_squared < tolerance_squared {
 									responses.add(DocumentMessage::StartTransaction);
-									let valid_region_center = gradient
-										.geometry()
-										.bounding_box()
-										.and_then(|bounds| {
-											approximate_valid_region_bounds(corner.position, bounds, |position| {
-												let mut candidate = gradient.clone();
-												candidate.set_corner_position(corner.index, position).is_some()
-													&& candidate.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()))
-											})
-										})
-										.map(|[min, max]| min.midpoint(max))
-										.unwrap_or(corner.position);
 
 									tool_data.selected_mesh = Some(SelectedMeshGradient {
 										layer,
@@ -744,7 +758,7 @@ impl Fsm for MeshGradientToolFsmState {
 											corner_index: corner.index,
 											initial_mouse: local_mouse,
 											initial_corner: corner.position,
-											valid_region_center,
+											valid_region_center: None,
 										},
 									});
 
@@ -782,37 +796,27 @@ impl Fsm for MeshGradientToolFsmState {
 										consider_handle(HandleId::end(segment_id), handle_end, bezier.end, None);
 									}
 								}
+							}
 
-								if let Some((handle_id, initial_handle, _)) = closest_handle {
-									responses.add(DocumentMessage::StartTransaction);
-									let valid_region_center = gradient
-										.geometry()
-										.bounding_box()
-										.and_then(|bounds| {
-											approximate_valid_region_bounds(initial_handle, bounds, |position| {
-												let mut candidate = gradient.clone();
-												candidate.set_handle_position(handle_id, position).is_some() && candidate.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()))
-											})
-										})
-										.map(|[min, max]| min.midpoint(max))
-										.unwrap_or(initial_handle);
+							// Resolved only after every segment has been offered, so the nearest-wins comparison spans the whole mesh
+							if let Some((handle_id, initial_handle, _)) = closest_handle {
+								responses.add(DocumentMessage::StartTransaction);
 
-									tool_data.selected_mesh = Some(SelectedMeshGradient {
-										layer,
-										mesh_index: index,
-										surface: mesh_gradient_surface(meshes, index, gradient),
-										mesh_to_document,
-										source,
-										target: MeshGradientTarget::Handle {
-											handle_id,
-											initial_mouse: local_mouse,
-											initial_handle,
-											valid_region_center,
-										},
-									});
+								tool_data.selected_mesh = Some(SelectedMeshGradient {
+									layer,
+									mesh_index: index,
+									surface: mesh_gradient_surface(meshes, index, gradient),
+									mesh_to_document,
+									source,
+									target: MeshGradientTarget::Handle {
+										handle_id,
+										initial_mouse: local_mouse,
+										initial_handle,
+										valid_region_center: None,
+									},
+								});
 
-									return MeshGradientToolFsmState::Dragging;
-								}
+								return MeshGradientToolFsmState::Dragging;
 							}
 
 							for edge in gradient.edges() {
@@ -826,31 +830,11 @@ impl Fsm for MeshGradientToolFsmState {
 
 									let handles = match (points.p1, points.p2) {
 										(Some(p1), Some(p2)) => [p1, p2],
-										(Some(p1), None) | (None, Some(p1)) => [p1, points.p3],
+										(Some(control), None) | (None, Some(control)) => [points.p0 + (control - points.p0) * 2. / 3., points.p3 + (control - points.p3) * 2. / 3.],
 										(None, None) => [points.p0 + (points.p3 - points.p0) / 3., points.p3 + (points.p0 - points.p3) / 3.],
 									};
 
 									responses.add(DocumentMessage::StartTransaction);
-									let valid_region_center = gradient
-										.geometry()
-										.bounding_box()
-										.and_then(|bounds| {
-											approximate_valid_region_bounds(local_mouse, bounds, |position| {
-												let delta = position - local_mouse;
-												let mut candidate = gradient.clone();
-												candidate
-													.set_edge_handles(
-														edge.segment_id,
-														BezierHandles::Cubic {
-															handle_start: handles[0] + delta,
-															handle_end: handles[1] + delta,
-														},
-													)
-													.is_some() && candidate.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()))
-											})
-										})
-										.map(|[min, max]| min.midpoint(max))
-										.unwrap_or(local_mouse);
 
 									tool_data.selected_mesh = Some(SelectedMeshGradient {
 										layer,
@@ -862,7 +846,7 @@ impl Fsm for MeshGradientToolFsmState {
 											segment_id: edge.segment_id,
 											initial_mouse: local_mouse,
 											initial_handles: handles,
-											valid_region_center,
+											valid_region_center: None,
 										},
 									});
 
@@ -904,7 +888,7 @@ impl Fsm for MeshGradientToolFsmState {
 
 				self
 			}
-			(MeshGradientToolFsmState::Dragging, MeshGradientToolMessage::PointerMove { constrain_axis, lock_angle }) => {
+			(MeshGradientToolFsmState::Dragging, MeshGradientToolMessage::PointerMove { constrain_axis }) => {
 				let MeshGradientToolData {
 					selected_mesh,
 					snap_manager,
@@ -963,16 +947,23 @@ impl Fsm for MeshGradientToolFsmState {
 						let corner_index = *corner_index;
 						let initial_mouse = *initial_mouse;
 						let initial_corner = *initial_corner;
-						let valid_region_center = *valid_region_center;
 						let desired_position = initial_corner + current_local_mouse - initial_mouse;
 						let snapped_local_mouse = snap_local_point(initial_corner, desired_position);
+						let mesh = &selected_mesh.surface.mesh;
 						let candidate_gradient = |position| {
-							let mut gradient = selected_mesh.surface.mesh.clone();
+							let mut gradient = mesh.clone();
 							gradient.set_corner_position(corner_index, position)?;
 							let is_valid = gradient.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()));
 							is_valid.then_some(gradient)
 						};
-						let constrained_gradient = constrain_to_valid_region(snapped_local_mouse, valid_region_center, candidate_gradient);
+						let resolve_center = || {
+							mesh.geometry()
+								.bounding_box()
+								.and_then(|bounds| approximate_valid_region_bounds(initial_corner, bounds, |position| candidate_gradient(position).is_some()))
+								.map(|[min, max]| min.midpoint(max))
+								.unwrap_or(initial_corner)
+						};
+						let constrained_gradient = constrain_to_valid_region(snapped_local_mouse, valid_region_center, resolve_center, candidate_gradient);
 
 						if let Some(gradient) = constrained_gradient {
 							selected_mesh.surface.mesh = gradient;
@@ -987,9 +978,11 @@ impl Fsm for MeshGradientToolFsmState {
 						valid_region_center,
 					} => {
 						let snapped_local_mouse = snap_local_point(*initial_local_mouse, current_local_mouse);
-						let candidate_gradient = |mouse_position| {
-							let delta = mouse_position - *initial_local_mouse;
-							let mut gradient = selected_mesh.surface.mesh.clone();
+						let initial_local_mouse = *initial_local_mouse;
+						let mesh = &selected_mesh.surface.mesh;
+						let candidate_gradient = |mouse_position: DVec2| {
+							let delta = mouse_position - initial_local_mouse;
+							let mut gradient = mesh.clone();
 							gradient.set_edge_handles(
 								*segment_id,
 								BezierHandles::Cubic {
@@ -1000,8 +993,15 @@ impl Fsm for MeshGradientToolFsmState {
 							let is_valid = gradient.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()));
 							is_valid.then_some(gradient)
 						};
+						let resolve_center = || {
+							mesh.geometry()
+								.bounding_box()
+								.and_then(|bounds| approximate_valid_region_bounds(initial_local_mouse, bounds, |position| candidate_gradient(position).is_some()))
+								.map(|[min, max]| min.midpoint(max))
+								.unwrap_or(initial_local_mouse)
+						};
 
-						if let Some(gradient) = constrain_to_valid_region(snapped_local_mouse, *valid_region_center, candidate_gradient) {
+						if let Some(gradient) = constrain_to_valid_region(snapped_local_mouse, valid_region_center, resolve_center, candidate_gradient) {
 							selected_mesh.surface.mesh = gradient;
 							selected_mesh.update_gradient_in_graph(responses);
 							responses.add(OverlaysMessage::Draw);
@@ -1015,14 +1015,23 @@ impl Fsm for MeshGradientToolFsmState {
 					} => {
 						let delta = current_local_mouse - *initial_mouse;
 						let new_handle_position = snap_local_point(*initial_handle, *initial_handle + delta);
+						let initial_handle = *initial_handle;
+						let mesh = &selected_mesh.surface.mesh;
 						let candidate_gradient = |position| {
-							let mut gradient = selected_mesh.surface.mesh.clone();
+							let mut gradient = mesh.clone();
 							gradient.set_handle_position(*handle_id, position)?;
 							let is_valid = gradient.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()));
 							is_valid.then_some(gradient)
 						};
+						let resolve_center = || {
+							mesh.geometry()
+								.bounding_box()
+								.and_then(|bounds| approximate_valid_region_bounds(initial_handle, bounds, |position| candidate_gradient(position).is_some()))
+								.map(|[min, max]| min.midpoint(max))
+								.unwrap_or(initial_handle)
+						};
 
-						if let Some(gradient) = constrain_to_valid_region(new_handle_position, *valid_region_center, candidate_gradient) {
+						if let Some(gradient) = constrain_to_valid_region(new_handle_position, valid_region_center, resolve_center, candidate_gradient) {
 							selected_mesh.surface.mesh = gradient;
 							selected_mesh.update_gradient_in_graph(responses);
 							responses.add(OverlaysMessage::Draw);
@@ -1032,8 +1041,8 @@ impl Fsm for MeshGradientToolFsmState {
 
 				// Auto-panning
 				let messages = [
-					MeshGradientToolMessage::PointerOutsideViewport { constrain_axis, lock_angle }.into(),
-					MeshGradientToolMessage::PointerMove { constrain_axis, lock_angle }.into(),
+					MeshGradientToolMessage::PointerOutsideViewport { constrain_axis }.into(),
+					MeshGradientToolMessage::PointerMove { constrain_axis }.into(),
 				];
 				auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
@@ -1074,10 +1083,10 @@ impl Fsm for MeshGradientToolFsmState {
 
 				MeshGradientToolFsmState::Dragging
 			}
-			(state, MeshGradientToolMessage::PointerOutsideViewport { constrain_axis, lock_angle }) => {
+			(state, MeshGradientToolMessage::PointerOutsideViewport { constrain_axis }) => {
 				let messages = [
-					MeshGradientToolMessage::PointerOutsideViewport { constrain_axis, lock_angle }.into(),
-					MeshGradientToolMessage::PointerMove { constrain_axis, lock_angle }.into(),
+					MeshGradientToolMessage::PointerOutsideViewport { constrain_axis }.into(),
+					MeshGradientToolMessage::PointerMove { constrain_axis }.into(),
 				];
 				tool_data.auto_panning.stop(&messages, responses);
 

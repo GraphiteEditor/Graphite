@@ -68,6 +68,28 @@ impl VectorListIterMut for List<Vector> {
 	}
 }
 
+/// The bounding box a paint falls back to when it carries no explicit placement of its own.
+fn paint_target_bounds(content: &mut impl VectorItemMut) -> [DVec2; 2] {
+	let mut bounds: Option<[DVec2; 2]> = None;
+	content.for_each_vector_mut(|vector, _| {
+		if let Some([min, max]) = vector.bounding_box() {
+			bounds = Some(match bounds {
+				Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
+				None => [min, max],
+			});
+		}
+	});
+
+	let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+	if max.x - min.x < 1e-10 {
+		max.x = min.x + 1.;
+	}
+	if max.y - min.y < 1e-10 {
+		max.y = min.y + 1.;
+	}
+	[min, max]
+}
+
 /// Element-level analog of [`VectorListIterMut`] for the element-wise fill and stroke nodes, operating on a
 /// single `Item<Vector>` or `Item<Graphic>`.
 trait VectorItemMut {
@@ -213,80 +235,46 @@ where
 
 	let mut content = content;
 	let mut fill = fill.into_graphic_list();
+	let mut auto_bounds: Option<[DVec2; 2]> = None;
 
-	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
+	// Stamp the styling inputs onto any gradient or mesh gradient paint missing them, whether the paint arrived as a picker value or a wire
 	for graphic in fill.iter_element_values_mut() {
-		let Graphic::Gradient(gradient) = graphic else { continue };
-
-		if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
-				*value = _gradient_form;
-			}
-		}
-
-		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
-			// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
-			let transform = if _has_transform {
-				_transform
-			} else {
-				let mut bounds: Option<[DVec2; 2]> = None;
-				content.for_each_vector_mut(|vector, _| {
-					if let Some([min, max]) = vector.bounding_box() {
-						bounds = Some(match bounds {
-							Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
-							None => [min, max],
-						});
+		match graphic {
+			Graphic::Gradient(gradient) => {
+				if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
+					for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
+						*value = _gradient_form;
 					}
-				});
-
-				// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
-				let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
-				if max.x - min.x < 1e-10 {
-					max.x = min.x + 1.;
 				}
-				if max.y - min.y < 1e-10 {
-					max.y = min.y + 1.;
+
+				if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
+					let transform = if _has_transform {
+						_transform
+					} else {
+						initial_gradient_transform_for_bounding_box(*auto_bounds.get_or_insert_with(|| paint_target_bounds(&mut content)))
+					};
+
+					for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+						*value = transform;
+					}
 				}
-				initial_gradient_transform_for_bounding_box([min, max])
-			};
-
-			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-				*value = transform;
 			}
-		}
-	}
-
-	for graphic in fill.iter_element_values_mut() {
-		let Graphic::MeshGradient(mesh_gradient) = graphic else { continue };
-		if mesh_gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_some() {
-			continue;
-		}
-
-		let transform = if _has_mesh_transform {
-			_mesh_transform
-		} else {
-			let mut bounds: Option<[DVec2; 2]> = None;
-			content.for_each_vector_mut(|vector, _| {
-				if let Some([min, max]) = vector.bounding_box() {
-					bounds = Some(match bounds {
-						Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
-						None => [min, max],
-					});
+			Graphic::MeshGradient(mesh_gradient) => {
+				if mesh_gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_some() {
+					continue;
 				}
-			});
 
-			let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
-			if max.x - min.x < 1e-10 {
-				max.x = min.x + 1.;
-			}
-			if max.y - min.y < 1e-10 {
-				max.y = min.y + 1.;
-			}
-			initial_mesh_gradient_transform_for_bounding_box([min, max])
-		};
+				let transform = if _has_mesh_transform {
+					_mesh_transform
+				} else {
+					initial_mesh_gradient_transform_for_bounding_box(*auto_bounds.get_or_insert_with(|| paint_target_bounds(&mut content)))
+				};
 
-		for value in mesh_gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-			*value = transform;
+				for value in mesh_gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+					*value = transform;
+				}
+			}
+			_ => {}
 		}
 	}
 

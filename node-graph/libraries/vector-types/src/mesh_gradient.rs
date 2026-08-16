@@ -2,7 +2,7 @@ use core_types::list::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item};
 use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2, Mat4, Vec4};
-use kurbo::{ParamCurve, PathSeg};
+use kurbo::{BezPath, ParamCurve, PathSeg};
 
 use crate::{
 	Vector,
@@ -45,6 +45,16 @@ pub struct MeshPatch {
 }
 
 impl MeshPatch {
+	/// The patch outline as one closed subpath, in mesh-local coordinates.
+	/// Walks `top`, `right`, then `bottom` and `left` reversed, which is the only traversal of [`Self::edges`]'s
+	/// `[top, bottom, left, right]` order that stays connected end-to-end.
+	pub fn boundary_path(&self) -> BezPath {
+		let [top, bottom, left, right] = self.edges;
+		let mut boundary = BezPath::from_path_segments([top, right, bottom.reverse(), left.reverse()].into_iter());
+		boundary.close_path();
+		boundary
+	}
+
 	/// Checks for foldovers by sampling the position Jacobian over the patch.
 	pub fn sampled_no_foldover(&self) -> bool {
 		const SUBDIVISIONS: usize = 64;
@@ -397,6 +407,15 @@ impl MeshGradient {
 		Some(MeshPatch { index, corners, colors, edges })
 	}
 
+	/// The union of every resolvable patch outline, in mesh-local coordinates.
+	pub fn boundary_path(&self) -> BezPath {
+		let mut boundary = BezPath::new();
+		for patch in self.patches().flatten() {
+			boundary.extend(patch.boundary_path());
+		}
+		boundary
+	}
+
 	/// Iterator over all of the mesh gradient patches by row-major order, `None` if the patch is defined in unexpected structure.
 	pub fn patches(&self) -> impl Iterator<Item = Option<MeshPatch>> + '_ {
 		let patch_rows = self.corner_points.rows.saturating_sub(1);
@@ -637,14 +656,23 @@ impl MeshGradient {
 			let [start_point_id, _] = self.mesh_geometry.points_from_id(first_segment_id)?;
 			let [_, end_point_id] = self.mesh_geometry.points_from_id(second_segment_id)?;
 
+			// Each half's control point was shortened by the split that produced it,
+			// so scale it back out by the share of the merged parameter range that half covers.
+			let merged_handles = {
+				let [first_start, first_end] = [first_segment.p0, first_segment.p3].map(point_to_dvec2);
+				let [second_start, second_end] = [second_segment.p0, second_segment.p3].map(point_to_dvec2);
+				let first_chord = first_start.distance(first_end);
+				let second_chord = second_start.distance(second_end);
+				let total_chord = first_chord + second_chord;
+				let split = if total_chord > 0. { (first_chord / total_chord).clamp(0.1, 0.9) } else { 0.5 };
+
+				let handle_start = first_start + (point_to_dvec2(first_segment.p1) - first_start) / split;
+				let handle_end = second_end + (point_to_dvec2(second_segment.p2) - second_end) / (1. - split);
+				(Some(handle_start), Some(handle_end))
+			};
+
 			let merged_segment_id = self.mesh_geometry.segment_domain.next_id();
-			self.mesh_geometry.push(
-				merged_segment_id,
-				start_point_id,
-				end_point_id,
-				(Some(point_to_dvec2(first_segment.p1)), Some(point_to_dvec2(second_segment.p2))),
-				StrokeId::ZERO,
-			);
+			self.mesh_geometry.push(merged_segment_id, start_point_id, end_point_id, merged_handles, StrokeId::ZERO);
 			merged_edges.push(merged_segment_id);
 			removed_edge_ids.extend([first_segment_id, second_segment_id]);
 		}
@@ -1392,5 +1420,30 @@ mod tests {
 
 		let boundary_edge = *mesh.horizontal_edges.get(0, 0).unwrap();
 		assert_eq!(mesh.remove_edge(boundary_edge), None);
+	}
+
+	#[test]
+	fn removing_an_inserted_grid_line_restores_the_edge_curve() {
+		let mut mesh = MeshGradient::default();
+		let edge = *mesh.horizontal_edges.get(0, 0).unwrap();
+		// Symmetric about the edge's midpoint, so an even split leaves the two halves with equal chords
+		mesh.set_edge_handles(
+			edge,
+			BezierHandles::Cubic {
+				handle_start: DVec2::new(0.125, 0.2),
+				handle_end: DVec2::new(0.375, 0.2),
+			},
+		)
+		.unwrap();
+		let before = mesh.mesh_geometry.path_segment_from_id(edge).unwrap().to_cubic();
+
+		mesh.insert_grid_line(edge, GradientSpace::RgbGamma, GradientInterpolation::Smooth, 0.5).unwrap();
+		let inserted = *mesh.vertical_edges.get(0, 1).unwrap();
+		mesh.remove_edge(inserted).unwrap();
+
+		let merged = mesh.mesh_geometry.path_segment_from_id(*mesh.horizontal_edges.get(0, 0).unwrap()).unwrap().to_cubic();
+		for (actual, expected) in [(merged.p0, before.p0), (merged.p1, before.p1), (merged.p2, before.p2), (merged.p3, before.p3)] {
+			assert_position(point_to_dvec2(actual), point_to_dvec2(expected));
+		}
 	}
 }

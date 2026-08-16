@@ -2,9 +2,9 @@ mod mesh_gradient;
 
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::renderer::mesh_gradient::{
-	DisplacementMapSamples, MESH_COLOR_ERROR_TOLERANCE, MESH_POSITION_ERROR_TOLERANCE, PATCH_INFLATION_IN_VIEWPORT_PX, SvgMeshVLayers, alpha_curve_to_gradient_stops_string,
-	clamped_ramp_gradient_stops_string, coons_bbox_to_source_displacements, displacements_to_map_png, mesh_boundary_path, mesh_subpatch_transform, render_vello_subpatch_alpha,
-	render_vello_subpatch_color, subdivide_patches_adaptive, u_alpha_curve_to_gradient_stops_string, u_color_curve_to_gradient_stops_string,
+	DisplacementMapSamples, MESH_COLOR_ERROR_TOLERANCE, MESH_POSITION_ERROR_TOLERANCE, PATCH_INFLATION_SIZE, SvgMeshVLayers, alpha_curve_to_gradient_stops_string, clamped_ramp_gradient_stops_string,
+	coons_bbox_to_source_displacements, displacements_to_map_png, render_vello_subpatch_alpha, render_vello_subpatch_color, subdivide_patches_adaptive, u_alpha_curve_to_gradient_stops_string,
+	u_color_curve_to_gradient_stops_string,
 };
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use base64::Engine;
@@ -166,13 +166,6 @@ impl SvgRender {
 			self.svg.pop();
 			self.svg.push("/>".into());
 		}
-	}
-
-	pub fn with_transform(&mut self, transform: DAffine2, inner: impl FnOnce(&mut Self)) {
-		let previous_transform = self.transform;
-		self.transform *= transform;
-		inner(self);
-		self.transform = previous_transform;
 	}
 }
 
@@ -882,9 +875,7 @@ impl Render for List<Artboard> {
 				|render| {
 					let mut render_params = render_params.clone();
 					render_params.artboard_background = Some(background);
-					render.with_transform(artboard_transform, |render| {
-						content.render_svg(render, &render_params);
-					});
+					content.render_svg(render, &render_params);
 				},
 			);
 		}
@@ -1012,9 +1003,7 @@ impl Render for List<Graphic> {
 					}
 				},
 				|render| {
-					render.with_transform(transform, |render| {
-						element.render_svg(render, render_params);
-					});
+					element.render_svg(render, render_params);
 				},
 			);
 		}
@@ -1484,10 +1473,6 @@ impl Render for List<Vector> {
 
 				for paint_index in 0..fill_graphic.len() {
 					let Some(paint) = fill_graphic.element(paint_index) else { continue };
-					// FIXME: Remove this, only for debug purpose
-					if render_params.render_mode == RenderMode::Outline && !matches!(paint, Graphic::MeshGradient(_)) {
-						continue;
-					}
 					match paint {
 						Graphic::None => continue,
 						Graphic::Color(list) => {
@@ -1609,8 +1594,6 @@ impl Render for List<Vector> {
 					let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
 
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color_peniko, None, &path);
-					// FIXME: Remove this, only for debug purpose
-					do_fill(scene, context);
 				}
 				_ => {
 					if use_layer {
@@ -2518,9 +2501,7 @@ impl Render for List<MeshGradient> {
 						let unique_id = generate_uuid();
 
 						// Construct a closed path of the patch boundary for calculating the bounding box and create a clipping mask
-						let [top, bottom, left, right] = patch.edges;
-						let mut patch_boundary_path = BezPath::from_path_segments([top, right, bottom.reverse(), left.reverse()].into_iter());
-						patch_boundary_path.close_path();
+						let mut patch_boundary_path = patch.boundary_path();
 						let bounds = patch_boundary_path.bounding_box();
 						let bounds_min = DVec2::new(bounds.x0, bounds.y0);
 						let bounds_max = DVec2::new(bounds.x1, bounds.y1);
@@ -2530,9 +2511,9 @@ impl Render for List<MeshGradient> {
 						}
 						// Encode the deformation in normalized patch-bounding-box space so patch translation and axis-aligned scaling do not consume PNG channel precision.
 						let unit_to_patch_bbox = DAffine2::from_cols(DVec2::new(bounds_size.x, 0.), DVec2::new(0., bounds_size.y), bounds_min);
-						let unit_to_viewport = render.transform * mesh_transform * unit_to_patch_bbox;
-						let (_, smallest_viewport_scale) = singular_values(unit_to_viewport);
-						if !smallest_viewport_scale.is_finite() || smallest_viewport_scale <= f64::EPSILON {
+						let unit_to_mesh = mesh_transform * unit_to_patch_bbox;
+						let (_, smallest_mesh_scale) = singular_values(unit_to_mesh);
+						if !smallest_mesh_scale.is_finite() || smallest_mesh_scale <= f64::EPSILON {
 							continue;
 						}
 
@@ -2665,9 +2646,7 @@ impl Render for List<MeshGradient> {
 						});
 
 						// Add a centered stroke to expand the patch along its boundary normal and hide antialiasing gaps between patches.
-						// Dividing by the smallest singular value guarantees at least the requested viewport-space expansion under any nonsingular affine transform.
-						let patch_clip_stroke_width = 2. * PATCH_INFLATION_IN_VIEWPORT_PX / smallest_viewport_scale;
-
+						let patch_clip_stroke_width = 2. * PATCH_INFLATION_SIZE / smallest_mesh_scale;
 						patch_boundary_path.apply_affine(Affine::new(unit_to_patch_bbox.inverse().to_cols_array()));
 						let patch_boundary_d = patch_boundary_path.to_svg();
 
@@ -2749,6 +2728,10 @@ impl Render for List<MeshGradient> {
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
+		if let RenderMode::Outline = render_params.render_mode {
+			return;
+		}
+
 		let infinite_rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 		for index in 0..self.len() {
@@ -2776,22 +2759,6 @@ impl Render for List<MeshGradient> {
 			// The subpatch is inflated to hide rasterization seams, then the completed color is clipped once so
 			// overlapping paint does not receive edge coverage independently.
 
-			// FIXME: only for debug purpose
-			if let RenderMode::Outline = render_params.render_mode {
-				let unit_rect = kurbo::Rect::new(0., 0., 1., 1.);
-				let (outline_stroke, outline_color) = get_outline_styles(render_params);
-
-				for subpatch in subpatches {
-					let Some(subpatch_to_parent) = mesh_subpatch_transform(&subpatch) else { continue };
-
-					let mut outline_path = unit_rect.to_path(0.1);
-					outline_path.apply_affine(kurbo::Affine::new((parent_transform * subpatch_to_parent).to_cols_array()));
-					scene.stroke(&outline_stroke, kurbo::Affine::IDENTITY, outline_color, None, &outline_path);
-				}
-
-				continue;
-			}
-
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			let mut item_layer = false;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
@@ -2801,7 +2768,7 @@ impl Render for List<MeshGradient> {
 			}
 
 			// Clip all inflated subpatches to the original mesh boundary.
-			let mesh_boundary = mesh_boundary_path(mesh_gradient);
+			let mesh_boundary = mesh_gradient.boundary_path();
 			scene.push_layer(
 				peniko::Fill::NonZero,
 				peniko::Mix::Normal,

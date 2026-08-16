@@ -186,7 +186,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		// MeshGradientToolMessage
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=MeshGradientToolMessage::DoubleClick),
 		entry!(KeyDown(MouseLeft); action_dispatch=MeshGradientToolMessage::PointerDown),
-		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=MeshGradientToolMessage::PointerMove { constrain_axis: Shift, lock_angle: Control }),
+		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=MeshGradientToolMessage::PointerMove { constrain_axis: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=MeshGradientToolMessage::PointerUp),
 		entry!(KeyDown(Delete); action_dispatch=MeshGradientToolMessage::DeleteEdge),
 		entry!(KeyDown(Backspace); action_dispatch=MeshGradientToolMessage::DeleteEdge),

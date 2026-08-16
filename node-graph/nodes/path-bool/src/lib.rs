@@ -313,16 +313,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						.into_iter()
 						.map(|row| {
 							let (mesh_gradient, mut attributes) = row.into_parts();
-							let mut boundary = BezPath::new();
-
-							for patch in mesh_gradient.patches().flatten() {
-								let [top, bottom, left, right] = patch.edges;
-								boundary.move_to(top.start());
-								for edge in [top, right, bottom.reverse(), left.reverse()] {
-									boundary.push(edge.as_path_el());
-								}
-								boundary.close_path();
-							}
+							let boundary = mesh_gradient.boundary_path();
 
 							let current_transform = attributes.remove::<DAffine2>(ATTR_TRANSFORM).unwrap_or_default();
 							attributes.insert(ATTR_TRANSFORM, parent_transform * current_transform);
