@@ -1,10 +1,16 @@
 // Raster types moved to raster-types crate
 use crate::Color;
-use crate::list::List;
+use crate::list::{Item, List};
 
 pub trait RenderComplexity {
 	fn render_complexity(&self) -> usize {
 		0
+	}
+}
+
+impl<T: RenderComplexity> RenderComplexity for Item<T> {
+	fn render_complexity(&self) -> usize {
+		self.element().render_complexity()
 	}
 }
 

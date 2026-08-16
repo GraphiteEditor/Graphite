@@ -2760,7 +2760,7 @@ impl DocumentMessageHandler {
 			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
 			let has_stroke = appearance.is_some_and(|appearance| {
 				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
-					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_fully_transparent())
+					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_guaranteed_fully_transparent())
 			});
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
@@ -4326,7 +4326,7 @@ mod document_message_handler_tests {
 
 		let instrumented = editor.eval_graph().await.unwrap();
 
-		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass vacuously
+		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass without checking anything
 		let base_lengths: Vec<usize> = instrumented
 			.grab_all_input::<graphene_std::graphic::extend::BaseInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
 			.map(|base| base.len())
@@ -4341,7 +4341,7 @@ mod document_message_handler_tests {
 		let phantom_count = news
 			.iter()
 			.flat_map(|new| new.iter_element_values())
-			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None))
+			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None(_)))
 			.count();
 		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
 	}
