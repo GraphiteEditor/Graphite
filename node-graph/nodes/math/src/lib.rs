@@ -1159,7 +1159,7 @@ mod graphene_test {
 
 		let entries = super::_logical_or_mod::logical_or_entries();
 		let wired = construct(&entries[0], vec![record_value_edge(true), record_value_edge(false)]).unwrap();
-		let layout = wired.layout().unwrap().clone();
+		let layout = wired.layout().clone();
 		let edge = wired.downcast_record::<bool>().unwrap();
 		reserve_for(&[&layout]);
 
@@ -1193,7 +1193,7 @@ mod graphene_test {
 		assert_eq!(entries[3].io.return_value, core_types::registry::record_type::<DVec2>());
 
 		let wired = construct(&entries[0], vec![record_value_edge(1.5f64), record_value_edge(2.5f64)]).unwrap();
-		let layout = wired.layout().unwrap().clone();
+		let layout = wired.layout().clone();
 		let edge = wired.downcast_record::<f64>().unwrap();
 		reserve_for(&[&layout]);
 
