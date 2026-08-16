@@ -71,18 +71,29 @@ fn repeat_opacity_extent(element: ExtentIn<'_>, count: ValueIn<'_, u32>, level: 
 	}
 }
 
-/// Test-only generic structure creator: evaluates the lazy content once per copy
-/// with the copy's index pushed in, producing a rank level of `count` copies.
+/// Generic structure creator: evaluates the lazy content once per copy with the
+/// copy's index pushed in, producing a rank level of `count` copies.
 #[node_macro::node(category("Test"), extent(repeat_extent))]
-fn repeat<T>(ctx: impl Ctx + DeriveCtx + ExtractIndex, content: impl Node<Context<'_>, Output = T>, count: u32) -> Result<IList<T>, Interrupt> {
+fn repeat<T>(
+	ctx: impl Ctx + DeriveCtx + ExtractIndex,
+	content: impl Node<Context<'_>, Output = T>,
+	#[default(1)]
+	#[hard(1..)]
+	count: u32,
+	reverse: bool,
+) -> Result<IList<T>, Interrupt> {
 	let spilled = ctx.index_head();
 	let copy = ctx.innermost_index() % count as u64;
+	let copy = match reverse {
+		true => count as u64 - 1 - copy,
+		false => copy,
+	};
 	content.eval(&ctx.promoted(&spilled, copy))
 }
 
 /// The pushed level's extent is the copy count; inner levels forward to the
 /// content, whose extent is taken uniform across copies (queried at copy 0).
-fn repeat_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, level: LevelIn) -> GPoll<Extent> {
+fn repeat_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, _reverse: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
 	match level.pushed() {
 		true => count.get().map(|count| Extent::Exactly(count as usize)),
 		false => content.at(level),
@@ -353,6 +364,7 @@ mod tests {
 
 		let base = f64_layout(&[]);
 		let (count_edge, count_layout) = lifted_value(3u32);
+		let (reverse_edge, reverse_layout) = lifted_value(false);
 		reserve_for(&[&base, &count_layout]);
 
 		let meta = core_types::record::LayoutMeta {
@@ -364,7 +376,7 @@ mod tests {
 			level_delta: 1,
 		};
 		let node = install(
-			RepeatNode::new(RecordSource::new(bare_source(&base, 7.), &base, &base), count_edge, &base, &count_layout),
+			RepeatNode::new(RecordSource::new(bare_source(&base, 7.), &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
 			meta,
 			&[Some(&base)],
 		);
@@ -387,6 +399,7 @@ mod tests {
 
 		let base = f64_layout(&[]);
 		let (count_edge, count_layout) = lifted_value(4u32);
+		let (reverse_edge, reverse_layout) = lifted_value(false);
 		reserve_for(&[&base, &count_layout]);
 
 		let meta = core_types::record::LayoutMeta {
@@ -398,7 +411,7 @@ mod tests {
 			level_delta: 1,
 		};
 		let repeat = install(
-			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, &base, &count_layout),
+			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
 			meta,
 			&[Some(&base)],
 		);
@@ -413,6 +426,47 @@ mod tests {
 			};
 			// The copy evaluated its content at its own pushed index.
 			assert_eq!(unsafe { leveled.rec(&value).element::<f64>() }, copy as f64);
+			// SAFETY: the copy's element was read out above, so no borrow into its frame remains.
+			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
+	fn repeat_reverse_flips_the_copy_order() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let base = f64_layout(&[]);
+		let (count_edge, count_layout) = lifted_value(4u32);
+		let (reverse_edge, reverse_layout) = lifted_value(true);
+		reserve_for(&[&base, &count_layout, &reverse_layout]);
+
+		let meta = core_types::record::LayoutMeta {
+			sources: vec![0],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 1,
+		};
+		let repeat = install(
+			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
+			meta,
+			&[Some(&base)],
+		);
+		let leveled = Node::<ContextImpl>::layout(&repeat).clone();
+
+		let head = ctx.index_head();
+		for copy in 0..4u64 {
+			let mark = stack::sp();
+			let lane = ctx.promoted(&head, copy);
+			let GPoll::Final(value) = repeat.eval(&lane) else {
+				panic!("expected a final record");
+			};
+			// Reversed: copy `j` evaluates its content at index `count - 1 - j`.
+			assert_eq!(unsafe { leveled.rec(&value).element::<f64>() }, (3 - copy) as f64);
 			// SAFETY: the copy's element was read out above, so no borrow into its frame remains.
 			unsafe { stack::rewind(mark) };
 		}
@@ -450,6 +504,7 @@ mod tests {
 
 		let base = f64_layout(&[]);
 		let (count_edge, count_layout) = lifted_value(4u32);
+		let (reverse_edge, reverse_layout) = lifted_value(false);
 		let out = f64_layout(&[]);
 		reserve_for(&[&base, &count_layout, &out]);
 
@@ -462,7 +517,7 @@ mod tests {
 			level_delta: 1,
 		};
 		let repeat = install(
-			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, &base, &count_layout),
+			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
 			meta,
 			&[Some(&base)],
 		);
