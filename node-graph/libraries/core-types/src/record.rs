@@ -1345,9 +1345,10 @@ where
 	}
 }
 
-/// Law-test scaffolding: a plain probe over a record wire, cloning the
-/// element out of the parked reference when it carries drop glue. No
-/// production path constructs one.
+/// A plain probe over a record wire, cloning the element out of the parked
+/// reference when it carries drop glue. Registry constructors wrap a record
+/// edge in one to feed a node's plain value input, keeping the wire kind
+/// uniform.
 pub struct RecordExtract<El, N> {
 	edge: N,
 	layout: Layout,
