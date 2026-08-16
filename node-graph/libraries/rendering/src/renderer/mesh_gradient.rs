@@ -581,11 +581,9 @@ pub(super) fn mesh_boundary_path(mesh_gradient: &MeshGradient) -> BezPath {
 	mesh_boundary
 }
 
-/// Returns the local clip and paint inflation needed to hide gaps around a subpatch.
-fn mesh_subpatch_inflation(subpatch: &MeshSubpatch) -> (f64, f64) {
-	let [top_left, top_right, bottom_left, _] = subpatch.corner_positions;
-	let subpatch_transform = DAffine2::from_cols(top_right - top_left, bottom_left - top_left, top_left);
-	let (_, smallest_scale) = singular_values(subpatch_transform);
+/// Returns the local clip and paint inflation needed to hide gaps around a transformed subpatch.
+fn mesh_subpatch_inflation(subpatch_to_scene: DAffine2) -> (f64, f64) {
+	let (_, smallest_scale) = singular_values(subpatch_to_scene);
 	let clip_inflation = if smallest_scale.is_finite() && smallest_scale > f64::EPSILON {
 		(1. / smallest_scale).min(MESH_MAXIMUM_CLIP_INFLATION)
 	} else {
@@ -787,7 +785,7 @@ fn render_vello_subpatch_brushes(scene: &mut Scene, subpatch: &MeshSubpatch, par
 		return;
 	};
 	let subpatch_to_scene = kurbo::Affine::new(subpatch_to_device.to_cols_array());
-	let (clip_inflation, paint_inflation) = mesh_subpatch_inflation(subpatch);
+	let (clip_inflation, paint_inflation) = mesh_subpatch_inflation(subpatch_to_device);
 	let clip_rect = kurbo::Rect::new(-clip_inflation, -clip_inflation, 1. + clip_inflation, 1. + clip_inflation);
 	let paint_rect = kurbo::Rect::new(-paint_inflation, -paint_inflation, 1. + paint_inflation, 1. + paint_inflation);
 
