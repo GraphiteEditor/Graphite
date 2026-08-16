@@ -1,7 +1,9 @@
 use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::ResourceStorage;
 use graphite_editor::application::{Editor, Environment, Host, Platform};
-use graphite_editor::messages::prelude::{FrontendMessage, Message, Wake};
+use graphite_editor::messages::frontend::FrontendMessage;
+use graphite_editor::messages::prelude::Wake;
+
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 use std::sync::Arc;
@@ -65,21 +67,10 @@ pub enum NodeGraphExecutionResult {
 }
 
 pub fn deserialize_editor_message(data: &[u8]) -> Option<DesktopWrapperMessage> {
-	if let Ok(string) = std::str::from_utf8(data) {
-		if let Ok(message) = ron::de::from_str::<Message>(string) {
-			Some(DesktopWrapperMessage::FromWeb(message.into()))
-		} else {
-			None
-		}
-	} else {
-		None
-	}
+	let message = graphite_wasm_wrapper::native_communication::decode_editor_command(data)?;
+	Some(DesktopWrapperMessage::FromWeb(message.into()))
 }
 
 pub fn serialize_frontend_messages(messages: Vec<FrontendMessage>) -> Option<Vec<u8>> {
-	if let Ok(serialized) = ron::ser::to_string(&messages) {
-		Some(serialized.into_bytes())
-	} else {
-		None
-	}
+	graphite_wasm_wrapper::native_communication::encode_frontend_messages(messages)
 }

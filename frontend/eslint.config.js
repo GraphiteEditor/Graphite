@@ -29,6 +29,7 @@ export default defineConfig([
 		"**/node_modules/",
 		"**/dist/",
 		"**/pkg/",
+		"**/pkg-native/",
 		"wasm/pkg/",
 		// Don't ignore JS and TS dotfiles in this folder
 		"!**/.*.js",
@@ -72,6 +73,13 @@ export default defineConfig([
 					],
 				},
 			],
+			"no-restricted-syntax": [
+				"error",
+				{
+					selector: "Literal[raw='null']",
+					message: "Use `undefined` instead of `null`.",
+				},
+			],
 
 			// TypeScript plugin config (for TS-specific linting)
 			"@typescript-eslint/indent": "off",
@@ -95,7 +103,7 @@ export default defineConfig([
 			"@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
 			"@typescript-eslint/consistent-indexed-object-style": ["error", "record"],
 			"@typescript-eslint/consistent-generic-constructors": ["error", "constructor"],
-			"@typescript-eslint/no-restricted-types": ["error", { types: { null: "Use `undefined` instead." } }],
+			"@typescript-eslint/no-restricted-types": ["error", { types: { null: "Use `undefined` instead of `null`." } }],
 
 			// Prettier plugin config (for validating and fixing formatting)
 			"prettier/prettier": "error",

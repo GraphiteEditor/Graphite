@@ -131,6 +131,7 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 
 export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStore: DialogStore) {
 	potentiallyRestoreCanvasFocus(e);
+	potentiallyClearTextSelection(e);
 
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
 	const isTargetingCanvas = !inFloatingMenu && e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
@@ -360,9 +361,23 @@ function targetIsTextField(target: EventTarget | HTMLElement | undefined): boole
 	);
 }
 
+function potentiallyClearTextSelection(e: PointerEvent) {
+	const target = e.target instanceof Element ? e.target : undefined;
+	if (target && (targetIsTextField(target) || window.getComputedStyle(target).userSelect !== "none")) return;
+
+	// A text control's selection lives in its shadow tree, which the document's `Selection` reports as collapsed and cannot clear, so each control holding one is collapsed through its own API
+	const controls = window.document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("textarea, input[type='text']");
+	controls.forEach((control) => {
+		const caret = control.selectionStart;
+		if (typeof caret === "number" && caret !== control.selectionEnd) control.setSelectionRange(caret, caret);
+	});
+
+	window.getSelection()?.removeAllRanges();
+}
+
 function potentiallyRestoreCanvasFocus(e: Event) {
 	const appElement = window.document.querySelector("[data-app-container]");
-	const app = appElement instanceof HTMLElement ? appElement : null;
+	const app = appElement instanceof HTMLElement ? appElement : undefined;
 
 	const newInCanvasArea =
 		(e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-graph]")) instanceof Element &&

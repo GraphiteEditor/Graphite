@@ -1,9 +1,10 @@
+use crate::ui::Cursor;
 use crate::wrapper::NodeGraphExecutionResult;
 use crate::wrapper::messages::DesktopWrapperMessage;
 
 pub(crate) enum AppEvent {
 	UiUpdate(wgpu::Texture),
-	CursorChange(graphite_desktop_ui::Cursor),
+	CursorChange(Cursor),
 	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),

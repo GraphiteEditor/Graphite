@@ -539,7 +539,7 @@
 
 			.floating-menu-content {
 				background: var(--color-2-mildblack);
-				box-shadow: rgba(var(--color-0-black-rgb), 0.5) 0 2px 4px;
+				box-shadow: rgb(from var(--color-0-black) r g b / 0.5) 0 2px 4px;
 				border: 1px solid var(--color-3-darkgray);
 				border-radius: 4px;
 				border-top-left-radius: var(--content-border-top-left-radius, 4px);

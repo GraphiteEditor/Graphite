@@ -11,9 +11,8 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
+use graphene_std::Appearance;
 use graphene_std::Color;
-use graphene_std::Graphic;
-use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
@@ -245,14 +244,10 @@ pub enum DocumentMessage {
 		vector_data: HashMap<NodeId, Arc<Vector>>,
 	},
 	// `Message` is only serialized at `editor_wrapper.rs`, and only inputs from JS pass through it.
-	// `UpdateFillAttributes` and `UpdateStrokeAttributes` are produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
+	// `UpdateAppearanceAttributes` is produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
 	#[serde(skip)]
-	UpdateFillAttributes {
-		fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
-	},
-	#[serde(skip)]
-	UpdateStrokeAttributes {
-		stroke_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+	UpdateAppearanceAttributes {
+		appearance_attributes: HashMap<NodeId, Arc<Appearance>>,
 	},
 	Undo,
 	UngroupSelectedLayers,

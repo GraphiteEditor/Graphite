@@ -1,8 +1,8 @@
 use crate::consts::APP_NAME;
 use crate::event::AppEventScheduler;
+use crate::ui::Cursor;
 use crate::wrapper::messages::MenuItem;
 use crate::wrapper::{WgpuInstance, WgpuSurface};
-use graphite_desktop_ui::Cursor;
 use std::collections::HashMap;
 use std::sync::Arc;
 use winit::cursor::{CustomCursor, CustomCursorSource};

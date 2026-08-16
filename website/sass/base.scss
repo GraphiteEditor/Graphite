@@ -18,7 +18,6 @@
 	--color-ale: #cd8f7a;
 	--color-flamingo: #d2697c;
 	--color-seaside: #b0d6cb;
-	--color-seaside-rgb: 176, 214, 203;
 	// --color-cove: #83c0b9;
 	// --color-sage: #91b99a;
 	--color-storm: #495875;
@@ -458,7 +457,6 @@ p {
 	margin: 0;
 	text-align: justify;
 	text-justify: inter-character; // Only supported in Firefox
-	-webkit-hyphens: auto;
 	hyphens: auto;
 
 	code {
@@ -567,7 +565,6 @@ code {
 	background: var(--color-fog);
 	padding: 0 4px;
 	overflow-wrap: anywhere;
-	-webkit-hyphens: none;
 	hyphens: none;
 
 	a & {

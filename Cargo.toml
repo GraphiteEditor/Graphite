@@ -166,10 +166,12 @@ url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
 # Linebender ecosystem (BEGIN)
 kurbo = { version = "0.13", features = ["serde"] }
-vello = "0.9"
-vello_encoding = "0.9"
+# TODO: Return to crates.io versions once a release after 0.9 ships the ramp bake's `interpolation_alpha_space` support
+vello = { git = "https://github.com/linebender/vello.git", rev = "7073a85d61ee099d1d3595651ddf92302b074348" }
+vello_encoding = { git = "https://github.com/linebender/vello.git", rev = "7073a85d61ee099d1d3595651ddf92302b074348" }
 resvg = "0.47"
 usvg = "0.47"
+simplecss = "0.2"
 parley = { version = "0.9", default-features = false, features = ["std"] }
 skrifa = "0.42"
 polycool = "0.4"
@@ -209,6 +211,7 @@ syn = { version = "2.0", default-features = false, features = [
 	"proc-macro",
 ] }
 lyon_geom = "1.0"
+delaunator = "1.0"
 petgraph = { version = "0.7", default-features = false, features = ["graphmap"] }
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }
 tinyvec = { version = "1", features = ["std"] }

@@ -61,6 +61,27 @@ impl Clampable for DVec2 {
 	}
 }
 
+// Implement for ranked wires (element-wise clamping across the frame)
+use crate::list::{Item, List};
+impl<T: Clampable> Clampable for Item<T> {
+	fn clamp_hard_min(self, min: f64) -> Self {
+		let (element, attributes) = self.into_parts();
+		Item::from_parts(element.clamp_hard_min(min), attributes)
+	}
+	fn clamp_hard_max(self, max: f64) -> Self {
+		let (element, attributes) = self.into_parts();
+		Item::from_parts(element.clamp_hard_max(max), attributes)
+	}
+}
+impl<T: Clampable> Clampable for List<T> {
+	fn clamp_hard_min(self, min: f64) -> Self {
+		self.into_iter().map(|item| item.clamp_hard_min(min)).collect()
+	}
+	fn clamp_hard_max(self, max: f64) -> Self {
+		self.into_iter().map(|item| item.clamp_hard_max(max)).collect()
+	}
+}
+
 #[cfg(feature = "serde")]
 #[derive(serde::Deserialize)]
 struct LegacyTable<T> {
@@ -68,8 +89,8 @@ struct LegacyTable<T> {
 	element: Vec<T>,
 }
 
-// TODO: Eventually remove this migration document upgrade code
-pub fn migrate_to_optional_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<no_std_types::color::Color>, D::Error> {
+// TODO: Eventually remove this document upgrade code
+pub fn migrate_to_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<no_std_types::color::Color, D::Error> {
 	use no_std_types::color::Color;
 	use serde::Deserialize;
 
@@ -81,12 +102,12 @@ pub fn migrate_to_optional_color<'de, D: serde::Deserializer<'de>>(deserializer:
 	}
 
 	Ok(match ColorFormat::deserialize(deserializer)? {
-		ColorFormat::OptionalColor(color) => color,
-		ColorFormat::List(list) => list.element.into_iter().next(),
+		ColorFormat::OptionalColor(color) => color.unwrap_or(Color::TRANSPARENT),
+		ColorFormat::List(list) => list.element.into_iter().next().unwrap_or(Color::TRANSPARENT),
 	})
 }
 
-// TODO: Eventually remove this migration document upgrade code
+// TODO: Eventually remove this document upgrade code
 pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<f64>, D::Error> {
 	use serde::Deserialize;
 
@@ -101,6 +122,11 @@ pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -
 		F64ArrayFormat::Array(values) => values,
 		F64ArrayFormat::List(list) => list.element,
 	})
+}
+
+/// Parses a comma or space separated list of numbers, skipping any pieces that fail to parse.
+pub fn parse_f64_list(text: &str) -> Vec<f64> {
+	text.split([',', ' ']).filter(|piece| !piece.is_empty()).filter_map(|piece| piece.parse::<f64>().ok()).collect()
 }
 
 /// Parse a CSS color string (named color, hex, `rgb(...)`, `hsl(...)`, etc.) into a linear-light [`Color`] using the `color` crate's CSS Color 4 parser.

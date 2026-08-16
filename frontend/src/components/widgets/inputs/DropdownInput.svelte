@@ -134,7 +134,7 @@
 		{tooltipShortcut}
 		on:click={() => !disabled && (open = true)}
 		on:blur={unFocusDropdownBox}
-		tabindex={disabled ? -1 : 0}
+		tabindex={disabled ? undefined : 0}
 		data-floating-menu-spawner
 	>
 		{#if activeEntry.icon}
