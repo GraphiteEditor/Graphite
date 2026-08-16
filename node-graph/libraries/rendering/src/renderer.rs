@@ -2,9 +2,9 @@ mod mesh_gradient;
 
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::renderer::mesh_gradient::{
-	DISPLACEMENT_MAP_INFLATION_IN_VIEWPORT_PX, MESH_COLOR_ERROR_TOLERANCE, MESH_MINIMUM_SUBPATCH_SIZE, MESH_POSITION_ERROR_TOLERANCE, PATCH_INFLATION_IN_VIEWPORT_PX,
-	alpha_func_to_gradient_stops_string, displacements_to_map_png, eval_cubic_bezier_color, eval_source_over_bezier_alpha, mesh_boundary_path, mesh_subpatch_transform, render_vello_subpatch_alpha,
-	render_vello_subpatch_color, subdivide_patches_adaptive, u_alpha_curve_to_gradient_stops_string, u_color_curves_to_gradient_stops_string, unit_to_coons_bbox_displacements,
+	DISPLACEMENT_MAP_INFLATION_IN_VIEWPORT_PX, MESH_COLOR_ERROR_TOLERANCE, MESH_MINIMUM_SUBPATCH_SIZE, MESH_POSITION_ERROR_TOLERANCE, PATCH_INFLATION_IN_VIEWPORT_PX, SvgMeshVLayers,
+	alpha_func_to_gradient_stops_string, clamped_ramp_gradient_stops_string, displacements_to_map_png, mesh_boundary_path, mesh_subpatch_transform, render_vello_subpatch_alpha,
+	render_vello_subpatch_color, subdivide_patches_adaptive, u_alpha_curve_to_gradient_stops_string, u_color_curve_to_gradient_stops_string, unit_to_coons_bbox_displacements,
 };
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use base64::Engine;
@@ -20,8 +20,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN,
-	ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
+	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -45,7 +45,7 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::{GradientSettings, GradientSpread, MeshGradient};
+use vector_types::gradient::{GradientSettings, GradientSpace, GradientSpread, MeshGradient};
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2437,9 +2437,27 @@ impl Render for List<Gradient> {
 
 impl Render for List<MeshGradient> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		// SVG mesh-gradient rendering has two stages:
+		//
+		// 1. Approximate the patch's color field over a unit square.
+		//    N u-direction gradients using N-1 v-direction masks to approximate the color surface.
+		//    The key observation is that source-over compositing with opaque color layers forms a convex combination.
+		//    This allows us to reproduce a bicubic Bezier surface or approximate any surface, by stacking gradients and alpha masks.
+		//
+		// 2. Warp the unit square into the Coons patch geometry using an feDisplacementMap.
+		//    feDisplacementMap performs inverse mapping: for each output position (x, y), it samples the source at
+		//    P'(x, y) = P(x + scale * (XC(x, y) - 0.5), y + scale * (YC(x, y) - 0.5)).
+		//    We numerically invert the Coons patch to find the source UV corresponding to each output position,
+		//    then encode the offset from the output position to that UV in the displacement map's X and Y channels.
+		//    Therefore, any injective Coons patch can be approximated by a raster displacement map, with the result clipped to the patch boundary.
+
 		for index in 0..self.len() {
 			let Some(mesh_gradient) = self.element(index) else { continue };
-			let Some(mesh_evaluator) = mesh_gradient.evaluator() else { continue };
+			let space: GradientSpace = self.attribute_cloned_or_default::<GradientSpace>(ATTR_GRADIENT_SPACE, index);
+			let Some(mesh_evaluator) = mesh_gradient.evaluator(space) else { continue };
+			// The layer stack is what carries the color space: gamma sRGB uses the exact bicubic Bernstein stack,
+			// while a nonlinear space stacks approximated rows so the compositor's linear blend still lands on the true surface.
+			let v_layers = SvgMeshVLayers::for_space(space, &mesh_evaluator);
 			let mesh_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
@@ -2449,40 +2467,32 @@ impl Render for List<MeshGradient> {
 			let mesh_alpha_mask_id = has_transparency.then(|| format!("mg-ma-{}", generate_uuid()));
 			let mut mesh_alpha_field = String::new();
 
-			// SVG mesh-gradient rendering has two stages:
-			//
-			// 1. Approximate the patch's bicubic color field over a unit square.
-			//    4 u-direction gradients using 3 v-direction masks to approximate a bicubic Bezier surface of the color.
-			//    The key concept is that both source-over compositing with opaque color layers and Bezier curve forms a convex combination,
-			//    which allows us to simulate the bicubic interpolation by stacking gradients and alpha masks.
-			//
-			// 2. Warp the unit square into the Coons patch geometry using an feDisplacementMap.
-			//    feDisplacementMap performs inverse mapping: for each output position (x, y), it samples the source at
-			//    P'(x, y) = P(x + scale * (XC(x, y) - 0.5), y + scale * (YC(x, y) - 0.5)).
-			//    We numerically invert the Coons patch to find the source UV corresponding to each output position,
-			//    then encode the offset from the output position to that UV in the displacement map's X and Y channels.
-			//    Therefore, any injective Coons patch can be approximated by a raster displacement map, with the result clipped to the patch boundary.
-
-			// Define 3 alpha functions from the v-direction Bernstein basis weights.
+			// Define N-1 alpha functions from the v-direction layer weights.
 			// They compensate for attenuation accumulated through source-over compositing,
-			// making the final weights of the 4 color layers equal the Bernstein weights.
-			let alpha_functions: [_; 3] = std::array::from_fn(|index| move |t| eval_source_over_bezier_alpha(index, t));
-			// The v-direction masks encode only the source-over-adjusted Bernstein weights with no patch specific color data,
+			// making the final weights of the N color layers equal the layer scheme's weights.
+			// The v-direction masks encode only those weights with no patch specific color data,
 			// so they can be shared by all patches.
-			// The alpha functions are not linear, so we approximate these over [0, 1] using linear gradients with multiple stops.
 			let alpha_mask_gradient_group_id = generate_uuid();
-			let alpha_mask_gradient_ids: [String; 3] = std::array::from_fn(|i| {
-				let alpha_func = alpha_functions[i];
-				let stops = alpha_func_to_gradient_stops_string(&alpha_func);
-				let id = format!("mg-ag{i}-{alpha_mask_gradient_group_id}");
-				write!(
-					&mut render.svg_defs,
-					r##"<linearGradient id="{id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
-				)
-				.unwrap();
+			let alpha_mask_gradient_ids = (0..v_layers.layer_count() - 1)
+				.map(|i| {
+					let id = format!("mg-ag{i}-{alpha_mask_gradient_group_id}");
+					match v_layers.source_over_ramp(i) {
+						Some([start, end]) => write!(
+							&mut render.svg_defs,
+							r##"<linearGradient id="{id}" x1="0.5" y1="{start}" x2="0.5" y2="{end}" gradientUnits="userSpaceOnUse">{}</linearGradient>"##,
+							clamped_ramp_gradient_stops_string(),
+						),
+						None => write!(
+							&mut render.svg_defs,
+							r##"<linearGradient id="{id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse">{}</linearGradient>"##,
+							alpha_func_to_gradient_stops_string(&|t| v_layers.source_over_alpha(i, t)),
+						),
+					}
+					.unwrap();
 
-				id
-			});
+					id
+				})
+				.collect::<Vec<_>>();
 
 			render.parent_tag(
 				"g",
@@ -2499,8 +2509,8 @@ impl Render for List<MeshGradient> {
 				},
 				|render| {
 					for patch in mesh_gradient.patches() {
-				let Some(patch) = patch else { continue };
-				let Some(patch_evaluator) = mesh_evaluator.patch_evaluator(patch.index) else { continue };
+						let Some(patch) = patch else { continue };
+						let Some(patch_evaluator) = mesh_evaluator.patch_evaluator(patch.index) else { continue };
 				let unique_id = generate_uuid();
 
 				// Construct a closed path of the patch boundary for calculating the bounding box and create a clipping mask
@@ -2542,24 +2552,25 @@ impl Render for List<MeshGradient> {
 				// Inflated values for the displacement map to prevent overshooting of the mapping, which could be caused by floating point calculation in the renderer
 				let inflated_map_sizes = inflated_values(DISPLACEMENT_MAP_INFLATION_IN_VIEWPORT_PX);
 				let [inflated_map_x, inflated_map_y, inflated_map_width, inflated_map_height] = inflated_map_sizes;
-				let alpha_mask_ids: [String; 3] = std::array::from_fn(|i| {
-					let gradient_id = &alpha_mask_gradient_ids[i];
-					let mask_id = format!("mg-am{i}-{unique_id}");
-					write!(
-						&mut render.svg_defs,
-						r##"<mask id="{mask_id}" x="{inflated_map_x}" y="{inflated_map_y}" width="{inflated_map_width}" height="{inflated_map_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" mask-type="alpha"><rect x="{inflated_map_x}" y="{inflated_map_y}" width="{inflated_map_width}" height="{inflated_map_height}" fill="url(#{gradient_id})"/></mask>"##,
-					)
-					.unwrap();
-					mask_id
-				});
 
-				// Create 4 u-parametric Bezier color functions, one for each row in the v direction of the 4x4 control net.
-				// Then approximate these functions over [0, 1] using linear gradients with multiple stops, in the same manner as the alpha functions.
-				let bezier_control_points = patch_evaluator.bicubic_bezier_control_points();
-				let u_color_curves: [_; 4] = std::array::from_fn(|v| move |t: f32| eval_cubic_bezier_color(bezier_control_points[v], t));
-					let u_color_curves_gradient_ids: [String; 4] = std::array::from_fn(|i| {
-						let curve = &u_color_curves[i];
-						let stops = u_color_curves_to_gradient_stops_string(curve);
+				let v_alpha_mask_ids = alpha_mask_gradient_ids
+					.iter()
+					.enumerate()
+					.map(|(i, gradient_id)| {
+						let mask_id = format!("mg-am{i}-{unique_id}");
+						write!(
+							&mut render.svg_defs,
+							r##"<mask id="{mask_id}" x="{inflated_map_x}" y="{inflated_map_y}" width="{inflated_map_width}" height="{inflated_map_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" mask-type="alpha"><rect x="{inflated_map_x}" y="{inflated_map_y}" width="{inflated_map_width}" height="{inflated_map_height}" fill="url(#{gradient_id})"/></mask>"##,
+						)
+						.unwrap();
+						mask_id
+					})
+					.collect::<Vec<_>>();
+
+					let u_color_curves_gradient_ids = (0..v_layers.layer_count())
+						.map(|i| {
+							let curve = |t| v_layers.layer_color_curve(patch_evaluator, i, t);
+							let stops = u_color_curve_to_gradient_stops_string(&curve);
 					let id = format!("mg-cg{i}-{unique_id}");
 
 					write!(
@@ -2568,23 +2579,9 @@ impl Render for List<MeshGradient> {
 					)
 					.unwrap();
 
-						id
-					});
-					let u_alpha_curves_gradient_ids: Option<[String; 4]> = has_transparency.then(|| {
-						std::array::from_fn(|i| {
-							let curve = |t| eval_cubic_bezier_color(bezier_control_points[i], t).w;
-							let stops = u_alpha_curve_to_gradient_stops_string(&curve);
-							let id = format!("mg-cag{i}-{unique_id}");
-
-							write!(
-								&mut render.svg_defs,
-								r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
-							)
-							.unwrap();
-
 							id
 						})
-					});
+						.collect::<Vec<_>>();
 
 				let displacements = unit_to_coons_bbox_displacements(patch_evaluator, &displacement_map_to_patch, &inflated_map_sizes);
 				// feDisplacementMap decodes each channel as scale * (channel - 0.5)
@@ -2639,10 +2636,32 @@ impl Render for List<MeshGradient> {
 					.unwrap();
 
 					// Keep alpha as an opaque grayscale field until every patch has been assembled into one mesh-wide luminance mask.
+					let u_alpha_curves_gradient_ids: Option<Vec<String>> = has_transparency.then(|| {
+						(0..v_layers.layer_count())
+							.map(|i| {
+								// Only takes alpha value
+								let curve = |t| v_layers.layer_color_curve(patch_evaluator, i, t).w;
+								let stops = u_alpha_curve_to_gradient_stops_string(&curve);
+								let id = format!("mg-cag{i}-{unique_id}");
+
+								write!(
+									&mut render.svg_defs,
+									r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+								)
+								.unwrap();
+
+								id
+							})
+							.collect()
+					});
+
 					let alpha_field = u_alpha_curves_gradient_ids.as_ref().map(|gradient_ids| {
 						let mut alpha_field = String::new();
 						for (i, gradient_id) in gradient_ids.iter().enumerate().rev() {
-							let mask = if i == 3 { String::new() } else { format!(r##" mask="url(#{})""##, alpha_mask_ids[i]) };
+							let mask = match v_alpha_mask_ids.get(i) {
+								Some(mask_id) => format!(r##" mask="url(#{mask_id})""##),
+								None => String::new(),
+							};
 							write!(
 								alpha_field,
 								r##"<rect x="{inflated_map_x}" y="{inflated_map_y}" width="{inflated_map_width}" height="{inflated_map_height}" fill="url(#{gradient_id})"{mask}/>"##,
@@ -2711,8 +2730,7 @@ impl Render for List<MeshGradient> {
 												attributes.push("width", inflated_map_width.to_string());
 												attributes.push("height", inflated_map_height.to_string());
 												attributes.push("fill", format!("url(#{gradient_id})"));
-												if i != 3 {
-													let mask_id = alpha_mask_ids[i].clone();
+												if let Some(mask_id) = v_alpha_mask_ids.get(i) {
 													attributes.push("mask", format!("url(#{mask_id})"));
 												}
 											});
@@ -2749,7 +2767,8 @@ impl Render for List<MeshGradient> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			let Some(evaluator) = mesh_gradient.evaluator() else { continue };
+			let space: GradientSpace = self.attribute_cloned_or_default::<GradientSpace>(ATTR_GRADIENT_SPACE, index);
+			let Some(evaluator) = mesh_gradient.evaluator(space) else { continue };
 			let Some(subpatches) = subdivide_patches_adaptive(
 				&evaluator,
 				MESH_MINIMUM_SUBPATCH_SIZE,

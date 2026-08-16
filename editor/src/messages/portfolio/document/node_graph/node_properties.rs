@@ -33,7 +33,7 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, MeshGradient, PaintOrder,
+	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, MeshGradientSurface, PaintOrder,
 	StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
@@ -2412,7 +2412,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
 			transform_is_value: bool,
 		},
-		MeshGradient,
+		MeshGradient {
+			surface: Box<MeshGradientSurface>,
+		},
 		Other,
 	}
 
@@ -2431,7 +2433,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Ok(document_node) => match document_node.input_value(FillInput) {
 			Some(TaggedValue::Color(color)) => ResolvedFill::Solid(Some(*color)),
 			Some(value) if value.is_no_paint() => ResolvedFill::Solid(None),
-			Some(TaggedValue::MeshGradient(_)) => ResolvedFill::MeshGradient,
+			Some(TaggedValue::MeshGradient(surface)) => ResolvedFill::MeshGradient { surface: Box::new(surface.clone()) },
 			Some(TaggedValue::GradientRamp(_)) => {
 				match graph_modification_utils::read_fill_node_gradient(document_node, || {
 					layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer))
@@ -2463,11 +2465,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			};
 			let backup_mesh_gradient = match document_node.input_value(BackupMeshGradientInput) {
 				Some(TaggedValue::MeshGradient(mesh_gradient)) => mesh_gradient.clone(),
-				_ => MeshGradient::default(),
+				_ => MeshGradientSurface::default(),
 			};
 			(backup_color, backup_stops, backup_mesh_gradient)
 		}
-		Err(_) => (None, GradientRamp::black_to_white(), MeshGradient::default()),
+		Err(_) => (None, GradientRamp::black_to_white(), MeshGradientSurface::default()),
 	};
 
 	match &fill {
@@ -2499,7 +2501,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			}
 		}
 		ResolvedFill::Gradient { gradient: stops, settings, .. } => Some(FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops).with_settings(*settings))),
-		ResolvedFill::MeshGradient => None,
+		ResolvedFill::MeshGradient { .. } => None,
 		ResolvedFill::Other => Some(FillChoice::<SRGBA8>::None),
 	};
 
@@ -2582,7 +2584,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		];
 		let selected_index = match fill {
 			ResolvedFill::Gradient { .. } => 1,
-			ResolvedFill::MeshGradient => 2,
+			ResolvedFill::MeshGradient { .. } => 2,
 			_ => 0,
 		};
 
@@ -2594,6 +2596,47 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		LayoutGroup::row(row)
 	};
 	widgets.push(fill_type_switch);
+
+	if let ResolvedFill::MeshGradient { surface } = fill.clone() {
+		let surface = *surface;
+		let entries = graph_modification_utils::mesh_gradient_space_sections()
+			.into_iter()
+			.map(|section| {
+				section
+					.into_iter()
+					.map(|(space, metadata)| {
+						let surface = surface.clone();
+						MenuListEntry::new(metadata.name)
+							.label(metadata.label)
+							.tooltip_label(metadata.label)
+							.tooltip_description(metadata.description.unwrap_or_default())
+							.on_update(update_value(
+								move |_| {
+									TaggedValue::MeshGradient(MeshGradientSurface {
+										gradient_space: space,
+										..surface.clone()
+									})
+								},
+								node_id,
+								FillInput,
+							))
+							.on_commit(commit_value)
+					})
+					.collect()
+			})
+			.collect();
+
+		let mut row = vec![TextLabel::new("Space").widget_instance()];
+		add_blank_assist(&mut row);
+		row.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			DropdownInput::new(entries)
+				.selected_index(graph_modification_utils::mesh_gradient_space_index(surface.gradient_space))
+				.tooltip_description("The color space the mesh interpolates its corner colors through.")
+				.widget_instance(),
+		]);
+		widgets.push(LayoutGroup::row(row));
+	}
 
 	if let ResolvedFill::Gradient {
 		gradient_form,

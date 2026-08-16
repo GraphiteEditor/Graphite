@@ -15,7 +15,7 @@ use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::misc::BoxCorners;
 use graphic_types::vector_types::vector::style::DashPattern;
-use graphic_types::vector_types::vector::style::{Gradient, GradientRamp, MeshGradient};
+use graphic_types::vector_types::vector::style::{Gradient, GradientRamp, MeshGradient, MeshGradientSurface};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
@@ -93,8 +93,8 @@ macro_rules! tagged_value {
 			/// (Old documents stored flat stops, a tuple list, or the ancient full `Gradient` struct under the legacy `"Gradient"` tag, all routed by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(alias = "Gradient", alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			GradientRamp(GradientRamp),
-			/// Stored compactly as a `MeshGradient`, materializing as an `Item<MeshGradient>` at runtime.
-			MeshGradient(MeshGradient),
+			/// Stored as the `MeshGradientSurface` exchange struct (nested `{ mesh: ... }`), materializing as an `Item<MeshGradient>` at runtime.
+			MeshGradient(MeshGradientSurface),
 			/// Stored compactly as a `Vec<BrushStroke>`, materializes as the single-value `Item<BrushTrace>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
@@ -141,7 +141,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => lengths.cache_hash(state),
 					Self::BoxCorners(values) => values.cache_hash(state),
 					Self::GradientRamp(ramp) => ramp.cache_hash(state),
-					Self::MeshGradient(mesh_gradient) => mesh_gradient.cache_hash(state),
+					Self::MeshGradient(surface) => surface.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
@@ -205,7 +205,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Box::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Box::new(Item::new_from_element(BoxCorners::from(values))),
 					Self::GradientRamp(ramp) => Box::new(Item::<Gradient>::from(ramp)),
-					Self::MeshGradient(mesh_gradient) => Box::new(Item::new_from_element(mesh_gradient)),
+					Self::MeshGradient(surface) => Box::new(Item::<MeshGradient>::from(surface)),
 					Self::BrushStrokes(strokes) => Box::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -269,7 +269,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Arc::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Arc::new(Item::new_from_element(BoxCorners::from(values))),
 					Self::GradientRamp(ramp) => Arc::new(Item::<Gradient>::from(ramp)),
-					Self::MeshGradient(mesh_gradient) => Arc::new(Item::new_from_element(mesh_gradient)),
+					Self::MeshGradient(surface) => Arc::new(Item::<MeshGradient>::from(surface.clone())),
 					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -339,8 +339,8 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(downcast::<Item<BoxCorners>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*downcast::<Gradient>(input).unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*downcast::<Item<Gradient>>(input).unwrap()))),
-					x if x == TypeId::of::<MeshGradient>() => Ok(TaggedValue::MeshGradient(*downcast::<MeshGradient>(input).unwrap())),
-					x if x == TypeId::of::<Item<MeshGradient>>() => Ok(TaggedValue::MeshGradient(downcast::<Item<MeshGradient>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<MeshGradient>() => Ok(TaggedValue::MeshGradient(MeshGradientSurface::from(*downcast::<MeshGradient>(input).unwrap()))),
+					x if x == TypeId::of::<Item<MeshGradient>>() => Ok(TaggedValue::MeshGradient(MeshGradientSurface::from(&*downcast::<Item<MeshGradient>>(input).unwrap()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
 					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(downcast::<Item<BrushTrace>>(input).unwrap().into_element().0.iter_element_values().cloned().collect())),
 					// =======================
@@ -375,8 +375,8 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<Item<BoxCorners>>().unwrap().element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Gradient>().unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Item<Gradient>>().unwrap()))),
-					x if x == TypeId::of::<MeshGradient>() => Ok(TaggedValue::MeshGradient(input.downcast_ref::<MeshGradient>().unwrap().clone())),
-					x if x == TypeId::of::<Item<MeshGradient>>() => Ok(TaggedValue::MeshGradient(input.downcast_ref::<Item<MeshGradient>>().unwrap().element().clone())),
+					x if x == TypeId::of::<MeshGradient>() => Ok(TaggedValue::MeshGradient(MeshGradientSurface::from(input.downcast_ref::<MeshGradient>().unwrap().clone()))),
+					x if x == TypeId::of::<Item<MeshGradient>>() => Ok(TaggedValue::MeshGradient(MeshGradientSurface::from(input.downcast_ref::<Item<MeshGradient>>().unwrap()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
 					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Item<BrushTrace>>().unwrap().element().0.iter_element_values().cloned().collect())),
 					// =======================
@@ -406,7 +406,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Gradient>() { return Some(TaggedValue::GradientRamp(GradientRamp::default())) }
 						if name == std::any::type_name::<DashPattern>() { return Some(TaggedValue::DashPattern(Vec::new())) }
 						if name == std::any::type_name::<BoxCorners>() { return Some(TaggedValue::BoxCorners(Vec::new())) }
-						if name == std::any::type_name::<MeshGradient>() { return Some(TaggedValue::MeshGradient(MeshGradient::default())) }
+						if name == std::any::type_name::<MeshGradient>() { return Some(TaggedValue::MeshGradient(MeshGradientSurface::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<BrushTrace>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						// Unranked types without a variant route through `TypeDefault`, with `to_dynany`/`to_any` constructing the actual default at execution time
@@ -461,7 +461,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => format!("DashPattern({lengths:?})"),
 					Self::BoxCorners(values) => format!("BoxCorners({values:?})"),
 					Self::GradientRamp(ramp) => format!("GradientRamp({ramp:?})"),
-					Self::MeshGradient(mesh_gradient) => format!("MeshGradient({mesh_gradient:?})"),
+					Self::MeshGradient(surface) => format!("MeshGradient({surface:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					// =======================
 					// AUTO-GENERATED VARIANTS

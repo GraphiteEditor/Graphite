@@ -3,11 +3,11 @@ use std::ops::{Add, Mul, Sub};
 use crate::renderer::{gradient_placement, singular_values, transform_is_invertible};
 use crate::to_peniko::ToPenikoColor;
 use core_types::{Color, color::SRGBA8};
-use glam::{DAffine2, DMat2, DVec2, Vec4};
+use glam::{DAffine2, DMat2, DVec2, Vec2, Vec4};
 use image::ImageEncoder;
 use kurbo::BezPath;
 use vector_types::{
-	gradient::MeshGradient,
+	gradient::{GradientSpace, MeshGradient},
 	mesh_gradient::{MeshGradientEvaluator, MeshPatchEvaluator},
 };
 use vello::{Scene, peniko};
@@ -15,9 +15,11 @@ use vello::{Scene, peniko};
 /// Maximum allowed geometry approximation error in viewport pixels.
 pub(super) const MESH_POSITION_ERROR_TOLERANCE: f64 = 1.5;
 /// Maximum allowed color approximation error per channel.
-pub(super) const MESH_COLOR_ERROR_TOLERANCE: f32 = 0.5 / 255.;
+pub(super) const MESH_COLOR_ERROR_TOLERANCE: f32 = 2. / 255.;
 /// Smallest subpatch dimension allowed in viewport pixels.
-pub(super) const MESH_MINIMUM_SUBPATCH_SIZE: f64 = 4.;
+pub(super) const MESH_MINIMUM_SUBPATCH_SIZE: f64 = 8.;
+/// Maximum subpatches one mesh may divide into, bounding what a color field the tolerance cannot reach can allocate.
+pub(super) const MESH_MAXIMUM_SUBPATCHES: usize = 4096;
 /// Source padding in viewport pixels for displacement-map numerical error.
 pub(super) const DISPLACEMENT_MAP_INFLATION_IN_VIEWPORT_PX: f64 = 5.;
 /// Patch padding in viewport pixels for hiding anti-aliasing gaps.
@@ -38,7 +40,7 @@ where
 	T: Copy + Add<Output = T> + Sub<Output = T> + Mul<f32, Output = T>,
 {
 	// Maximum error allowed between a function and its linear approximation.
-	const ERROR_TOLERANCE: f32 = 1. / 255.;
+	const ERROR_TOLERANCE: f32 = 2. / 255.;
 	// Relative positions sampled within each candidate interval.
 	const SAMPLES: [f32; 3] = [0.25, 0.5, 0.75];
 	// Maximum depth of adaptive interval subdivision.
@@ -62,7 +64,7 @@ where
 }
 
 /// Returns a source-over-adjusted Bernstein weight for the indexed mask layer.
-pub(super) fn eval_source_over_bezier_alpha(index: usize, time: f32) -> f32 {
+pub(super) fn evaluate_source_over_bezier_alpha(index: usize, time: f32) -> f32 {
 	match index {
 		0 => (1. - time).powi(3),
 		1 => 3. * (1. - time).powi(2) / (time.powi(2) - 3. * time + 3.),
@@ -72,7 +74,7 @@ pub(super) fn eval_source_over_bezier_alpha(index: usize, time: f32) -> f32 {
 }
 
 /// Evaluates a cubic Bezier color curve at the given parameter.
-pub(super) fn eval_cubic_bezier_color(control_points: [Vec4; 4], time: f32) -> Vec4 {
+pub(super) fn evaluate_cubic_bezier_color(control_points: [Vec4; 4], time: f32) -> Vec4 {
 	let one_minus_t = 1. - time;
 	control_points[0] * one_minus_t.powi(3) + control_points[1] * (3. * time * one_minus_t.powi(2)) + control_points[2] * (3. * time.powi(2) * one_minus_t) + control_points[3] * time.powi(3)
 }
@@ -86,6 +88,118 @@ fn gamma_color_to_srgba8(color: [f32; 4]) -> SRGBA8 {
 		blue: float_to_u8(color[2]),
 		alpha: float_to_u8(color[3]),
 	}
+}
+
+/// Maximum allowed error between the stacked SVG color layers and the true color surface, per channel.
+const SVG_LAYER_ERROR_TOLERANCE: f32 = 2. / 255.;
+/// Maximum number of bisections used when placing the v-direction layer rows.
+const SVG_LAYER_MAX_DEPTH: usize = 8;
+/// Maximum layers stacked per patch, bounding what a mesh the tolerance cannot reach is allowed to emit.
+const SVG_LAYER_MAX_COUNT: usize = 64;
+
+/// The v-direction weights that blend the stacked SVG color layers.
+#[derive(Clone, Debug)]
+pub(super) enum SvgMeshVLayers {
+	/// The four Bezier control rows blended by the Bernstein basis, reproducing the bicubic surface.
+	BicubicBernstein,
+	/// Surface rows sampled at the given v values, blended linearly between adjacent rows.
+	LinearRows(Vec<f32>),
+}
+
+impl SvgMeshVLayers {
+	/// Chooses the layer scheme for a color space, refining the rows until their linear blend is within tolerance.
+	pub(super) fn for_space(space: GradientSpace, evaluator: &MeshGradientEvaluator) -> Self {
+		// Gamma sRGB is the only color space widely supported by major SVG renderers.
+		// A bicubic color field in that space can therefore be reproduced at composite time by baking the bicubic Bezier surface into gradients and alpha masks,
+		// since the Bernstein basis is a partition of unity and source-over compositing of opaque layers is also convex combination.
+		// Every other space has to approximate it with multiple rows, blended linearly between neighbors.
+		if space == GradientSpace::RgbGamma {
+			return Self::BicubicBernstein;
+		}
+
+		// Vec of (start, end, error)
+		let mut intervals = vec![(0_f32, 1_f32, linear_row_interval_error(evaluator, 0., 1.))];
+		let smallest_interval = 1. / (1_u32 << SVG_LAYER_MAX_DEPTH) as f32;
+		// Refine the interval with the largest error first.
+		// Only failing intervals split, so the result matches an exhaustive subdivision unless the budget runs out.
+		// One row set shared by every patch keeps the mask gradients mesh-wide.
+		while intervals.len() < SVG_LAYER_MAX_COUNT - 1 {
+			let worst_interval_index = intervals
+				.iter()
+				.enumerate()
+				.filter(|&(_, &(start, end, error))| error > SVG_LAYER_ERROR_TOLERANCE && end - start > smallest_interval)
+				.max_by(|(_, first), (_, second)| first.2.total_cmp(&second.2))
+				.map(|(index, _)| index);
+			let Some(worst_interval_index) = worst_interval_index else { break };
+
+			let (start, end, _) = intervals.swap_remove(worst_interval_index);
+			let middle = (start + end) / 2.;
+			intervals.push((start, middle, linear_row_interval_error(evaluator, start, middle)));
+			intervals.push((middle, end, linear_row_interval_error(evaluator, middle, end)));
+		}
+		intervals.sort_by(|first, second| first.0.total_cmp(&second.0));
+		Self::LinearRows(std::iter::once(0.).chain(intervals.iter().map(|&(_, end, _)| end)).collect())
+	}
+
+	pub(super) fn layer_count(&self) -> usize {
+		match self {
+			Self::BicubicBernstein => 4,
+			Self::LinearRows(knots) => knots.len(),
+		}
+	}
+
+	/// Returns the alpha the indexed layer needs for source-over compositing to reproduce its weight.
+	pub(super) fn source_over_alpha(&self, index: usize, v: f32) -> f32 {
+		match self {
+			Self::BicubicBernstein => evaluate_source_over_bezier_alpha(index, v),
+			// Layers are painted bottom-up, so everything below `index` is already covered wherever this layer is opaque.
+			// One clamped ramp per layer therefore composites into a linear blend of the two nearest rows.
+			Self::LinearRows(knots) => ((knots[index + 1] - v) / (knots[index + 1] - knots[index])).clamp(0., 1.),
+		}
+	}
+
+	/// The v range the indexed layer's weight ramps across, or `None` when that weight is not a plain clamped ramp.
+	pub(super) fn source_over_ramp(&self, index: usize) -> Option<[f32; 2]> {
+		match self {
+			Self::BicubicBernstein => None,
+			Self::LinearRows(knots) => Some([knots[index], knots[index + 1]]),
+		}
+	}
+
+	/// Returns the u-direction color curve painted by the indexed layer.
+	pub(super) fn layer_color_curve(&self, patch_evaluator: &MeshPatchEvaluator, index: usize, u: f32) -> Vec4 {
+		match self {
+			Self::BicubicBernstein => {
+				let control_points = patch_evaluator.bicubic_bezier_control_points();
+				evaluate_cubic_bezier_color(control_points[index], u)
+			}
+			Self::LinearRows(knots) => Vec4::from_array(patch_evaluator.evaluate_color(u, knots[index])),
+		}
+	}
+}
+
+/// Returns the largest per-channel error of linearly blending the exact surface rows at an interval's ends.
+fn linear_row_interval_error(evaluator: &MeshGradientEvaluator, start: f32, end: f32) -> f32 {
+	// The rows are reproduced exactly, so error is sampled across u and between the rows in v.
+	const U_SAMPLES: usize = 64;
+	const V_SAMPLES: usize = 8;
+
+	let mut worst_error = 0_f32;
+	for patch in evaluator.patch_evaluators() {
+		for u_step in 0..=U_SAMPLES {
+			let u = u_step as f32 / U_SAMPLES as f32;
+			let start_color = Vec4::from_array(patch.evaluate_color(u, start));
+			let end_color = Vec4::from_array(patch.evaluate_color(u, end));
+			for v_step in 1..V_SAMPLES {
+				let sample = v_step as f32 / V_SAMPLES as f32;
+				let expected = Vec4::from_array(patch.evaluate_color(u, start + (end - start) * sample));
+				let approximated = start_color + (end_color - start_color) * sample;
+				worst_error = worst_error.max((expected - approximated).abs().max_element());
+			}
+		}
+	}
+
+	worst_error
 }
 
 // =====================
@@ -110,7 +224,7 @@ pub(super) fn unit_to_coons_bbox_displacements(patch_evaluator: &MeshPatchEvalua
 			for column in 0..=INITIAL_SUBDIVISIONS {
 				let u = column as f64 / INITIAL_SUBDIVISIONS as f64;
 				let uv = DVec2::new(u, v);
-				seeds.push((uv, patch_evaluator.eval_position(u, v)));
+				seeds.push((uv, patch_evaluator.evaluate_position(u, v)));
 			}
 		}
 		seeds
@@ -118,7 +232,7 @@ pub(super) fn unit_to_coons_bbox_displacements(patch_evaluator: &MeshPatchEvalua
 
 	for y in 0..DISPLACEMENT_MAP_SIZE {
 		for x in 0..DISPLACEMENT_MAP_SIZE {
-			// Adds 0.5 to evalute the center of the pixel
+			// Adds 0.5 to evaluate the center of the pixel
 			let s = (x as f64 + 0.5) / DISPLACEMENT_MAP_SIZE as f64;
 			let t = (y as f64 + 0.5) / DISPLACEMENT_MAP_SIZE as f64;
 
@@ -191,13 +305,19 @@ pub(super) fn alpha_func_to_gradient_stops_string(func: &impl Fn(f32) -> f32) ->
 		.collect::<String>()
 }
 
-/// Returns SVG gradient stops that approximate a u-direction color curve.
-pub(super) fn u_color_curves_to_gradient_stops_string(func: &impl Fn(f32) -> Vec4) -> String {
+/// Encodes a u-direction color curve as adaptively sampled SVG gradient stops.
+pub(super) fn u_color_curve_to_gradient_stops_string(func: &impl Fn(f32) -> Vec4) -> String {
 	let error_func = |a: Vec4, b: Vec4| (a - b).abs().max_element();
 	linear_approximated_points(func, &error_func, 0., 1., 0)
 		.into_iter()
-		.map(|(arg, result)| gradient_stop_element(arg, 1., result.to_array()))
+		.map(|(argument, result)| gradient_stop_element(argument, 1., result.to_array()))
 		.collect::<String>()
+}
+
+/// Encodes the two stops a clamped ramp needs, for a gradient placed across the range it ramps over.
+pub(super) fn clamped_ramp_gradient_stops_string() -> String {
+	let white = Color::WHITE.to_gamma_srgb_channels();
+	format!("{}{}", gradient_stop_element(0., 1., white), gradient_stop_element(1., 0., white))
 }
 
 /// Encodes a scalar alpha curve as an opaque grayscale gradient for use by a luminance mask.
@@ -240,7 +360,10 @@ pub(super) fn subdivide_patches_adaptive(
 
 	let samples = [0., 0.25, 0.5, 0.75, 1.];
 	let mut subpatches = Vec::new();
+	let patch_count = evaluator.patch_evaluators().count();
 	for (patch_index, patch) in evaluator.patch_evaluators().enumerate() {
+		// Every later patch still owes at least its own root region, so reserve that before spending the budget here.
+		let patches_after_this = patch_count - patch_index - 1;
 		let mut pending = vec![(0., 0., 1.)];
 		while let Some((u_start, v_start, stride)) = pending.pop() {
 			let corner_uvs = [
@@ -249,33 +372,48 @@ pub(super) fn subdivide_patches_adaptive(
 				DVec2::new(u_start, v_start + stride),
 				DVec2::new(u_start + stride, v_start + stride),
 			];
-			let corner_positions = corner_uvs.map(|uv| mesh_transform.transform_point2(patch.eval_position(uv.x, uv.y)));
+			let corner_positions = corner_uvs.map(|uv| mesh_transform.transform_point2(patch.evaluate_position(uv.x, uv.y)));
 			let [top_left_pos, top_right_pos, bottom_left_pos, _bottom_right_pos] = corner_positions;
 
 			let patch_to_viewport = parent_transform * mesh_transform;
-			let [top_left, top_right, bottom_left, bottom_right] = corner_uvs.map(|uv| patch_to_viewport.transform_point2(patch.eval_position(uv.x, uv.y)));
+			let [top_left, top_right, bottom_left, bottom_right] = corner_uvs.map(|uv| patch_to_viewport.transform_point2(patch.evaluate_position(uv.x, uv.y)));
 			let u_size = top_left.distance(top_right).max(bottom_left.distance(bottom_right));
 			let v_size = top_left.distance(bottom_left).max(top_right.distance(bottom_right));
 			if !u_size.is_finite() || !v_size.is_finite() {
 				return None;
 			}
 			let reached_minimum_size = u_size.max(v_size) <= minimum_subpatch_size;
+			// Each split replaces one pending region with four, so stop refining once the budget cannot absorb another.
+			let budget_spent = subpatches.len() + pending.len() + patches_after_this + 4 > MESH_MAXIMUM_SUBPATCHES;
+
+			let stop_refining = reached_minimum_size || budget_spent;
+
+			let uv_min = DVec2::new(u_start, v_start).as_vec2();
+			let uv_max = DVec2::new(u_start + stride, v_start + stride).as_vec2();
+			let color_weight_func = (!stop_refining).then(|| subpatch_color_weight(patch, uv_min, uv_max));
 
 			let mut within_tolerance = true;
 			'error_samples: for &local_v in &samples {
+				let Some(color_weight_func) = &color_weight_func else { break 'error_samples };
 				for &local_u in &samples {
 					let u = u_start + local_u * stride;
 					let v = v_start + local_v * stride;
-					let expected_pos = mesh_transform.transform_point2(patch.eval_position(u, v));
-					let expected_color = Vec4::from_array(patch.eval_color(u as f32, v as f32));
-					// Approximate the position with the rendered parallelogram and the color by linearly interpolating its cubic top and bottom color curves.
+					let expected_pos = mesh_transform.transform_point2(patch.evaluate_position(u, v));
+					let expected_color = Vec4::from_array(patch.evaluate_color(u as f32, v as f32));
+					// Approximate the position with the rendered parallelogram, then the color and alpha with the two
+					// passes that actually paint them: the color pass blends the edge rows by the projected weight,
+					// while the alpha pass ramps between them linearly.
 					let approximated_pos = top_left_pos + (top_right_pos - top_left_pos) * local_u + (bottom_left_pos - top_left_pos) * local_v;
-					let top_color = Vec4::from_array(patch.eval_color(u as f32, v_start as f32));
-					let bottom_color = Vec4::from_array(patch.eval_color(u as f32, (v_start + stride) as f32));
-					let approximated_color = top_color.lerp(bottom_color, local_v as f32);
+					let top_color = Vec4::from_array(patch.evaluate_color(u as f32, v_start as f32));
+					let bottom_color = Vec4::from_array(patch.evaluate_color(u as f32, (v_start + stride) as f32));
+					let approximated_color = bottom_color.lerp(top_color, color_weight_func(v as f32));
+					let approximated_alpha = top_color.w + (bottom_color.w - top_color.w) * local_v as f32;
 
 					let position_error = parent_transform.transform_vector2(expected_pos - approximated_pos).length();
-					let color_error = (expected_color - approximated_color).abs().max_element();
+					let color_error = (expected_color.truncate() - approximated_color.truncate())
+						.abs()
+						.max_element()
+						.max((expected_color.w - approximated_alpha).abs());
 					if !position_error.is_finite() || !color_error.is_finite() {
 						return None;
 					}
@@ -286,7 +424,7 @@ pub(super) fn subdivide_patches_adaptive(
 				}
 			}
 
-			if within_tolerance || reached_minimum_size {
+			if within_tolerance || stop_refining {
 				subpatches.push(MeshSubpatch {
 					corner_positions,
 					patch_index,
@@ -419,6 +557,29 @@ fn vello_vertical_mask(func: &impl Fn(f32) -> f32, start: f32, end: f32) -> peni
 	vello_linear_gradient(DVec2::new(0.5, 0.), DVec2::new(0.5, 1.), stops)
 }
 
+/// Returns the weight the color pass blends a region's two edge rows with, as a function of v.
+///
+/// It projects the color curve at the region's horizontal midpoint onto the line between its edge colors, so however
+/// unevenly a color space paces its path along v, the blend follows that pacing and only has to cover the deviation
+/// off that line. The subdivision's error model reads the same weight as the brush that paints the region, so the
+/// refinement never pays for a coarser approximation than it actually draws.
+fn subpatch_color_weight(patch_evaluator: &MeshPatchEvaluator, uv_min: Vec2, uv_max: Vec2) -> impl Fn(f32) -> f32 + use<'_> {
+	let center_u = (uv_min.x + uv_max.x) / 2.;
+	let top_center_color = Vec4::from_array(patch_evaluator.evaluate_color(center_u, uv_min.y)).truncate();
+	let bottom_center_color = Vec4::from_array(patch_evaluator.evaluate_color(center_u, uv_max.y)).truncate();
+	let color_axis = top_center_color - bottom_center_color;
+	let color_axis_length_squared = color_axis.length_squared();
+
+	move |v| {
+		if color_axis_length_squared > f32::EPSILON {
+			let color = Vec4::from_array(patch_evaluator.evaluate_color(center_u, v)).truncate();
+			((color - bottom_center_color).dot(color_axis) / color_axis_length_squared).clamp(0., 1.)
+		} else {
+			(uv_max.y - v) / (uv_max.y - uv_min.y)
+		}
+	}
+}
+
 /// Builds the opaque RGB approximation for one subpatch.
 fn vello_subpatch_color_brushes(patch_evaluator: &MeshPatchEvaluator, subpatch: &MeshSubpatch) -> VelloSubpatchBrushes {
 	let [uv_min, uv_max] = subpatch.uv_bounds.map(|uv| uv.as_vec2());
@@ -426,7 +587,7 @@ fn vello_subpatch_color_brushes(patch_evaluator: &MeshPatchEvaluator, subpatch: 
 
 	// Preserve each cubic horizontal RGB edge with adaptive gradient stops. Alpha is applied after the RGB field is complete.
 	let [top_color, bottom_color] = [uv_min.y, uv_max.y].map(|v| {
-		let curve = |u| Vec4::from_array(patch_evaluator.eval_color(u, v));
+		let curve = |u| Vec4::from_array(patch_evaluator.evaluate_color(u, v));
 		let error = |a: Vec4, b: Vec4| (a - b).abs().max_element();
 		let stops = linear_approximated_points(&curve, &error, uv_min.x, uv_max.x, 0).into_iter().map(|(u, mut color)| {
 			color.w = 1.;
@@ -435,21 +596,7 @@ fn vello_subpatch_color_brushes(patch_evaluator: &MeshPatchEvaluator, subpatch: 
 		vello_linear_gradient(DVec2::ZERO, DVec2::X, stops)
 	});
 
-	// Project the cubic color curve at the horizontal midpoint onto the line between its edge colors.
-	// The resulting scalar curve is the vertical alpha mask that best reproduces the interior color there.
-	let center_u = (uv_min.x + uv_max.x) / 2.;
-	let top_center_color = Vec4::from_array(patch_evaluator.eval_color(center_u, uv_min.y)).truncate();
-	let bottom_center_color = Vec4::from_array(patch_evaluator.eval_color(center_u, uv_max.y)).truncate();
-	let color_axis = top_center_color - bottom_center_color;
-	let color_axis_length_squared = color_axis.length_squared();
-	let color_weight_func = |v| {
-		if color_axis_length_squared > f32::EPSILON {
-			let color = Vec4::from_array(patch_evaluator.eval_color(center_u, v)).truncate();
-			((color - bottom_center_color).dot(color_axis) / color_axis_length_squared).clamp(0., 1.)
-		} else {
-			1. - remap_offset(v, uv_min.y, uv_max.y)
-		}
-	};
+	let color_weight_func = subpatch_color_weight(patch_evaluator, uv_min, uv_max);
 	let color_weight = vello_vertical_mask(&color_weight_func, uv_min.y, uv_max.y);
 
 	VelloSubpatchBrushes {
@@ -471,7 +618,7 @@ fn vello_subpatch_alpha_brushes(patch_evaluator: &MeshPatchEvaluator, subpatch: 
 	// This matches the color approximation used to decide adaptive subdivision: preserve the cubic
 	// horizontal edge curves, then interpolate them linearly in the local v direction.
 	let [top_color, bottom_color] = [uv_min.y, uv_max.y].map(|v| {
-		let curve = |u| patch_evaluator.eval_color(u, v)[3];
+		let curve = |u| patch_evaluator.evaluate_color(u, v)[3];
 		let error = |a: f32, b: f32| (a - b).abs();
 		let stops = linear_approximated_points(&curve, &error, uv_min.x, uv_max.x, 0)
 			.into_iter()
@@ -558,10 +705,69 @@ pub(super) fn render_vello_subpatch_alpha(scene: &mut Scene, patch_evaluator: &M
 mod tests {
 	use super::*;
 
+	/// Builds a mesh whose corners cycle through the given colors.
+	fn mesh_with_corner_colors(colors: [Color; 4]) -> MeshGradient {
+		let mut mesh = MeshGradient::default();
+		for corner_index in 0..mesh.size() {
+			mesh.set_corner_color(corner_index, colors[corner_index % colors.len()]).unwrap();
+		}
+		mesh
+	}
+
+	#[test]
+	fn stacked_oklab_rows_reproduce_the_color_surface() {
+		let mesh = mesh_with_corner_colors([Color::BLACK, Color::WHITE, Color::BLUE, Color::YELLOW]);
+		let evaluator = mesh.evaluator(GradientSpace::OkLab).unwrap();
+		let layers = SvgMeshVLayers::for_space(GradientSpace::OkLab, &evaluator);
+
+		let mut worst_error = 0_f32;
+		for patch in evaluator.patch_evaluators() {
+			for u_step in 0..=256 {
+				let u = u_step as f32 / 256.;
+				for v_step in 0..=256 {
+					let v = v_step as f32 / 256.;
+
+					let mut composited = layers.layer_color_curve(patch, layers.layer_count() - 1, u);
+					for index in (0..layers.layer_count() - 1).rev() {
+						let alpha = layers.source_over_alpha(index, v);
+						composited = composited.lerp(layers.layer_color_curve(patch, index, u), alpha);
+					}
+
+					let expected = Vec4::from_array(patch.evaluate_color(u, v));
+					worst_error = worst_error.max((expected - composited).abs().max_element());
+				}
+			}
+		}
+
+		assert!(worst_error <= SVG_LAYER_ERROR_TOLERANCE, "the stack deviated by {} of 1/255", worst_error * 255.);
+	}
+
+	#[test]
+	fn oklab_row_weights_stay_a_partition_of_unity() {
+		let mesh = mesh_with_corner_colors([Color::BLACK, Color::WHITE, Color::BLUE, Color::YELLOW]);
+		let evaluator = mesh.evaluator(GradientSpace::OkLab).unwrap();
+		let layers = SvgMeshVLayers::for_space(GradientSpace::OkLab, &evaluator);
+
+		for v_step in 0..=64 {
+			let v = v_step as f32 / 64.;
+			let mut remaining = 1_f32;
+			let mut total = 0_f32;
+			for index in 0..layers.layer_count() - 1 {
+				let alpha = layers.source_over_alpha(index, v);
+				assert!((0. ..=1.).contains(&alpha), "a source-over alpha must stay in range, got {alpha} at v={v}");
+				total += remaining * alpha;
+				remaining -= remaining * alpha;
+			}
+			total += remaining;
+
+			assert!((total - 1.).abs() < 1e-5, "the weights must sum to one, got {total} at v={v}");
+		}
+	}
+
 	#[test]
 	fn adaptive_subdivision_accounts_for_color_error() {
 		let mesh = MeshGradient::default();
-		let evaluator = mesh.evaluator().unwrap();
+		let evaluator = mesh.evaluator(GradientSpace::RgbGamma).unwrap();
 		let geometry_only = subdivide_patches_adaptive(&evaluator, 0.125, DAffine2::IDENTITY, DAffine2::IDENTITY, f64::MAX, f32::MAX).unwrap();
 		let with_color = subdivide_patches_adaptive(&evaluator, 0.125, DAffine2::IDENTITY, DAffine2::IDENTITY, f64::MAX, 0.).unwrap();
 
@@ -571,7 +777,7 @@ mod tests {
 	#[test]
 	fn adaptive_subdivision_rejects_non_finite_transform() {
 		let mesh = MeshGradient::default();
-		let evaluator = mesh.evaluator().unwrap();
+		let evaluator = mesh.evaluator(GradientSpace::RgbGamma).unwrap();
 		let non_finite_transform = DAffine2::from_scale(DVec2::splat(f64::NAN));
 
 		assert!(subdivide_patches_adaptive(&evaluator, 0.125, DAffine2::IDENTITY, non_finite_transform, 0.25, 0.01).is_none());

@@ -5,21 +5,30 @@ use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasi
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_node_id_with_direct_fill_input, get_upstream_mesh_gradient_value_node_id};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_fill_node_id_with_direct_fill_input, get_upstream_mesh_gradient_value_node_id};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration};
+use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graphene_std::color::SRGBA8;
+use graphene_std::list::List;
 use graphene_std::raster::color::Color;
 use graphene_std::subpath::{BezierHandles, pathseg_points};
 use graphene_std::vector::algorithms::util::pathseg_tangent;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::style::{GradientSpace, MeshGradientSurface};
 use graphene_std::vector::{HandleId, MeshGradient, SegmentId};
-use graphene_std::{ATTR_TRANSFORM, Graphic};
+use graphene_std::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_TRANSFORM, Graphic};
 use kurbo::{DEFAULT_ACCURACY, ParamCurve, ParamCurveNearest};
 
 #[derive(Default, ExtractField)]
 pub struct MeshGradientTool {
 	fsm_state: MeshGradientToolFsmState,
 	data: MeshGradientToolData,
+	options: MeshGradientOptions,
+}
+
+#[derive(Default)]
+pub struct MeshGradientOptions {
+	space: GradientSpace,
 }
 
 #[impl_message(Message, ToolMessage, MeshGradient)]
@@ -44,6 +53,13 @@ pub enum MeshGradientToolMessage {
 	CommitTransactionForColorStop,
 	CloseStopColorPicker,
 	UpdateStopColor { color: Color },
+	UpdateOptions { options: MeshGradientOptionsUpdate },
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+pub enum MeshGradientOptionsUpdate {
+	Space(GradientSpace),
 }
 
 impl ToolMetadata for MeshGradientTool {
@@ -62,6 +78,22 @@ impl ToolMetadata for MeshGradientTool {
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for MeshGradientTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		match message {
+			ToolMessage::MeshGradient(MeshGradientToolMessage::UpdateOptions { options }) => {
+				match options {
+					MeshGradientOptionsUpdate::Space(space) => self.options.space = space,
+				}
+
+				let space = self.options.space;
+				apply_mesh_gradient_options(context, responses, |surface| surface.gradient_space = space);
+				self.refresh_options(responses);
+			}
+			ToolMessage::MeshGradient(MeshGradientToolMessage::SelectionChanged) => {
+				if let Some(surface) = first_selected_mesh_gradient_surface(context.document) {
+					self.options.space = surface.gradient_space;
+					self.refresh_options(responses);
+				}
+				self.fsm_state.process_event(message, &mut self.data, context, &(), responses, false);
+			}
 			ToolMessage::MeshGradient(MeshGradientToolMessage::StartTransactionForColorStop) => {
 				if self.data.color_picker_transaction_open {
 					responses.add(DocumentMessage::EndTransaction);
@@ -80,7 +112,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Mesh
 
 				if let MeshGradientTarget::Corner { corner_index, .. } = selected_mesh.target
 					&& self.data.color_picker_editing_color_stop == Some(corner_index)
-					&& selected_mesh.gradient.set_corner_color(corner_index, color).is_some()
+					&& selected_mesh.surface.mesh.set_corner_color(corner_index, color).is_some()
 				{
 					selected_mesh.update_gradient_in_graph(responses);
 					responses.add(PropertiesPanelMessage::Refresh);
@@ -101,21 +133,98 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Mesh
 	}
 
 	fn actions(&self) -> ActionList {
-		let common = actions!(MeshGradientToolMessageDiscriminant;
+		actions!(MeshGradientToolMessageDiscriminant;
+			UpdateOptions,
 			PointerDown,
 			PointerUp,
 			PointerMove,
 			DoubleClick,
 			DeleteEdge,
 			Abort,
-		);
-		common
+		)
 	}
 }
 
 impl LayoutHolder for MeshGradientTool {
 	fn layout(&self) -> Layout {
-		Layout::default()
+		let entries = graph_modification_utils::mesh_gradient_space_sections()
+			.into_iter()
+			.map(|section| {
+				section
+					.into_iter()
+					.map(|(space, metadata)| {
+						MenuListEntry::new(metadata.name)
+							.label(metadata.label)
+							.tooltip_label(metadata.label)
+							.tooltip_description(metadata.description.unwrap_or_default())
+							.on_update(move |_| {
+								MeshGradientToolMessage::UpdateOptions {
+									options: MeshGradientOptionsUpdate::Space(space),
+								}
+								.into()
+							})
+					})
+					.collect()
+			})
+			.collect();
+		let space = DropdownInput::new(entries)
+			.selected_index(graph_modification_utils::mesh_gradient_space_index(self.options.space))
+			.tooltip_description("The color space the mesh interpolates its corner colors through.")
+			.widget_instance();
+
+		Layout(vec![LayoutGroup::row(vec![
+			TextLabel::new("Space").widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			space,
+		])])
+	}
+}
+
+/// Returns the first mesh gradient painted by the selection, paired with the settings riding alongside it.
+fn first_selected_mesh_gradient_surface(document: &DocumentMessageHandler) -> Option<MeshGradientSurface> {
+	document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_layers(&document.network_interface)
+		.filter_map(|layer| document.metadata().layer_fill_attributes.get(&layer))
+		.flat_map(|fill| fill.iter_element_values())
+		.find_map(|graphic| {
+			let Graphic::MeshGradient(meshes) = graphic else { return None };
+			meshes.element(0).map(|mesh| mesh_gradient_surface(meshes, 0, mesh))
+		})
+}
+
+/// Rewrites the settings of the first mesh gradient of every selected layer, leaving its geometry and colors alone.
+fn apply_mesh_gradient_options(context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, update: impl Fn(&mut MeshGradientSurface)) {
+	let document = &context.document;
+	let selected_layers: Vec<_> = document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface).collect();
+
+	let mut transaction_started = false;
+	for layer in selected_layers {
+		let Some(source) = resolve_mesh_gradient_source(layer, &document.network_interface) else {
+			continue;
+		};
+		let Some(fill) = document.metadata().layer_fill_attributes.get(&layer) else { continue };
+		let Some(mut surface) = fill.iter_element_values().find_map(|graphic| {
+			let Graphic::MeshGradient(meshes) = graphic else { return None };
+			meshes.element(0).map(|mesh| mesh_gradient_surface(meshes, 0, mesh))
+		}) else {
+			continue;
+		};
+		update(&mut surface);
+
+		if !transaction_started {
+			responses.add(DocumentMessage::StartTransaction);
+			transaction_started = true;
+		}
+		responses.add(match source {
+			GradientSource::Direct => GraphOperationMessage::FillMeshGradientSet { layer, mesh_gradient: surface },
+			GradientSource::Chain => GraphOperationMessage::MeshGradientSet { layer, mesh_gradient: surface },
+		});
+	}
+
+	if transaction_started {
+		responses.add(DocumentMessage::EndTransaction);
 	}
 }
 
@@ -141,7 +250,7 @@ impl Default for MeshGradientToolFsmState {
 struct SelectedMeshGradient {
 	layer: LayerNodeIdentifier,
 	mesh_index: usize,
-	gradient: MeshGradient,
+	surface: MeshGradientSurface,
 	mesh_to_document: DAffine2,
 	source: GradientSource,
 	target: MeshGradientTarget,
@@ -152,11 +261,11 @@ impl SelectedMeshGradient {
 		let message = match self.source {
 			GradientSource::Direct => GraphOperationMessage::FillMeshGradientSet {
 				layer: self.layer,
-				mesh_gradient: self.gradient.clone(),
+				mesh_gradient: self.surface.clone(),
 			},
 			GradientSource::Chain => GraphOperationMessage::MeshGradientSet {
 				layer: self.layer,
-				mesh_gradient: self.gradient.clone(),
+				mesh_gradient: self.surface.clone(),
 			},
 		};
 		responses.add(message);
@@ -167,6 +276,15 @@ impl SelectedMeshGradient {
 enum GradientSource {
 	Direct,
 	Chain,
+}
+
+/// Pairs a rendered mesh with the whole-mesh settings riding alongside it as list attributes.
+fn mesh_gradient_surface(meshes: &List<MeshGradient>, index: usize, mesh: &MeshGradient) -> MeshGradientSurface {
+	MeshGradientSurface {
+		mesh: mesh.clone(),
+		gradient_space: meshes.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, index),
+		gradient_interpolation: meshes.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, index),
+	}
 }
 
 fn resolve_mesh_gradient_source(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientSource> {
@@ -468,7 +586,7 @@ impl Fsm for MeshGradientToolFsmState {
 			(_state @ MeshGradientToolFsmState::Ready { .. }, MeshGradientToolMessage::DeleteEdge) => {
 				let Some(selected_mesh) = tool_data.selected_mesh.as_mut() else { return self };
 				if let MeshGradientTarget::Segment { segment_id, .. } = selected_mesh.target {
-					selected_mesh.gradient.remove_edge(segment_id);
+					selected_mesh.surface.mesh.remove_edge(segment_id);
 				};
 
 				responses.add(DocumentMessage::StartTransaction);
@@ -496,7 +614,7 @@ impl Fsm for MeshGradientToolFsmState {
 				match selected_mesh.target {
 					// Display color picker when the mesh corner color gizmo is double clicked
 					MeshGradientTarget::Corner { corner_index, .. } => {
-						let Some(corner) = selected_mesh.gradient.corners().find(|corner| corner.index == corner_index) else {
+						let Some(corner) = selected_mesh.surface.mesh.corners().find(|corner| corner.index == corner_index) else {
 							return self;
 						};
 
@@ -506,12 +624,12 @@ impl Fsm for MeshGradientToolFsmState {
 						responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color: corner.color.into(), position });
 					}
 					MeshGradientTarget::Segment { segment_id, .. } => {
-						let Some(segment) = selected_mesh.gradient.edges().find(|edge| edge.segment_id == segment_id) else {
+						let Some(segment) = selected_mesh.surface.mesh.edges().find(|edge| edge.segment_id == segment_id) else {
 							return self;
 						};
 						let local_mouse = mesh_to_viewport.inverse().transform_point2(input.mouse.position);
 						let t = segment.segment.nearest(dvec2_to_point(local_mouse), DEFAULT_ACCURACY).t.clamp(0., 1.);
-						if selected_mesh.gradient.insert_grid_line(segment.segment_id, t).is_none() {
+						if selected_mesh.surface.mesh.insert_grid_line(segment.segment_id, selected_mesh.surface.gradient_space, t).is_none() {
 							return self;
 						}
 
@@ -584,7 +702,7 @@ impl Fsm for MeshGradientToolFsmState {
 									tool_data.selected_mesh = Some(SelectedMeshGradient {
 										layer,
 										mesh_index: index,
-										gradient: gradient.clone(),
+										surface: mesh_gradient_surface(meshes, index, gradient),
 										mesh_to_document,
 										source,
 										target: MeshGradientTarget::Corner {
@@ -647,7 +765,7 @@ impl Fsm for MeshGradientToolFsmState {
 									tool_data.selected_mesh = Some(SelectedMeshGradient {
 										layer,
 										mesh_index: index,
-										gradient: gradient.clone(),
+										surface: mesh_gradient_surface(meshes, index, gradient),
 										mesh_to_document,
 										source,
 										target: MeshGradientTarget::Handle {
@@ -702,7 +820,7 @@ impl Fsm for MeshGradientToolFsmState {
 									tool_data.selected_mesh = Some(SelectedMeshGradient {
 										layer,
 										mesh_index: index,
-										gradient: gradient.clone(),
+										surface: mesh_gradient_surface(meshes, index, gradient),
 										mesh_to_document,
 										source,
 										target: MeshGradientTarget::Segment {
@@ -785,7 +903,7 @@ impl Fsm for MeshGradientToolFsmState {
 						let desired_position = initial_corner + current_local_mouse - initial_mouse;
 						let snapped_local_mouse = snap_local_point(initial_corner, desired_position);
 						let candidate_gradient = |position| {
-							let mut gradient = selected_mesh.gradient.clone();
+							let mut gradient = selected_mesh.surface.mesh.clone();
 							gradient.set_corner_position(corner_index, position)?;
 							let is_valid = gradient.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()));
 							is_valid.then_some(gradient)
@@ -793,7 +911,7 @@ impl Fsm for MeshGradientToolFsmState {
 						let constrained_gradient = constrain_to_valid_region(snapped_local_mouse, valid_region_center, candidate_gradient);
 
 						if let Some(gradient) = constrained_gradient {
-							selected_mesh.gradient = gradient;
+							selected_mesh.surface.mesh = gradient;
 							selected_mesh.update_gradient_in_graph(responses);
 							responses.add(OverlaysMessage::Draw);
 						}
@@ -807,7 +925,7 @@ impl Fsm for MeshGradientToolFsmState {
 						let snapped_local_mouse = snap_local_point(*initial_local_mouse, current_local_mouse);
 						let candidate_gradient = |mouse_position| {
 							let delta = mouse_position - *initial_local_mouse;
-							let mut gradient = selected_mesh.gradient.clone();
+							let mut gradient = selected_mesh.surface.mesh.clone();
 							gradient.set_edge_handles(
 								*segment_id,
 								BezierHandles::Cubic {
@@ -820,7 +938,7 @@ impl Fsm for MeshGradientToolFsmState {
 						};
 
 						if let Some(gradient) = constrain_to_valid_region(snapped_local_mouse, *valid_region_center, candidate_gradient) {
-							selected_mesh.gradient = gradient;
+							selected_mesh.surface.mesh = gradient;
 							selected_mesh.update_gradient_in_graph(responses);
 							responses.add(OverlaysMessage::Draw);
 						}
@@ -834,14 +952,14 @@ impl Fsm for MeshGradientToolFsmState {
 						let delta = current_local_mouse - *initial_mouse;
 						let new_handle_position = snap_local_point(*initial_handle, *initial_handle + delta);
 						let candidate_gradient = |position| {
-							let mut gradient = selected_mesh.gradient.clone();
+							let mut gradient = selected_mesh.surface.mesh.clone();
 							gradient.set_handle_position(*handle_id, position)?;
 							let is_valid = gradient.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()));
 							is_valid.then_some(gradient)
 						};
 
 						if let Some(gradient) = constrain_to_valid_region(new_handle_position, *valid_region_center, candidate_gradient) {
-							selected_mesh.gradient = gradient;
+							selected_mesh.surface.mesh = gradient;
 							selected_mesh.update_gradient_in_graph(responses);
 							responses.add(OverlaysMessage::Draw);
 						}

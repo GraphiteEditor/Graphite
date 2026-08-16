@@ -5,7 +5,7 @@ use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
-pub use crate::mesh_gradient::{MeshGradient, MeshGradientCorner, MeshGradientEdge, MeshGradientEvaluator, MeshPatch};
+pub use crate::mesh_gradient::{MeshGradient, MeshGradientCorner, MeshGradientEdge, MeshGradientEvaluator, MeshGradientSurface, MeshPatch};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
@@ -470,6 +470,16 @@ fn space_channels<CS: color::ColorSpace>(color: Color) -> [f64; 4] {
 fn color_from_space_channels<CS: color::ColorSpace>(channels: [f64; 4]) -> Color {
 	let [red, green, blue] = CS::to_linear_srgb([channels[0] as f32, channels[1] as f32, channels[2] as f32]);
 	Color::from_rgbaf32_unchecked(red, green, blue, channels[3] as f32)
+}
+
+/// A color's channels in the selected gradient color space, alongside its straight alpha.
+pub(crate) fn gradient_space_channels(color: Color, space: GradientSpace) -> [f32; 4] {
+	with_space!(space, space_channels, color).map(|channel| channel as f32)
+}
+
+/// Converts selected gradient color-space channels and straight alpha back into `Color`.
+pub(crate) fn color_from_gradient_space_channels(channels: [f32; 4], space: GradientSpace) -> Color {
+	with_space!(space, color_from_space_channels, channels.map(|channel| channel as f64))
 }
 
 /// The channel carrying hue in a polar space, or `None` for a rectangular one.

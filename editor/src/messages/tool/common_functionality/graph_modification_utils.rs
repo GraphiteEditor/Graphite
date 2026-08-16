@@ -8,12 +8,13 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graphene_std::Color;
+use graphene_std::choice_type::{ChoiceTypeStatic, VariantMetadata};
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
+use graphene_std::vector::style::{FillChoice, GradientSpace, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{Gradient, GradientForm, GradientRamp, GradientSettings, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
@@ -475,6 +476,26 @@ pub fn gradient_to_viewport_transform(layer: LayerNodeIdentifier, network_interf
 	}
 
 	metadata.transform_to_viewport(layer)
+}
+
+/// The color spaces a mesh gradient offers, keeping the choice type's section groupings.
+/// Polar spaces are not supported for a mesh gradient, since a mesh offers neither
+/// a stop order to wind it along nor any guarantee that its corner loops do not wind a full turn.
+pub fn mesh_gradient_space_sections() -> Vec<Vec<(GradientSpace, &'static VariantMetadata)>> {
+	GradientSpace::list()
+		.iter()
+		.map(|section| section.iter().filter(|(space, _)| !space.is_polar()).map(|(space, metadata)| (*space, metadata)).collect::<Vec<_>>())
+		.filter(|section| !section.is_empty())
+		.collect()
+}
+
+/// The position of a space among the ones a mesh offers, which is what its dropdown selects by.
+pub fn mesh_gradient_space_index(space: GradientSpace) -> Option<u32> {
+	mesh_gradient_space_sections()
+		.into_iter()
+		.flatten()
+		.position(|(candidate, _)| candidate == space)
+		.map(|index| index as u32)
 }
 
 /// Tooltip description for a "Reverse Direction" gradient button, phrased for the given Gradient Form.

@@ -19,8 +19,9 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::MeshGradientSurface;
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, Stroke};
-use graphene_std::vector::{Gradient, GradientRamp, MeshGradient, PointId, Vector, VectorModification, VectorModificationType};
+use graphene_std::vector::{Gradient, GradientRamp, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -555,7 +556,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Write the mesh gradient to the Fill node's direct value.
-	pub fn fill_mesh_gradient_set(&mut self, mesh_gradient: MeshGradient) {
+	pub fn fill_mesh_gradient_set(&mut self, mesh_gradient: MeshGradientSurface) {
 		let Some(fill_node_id) = self
 			.get_output_layer()
 			.and_then(|output_layer| get_fill_node_id_with_direct_fill_input(output_layer, self.network_interface))
@@ -575,7 +576,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Write the mesh gradient to the Mesh Gradient Value node feeding the layer.
-	pub fn mesh_gradient_set(&mut self, mesh_gradient: MeshGradient) {
+	pub fn mesh_gradient_set(&mut self, mesh_gradient: MeshGradientSurface) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 		let Some(mesh_gradient_value_id) = get_upstream_mesh_gradient_value_node_id(output_layer, self.network_interface) else {
 			return;
