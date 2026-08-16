@@ -376,7 +376,8 @@ fn position_value_raises_into_the_into_group_reducer() {
 	assert_eq!(anchors.len(), 1, "The single position should group as one anchor point");
 }
 
-// The 'Colors to Gradient' node turns an entire `List<Color>` wire into one gradient with those colors as its stops
+// The 'Colors to Gradient' node turns an entire color wire into one gradient with those colors as its stops,
+// reaching its `List<Graphic>` connector through the embedding adapter
 #[test]
 fn color_list_wraps_through_the_colors_to_gradient_node() {
 	let color_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Color(graphene_std::Color::WHITE).into()), vec![NodeId(0)]);
@@ -384,20 +385,23 @@ fn color_list_wraps_through_the_colors_to_gradient_node() {
 	let mut raise_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	raise_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::ItemToListNode<Color>");
 
-	let mut colors_to_gradient_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
+	let mut graphic_adapter = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
+	graphic_adapter.identifier = ProtoNodeIdentifier::new("input_adapter<Graphic>");
+
+	let mut colors_to_gradient_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2)]), vec![NodeId(3)]);
 	colors_to_gradient_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::ColorsToGradientNode");
 
 	let network = ProtoNetwork {
 		inputs: vec![],
-		output: NodeId(2),
-		nodes: vec![(NodeId(0), color_node), (NodeId(1), raise_node), (NodeId(2), colors_to_gradient_node)],
+		output: NodeId(3),
+		nodes: vec![(NodeId(0), color_node), (NodeId(1), raise_node), (NodeId(2), graphic_adapter), (NodeId(3), colors_to_gradient_node)],
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
-	typing_context.update(&network).expect("A List<Color> wire should resolve the node's List<Color> implementation");
+	typing_context.update(&network).expect("A List<Color> wire should embed into the node's List<Graphic> connector");
 	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The node constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<graphene_std::vector::Gradient>> = futures::executor::block_on(tree.eval(NodeId(2), context));
+	let result: Option<Item<graphene_std::vector::Gradient>> = futures::executor::block_on(tree.eval(NodeId(3), context));
 	let gradient = result.expect("The color list should arrive wrapped as a gradient");
 	assert_eq!(gradient.element().len(), 1, "The single color should become the gradient's one stop");
 }

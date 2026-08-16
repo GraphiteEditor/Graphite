@@ -1764,9 +1764,9 @@ async fn map_points<V: MapVectorItems + 'n + Send>(
 
 /// Combines every vector path across the input into a single compound path.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub async fn combine_paths<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> Item<Vector> {
-	let graphic_list = content.into_graphic_list();
-	let flattened = graphic_list.clone().into_flattened_list::<Vector>();
+pub async fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
+	let graphic_list = content.clone();
+	let flattened = content.into_flattened_list::<Vector>();
 
 	// Create a `List` with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
 	let mut output_list = List::new_from_element(Vector::default());
@@ -2496,11 +2496,10 @@ async fn offset_points<V: MapVectorItems + 'n + Send>(
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn morph<I: IntoGraphicList>(
+async fn morph(
 	_: impl Ctx,
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
-	#[implementations(List<Graphic>, List<Vector>)]
-	content: I,
+	content: List<Graphic>,
 	/// The fractional part `[0, 1)` traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
 	progression: Item<Progression>,
 	/// Swap the direction of the progression between objects or along the control path.
@@ -2749,9 +2748,9 @@ async fn morph<I: IntoGraphicList>(
 	let (progression, reverse, distribution) = (progression.into_element(), reverse.into_element(), distribution.into_element());
 
 	// Preserve original `List<Graphic>` as upstream data so this group layer's nested layers can be edited by the tools.
-	let mut graphic_list_content = content.clone().into_graphic_list();
+	let mut graphic_list_content = content.clone();
 
-	// If the input isn't a List<Vector>, we convert it into one by flattening any List<Graphic> content.
+	// Only vector content can interpolate, so the rest is discarded by flattening.
 	let content = content.into_flattened_list::<Vector>();
 
 	// Not enough elements to interpolate between, so we return the input as-is
@@ -3622,6 +3621,11 @@ mod test {
 		List::new_from_element(Vector::from_bezpath(bezpath))
 	}
 
+	/// Stands in for the embedding adapter a compiled graph inserts ahead of a `List<Graphic>` connector.
+	fn embed_vectors(vectors: List<Vector>) -> List<Graphic> {
+		vectors.into_iter().map(|item| Item::new_from_element(Graphic::from(item))).collect()
+	}
+
 	fn vector_item_from_bezpath(bezpath: BezPath) -> Item<Vector> {
 		Item::new_from_element(Vector::from_bezpath(bezpath))
 	}
@@ -3936,7 +3940,7 @@ mod test {
 
 		let morphed = super::morph(
 			Footprint::default(),
-			rectangles,
+			embed_vectors(rectangles),
 			Item::new_from_element(0.5),
 			Item::new_from_element(false),
 			Item::new_from_element(InterpolationDistribution::default()),
@@ -3975,7 +3979,7 @@ mod test {
 
 		let morphed = super::morph(
 			Footprint::default(),
-			content,
+			embed_vectors(content),
 			Item::new_from_element(0.5),
 			Item::new_from_element(false),
 			Item::new_from_element(InterpolationDistribution::default()),
@@ -4031,7 +4035,7 @@ mod test {
 
 		let morphed = super::morph(
 			Footprint::default(),
-			content,
+			embed_vectors(content),
 			Item::new_from_element(0.5),
 			Item::new_from_element(false),
 			Item::new_from_element(InterpolationDistribution::default()),
