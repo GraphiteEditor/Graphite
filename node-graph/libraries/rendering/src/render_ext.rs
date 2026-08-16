@@ -161,7 +161,7 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 impl RenderExt for List<Gradient> {
 	type Output = Option<u64>;
 
-	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
+	/// Adds the gradient def through mutating the first argument, returning the gradient ID, or `None` when the list is empty.
 	fn render(
 		&self,
 		svg_defs: &mut String,
