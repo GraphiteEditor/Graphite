@@ -266,9 +266,15 @@ mod tests {
 		RecordLift::new(SourceNode(value))
 	}
 
-	fn extract<El: Clone + Send + Sync + 'static, N>(graph: N) -> RecordExtract<El, N> {
+	fn extract<El: Clone + Send + Sync + 'static, N: Node<ContextImpl<'static>>>(mut graph: N) -> RecordExtract<El, N> {
 		stack::reserve(1 << 12);
-		RecordExtract::new(graph, &element_layout::<El>())
+		let layout = element_layout::<El>();
+		graph.set_layout(crate::record::RecordLayout {
+			frame_bytes: layout.frame_bytes(),
+			plan: Vec::new(),
+			layout: layout.clone(),
+		});
+		RecordExtract::new(graph, &layout)
 	}
 
 	static SLOW_DOUBLE_RUNS: AtomicU32 = AtomicU32::new(0);
