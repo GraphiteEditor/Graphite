@@ -101,6 +101,18 @@ impl From<List<Gradient>> for Graphic {
 	}
 }
 
+// MeshGradient
+impl From<MeshGradient> for Graphic {
+	fn from(mesh_gradient: MeshGradient) -> Self {
+		Graphic::MeshGradient(List::new_from_element(mesh_gradient))
+	}
+}
+impl From<List<MeshGradient>> for Graphic {
+	fn from(mesh_gradient: List<MeshGradient>) -> Self {
+		Graphic::MeshGradient(mesh_gradient)
+	}
+}
+
 // String
 impl From<String> for Graphic {
 	fn from(text: String) -> Self {

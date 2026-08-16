@@ -62,6 +62,19 @@ impl ToolMetadata for MeshGradientTool {
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for MeshGradientTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		match message {
+			ToolMessage::MeshGradient(MeshGradientToolMessage::StartTransactionForColorStop) => {
+				if self.data.color_picker_transaction_open {
+					responses.add(DocumentMessage::EndTransaction);
+				}
+				responses.add(DocumentMessage::StartTransaction);
+				self.data.color_picker_transaction_open = true;
+			}
+			ToolMessage::MeshGradient(MeshGradientToolMessage::CommitTransactionForColorStop) => {
+				if self.data.color_picker_transaction_open {
+					responses.add(DocumentMessage::EndTransaction);
+					self.data.color_picker_transaction_open = false;
+				}
+			}
 			ToolMessage::MeshGradient(MeshGradientToolMessage::UpdateStopColor { color }) => {
 				let Some(selected_mesh) = self.data.selected_mesh.as_mut() else { return };
 
@@ -73,6 +86,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Mesh
 					responses.add(PropertiesPanelMessage::Refresh);
 					responses.add(OverlaysMessage::Draw);
 				}
+			}
+			ToolMessage::MeshGradient(MeshGradientToolMessage::CloseStopColorPicker) => {
+				if self.data.color_picker_transaction_open {
+					responses.add(DocumentMessage::EndTransaction);
+					self.data.color_picker_transaction_open = false;
+				}
+				self.data.color_picker_editing_color_stop = None;
 			}
 			_ => {
 				self.fsm_state.process_event(message, &mut self.data, context, &(), responses, false);
@@ -284,6 +304,7 @@ struct MeshGradientToolData {
 	auto_panning: AutoPanning,
 	auto_pan_shift: DVec2,
 	color_picker_editing_color_stop: Option<usize>,
+	color_picker_transaction_open: bool,
 }
 
 impl Fsm for MeshGradientToolFsmState {
@@ -428,6 +449,20 @@ impl Fsm for MeshGradientToolFsmState {
 					},
 					_ => self,
 				}
+			}
+			(state, MeshGradientToolMessage::SelectionChanged) => {
+				if matches!(state, MeshGradientToolFsmState::Dragging) {
+					responses.add(DocumentMessage::AbortTransaction);
+					tool_data.snap_manager.cleanup(responses);
+				} else if tool_data.color_picker_transaction_open {
+					responses.add(DocumentMessage::EndTransaction);
+				}
+				tool_data.color_picker_transaction_open = false;
+				tool_data.color_picker_editing_color_stop = None;
+				tool_data.selected_mesh = None;
+				responses.add(OverlaysMessage::Draw);
+
+				MeshGradientToolFsmState::default()
 			}
 
 			(_state @ MeshGradientToolFsmState::Ready { .. }, MeshGradientToolMessage::DeleteEdge) => {

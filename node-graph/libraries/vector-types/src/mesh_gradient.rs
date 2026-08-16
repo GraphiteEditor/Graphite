@@ -47,7 +47,8 @@ impl MeshPatch {
 	pub fn sampled_no_foldover(&self) -> bool {
 		const SUBDIVISIONS: usize = 64;
 		const RELATIVE_EPSILON: f64 = 1e-6;
-		const SAFETY_BUFFER: f64 = 0.1;
+		const FOLDOVER_SAFETY_ANGLE_DEGREES: f64 = 5.;
+		let minimum_normalized_jacobian = FOLDOVER_SAFETY_ANGLE_DEGREES.to_radians().sin();
 
 		for row in 0..=SUBDIVISIONS {
 			let v = row as f64 / SUBDIVISIONS as f64;
@@ -59,7 +60,7 @@ impl MeshPatch {
 				let scale = derivative_u.length() * derivative_v.length();
 				let determinant = derivative_u.perp_dot(derivative_v);
 
-				if !scale.is_finite() || !determinant.is_finite() || determinant <= (RELATIVE_EPSILON + SAFETY_BUFFER) * scale {
+				if !scale.is_finite() || !determinant.is_finite() || determinant <= (RELATIVE_EPSILON + minimum_normalized_jacobian) * scale {
 					return false;
 				}
 			}
@@ -69,6 +70,7 @@ impl MeshPatch {
 	}
 }
 
+/// Row-major storage for values arranged in a rectangular mesh grid.
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct MeshGrid<T> {
@@ -226,12 +228,12 @@ impl MeshGradient {
 			return None;
 		}
 
-		let mut vector = Vector::default();
+		let mut mesh_geometry = Vector::default();
 		let mut corner_points = Vec::with_capacity(corner_count);
 
 		for &position in positions {
-			let point_id = vector.point_domain.next_id();
-			vector.point_domain.push(point_id, position);
+			let point_id = mesh_geometry.point_domain.next_id();
+			mesh_geometry.point_domain.push(point_id, position);
 			corner_points.push(point_id);
 		}
 
@@ -241,12 +243,12 @@ impl MeshGradient {
 				let start_index = row * corner_columns + column;
 				let end_index = start_index + 1;
 
-				let segment_id = vector.segment_domain.next_id();
-				vector.push(
+				let segment_id = mesh_geometry.segment_domain.next_id();
+				mesh_geometry.push(
 					segment_id,
 					corner_points[start_index],
 					corner_points[end_index],
-					handles(positions[start_index], positions[end_index]),
+					line_to_cubic_bezier_handles(positions[start_index], positions[end_index]),
 					StrokeId::ZERO,
 				);
 				horizontal_edges.push(segment_id);
@@ -259,12 +261,12 @@ impl MeshGradient {
 				let start_index = row * corner_columns + column;
 				let end_index = start_index + corner_columns;
 
-				let segment_id = vector.segment_domain.next_id();
-				vector.push(
+				let segment_id = mesh_geometry.segment_domain.next_id();
+				mesh_geometry.push(
 					segment_id,
 					corner_points[start_index],
 					corner_points[end_index],
-					handles(positions[start_index], positions[end_index]),
+					line_to_cubic_bezier_handles(positions[start_index], positions[end_index]),
 					StrokeId::ZERO,
 				);
 				vertical_edges.push(segment_id);
@@ -281,7 +283,7 @@ impl MeshGradient {
 			.collect();
 
 		Some(Self {
-			mesh_geometry: vector,
+			mesh_geometry,
 			corner_points: MeshGrid::new(corner_points, corner_rows, corner_columns)?,
 			corner_colors: MeshGrid::new(corner_colors, corner_rows, corner_columns)?,
 			horizontal_edges: MeshGrid::new(horizontal_edges, corner_rows, corner_columns - 1)?,
@@ -371,7 +373,7 @@ impl MeshGradient {
 			.map(|(segment_id, segment, start, end)| MeshGradientEdge { segment_id, segment, start, end })
 	}
 
-	/// Set the corner position. The corresponding handles are also moved same amount.
+	/// Set the corner position by flat corner index. The corresponding handles are also moved same amount.
 	pub fn set_corner_position(&mut self, corner_index: usize, position: DVec2) -> Option<()> {
 		let point_id = *self.corner_points.get_flat(corner_index)?;
 		let point_index = self.mesh_geometry.point_domain.resolve_id(point_id)?;
@@ -392,6 +394,7 @@ impl MeshGradient {
 		Some(())
 	}
 
+	/// Set the corner color by flat corner index.
 	pub fn set_corner_color(&mut self, corner_index: usize, color: Color) -> Option<()> {
 		*self.corner_colors.get_flat_mut(corner_index)? = color;
 		Some(())
@@ -434,32 +437,36 @@ impl MeshGradient {
 		Some((axis, split_patch_index))
 	}
 
-	/// Inserts a new grid line through the provided segment at the given parameter.
-	pub fn insert_grid_line(&mut self, segment_id: SegmentId, t: f64) -> Option<()> {
+	/// Inserts a new grid line through the provided segment at the given parameter. The time has to be within (0, 1).
+	pub fn insert_grid_line(&mut self, segment_id: SegmentId, time: f64) -> Option<()> {
 		#[derive(Clone, Copy)]
-		struct SplitSource {
+		struct SegmentToSplit {
 			segment_id: SegmentId,
 			start_point_id: PointId,
 			end_point_id: PointId,
 			segment: PathSeg,
 		}
 
-		let (axis, split_patch_index) = self.grid_line_axis(segment_id)?;
-		let grid_line_insertion_index = split_patch_index + 1;
+		if !(0. < time && time < 1.) {
+			return None;
+		}
+
 		let evaluator = self.evaluator()?;
+		let (axis, split_patch_index) = self.grid_line_axis(segment_id)?;
 		let (split_edge_grid, _) = axis.edge_grids(&self.horizontal_edges, &self.vertical_edges);
 		let [across_corner_count, _] = axis.logical_indices(split_edge_grid.rows, split_edge_grid.columns);
+		let grid_line_insertion_index = split_patch_index + 1;
 		let across_patch_count = across_corner_count - 1;
 		let patch_columns = self.corner_points.columns - 1;
 
 		// Collect the existing segments that will be split by inserting new corners
-		let split_sources: Vec<SplitSource> = (0..across_corner_count)
+		let segments_to_split: Vec<SegmentToSplit> = (0..across_corner_count)
 			.map(|across| {
 				let [edge_row, edge_column] = axis.physical_indices(across, split_patch_index);
 				let segment_id = *split_edge_grid.get(edge_row, edge_column)?;
 				let [start_point_id, end_point_id] = self.mesh_geometry.points_from_id(segment_id)?;
 				let segment = self.mesh_geometry.path_segment_from_id(segment_id)?;
-				Some(SplitSource {
+				Some(SegmentToSplit {
 					segment_id,
 					start_point_id,
 					end_point_id,
@@ -469,31 +476,31 @@ impl MeshGradient {
 			.collect::<Option<_>>()?;
 
 		// Calculate the new corners' information
-		let inserted_positions: Vec<DVec2> = split_sources.iter().map(|source| point_to_dvec2(source.segment.eval(t))).collect();
-		let inserted_colors: Vec<Color> = (0..across_corner_count)
+		let new_corner_positions: Vec<DVec2> = segments_to_split.iter().map(|source| point_to_dvec2(source.segment.eval(time))).collect();
+		let new_corner_colors: Vec<Color> = (0..across_corner_count)
 			.map(|across| {
 				let (patch_across, across_t) = if across < across_patch_count { (across, 0.) } else { (across - 1, 1.) };
 				let [patch_row, patch_column] = axis.physical_indices(patch_across, split_patch_index);
 				let patch_index = patch_row * patch_columns + patch_column;
-				let [u, v] = axis.uv(t as f32, across_t);
+				let [u, v] = axis.uv(time as f32, across_t);
 				let [r, g, b, a] = evaluator.eval_color(patch_index, u, v);
 				Color::from_gamma_srgb_channels(r, g, b, a)
 			})
 			.collect();
 
-		let mut inserted_corners = Vec::with_capacity(across_corner_count);
-		for &position in &inserted_positions {
+		let mut new_corner_ids = Vec::with_capacity(across_corner_count);
+		for &position in &new_corner_positions {
 			let point_id = self.mesh_geometry.point_domain.next_id();
 			self.mesh_geometry.point_domain.push(point_id, position);
-			inserted_corners.push(point_id);
+			new_corner_ids.push(point_id);
 		}
 
 		// Split the existing segments by the new corners
 		let mut first_split_edges = Vec::with_capacity(across_corner_count);
 		let mut second_split_edges = Vec::with_capacity(across_corner_count);
-		for (source, &inserted_corner) in split_sources.iter().zip(&inserted_corners) {
-			let first_half = pathseg_points(source.segment.subsegment(0. ..t));
-			let second_half = pathseg_points(source.segment.subsegment(t..1.));
+		for (source, &inserted_corner) in segments_to_split.iter().zip(&new_corner_ids) {
+			let first_half = pathseg_points(source.segment.subsegment(0. ..time));
+			let second_half = pathseg_points(source.segment.subsegment(time..1.));
 
 			let first_segment_id = self.mesh_geometry.segment_domain.next_id();
 			self.mesh_geometry
@@ -508,21 +515,22 @@ impl MeshGradient {
 
 		// Create new segments along the axis
 		let mut connecting_edges = Vec::with_capacity(across_patch_count);
-		for (corner_pair, position_pair) in inserted_corners.windows(2).zip(inserted_positions.windows(2)) {
+		for (corner_pair, position_pair) in new_corner_ids.windows(2).zip(new_corner_positions.windows(2)) {
 			let &[start, end] = corner_pair else { unreachable!() };
 			let &[start_position, end_position] = position_pair else { unreachable!() };
 			let connecting_segment_id = self.mesh_geometry.segment_domain.next_id();
-			self.mesh_geometry.push(connecting_segment_id, start, end, handles(start_position, end_position), StrokeId::ZERO);
+			self.mesh_geometry
+				.push(connecting_segment_id, start, end, line_to_cubic_bezier_handles(start_position, end_position), StrokeId::ZERO);
 			connecting_edges.push(connecting_segment_id);
 		}
 
-		self.corner_points.splice_lines(axis, grid_line_insertion_index..grid_line_insertion_index, &[&inserted_corners])?;
-		self.corner_colors.splice_lines(axis, grid_line_insertion_index..grid_line_insertion_index, &[&inserted_colors])?;
+		self.corner_points.splice_lines(axis, grid_line_insertion_index..grid_line_insertion_index, &[&new_corner_ids])?;
+		self.corner_colors.splice_lines(axis, grid_line_insertion_index..grid_line_insertion_index, &[&new_corner_colors])?;
 		let (split_edge_grid, connecting_edge_grid) = axis.edge_grids_mut(&mut self.horizontal_edges, &mut self.vertical_edges);
 		split_edge_grid.splice_lines(axis, split_patch_index..grid_line_insertion_index, &[&first_split_edges, &second_split_edges])?;
 		connecting_edge_grid.splice_lines(axis, grid_line_insertion_index..grid_line_insertion_index, &[&connecting_edges])?;
 
-		let replaced_edges: Vec<_> = split_sources.iter().map(|source| source.segment_id).collect();
+		let replaced_edges: Vec<_> = segments_to_split.iter().map(|source| source.segment_id).collect();
 		let point_count = self.mesh_geometry.point_domain.ids().len();
 		self.mesh_geometry.segment_domain.retain(|id| !replaced_edges.contains(id), point_count);
 
@@ -595,12 +603,6 @@ impl MeshGradient {
 	}
 }
 
-pub struct MeshSubpatch {
-	pub corner_positions: [DVec2; 4],
-	pub patch_index: usize,
-	pub uv_bounds: [DVec2; 2],
-}
-
 #[derive(Clone, Copy)]
 struct MeshCornerDerivatives {
 	u: Vec4,
@@ -665,7 +667,7 @@ impl MeshPatchEvaluator {
 	}
 
 	/// Evaluate interpolated position by bilinearly-blended Coons patch.
-	fn eval_position(&self, u: f64, v: f64) -> DVec2 {
+	pub fn eval_position(&self, u: f64, v: f64) -> DVec2 {
 		let [top_seg, bottom_seg, left_seg, right_seg] = self.edges;
 		let [top_left, top_right, bottom_left, bottom_right] = self.corners;
 
@@ -681,31 +683,7 @@ impl MeshPatchEvaluator {
 		s_c + s_d - s_b
 	}
 
-	/// Returns the Jacobian matrix of bilinearly blended Coons patch.
-	fn position_jacobian(&self, u: f64, v: f64) -> DMat2 {
-		position_jacobian(self.corners, self.edges, u, v)
-	}
-
-	/// Returns 81 samples of (uv, position) tuples in the patch.
-	pub fn inverse_seeds(&self) -> Vec<(DVec2, DVec2)> {
-		const INITIAL_SUBDIVISIONS: usize = 8;
-		let seed_count = (INITIAL_SUBDIVISIONS + 1).pow(2);
-		let mut seeds = Vec::with_capacity(seed_count);
-
-		for row in 0..=INITIAL_SUBDIVISIONS {
-			let v = row as f64 / INITIAL_SUBDIVISIONS as f64;
-
-			for column in 0..=INITIAL_SUBDIVISIONS {
-				let u = column as f64 / INITIAL_SUBDIVISIONS as f64;
-				let uv = DVec2::new(u, v);
-				seeds.push((uv, self.eval_position(u, v)));
-			}
-		}
-
-		seeds
-	}
-
-	/// Returns 0.0-1.0 approximated uv by calculating the inverse of the bilinearly-blended Coons patch using Newton's method.
+	/// Returns [0,1] approximated uv by calculating the inverse of the bilinearly-blended Coons patch using Newton's method.
 	pub fn inverse_patch_position(&self, target_position: DVec2, initial_uv: DVec2) -> DVec2 {
 		const MAX_ITERATION: usize = 16;
 		const POSITION_TOLERANCE: f64 = 1e-6;
@@ -715,8 +693,9 @@ impl MeshPatchEvaluator {
 		let mut uv = initial_uv;
 
 		for _ in 0..MAX_ITERATION {
+			let DVec2 { x: u, y: v } = uv;
 			// Check if the current uv position is already within the tolerance
-			let position = self.eval_position(uv.x, uv.y);
+			let position = self.eval_position(u, v);
 			let error = position - target_position;
 			let error_squared = error.length_squared();
 
@@ -729,7 +708,7 @@ impl MeshPatchEvaluator {
 			}
 
 			// If not, calculate the next uv by subtracting the inverse Jacobian multiplied by the error
-			let jacobian = self.position_jacobian(uv.x, uv.y);
+			let jacobian = position_jacobian(self.corners, self.edges, u, v);
 			let determinant = jacobian.determinant();
 			if !determinant.is_finite() || determinant.abs() <= JACOBIAN_EPSILON {
 				break;
@@ -907,89 +886,13 @@ impl MeshGradientEvaluator {
 		Some(Self { patches: patch_color_data })
 	}
 
-	// TODO: Use `patch_evaluator` instead
 	fn eval_color(&self, patch_index: usize, u: f32, v: f32) -> [f32; 4] {
 		self.patches[patch_index].eval_color(u, v)
 	}
 
-	/// Recursively subdivide only the regions whose parallelogram does not approximate the source geometry and color within the given tolerances.
-	pub fn subdivide_patches_adaptive(
-		&self,
-		minimum_subpatch_size: f64,
-		mesh_transform: DAffine2,
-		parent_transform: DAffine2,
-		position_error_tolerance: f64,
-		color_error_tolerance: f32,
-	) -> Option<Vec<MeshSubpatch>> {
-		if !position_error_tolerance.is_finite() || position_error_tolerance < 0. || !color_error_tolerance.is_finite() || color_error_tolerance < 0. {
-			return None;
-		}
-
-		let samples = [0., 0.25, 0.5, 0.75, 1.];
-		let mut subpatches = Vec::new();
-		for (patch_index, patch) in self.patches.iter().enumerate() {
-			let mut pending = vec![(0., 0., 1.)];
-			while let Some((u_start, v_start, stride)) = pending.pop() {
-				let corner_uvs = [
-					DVec2::new(u_start, v_start),
-					DVec2::new(u_start + stride, v_start),
-					DVec2::new(u_start, v_start + stride),
-					DVec2::new(u_start + stride, v_start + stride),
-				];
-				let corner_positions = corner_uvs.map(|uv| mesh_transform.transform_point2(patch.eval_position(uv.x, uv.y)));
-				let [top_left_pos, top_right_pos, bottom_left_pos, _bottom_right_pos] = corner_positions;
-
-				let patch_to_viewport = parent_transform * mesh_transform;
-				let [top_left, top_right, bottom_left, bottom_right] = corner_uvs.map(|uv| patch_to_viewport.transform_point2(patch.eval_position(uv.x, uv.y)));
-
-				let u_size = top_left.distance(top_right).max(bottom_left.distance(bottom_right));
-				let v_size = top_left.distance(bottom_left).max(top_right.distance(bottom_right));
-				let subpatch_size = u_size.max(v_size);
-
-				let reached_minimum_size = subpatch_size <= minimum_subpatch_size;
-
-				let mut within_tolerance = true;
-				'error_samples: for &local_v in &samples {
-					for &local_u in &samples {
-						let u = u_start + local_u * stride;
-						let v = v_start + local_v * stride;
-						let expected_pos = mesh_transform.transform_point2(patch.eval_position(u, v));
-						let expected_color = Vec4::from_array(patch.eval_color(u as f32, v as f32));
-						// Approximate the position with the rendered parallelogram and the color by linearly interpolating its cubic top and bottom color curves.
-						let approximated_pos = top_left_pos + (top_right_pos - top_left_pos) * local_u + (bottom_left_pos - top_left_pos) * local_v;
-						let top_color = Vec4::from_array(patch.eval_color(u as f32, v_start as f32));
-						let bottom_color = Vec4::from_array(patch.eval_color(u as f32, (v_start + stride) as f32));
-						let approximated_color = top_color.lerp(bottom_color, local_v as f32);
-
-						let position_error_vector = expected_pos - approximated_pos;
-						let position_error = parent_transform.transform_vector2(position_error_vector).length();
-						let color_error = (expected_color - approximated_color).abs().max_element();
-						if !position_error.is_finite() || !color_error.is_finite() || position_error > position_error_tolerance || color_error > color_error_tolerance {
-							within_tolerance = false;
-							break 'error_samples;
-						}
-					}
-				}
-
-				if within_tolerance || reached_minimum_size {
-					subpatches.push(MeshSubpatch {
-						corner_positions,
-						patch_index,
-						uv_bounds: [DVec2::new(u_start, v_start), DVec2::new(u_start + stride, v_start + stride)],
-					});
-				} else {
-					let half_stride = stride / 2.;
-					pending.extend([
-						(u_start + half_stride, v_start + half_stride, half_stride),
-						(u_start, v_start + half_stride, half_stride),
-						(u_start + half_stride, v_start, half_stride),
-						(u_start, v_start, half_stride),
-					]);
-				}
-			}
-		}
-
-		Some(subpatches)
+	/// Returns the cached evaluators in row-major patch order.
+	pub fn patch_evaluators(&self) -> impl Iterator<Item = &MeshPatchEvaluator> {
+		self.patches.iter()
 	}
 
 	pub fn patch_evaluator(&self, patch_index: usize) -> Option<&MeshPatchEvaluator> {
@@ -1004,24 +907,21 @@ impl RenderComplexity for MeshGradient {
 }
 
 impl core_types::bounds::BoundingBox for MeshGradient {
-	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
-		let start = transform.transform_point2(DVec2::ZERO);
-		let end = transform.transform_point2(DVec2::X);
-		core_types::bounds::RenderBoundingBox::Rectangle([start.min(end), start.max(end)])
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
+		core_types::bounds::BoundingBox::bounding_box(&self.mesh_geometry, transform, include_stroke)
 	}
 
-	fn thumbnail_bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
-		let start = transform.transform_point2(DVec2::ZERO);
-		let end = transform.transform_point2(DVec2::X);
-		core_types::bounds::RenderBoundingBox::Rectangle([start.min(end), start.max(end)])
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
+		core_types::bounds::BoundingBox::thumbnail_bounding_box(&self.mesh_geometry, transform, include_stroke)
 	}
 }
 
 /// Helper to create initial handles.
-fn handles(start: DVec2, end: DVec2) -> (Option<DVec2>, Option<DVec2>) {
+fn line_to_cubic_bezier_handles(start: DVec2, end: DVec2) -> (Option<DVec2>, Option<DVec2>) {
 	(Some(start + (end - start) / 3.), Some(end + (start - end) / 3.))
 }
 
+/// Returns Jacobian matrix of the UV position in a single Coons patch.
 fn position_jacobian(corners: [DVec2; 4], edges: [PathSeg; 4], u: f64, v: f64) -> DMat2 {
 	let [top, bottom, left, right] = edges;
 	let [top_left, top_right, bottom_left, bottom_right] = corners;
@@ -1053,14 +953,122 @@ mod tests {
 		assert!((actual - expected).length() < 1e-10, "expected {expected:?}, got {actual:?}");
 	}
 
-	#[test]
-	fn adaptive_subdivision_accounts_for_color_error() {
-		let mesh = MeshGradient::default();
-		let evaluator = mesh.evaluator().unwrap();
-		let geometry_only = evaluator.subdivide_patches_adaptive(0.125, DAffine2::IDENTITY, DAffine2::IDENTITY, f64::MAX, f32::MAX).unwrap();
-		let with_color = evaluator.subdivide_patches_adaptive(0.125, DAffine2::IDENTITY, DAffine2::IDENTITY, f64::MAX, 0.).unwrap();
+	fn point(position: DVec2) -> kurbo::Point {
+		kurbo::Point::new(position.x, position.y)
+	}
 
-		assert!(with_color.len() > geometry_only.len());
+	fn line_edges([top_left, top_right, bottom_left, bottom_right]: [DVec2; 4]) -> [PathSeg; 4] {
+		[
+			PathSeg::Line(kurbo::Line::new(point(top_left), point(top_right))),
+			PathSeg::Line(kurbo::Line::new(point(bottom_left), point(bottom_right))),
+			PathSeg::Line(kurbo::Line::new(point(top_left), point(bottom_left))),
+			PathSeg::Line(kurbo::Line::new(point(top_right), point(bottom_right))),
+		]
+	}
+
+	fn patch_evaluator(corners: [DVec2; 4], edges: [PathSeg; 4]) -> MeshPatchEvaluator {
+		MeshPatchEvaluator {
+			corners,
+			edges,
+			gamma_colors: [Vec4::ZERO; 4],
+			color_slopes: [MeshCornerDerivatives { u: Vec4::ZERO, v: Vec4::ZERO }; 4],
+			lengths: [1.; 4],
+		}
+	}
+
+	fn curved_patch_evaluator() -> MeshPatchEvaluator {
+		let corners = [DVec2::new(0., 0.), DVec2::new(2., 0.), DVec2::new(0., 2.), DVec2::new(2., 2.)];
+		let [top_left, top_right, bottom_left, bottom_right] = corners.map(point);
+		let edges = [
+			PathSeg::Cubic(kurbo::CubicBez::new(top_left, kurbo::Point::new(0.5, -0.5), kurbo::Point::new(1.5, 0.5), top_right)),
+			PathSeg::Cubic(kurbo::CubicBez::new(bottom_left, kurbo::Point::new(0.5, 2.5), kurbo::Point::new(1.5, 1.5), bottom_right)),
+			PathSeg::Cubic(kurbo::CubicBez::new(top_left, kurbo::Point::new(-0.4, 0.5), kurbo::Point::new(0.4, 1.5), bottom_left)),
+			PathSeg::Cubic(kurbo::CubicBez::new(top_right, kurbo::Point::new(2.4, 0.5), kurbo::Point::new(1.6, 1.5), bottom_right)),
+		];
+		patch_evaluator(corners, edges)
+	}
+
+	#[test]
+	fn eval_color_reproduces_an_affine_color_field() {
+		let base = Vec4::new(0.1, 0.2, 0.3, 0.4);
+		let u_delta = Vec4::new(0.2, 0.1, -0.1, 0.2);
+		let v_delta = Vec4::new(0.3, -0.1, 0.2, 0.1);
+		let evaluator = MeshPatchEvaluator {
+			corners: [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE],
+			edges: line_edges([DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE]),
+			gamma_colors: [base, base + u_delta, base + v_delta, base + u_delta + v_delta],
+			color_slopes: [MeshCornerDerivatives { u: u_delta, v: v_delta }; 4],
+			lengths: [1.; 4],
+		};
+
+		for [u, v] in [[0., 0.], [0.37, 0.61], [1., 1.]] {
+			let actual = Vec4::from_array(evaluator.eval_color(u, v));
+			let expected = base + u_delta * u + v_delta * v;
+			assert!((actual - expected).abs().max_element() < 1e-6, "expected {expected:?}, got {actual:?}");
+		}
+	}
+
+	#[test]
+	fn eval_position_reproduces_patch_boundaries() {
+		let evaluator = curved_patch_evaluator();
+
+		for t in [0., 0.25, 0.5, 0.75, 1.] {
+			assert_position(evaluator.eval_position(t, 0.), point_to_dvec2(evaluator.edges[0].eval(t)));
+			assert_position(evaluator.eval_position(t, 1.), point_to_dvec2(evaluator.edges[1].eval(t)));
+			assert_position(evaluator.eval_position(0., t), point_to_dvec2(evaluator.edges[2].eval(t)));
+			assert_position(evaluator.eval_position(1., t), point_to_dvec2(evaluator.edges[3].eval(t)));
+		}
+	}
+
+	#[test]
+	fn position_jacobian_matches_affine_patch() {
+		let transform = DAffine2::from_cols(DVec2::new(3., 0.5), DVec2::new(-0.25, 2.), DVec2::new(4., -3.));
+		let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|corner| transform.transform_point2(corner));
+		let edges = line_edges(corners);
+
+		for [u, v] in [[0., 0.], [0.25, 0.75], [0.5, 0.5], [1., 1.]] {
+			let jacobian = position_jacobian(corners, edges, u, v);
+			assert_position(jacobian.x_axis, transform.matrix2.x_axis);
+			assert_position(jacobian.y_axis, transform.matrix2.y_axis);
+		}
+	}
+
+	#[test]
+	fn bounding_box_uses_mesh_geometry() {
+		let bounds = core_types::bounds::BoundingBox::bounding_box(&MeshGradient::default(), DAffine2::IDENTITY, false);
+		assert_eq!(bounds, core_types::bounds::RenderBoundingBox::Rectangle([DVec2::ZERO, DVec2::ONE]));
+	}
+
+	#[test]
+	fn position_jacobian_matches_numerical_derivative_for_curved_patch() {
+		let evaluator = curved_patch_evaluator();
+		let (u, v, step) = (0.37, 0.61, 1e-6);
+
+		let numerical_u = (evaluator.eval_position(u + step, v) - evaluator.eval_position(u - step, v)) / (2. * step);
+		let numerical_v = (evaluator.eval_position(u, v + step) - evaluator.eval_position(u, v - step)) / (2. * step);
+		let jacobian = position_jacobian(evaluator.corners, evaluator.edges, u, v);
+
+		assert!((jacobian.x_axis - numerical_u).length() < 1e-8, "expected {:?}, got {:?}", numerical_u, jacobian.x_axis);
+		assert!((jacobian.y_axis - numerical_v).length() < 1e-8, "expected {:?}, got {:?}", numerical_v, jacobian.y_axis);
+	}
+
+	#[test]
+	fn inverse_patch_position_recovers_curved_patch_uv() {
+		let evaluator = curved_patch_evaluator();
+		let expected = DVec2::new(0.37, 0.61);
+		let target = evaluator.eval_position(expected.x, expected.y);
+		let actual = evaluator.inverse_patch_position(target, DVec2::splat(0.5));
+
+		assert!((actual - expected).length() < 1e-6, "expected {expected:?}, got {actual:?}");
+	}
+
+	#[test]
+	fn inverse_patch_position_clamps_to_patch_uv_bounds() {
+		let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE];
+		let evaluator = patch_evaluator(corners, line_edges(corners));
+		let actual = evaluator.inverse_patch_position(DVec2::new(1.5, 0.4), DVec2::splat(0.5));
+
+		assert_position(actual, DVec2::new(1., 0.4));
 	}
 
 	#[test]
