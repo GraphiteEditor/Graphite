@@ -533,13 +533,21 @@ impl Graphic {
 			}
 			Graphic::RasterCPU(_) | Graphic::RasterCPUList(_) => false,
 			Graphic::RasterGPU(_) | Graphic::RasterGPUList(_) => false,
-			Graphic::Color(item) => item.element().is_opaque(),
-			Graphic::ColorList(list) => list.element(0).is_some_and(|color| color.is_opaque()),
+			Graphic::Color(item) => item_opacity_is_full(item) && item.element().is_opaque(),
+			Graphic::ColorList(list) => !list.is_empty() && every_item_has_full_opacity(list) && list.iter_element_values().all(|color| color.is_opaque()),
 			// A `Clear` spread cuts off to transparency past the ends, leaving the rest of the region unpainted
-			Graphic::Gradient(item) => item.attribute_cloned_or_default::<GradientSpread>(ATTR_GRADIENT_SPREAD) != GradientSpread::Clear && item.element().iter().all(|stop| stop.color.is_opaque()),
+			Graphic::Gradient(item) => {
+				item_opacity_is_full(item)
+					&& item.attribute_cloned_or_default::<GradientSpread>(ATTR_GRADIENT_SPREAD) != GradientSpread::Clear
+					&& item.element().iter().all(|stop| stop.color.is_opaque())
+			}
 			Graphic::GradientList(list) => {
-				list.attribute_cloned_or_default::<GradientSpread>(ATTR_GRADIENT_SPREAD, 0) != GradientSpread::Clear
-					&& list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque()))
+				!list.is_empty()
+					&& every_item_has_full_opacity(list)
+					&& (0..list.len()).all(|index| {
+						list.attribute_cloned_or_default::<GradientSpread>(ATTR_GRADIENT_SPREAD, index) != GradientSpread::Clear
+							&& list.element(index).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque()))
+					})
 			}
 			Graphic::Text(_) | Graphic::TextList(_) => false,
 		}
@@ -562,11 +570,11 @@ impl Graphic {
 					list.attribute::<Appearance>(ATTR_APPEARANCE, index),
 				)
 			}),
-			Graphic::Color(item) => item.element().a() == 0.,
-			Graphic::ColorList(list) => list.iter_element_values().all(|color| color.a() == 0.),
+			Graphic::Color(item) => item_opacity_is_zero(item) || item.element().a() == 0.,
+			Graphic::ColorList(list) => every_item_has_zero_opacity(list) || list.iter_element_values().all(|color| color.a() == 0.),
 			// A stopless ramp paints as solid black, matching `Gradient::evaluate`, so it counts as transparent only once it has stops
-			Graphic::Gradient(item) => !item.element().is_empty() && item.element().iter().all(|stop| stop.color.a() == 0.),
-			Graphic::GradientList(list) => list.iter_element_values().all(|stops| !stops.is_empty() && stops.iter().all(|stop| stop.color.a() == 0.)),
+			Graphic::Gradient(item) => item_opacity_is_zero(item) || (!item.element().is_empty() && item.element().iter().all(|stop| stop.color.a() == 0.)),
+			Graphic::GradientList(list) => every_item_has_zero_opacity(list) || list.iter_element_values().all(|stops| !stops.is_empty() && stops.iter().all(|stop| stop.color.a() == 0.)),
 			// Their content is never inspected, so zeroed opacity is the only invisibility these can report
 			Graphic::RasterCPU(item) => item_opacity_is_zero(item),
 			Graphic::RasterGPU(item) => item_opacity_is_zero(item),
