@@ -6,6 +6,7 @@ use core_types::{Color, color::SRGBA8};
 use glam::{DAffine2, DMat2, DVec2, Vec2, Vec4};
 use image::ImageEncoder;
 use kurbo::BezPath;
+use vector_types::GradientInterpolation;
 use vector_types::{
 	gradient::{GradientSpace, MeshGradient},
 	mesh_gradient::{MeshGradientEvaluator, MeshPatchEvaluator},
@@ -35,7 +36,7 @@ const MESH_MAXIMUM_CLIP_INFLATION: f64 = 0.5;
 // ===================
 
 /// Returns adaptively sampled points that approximate a function with linear segments.
-fn linear_approximated_points<T>(func: &impl Fn(f32) -> T, error: &impl Fn(T, T) -> f32, start: f32, end: f32, depth: usize) -> Vec<(f32, T)>
+fn linear_approximation_points<T>(func: &impl Fn(f32) -> T, error: &impl Fn(T, T) -> f32, start: f32, end: f32, depth: usize) -> Vec<(f32, T)>
 where
 	T: Copy + Add<Output = T> + Sub<Output = T> + Mul<f32, Output = T>,
 {
@@ -55,8 +56,8 @@ where
 
 	if needs_split && depth < MAX_DEPTH {
 		let mid = (start + end) / 2.;
-		let mut points = linear_approximated_points(func, error, start, mid, depth + 1);
-		points.extend(linear_approximated_points(func, error, mid, end, depth + 1).into_iter().skip(1));
+		let mut points = linear_approximation_points(func, error, start, mid, depth + 1);
+		points.extend(linear_approximation_points(func, error, mid, end, depth + 1).into_iter().skip(1));
 		points
 	} else {
 		vec![(start, start_result), (end, end_result)]
@@ -71,12 +72,6 @@ pub(super) fn evaluate_source_over_bezier_alpha(index: usize, time: f32) -> f32 
 		2 => 3. * (1. - time) / (3. - 2. * time),
 		_ => unreachable!(),
 	}
-}
-
-/// Evaluates a cubic Bezier color curve at the given parameter.
-pub(super) fn evaluate_cubic_bezier_color(control_points: [Vec4; 4], time: f32) -> Vec4 {
-	let one_minus_t = 1. - time;
-	control_points[0] * one_minus_t.powi(3) + control_points[1] * (3. * time * one_minus_t.powi(2)) + control_points[2] * (3. * time.powi(2) * one_minus_t) + control_points[3] * time.powi(3)
 }
 
 /// Quantizes gamma-encoded floating-point color channels into sRGBA8.
@@ -100,6 +95,8 @@ const SVG_LAYER_MAX_COUNT: usize = 64;
 /// The v-direction weights that blend the stacked SVG color layers.
 #[derive(Clone, Debug)]
 pub(super) enum SvgMeshVLayers {
+	/// Uses top-left color for the entire patch, no blend required.
+	Stepped,
 	/// The four Bezier control rows blended by the Bernstein basis, reproducing the bicubic surface.
 	BicubicBernstein,
 	/// Surface rows sampled at the given v values, blended linearly between adjacent rows.
@@ -107,16 +104,21 @@ pub(super) enum SvgMeshVLayers {
 }
 
 impl SvgMeshVLayers {
-	/// Chooses the layer scheme for a color space, refining the rows until their linear blend is within tolerance.
-	pub(super) fn for_space(space: GradientSpace, evaluator: &MeshGradientEvaluator) -> Self {
-		// Gamma sRGB is the only color space widely supported by major SVG renderers.
-		// A bicubic color field in that space can therefore be reproduced at composite time by baking the bicubic Bezier surface into gradients and alpha masks,
-		// since the Bernstein basis is a partition of unity and source-over compositing of opaque layers is also convex combination.
-		// Every other space has to approximate it with multiple rows, blended linearly between neighbors.
-		if space == GradientSpace::RgbGamma {
-			return Self::BicubicBernstein;
+	/// Chooses the appropriate layer scheme for the chosen color space and interpolation method.
+	pub(super) fn new(evaluator: &MeshGradientEvaluator) -> Self {
+		match (evaluator.interpolation_method(), evaluator.space()) {
+			// A smooth gamma-sRGB surface can be reproduced from its four Bezier control rows using Bernstein source-over weights.
+			(GradientInterpolation::Smooth, GradientSpace::RgbGamma) => Self::BicubicBernstein,
+			// A bilinear gamma-sRGB surface is exactly two horizontal linear rows blended by one linear vertical mask.
+			(GradientInterpolation::Linear, GradientSpace::RgbGamma) => Self::LinearRows(vec![0., 1.]),
+			// Conversion from the interpolation color space to gamma sRGB makes the rendered surface nonlinear, so approximate it with adaptive rows.
+			(GradientInterpolation::Smooth | GradientInterpolation::Linear, _) => Self::LinearRows(Self::adaptive_row_knots(evaluator)),
+			(GradientInterpolation::Stepped, _) => Self::Stepped,
 		}
+	}
 
+	/// Adaptively places v-direction row knots until linear blending approximates the color surface within tolerance.
+	fn adaptive_row_knots(evaluator: &MeshGradientEvaluator) -> Vec<f32> {
 		// Vec of (start, end, error)
 		let mut intervals = vec![(0_f32, 1_f32, linear_row_interval_error(evaluator, 0., 1.))];
 		let smallest_interval = 1. / (1_u32 << SVG_LAYER_MAX_DEPTH) as f32;
@@ -138,11 +140,12 @@ impl SvgMeshVLayers {
 			intervals.push((middle, end, linear_row_interval_error(evaluator, middle, end)));
 		}
 		intervals.sort_by(|first, second| first.0.total_cmp(&second.0));
-		Self::LinearRows(std::iter::once(0.).chain(intervals.iter().map(|&(_, end, _)| end)).collect())
+		std::iter::once(0.).chain(intervals.iter().map(|&(_, end, _)| end)).collect()
 	}
 
 	pub(super) fn layer_count(&self) -> usize {
 		match self {
+			Self::Stepped => 1,
 			Self::BicubicBernstein => 4,
 			Self::LinearRows(knots) => knots.len(),
 		}
@@ -151,6 +154,7 @@ impl SvgMeshVLayers {
 	/// Returns the alpha the indexed layer needs for source-over compositing to reproduce its weight.
 	pub(super) fn source_over_alpha(&self, index: usize, v: f32) -> f32 {
 		match self {
+			Self::Stepped => 0.,
 			Self::BicubicBernstein => evaluate_source_over_bezier_alpha(index, v),
 			// Layers are painted bottom-up, so everything below `index` is already covered wherever this layer is opaque.
 			// One clamped ramp per layer therefore composites into a linear blend of the two nearest rows.
@@ -161,18 +165,17 @@ impl SvgMeshVLayers {
 	/// The v range the indexed layer's weight ramps across, or `None` when that weight is not a plain clamped ramp.
 	pub(super) fn source_over_ramp(&self, index: usize) -> Option<[f32; 2]> {
 		match self {
+			Self::Stepped => None,
 			Self::BicubicBernstein => None,
 			Self::LinearRows(knots) => Some([knots[index], knots[index + 1]]),
 		}
 	}
 
 	/// Returns the u-direction color curve painted by the indexed layer.
-	pub(super) fn layer_color_curve(&self, patch_evaluator: &MeshPatchEvaluator, index: usize, u: f32) -> Vec4 {
+	pub(super) fn evaluate_layer_u_color(&self, patch_evaluator: &MeshPatchEvaluator, index: usize, u: f32) -> Vec4 {
 		match self {
-			Self::BicubicBernstein => {
-				let control_points = patch_evaluator.bicubic_bezier_control_points();
-				evaluate_cubic_bezier_color(control_points[index], u)
-			}
+			Self::Stepped => Vec4::from_array(patch_evaluator.evaluate_color(0., 0.)),
+			Self::BicubicBernstein => patch_evaluator.evaluate_bicubic_bezier_row(index, u),
 			Self::LinearRows(knots) => Vec4::from_array(patch_evaluator.evaluate_color(u, knots[index])),
 		}
 	}
@@ -297,9 +300,9 @@ fn gradient_stop_element(offset: f32, opacity: f32, gamma_color: [f32; 4]) -> St
 }
 
 /// Returns SVG gradient stops that approximate a scalar alpha function.
-pub(super) fn alpha_func_to_gradient_stops_string(func: &impl Fn(f32) -> f32) -> String {
+pub(super) fn alpha_curve_to_gradient_stops_string(func: &impl Fn(f32) -> f32) -> String {
 	let error_func = |a: f32, b: f32| (a - b).abs();
-	linear_approximated_points(func, &error_func, 0., 1., 0)
+	linear_approximation_points(func, &error_func, 0., 1., 0)
 		.into_iter()
 		.map(|(arg, result)| gradient_stop_element(arg, result, Color::WHITE.to_gamma_srgb_channels()))
 		.collect::<String>()
@@ -308,7 +311,7 @@ pub(super) fn alpha_func_to_gradient_stops_string(func: &impl Fn(f32) -> f32) ->
 /// Encodes a u-direction color curve as adaptively sampled SVG gradient stops.
 pub(super) fn u_color_curve_to_gradient_stops_string(func: &impl Fn(f32) -> Vec4) -> String {
 	let error_func = |a: Vec4, b: Vec4| (a - b).abs().max_element();
-	linear_approximated_points(func, &error_func, 0., 1., 0)
+	linear_approximation_points(func, &error_func, 0., 1., 0)
 		.into_iter()
 		.map(|(argument, result)| gradient_stop_element(argument, 1., result.to_array()))
 		.collect::<String>()
@@ -323,7 +326,7 @@ pub(super) fn clamped_ramp_gradient_stops_string() -> String {
 /// Encodes a scalar alpha curve as an opaque grayscale gradient for use by a luminance mask.
 pub(super) fn u_alpha_curve_to_gradient_stops_string(func: &impl Fn(f32) -> f32) -> String {
 	let error_func = |a: f32, b: f32| (a - b).abs();
-	linear_approximated_points(func, &error_func, 0., 1., 0)
+	linear_approximation_points(func, &error_func, 0., 1., 0)
 		.into_iter()
 		.map(|(offset, alpha)| gradient_stop_element(offset, 1., [alpha, alpha, alpha, 1.]))
 		.collect::<String>()
@@ -543,7 +546,7 @@ struct VelloSubpatchBrushes {
 fn vello_vertical_mask(func: &impl Fn(f32) -> f32, start: f32, end: f32) -> peniko::Brush {
 	let remap_offset = |value: f32| (value - start) / (end - start);
 	let error = |a: f32, b: f32| (a - b).abs();
-	let stops = linear_approximated_points(func, &error, start, end, 0).into_iter().map(|(v, alpha)| {
+	let stops = linear_approximation_points(func, &error, start, end, 0).into_iter().map(|(v, alpha)| {
 		(
 			remap_offset(v),
 			SRGBA8 {
@@ -589,7 +592,7 @@ fn vello_subpatch_color_brushes(patch_evaluator: &MeshPatchEvaluator, subpatch: 
 	let [top_color, bottom_color] = [uv_min.y, uv_max.y].map(|v| {
 		let curve = |u| Vec4::from_array(patch_evaluator.evaluate_color(u, v));
 		let error = |a: Vec4, b: Vec4| (a - b).abs().max_element();
-		let stops = linear_approximated_points(&curve, &error, uv_min.x, uv_max.x, 0).into_iter().map(|(u, mut color)| {
+		let stops = linear_approximation_points(&curve, &error, uv_min.x, uv_max.x, 0).into_iter().map(|(u, mut color)| {
 			color.w = 1.;
 			(remap_offset(u, uv_min.x, uv_max.x), gamma_color_to_srgba8(color.to_array()))
 		});
@@ -615,12 +618,12 @@ fn vello_subpatch_alpha_brushes(patch_evaluator: &MeshPatchEvaluator, subpatch: 
 		gamma_color_to_srgba8([alpha, alpha, alpha, 1.])
 	};
 
-	// This matches the color approximation used to decide adaptive subdivision: preserve the cubic
+	// This matches the color approximation used to decide adaptive subdivision: preserve the
 	// horizontal edge curves, then interpolate them linearly in the local v direction.
 	let [top_color, bottom_color] = [uv_min.y, uv_max.y].map(|v| {
 		let curve = |u| patch_evaluator.evaluate_color(u, v)[3];
 		let error = |a: f32, b: f32| (a - b).abs();
-		let stops = linear_approximated_points(&curve, &error, uv_min.x, uv_max.x, 0)
+		let stops = linear_approximation_points(&curve, &error, uv_min.x, uv_max.x, 0)
 			.into_iter()
 			.map(|(u, alpha)| (remap_offset(u), opaque_grayscale(alpha)));
 		vello_linear_gradient(DVec2::ZERO, DVec2::X, stops)
@@ -717,8 +720,8 @@ mod tests {
 	#[test]
 	fn stacked_oklab_rows_reproduce_the_color_surface() {
 		let mesh = mesh_with_corner_colors([Color::BLACK, Color::WHITE, Color::BLUE, Color::YELLOW]);
-		let evaluator = mesh.evaluator(GradientSpace::OkLab).unwrap();
-		let layers = SvgMeshVLayers::for_space(GradientSpace::OkLab, &evaluator);
+		let evaluator = mesh.evaluator(GradientSpace::OkLab, GradientInterpolation::Smooth).unwrap();
+		let layers = SvgMeshVLayers::new(&evaluator);
 
 		let mut worst_error = 0_f32;
 		for patch in evaluator.patch_evaluators() {
@@ -727,10 +730,10 @@ mod tests {
 				for v_step in 0..=256 {
 					let v = v_step as f32 / 256.;
 
-					let mut composited = layers.layer_color_curve(patch, layers.layer_count() - 1, u);
+					let mut composited = layers.evaluate_layer_u_color(patch, layers.layer_count() - 1, u);
 					for index in (0..layers.layer_count() - 1).rev() {
 						let alpha = layers.source_over_alpha(index, v);
-						composited = composited.lerp(layers.layer_color_curve(patch, index, u), alpha);
+						composited = composited.lerp(layers.evaluate_layer_u_color(patch, index, u), alpha);
 					}
 
 					let expected = Vec4::from_array(patch.evaluate_color(u, v));
@@ -745,8 +748,8 @@ mod tests {
 	#[test]
 	fn oklab_row_weights_stay_a_partition_of_unity() {
 		let mesh = mesh_with_corner_colors([Color::BLACK, Color::WHITE, Color::BLUE, Color::YELLOW]);
-		let evaluator = mesh.evaluator(GradientSpace::OkLab).unwrap();
-		let layers = SvgMeshVLayers::for_space(GradientSpace::OkLab, &evaluator);
+		let evaluator = mesh.evaluator(GradientSpace::OkLab, GradientInterpolation::Smooth).unwrap();
+		let layers = SvgMeshVLayers::new(&evaluator);
 
 		for v_step in 0..=64 {
 			let v = v_step as f32 / 64.;
@@ -767,7 +770,7 @@ mod tests {
 	#[test]
 	fn adaptive_subdivision_accounts_for_color_error() {
 		let mesh = MeshGradient::default();
-		let evaluator = mesh.evaluator(GradientSpace::RgbGamma).unwrap();
+		let evaluator = mesh.evaluator(GradientSpace::RgbGamma, GradientInterpolation::Smooth).unwrap();
 		let geometry_only = subdivide_patches_adaptive(&evaluator, 0.125, DAffine2::IDENTITY, DAffine2::IDENTITY, f64::MAX, f32::MAX).unwrap();
 		let with_color = subdivide_patches_adaptive(&evaluator, 0.125, DAffine2::IDENTITY, DAffine2::IDENTITY, f64::MAX, 0.).unwrap();
 
@@ -777,7 +780,7 @@ mod tests {
 	#[test]
 	fn adaptive_subdivision_rejects_non_finite_transform() {
 		let mesh = MeshGradient::default();
-		let evaluator = mesh.evaluator(GradientSpace::RgbGamma).unwrap();
+		let evaluator = mesh.evaluator(GradientSpace::RgbGamma, GradientInterpolation::Smooth).unwrap();
 		let non_finite_transform = DAffine2::from_scale(DVec2::splat(f64::NAN));
 
 		assert!(subdivide_patches_adaptive(&evaluator, 0.125, DAffine2::IDENTITY, non_finite_transform, 0.25, 0.01).is_none());

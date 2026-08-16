@@ -18,6 +18,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, No
 use graph_craft::{Type, concrete};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::brush::brush_stroke::BrushTrace;
+use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::{
@@ -2599,7 +2600,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 	if let ResolvedFill::MeshGradient { surface } = fill.clone() {
 		let surface = *surface;
-		let entries = graph_modification_utils::mesh_gradient_space_sections()
+		let space_entries = graph_modification_utils::mesh_gradient_space_sections()
 			.into_iter()
 			.map(|section| {
 				section
@@ -2626,16 +2627,56 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			})
 			.collect();
 
-		let mut row = vec![TextLabel::new("Space").widget_instance()];
-		add_blank_assist(&mut row);
-		row.extend_from_slice(&[
+		let mut space_row = vec![TextLabel::new("Space").widget_instance()];
+		add_blank_assist(&mut space_row);
+		space_row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			DropdownInput::new(entries)
+			DropdownInput::new(space_entries)
 				.selected_index(graph_modification_utils::mesh_gradient_space_index(surface.gradient_space))
 				.tooltip_description("The color space the mesh interpolates its corner colors through.")
 				.widget_instance(),
 		]);
-		widgets.push(LayoutGroup::row(row));
+		widgets.push(LayoutGroup::row(space_row));
+
+		let interpolation_entries = GradientInterpolation::list()
+			.iter()
+			.map(|section| {
+				section
+					.iter()
+					.map(|(interpolation, metadata)| {
+						let interpolation = *interpolation;
+						let surface = surface.clone();
+
+						MenuListEntry::new(metadata.name)
+							.label(metadata.label)
+							.tooltip_label(metadata.label)
+							.tooltip_description(metadata.description.unwrap_or_default())
+							.on_update(update_value(
+								move |_| {
+									TaggedValue::MeshGradient(MeshGradientSurface {
+										gradient_interpolation: interpolation,
+										..surface.clone()
+									})
+								},
+								node_id,
+								FillInput,
+							))
+							.on_commit(commit_value)
+					})
+					.collect()
+			})
+			.collect();
+
+		let mut interpolation_row = vec![TextLabel::new("Interpolation").widget_instance()];
+		add_blank_assist(&mut interpolation_row);
+		interpolation_row.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			DropdownInput::new(interpolation_entries)
+				.selected_index(Some(surface.gradient_interpolation as u32))
+				.tooltip_description("The path the corners interpolate along, deciding whether the gradient jumps, turns corners, or flows smoothly through them.")
+				.widget_instance(),
+		]);
+		widgets.push(LayoutGroup::row(interpolation_row));
 	}
 
 	if let ResolvedFill::Gradient {

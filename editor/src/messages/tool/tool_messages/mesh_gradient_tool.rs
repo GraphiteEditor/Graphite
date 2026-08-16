@@ -15,7 +15,7 @@ use graphene_std::subpath::{BezierHandles, pathseg_points};
 use graphene_std::vector::algorithms::util::pathseg_tangent;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::style::{GradientSpace, MeshGradientSurface};
-use graphene_std::vector::{HandleId, MeshGradient, SegmentId};
+use graphene_std::vector::{GradientInterpolation, HandleId, MeshGradient, SegmentId};
 use graphene_std::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_TRANSFORM, Graphic};
 use kurbo::{DEFAULT_ACCURACY, ParamCurve, ParamCurveNearest};
 
@@ -29,6 +29,7 @@ pub struct MeshGradientTool {
 #[derive(Default)]
 pub struct MeshGradientOptions {
 	space: GradientSpace,
+	interpolation: GradientInterpolation,
 }
 
 #[impl_message(Message, ToolMessage, MeshGradient)]
@@ -60,6 +61,7 @@ pub enum MeshGradientToolMessage {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MeshGradientOptionsUpdate {
 	Space(GradientSpace),
+	Interpolation(GradientInterpolation),
 }
 
 impl ToolMetadata for MeshGradientTool {
@@ -81,15 +83,19 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Mesh
 			ToolMessage::MeshGradient(MeshGradientToolMessage::UpdateOptions { options }) => {
 				match options {
 					MeshGradientOptionsUpdate::Space(space) => self.options.space = space,
+					MeshGradientOptionsUpdate::Interpolation(interpolation) => self.options.interpolation = interpolation,
 				}
 
-				let space = self.options.space;
-				apply_mesh_gradient_options(context, responses, |surface| surface.gradient_space = space);
+				apply_mesh_gradient_options(context, responses, |surface| {
+					surface.gradient_space = self.options.space;
+					surface.gradient_interpolation = self.options.interpolation;
+				});
 				self.refresh_options(responses);
 			}
 			ToolMessage::MeshGradient(MeshGradientToolMessage::SelectionChanged) => {
 				if let Some(surface) = first_selected_mesh_gradient_surface(context.document) {
 					self.options.space = surface.gradient_space;
+					self.options.interpolation = surface.gradient_interpolation;
 					self.refresh_options(responses);
 				}
 				self.fsm_state.process_event(message, &mut self.data, context, &(), responses, false);
@@ -147,7 +153,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Mesh
 
 impl LayoutHolder for MeshGradientTool {
 	fn layout(&self) -> Layout {
-		let entries = graph_modification_utils::mesh_gradient_space_sections()
+		let space_entries = graph_modification_utils::mesh_gradient_space_sections()
 			.into_iter()
 			.map(|section| {
 				section
@@ -167,15 +173,30 @@ impl LayoutHolder for MeshGradientTool {
 					.collect()
 			})
 			.collect();
-		let space = DropdownInput::new(entries)
+		let space = DropdownInput::new(space_entries)
 			.selected_index(graph_modification_utils::mesh_gradient_space_index(self.options.space))
 			.tooltip_description("The color space the mesh interpolates its corner colors through.")
+			.widget_instance();
+
+		let interpolation_entries = MenuListEntry::sections_from_choice_type(|interpolation| {
+			MeshGradientToolMessage::UpdateOptions {
+				options: MeshGradientOptionsUpdate::Interpolation(interpolation),
+			}
+			.into()
+		});
+		let interpolation = DropdownInput::new(interpolation_entries)
+			.selected_index(Some(self.options.interpolation as u32))
+			.tooltip_description("The path the corners interpolate along, deciding whether the gradient jumps, turns corners, or flows smoothly through them.")
 			.widget_instance();
 
 		Layout(vec![LayoutGroup::row(vec![
 			TextLabel::new("Space").widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			space,
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextLabel::new("Interpolation").widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			interpolation,
 		])])
 	}
 }
@@ -628,8 +649,13 @@ impl Fsm for MeshGradientToolFsmState {
 							return self;
 						};
 						let local_mouse = mesh_to_viewport.inverse().transform_point2(input.mouse.position);
-						let t = segment.segment.nearest(dvec2_to_point(local_mouse), DEFAULT_ACCURACY).t.clamp(0., 1.);
-						if selected_mesh.surface.mesh.insert_grid_line(segment.segment_id, selected_mesh.surface.gradient_space, t).is_none() {
+						let time = segment.segment.nearest(dvec2_to_point(local_mouse), DEFAULT_ACCURACY).t.clamp(0., 1.);
+						if selected_mesh
+							.surface
+							.mesh
+							.insert_grid_line(segment.segment_id, selected_mesh.surface.gradient_space, selected_mesh.surface.gradient_interpolation, time)
+							.is_none()
+						{
 							return self;
 						}
 

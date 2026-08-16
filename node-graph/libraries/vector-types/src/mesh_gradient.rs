@@ -190,7 +190,7 @@ impl MeshGridLineAxis {
 
 /// The serialized exchange form of a mesh gradient: its patches, with whole-mesh settings as sibling fields
 /// serialized only when non-default.
-#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MeshGradientSurface {
 	pub mesh: MeshGradient,
@@ -198,6 +198,16 @@ pub struct MeshGradientSurface {
 	pub gradient_space: GradientSpace,
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientInterpolation::is_default"))]
 	pub gradient_interpolation: GradientInterpolation,
+}
+
+impl Default for MeshGradientSurface {
+	fn default() -> Self {
+		Self {
+			mesh: MeshGradient::default(),
+			gradient_space: GradientSpace::default(),
+			gradient_interpolation: GradientInterpolation::Smooth,
+		}
+	}
 }
 
 impl From<MeshGradient> for MeshGradientSurface {
@@ -389,11 +399,11 @@ impl MeshGradient {
 
 	// TODO: Research the way to handle polar color spaces for mesh gradient
 	/// Returns a new `MeshGradientEvaluator` whose Hermite color field is expressed in `space`.
-	pub fn evaluator(&self, space: GradientSpace) -> Option<MeshGradientEvaluator> {
+	pub fn evaluator(&self, space: GradientSpace, interpolation: GradientInterpolation) -> Option<MeshGradientEvaluator> {
 		if space.is_polar() {
 			return None;
 		}
-		MeshGradientEvaluator::new(self, space)
+		MeshGradientEvaluator::new(self, space, interpolation)
 	}
 
 	/// Returns the read only mesh gradient's geometry.
@@ -487,7 +497,7 @@ impl MeshGradient {
 	}
 
 	/// Inserts a new grid line through the provided segment at the given parameter. The time has to be within (0, 1).
-	pub fn insert_grid_line(&mut self, segment_id: SegmentId, space: GradientSpace, time: f64) -> Option<()> {
+	pub fn insert_grid_line(&mut self, segment_id: SegmentId, space: GradientSpace, interpolation: GradientInterpolation, time: f64) -> Option<()> {
 		#[derive(Clone, Copy)]
 		struct SegmentToSplit {
 			segment_id: SegmentId,
@@ -500,7 +510,7 @@ impl MeshGradient {
 			return None;
 		}
 
-		let evaluator = self.evaluator(space)?;
+		let evaluator = self.evaluator(space, interpolation)?;
 		let (axis, split_patch_index) = self.grid_line_axis(segment_id)?;
 		let (split_edge_grid, _) = axis.edge_grids(&self.horizontal_edges, &self.vertical_edges);
 		let [across_corner_count, _] = axis.logical_indices(split_edge_grid.rows, split_edge_grid.columns);
@@ -658,6 +668,20 @@ struct MeshCornerDerivatives {
 	v: Vec4,
 }
 
+#[derive(Clone, Copy)]
+enum MeshPatchInterpolation {
+	Stepped,
+	Linear,
+	Smooth {
+		/// Slopes of corner colors for bicubic hermite interpolation. [top-left, top-right, bottom-left, bottom-right]
+		color_slopes: [MeshCornerDerivatives; 4],
+		/// Linear length of between each corner. [top, bottom, left, right]
+		lengths: [f32; 4],
+		/// The Bezier restatement of the Hermite color data, built alongside it so the two cannot drift apart.
+		bezier_control_points: [[Vec4; 4]; 4],
+	},
+}
+
 /// A cached mesh patch for subdivision into subpatches in rendering phase.
 #[derive(Clone, Copy)]
 pub struct MeshPatchEvaluator {
@@ -667,66 +691,61 @@ pub struct MeshPatchEvaluator {
 	pub edges: [PathSeg; 4],
 	/// Color-space channels and straight alpha. [top-left, top-right, bottom-left, bottom-right]
 	colors: [Vec4; 4],
-	/// Slopes of corner colors for bicubic hermite interpolation. [top-left, top-right, bottom-left, bottom-right]
-	color_slopes: [MeshCornerDerivatives; 4],
-	/// Linear length of between each corner. [top, bottom, left, right]
-	lengths: [f32; 4],
 	/// Color space used by `colors` and `color_slopes`.
 	space: GradientSpace,
-	/// The Bezier restatement of the Hermite color data, built alongside it so the two cannot drift apart.
-	bezier_control_points: [[Vec4; 4]; 4],
+	/// Color interpolation method.
+	interpolation: MeshPatchInterpolation,
 }
 
 impl MeshPatchEvaluator {
-	fn new(corners: [DVec2; 4], edges: [PathSeg; 4], colors: [Vec4; 4], color_slopes: [MeshCornerDerivatives; 4], lengths: [f32; 4], space: GradientSpace) -> Self {
-		Self {
-			corners,
-			edges,
-			colors,
-			color_slopes,
-			lengths,
-			space,
-			bezier_control_points: bicubic_bezier_control_net(&colors, &color_slopes, &lengths),
-		}
-	}
-
-	/// Evaluates the raw interpolated color-space channels using bicubic Hermite interpolation.
+	/// Evaluates the raw interpolated color-space channels using the selected interpolation method.
 	fn evaluate_channels(&self, u: f32, v: f32) -> [f32; 4] {
-		let hermite = |a: f32, ma: f32, b: f32, mb: f32, t: f32| -> f32 {
-			let t_power_2 = t * t;
-			let t_power_3 = t_power_2 * t;
-
-			let h1 = 2. * t_power_3 - 3. * t_power_2 + 1.;
-			let h2 = -2. * t_power_3 + 3. * t_power_2;
-			let h3 = t_power_3 - 2. * t_power_2 + t;
-			let h4 = t_power_3 - t_power_2;
-
-			ma * h3 + a * h1 + b * h2 + mb * h4
-		};
-
 		let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = self.colors;
-		let [top_length, bottom_length, left_length, right_length] = self.lengths;
-		let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = self.color_slopes;
 
-		std::array::from_fn(|channel| {
-			let top_color_interpolated = hermite(
-				top_left_color[channel],
-				top_left_color_slope.u[channel] * top_length,
-				top_right_color[channel],
-				top_right_color_slope.u[channel] * top_length,
-				u,
-			);
-			let bottom_color_interpolated = hermite(
-				bottom_left_color[channel],
-				bottom_left_color_slope.u[channel] * bottom_length,
-				bottom_right_color[channel],
-				bottom_right_color_slope.u[channel] * bottom_length,
-				u,
-			);
-			let top_slope_interpolated = hermite(top_left_color_slope.v[channel] * left_length, 0., top_right_color_slope.v[channel] * right_length, 0., u);
-			let bottom_slope_interpolated = hermite(bottom_left_color_slope.v[channel] * left_length, 0., bottom_right_color_slope.v[channel] * right_length, 0., u);
-			hermite(top_color_interpolated, top_slope_interpolated, bottom_color_interpolated, bottom_slope_interpolated, v)
-		})
+		match &self.interpolation {
+			MeshPatchInterpolation::Stepped => top_left_color.to_array(),
+			MeshPatchInterpolation::Linear => {
+				let top = top_left_color.lerp(top_right_color, u);
+				let bottom = bottom_left_color.lerp(bottom_right_color, u);
+				top.lerp(bottom, v).to_array()
+			}
+			MeshPatchInterpolation::Smooth { color_slopes, lengths, .. } => {
+				let hermite = |a: f32, ma: f32, b: f32, mb: f32, t: f32| -> f32 {
+					let t_power_2 = t * t;
+					let t_power_3 = t_power_2 * t;
+
+					let h1 = 2. * t_power_3 - 3. * t_power_2 + 1.;
+					let h2 = -2. * t_power_3 + 3. * t_power_2;
+					let h3 = t_power_3 - 2. * t_power_2 + t;
+					let h4 = t_power_3 - t_power_2;
+
+					ma * h3 + a * h1 + b * h2 + mb * h4
+				};
+
+				let [top_length, bottom_length, left_length, right_length] = lengths;
+				let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = color_slopes;
+
+				std::array::from_fn(|channel| {
+					let top_color_interpolated = hermite(
+						top_left_color[channel],
+						top_left_color_slope.u[channel] * top_length,
+						top_right_color[channel],
+						top_right_color_slope.u[channel] * top_length,
+						u,
+					);
+					let bottom_color_interpolated = hermite(
+						bottom_left_color[channel],
+						bottom_left_color_slope.u[channel] * bottom_length,
+						bottom_right_color[channel],
+						bottom_right_color_slope.u[channel] * bottom_length,
+						u,
+					);
+					let top_slope_interpolated = hermite(top_left_color_slope.v[channel] * left_length, 0., top_right_color_slope.v[channel] * right_length, 0., u);
+					let bottom_slope_interpolated = hermite(bottom_left_color_slope.v[channel] * left_length, 0., bottom_right_color_slope.v[channel] * right_length, 0., u);
+					hermite(top_color_interpolated, top_slope_interpolated, bottom_color_interpolated, bottom_slope_interpolated, v)
+				})
+			}
+		}
 	}
 
 	/// Evaluates the interpolated color and returns gamma-sRGB channels for rendering.
@@ -817,9 +836,14 @@ impl MeshPatchEvaluator {
 		uv.clamp(DVec2::ZERO, DVec2::ONE)
 	}
 
-	/// Returns the 4x4 control points of the patch in bicubic Bezier surface representation.
-	pub fn bicubic_bezier_control_points(&self) -> &[[Vec4; 4]; 4] {
-		&self.bezier_control_points
+	/// Evaluates one horizontal Bezier control row of a smooth patch.
+	pub fn evaluate_bicubic_bezier_row(&self, row: usize, u: f32) -> Vec4 {
+		let MeshPatchInterpolation::Smooth { bezier_control_points, .. } = &self.interpolation else {
+			unreachable!("Bicubic Bernstein layers require smooth interpolation");
+		};
+		let [a, b, c, d] = bezier_control_points[row];
+		let one_minus_u = 1. - u;
+		a * one_minus_u.powi(3) + b * (3. * u * one_minus_u.powi(2)) + c * (3. * u.powi(2) * one_minus_u) + d * u.powi(3)
 	}
 }
 
@@ -862,11 +886,12 @@ fn bicubic_bezier_control_net(colors: &[Vec4; 4], color_slopes: &[MeshCornerDeri
 pub struct MeshGradientEvaluator {
 	/// List of required data for color interpolation, row major order.
 	patches: Vec<MeshPatchEvaluator>,
+	space: GradientSpace,
+	interpolation: GradientInterpolation,
 }
 
 impl MeshGradientEvaluator {
-	// TODO: probably it is better to use u/v for slope calculation
-	pub fn new(mesh_gradient: &MeshGradient, space: GradientSpace) -> Option<Self> {
+	pub fn new(mesh_gradient: &MeshGradient, space: GradientSpace, interpolation: GradientInterpolation) -> Option<Self> {
 		let [corner_rows, corner_columns] = mesh_gradient.corner_points.dimensions();
 		if corner_rows < 2 || corner_columns < 2 {
 			return None;
@@ -927,15 +952,18 @@ impl MeshGradientEvaluator {
 			clamped_row * corner_columns + clamped_column
 		};
 
-		let mut corner_slopes = Vec::with_capacity(corner_rows * corner_columns);
-		for row in 0..corner_rows as isize {
-			for col in 0..corner_columns as isize {
-				let curr_index = sample_index(row, col);
-				let u = calculate_color_slope(sample_index(row, col - 1), curr_index, sample_index(row, col + 1));
-				let v = calculate_color_slope(sample_index(row - 1, col), curr_index, sample_index(row + 1, col));
-				corner_slopes.push(MeshCornerDerivatives { u, v });
+		let corner_slopes = (interpolation == GradientInterpolation::Smooth).then(|| {
+			let mut slopes = Vec::with_capacity(corner_rows * corner_columns);
+			for row in 0..corner_rows as isize {
+				for col in 0..corner_columns as isize {
+					let curr_index = sample_index(row, col);
+					let u = calculate_color_slope(sample_index(row, col - 1), curr_index, sample_index(row, col + 1));
+					let v = calculate_color_slope(sample_index(row - 1, col), curr_index, sample_index(row + 1, col));
+					slopes.push(MeshCornerDerivatives { u, v });
+				}
 			}
-		}
+			slopes
+		});
 
 		let mut patch_color_data = Vec::with_capacity(patch_rows.checked_mul(patch_columns)?);
 		for row in 0..patch_rows {
@@ -944,20 +972,53 @@ impl MeshGradientEvaluator {
 				let top_left_index = row * corner_columns + column;
 				let corner_indices = [top_left_index, top_left_index + 1, top_left_index + corner_columns, top_left_index + corner_columns + 1];
 				let patch_colors = corner_indices.map(|index| colors[index]);
-				let color_slopes = corner_indices.map(|index| corner_slopes[index]);
 
 				let [top_left_pos, top_right_pos, bottom_left_pos, bottom_right_pos] = patch.corners;
-				let lengths = [
-					top_left_pos.distance(top_right_pos) as f32,
-					bottom_left_pos.distance(bottom_right_pos) as f32,
-					top_left_pos.distance(bottom_left_pos) as f32,
-					top_right_pos.distance(bottom_right_pos) as f32,
-				];
-				patch_color_data.push(MeshPatchEvaluator::new(patch.corners, patch.edges, patch_colors, color_slopes, lengths, space));
+
+				let interpolation = match interpolation {
+					GradientInterpolation::Stepped => MeshPatchInterpolation::Stepped,
+					GradientInterpolation::Linear => MeshPatchInterpolation::Linear,
+					GradientInterpolation::Smooth => {
+						let corner_slopes = corner_slopes.as_ref().expect("Smooth interpolation must have color slopes");
+						let color_slopes = corner_indices.map(|index| corner_slopes[index]);
+						let lengths = [
+							top_left_pos.distance(top_right_pos) as f32,
+							bottom_left_pos.distance(bottom_right_pos) as f32,
+							top_left_pos.distance(bottom_left_pos) as f32,
+							top_right_pos.distance(bottom_right_pos) as f32,
+						];
+						let bezier_control_points = bicubic_bezier_control_net(&patch_colors, &color_slopes, &lengths);
+						MeshPatchInterpolation::Smooth {
+							color_slopes,
+							lengths,
+							bezier_control_points,
+						}
+					}
+				};
+
+				patch_color_data.push(MeshPatchEvaluator {
+					corners: patch.corners,
+					edges: patch.edges,
+					colors: patch_colors,
+					space,
+					interpolation,
+				});
 			}
 		}
 
-		Some(Self { patches: patch_color_data })
+		Some(Self {
+			patches: patch_color_data,
+			space,
+			interpolation,
+		})
+	}
+
+	pub fn interpolation_method(&self) -> GradientInterpolation {
+		self.interpolation
+	}
+
+	pub fn space(&self) -> GradientSpace {
+		self.space
 	}
 
 	fn evaluate_color(&self, patch_index: usize, u: f32, v: f32) -> [f32; 4] {
@@ -1041,14 +1102,30 @@ mod tests {
 	}
 
 	fn patch_evaluator(corners: [DVec2; 4], edges: [PathSeg; 4]) -> MeshPatchEvaluator {
-		MeshPatchEvaluator::new(
+		MeshPatchEvaluator {
 			corners,
 			edges,
-			[Vec4::ZERO; 4],
-			[MeshCornerDerivatives { u: Vec4::ZERO, v: Vec4::ZERO }; 4],
-			[1.; 4],
-			GradientSpace::RgbGamma,
-		)
+			colors: [Vec4::ZERO; 4],
+			space: GradientSpace::RgbGamma,
+			interpolation: MeshPatchInterpolation::Linear,
+		}
+	}
+
+	fn mesh_with_corner_colors(mut color: impl FnMut(usize) -> Color) -> MeshGradient {
+		let mut mesh = MeshGradient::default();
+		for corner_index in 0..mesh.size() {
+			mesh.set_corner_color(corner_index, color(corner_index)).unwrap();
+		}
+		mesh
+	}
+
+	fn single_patch_mesh(colors: [Color; 4]) -> MeshGradient {
+		let positions = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE];
+		let mut mesh = MeshGradient::from_positions(&positions, 2, 2).unwrap();
+		for (corner_index, color) in colors.into_iter().enumerate() {
+			mesh.set_corner_color(corner_index, color).unwrap();
+		}
+		mesh
 	}
 
 	fn curved_patch_evaluator() -> MeshPatchEvaluator {
@@ -1068,14 +1145,20 @@ mod tests {
 		let base = Vec4::new(0.1, 0.2, 0.3, 0.4);
 		let u_delta = Vec4::new(0.2, 0.1, -0.1, 0.2);
 		let v_delta = Vec4::new(0.3, -0.1, 0.2, 0.1);
-		let evaluator = MeshPatchEvaluator::new(
-			[DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE],
-			line_edges([DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE]),
-			[base, base + u_delta, base + v_delta, base + u_delta + v_delta],
-			[MeshCornerDerivatives { u: u_delta, v: v_delta }; 4],
-			[1.; 4],
-			GradientSpace::RgbGamma,
-		);
+		let colors = [base, base + u_delta, base + v_delta, base + u_delta + v_delta];
+		let color_slopes = [MeshCornerDerivatives { u: u_delta, v: v_delta }; 4];
+		let lengths = [1.; 4];
+		let evaluator = MeshPatchEvaluator {
+			corners: [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE],
+			edges: line_edges([DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE]),
+			colors,
+			space: GradientSpace::RgbGamma,
+			interpolation: MeshPatchInterpolation::Smooth {
+				color_slopes,
+				lengths,
+				bezier_control_points: bicubic_bezier_control_net(&colors, &color_slopes, &lengths),
+			},
+		};
 
 		for [u, v] in [[0., 0.], [0.37, 0.61], [1., 1.]] {
 			let actual = Vec4::from_array(evaluator.evaluate_color(u, v));
@@ -1085,19 +1168,58 @@ mod tests {
 	}
 
 	#[test]
+	fn stepped_interpolation_uses_the_top_left_patch_color() {
+		let colors = [Color::BLACK, Color::WHITE, Color::BLUE, Color::YELLOW];
+		let evaluator = single_patch_mesh(colors).evaluator(GradientSpace::RgbGamma, GradientInterpolation::Stepped).unwrap();
+		let patch = evaluator.patch_evaluator(0).unwrap();
+		let expected = Vec4::from_array(colors[0].to_gamma_srgb_channels());
+
+		for [u, v] in [[0., 0.], [0.25, 0.75], [1., 1.]] {
+			let actual = Vec4::from_array(patch.evaluate_color(u, v));
+			assert!((actual - expected).abs().max_element() < 1e-6, "expected {expected:?}, got {actual:?} at ({u}, {v})");
+		}
+	}
+
+	#[test]
+	fn linear_interpolation_bilinearly_blends_the_patch_colors() {
+		let colors = [Color::BLACK, Color::WHITE, Color::BLUE, Color::YELLOW];
+		let evaluator = single_patch_mesh(colors).evaluator(GradientSpace::RgbGamma, GradientInterpolation::Linear).unwrap();
+		let patch = evaluator.patch_evaluator(0).unwrap();
+		let [top_left, top_right, bottom_left, bottom_right] = colors.map(|color| Vec4::from_array(color.to_gamma_srgb_channels()));
+
+		for [u, v] in [[0., 0.], [0.25, 0.75], [1., 1.]] {
+			let expected = top_left.lerp(top_right, u).lerp(bottom_left.lerp(bottom_right, u), v);
+			let actual = Vec4::from_array(patch.evaluate_color(u, v));
+			assert!((actual - expected).abs().max_element() < 1e-6, "expected {expected:?}, got {actual:?} at ({u}, {v})");
+		}
+	}
+
+	#[test]
+	fn linear_oklab_interpolation_bilinearly_blends_oklab_channels() {
+		let colors = [Color::BLACK, Color::WHITE, Color::BLUE, Color::YELLOW];
+		let evaluator = single_patch_mesh(colors).evaluator(GradientSpace::OkLab, GradientInterpolation::Linear).unwrap();
+		let patch = evaluator.patch_evaluator(0).unwrap();
+		let [top_left, top_right, bottom_left, bottom_right] = colors.map(|color| Vec4::from_array(gradient_space_channels(color, GradientSpace::OkLab)));
+
+		for [u, v] in [[0., 0.], [0.25, 0.75], [1., 1.]] {
+			let oklab = top_left.lerp(top_right, u).lerp(bottom_left.lerp(bottom_right, u), v);
+			let expected = Vec4::from_array(color_from_gradient_space_channels(oklab.to_array(), GradientSpace::OkLab).to_gamma_srgb_channels());
+			let actual = Vec4::from_array(patch.evaluate_color(u, v));
+			assert!((actual - expected).abs().max_element() < 1e-6, "expected {expected:?}, got {actual:?} at ({u}, {v})");
+		}
+	}
+
+	#[test]
 	fn rectangular_spaces_keep_their_own_channels() {
 		let colors = [Color::BLACK, Color::WHITE, Color::from_rgbf32_unchecked(0.85, 0.05, 0.4)];
 		let mesh = mesh_with_corner_colors(|corner_index| colors[corner_index % colors.len()]);
 
 		for space in [GradientSpace::RgbGamma, GradientSpace::RgbLinear, GradientSpace::OkLab, GradientSpace::Lab] {
-			let evaluator = mesh.evaluator(space).unwrap();
+			let evaluator = mesh.evaluator(space, GradientInterpolation::Smooth).unwrap();
 			let patch = evaluator.patch_evaluator(0).unwrap();
 			let expected = Vec4::from_array(gradient_space_channels(colors[0], space));
 
-			assert!(
-				(patch.bicubic_bezier_control_points()[0][0] - expected).abs().max_element() < 1e-6,
-				"{space:?} must store its corner channels untouched"
-			);
+			assert!((patch.colors[0] - expected).abs().max_element() < 1e-6, "{space:?} must store its corner channels untouched");
 		}
 	}
 
@@ -1168,7 +1290,7 @@ mod tests {
 	fn inserting_mesh_grid_lines_preserves_row_major_topology() {
 		let mut mesh = MeshGradient::default();
 		let top_edge = *mesh.horizontal_edges.get(0, 0).unwrap();
-		mesh.insert_grid_line(top_edge, GradientSpace::RgbGamma, 0.25).unwrap();
+		mesh.insert_grid_line(top_edge, GradientSpace::RgbGamma, GradientInterpolation::Smooth, 0.25).unwrap();
 
 		assert_eq!(mesh.corner_points.dimensions(), [3, 4]);
 		assert_eq!(mesh.horizontal_edges.dimensions(), [3, 3]);
@@ -1182,7 +1304,7 @@ mod tests {
 		}
 
 		let left_edge = *mesh.vertical_edges.get(0, 0).unwrap();
-		mesh.insert_grid_line(left_edge, GradientSpace::RgbGamma, 0.5).unwrap();
+		mesh.insert_grid_line(left_edge, GradientSpace::RgbGamma, GradientInterpolation::Smooth, 0.5).unwrap();
 
 		assert_eq!(mesh.corner_points.dimensions(), [4, 4]);
 		assert_eq!(mesh.horizontal_edges.dimensions(), [4, 3]);
@@ -1211,7 +1333,7 @@ mod tests {
 		let expected_colors: Vec<_> = mesh.corners().map(|corner| corner.color).collect();
 
 		let top_edge = *mesh.horizontal_edges.get(0, 0).unwrap();
-		mesh.insert_grid_line(top_edge, GradientSpace::RgbGamma, 0.25).unwrap();
+		mesh.insert_grid_line(top_edge, GradientSpace::RgbGamma, GradientInterpolation::Smooth, 0.25).unwrap();
 		let inserted_vertical_edge = *mesh.vertical_edges.get(0, 1).unwrap();
 		mesh.remove_edge(inserted_vertical_edge).unwrap();
 
@@ -1222,7 +1344,7 @@ mod tests {
 		assert_eq!(mesh.corners().map(|corner| corner.color).collect::<Vec<_>>(), expected_colors);
 
 		let left_edge = *mesh.vertical_edges.get(0, 0).unwrap();
-		mesh.insert_grid_line(left_edge, GradientSpace::RgbGamma, 0.5).unwrap();
+		mesh.insert_grid_line(left_edge, GradientSpace::RgbGamma, GradientInterpolation::Smooth, 0.5).unwrap();
 		let inserted_horizontal_edge = *mesh.horizontal_edges.get(1, 0).unwrap();
 		mesh.remove_edge(inserted_horizontal_edge).unwrap();
 
