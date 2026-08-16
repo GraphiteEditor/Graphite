@@ -25,8 +25,8 @@ use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, MeshGradient, PaintOrder, StrokeAlign, StrokeCap,
-	StrokeJoin,
+	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, MeshGradient, PaintOrder, StrokeAlign,
+	StrokeCap, StrokeJoin,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Artboard, Color, Context, Graphic};
@@ -800,7 +800,12 @@ impl TableItemLayout for MeshGradient {
 				TextLabel::new(format!("{}", corner.index)).narrow(true).widget_instance(),
 				TextLabel::new(format!("{}", corner.point_id.inner())).narrow(true).widget_instance(),
 				TextLabel::new(format!("{}", corner.position)).narrow(true).widget_instance(),
-				corner.color.value_widget(PathStep::Element(corner.index), data),
+				corner
+					.color
+					.value_widgets(PathStep::Element(corner.index), data)
+					.into_iter()
+					.next()
+					.expect("Color always provides one value widget"),
 			]
 		}));
 

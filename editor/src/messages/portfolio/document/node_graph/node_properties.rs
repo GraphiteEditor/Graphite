@@ -33,8 +33,8 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, PaintOrder, StrokeAlign, StrokeCap,
-	StrokeJoin, build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, MeshGradient, PaintOrder,
+	StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -2412,6 +2412,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
 			transform_is_value: bool,
 		},
+		MeshGradient,
 		Other,
 	}
 
@@ -2430,6 +2431,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Ok(document_node) => match document_node.input_value(FillInput) {
 			Some(TaggedValue::Color(color)) => ResolvedFill::Solid(Some(*color)),
 			Some(value) if value.is_no_paint() => ResolvedFill::Solid(None),
+			Some(TaggedValue::MeshGradient(_)) => ResolvedFill::MeshGradient,
 			Some(TaggedValue::GradientRamp(_)) => {
 				match graph_modification_utils::read_fill_node_gradient(document_node, || {
 					layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer))
@@ -2449,7 +2451,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Err(_) => ResolvedFill::Other,
 	};
 
-	let (backup_color, backup_gradient) = match get_document_node(node_id, context) {
+	let (backup_color, backup_gradient, backup_mesh_gradient) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
 			let backup_color = match document_node.input_value(BackupColorInput) {
 				Some(&TaggedValue::Color(color)) => Some(color),
@@ -2459,9 +2461,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				Some(TaggedValue::GradientRamp(ramp)) => ramp.clone(),
 				_ => GradientRamp::black_to_white(),
 			};
-			(backup_color, backup_stops)
+			let backup_mesh_gradient = match document_node.input_value(BackupMeshGradientInput) {
+				Some(TaggedValue::MeshGradient(mesh_gradient)) => mesh_gradient.clone(),
+				_ => MeshGradient::default(),
+			};
+			(backup_color, backup_stops, backup_mesh_gradient)
 		}
-		Err(_) => (None, GradientRamp::black_to_white()),
+		Err(_) => (None, GradientRamp::black_to_white(), MeshGradient::default()),
 	};
 
 	match &fill {
@@ -2487,13 +2493,14 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let widget_value = match &fill {
 		ResolvedFill::Solid(color) => {
 			if let Some(color) = color {
-				FillChoice::<SRGBA8>::Solid(SRGBA8::from(*color))
+				Some(FillChoice::<SRGBA8>::Solid(SRGBA8::from(*color)))
 			} else {
-				FillChoice::<SRGBA8>::None
+				Some(FillChoice::<SRGBA8>::None)
 			}
 		}
-		ResolvedFill::Gradient { gradient: stops, settings, .. } => FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops).with_settings(*settings)),
-		ResolvedFill::Other => FillChoice::<SRGBA8>::None,
+		ResolvedFill::Gradient { gradient: stops, settings, .. } => Some(FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops).with_settings(*settings))),
+		ResolvedFill::MeshGradient => None,
+		ResolvedFill::Other => Some(FillChoice::<SRGBA8>::None),
 	};
 
 	let solid_set_messages = move |color: Option<Color>| {
@@ -2535,21 +2542,23 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		]),
 	};
 
-	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-	widgets_first_row.push(
-		ColorInput::default()
-			.value(widget_value)
-			.on_update(move |x: &ColorInput| match &x.value {
-				FillChoice::<SRGBA8>::None => solid_set_messages(None),
-				FillChoice::<SRGBA8>::Solid(srgba8) => {
-					let color = Some(Color::from(*srgba8));
-					solid_set_messages(color)
-				}
-				FillChoice::<SRGBA8>::Gradient(ramp) => gradient_set_messages(GradientRamp::from(ramp)),
-			})
-			.on_commit(commit_value)
-			.widget_instance(),
-	);
+	if let Some(widget_value) = widget_value {
+		widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		widgets_first_row.push(
+			ColorInput::default()
+				.value(widget_value)
+				.on_update(move |x: &ColorInput| match &x.value {
+					FillChoice::<SRGBA8>::None => solid_set_messages(None),
+					FillChoice::<SRGBA8>::Solid(srgba8) => {
+						let color = Some(Color::from(*srgba8));
+						solid_set_messages(color)
+					}
+					FillChoice::<SRGBA8>::Gradient(ramp) => gradient_set_messages(GradientRamp::from(ramp)),
+				})
+				.on_commit(commit_value)
+				.widget_instance(),
+		);
+	}
 
 	let mut widgets = vec![LayoutGroup::row(widgets_first_row)];
 
@@ -2566,13 +2575,20 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				.label("Gradient")
 				.on_update(update_value(move |_| TaggedValue::GradientRamp(backup_gradient.clone()), node_id, FillInput))
 				.on_commit(commit_value),
+			RadioEntryData::new("mesh-gradient")
+				.label("Mesh Gradient")
+				.on_update(update_value(move |_| TaggedValue::MeshGradient(backup_mesh_gradient.clone()), node_id, FillInput))
+				.on_commit(commit_value),
 		];
+		let selected_index = match fill {
+			ResolvedFill::Gradient { .. } => 1,
+			ResolvedFill::MeshGradient => 2,
+			_ => 0,
+		};
 
 		row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(entries)
-				.selected_index(Some(if matches!(fill, ResolvedFill::Gradient { .. }) { 1 } else { 0 }))
-				.widget_instance(),
+			RadioInput::new(entries).selected_index(Some(selected_index)).widget_instance(),
 		]);
 
 		LayoutGroup::row(row)
