@@ -76,7 +76,9 @@ fn inputs(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &[Ident]) ->
 
 fn subject(index: usize, field: &ParsedField, carrier_subject: bool, routing: Option<&RoutingIo>) -> bool {
 	match &field.ty {
-		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => is_record_value(output_type) || routing.is_some_and(|routing| bare_ident(output_type) == Some(&routing.generic)),
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
+			is_record_value(output_type) || routing.is_some_and(|routing| bare_ident(output_type) == Some(&routing.generic)) || (index == 0 && carrier_subject)
+		}
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => routing.is_some_and(|routing| bare_ident(ty) == Some(&routing.generic)) || (index == 0 && carrier_subject),
 	}
 }
@@ -272,6 +274,7 @@ pub(crate) enum LazyBinding {
 	Element,
 	Plain,
 	DeriveRouting,
+	DeriveCarrier,
 	OpaqueRecord,
 }
 
@@ -345,6 +348,8 @@ pub(crate) fn lazy_binding(node: &Node, index: usize) -> LazyBinding {
 	let kind = node_kind(node);
 	if node.derives && matches!(kind, NodeKind::Routing) && input.subject {
 		LazyBinding::DeriveRouting
+	} else if node.derives && matches!(kind, NodeKind::RecordIo) && input.subject {
+		LazyBinding::DeriveCarrier
 	} else if matches!(kind, NodeKind::Flip) {
 		LazyBinding::Element
 	} else if matches!(input.shape.element, Element::Opaque) {
@@ -670,6 +675,7 @@ mod tests {
 			},
 			ParsedFieldType::Node(_) => match (lazy_binding(node, index), raw) {
 				(LazyBinding::DeriveRouting, _) => "derive-routing",
+				(LazyBinding::DeriveCarrier, _) => "derive-carrier",
 				(LazyBinding::OpaqueRecord, _) => "opaque-record",
 				(LazyBinding::Element, true) => "flip-raw",
 				(LazyBinding::Element, false) => "flip-lazy",

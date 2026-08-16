@@ -97,21 +97,31 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		);
 		return;
 	};
+	let lazy_carrier = matches!(&crate::codegen::record_shape(parsed), Some(shape) if matches!(shape.carrier, crate::codegen::RecordCarrier::LazyToken));
 	let carrier_ty = match &carrier.ty {
 		ParsedFieldType::Regular(RegularParsedField { ty, lend: None, .. }) if !carrier.is_data_field => Some(ty),
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) if lazy_carrier => Some(output_type),
 		_ => None,
 	};
 	let Some(carrier_ty) = carrier_ty else {
 		emit_error!(
 			carrier.pat_ident.span(),
-			"a record node's primary input is an owned element, an unbounded passthrough generic, or `_: ()`; not `#[data]`, `&T`, or `impl Node`"
+			"a record node's primary input is an owned element, an unbounded passthrough generic, a lazy passthrough source, or `_: ()`; not `#[data]` or `&T`"
 		);
 		return;
 	};
+	if lazy_carrier && !crate::codegen::ir::build(parsed).derives {
+		emit_error!(
+			parsed.input.pat_ident.span(),
+			"a lazy record carrier evaluates at derived contexts; spell `impl Ctx + DeriveCtx`"
+		);
+		return;
+	}
 
 	let no_carrier = matches!(carrier_ty, Type::Tuple(tuple) if tuple.elems.is_empty());
 	let token = match (no_carrier, &carrier.ty) {
 		(false, ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. })) if implementations.is_empty() => crate::codegen::unbounded_generic(parsed, ty),
+		(false, ParsedFieldType::Node(NodeParsedField { output_type, .. })) if lazy_carrier => crate::codegen::unbounded_generic(parsed, output_type),
 		_ => None,
 	};
 	let element = writes.as_ref().map(|writes| &writes.element).unwrap_or(&value);
@@ -179,20 +189,23 @@ fn validate_lazy_reads(parsed: &ParsedNodeFn) {
 	if !crate::codegen::has_lazy_reads(parsed) {
 		return;
 	}
-	if !crate::codegen::record_flip(parsed) {
+	let lazy_carrier = matches!(&crate::codegen::record_shape(parsed), Some(shape) if matches!(shape.carrier, crate::codegen::RecordCarrier::LazyToken));
+	if !crate::codegen::record_flip(parsed) && !lazy_carrier {
 		emit_error!(
 			parsed.fn_name.span(),
 			"attribute reads on a lazy input need the record lowering; routing, `plain`, shader, batch, and non-row-assignable generic nodes keep the plain one"
 		);
 	}
-	for field in &parsed.fields {
+	for (index, field) in parsed.fields.iter().enumerate() {
 		let ParsedFieldType::Node(NodeParsedField { output_type, .. }) = &field.ty else {
 			continue;
 		};
 		if field.attribute_reads.is_empty() {
 			continue;
 		}
-		if crate::codegen::unbounded_generic(parsed, output_type).is_some() {
+		// The lazy carrier forwards its token AND reads: the reads resolve
+		// against its wired layout, not the row type.
+		if crate::codegen::unbounded_generic(parsed, output_type).is_some() && !(lazy_carrier && index == 0) {
 			emit_error!(
 				field.pat_ident.span(),
 				"an unbounded generic source forwards its whole record; attribute reads need a concrete output type"

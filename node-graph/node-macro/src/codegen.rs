@@ -826,7 +826,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	if routing_generic.is_some() || record_io || flip {
 		impl_generics.insert(0, quote!('__record));
 	}
-	if derive_routing {
+	let lazy_carrier = record_io && carrier_present && matches!(parsed.fields.iter().find(|field| !field.is_data_field).map(|field| &field.ty), Some(ParsedFieldType::Node(_)));
+	if derive_routing || (lazy_carrier && derives) {
 		generics.insert(0, quote!('__record));
 	}
 
@@ -864,6 +865,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				});
 			}
 		}
+	}
+	if lazy_carrier && derives {
+		let source_generic = format_ident!("__Source0");
+		generics.push(quote! {
+			#source_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>
+		});
 	}
 	if flip {
 		let mut kernel_lazy = false;
@@ -943,6 +950,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let source_generic = format_ident!("__Source{index}");
 					match (ir::lazy_binding(&node, index), raw_lazy) {
 						(LazyBinding::DeriveRouting, _) => quote!(#pat: #core_types::record::RecordLazyInput<'_, '__record, #source_generic>),
+						(LazyBinding::DeriveCarrier, _) => {
+							let out = lazy_read_out(field, output_type);
+							quote!(#pat: #core_types::record::DerivedLazyInput<'_, '__record, #out, #source_generic>)
+						}
 						(LazyBinding::OpaqueRecord, _) => quote!(#pat: &#core_types::record::RecordEdgeInput<'_, #source_generic>),
 						(LazyBinding::Element, true) => {
 							let out = lazy_read_out(field, output_type);
@@ -973,6 +984,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>,
 				#node_generic: for<'__derived> #core_types::record::RecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>
 			},
+			false => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
+		},
+		ParsedFieldType::Node(_) if record_io && !skips_carrier && index == 0 => match derives {
+			true => quote!(#node_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>),
 			false => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
 		},
 		ParsedFieldType::Regular(_) if record_io && !skips_carrier && index == 0 => {
@@ -1148,6 +1163,22 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				(LazyBinding::DeriveRouting, _) => quote! {
 					let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index);
 				},
+				(LazyBinding::DeriveCarrier, _) => {
+					let reads = reads_of(index);
+					let read_fn = format_ident!("__{}_read_{}", fn_name, index);
+					match reads.is_empty() {
+						true => quote! {
+							let #name = #core_types::record::DerivedLazyInput::new(&self.#name, &__cell, #index, &[], #core_types::record::token_only);
+						},
+						false => {
+							let slot_idents: Vec<Ident> = reads.iter().map(|(slot, _)| format_ident!("__read_{slot}")).collect();
+							quote! {
+								let __carrier_reads = [#(self.#slot_idents),*];
+								let #name = #core_types::record::DerivedLazyInput::new(&self.#name, &__cell, #index, &__carrier_reads, self::#read_fn);
+							}
+						}
+					}
+				}
 				(LazyBinding::Element, true) => {
 					let slot = format_ident!("__in_{index}");
 					match field.attribute_reads.is_empty() {
@@ -1242,7 +1273,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			};
 			let decl = match &field.ty {
 				ParsedFieldType::Node(_) => match ir::lazy_binding(&node, index) {
-					ir::LazyBinding::DeriveRouting => quote! {
+					ir::LazyBinding::DeriveRouting | ir::LazyBinding::DeriveCarrier => quote! {
 						let #query = |__copy: u64, __lvl: u8| {
 							let __head = #core_types::context::DeriveCtx::index_head(__input);
 							#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &#core_types::context::DeriveCtx::promoted(__input, &__head, __copy), __lvl)
@@ -1505,6 +1536,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		};
 		let carrier_arg = if skips_carrier {
 			None
+		} else if lazy_carrier {
+			// The kernel drives the derived carrier itself through its handle.
+			let name = &regular_fields[0].pat_ident.ident;
+			Some(quote!(#name))
 		} else if let Some(ty) = carrier_read_ty {
 			Some(tuple_arg(regular_fields[0], quote!(unsafe { #core_types::record::read_element::<#ty>(__src_rec) })))
 		} else {
@@ -1521,7 +1556,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		});
 		let record_kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #carrier_arg)* #(, #value_args)*));
-		let carrier_eval = (!skips_carrier).then(|| {
+		let carrier_eval = (!skips_carrier && !lazy_carrier).then(|| {
 			let name = &regular_fields[0].pat_ident.ident;
 			quote! {
 				let __src = match __cell.eval_input(0, &self.#name, __input) {
@@ -1531,8 +1566,18 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let __src_rec = self.__carrier.rec(&__src);
 			}
 		});
-		let carry = (!skips_carrier).then(|| quote!(unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };));
-		let carrier_read_bindings: Vec<TokenStream2> = match skips_carrier {
+		let carry = (!skips_carrier && !lazy_carrier).then(|| quote!(unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };));
+		// A lazy carrier's source record is the token the kernel returned; its
+		// content frames sit above `__dst` and stay readable until the truncate.
+		let lazy_carry = lazy_carrier
+			.then(|| {
+				quote! {
+					let __src_rec = self.__carrier.rec(&__element);
+					unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
+				}
+			})
+			.unwrap_or_default();
+		let carrier_read_bindings: Vec<TokenStream2> = match skips_carrier || lazy_carrier {
 			true => Vec::new(),
 			false => reads_of(0).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(__src_rec))).collect(),
 		};
@@ -1546,9 +1591,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			_ => quote!(#record_kernel_call),
 		};
 		let attr_binders: Vec<Ident> = (0..write_markers.len()).map(|index| format_ident!("__attr_{index}")).collect();
-		let element_binder = match element_write {
-			Some(_) => quote!(__element),
-			None => quote!(_),
+		let element_binder = match (element_write, lazy_carrier) {
+			(Some(_), _) | (None, true) => quote!(__element),
+			(None, false) => quote!(_),
 		};
 		// Slot binders in the return tuple's own order: an `Attr` binds the
 		// next write binder, a `RemoveAttr` binds nothing.
@@ -1590,6 +1635,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#(#carrier_read_bindings)*
 			let __kernel_value = #kernel_value;
 			#destructure
+			#lazy_carry
 			#element_store
 			#(#attr_stores)*
 			if self.__frame_bytes != 0 {
@@ -1714,7 +1760,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 
 	let record_bounds: Vec<TokenStream2> = {
-		let arena_bound = (record_io && skips_carrier) || (!record_io && (derive_routing || flip));
+		let arena_bound = (record_io && skips_carrier) || (record_io && lazy_carrier) || (!record_io && (derive_routing || flip));
 		let mut bounds = if arena_bound {
 			vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
 		} else {
@@ -2037,6 +2083,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let marker = &read.marker;
 				quote!(#core_types::attribute::Attr<'__read, #marker>)
 			});
+			if matches!(ir::lazy_binding(&node, index), LazyBinding::DeriveCarrier) {
+				return quote! {
+					/// # Safety
+					/// `__rec` must be a spilled record's frame, of the layout
+					/// `__reads` was resolved against; the token rebinds it.
+					unsafe fn #read_fn<'__read>(__rec: #core_types::record::Rec, __reads: &[Option<usize>]) -> (#core_types::record::RecordValue<'__read> #(, #attr_tys)*) {
+						(#core_types::record::RecordValue::spilled(__rec) #(, #attr_slots)*)
+					}
+				};
+			}
 			quote! {
 				/// # Safety
 				/// `__rec` must be a record whose element is the declared output

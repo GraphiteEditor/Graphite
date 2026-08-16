@@ -100,6 +100,29 @@ fn repeat_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, _reverse: Value
 	}
 }
 
+/// Test-only lazy-carrier creator: each copy evaluates the content at its own
+/// index and re-scales the row's opacity by the copy number.
+#[node_macro::node(category("Test"), extent(repeat_faded_extent))]
+fn repeat_faded<T>(
+	ctx: impl Ctx + DeriveCtx + ExtractIndex,
+	content: impl Node<Context<'_>, Output = (T, Attr<Opacity>)>,
+	count: u32,
+) -> Result<IList<(T, Attr<Opacity>)>, Interrupt> {
+	let spilled = ctx.index_head();
+	let copy = ctx.innermost_index() % count as u64;
+	let (element, opacity) = content.eval(&ctx.promoted(&spilled, copy))?;
+	Ok(emit(element, Attr(*opacity * (copy + 1) as f64)))
+}
+
+/// The pushed level's extent is the copy count; inner levels forward to the
+/// content, whose extent is taken uniform across copies (queried at copy 0).
+fn repeat_faded_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, level: LevelIn) -> GPoll<Extent> {
+	match level.pushed() {
+		true => count.get().map(|count| Extent::Exactly(count as usize)),
+		false => content.at(level),
+	}
+}
+
 #[node_macro::node(category("Test"))]
 fn source_opacity(_: impl Ctx, _: (), element: f64, opacity: f64) -> (f64, Attr<Opacity>) {
 	(element, Attr(opacity))
@@ -468,6 +491,48 @@ mod tests {
 			// Reversed: copy `j` evaluates its content at index `count - 1 - j`.
 			assert_eq!(unsafe { leveled.rec(&value).element::<f64>() }, (3 - copy) as f64);
 			// SAFETY: the copy's element was read out above, so no borrow into its frame remains.
+			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
+	fn lazy_carrier_reads_and_rewrites_the_attr_per_copy() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let base = f64_layout(&[Opacity::NAME]);
+		let opacity_offset = base.offset_of(Opacity::NAME, 0).unwrap();
+		let content = RecordSourceNode {
+			layout: base.clone(),
+			element: 7.,
+			fields: vec![(opacity_offset, 0.5)],
+			partial: false,
+		};
+		reserve_for(&[&base]);
+
+		let node = install(
+			RepeatFadedNode::new(RecordSource::new(content, &base, &base), ValueNode(4u32), &base),
+			repeat_faded_layout_meta(),
+			&[Some(&base)],
+		);
+		let leveled = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(leveled.depth, 1, "the IList return pushed one rank level above the content");
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(4)));
+
+		let head = ctx.index_head();
+		for copy in 0..4u64 {
+			let mark = stack::sp();
+			let lane = ctx.promoted(&head, copy);
+			let GPoll::Final(value) = node.eval(&lane) else {
+				panic!("expected a final record");
+			};
+			let rec = leveled.rec(&value);
+			// The content row's element forwards; its opacity re-scales per copy.
+			assert_eq!(unsafe { rec.element::<f64>() }, 7.);
+			assert_eq!(unsafe { rec.read::<f64>(leveled.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5 * (copy + 1) as f64);
+			// SAFETY: the element and attr were read out above, so no borrow into this lane's frames remains.
 			unsafe { stack::rewind(mark) };
 		}
 	}

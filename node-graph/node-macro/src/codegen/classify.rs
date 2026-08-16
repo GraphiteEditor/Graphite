@@ -2,12 +2,15 @@ use super::*;
 
 /// How a record node's primary input lowers: `None` writes a fresh record,
 /// `Token` carries the element bytes through as `ElToken`, `Read` reads a
-/// concrete element at offset 0. The element and write set fold from the IR.
+/// concrete element at offset 0, and `LazyToken` is a derive-routing carrier
+/// the kernel evaluates itself, returning the row token it received. The
+/// element and write set fold from the IR.
 #[derive(Clone)]
 pub(crate) enum RecordCarrier {
 	None,
 	Token,
 	Read,
+	LazyToken,
 }
 
 /// A well-formed record-io node: only the carrier form is retained, so
@@ -269,18 +272,40 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 	if !has_reads && writes.is_none() {
 		return None;
 	}
-	if parsed.is_async || parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
-		return None;
-	}
-	let reads_well_placed = parsed.fields.iter().all(|field| {
-		field.attribute_reads.is_empty() || (!field.is_data_field && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: None, .. })))
-	});
-	if !reads_well_placed {
+	if parsed.is_async {
 		return None;
 	}
 	let carrier_field = parsed.fields.first()?;
 	if carrier_field.is_data_field {
 		return None;
+	}
+	// A first-field lazy carrier: the kernel evaluates the derived content
+	// itself and returns its opaque row token beside the write set.
+	let lazy_carrier = matches!(&carrier_field.ty, ParsedFieldType::Node(_));
+	if parsed.fields.iter().skip(lazy_carrier as usize).any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+		return None;
+	}
+	let reads_well_placed = parsed.fields.iter().enumerate().all(|(index, field)| {
+		field.attribute_reads.is_empty()
+			|| (lazy_carrier && index == 0)
+			|| (!field.is_data_field && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: None, .. })))
+	});
+	if !reads_well_placed {
+		return None;
+	}
+	if lazy_carrier {
+		let ParsedFieldType::Node(NodeParsedField { output_type, .. }) = &carrier_field.ty else {
+			unreachable!("guarded by the lazy_carrier match");
+		};
+		let token = unbounded_generic(parsed, output_type)?;
+		let element = match writes {
+			Some(RecordWrites { element, .. }) => element,
+			None => value,
+		};
+		if !matches!(bare_ident(&element), Some(ident) if ident == &token) {
+			return None;
+		}
+		return Some(RecordShape { carrier: RecordCarrier::LazyToken });
 	}
 	let ParsedFieldType::Regular(RegularParsedField { ty, lend: None, implementations, .. }) = &carrier_field.ty else {
 		return None;

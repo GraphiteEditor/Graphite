@@ -750,6 +750,53 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 	}
 }
 
+/// The derive-routing carrier beside its declared attribute reads: evaluating
+/// at a derived context yields the opaque row token and the read values in one
+/// step, so the kernel drives the per-copy eval while reads stay resolved
+/// against the source's wired layout.
+#[derive(Clone, Copy)]
+pub struct DerivedLazyInput<'a, 'e, Out, N> {
+	node: &'a N,
+	cell: &'a crate::node::StatusCell,
+	input_index: usize,
+	reads: &'a [Option<usize>],
+	read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+	_lifetime: std::marker::PhantomData<fn() -> RecordValue<'e>>,
+}
+
+impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
+	/// `read` must be sound against the layout the offsets in `reads` were
+	/// resolved from; the macro proves both at wiring.
+	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, reads: &'a [Option<usize>], read: unsafe fn(Rec, &[Option<usize>]) -> Out) -> Self {
+		Self {
+			node,
+			cell,
+			input_index,
+			reads,
+			read,
+			_lifetime: std::marker::PhantomData,
+		}
+	}
+
+	pub fn eval<'d, C>(&self, ctx: &C) -> Result<Out, crate::gpoll::Interrupt>
+	where
+		N: DerivedRecordEdge<'d, C>,
+	{
+		let value: RecordValue<'e> = self.node.eval_derived(self.cell, self.input_index, ctx)?.rebind();
+		// SAFETY: declared reads imply a non-empty layout, so the record is
+		// spilled and its pointer is the frame the offsets index into.
+		Ok(unsafe { (self.read)(Rec::new(value.ptr), self.reads) })
+	}
+}
+
+/// The read-less [`DerivedLazyInput`] glue: the token alone.
+///
+/// # Safety
+/// `rec` must be a spilled record's frame.
+pub unsafe fn token_only<'e>(rec: Rec, _reads: &[Option<usize>]) -> RecordValue<'e> {
+	RecordValue::spilled(rec)
+}
+
 /// The per-thread record stack: every record evaluation claims its activation
 /// frame at the stack pointer and evaluates its carrier beyond it, so slot
 /// addresses are a property of the evaluating thread and no global assignment
