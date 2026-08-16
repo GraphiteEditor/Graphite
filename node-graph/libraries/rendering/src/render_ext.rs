@@ -50,15 +50,19 @@ pub trait RenderExt {
 	) -> Self::Output;
 }
 
-/// The paint attribute for a solid color, or `none` when the color is absent.
-fn render_color_paint(color: Option<&Color>, target: PaintTarget) -> String {
-	let Some(color) = color else {
-		return format!(r#" {}="none""#, target.paint_attr());
-	};
+/// The paint attribute for a solid color, or the SVG `none` keyword when the color is absent.
+/// `for_mask` keeps the fill opacity at full, as [`ItemRef::paint_opacity`] explains.
+fn render_color_paint(item: Option<ItemRef<'_, Color>>, target: PaintTarget, for_mask: bool) -> String {
+	let unpainted = || format!(r#" {}="none""#, target.paint_attr());
+
+	let Some(item) = item else { return unpainted() };
+	let Some(color) = item.element() else { return unpainted() };
+
+	let alpha = color.a() * item.paint_opacity(for_mask);
 
 	let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
-	if color.a() < 1. {
-		let _ = write!(result, r#" {}="{}""#, target.opacity_attr(), (color.a() * 1000.).round() / 1000.);
+	if alpha < 1. {
+		let _ = write!(result, r#" {}="{}""#, target.opacity_attr(), (alpha * 1000.).round() / 1000.);
 	}
 
 	result
@@ -74,15 +78,16 @@ impl RenderExt for List<Color> {
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
-		_render_params: &RenderParams,
+		render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
-		render_color_paint(self.element(0), target)
+		render_color_paint((!self.is_empty()).then_some(ItemRef::ListItem(self, 0)), target, render_params.for_mask)
 	}
 }
 
 /// Adds one gradient item's def into `svg_defs` and returns the gradient ID, or `None` when the item is absent.
-fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> Option<u64> {
+/// `for_mask` keeps the fill opacity at full, as [`ItemRef::paint_opacity`] explains.
+fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2, for_mask: bool) -> Option<u64> {
 	let mut stop = String::new();
 
 	let item = item?;
@@ -91,7 +96,14 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 	let local_gradient_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let settings = gradient_settings_from_item(item);
 
-	let (samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
+	let (mut samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
+
+	let paint_opacity = item.paint_opacity(for_mask);
+	if paint_opacity < 1. {
+		for (_, color, _) in &mut samples {
+			*color = color.with_alpha(color.a() * paint_opacity);
+		}
+	}
 
 	for (position, color, original_midpoint) in samples {
 		stop.push_str("<stop");
@@ -110,7 +122,11 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 
 	// A gradient with no stops paints as solid black, matching `Gradient::evaluate` (a stopless def would otherwise render as no paint per the SVG spec)
 	if stop.is_empty() {
-		stop.push_str(r##"<stop stop-color="#000000" />"##);
+		stop.push_str(r##"<stop stop-color="#000000""##);
+		if paint_opacity < 1. {
+			let _ = write!(stop, r#" stop-opacity="{}""#, (paint_opacity * 1000.).round() / 1000.);
+		}
+		stop.push_str(" />");
 	}
 
 	// Need to cancel out the element's transform as it is already applied to the path itself.
@@ -169,10 +185,16 @@ impl RenderExt for List<Gradient> {
 		element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
-		_render_params: &RenderParams,
+		render_params: &RenderParams,
 		_target: PaintTarget,
 	) -> Self::Output {
-		render_gradient_paint((!self.is_empty()).then_some(ItemRef::ListItem(self, 0)), svg_defs, item_transform, element_transform)
+		render_gradient_paint(
+			(!self.is_empty()).then_some(ItemRef::ListItem(self, 0)),
+			svg_defs,
+			item_transform,
+			element_transform,
+			render_params.for_mask,
+		)
 	}
 }
 
@@ -253,9 +275,9 @@ impl RenderExt for List<Graphic> {
 		let paint_attr = target.paint_attr();
 
 		match fill_graphic {
-			Some(Graphic::Color(item)) => render_color_paint(Some(item.element()), target),
+			Some(Graphic::Color(item)) => render_color_paint(Some(ItemRef::Item(item)), target, render_params.for_mask),
 			Some(Graphic::ColorList(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
-			Some(Graphic::Gradient(item)) => render_gradient_paint(Some(ItemRef::Item(item)), svg_defs, item_transform, element_transform)
+			Some(Graphic::Gradient(item)) => render_gradient_paint(Some(ItemRef::Item(item)), svg_defs, item_transform, element_transform, render_params.for_mask)
 				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
 				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
 			Some(Graphic::GradientList(gradient_list)) => gradient_list

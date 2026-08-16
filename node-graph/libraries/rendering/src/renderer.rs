@@ -85,6 +85,14 @@ impl<'a, T> ItemRef<'a, T> {
 		}
 	}
 
+	/// The alpha multiplier this item's opacity attributes apply when it serves as a paint.
+	/// Fill opacity fades a paint just as opacity does, but a masker drops it so it cannot reach the content clipped to it.
+	pub(crate) fn paint_opacity(self, for_mask: bool) -> f32 {
+		let opacity_fill = if for_mask { 1. } else { self.attribute_cloned_or::<f64>(ATTR_OPACITY_FILL, 1.) };
+
+		(self.attribute_cloned_or::<f64>(ATTR_OPACITY, 1.) * opacity_fill) as f32
+	}
+
 	pub(crate) fn clone_item_attributes(self) -> core_types::list::ItemAttributeValues {
 		match self {
 			ItemRef::ListItem(list, index) => list.clone_item_attributes(index),
@@ -577,14 +585,28 @@ fn peniko_extend(gradient_spread: GradientSpread) -> peniko::Extend {
 	}
 }
 
-fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
+/// The Vello brush for one gradient item, paired with its placement transform.
+/// `for_mask` keeps the fill opacity at full, as [`ItemRef::paint_opacity`] explains.
+fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied_transform: &DAffine2, for_mask: bool) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_item.element()?;
 
 	let gradient_form: GradientForm = gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
 	let gradient_transform: DAffine2 = gradient_item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let settings = gradient_settings_from_item(gradient_item);
 
-	let (samples, span) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
+	let (mut samples, span) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
+
+	let paint_opacity = gradient_item.paint_opacity(for_mask);
+	if paint_opacity < 1. {
+		// A stopless ramp gets its black stop downstream, too late to be faded, so it needs one here instead
+		if samples.is_empty() {
+			samples.push((0., Color::BLACK, None));
+		}
+
+		for (_, color, _) in &mut samples {
+			*color = color.with_alpha(color.a() * paint_opacity);
+		}
+	}
 
 	let peniko_stops = peniko_color_stops(&samples);
 
@@ -1740,12 +1762,15 @@ fn render_vector_item_to_vello(
 
 		for paint_index in 0..fill_graphic.len() {
 			let Some(paint) = fill_graphic.element(paint_index) else { continue };
-			let solid_fill = |scene: &mut Scene, color: &Color| {
-				let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
+			let solid_fill = |scene: &mut Scene, item: ItemRef<'_, Color>| {
+				let Some(color) = item.element() else { return };
+				let color = color.with_alpha(color.a() * item.paint_opacity(render_params.for_mask));
+
+				let fill = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
 				scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 			};
 			let gradient_fill = |scene: &mut Scene, gradient_item: ItemRef<'_, Gradient>| {
-				let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform) else {
+				let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
 					return;
 				};
 
@@ -1760,11 +1785,8 @@ fn render_vector_item_to_vello(
 
 			match paint {
 				Graphic::None(_) | Graphic::NoneList(_) => continue,
-				Graphic::Color(item) => solid_fill(scene, item.element()),
-				Graphic::ColorList(list) => {
-					let Some(color) = list.element(0) else { continue };
-					solid_fill(scene, color);
-				}
+				Graphic::Color(item) => solid_fill(scene, ItemRef::Item(item)),
+				Graphic::ColorList(list) => solid_fill(scene, ItemRef::ListItem(list, 0)),
 				Graphic::Gradient(item) => gradient_fill(scene, ItemRef::Item(item)),
 				Graphic::GradientList(list) => gradient_fill(scene, ItemRef::ListItem(list, 0)),
 				// Any other graphic content paints as a texture clipped to the path
@@ -1839,13 +1861,16 @@ fn render_vector_item_to_vello(
 				continue;
 			};
 
-			let solid_stroke = |scene: &mut Scene, color: &Color| {
-				let brush = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
+			let solid_stroke = |scene: &mut Scene, item: ItemRef<'_, Color>| {
+				let Some(color) = item.element() else { return };
+				let color = color.with_alpha(color.a() * item.paint_opacity(render_params.for_mask));
+
+				let brush = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
 
 				scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
 			};
 			let gradient_stroke = |scene: &mut Scene, gradient_item: ItemRef<'_, Gradient>| {
-				let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform) else {
+				let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
 					return;
 				};
 				let inverse_element_transform = if transform_is_invertible(element_transform) {
@@ -1860,11 +1885,8 @@ fn render_vector_item_to_vello(
 
 			match stroke_graphic {
 				Graphic::None(_) | Graphic::NoneList(_) => continue,
-				Graphic::Color(item) => solid_stroke(scene, item.element()),
-				Graphic::ColorList(list) => {
-					let Some(color) = list.element(0) else { continue };
-					solid_stroke(scene, color);
-				}
+				Graphic::Color(item) => solid_stroke(scene, ItemRef::Item(item)),
+				Graphic::ColorList(list) => solid_stroke(scene, ItemRef::ListItem(list, 0)),
 				Graphic::Gradient(item) => gradient_stroke(scene, ItemRef::Item(item)),
 				Graphic::GradientList(list) => gradient_stroke(scene, ItemRef::ListItem(list, 0)),
 				// Any other graphic content paints as a texture clipped to the stroked region
