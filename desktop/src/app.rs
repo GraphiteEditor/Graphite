@@ -9,7 +9,7 @@ use std::sync::mpsc::{Receiver, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
-use winit::dpi::{PhysicalPosition, PhysicalSize};
+use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
@@ -35,7 +35,6 @@ pub(crate) struct App {
 	window_maximized: bool,
 	window_fullscreen: bool,
 	window_pending_drag: bool,
-	pointer_lock_position: Option<PhysicalPosition<f64>>,
 	input_state: InputState,
 	ui_scale: f64,
 	app_event_receiver: Receiver<AppEvent>,
@@ -108,7 +107,6 @@ impl App {
 			window_maximized: false,
 			window_fullscreen: false,
 			window_pending_drag: false,
-			pointer_lock_position: Default::default(),
 			input_state: InputState::new(),
 			ui_scale: 1.,
 			app_event_receiver,
@@ -346,8 +344,7 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::PointerLock => {
-				self.pointer_lock_position = Some(self.input_state.pointer_position());
-				self.input_state.set_pointer_locked(true);
+				self.input_state.lock_pointer();
 				if let Some(window) = &self.window {
 					window.start_pointer_lock();
 				}
@@ -540,16 +537,13 @@ impl ApplicationHandler for App {
 
 	fn window_event(&mut self, _event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
 		// Handle pointer lock release
-		if let Some(pointer_lock_position) = self.pointer_lock_position
-			&& let WindowEvent::PointerButton {
-				state: ElementState::Released,
-				button,
-				..
-			} = &event
-			&& button.clone().mouse_button() == MouseButton::Left
+		if let WindowEvent::PointerButton {
+			state: ElementState::Released,
+			button,
+			..
+		} = &event && button.clone().mouse_button() == MouseButton::Left
+			&& let Some(pointer_lock_position) = self.input_state.unlock_pointer()
 		{
-			self.pointer_lock_position = None;
-			self.input_state.set_pointer_locked(false);
 			if let Some(window) = &self.window {
 				window.end_pointer_lock();
 			}
@@ -624,7 +618,7 @@ impl ApplicationHandler for App {
 			}
 
 			WindowEvent::PointerMoved { .. } | WindowEvent::PointerLeft { position: Some(_), .. } | WindowEvent::PointerEntered { .. }
-				if self.pointer_lock_position.is_none() && self.window_pending_drag =>
+				if !self.input_state.pointer_locked() && self.window_pending_drag =>
 			{
 				self.window_pending_drag = false;
 				if let Some(window) = &self.window {
@@ -645,7 +639,7 @@ impl ApplicationHandler for App {
 	}
 
 	fn device_event(&mut self, _event_loop: &dyn ActiveEventLoop, _device_id: Option<winit::event::DeviceId>, event: winit::event::DeviceEvent) {
-		if self.pointer_lock_position.is_some()
+		if self.input_state.pointer_locked()
 			&& let winit::event::DeviceEvent::PointerMotion { delta: (x, y) } = event
 		{
 			let message = DesktopWrapperMessage::PointerLockMove { x, y };

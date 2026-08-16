@@ -7,7 +7,7 @@ use crate::wrapper::messages::{DesktopWrapperMessage, InputMessage, ModifierKeys
 
 pub(crate) struct InputState {
 	viewport_info: Option<ViewportInfo>,
-	pointer_locked: bool,
+	pointer_lock_position: Option<PhysicalPosition<f64>>,
 	modifier_keys: ModifierKeys,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_keys: MouseKeys,
@@ -30,7 +30,7 @@ impl InputState {
 	pub(crate) fn new() -> Self {
 		Self {
 			viewport_info: None,
-			pointer_locked: false,
+			pointer_lock_position: None,
 			modifier_keys: ModifierKeys::empty(),
 			pointer_position: PhysicalPosition::default(),
 			pointer_keys: MouseKeys::empty(),
@@ -43,12 +43,16 @@ impl InputState {
 		self.viewport_info = Some(ViewportInfo { x, y, width, height, scale });
 	}
 
-	pub(crate) fn set_pointer_locked(&mut self, locked: bool) {
-		self.pointer_locked = locked;
+	pub(crate) fn lock_pointer(&mut self) {
+		self.pointer_lock_position = Some(self.pointer_position);
 	}
 
-	pub(crate) fn pointer_position(&self) -> PhysicalPosition<f64> {
-		self.pointer_position
+	pub(crate) fn unlock_pointer(&mut self) -> Option<PhysicalPosition<f64>> {
+		self.pointer_lock_position.take()
+	}
+
+	pub(crate) fn pointer_locked(&self) -> bool {
+		self.pointer_lock_position.is_some()
 	}
 
 	pub(crate) fn process(&mut self, event: &WindowEvent) -> Vec<InputAction> {
@@ -60,7 +64,7 @@ impl InputState {
 					return vec![InputAction::Ui(event.clone())];
 				};
 				let ui_capture = if self.pointer_keys.is_empty() {
-					self.pointer_locked || !self.in_viewport(*position)
+					self.pointer_locked() || !self.in_viewport(*position)
 				} else {
 					self.ui_capture
 				};
@@ -84,7 +88,7 @@ impl InputState {
 
 				// Stroke keeps capture decided from first button press until all buttons are released.
 				if state.is_pressed() && self.pointer_keys.is_empty() {
-					self.ui_capture = self.pointer_locked || !tablet || !self.in_viewport(*position);
+					self.ui_capture = self.pointer_locked() || !tablet || !self.in_viewport(*position);
 				}
 
 				let mouse_button = button.clone().mouse_button();
@@ -102,7 +106,7 @@ impl InputState {
 				}
 
 				let back_or_forward = matches!(mouse_button, MouseButton::Back | MouseButton::Forward);
-				if self.pointer_locked || !(back_or_forward || (tablet && !self.ui_capture)) {
+				if self.pointer_locked() || !(back_or_forward || (tablet && !self.ui_capture)) {
 					return vec![InputAction::Ui(event.clone())];
 				}
 
@@ -129,7 +133,7 @@ impl InputState {
 				}
 			}
 			WindowEvent::MouseWheel { delta, .. } => {
-				if self.pointer_locked || !self.in_viewport(self.pointer_position) {
+				if self.pointer_locked() || !self.in_viewport(self.pointer_position) {
 					return vec![InputAction::Ui(event.clone())];
 				}
 
@@ -146,7 +150,7 @@ impl InputState {
 				})]
 			}
 			WindowEvent::PinchGesture { delta, .. } => {
-				if self.pointer_locked || !self.in_viewport(self.pointer_position) || !delta.is_normal() {
+				if self.pointer_locked() || !self.in_viewport(self.pointer_position) || !delta.is_normal() {
 					return vec![InputAction::Ui(event.clone())];
 				}
 
