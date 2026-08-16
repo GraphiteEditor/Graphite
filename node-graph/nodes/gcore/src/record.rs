@@ -7,7 +7,8 @@
 
 use core_types::attribute::{Attr, Opacity, RemoveAttr};
 use core_types::context::{DeriveCtx, ExtractArena, ExtractIndex, InjectIndex};
-use core_types::gpoll::{ErrorKind, GraphError, Interrupt};
+use core_types::extent::{ExtentIn, LevelIn, ValueIn};
+use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt};
 use core_types::{Context, Ctx};
 
 core_types::attribute! {
@@ -63,16 +64,10 @@ fn sum(_: impl Ctx + InjectIndex + Copy, items: IList<f64>) -> f64 {
 }
 
 /// The pushed level's extent is the copy count; other levels forward to the carrier.
-fn repeat_opacity_extent<C, In0, In1>(node: &RepeatOpacityNode<In0, In1>, ctx: &C, level: u8) -> core_types::gpoll::GPoll<core_types::gpoll::Extent>
-where
-	In0: core_types::node::Node<C>,
-	In1: core_types::node::Node<C, Output = u32>,
-{
-	use core_types::node::Node;
-	if level + 1 == node.__layout.depth {
-		node.count.eval(ctx).map(|count| core_types::gpoll::Extent::Exactly(count as usize))
-	} else {
-		node.element.extent_at(ctx, level)
+fn repeat_opacity_extent(element: ExtentIn<'_>, count: ValueIn<'_, u32>, level: LevelIn) -> GPoll<Extent> {
+	match level.pushed() {
+		true => count.get().map(|count| Extent::Exactly(count as usize)),
+		false => element.at(level),
 	}
 }
 
@@ -87,21 +82,10 @@ fn repeat<T>(ctx: impl Ctx + DeriveCtx + ExtractIndex, content: impl Node<Contex
 
 /// The pushed level's extent is the copy count; inner levels forward to the
 /// content, whose extent is taken uniform across copies (queried at copy 0).
-fn repeat_extent<'r, C, In0, In1>(node: &RepeatNode<In0, In1>, ctx: &C, level: u8) -> core_types::gpoll::GPoll<core_types::gpoll::Extent>
-where
-	C: core_types::context::DeriveCtx + core_types::context::ExtractIndex,
-	In0: for<'d> core_types::record::DerivedRecordEdge<'d, core_types::context::Derived<'d, C>>,
-	In1: core_types::node::Node<C, Output = core_types::record::RecordValue<'r>>,
-{
-	use core_types::node::Node;
-	if level + 1 == node.__layout.depth {
-		node.count.eval(ctx).map(|value| {
-			let count: u32 = unsafe { core_types::record::read_element(node.__in_1.rec(&value)) };
-			core_types::gpoll::Extent::Exactly(count as usize)
-		})
-	} else {
-		let spilled = ctx.index_head();
-		node.content.extent_at_derived(&ctx.promoted(&spilled, 0), level)
+fn repeat_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, level: LevelIn) -> GPoll<Extent> {
+	match level.pushed() {
+		true => count.get().map(|count| Extent::Exactly(count as usize)),
+		false => content.at(level),
 	}
 }
 

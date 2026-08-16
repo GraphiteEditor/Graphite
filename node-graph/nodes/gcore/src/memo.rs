@@ -1,5 +1,6 @@
 use core_types::arena::ArenaCell;
 use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ExtractArena};
+use core_types::extent::{ExtentIn, LevelIn};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Extent, Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
@@ -45,11 +46,8 @@ fn memoize<'e>(
 	result
 }
 
-fn memoize_extent<C, NodeContent>(node: &MemoizeNode<NodeContent>, ctx: &C, level: u8) -> GPoll<Extent>
-where
-	NodeContent: Node<C>,
-{
-	node.content.extent_at(ctx, level)
+fn memoize_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
+	content.at(level)
 }
 
 #[node_macro::node(category(""), path(graphene_core::memo), extent(frame_memo_extent))]
@@ -95,11 +93,8 @@ fn frame_memo<'e>(
 	}
 }
 
-fn frame_memo_extent<C, NodeContent>(node: &FrameMemoNode<NodeContent>, ctx: &C, level: u8) -> GPoll<Extent>
-where
-	NodeContent: Node<C>,
-{
-	node.content.extent_at(ctx, level)
+fn frame_memo_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
+	content.at(level)
 }
 
 type MonitorValue = Arc<Mutex<Option<IORecord<CtxSnapshot, RecordCapture>>>>;

@@ -1221,13 +1221,74 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// The extent override is the leveled `extent_at`; consumers query the
 	// composite `extent(ctx, Level)`, which the trait derives from it. A node
 	// without `extent = fn` keeps the scalar default (one item at every level).
-	let extent_impl = match &parsed.attributes.extent {
-		Some(path) => quote! {
+	// The typed extent surface: the node's inputs in declaration order (values
+	// readable without unsafe, edges as per-level extent queries, derived
+	// content promoted per copy), then the level paired with the node's depth.
+	let extent_impl = if let Some(path) = &parsed.attributes.extent {
+		let mut arg_decls: Vec<TokenStream2> = Vec::new();
+		let mut arg_names: Vec<Ident> = Vec::new();
+		for (index, field) in regular_fields.iter().enumerate() {
+			let name = &field.pat_ident.ident;
+			if injected_name(name) {
+				continue;
+			}
+			let arg = format_ident!("__extent_arg_{index}");
+			let query = format_ident!("__extent_query_{index}");
+			let extent_edge = |query: &Ident, arg: &Ident| {
+				quote! {
+					let #query = |_: u64, __lvl: u8| #core_types::node::Node::extent_at(&self.#name, __input, __lvl);
+					let #arg = #core_types::extent::ExtentIn::new(&#query);
+				}
+			};
+			let decl = match &field.ty {
+				ParsedFieldType::Node(_) => match ir::lazy_binding(&node, index) {
+					ir::LazyBinding::DeriveRouting => quote! {
+						let #query = |__copy: u64, __lvl: u8| {
+							let __head = #core_types::context::DeriveCtx::index_head(__input);
+							#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &#core_types::context::DeriveCtx::promoted(__input, &__head, __copy), __lvl)
+						};
+						let #arg = #core_types::extent::ExtentIn::new(&#query);
+					},
+					_ => extent_edge(&query, &arg),
+				},
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match ir::value_binding(&node, index) {
+					ValueBinding::RecordElement | ValueBinding::ReadingSecondary => {
+						let slot = format_ident!("__in_{index}");
+						quote! {
+							let #query = || {
+								#core_types::node::Node::eval(&self.#name, __input)
+									.map(|__value| unsafe { #core_types::record::read_element::<#ty>(self.#slot.rec(&__value)) })
+							};
+							let #arg = #core_types::extent::ValueIn::new(&#query);
+						}
+					}
+					ValueBinding::Plain => quote! {
+						let #query = || #core_types::node::Node::eval(&self.#name, __input);
+						let #arg = #core_types::extent::ValueIn::new(&#query);
+					},
+					// A carrier, lent, or materialized ranked input is a record
+					// edge; its extents are the queryable quantity.
+					_ => extent_edge(&query, &arg),
+				},
+			};
+			arg_decls.push(decl);
+			arg_names.push(arg);
+		}
+		quote! {
+			fn extent_at(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
+				#(#arg_decls)*
+				let __level_in = #core_types::extent::LevelIn::new(__level, <Self as #core_types::node::Node<#ctx_ident>>::layout(self).depth);
+				#path(#(#arg_names,)* __level_in)
+			}
+		}
+	} else if let Some(path) = &parsed.attributes.extent_raw {
+		quote! {
 			fn extent_at(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
 				#path(self, __input, __level)
 			}
-		},
-		None => quote!(),
+		}
+	} else {
+		quote!()
 	};
 
 	let serialize_impl = match &parsed.attributes.serialize {

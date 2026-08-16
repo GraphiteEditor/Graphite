@@ -5,6 +5,7 @@ pub mod attribute;
 pub mod bounds;
 pub mod consts;
 pub mod context;
+pub mod extent;
 pub mod frame_table;
 pub mod gpoll;
 pub mod list;

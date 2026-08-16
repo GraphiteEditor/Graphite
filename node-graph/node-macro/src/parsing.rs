@@ -129,6 +129,8 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) placeholder: Option<Path>,
 	/// Function overriding the generated `extent` method
 	pub(crate) extent: Option<Path>,
+	/// Function overriding the generated `extent` method with the raw node/ctx/level form
+	pub(crate) extent_raw: Option<Path>,
 	/// Function overriding the generated `eval_batch` method
 	pub(crate) batch: Option<Path>,
 	/// Whether partial upstream values are mapped to `Pending` instead of flowing into this node
@@ -400,6 +402,7 @@ impl Parse for NodeFnAttributes {
 		let mut inject_scope = false;
 		let mut placeholder = None;
 		let mut extent = None;
+		let mut extent_raw = None;
 		let mut batch = None;
 		let mut no_partial = false;
 		let mut plain = false;
@@ -572,6 +575,19 @@ impl Parse for NodeFnAttributes {
 					let parsed_path: Path = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'extent', e.g., extent(my_extent)"))?;
 					extent = Some(parsed_path);
 				}
+				// Escape hatch for extent overrides needing arbitrary context access: the raw
+				// `(node, ctx, level)` form instead of the typed `extent(fn)` input surface.
+				//
+				// Example usage:
+				// #[node_macro::node(..., extent_raw(my_extent), ...)]
+				"extent_raw" => {
+					let meta = meta.require_list()?;
+					if extent_raw.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'extent_raw' attributes are not allowed"));
+					}
+					let parsed_path: Path = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'extent_raw', e.g., extent_raw(my_extent)"))?;
+					extent_raw = Some(parsed_path);
+				}
 				// Function overriding the generated `eval_batch` method, replacing the trait's per-lane spec loop.
 				//
 				// Example usage:
@@ -608,7 +624,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', 'inject_scope', 'placeholder', 'extent', 'batch', and 'no_partial'.
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', 'inject_scope', 'placeholder', 'extent', 'extent_raw', 'batch', and 'no_partial'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -631,6 +647,10 @@ impl Parse for NodeFnAttributes {
 			));
 		}
 
+		if let (Some(_), Some(raw)) = (&extent, &extent_raw) {
+			return Err(Error::new_spanned(raw, "'extent' and 'extent_raw' are mutually exclusive"));
+		}
+
 		Ok(NodeFnAttributes {
 			category,
 			display_name,
@@ -644,6 +664,7 @@ impl Parse for NodeFnAttributes {
 			inject_scope,
 			placeholder,
 			extent,
+			extent_raw,
 			batch,
 			no_partial,
 			plain,
@@ -1393,6 +1414,7 @@ mod tests {
 				inject_scope: false,
 				placeholder: None,
 				extent: None,
+				extent_raw: None,
 				batch: None,
 				no_partial: false,
 				plain: false,
@@ -1472,6 +1494,7 @@ mod tests {
 				inject_scope: false,
 				placeholder: None,
 				extent: None,
+				extent_raw: None,
 				batch: None,
 				no_partial: false,
 				plain: false,
@@ -1566,6 +1589,7 @@ mod tests {
 				inject_scope: false,
 				placeholder: None,
 				extent: None,
+				extent_raw: None,
 				batch: None,
 				no_partial: false,
 				plain: false,
@@ -1641,6 +1665,7 @@ mod tests {
 				inject_scope: false,
 				placeholder: None,
 				extent: None,
+				extent_raw: None,
 				batch: None,
 				no_partial: false,
 				plain: false,
@@ -1728,6 +1753,7 @@ mod tests {
 				inject_scope: false,
 				placeholder: None,
 				extent: None,
+				extent_raw: None,
 				batch: None,
 				no_partial: false,
 				plain: false,
@@ -1818,6 +1844,7 @@ mod tests {
 				inject_scope: false,
 				placeholder: None,
 				extent: None,
+				extent_raw: None,
 				batch: None,
 				no_partial: false,
 				plain: false,
@@ -1893,6 +1920,7 @@ mod tests {
 				inject_scope: false,
 				placeholder: None,
 				extent: None,
+				extent_raw: None,
 				batch: None,
 				no_partial: false,
 				plain: false,
