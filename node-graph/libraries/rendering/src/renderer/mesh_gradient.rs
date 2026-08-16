@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::ops::{Add, Mul, Sub};
 
 use crate::renderer::{gradient_placement, singular_values, transform_is_invertible};
@@ -5,7 +6,7 @@ use crate::to_peniko::ToPenikoColor;
 use core_types::{Color, color::SRGBA8};
 use glam::{DAffine2, DMat2, DVec2, Vec2, Vec4};
 use image::ImageEncoder;
-use kurbo::BezPath;
+use kurbo::{BezPath, Shape};
 use vector_types::GradientInterpolation;
 use vector_types::{
 	gradient::{GradientSpace, MeshGradient},
@@ -21,13 +22,15 @@ pub(super) const MESH_COLOR_ERROR_TOLERANCE: f32 = 2. / 255.;
 pub(super) const MESH_MINIMUM_SUBPATCH_SIZE: f64 = 8.;
 /// Maximum subpatches one mesh may divide into, bounding what a color field the tolerance cannot reach can allocate.
 pub(super) const MESH_MAXIMUM_SUBPATCHES: usize = 4096;
-/// Source padding in viewport pixels for displacement-map numerical error.
-pub(super) const DISPLACEMENT_MAP_INFLATION_IN_VIEWPORT_PX: f64 = 5.;
 /// Patch padding in viewport pixels for hiding anti-aliasing gaps.
 pub(super) const PATCH_INFLATION_IN_VIEWPORT_PX: f64 = 1.;
 
 /// Width and height of each generated displacement map.
-const DISPLACEMENT_MAP_SIZE: u32 = 128;
+const DISPLACEMENT_MAP_SIZE: usize = 128;
+/// Fraction of the displacement map reserved as margin on each side to absorb floating-point error.
+const DISPLACEMENT_MAP_MARGIN_PERCENTAGE: f64 = 0.02;
+/// Exterior texels evaluated around the patch to cover displacement-map filtering.
+const DISPLACEMENT_MAP_OUTSIDE_BUFFER_TEXELS: usize = 2;
 /// Maximum local inflation applied to a subpatch clip.
 const MESH_MAXIMUM_CLIP_INFLATION: f64 = 0.5;
 
@@ -209,15 +212,30 @@ fn linear_row_interval_error(evaluator: &MeshGradientEvaluator, start: f32, end:
 // SVG displacement maps
 // =====================
 
-/// Returns the displacements from a unit rectangle to bounding box of a coons patch.
-/// The values are pairs of (original position, target position).
-pub(super) fn unit_to_coons_bbox_displacements(patch_evaluator: &MeshPatchEvaluator, displacement_map_to_patch: &DAffine2, inflated_map_sizes: &[f64; 4]) -> Vec<(DVec2, DVec2)> {
-	let [inflated_map_x, inflated_map_y, inflated_map_width, inflated_map_height] = inflated_map_sizes;
+pub(super) struct DisplacementMapSamples {
+	/// Displacement-map region in normalized bounding-box coordinates, including its margin. [x, y, width, height]
+	pub region: [f64; 4],
+	/// Row-major target-to-source displacement samples over `region`.
+	pub displacements: Vec<DVec2>,
+}
 
-	let mut displacements: Vec<(DVec2, DVec2)> = vec![];
-	// 81 samples of (uv, position) tuples in the patch.
+/// Returns target-to-source displacement samples mapping normalized patch-bounding-box positions to source UVs.
+pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: &MeshPatchEvaluator, unit_to_patch_bbox: &DAffine2, boundary: &BezPath) -> DisplacementMapSamples {
+	let size = DISPLACEMENT_MAP_SIZE;
+	let margin = DISPLACEMENT_MAP_MARGIN_PERCENTAGE / (1. - 2. * DISPLACEMENT_MAP_MARGIN_PERCENTAGE);
+	let map_min = DVec2::splat(-margin);
+	let map_size = DVec2::splat(1. + 2. * margin);
+	let target_positions = |index: usize| {
+		let x = index % size;
+		let y = index / size;
+		let image_uv = DVec2::new((x as f64 + 0.5) / size as f64, (y as f64 + 0.5) / size as f64);
+		let normalized_bbox = map_min + image_uv * map_size;
+		(normalized_bbox, unit_to_patch_bbox.transform_point2(normalized_bbox))
+	};
+
+	// 81 samples of (uv, position) tuples in the patch
 	let inverse_seeds = {
-		// Number of initial intervals sampled along each patch axis.
+		// Number of initial intervals sampled along each patch axis
 		const INITIAL_SUBDIVISIONS: usize = 8;
 		let seed_count = (INITIAL_SUBDIVISIONS + 1).pow(2);
 		let mut seeds = Vec::with_capacity(seed_count);
@@ -232,57 +250,152 @@ pub(super) fn unit_to_coons_bbox_displacements(patch_evaluator: &MeshPatchEvalua
 		}
 		seeds
 	};
+	let initial_uv_from_seeds = |target_position| {
+		inverse_seeds
+			.iter()
+			.min_by(|(_, first_position), (_, second_position)| first_position.distance_squared(target_position).total_cmp(&second_position.distance_squared(target_position)))
+			.map(|(uv, _)| *uv)
+			.unwrap_or(DVec2::splat(0.5))
+	};
 
-	for y in 0..DISPLACEMENT_MAP_SIZE {
-		for x in 0..DISPLACEMENT_MAP_SIZE {
-			// Adds 0.5 to evaluate the center of the pixel
-			let s = (x as f64 + 0.5) / DISPLACEMENT_MAP_SIZE as f64;
-			let t = (y as f64 + 0.5) / DISPLACEMENT_MAP_SIZE as f64;
+	let inside_patch = (0..size * size)
+		.map(|index| {
+			let (_, target_position_in_mesh) = target_positions(index);
+			boundary.contains(kurbo::Point::new(target_position_in_mesh.x, target_position_in_mesh.y))
+		})
+		.collect::<Vec<_>>();
 
-			// Position in the displaced result. This can be larger than [0, 1].
-			let target_pos = DVec2::new(inflated_map_x + s * inflated_map_width, inflated_map_y + t * inflated_map_height);
-			let target_mesh_pos = displacement_map_to_patch.transform_point2(target_pos);
-			// Calculate the original position where the target position is projected from. This should be [0, 1].
-			let initial_uv = inverse_seeds
-				.iter()
-				.min_by(|(_, first_position), (_, second_position)| first_position.distance_squared(target_mesh_pos).total_cmp(&second_position.distance_squared(target_mesh_pos)))
-				.map(|(uv, _)| *uv)
-				.unwrap_or(DVec2::splat(0.5));
-			let source_pos = patch_evaluator.inverse_patch_position(target_mesh_pos, initial_uv);
+	let buffer = DISPLACEMENT_MAP_OUTSIDE_BUFFER_TEXELS as isize;
+	// The target region on the displacement map that requires source position
+	let sampled_region = (0..size * size)
+		.map(|index| {
+			let x = (index % size) as isize;
+			let y = (index / size) as isize;
+			inside_patch[index]
+				|| (-buffer..=buffer).any(|dy| {
+					(-buffer..=buffer).any(|dx| {
+						if dx.abs() + dy.abs() > buffer {
+							return false;
+						}
 
-			displacements.push((source_pos, target_pos));
+						let neighbor_x = x + dx;
+						let neighbor_y = y + dy;
+						neighbor_x >= 0 && neighbor_x < size as isize && neighbor_y >= 0 && neighbor_y < size as isize && inside_patch[neighbor_y as usize * size + neighbor_x as usize]
+					})
+				})
+		})
+		.collect::<Vec<_>>();
+
+	let mut inverse_uvs = vec![None::<DVec2>; size * size];
+	let mut attempted = vec![false; size * size];
+	let mut inside_queue = VecDeque::new();
+	let mut outside_queue = VecDeque::new();
+
+	// Seed the first interior texel from the coarse inverse samples.
+	if let Some(index) = inside_patch.iter().position(|&inside| inside) {
+		let (_, target_position_in_mesh) = target_positions(index);
+		attempted[index] = true;
+		if let Some(uv) = patch_evaluator.try_inverse_patch_position(target_position_in_mesh, initial_uv_from_seeds(target_position_in_mesh)) {
+			inverse_uvs[index] = Some(uv);
+			inside_queue.push_back(index);
 		}
 	}
 
-	displacements
+	// Resolve the patch interior first, deferring successfully inverted exterior texels until it is complete.
+	while let Some(index) = inside_queue.pop_front() {
+		let initial_uv = inverse_uvs[index].expect("Only successfully inverted texels should be queued");
+		let x = (index % size) as isize;
+		let y = (index / size) as isize;
+
+		for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (0, 1)] {
+			let neighbor_x = x + dx;
+			let neighbor_y = y + dy;
+			if neighbor_x < 0 || neighbor_x >= size as isize || neighbor_y < 0 || neighbor_y >= size as isize {
+				continue;
+			}
+
+			let neighbor_index = neighbor_y as usize * size + neighbor_x as usize;
+			if attempted[neighbor_index] || !sampled_region[neighbor_index] {
+				continue;
+			}
+
+			attempted[neighbor_index] = true;
+			let (_, target_position_in_mesh) = target_positions(neighbor_index);
+			if let Some(uv) = patch_evaluator.try_inverse_patch_position(target_position_in_mesh, initial_uv) {
+				inverse_uvs[neighbor_index] = Some(uv);
+				if inside_patch[neighbor_index] {
+					inside_queue.push_back(neighbor_index);
+				} else {
+					outside_queue.push_back(neighbor_index);
+				}
+			}
+		}
+	}
+
+	// Continue only through the exterior filtering region after every reachable interior texel is resolved.
+	while let Some(index) = outside_queue.pop_front() {
+		let initial_uv = inverse_uvs[index].expect("Only successfully inverted texels should be queued");
+		let x = (index % size) as isize;
+		let y = (index / size) as isize;
+
+		for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (0, 1)] {
+			let neighbor_x = x + dx;
+			let neighbor_y = y + dy;
+			if neighbor_x < 0 || neighbor_x >= size as isize || neighbor_y < 0 || neighbor_y >= size as isize {
+				continue;
+			}
+
+			let neighbor_index = neighbor_y as usize * size + neighbor_x as usize;
+			if attempted[neighbor_index] || inside_patch[neighbor_index] || !sampled_region[neighbor_index] {
+				continue;
+			}
+
+			attempted[neighbor_index] = true;
+			let (_, target_position_in_mesh) = target_positions(neighbor_index);
+			if let Some(uv) = patch_evaluator.try_inverse_patch_position(target_position_in_mesh, initial_uv) {
+				inverse_uvs[neighbor_index] = Some(uv);
+				outside_queue.push_back(neighbor_index);
+			}
+		}
+	}
+
+	let displacements = inverse_uvs
+		.into_iter()
+		.enumerate()
+		.map(|(index, inverse_uv)| {
+			let (target_position, _) = target_positions(index);
+			// Failed and unsampled positions use zero displacement rather than estimating from a non-converged numerical source position.
+			// This prevents unexpected jumps in the displacement that would increase the quantization scale.
+			let source_position = inverse_uv.map(|uv| uv.clamp(DVec2::ZERO, DVec2::ONE)).unwrap_or(target_position);
+
+			source_position - target_position
+		})
+		.collect();
+	DisplacementMapSamples {
+		displacements,
+		region: [map_min.x, map_min.y, map_size.x, map_size.y],
+	}
 }
 
-/// Collect pairs from a position in a source unit rectangle and a position in the target coons patch.
-pub(super) fn displacements_to_map_png(displacements: &[(DVec2, DVec2)], scale: f64) -> Vec<u8> {
-	let mut rgba16_bytes = Vec::with_capacity((DISPLACEMENT_MAP_SIZE * DISPLACEMENT_MAP_SIZE * 4 * size_of::<u16>() as u32) as usize);
+/// Encodes target-to-source displacement samples as an RGBA8 PNG for feDisplacementMap.
+pub(super) fn displacements_to_map_png(displacements: &[DVec2], scale: f64) -> Vec<u8> {
+	let mut rgba8_bytes = Vec::with_capacity(DISPLACEMENT_MAP_SIZE * DISPLACEMENT_MAP_SIZE * 4);
 
-	let encode_displacement = |source: f64, target: f64| {
-		let max_channel = u16::MAX as f64;
-		let ideal = (0.5 + (source - target) / scale) * max_channel;
-		let minimum = ((0.5 - target / scale) * max_channel).ceil().max(0.);
-		let maximum = ((0.5 + (1. - target) / scale) * max_channel).floor().min(max_channel);
-
-		ideal.round().clamp(minimum, maximum) as u16
+	let encode_displacement = |displacement: DVec2| {
+		let max_channel = u8::MAX as f64;
+		let encoded = (DVec2::splat(0.5) + displacement / scale) * max_channel;
+		(encoded.x.round().clamp(0., max_channel) as u8, encoded.y.round().clamp(0., max_channel) as u8)
 	};
-	for displacement in displacements {
-		let (source_pos, target_pos) = displacement;
-		let red = encode_displacement(source_pos.x, target_pos.x);
-		let green = encode_displacement(source_pos.y, target_pos.y);
 
-		for channel in [red, green, 0, u16::MAX] {
-			rgba16_bytes.extend_from_slice(&channel.to_ne_bytes());
-		}
+	for displacement in displacements {
+		let (red, green) = encode_displacement(*displacement);
+		rgba8_bytes.extend_from_slice(&[red, green, 0, u8::MAX]);
 	}
 
 	let mut displacement_map_png = Vec::new();
 	::image::codecs::png::PngEncoder::new(&mut displacement_map_png)
-		.write_image(&rgba16_bytes, DISPLACEMENT_MAP_SIZE, DISPLACEMENT_MAP_SIZE, ::image::ExtendedColorType::Rgba16)
-		.expect("failed to encode displacement map as 16-bit PNG");
+		.write_image(&rgba8_bytes, DISPLACEMENT_MAP_SIZE as u32, DISPLACEMENT_MAP_SIZE as u32, ::image::ExtendedColorType::Rgba8)
+		.expect("failed to encode displacement map as 8-bit PNG");
 
 	displacement_map_png
 }

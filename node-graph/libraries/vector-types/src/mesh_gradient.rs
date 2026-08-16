@@ -777,6 +777,17 @@ impl MeshPatchEvaluator {
 
 	/// Returns [0,1] approximated uv by calculating the inverse of the bilinearly-blended Coons patch using Newton's method.
 	pub fn inverse_patch_position(&self, target_position: DVec2, initial_uv: DVec2) -> DVec2 {
+		let (uv, _) = self.inverse_patch_position_impl(target_position, initial_uv);
+		uv.clamp(DVec2::ZERO, DVec2::ONE)
+	}
+
+	/// Returns the unbounded UV when Newton's method converges, allowing neighboring positions to continue the same inverse branch.
+	pub fn try_inverse_patch_position(&self, target_position: DVec2, initial_uv: DVec2) -> Option<DVec2> {
+		let (uv, converged) = self.inverse_patch_position_impl(target_position, initial_uv);
+		converged.then_some(uv)
+	}
+
+	fn inverse_patch_position_impl(&self, target_position: DVec2, initial_uv: DVec2) -> (DVec2, bool) {
 		const MAX_ITERATION: usize = 16;
 		const POSITION_TOLERANCE: f64 = 1e-6;
 		const JACOBIAN_EPSILON: f64 = 1e-12;
@@ -796,7 +807,7 @@ impl MeshPatchEvaluator {
 			}
 
 			if error_squared <= POSITION_TOLERANCE * POSITION_TOLERANCE {
-				return uv.clamp(DVec2::ZERO, DVec2::ONE);
+				return (uv, true);
 			}
 
 			// If not, calculate the next uv by subtracting the inverse Jacobian multiplied by the error
@@ -829,11 +840,11 @@ impl MeshPatchEvaluator {
 			let Some(next_uv) = next_uv else {
 				break;
 			};
-			// Clamping each iteration to [0, 1] makes positions outside the patch resolve to a boundary uv, extending the patch's edge values outward.
 			uv = next_uv;
 		}
 
-		uv.clamp(DVec2::ZERO, DVec2::ONE)
+		let error_squared = self.evaluate_position(uv.x, uv.y).distance_squared(target_position);
+		(uv, error_squared.is_finite() && error_squared <= POSITION_TOLERANCE * POSITION_TOLERANCE)
 	}
 
 	/// Evaluates one horizontal Bezier control row of a smooth patch.
@@ -1284,6 +1295,23 @@ mod tests {
 		let actual = evaluator.inverse_patch_position(DVec2::new(1.5, 0.4), DVec2::splat(0.5));
 
 		assert_position(actual, DVec2::new(1., 0.4));
+	}
+
+	#[test]
+	fn try_inverse_patch_position_returns_unbounded_uv() {
+		let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE];
+		let evaluator = patch_evaluator(corners, line_edges(corners));
+		let actual = evaluator.try_inverse_patch_position(DVec2::new(1.5, 0.4), DVec2::splat(0.5)).unwrap();
+
+		assert_position(actual, DVec2::new(1.5, 0.4));
+	}
+
+	#[test]
+	fn try_inverse_patch_position_reports_singular_patch() {
+		let corners = [DVec2::ZERO; 4];
+		let evaluator = patch_evaluator(corners, line_edges(corners));
+
+		assert!(evaluator.try_inverse_patch_position(DVec2::ONE, DVec2::splat(0.5)).is_none());
 	}
 
 	#[test]

@@ -2,9 +2,9 @@ mod mesh_gradient;
 
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::renderer::mesh_gradient::{
-	DISPLACEMENT_MAP_INFLATION_IN_VIEWPORT_PX, MESH_COLOR_ERROR_TOLERANCE, MESH_MINIMUM_SUBPATCH_SIZE, MESH_POSITION_ERROR_TOLERANCE, PATCH_INFLATION_IN_VIEWPORT_PX, SvgMeshVLayers,
-	alpha_curve_to_gradient_stops_string, clamped_ramp_gradient_stops_string, displacements_to_map_png, mesh_boundary_path, mesh_subpatch_transform, render_vello_subpatch_alpha,
-	render_vello_subpatch_color, subdivide_patches_adaptive, u_alpha_curve_to_gradient_stops_string, u_color_curve_to_gradient_stops_string, unit_to_coons_bbox_displacements,
+	DisplacementMapSamples, MESH_COLOR_ERROR_TOLERANCE, MESH_MINIMUM_SUBPATCH_SIZE, MESH_POSITION_ERROR_TOLERANCE, PATCH_INFLATION_IN_VIEWPORT_PX, SvgMeshVLayers,
+	alpha_curve_to_gradient_stops_string, clamped_ramp_gradient_stops_string, coons_bbox_to_source_displacements, displacements_to_map_png, mesh_boundary_path, mesh_subpatch_transform,
+	render_vello_subpatch_alpha, render_vello_subpatch_color, subdivide_patches_adaptive, u_alpha_curve_to_gradient_stops_string, u_color_curve_to_gradient_stops_string,
 };
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use base64::Engine;
@@ -2528,34 +2528,27 @@ impl Render for List<MeshGradient> {
 						if !bounds_size.is_finite() || bounds_size.x <= f64::EPSILON || bounds_size.y <= f64::EPSILON {
 							continue;
 						}
-
-						// The patch transform is done by A*D, where..
-						// D := Displacement map that projects from the unit rectangle to the patch shape in normalized map space
-						// A (displacement_map_to_patch) := Affine transform from the patch to the mesh space
-						// Keeping the affine transform outside the displacement map limits the map to the non-affine deformation,
-						// reducing quantization error when the patch is scaled.
-						let displacement_map_to_patch = DAffine2::from_cols(DVec2::new(bounds_size.x, 0.), DVec2::new(0., bounds_size.y), bounds_min);
-						let patch_to_displacement_map = displacement_map_to_patch.inverse();
-
-						let map_to_viewport = render.transform * mesh_transform * displacement_map_to_patch;
-						let viewport_u_length = map_to_viewport.transform_vector2(DVec2::X).length();
-						let viewport_v_length = map_to_viewport.transform_vector2(DVec2::Y).length();
-						if !viewport_u_length.is_finite() || !viewport_v_length.is_finite() || viewport_u_length <= f64::EPSILON || viewport_v_length <= f64::EPSILON {
+						// Encode the deformation in normalized patch-bounding-box space so patch translation and axis-aligned scaling do not consume PNG channel precision.
+						let unit_to_patch_bbox = DAffine2::from_cols(DVec2::new(bounds_size.x, 0.), DVec2::new(0., bounds_size.y), bounds_min);
+						let unit_to_viewport = render.transform * mesh_transform * unit_to_patch_bbox;
+						let (_, smallest_viewport_scale) = singular_values(unit_to_viewport);
+						if !smallest_viewport_scale.is_finite() || smallest_viewport_scale <= f64::EPSILON {
 							continue;
 						}
 
-						let inflated_values = |target_padding_px: f64| {
-							let inflation_u = target_padding_px / viewport_u_length;
-							let inflation_v = target_padding_px / viewport_v_length;
-							let inflated_x = -inflation_u;
-							let inflated_y = -inflation_v;
-							let inflated_width = 1. + 2. * inflation_u;
-							let inflated_height = 1. + 2. * inflation_v;
-							[inflated_x, inflated_y, inflated_width, inflated_height]
-						};
-						// Inflated values for the displacement map to prevent overshooting of the mapping, which could be caused by floating point calculation in the renderer
-						let inflated_map_sizes = inflated_values(DISPLACEMENT_MAP_INFLATION_IN_VIEWPORT_PX);
-						let [inflated_map_x, inflated_map_y, inflated_map_width, inflated_map_height] = inflated_map_sizes;
+						let DisplacementMapSamples { displacements, region } = coons_bbox_to_source_displacements(patch_evaluator, &unit_to_patch_bbox, &patch_boundary_path);
+						let [map_x, map_y, map_width, map_height] = region;
+						// feDisplacementMap decodes each channel as scale * (channel - 0.5).
+						// Twice the largest absolute component is therefore the smallest scale that covers every displacement and maximizes quantization precision.
+						let max_displacement = displacements.iter().map(|displacement| displacement.abs().max_element()).fold(0_f64, f64::max);
+						// Keep the scale nonzero when all displacements are zero.
+						let scale = (max_displacement * 2.).max(f64::EPSILON);
+
+						let displacement_map_png = displacements_to_map_png(&displacements, scale);
+						let preamble = "data:image/png;base64,";
+						let mut displacement_map_data_url = String::with_capacity(preamble.len() + displacement_map_png.len() * 4 / 3 + 4);
+						displacement_map_data_url.push_str(preamble);
+						base64::engine::general_purpose::STANDARD.encode_string(displacement_map_png, &mut displacement_map_data_url);
 
 						let v_alpha_mask_ids = alpha_mask_gradient_ids
 							.iter()
@@ -2566,18 +2559,18 @@ impl Render for List<MeshGradient> {
 									&mut render.svg_defs,
 									r##"<mask
 											id="{mask_id}"
-											x="{inflated_map_x}"
-											y="{inflated_map_y}"
-											width="{inflated_map_width}"
-											height="{inflated_map_height}"
+											x="{map_x}"
+											y="{map_y}"
+											width="{map_width}"
+											height="{map_height}"
 											maskUnits="userSpaceOnUse"
 											maskContentUnits="userSpaceOnUse"
 											mask-type="alpha">
 												<rect
-												x="{inflated_map_x}"
-												y="{inflated_map_y}"
-												width="{inflated_map_width}"
-												height="{inflated_map_height}"
+												x="{map_x}"
+												y="{map_y}"
+												width="{map_width}"
+												height="{map_height}"
 												fill="url(#{gradient_id})"/>
 											</mask>"##,
 								)
@@ -2602,55 +2595,36 @@ impl Render for List<MeshGradient> {
 							})
 							.collect::<Vec<_>>();
 
-						let displacements = unit_to_coons_bbox_displacements(patch_evaluator, &displacement_map_to_patch, &inflated_map_sizes);
-						// feDisplacementMap decodes each channel as scale * (channel - 0.5)
-						// Therefore, use twice the maximum absolute component as the smallest scale that covers every displacement, maximizing quantization precision
-						let max_displacement = displacements
-							.iter()
-							.flat_map(|(original, target)| {
-								let displacement = target - original;
-								[displacement.x.abs(), displacement.y.abs()]
-							})
-							.fold(0., f64::max);
-						// Keep a nonzero scale for an affine patch, whose displacement is exactly zero.
-						let scale = (max_displacement * 2.).max(f64::EPSILON);
-
-						let displacement_map_png = displacements_to_map_png(&displacements, scale);
-						let preamble = "data:image/png;base64,";
-						let mut displacement_map_data_url = String::with_capacity(preamble.len() + displacement_map_png.len() * 4 / 3 + 4);
-						displacement_map_data_url.push_str(preamble);
-						base64::engine::general_purpose::STANDARD.encode_string(displacement_map_png, &mut displacement_map_data_url);
-
 						write!(
 							&mut render.svg_defs,
 							r##"<filter
 									id="fd{unique_id}"
-									x="{inflated_map_x}"
-									y="{inflated_map_y}"
-									width="{inflated_map_width}"
-									height="{inflated_map_height}"
+									x="{map_x}"
+									y="{map_y}"
+									width="{map_width}"
+									height="{map_height}"
 									filterUnits="userSpaceOnUse"
 									primitiveUnits="userSpaceOnUse"
 									color-interpolation-filters="sRGB">
 										<feImage
 										href="{displacement_map_data_url}"
-										x="{inflated_map_x}"
-										y="{inflated_map_y}"
-										width="{inflated_map_width}"
-										height="{inflated_map_height}"
+										x="{map_x}"
+										y="{map_y}"
+										width="{map_width}"
+										height="{map_height}"
 										preserveAspectRatio="none"
 										result="gmmap{unique_id}"/>
 										<feDisplacementMap
-											x="{inflated_map_x}"
-											y="{inflated_map_y}"
-											width="{inflated_map_width}"
-											height="{inflated_map_height}"
+											x="{map_x}"
+											y="{map_y}"
+											width="{map_width}"
+											height="{map_height}"
 											in="SourceGraphic"
 											in2="gmmap{unique_id}"
-											scale="{scale}"
-											xChannelSelector="R"
-											yChannelSelector="G"/>
-									</filter>"##
+										scale="{scale}"
+										xChannelSelector="R"
+										yChannelSelector="G"/>
+								</filter>"##
 						)
 						.unwrap();
 
@@ -2683,38 +2657,37 @@ impl Render for List<MeshGradient> {
 								};
 								write!(
 									alpha_field,
-									r##"<rect x="{inflated_map_x}" y="{inflated_map_y}" width="{inflated_map_width}" height="{inflated_map_height}" fill="url(#{gradient_id})"{mask}/>"##,
+									r##"<rect x="{map_x}" y="{map_y}" width="{map_width}" height="{map_height}" fill="url(#{gradient_id})"{mask}/>"##,
 								)
 								.unwrap();
 							}
 							alpha_field
 						});
 
-						// Inflate the patch to hide the gap between patches caused by anti-aliasing
-						let [inflated_patch_x, inflated_patch_y, inflated_patch_width, inflated_patch_height] = inflated_values(PATCH_INFLATION_IN_VIEWPORT_PX);
-						let patch_clip_inflation = DAffine2::from_scale_angle_translation(DVec2::new(inflated_patch_width, inflated_patch_height), 0., DVec2::new(inflated_patch_x, inflated_patch_y));
-						let patch_clip_transform = patch_clip_inflation * patch_to_displacement_map;
+						// Add a centered stroke to expand the patch along its boundary normal and hide antialiasing gaps between patches.
+						// Dividing by the smallest singular value guarantees at least the requested viewport-space expansion under any nonsingular affine transform.
+						let patch_clip_stroke_width = 2. * PATCH_INFLATION_IN_VIEWPORT_PX / smallest_viewport_scale;
 
-						patch_boundary_path.apply_affine(Affine::new(patch_clip_transform.to_cols_array()));
+						patch_boundary_path.apply_affine(Affine::new(unit_to_patch_bbox.inverse().to_cols_array()));
 						let patch_boundary_d = patch_boundary_path.to_svg();
 
 						write!(
 							&mut render.svg_defs,
 							r##"<mask
 									id="mc{unique_id}"
-									x="{inflated_map_x}"
-									y="{inflated_map_y}"
-									width="{inflated_map_width}"
-									height="{inflated_map_height}"
+									x="{map_x}"
+									y="{map_y}"
+									width="{map_width}"
+									height="{map_height}"
 									maskUnits="userSpaceOnUse"
 									maskContentUnits="userSpaceOnUse"
 									mask-type="alpha">
-										<path d="{patch_boundary_d}" fill="#fff"/>
+										<path d="{patch_boundary_d}" fill="#fff" stroke="#fff" stroke-width="{patch_clip_stroke_width}" stroke-linejoin="round"/>
 									</mask>"##
 						)
 						.unwrap();
 
-						let patch_transform = format_transform_matrix(mesh_transform * displacement_map_to_patch);
+						let patch_transform = format_transform_matrix(mesh_transform * unit_to_patch_bbox);
 						if let Some(alpha_field) = alpha_field {
 							write!(
 								mesh_alpha_field,
@@ -2744,10 +2717,10 @@ impl Render for List<MeshGradient> {
 											|render| {
 												u_color_curves_gradient_ids.iter().enumerate().rev().for_each(|(i, gradient_id)| {
 													render.leaf_tag("rect", |attributes| {
-														attributes.push("x", inflated_map_x.to_string());
-														attributes.push("y", inflated_map_y.to_string());
-														attributes.push("width", inflated_map_width.to_string());
-														attributes.push("height", inflated_map_height.to_string());
+														attributes.push("x", map_x.to_string());
+														attributes.push("y", map_y.to_string());
+														attributes.push("width", map_width.to_string());
+														attributes.push("height", map_height.to_string());
 														attributes.push("fill", format!("url(#{gradient_id})"));
 														if let Some(mask_id) = v_alpha_mask_ids.get(i) {
 															attributes.push("mask", format!("url(#{mask_id})"));
