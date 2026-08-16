@@ -718,10 +718,7 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		Some(TaggedValue::F64(value)) => *value,
 		_ => 4.,
 	};
-	let paint_order = match parameters.value(stroke::PaintOrderInput) {
-		Some(TaggedValue::PaintOrder(value)) => *value,
-		_ => PaintOrder::default(),
-	};
+	let paint_order = get_stroke_paint_order(layer, network_interface);
 	let dash_lengths = match parameters.value(stroke::DashPatternInput) {
 		Some(TaggedValue::DashPattern(lengths)) => lengths.clone(),
 		_ => Vec::new(),
@@ -747,23 +744,72 @@ pub fn get_stroke_id(layer: LayerNodeIdentifier, network_interface: &NodeNetwork
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER))
 }
 
-/// Stroke weight of the first selected non-artboard layer, used by tool control bars to mirror the selection's weight.
-/// Returns `Some(0.)` if the layer has no Stroke node so the widget reads "0 px", and `None` only when no layer is selected.
-pub fn first_selected_stroke_weight(document: &DocumentMessageHandler) -> Option<f64> {
-	document
-		.network_interface
-		.selected_nodes()
-		.selected_layers_except_artboards(&document.network_interface)
-		.next()
-		.map(|layer| get_stroke_width(layer, &document.network_interface).unwrap_or(0.))
+/// Whether the paint order swap can act on the layer: exactly one Fill and one Stroke node in its chain,
+/// wired directly together. Extra paint nodes make the swap unreliable, since a cover replaced in place
+/// keeps the slot in the paint order that its upstream sibling established.
+pub fn stroke_paint_order_applicable(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+	let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+	let fill_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+
+	let mut strokes = Vec::new();
+	let mut fills = Vec::new();
+	let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
+	for node_id in node_graph_layer
+		.horizontal_layer_flow()
+		.take_while(|&node_id| node_id == layer.to_node() || !network_interface.is_layer(&node_id, &[]))
+	{
+		let reference = network_interface.reference(&node_id, &[]);
+		if reference.as_ref() == Some(&stroke_reference) {
+			strokes.push(node_id);
+		} else if reference.as_ref() == Some(&fill_reference) {
+			fills.push(node_id);
+		}
+	}
+	let (&[stroke_node_id], &[fill_node_id]) = (strokes.as_slice(), fills.as_slice()) else {
+		return false;
+	};
+
+	let primary_source = |node_id: NodeId| match network_interface.input_from_connector(&InputConnector::node_at_index(node_id, 0), &[]) {
+		Some(NodeInput::Node { node_id, output_index: 0, .. }) => Some(*node_id),
+		_ => None,
+	};
+	primary_source(stroke_node_id) == Some(fill_node_id) || primary_source(fill_node_id) == Some(stroke_node_id)
+}
+
+/// The paint order of a layer's stroke, read from the chain topology: both the Fill and Stroke nodes append
+/// their cover, so the more downstream of the two paints on top, following the painter's algorithm.
+pub fn get_stroke_paint_order(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> PaintOrder {
+	let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+	let fill_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+
+	// The flow iterates downstream to upstream, so the first of the pair encountered is the one painting on top
+	let mut stroke_position = None;
+	let mut fill_position = None;
+	let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
+	for (position, node_id) in node_graph_layer
+		.horizontal_layer_flow()
+		.take_while(|&node_id| node_id == layer.to_node() || !network_interface.is_layer(&node_id, &[]))
+		.enumerate()
+	{
+		let reference = network_interface.reference(&node_id, &[]);
+		if reference.as_ref() == Some(&stroke_reference) {
+			stroke_position.get_or_insert(position);
+		} else if reference.as_ref() == Some(&fill_reference) {
+			fill_position.get_or_insert(position);
+		}
+	}
+
+	match stroke_position.zip(fill_position) {
+		Some((stroke_position, fill_position)) if fill_position < stroke_position => PaintOrder::StrokeBelow,
+		_ => PaintOrder::StrokeAbove,
+	}
 }
 
 /// Writes the weight back to every selected non-artboard layer's stroke. Layers with an existing stroke just have their
 /// `WeightInput` updated; layers without one get a fresh stroke node added (defaulting to a black stroke with the new
 /// weight) only when the new weight is nonzero, so changing back to 0 doesn't keep adding empty strokes.
 pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
-	for layer in layers {
+	for layer in paintable_selected_layers(document) {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
 			responses.add(NodeGraphMessage::SetInputValue {
 				node_id,
@@ -843,12 +889,21 @@ pub struct SelectedStrokeState {
 	pub optional_color: Option<Option<Color>>,
 }
 
+/// The selected layers (artboards excluded) whose chains can host Fill and Stroke nodes.
+/// The tool options bar's paint widgets treat these as the whole selection, so other layers act as if unselected.
+pub fn paintable_selected_layers(document: &DocumentMessageHandler) -> Vec<LayerNodeIdentifier> {
+	let selected_nodes = document.network_interface.selected_nodes();
+	selected_nodes
+		.selected_layers_except_artboards(&document.network_interface)
+		.filter(|layer| document.network_interface.layer_hosts_paint_nodes(&layer.to_node(), &[]))
+		.collect()
+}
+
 /// Reads the fill state across all selected non-artboard layers, including whether their enabled states or colors differ.
 /// "Enabled" tracks node attachment: a layer counts as enabled whenever a Fill node is attached, even when that fill's value is the no-paint choice.
-/// Unticked means there is no Fill node. Returns `None` only when no layer is selected.
+/// Unticked means there is no Fill node. Returns `None` only when no paintable layer is selected.
 pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<SelectedFillState> {
-	let selected_nodes = document.network_interface.selected_nodes();
-	let mut per_layer = selected_nodes.selected_layers_except_artboards(&document.network_interface).map(|layer| {
+	let mut per_layer = paintable_selected_layers(document).into_iter().map(|layer| {
 		let Some(fill_node_id) = get_fill_id(layer, &document.network_interface) else {
 			return (false, FillChoice::None);
 		};
@@ -899,8 +954,7 @@ pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<Selected
 /// "Enabled" tracks node attachment: a layer counts as enabled whenever a Stroke node is attached, even when that stroke's color is `None`.
 /// Unticked means there is no Stroke node. Returns `None` only when no layer is selected.
 pub fn selected_stroke_state(document: &DocumentMessageHandler) -> Option<SelectedStrokeState> {
-	let selected_nodes = document.network_interface.selected_nodes();
-	let mut per_layer = selected_nodes.selected_layers_except_artboards(&document.network_interface).map(|layer| {
+	let mut per_layer = paintable_selected_layers(document).into_iter().map(|layer| {
 		if get_stroke_id(layer, &document.network_interface).is_none() {
 			return (false, None);
 		}
@@ -937,8 +991,7 @@ pub fn selected_stroke_state(document: &DocumentMessageHandler) -> Option<Select
 
 /// Sets the fill on all selected non-artboard layers, preserving gradient transform data when the layer already has a gradient fill.
 pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
-	for layer in layers {
+	for layer in paintable_selected_layers(document) {
 		match &fill_choice {
 			FillChoice::None => responses.add(GraphOperationMessage::FillColorSet { layer, color: None }),
 			FillChoice::Solid(color) => responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) }),
@@ -973,8 +1026,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 /// the provided `weight`, so picking any color (including `None`) from an unticked stroke control bar entry both attaches
 /// the Stroke node and applies the chosen color.
 pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
-	for layer in layers {
+	for layer in paintable_selected_layers(document) {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
 			responses.add(NodeGraphMessage::SetInputValue {
 				node_id,
@@ -990,8 +1042,7 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 
 /// Removes the Fill node from all selected non-artboard layers.
 pub fn remove_fill_for_selected_layers(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
-	for layer in layers {
+	for layer in paintable_selected_layers(document) {
 		if let Some(node_id) = get_fill_id(layer, &document.network_interface) {
 			responses.add(NodeGraphMessage::DeleteNodes {
 				node_ids: vec![node_id],
@@ -1005,8 +1056,7 @@ pub fn remove_fill_for_selected_layers(document: &DocumentMessageHandler, respon
 
 /// Removes the Stroke node from all selected non-artboard layers.
 pub fn remove_stroke_for_selected_layers(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
-	for layer in layers {
+	for layer in paintable_selected_layers(document) {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
 			responses.add(NodeGraphMessage::DeleteNodes {
 				node_ids: vec![node_id],

@@ -3,7 +3,7 @@ use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, SeedValue, SignedInteger};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{Graphic, IntoGraphicList};
+use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
 use graphic_types::{Artboard, Vector};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
@@ -985,7 +985,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 			match current_element {
 				// If we're allowed to recurse, flatten any graphics we encounter
-				Graphic::Graphic(mut current_element) if recurse => {
+				Graphic::GraphicList(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
 					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 						*graphic_transform = current_transform * *graphic_transform;
@@ -993,7 +993,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 					flatten_list(output_graphic_list, current_element, fully_flatten, recursion_depth + 1);
 				}
-				// Push any leaf elements we encounter: either `Graphic::Graphic(...)` values beyond the recursion depth, or non-`Graphic::Graphic` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`, `Graphic::Text`)
+				// Push any leaf element: a group beyond the recursion depth, or any non-group variant
 				_ => {
 					let attributes = current_graphic_list.clone_item_attributes(index);
 					output_graphic_list.push(Item::from_parts(current_element, attributes));
@@ -1022,7 +1022,7 @@ pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(L
 	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
 	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Combine Paths,
 	// TODO: Morph, Rasterize) become unnecessary.
-	if !output.is_empty() {
+	if !output.is_empty() && !is_lone_anonymous_leaf(&graphic_list) {
 		// Item 0 carries a composed transform inherited from the flattened input, but the merged_layers
 		// already holds the original transforms; pre-compensate by item 0's inverse so the renderer's
 		// `upstream_footprint *= item_0_transform` recursion cancels out and leaves the originals intact.

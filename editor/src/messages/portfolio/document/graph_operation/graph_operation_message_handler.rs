@@ -1,8 +1,8 @@
 use super::transform_utils;
-use super::utility_types::ModifyInputsContext;
+use super::utility_types::{ModifyInputsContext, set_stroke_paint_order};
 use crate::consts::{LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::BLEND_PATH_INPUT_INDEX;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{BLEND_PATH_INPUT_INDEX, DefinitionIdentifier};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
@@ -13,7 +13,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -139,6 +139,17 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::StrokeSet { layer, color, stroke } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.stroke_set(color, stroke);
+				}
+			}
+			GraphOperationMessage::StrokeOrderSet { layer, paint_order } => {
+				let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+				let Some(stroke_node_id) = ModifyInputsContext::locate_node_in_layer_chain(&stroke_reference, layer, network_interface) else {
+					return;
+				};
+				if set_stroke_paint_order(network_interface, &[], stroke_node_id, paint_order) {
+					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(NodeGraphMessage::SendGraph);
 				}
 			}
 			GraphOperationMessage::TransformChange {
@@ -954,7 +965,6 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 				},
 				join_miter_limit: stroke.miterlimit().get() as f64,
 				align: StrokeAlign::Center,
-				paint_order: PaintOrder::StrokeAbove,
 				transform,
 			},
 		)
@@ -1035,6 +1045,81 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[tokio::test]
+	async fn stroke_order_set_reorders_the_fill_and_stroke_nodes() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_stroke_paint_order;
+		use crate::test_utils::test_prelude::*;
+		use graphene_std::vector::style::PaintOrder;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		let paint_order = get_stroke_paint_order(layer, &document.network_interface);
+		assert_eq!(paint_order, PaintOrder::StrokeAbove, "a fresh shape should stroke above its fill");
+
+		editor
+			.handle_message(GraphOperationMessage::StrokeOrderSet {
+				layer,
+				paint_order: PaintOrder::StrokeBelow,
+			})
+			.await;
+		let paint_order = get_stroke_paint_order(layer, &editor.active_document().network_interface);
+		assert_eq!(paint_order, PaintOrder::StrokeBelow, "the rewrite should move the stroke downstream of the fill");
+
+		editor
+			.handle_message(GraphOperationMessage::StrokeOrderSet {
+				layer,
+				paint_order: PaintOrder::StrokeAbove,
+			})
+			.await;
+		let paint_order = get_stroke_paint_order(layer, &editor.active_document().network_interface);
+		assert_eq!(paint_order, PaintOrder::StrokeAbove, "the rewrite should move the stroke back upstream of the fill");
+	}
+
+	#[tokio::test]
+	async fn a_node_inserted_between_the_fill_and_stroke_makes_the_order_swap_inapplicable() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use crate::messages::tool::common_functionality::graph_modification_utils::stroke_paint_order_applicable;
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		assert!(
+			stroke_paint_order_applicable(layer, &editor.active_document().network_interface),
+			"a fresh shape's adjacent Fill and Stroke pair should be swappable"
+		);
+
+		let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+		let stroke_node_id = ModifyInputsContext::locate_node_in_layer_chain(&stroke_reference, layer, &editor.active_document().network_interface).unwrap();
+
+		let node_template = Box::new(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).unwrap().default_node_template());
+		let passthrough_node_id = NodeId::new();
+		editor
+			.handle_message(NodeGraphMessage::InsertNode {
+				node_id: passthrough_node_id,
+				node_template,
+			})
+			.await;
+		editor
+			.handle_message(NodeGraphMessage::InsertNodeBetween {
+				node_id: passthrough_node_id,
+				input_connector: InputConnector::node_at_index(stroke_node_id, 0),
+				insert_node_input_index: 0,
+			})
+			.await;
+
+		assert!(
+			!stroke_paint_order_applicable(layer, &editor.active_document().network_interface),
+			"a node between the pair should gray the order radio out"
+		);
+	}
 
 	#[test]
 	fn color_interpolation_resolves_per_gradient_with_inheritance_and_style_priority() {

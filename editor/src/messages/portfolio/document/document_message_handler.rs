@@ -37,7 +37,7 @@ use graph_craft::application_io::wgpu_available;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graph_craft::list;
-use graphene_std::graphic::is_paint_present;
+use graphene_std::Cover;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
@@ -1502,9 +1502,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_vector_data(layer_vector_data);
 			}
-			DocumentMessage::UpdateFillAttributes { fill_attributes } => {
+			DocumentMessage::UpdateAppearanceAttributes { appearance_attributes } => {
 				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
-				let layer_fill_attributes = fill_attributes
+				let layer_appearance_attributes = appearance_attributes
 					.into_iter()
 					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
 					.filter_map(|(node_id, attrs)| {
@@ -1514,21 +1514,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						})
 					})
 					.collect();
-				self.network_interface.update_fill_attributes(layer_fill_attributes);
-			}
-			DocumentMessage::UpdateStrokeAttributes { stroke_attributes } => {
-				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
-				let layer_stroke_attributes = stroke_attributes
-					.into_iter()
-					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
-					.filter_map(|(node_id, attrs)| {
-						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
-							(layer, attrs)
-						})
-					})
-					.collect();
-				self.network_interface.update_stroke_attributes(layer_stroke_attributes);
+				self.network_interface.update_appearance_attributes(layer_appearance_attributes);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -2763,20 +2749,19 @@ impl DocumentMessageHandler {
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
 		for layer in selected_layers {
-			let Some(vector_data) = self.network_interface.document_metadata().layer_vector_data.get(&layer) else {
+			if !self.network_interface.document_metadata().layer_vector_data.contains_key(&layer) {
 				resulting_layers.push(layer.to_node());
 				continue;
-			};
-			let stroke = vector_data.stroke.as_ref();
+			}
 
-			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
-			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
+			let appearance = self.network_interface.document_metadata().layer_appearance_attributes.get(&layer);
 
-			let has_fill = fill_graphic_list.is_some_and(|list| is_paint_present(list));
-			// `Vector.stroke` captures stroke geometry, even with weight 0 or transparent paint.
-			// So stroke visibility must be checked from `ATTR_STROKE`, the paint source of truth.
-			let stroke_visible = stroke_graphic_list.is_some_and(|list| list.element(0).is_some_and(|g| !g.is_fully_transparent()));
-			let has_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
+			let has_fill = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
+			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
+			let has_stroke = appearance.is_some_and(|appearance| {
+				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
+					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_fully_transparent())
+			});
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
 			if !has_stroke {
@@ -3409,6 +3394,11 @@ impl DocumentMessageHandler {
 		let selected_nodes = self.network_interface.selected_nodes();
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
 
+		// A layer whose chain cannot carry blending nodes has nowhere to put the value, so it disqualifies the whole selection
+		let all_layers_support_blending = selected_nodes
+			.selected_layers_except_artboards(&self.network_interface)
+			.all(|layer| self.network_interface.layer_hosts_blending_nodes(&layer.to_node(), &[]));
+
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
 		let mut blending_options = selected_layers_except_artboards.map(|layer| {
 			(
@@ -3420,8 +3410,8 @@ impl DocumentMessageHandler {
 		let first_blending_options = blending_options.next();
 		let result_blending_options = blending_options;
 
-		// If there are no selected layers, disable the opacity and blend mode widgets.
-		let disabled = first_blending_options.is_none();
+		// If there are no selected layers, or any of them cannot host the nodes, disable the opacity and blend mode widgets.
+		let disabled = first_blending_options.is_none() || !all_layers_support_blending;
 
 		// Amongst the selected layers, check if the opacities and blend modes are identical across all layers.
 		// The result is setting `option` and `blend_mode` to Some value if all their values are identical, or None if they are not.

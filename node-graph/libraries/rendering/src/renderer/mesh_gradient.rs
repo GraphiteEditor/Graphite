@@ -839,6 +839,7 @@ pub(super) fn render_vello_subpatch_alpha(scene: &mut Scene, patch_evaluator: &M
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use vector_types::gradient::MeshGradient;
 
 	/// Builds a mesh whose corners cycle through the given colors.
 	fn mesh_with_corner_colors(colors: [Color; 4]) -> MeshGradient {

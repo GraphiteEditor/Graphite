@@ -11,7 +11,7 @@ use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::MeshGradientSurface;
-use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, Stroke};
+use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, PointId, VectorModificationType};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
@@ -101,6 +101,10 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		color: Option<Color>,
 		stroke: Stroke,
+	},
+	StrokeOrderSet {
+		layer: LayerNodeIdentifier,
+		paint_order: PaintOrder,
 	},
 	TransformChange {
 		layer: LayerNodeIdentifier,

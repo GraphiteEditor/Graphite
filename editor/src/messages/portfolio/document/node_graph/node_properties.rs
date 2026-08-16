@@ -34,8 +34,8 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, MeshGradientSurface, PaintOrder,
-	StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, MeshGradientSurface, StrokeAlign,
+	StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -323,7 +323,6 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<PaintOrder>(x) => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
@@ -2392,8 +2391,6 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	LayoutGroup::section(name, description, visible, pinned, expanded, node_id.0, Layout(layout))
 }
 
-/// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
-/// is only loaded for the root document network, so a `LayerNodeIdentifier` can't be constructed there.
 /// Where the 'Fill' node places a mesh gradient on its own, mirroring the automatic fit its kernel applies while no
 /// explicit mesh transform is set. The panel shows this instead of the unset input's identity, so its numbers describe
 /// where the mesh actually sits and raising the placement flag leaves the mesh where it already was.
@@ -2402,6 +2399,8 @@ fn automatic_mesh_transform(layer: Option<LayerNodeIdentifier>, context: &NodePr
 	graphene_std::vector::style::initial_mesh_gradient_transform_for_bounding_box(bounds)
 }
 
+/// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
+/// is only loaded for the root document network, so a `LayerNodeIdentifier` can't be constructed there.
 fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContext) -> Option<LayerNodeIdentifier> {
 	if !context.selection_network_path.is_empty() {
 		return None;
@@ -2831,9 +2830,6 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		ParameterWidgetsInfo::new(node_id, MiterLimitInput, true, context),
 		NumberInput::default().min(0.).disabled(miter_limit_disabled),
 	);
-	let paint_order = enum_choice::<PaintOrder>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, PaintOrderInput, true, context))
-		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
 	let dash_lengths = dash_pattern_widget(ParameterWidgetsInfo::new(node_id, DashPatternInput, true, context), TextInput::default().centered(true));
 	let number_input = disabled_number_input;
@@ -2846,7 +2842,6 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		cap,
 		join,
 		LayoutGroup::row(miter_limit),
-		paint_order,
 		LayoutGroup::row(dash_lengths),
 		LayoutGroup::row(dash_offset),
 	]

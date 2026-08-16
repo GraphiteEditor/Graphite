@@ -562,7 +562,6 @@ tagged_value! {
 	#[serde(alias = "LineJoin")]
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
-	PaintOrder(vector::style::PaintOrder),
 	#[serde(alias = "GradientType")] // TODO: Eventually remove this document upgrade code
 	GradientForm(vector::style::GradientForm),
 	#[serde(alias = "GradientSpreadMethod")] // TODO: Eventually remove this document upgrade code
@@ -576,8 +575,9 @@ tagged_value! {
 	TextAlign(text_nodes::TextAlign),
 	ScaleType(core_types::transform::ScaleType),
 	// Legacy
+	PaintOrder(vector::style::PaintOrder), // TODO: Eventually remove this document upgrade code
 	#[serde(alias = "Fill")]
-	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
+	LegacyFill(graphic_types::migrations::legacy::LegacyFill), // TODO: Eventually remove this document upgrade code
 }
 
 impl TaggedValue {
@@ -719,14 +719,14 @@ impl TaggedValue {
 		}
 	}
 
-	/// The stored form of a paint input's red-slash "no paint" choice: the `List<Graphic>` type default, materializing as an empty paint list.
+	/// The stored form of a paint input's red-slash "no paint" choice: the `Item<Graphic>` type default, materializing as a `Graphic::None` paint.
 	pub fn no_paint() -> Self {
-		TaggedValue::TypeDefault(list!(Graphic))
+		TaggedValue::TypeDefault(item!(Graphic))
 	}
 
-	/// Whether this is the `List<Graphic>` type default created by [`Self::no_paint`] (and by disconnecting a paint wire).
+	/// Whether this is the `Item<Graphic>` type default created by [`Self::no_paint`] (and by disconnecting a paint wire).
 	pub fn is_no_paint(&self) -> bool {
-		matches!(self, TaggedValue::TypeDefault(td) if *td == list!(Graphic))
+		matches!(self, TaggedValue::TypeDefault(td) if *td == item!(Graphic))
 	}
 }
 
