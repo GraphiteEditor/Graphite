@@ -13,7 +13,7 @@ use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
-use vector_types::Gradient;
+use vector_types::{Gradient, MeshGradient};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -1497,6 +1497,12 @@ fn gradient_stretch(
 	let mut gradient = gradient;
 	gradient.element_mut().stretch_positions(*factor.element(), *pivot.element(), settings.cyclic);
 	gradient
+}
+
+/// Constructs a mesh gradient value composed of a grid of patches defined by colored corners and curved boundary segments.
+#[node_macro::node(category("Value"))]
+fn mesh_gradient_value(_: impl Ctx, _primary: (), mesh_gradient: Item<MeshGradient>) -> Item<MeshGradient> {
+	mesh_gradient
 }
 
 /// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.

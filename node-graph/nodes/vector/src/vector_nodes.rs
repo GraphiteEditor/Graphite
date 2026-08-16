@@ -22,6 +22,7 @@ use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use vector_types::GradientForm;
+use vector_types::MeshGradient;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -186,13 +187,13 @@ where
 async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
-	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
+	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
 	content: Item<V>,
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<MeshGradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<MeshGradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	fill: F,
 	_backup_color: Item<Color>,
@@ -200,12 +201,16 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	_gradient_form: Item<GradientForm>,
 	_has_transform: Item<bool>,
 	_transform: Item<DAffine2>,
+	_backup_mesh_gradient: Item<MeshGradient>,
+	_has_mesh_transform: Item<bool>,
+	_mesh_transform: Item<DAffine2>,
 ) -> Item<V>
 where
 	Item<V>: VectorItemMut + 'n + Send,
 {
 	let _gradient_form = _gradient_form.into_element();
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
+	let (_has_mesh_transform, _mesh_transform) = (_has_mesh_transform.into_element(), *_mesh_transform.element());
 
 	let mut content = content;
 	let mut fill = fill.into_graphic_list();
@@ -252,6 +257,41 @@ where
 		}
 	}
 
+	for graphic in fill.iter_element_values_mut() {
+		let Graphic::MeshGradient(mesh_gradient) = graphic else { continue };
+		if mesh_gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_some() {
+			continue;
+		}
+
+		let transform = if _has_mesh_transform {
+			_mesh_transform
+		} else {
+			let mut bounds: Option<[DVec2; 2]> = None;
+			content.for_each_vector_mut(|vector, _| {
+				if let Some([min, max]) = vector.bounding_box() {
+					bounds = Some(match bounds {
+						Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
+						None => [min, max],
+					});
+				}
+			});
+
+			let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			if max.x - min.x < 1e-10 {
+				max.x = min.x + 1.;
+			}
+			if max.y - min.y < 1e-10 {
+				max.y = min.y + 1.;
+			}
+			let size = max - min;
+			DAffine2::from_cols(DVec2::new(size.x, 0.), DVec2::new(0., size.y), min)
+		};
+
+		for value in mesh_gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			*value = transform;
+		}
+	}
+
 	content.set_vector_paint(ATTR_FILL, fill);
 	content
 }
@@ -261,13 +301,13 @@ where
 async fn stroke<V, P: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
-	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
+	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
 	content: Item<V>,
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<MeshGradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<MeshGradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	paint: P,
 	/// The stroke thickness.
@@ -325,7 +365,7 @@ where
 		vector.stroke = Some(stroke);
 	});
 
-	let paint = paint.into_graphic_list();
+	let paint: List<Graphic> = paint.into_graphic_list();
 	content.set_vector_paint(ATTR_STROKE, paint);
 	content
 }
