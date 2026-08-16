@@ -490,7 +490,7 @@ fn draw_raster_outline(scene: &mut Scene, outline_transform: &DAffine2, render_p
 fn emit_svg_fill_path(
 	render: &mut SvgRender,
 	d: String,
-	fill_graphic_list: Option<&List<Graphic>>,
+	fill_paint: Option<&Graphic>,
 	item_transform: DAffine2,
 	element_transform: DAffine2,
 	applied_stroke_transform: DAffine2,
@@ -504,8 +504,8 @@ fn emit_svg_fill_path(
 			attributes.push(ATTR_TRANSFORM, matrix);
 		}
 		let defs = &mut attributes.0.svg_defs;
-		let fill_attribute = fill_graphic_list
-			.map(|list| list.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, render_params, PaintTarget::Fill))
+		let fill_attribute = fill_paint
+			.map(|paint| paint.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, render_params, PaintTarget::Fill))
 			.unwrap_or_else(|| r#" fill="none""#.to_string());
 		attributes.push_val(fill_attribute);
 	});
@@ -1454,8 +1454,6 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		stroke_paint,
 		stroke_below: wants_stroke_below,
 	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
-	let fill_graphic_list: Option<List<Graphic>> = fill_paint.map(|paint| List::new_from_element(paint.clone()));
-	let stroke_graphic_list: Option<List<Graphic>> = stroke_paint.map(|paint| List::new_from_element(paint.clone()));
 
 	// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
@@ -1487,14 +1485,11 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		MaskType::Mask
 	};
 
-	let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
-	let stroke_graphic = stroke_graphic_list.as_ref().and_then(|l| l.element(0));
-
 	let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
 	let can_draw_aligned_stroke = path_is_closed
 		&& stroke_params.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
-		&& stroke_graphic.is_some_and(|graphic| !graphic.is_guaranteed_fully_transparent());
-	let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.is_guaranteed_to_cover_opaquely()) || mask_type == MaskType::Clip);
+		&& stroke_paint.is_some_and(|graphic| !graphic.is_guaranteed_fully_transparent());
+	let can_use_paint_order = !(fill_paint.is_none_or(|graphic| !graphic.is_guaranteed_to_cover_opaquely()) || mask_type == MaskType::Clip);
 
 	let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
 	let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
@@ -1504,7 +1499,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		emit_svg_fill_path(
 			render,
 			path.clone(),
-			fill_graphic_list.as_ref(),
+			fill_paint,
 			item_transform,
 			element_transform,
 			applied_stroke_transform,
@@ -1533,16 +1528,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 			face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 			let face_d = face_path.to_svg();
 
-			emit_svg_fill_path(
-				render,
-				face_d,
-				fill_graphic_list.as_ref(),
-				item_transform,
-				element_transform,
-				applied_stroke_transform,
-				bounds_matrix,
-				render_params,
-			);
+			emit_svg_fill_path(render, face_d, fill_paint, item_transform, element_transform, applied_stroke_transform, bounds_matrix, render_params);
 		}
 	}
 
@@ -1586,7 +1572,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		let stroke_shape_attribute = stroke_params
 			.as_ref()
 			.map(|stroke| {
-				if stroke_graphic_list.is_some() {
+				if stroke_paint.is_some() {
 					stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
 				} else {
 					String::new()
@@ -1595,18 +1581,17 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 			.unwrap_or_default();
 
 		// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
-		let stroke_visible = stroke_params.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_guaranteed_fully_transparent());
+		let stroke_visible = stroke_params.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_paint.is_some_and(|g| !g.is_guaranteed_fully_transparent());
 		let stroke_attribute = if stroke_visible {
-			stroke_graphic_list
-				.as_ref()
-				.map(|list| {
+			stroke_paint
+				.map(|paint| {
 					// Gradient should align with the fill path bbox so that a shared gradient lines up across fill and stroke.
 					// Only clipping-based paints need the stroke-inclusive bbox.
-					let paint_bounds = match list.element(0) {
-						Some(Graphic::Color(_)) | Some(Graphic::Gradient(_)) | Some(Graphic::ColorList(_)) | Some(Graphic::GradientList(_)) => bounds_matrix,
+					let paint_bounds = match paint {
+						Graphic::Color(_) | Graphic::Gradient(_) | Graphic::ColorList(_) | Graphic::GradientList(_) => bounds_matrix,
 						_ => stroke_bounds_matrix,
 					};
-					list.render(defs, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
+					paint.render(defs, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
 				})
 				.unwrap_or_else(|| r#" stroke="none""#.to_string())
 		} else {
@@ -1616,9 +1601,8 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		let fill_attribute = if needs_separate_alignment_fill || use_face_fill {
 			r#" fill="none""#.to_string()
 		} else {
-			fill_graphic_list
-				.as_ref()
-				.map(|list| list.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Fill))
+			fill_paint
+				.map(|paint| paint.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Fill))
 				.unwrap_or_else(|| r#" fill="none""#.to_string())
 		};
 
@@ -1649,7 +1633,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		emit_svg_fill_path(
 			render,
 			path.clone(),
-			fill_graphic_list.as_ref(),
+			fill_paint,
 			item_transform,
 			element_transform,
 			applied_stroke_transform,
@@ -1725,8 +1709,6 @@ fn render_vector_item_to_vello(
 		stroke_paint,
 		stroke_below: wants_stroke_below,
 	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
-	let fill_graphic_list: Option<List<Graphic>> = fill_paint.map(|paint| List::new_from_element(paint.clone()));
-	let stroke_graphic_list: Option<List<Graphic>> = stroke_paint.map(|paint| List::new_from_element(paint.clone()));
 
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
 	// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
@@ -1766,7 +1748,7 @@ fn render_vector_item_to_vello(
 	// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
 	// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 	let stroke = stroke_params.as_ref();
-	let stroke_fully_transparent = stroke_graphic_list.as_ref().is_none_or(|l| l.element(0).is_none_or(|g| g.is_guaranteed_fully_transparent()));
+	let stroke_fully_transparent = stroke_paint.is_none_or(|paint| paint.is_guaranteed_fully_transparent());
 	let can_draw_aligned_stroke = !stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
 	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
@@ -1818,55 +1800,52 @@ fn render_vector_item_to_vello(
 	let use_layer = can_draw_aligned_stroke;
 
 	let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
-		let Some(fill_graphic) = fill_graphic_list.as_ref() else { return };
+		let Some(paint) = fill_paint else { return };
 
-		for paint_index in 0..fill_graphic.len() {
-			let Some(paint) = fill_graphic.element(paint_index) else { continue };
-			let solid_fill = |scene: &mut Scene, color: Option<Color>| {
-				let Some(color) = color else { return };
+		let solid_fill = |scene: &mut Scene, color: Option<Color>| {
+			let Some(color) = color else { return };
 
-				let fill = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
-				scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
-			};
-			let gradient_fill = |scene: &mut Scene, gradient_item: ItemRef<'_, Gradient>| {
-				let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
-					return;
-				};
-
-				let inverse_element_transform = if transform_is_invertible(element_transform) {
-					element_transform.inverse()
-				} else {
-					Default::default()
-				};
-				let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
-				scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
+			let fill = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
+			scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
+		};
+		let gradient_fill = |scene: &mut Scene, gradient_item: ItemRef<'_, Gradient>| {
+			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
+				return;
 			};
 
-			match paint {
-				Graphic::None(_) | Graphic::NoneList(_) => continue,
-				Graphic::Color(item) => solid_fill(scene, faded_paint_color(ItemRef::Item(item), render_params.for_mask)),
-				Graphic::ColorList(list) => solid_fill(scene, composite_paint_colors(list, render_params.for_mask)),
-				Graphic::Gradient(item) => gradient_fill(scene, ItemRef::Item(item)),
-				// Stacked gradients cannot be composited into one brush, so they fall through to the clipped texture path
-				Graphic::GradientList(list) if list.len() <= 1 => gradient_fill(scene, ItemRef::ListItem(list, 0)),
-				// Any other graphic content paints as a texture clipped to the path
-				Graphic::GradientList(_)
-				| Graphic::Graphic(_)
-				| Graphic::Vector(_)
-				| Graphic::RasterCPU(_)
-				| Graphic::RasterGPU(_)
-				| Graphic::Text(_)
-				| Graphic::VectorList(_)
-				| Graphic::RasterCPUList(_)
-				| Graphic::RasterGPUList(_)
-				| Graphic::GraphicList(_)
-				| Graphic::TextList(_) => {
-					scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
-					paint.render_to_vello(scene, multiplied_transform, context, paint_render_params);
-					scene.pop_layer();
-				}
+			let inverse_element_transform = if transform_is_invertible(element_transform) {
+				element_transform.inverse()
+			} else {
+				Default::default()
 			};
-		}
+			let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
+			scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
+		};
+
+		match paint {
+			Graphic::None(_) | Graphic::NoneList(_) => (),
+			Graphic::Color(item) => solid_fill(scene, faded_paint_color(ItemRef::Item(item), render_params.for_mask)),
+			Graphic::ColorList(list) => solid_fill(scene, composite_paint_colors(list, render_params.for_mask)),
+			Graphic::Gradient(item) => gradient_fill(scene, ItemRef::Item(item)),
+			// Stacked gradients cannot be composited into one brush, so they fall through to the clipped texture path
+			Graphic::GradientList(list) if list.len() <= 1 => gradient_fill(scene, ItemRef::ListItem(list, 0)),
+			// Any other graphic content paints as a texture clipped to the path
+			Graphic::GradientList(_)
+			| Graphic::Graphic(_)
+			| Graphic::Vector(_)
+			| Graphic::RasterCPU(_)
+			| Graphic::RasterGPU(_)
+			| Graphic::Text(_)
+			| Graphic::VectorList(_)
+			| Graphic::RasterCPUList(_)
+			| Graphic::RasterGPUList(_)
+			| Graphic::GraphicList(_)
+			| Graphic::TextList(_) => {
+				scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
+				paint.render_to_vello(scene, multiplied_transform, context, paint_render_params);
+				scene.pop_layer();
+			}
+		};
 	};
 
 	// Branching vectors without regions (e.g. mesh grids) need face-by-face fill rendering.
@@ -1889,87 +1868,81 @@ fn render_vector_item_to_vello(
 	};
 
 	let do_stroke = |scene: &mut Scene, width_scale: f64, context: &mut RenderContext| {
-		let Some(stroke_graphic_list) = stroke_graphic_list.as_ref() else { return };
+		let Some(paint) = stroke_paint else { return };
 		let Some(stroke) = stroke else { return };
 
-		for paint_index in 0..stroke_graphic_list.len() {
-			let Some(stroke_graphic) = stroke_graphic_list.element(paint_index) else {
-				continue;
-			};
+		let cap = match stroke.cap {
+			StrokeCap::Butt => Cap::Butt,
+			StrokeCap::Round => Cap::Round,
+			StrokeCap::Square => Cap::Square,
+		};
+		let join = match stroke.join {
+			StrokeJoin::Miter => Join::Miter,
+			StrokeJoin::Bevel => Join::Bevel,
+			StrokeJoin::Round => Join::Round,
+		};
+		let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
+		let stroke = kurbo::Stroke {
+			width: stroke.weight * width_scale,
+			miter_limit: stroke.join_miter_limit,
+			join,
+			start_cap: cap,
+			end_cap: cap,
+			dash_pattern,
+			dash_offset: stroke.dash_offset,
+		};
 
-			let cap = match stroke.cap {
-				StrokeCap::Butt => Cap::Butt,
-				StrokeCap::Round => Cap::Round,
-				StrokeCap::Square => Cap::Square,
-			};
-			let join = match stroke.join {
-				StrokeJoin::Miter => Join::Miter,
-				StrokeJoin::Bevel => Join::Bevel,
-				StrokeJoin::Round => Join::Round,
-			};
-			let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
-			let stroke = kurbo::Stroke {
-				width: stroke.weight * width_scale,
-				miter_limit: stroke.join_miter_limit,
-				join,
-				start_cap: cap,
-				end_cap: cap,
-				dash_pattern,
-				dash_offset: stroke.dash_offset,
-			};
+		if stroke.width <= 0. {
+			return;
+		};
 
-			if stroke.width <= 0. {
-				continue;
+		let solid_stroke = |scene: &mut Scene, color: Option<Color>| {
+			let Some(color) = color else { return };
+
+			let brush = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
+
+			scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
+		};
+		let gradient_stroke = |scene: &mut Scene, gradient_item: ItemRef<'_, Gradient>| {
+			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
+				return;
 			};
-
-			let solid_stroke = |scene: &mut Scene, color: Option<Color>| {
-				let Some(color) = color else { return };
-
-				let brush = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
-
-				scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
+			let inverse_element_transform = if transform_is_invertible(element_transform) {
+				element_transform.inverse()
+			} else {
+				Default::default()
 			};
-			let gradient_stroke = |scene: &mut Scene, gradient_item: ItemRef<'_, Gradient>| {
-				let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
-					return;
-				};
-				let inverse_element_transform = if transform_is_invertible(element_transform) {
-					element_transform.inverse()
-				} else {
-					Default::default()
-				};
-				let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
+			let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 
-				scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
-			};
+			scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
+		};
 
-			match stroke_graphic {
-				Graphic::None(_) | Graphic::NoneList(_) => continue,
-				Graphic::Color(item) => solid_stroke(scene, faded_paint_color(ItemRef::Item(item), render_params.for_mask)),
-				Graphic::ColorList(list) => solid_stroke(scene, composite_paint_colors(list, render_params.for_mask)),
-				Graphic::Gradient(item) => gradient_stroke(scene, ItemRef::Item(item)),
-				// Stacked gradients cannot be composited into one brush, so they fall through to the clipped texture path
-				Graphic::GradientList(list) if list.len() <= 1 => gradient_stroke(scene, ItemRef::ListItem(list, 0)),
-				// Any other graphic content paints as a texture clipped to the stroked region
-				Graphic::GradientList(_)
-				| Graphic::Graphic(_)
-				| Graphic::Vector(_)
-				| Graphic::RasterCPU(_)
-				| Graphic::RasterGPU(_)
-				| Graphic::Text(_)
-				| Graphic::VectorList(_)
-				| Graphic::RasterCPUList(_)
-				| Graphic::RasterGPUList(_)
-				| Graphic::GraphicList(_)
-				| Graphic::TextList(_) => {
-					let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
+		match paint {
+			Graphic::None(_) | Graphic::NoneList(_) => (),
+			Graphic::Color(item) => solid_stroke(scene, faded_paint_color(ItemRef::Item(item), render_params.for_mask)),
+			Graphic::ColorList(list) => solid_stroke(scene, composite_paint_colors(list, render_params.for_mask)),
+			Graphic::Gradient(item) => gradient_stroke(scene, ItemRef::Item(item)),
+			// Stacked gradients cannot be composited into one brush, so they fall through to the clipped texture path
+			Graphic::GradientList(list) if list.len() <= 1 => gradient_stroke(scene, ItemRef::ListItem(list, 0)),
+			// Any other graphic content paints as a texture clipped to the stroked region
+			Graphic::GradientList(_)
+			| Graphic::Graphic(_)
+			| Graphic::Vector(_)
+			| Graphic::RasterCPU(_)
+			| Graphic::RasterGPU(_)
+			| Graphic::Text(_)
+			| Graphic::VectorList(_)
+			| Graphic::RasterCPUList(_)
+			| Graphic::RasterGPUList(_)
+			| Graphic::GraphicList(_)
+			| Graphic::TextList(_) => {
+				let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
-					scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
-					stroke_graphic.render_to_vello(scene, multiplied_transform, context, paint_render_params);
-					scene.pop_layer();
-				}
-			};
-		}
+				scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
+				paint.render_to_vello(scene, multiplied_transform, context, paint_render_params);
+				scene.pop_layer();
+			}
+		};
 	};
 
 	// Render the path

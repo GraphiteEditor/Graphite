@@ -255,7 +255,7 @@ impl RenderExt for Stroke {
 	}
 }
 
-impl RenderExt for List<Graphic> {
+impl RenderExt for Graphic {
 	type Output = String;
 
 	fn render(
@@ -268,32 +268,31 @@ impl RenderExt for List<Graphic> {
 		render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
-		let fill_graphic = self.element(0);
 		let paint_attr = target.paint_attr();
 
-		match fill_graphic {
-			Some(Graphic::Color(item)) => render_color_paint(faded_paint_color(ItemRef::Item(item), render_params.for_mask), target),
-			Some(Graphic::ColorList(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
-			Some(Graphic::Gradient(item)) => render_gradient_paint(Some(ItemRef::Item(item)), svg_defs, item_transform, element_transform, render_params.for_mask)
+		match self {
+			Graphic::Color(item) => render_color_paint(faded_paint_color(ItemRef::Item(item), render_params.for_mask), target),
+			Graphic::ColorList(color_list) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
+			Graphic::Gradient(item) => render_gradient_paint(Some(ItemRef::Item(item)), svg_defs, item_transform, element_transform, render_params.for_mask)
 				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
 				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
 			// One gradient resolves to a paint server; stacking several needs them composited, which only the pattern below can do
-			Some(Graphic::GradientList(gradient_list)) if gradient_list.len() <= 1 => gradient_list
+			Graphic::GradientList(gradient_list) if gradient_list.len() <= 1 => gradient_list
 				.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target)
 				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
 				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
-			Some(Graphic::None(_)) | Some(Graphic::NoneList(_)) => format!(r#" {paint_attr}="none""#),
-			Some(Graphic::Graphic(_))
-			| Some(Graphic::Vector(_))
-			| Some(Graphic::RasterCPU(_))
-			| Some(Graphic::RasterGPU(_))
-			| Some(Graphic::Text(_))
-			| Some(Graphic::VectorList(_))
-			| Some(Graphic::RasterCPUList(_))
-			| Some(Graphic::RasterGPUList(_))
-			| Some(Graphic::GraphicList(_))
-			| Some(Graphic::GradientList(_))
-			| Some(Graphic::TextList(_)) => {
+			Graphic::None(_) | Graphic::NoneList(_) => format!(r#" {paint_attr}="none""#),
+			Graphic::Graphic(_)
+			| Graphic::Vector(_)
+			| Graphic::RasterCPU(_)
+			| Graphic::RasterGPU(_)
+			| Graphic::Text(_)
+			| Graphic::VectorList(_)
+			| Graphic::RasterCPUList(_)
+			| Graphic::RasterGPUList(_)
+			| Graphic::GraphicList(_)
+			| Graphic::GradientList(_)
+			| Graphic::TextList(_) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };
@@ -308,14 +307,13 @@ impl RenderExt for List<Graphic> {
 					.map(|id| format!(r##" {paint_attr}="url(#{id})""##))
 					.unwrap_or_else(|| format!(r#" {paint_attr}="none""#))
 			}
-			None => format!(r#" {paint_attr}="none""#),
 		}
 	}
 }
 
-/// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic list as the paint content, and returns the pattern ID.
+/// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic as the paint content, and returns the pattern ID.
 /// Currently, this function is only used for clipping-based filling and stroking, not considering tiling yet.
-fn render_svg_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, stroke_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
+fn render_svg_pattern(svg_defs: &mut String, paint: &Graphic, stroke_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
 	let min = bounds.transform_point2(DVec2::ZERO);
 	let max = bounds.transform_point2(DVec2::ONE);
 	let size = max - min;
@@ -325,7 +323,7 @@ fn render_svg_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, 
 
 	// Render the pattern content recursively
 	let mut content = SvgRender::new();
-	fill_graphic_list.render_svg(&mut content, &render_params.for_pattern());
+	paint.render_svg(&mut content, &render_params.for_pattern());
 
 	// Unwrap the inner def element
 	write!(svg_defs, "{}", content.svg_defs).unwrap();
