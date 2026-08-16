@@ -120,6 +120,16 @@ impl Layout {
 		self.size.next_multiple_of(8)
 	}
 
+	/// One batch lane's stride: a spilled record's frame, or the value itself
+	/// for records this layout keeps inline (`size == 0`), whose payload rides
+	/// in the `RecordValue`'s own storage exactly as [`Layout::rec`] resolves.
+	pub fn lane_stride(&self) -> usize {
+		match self.size == 0 {
+			true => size_of::<RecordValue<'static>>(),
+			false => self.frame_bytes(),
+		}
+	}
+
 	/// Resolves a value of this layout, which must be its wiring-proven one,
 	/// to its record bytes. An empty record carries nothing and resolves to the
 	/// value's own storage; every other record spills and rides the pointer.
@@ -451,6 +461,86 @@ where
 
 	fn extent_at_derived(&self, ctx: &C, level: u8) -> GPoll<crate::gpoll::Extent> {
 		self.extent_at(ctx, level)
+	}
+}
+
+/// Fills caller scratch with one frame per lane of `range`: the edge
+/// evaluates at each index, the record's frame copies out, and the stack
+/// rewinds, so the stack peak stays at one lane's need and every lane's bytes
+/// are distinct. Frame bytes carry no drop glue, so the copy is a move.
+pub fn fill_frames<'a, 'e, C, N>(node: &'a N, input: &C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>) -> crate::node::BatchStatus<'a>
+where
+	C: crate::context::InjectIndex + Copy,
+	N: Node<C, Output = RecordValue<'e>>,
+{
+	use crate::node::BatchStatus;
+	let Some(scratch) = scratch else {
+		return BatchStatus::NeedBuffer;
+	};
+	let Some(len) = range.end.checked_sub(range.start).and_then(|len| usize::try_from(len).ok()) else {
+		return BatchStatus::InvalidRange;
+	};
+	let layout = node.layout();
+	let stride = layout.lane_stride();
+	if scratch.len() * 8 < len * stride {
+		return BatchStatus::InvalidRange;
+	}
+	let base = scratch.as_mut_ptr().cast::<u8>();
+	let mut local = *input;
+	let mut finality = crate::gpoll::Finality::AllFinal;
+	for lane in 0..len {
+		local.set_index(range.start + lane as u64);
+		let mark = stack::sp();
+		let value = match node.eval(&local) {
+			GPoll::Final(value) => value,
+			GPoll::Partial(value) => {
+				finality = crate::gpoll::Finality::Partial;
+				value
+			}
+			GPoll::Pending => return BatchStatus::Pending,
+			GPoll::Fallback(boxed) => return BatchStatus::Error(boxed.1),
+			GPoll::Error(error) => return BatchStatus::Error(*error),
+		};
+		// SAFETY: the lane region is in-bounds by the scratch check, and the
+		// frame is fully copied out before the rewind releases it.
+		unsafe {
+			std::ptr::copy_nonoverlapping(layout.rec(&value).ptr(), base.add(lane * stride), stride);
+			stack::rewind(mark);
+		}
+	}
+	// SAFETY: all `len` lanes were filled above with records of `layout`.
+	BatchStatus::Filled(unsafe { crate::node::RecordBatchMut::new(scratch, len, layout) }, finality)
+}
+
+/// The driver a consumer runs on a record edge: a resident batch returns with
+/// no allocation, a node's own batch impl gets `n * frame_bytes` of arena
+/// scratch, and an unbatched edge falls back to the [`fill_frames`] loop.
+pub fn materialize_batch<'a, 'e, C, N>(node: &'a N, input: &'a C, range: std::ops::Range<u64>, arena: &'a crate::arena::Arena) -> crate::node::BatchStatus<'a>
+where
+	C: crate::context::InjectIndex + Copy,
+	N: Node<C, Output = RecordValue<'e>>,
+{
+	use crate::node::BatchStatus;
+	let Some(len) = range.end.checked_sub(range.start).and_then(|len| usize::try_from(len).ok()) else {
+		return BatchStatus::InvalidRange;
+	};
+	let words = len * node.layout().lane_stride() / 8;
+	let exhausted = || {
+		BatchStatus::Error(crate::gpoll::GraphError {
+			kind: crate::gpoll::ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		})
+	};
+	match node.eval_batch(input, range.clone(), None) {
+		BatchStatus::Unbatched => match arena.alloc_scratch::<u64>(words) {
+			Some(scratch) => fill_frames(node, input, range, Some(scratch)),
+			None => exhausted(),
+		},
+		BatchStatus::NeedBuffer => match arena.alloc_scratch::<u64>(words) {
+			Some(scratch) => node.eval_batch(input, range, Some(scratch)),
+			None => exhausted(),
+		},
+		status => status,
 	}
 }
 

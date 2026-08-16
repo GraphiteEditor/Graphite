@@ -458,6 +458,42 @@ mod tests {
 	}
 
 	#[test]
+	fn reducer_folds_varying_copies_of_a_generic_repeat() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let base = f64_layout(&[]);
+		let (count_edge, count_layout) = lifted_value(4u32);
+		let out = f64_layout(&[]);
+		reserve_for(&[&base, &count_layout, &out]);
+
+		let meta = core_types::record::LayoutMeta {
+			sources: vec![0],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 1,
+		};
+		let repeat = install(
+			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, &base, &count_layout),
+			meta,
+			&[Some(&base)],
+		);
+		let leveled = Node::<ContextImpl>::layout(&repeat).clone();
+		let node = install_flip(SumNode::new(repeat, &leveled), &out);
+
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		// Every copy evaluates at its own index, so the lanes must be distinct
+		// storage: sum(0 + 1 + 2 + 3), not four aliases of the last copy.
+		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 6.);
+	}
+
+	#[test]
 	fn layout_meta_folds_to_construction() {
 		let base = f64_layout(&[]);
 		let carried = multiply_opacity_layout(&base);

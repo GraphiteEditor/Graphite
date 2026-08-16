@@ -934,7 +934,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let pat = &field.pat_ident;
 			match &field.ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) if ir::materialized_levels(&node, index) > 0 => {
-					quote!(#pat: #core_types::node::List<'_, '_, #ty>)
+					quote!(#pat: #core_types::node::List<'_, #ty>)
 				}
 				ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.attribute_reads.is_empty() => read_tuple_param(field, quote!(#pat), quote!(#ty)),
@@ -1082,12 +1082,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							#core_types::gpoll::GPoll::Pending => return #core_types::gpoll::GPoll::Pending,
 							_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("reduce over a non-exact extent"))),
 						};
-						let __scratch = match __arena.alloc_scratch::<#core_types::record::RecordValue<'__record>>(__count) {
-							Some(__scratch) => __scratch,
-							None => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("reduce scratch allocation failed"))),
-						};
-						let __batch = match #core_types::node::Node::eval_batch(&self.#name, __input, 0..__count as u64, Some(__scratch)) {
-							#core_types::node::BatchStatus::Lent(__batch, _) | #core_types::node::BatchStatus::Filled(__batch, _) => __batch,
+						let __batch = match #core_types::record::materialize_batch(&self.#name, __input, 0..__count as u64, __arena) {
+							#core_types::node::BatchStatus::Lent(__batch, _) => __batch,
+							#core_types::node::BatchStatus::Filled(__batch, _) => __batch.into_shared(),
 							#core_types::node::BatchStatus::Pending => return #core_types::gpoll::GPoll::Pending,
 							#core_types::node::BatchStatus::Error(__error) => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(__error)),
 							_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("reduce batch failed"))),
@@ -1245,21 +1242,33 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		None => quote!(),
 	};
 
-	let batch_impl = match &parsed.attributes.batch {
-		Some(path) => quote! {
-			fn eval_batch<'__batch>(
-				&'__batch self,
-				__input: &'__batch #ctx_ident,
-				__range: ::std::ops::Range<u64>,
-				__scratch: Option<&'__batch mut [::std::mem::MaybeUninit<Self::Output>]>,
-			) -> #core_types::node::BatchStatus<'__batch, Self::Output>
-			where
-				#ctx_ident: #core_types::context::InjectIndex + Copy,
+	let batch_signature = quote! {
+		fn eval_batch<'__batch>(
+			&'__batch self,
+			__input: &'__batch #ctx_ident,
+			__range: ::std::ops::Range<u64>,
+			__scratch: Option<&'__batch mut [::std::mem::MaybeUninit<u64>]>,
+		) -> #core_types::node::BatchStatus<'__batch>
+		where
+			#ctx_ident: #core_types::context::InjectIndex + Copy,
+	};
+	let produces_records = record_io || routing_generic.is_some() || flip;
+	let batch_impl = match (&parsed.attributes.batch, produces_records) {
+		(Some(path), _) => quote! {
+			#batch_signature
 			{
 				#path(self, __input, __range, __scratch)
 			}
 		},
-		None => quote!(),
+		// The eager forward runs the shared copy-out loop with statically
+		// dispatched evals, so an erased batch costs one virtual call.
+		(None, true) => quote! {
+			#batch_signature
+			{
+				#core_types::record::fill_frames(self, __input, __range, __scratch)
+			}
+		},
+		(None, false) => quote!(),
 	};
 
 	let ctx_pat = &parsed.input.pat_ident;

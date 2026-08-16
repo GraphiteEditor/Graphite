@@ -1140,13 +1140,14 @@ mod graphene_test {
 		reserve_for(&[&li, &ls, &out]);
 
 		let erased: Box<ErasedRecordNode> = Box::new(node);
+		// One u64 word per lane: the uninstalled layout keeps the f64 inline.
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
 		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch));
 		let BatchStatus::Filled(batch, finality) = status else {
 			panic!("expected filled, got {status:?}");
 		};
 		let mut got = Vec::new();
-		batch.for_each(|_, lane| got.push(unsafe { lane.element::<f64>() }));
+		batch.share().for_each(|_, lane| got.push(unsafe { lane.element::<f64>() }));
 		assert_eq!(got, vec![12.0, 13.0, 14.0, 15.0]);
 		assert_eq!(finality, Finality::AllFinal);
 	}
