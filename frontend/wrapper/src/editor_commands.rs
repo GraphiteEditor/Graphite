@@ -407,7 +407,10 @@ mod editor_commands {
 
 	/// Update the color of the currently-edited gradient stop, from sRGB bytes (the wire format at the JS boundary).
 	fn update_gradient_stop_color(color: SRGBA8) -> Message {
-		GradientToolMessage::UpdateStopColor { color: Color::from(color) }.into()
+		let color = Color::from(color);
+		Message::Batched {
+			messages: Box::new([GradientToolMessage::UpdateStopColor { color }.into(), MeshGradientToolMessage::UpdateStopColor { color }.into()]),
+		}
 	}
 
 	/// Start a new undo transaction for gradient stop color editing

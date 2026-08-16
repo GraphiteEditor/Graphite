@@ -48,6 +48,7 @@ pub use crate::messages::tool::tool_messages::eyedropper_tool::{EyedropperToolMe
 pub use crate::messages::tool::tool_messages::fill_tool::{FillToolMessage, FillToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::freehand_tool::{FreehandToolMessage, FreehandToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::gradient_tool::{GradientOptionsUpdate, GradientToolMessage, GradientToolMessageDiscriminant};
+pub use crate::messages::tool::tool_messages::mesh_gradient_tool::{MeshGradientToolMessage, MeshGradientToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::navigate_tool::{NavigateToolMessage, NavigateToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::path_tool::{PathToolMessage, PathToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::pen_tool::{PenToolMessage, PenToolMessageDiscriminant};

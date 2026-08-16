@@ -367,6 +367,7 @@ pub enum ToolType {
 	Eyedropper,
 	Fill,
 	Gradient,
+	MeshGradient,
 
 	// Vector tool group
 	Path,
@@ -417,6 +418,7 @@ fn list_tools_in_groups() -> Vec<Vec<ToolRole>> {
 			ToolRole::Normal(Box::<eyedropper_tool::EyedropperTool>::default()),
 			ToolRole::Normal(Box::<fill_tool::FillTool>::default()),
 			ToolRole::Normal(Box::<gradient_tool::GradientTool>::default()),
+			ToolRole::Normal(Box::<mesh_gradient_tool::MeshGradientTool>::default()),
 		],
 		vec![
 			// Vector tool group
@@ -469,6 +471,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		ToolMessage::Eyedropper(_) => ToolType::Eyedropper,
 		ToolMessage::Fill(_) => ToolType::Fill,
 		ToolMessage::Gradient(_) => ToolType::Gradient,
+		ToolMessage::MeshGradient(_) => ToolType::MeshGradient,
 
 		// Vector tool group
 		ToolMessage::Path(_) => ToolType::Path,
@@ -498,6 +501,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		ToolType::Eyedropper => ToolMessageDiscriminant::ActivateToolEyedropper,
 		ToolType::Fill => ToolMessageDiscriminant::ActivateToolFill,
 		ToolType::Gradient => ToolMessageDiscriminant::ActivateToolGradient,
+		ToolType::MeshGradient => ToolMessageDiscriminant::ActivateToolMeshGradient,
 
 		// Vector tool group
 		ToolType::Path => ToolMessageDiscriminant::ActivateToolPath,
