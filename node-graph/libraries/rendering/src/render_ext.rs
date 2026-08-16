@@ -81,12 +81,12 @@ impl RenderExt for List<Color> {
 	}
 }
 
-/// Adds one gradient item's def into `svg_defs` and returns the gradient ID, or 0 when the item is absent.
-fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> u64 {
+/// Adds one gradient item's def into `svg_defs` and returns the gradient ID, or `None` when the item is absent.
+fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> Option<u64> {
 	let mut stop = String::new();
 
-	let Some(item) = item else { return 0 };
-	let Some(stops) = item.element() else { return 0 };
+	let item = item?;
+	let stops = item.element()?;
 	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
 	let local_gradient_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let settings = gradient_settings_from_item(item);
@@ -155,11 +155,11 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 		}
 	}
 
-	gradient_id
+	Some(gradient_id)
 }
 
 impl RenderExt for List<Gradient> {
-	type Output = u64;
+	type Output = Option<u64>;
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
 	fn render(
@@ -255,14 +255,13 @@ impl RenderExt for List<Graphic> {
 		match fill_graphic {
 			Some(Graphic::Color(item)) => render_color_paint(Some(item.element()), target),
 			Some(Graphic::ColorList(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
-			Some(Graphic::Gradient(item)) => {
-				let gradient_id = render_gradient_paint(Some(ItemRef::Item(item)), svg_defs, item_transform, element_transform);
-				format!(r##" {paint_attr}="url(#{gradient_id})""##)
-			}
-			Some(Graphic::GradientList(gradient_list)) => {
-				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target);
-				format!(r##" {paint_attr}="url(#{gradient_id})""##)
-			}
+			Some(Graphic::Gradient(item)) => render_gradient_paint(Some(ItemRef::Item(item)), svg_defs, item_transform, element_transform)
+				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
+				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
+			Some(Graphic::GradientList(gradient_list)) => gradient_list
+				.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target)
+				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
+				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
 			Some(Graphic::None(_)) | Some(Graphic::NoneList(_)) => format!(r#" {paint_attr}="none""#),
 			Some(Graphic::Graphic(_))
 			| Some(Graphic::Vector(_))

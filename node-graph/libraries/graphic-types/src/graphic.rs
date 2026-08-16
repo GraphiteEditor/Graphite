@@ -564,8 +564,9 @@ impl Graphic {
 			}),
 			Graphic::Color(item) => item.element().a() == 0.,
 			Graphic::ColorList(list) => list.iter_element_values().all(|color| color.a() == 0.),
-			Graphic::Gradient(item) => item.element().iter().all(|stop| stop.color.a() == 0.),
-			Graphic::GradientList(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
+			// A stopless ramp paints as solid black, matching `Gradient::evaluate`, so it counts as transparent only once it has stops
+			Graphic::Gradient(item) => !item.element().is_empty() && item.element().iter().all(|stop| stop.color.a() == 0.),
+			Graphic::GradientList(list) => list.iter_element_values().all(|stops| !stops.is_empty() && stops.iter().all(|stop| stop.color.a() == 0.)),
 			// Their content is never inspected, so zeroed opacity is the only invisibility these can report
 			Graphic::RasterCPU(item) => item_opacity_is_zero(item),
 			Graphic::RasterGPU(item) => item_opacity_is_zero(item),
