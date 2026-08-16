@@ -47,14 +47,31 @@ trait VectorListIterMut {
 impl VectorListIterMut for List<Graphic> {
 	fn for_each_vector_list_mut(&mut self, mut f: impl FnMut(&mut List<Vector>)) {
 		for graphic in self.iter_element_values_mut() {
-			if let Some(vector_list) = graphic.as_vector_list_mut() {
-				f(vector_list);
-			};
+			match graphic {
+				// A lone vector is lifted into a one-item list for the duration of the call, so the shared per-list logic reaches it
+				Graphic::Vector(item) => {
+					let mut lifted = List::new_from_item(std::mem::take(&mut **item));
+					f(&mut lifted);
+					if let Some(updated) = lifted.into_iter().next() {
+						**item = updated;
+					}
+				}
+				graphic => {
+					if let Some(vector_list) = graphic.as_vector_list_mut() {
+						f(vector_list);
+					}
+				}
+			}
 		}
 	}
 
 	fn vector_count(&self) -> usize {
-		self.iter_element_values().filter_map(|element| element.as_vector_list()).map(|list| list.len()).sum()
+		self.iter_element_values()
+			.map(|element| match element {
+				Graphic::Vector(_) => 1,
+				element => element.as_vector_list().map_or(0, List::len),
+			})
+			.sum()
 	}
 }
 
@@ -83,10 +100,18 @@ impl VectorItemMut for Item<Vector> {
 
 impl VectorItemMut for Item<Graphic> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
-		let Some(vector_list) = self.element_mut().as_vector_list_mut() else { return };
-		let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
-		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
-			f(vector, *transform);
+		match self.element_mut() {
+			Graphic::Vector(item) => {
+				let transform = item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+				f(item.element_mut(), transform);
+			}
+			element => {
+				let Some(vector_list) = element.as_vector_list_mut() else { return };
+				let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
+				for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
+					f(vector, *transform);
+				}
+			}
 		}
 	}
 }
@@ -4140,5 +4165,46 @@ mod test {
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
 		assert_eq!(beveled.segment_domain.ids().len(), 5);
+	}
+
+	// A rank-0 vector reaches the same per-list styling path as a vector list, rather than being skipped
+	#[tokio::test]
+	async fn assign_colors_reaches_rank_0_vector_graphics() {
+		let leaf = Graphic::Vector(Box::new(vector_item_from_bezpath(Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY))));
+		let content = List::new_from_element(leaf);
+
+		let styled = super::assign_colors(
+			Footprint::default(),
+			content,
+			Item::new_from_element(true),
+			Item::new_from_element(false),
+			Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE])),
+			Item::new_from_element(false),
+			Item::new_from_element(false),
+			Item::new_from_element(SeedValue::default()),
+			Item::new_from_element(0_u32),
+		)
+		.await;
+
+		let Some(Graphic::Vector(item)) = styled.element(0) else {
+			panic!("the leaf should stay a rank-0 vector")
+		};
+		let appearance = item.attribute::<Appearance>(ATTR_APPEARANCE).expect("the leaf should have gained an appearance");
+		assert!(appearance.has_painted_cover(Cover::Fill), "the fill of a rank-0 vector should be styled like a list element");
+	}
+
+	// Fill's automatic gradient placement measures rank-0 vector content instead of falling back to the unit box
+	#[test]
+	fn vector_item_mut_reaches_a_rank_0_vector_graphic() {
+		let transform = DAffine2::from_translation(DVec2::new(7., 3.));
+		let item = create_vector_item(Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY), transform);
+		let mut content = Item::new_from_element(Graphic::Vector(Box::new(item)));
+
+		let mut visited = Vec::new();
+		content.for_each_vector_mut(|vector, vector_transform| visited.push((vector.bounding_box(), vector_transform)));
+
+		assert_eq!(visited.len(), 1, "the lone vector should be visited exactly once");
+		assert_eq!(visited[0].1, transform, "its own transform attribute should come along for placement");
+		assert!(visited[0].0.is_some(), "its geometry should be measurable for the automatic gradient bounds");
 	}
 }
