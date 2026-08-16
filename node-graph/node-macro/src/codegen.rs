@@ -1712,6 +1712,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#plan
 			self.__layout = __resolved.layout;
 		})
+	} else if routing_generic.is_some() {
+		Some(quote! {
+			self.__layout = __resolved.layout;
+		})
 	} else {
 		None
 	};

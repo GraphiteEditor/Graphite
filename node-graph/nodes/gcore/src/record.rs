@@ -6,7 +6,7 @@
 //! wiring is by hand until the compiler pass constructs layouts.
 
 use core_types::attribute::{Attr, Opacity, RemoveAttr};
-use core_types::context::{ExtractArena, ExtractIndex, InjectIndex};
+use core_types::context::{DeriveCtx, ExtractArena, ExtractIndex, InjectIndex};
 use core_types::gpoll::{ErrorKind, GraphError, Interrupt};
 use core_types::{Context, Ctx};
 
@@ -73,6 +73,35 @@ where
 		node.count.eval(ctx).map(|count| core_types::gpoll::Extent::Exactly(count as usize))
 	} else {
 		node.element.extent_at(ctx, level)
+	}
+}
+
+/// Test-only generic structure creator: evaluates the lazy content once per copy
+/// with the copy's index pushed in, producing a rank level of `count` copies.
+#[node_macro::node(category("Test"), extent(repeat_extent))]
+fn repeat<T>(ctx: impl Ctx + DeriveCtx + ExtractIndex, content: impl Node<Context<'_>, Output = T>, count: u32) -> Result<IList<T>, Interrupt> {
+	let spilled = ctx.index_head();
+	let copy = ctx.innermost_index() % count as u64;
+	content.eval(&ctx.promoted(&spilled, copy))
+}
+
+/// The pushed level's extent is the copy count; inner levels forward to the
+/// content, whose extent is taken uniform across copies (queried at copy 0).
+fn repeat_extent<'r, C, In0, In1>(node: &RepeatNode<In0, In1>, ctx: &C, level: u8) -> core_types::gpoll::GPoll<core_types::gpoll::Extent>
+where
+	C: core_types::context::DeriveCtx + core_types::context::ExtractIndex,
+	In0: for<'d> core_types::record::DerivedRecordEdge<'d, core_types::context::Derived<'d, C>>,
+	In1: core_types::node::Node<C, Output = core_types::record::RecordValue<'r>>,
+{
+	use core_types::node::Node;
+	if level + 1 == node.__layout.depth {
+		node.count.eval(ctx).map(|value| {
+			let count: u32 = unsafe { core_types::record::read_element(node.__in_1.rec(&value)) };
+			core_types::gpoll::Extent::Exactly(count as usize)
+		})
+	} else {
+		let spilled = ctx.index_head();
+		node.content.extent_at_derived(&ctx.promoted(&spilled, 0), level)
 	}
 }
 
@@ -208,6 +237,29 @@ mod tests {
 		}
 	}
 
+	struct IndexSourceNode {
+		layout: Layout,
+	}
+
+	impl<'e> Node<ContextImpl<'e>> for IndexSourceNode {
+		type Output = RecordValue<'e>;
+
+		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+			let element = input.innermost_index() as f64;
+			let mut value = RecordValue::zeroed();
+			let dst = match self.layout.frame_bytes() {
+				0 => value.as_mut_ptr(),
+				bytes => stack::push(bytes),
+			};
+			unsafe { dst.cast::<f64>().write(element) };
+			if self.layout.frame_bytes() != 0 {
+				stack::pop(dst);
+				value = RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) });
+			}
+			GPoll::Final(value)
+		}
+	}
+
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
 		stack::reserve(1 << 16);
 		EvalScope::new(Some(0.5), None, None, generations, arena)
@@ -306,6 +358,80 @@ mod tests {
 		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
 		// The pushed level (0, the only level) reports the copy count.
 		assert_eq!(node.extent_at(&ctx, 0), core_types::gpoll::GPoll::Final(core_types::gpoll::Extent::Exactly(3)));
+	}
+
+	#[test]
+	fn generic_repeat_pushes_a_level_and_forwards_the_element() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let base = f64_layout(&[]);
+		let (count_edge, count_layout) = lifted_value(3u32);
+		reserve_for(&[&base, &count_layout]);
+
+		let meta = core_types::record::LayoutMeta {
+			sources: vec![0],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 1,
+		};
+		let node = install(
+			RepeatNode::new(RecordSource::new(bare_source(&base, 7.), &base, &base), count_edge, &base, &count_layout),
+			meta,
+			&[Some(&base)],
+		);
+		let leveled = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(leveled.depth, 1, "the IList return pushed one rank level above the depth-0 content");
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(core_types::gpoll::Extent::Exactly(3)));
+
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(unsafe { leveled.rec(&value).element::<f64>() }, 7., "the opaque generic element forwarded unchanged");
+	}
+
+	#[test]
+	fn repeat_evaluates_content_at_each_copy_index() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let base = f64_layout(&[]);
+		let (count_edge, count_layout) = lifted_value(4u32);
+		reserve_for(&[&base, &count_layout]);
+
+		let meta = core_types::record::LayoutMeta {
+			sources: vec![0],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 1,
+		};
+		let repeat = install(
+			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, &base, &count_layout),
+			meta,
+			&[Some(&base)],
+		);
+		let leveled = Node::<ContextImpl>::layout(&repeat).clone();
+
+		let head = ctx.index_head();
+		for copy in 0..4 {
+			let mark = stack::sp();
+			let lane = ctx.promoted(&head, copy);
+			let GPoll::Final(value) = repeat.eval(&lane) else {
+				panic!("expected a final record");
+			};
+			// The copy evaluated its content at its own pushed index.
+			assert_eq!(unsafe { leveled.rec(&value).element::<f64>() }, copy as f64);
+			// SAFETY: the copy's element was read out above, so no borrow into its frame remains.
+			unsafe { stack::rewind(mark) };
+		}
 	}
 
 	#[test]

@@ -438,6 +438,7 @@ impl<'e> RecordValue<'e> {
 /// unconstrained ones.
 pub trait DerivedRecordEdge<'derived, C> {
 	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt>;
+	fn extent_at_derived(&self, ctx: &C, level: u8) -> GPoll<crate::gpoll::Extent>;
 }
 
 impl<'derived, C, N> DerivedRecordEdge<'derived, C> for N
@@ -446,6 +447,10 @@ where
 {
 	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt> {
 		cell.eval_input(input_index, self, ctx)
+	}
+
+	fn extent_at_derived(&self, ctx: &C, level: u8) -> GPoll<crate::gpoll::Extent> {
+		self.extent_at(ctx, level)
 	}
 }
 
