@@ -25,7 +25,8 @@ use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin,
+	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, MeshGradient, PaintOrder, StrokeAlign, StrokeCap,
+	StrokeJoin,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Artboard, Color, Context, Graphic};
@@ -207,6 +208,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<MeshGradient>,
 		List<String>,
 		List<f64>,
 		List<f32>,
@@ -263,6 +265,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<Raster<GPU>>,
 		Item<Color>,
 		Item<Gradient>,
+		Item<MeshGradient>,
 		Item<String>,
 		Item<f64>,
 		Item<f32>,
@@ -546,6 +549,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPU(list) => list.identifier(),
 			Self::Color(list) => list.identifier(),
 			Self::Gradient(list) => list.identifier(),
+			Self::MeshGradient(list) => list.identifier(),
 			Self::Text(list) => list.identifier(),
 		}
 	}
@@ -562,6 +566,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPU(list) => list.layout_with_breadcrumb(data),
 			Self::Color(list) => list.layout_with_breadcrumb(data),
 			Self::Gradient(list) => list.layout_with_breadcrumb(data),
+			Self::MeshGradient(list) => list.layout_with_breadcrumb(data),
 			Self::Text(list) => list.layout_with_breadcrumb(data),
 		}
 	}
@@ -778,6 +783,28 @@ impl TableItemLayout for Gradient {
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		self.as_color_list().layout_with_breadcrumb(data)
+	}
+}
+
+impl TableItemLayout for MeshGradient {
+	fn type_name() -> &'static str {
+		"MeshGradient"
+	}
+	fn identifier(&self) -> String {
+		format!("MeshGradient ({} corners)", self.size())
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		let mut rows = vec![column_headings(&["corner", "point ID", "position", "color"])];
+		rows.extend(self.corners().map(|corner| {
+			vec![
+				TextLabel::new(format!("{}", corner.index)).narrow(true).widget_instance(),
+				TextLabel::new(format!("{}", corner.point_id.inner())).narrow(true).widget_instance(),
+				TextLabel::new(format!("{}", corner.position)).narrow(true).widget_instance(),
+				corner.color.value_widget(PathStep::Element(corner.index), data),
+			]
+		}));
+
+		vec![LayoutGroup::table(rows, false)]
 	}
 }
 

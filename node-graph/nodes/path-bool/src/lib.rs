@@ -307,6 +307,33 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						Item::from_parts(element, attributes)
 					})
 					.collect::<Vec<_>>(),
+				Graphic::MeshGradient(mesh_gradients) => {
+					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+					mesh_gradients
+						.into_iter()
+						.map(|row| {
+							let (mesh_gradient, mut attributes) = row.into_parts();
+							let mut boundary = BezPath::new();
+
+							for patch in mesh_gradient.patches().flatten() {
+								let [top, bottom, left, right] = patch.edges;
+								boundary.move_to(top.start());
+								for edge in [top, right, bottom.reverse(), left.reverse()] {
+									boundary.push(edge.as_path_el());
+								}
+								boundary.close_path();
+							}
+
+							let current_transform = attributes.remove::<DAffine2>(ATTR_TRANSFORM).unwrap_or_default();
+							attributes.insert(ATTR_TRANSFORM, parent_transform * current_transform);
+							set_paint_attribute(&mut attributes, ATTR_FILL, List::new_from_element(mesh_gradient));
+
+							let mut element = Vector::from_bezpath(boundary);
+							element.set_stroke_transform(DAffine2::IDENTITY);
+							Item::from_parts(element, attributes)
+						})
+						.collect::<Vec<_>>()
+				}
 				Graphic::Text(text) => {
 					// Shape the glyphs into vectors (each item's own transform is applied), then compose the parent's transform like the other arms
 					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
