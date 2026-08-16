@@ -391,7 +391,7 @@ pub async fn render_output_cache<'a: 'n>(
 	}
 
 	let executor = executor.into_element().expect("GPU executor not available");
-	let output_texture = executor.request_texture(physical_resolution).await;
+	let output_texture = executor.request_texture(physical_resolution);
 
 	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, executor);
 
