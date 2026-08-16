@@ -1331,6 +1331,19 @@ pub struct Item<T> {
 	attributes: ItemAttributeValues,
 }
 
+impl<T: BoundingBox> BoundingBox for Item<T> {
+	/// Computes the element's bounding box, composing the item's transform attribute with the given transform.
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
+		self.element().bounding_box(transform * item_transform, include_stroke)
+	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
+		self.element().thumbnail_bounding_box(transform * item_transform, include_stroke)
+	}
+}
+
 impl<T: Default> Default for Item<T> {
 	fn default() -> Self {
 		Self::new_from_element(T::default())

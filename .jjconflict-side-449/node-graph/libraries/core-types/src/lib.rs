@@ -8,6 +8,7 @@ pub mod list;
 pub mod math;
 pub mod memo;
 pub mod misc;
+pub mod none;
 pub mod ops;
 pub mod registry;
 pub mod render_complexity;
