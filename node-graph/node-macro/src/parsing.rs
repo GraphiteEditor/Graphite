@@ -33,6 +33,7 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) where_clause: Option<WhereClause>,
 	pub(crate) input: Input,
 	pub(crate) output_type: Type,
+	pub(crate) output_depth: u8,
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
 	pub(crate) body: TokenStream2,
@@ -662,7 +663,7 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 	let is_async = input_fn.sig.asyncness.is_some();
 
 	let (input, fields) = parse_inputs(&input_fn.sig.inputs)?;
-	let output_type = parse_output(&input_fn.sig.output)?;
+	let (output_type, output_depth) = crate::codegen::ir::strip_output_rank(&parse_output(&input_fn.sig.output)?);
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
 	let description = input_fn
@@ -691,6 +692,7 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 		fn_generics,
 		input,
 		output_type,
+		output_depth,
 		is_async,
 		fields,
 		where_clause,
@@ -1407,6 +1409,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
+			output_depth: 0,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
@@ -1485,6 +1488,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(T),
+			output_depth: 0,
 			is_async: false,
 			fields: vec![
 				ParsedField {
@@ -1578,6 +1582,7 @@ mod tests {
 				context_features: vec![format_ident!("ExtractFootprint")],
 			},
 			output_type: parse_quote!(Vector),
+			output_depth: 0,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("radius"),
@@ -1652,6 +1657,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(List<Raster<P>>),
+			output_depth: 0,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("shadows"),
@@ -1738,6 +1744,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
+			output_depth: 0,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
@@ -1827,6 +1834,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(List<Raster<CPU>>),
+			output_depth: 0,
 			is_async: true,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("path"),
@@ -1901,6 +1909,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(i32),
+			output_depth: 0,
 			is_async: false,
 			fields: vec![],
 			body: TokenStream2::new(),

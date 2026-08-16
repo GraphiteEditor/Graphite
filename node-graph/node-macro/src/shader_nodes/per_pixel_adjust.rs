@@ -317,6 +317,7 @@ impl PerPixelAdjustCodegen<'_> {
 				context_features: self.parsed.input.context_features.clone(),
 			},
 			output_type: raster_gpu,
+			output_depth: 0,
 			is_async: false,
 			fields,
 			body,

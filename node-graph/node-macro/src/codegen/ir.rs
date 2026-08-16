@@ -82,8 +82,8 @@ fn subject(index: usize, field: &ParsedField, carrier_subject: bool, routing: Op
 }
 
 fn output(parsed: &ParsedNodeFn, generics: &[Ident]) -> Output {
-	// Strip the `IList` rank markers first so the write set is read from the row.
-	let (row, depth) = strip_ilist(&slot_value_type(&parsed.output_type));
+	let row = slot_value_type(&parsed.output_type);
+	let depth = parsed.output_depth;
 	let (element, writes, removes) = match record_writes(&row) {
 		Some(RecordWrites { element, markers, removes }) => (element, markers, removes),
 		None => (row, Vec::new(), Vec::new()),
@@ -165,6 +165,36 @@ pub(crate) fn strip_ilist(ty: &Type) -> (Type, u8) {
 		depth += 1;
 	}
 	(element, depth)
+}
+
+/// Strips `IList` rank nesting from the output's value position, preserving the
+/// dialect wrapper (`Result`/`GPoll`), and returns the removed depth.
+pub(crate) fn strip_output_rank(output: &Type) -> (Type, u8) {
+	use crate::codegen::classify::{KernelKind, kernel_kind};
+	match kernel_kind(output) {
+		KernelKind::Plain => strip_ilist(output),
+		KernelKind::Interrupt(inner) | KernelKind::Poll(inner) => {
+			let (row, depth) = strip_ilist(&inner);
+			(replace_first_type_arg(output, row), depth)
+		}
+		KernelKind::Future(_) | KernelKind::FutureInterrupt(_) => (output.clone(), 0),
+	}
+}
+
+fn replace_first_type_arg(ty: &Type, replacement: Type) -> Type {
+	let mut ty = ty.clone();
+	if let Type::Path(path) = &mut ty
+		&& let Some(segment) = path.path.segments.last_mut()
+		&& let PathArguments::AngleBracketed(args) = &mut segment.arguments
+	{
+		for arg in args.args.iter_mut() {
+			if let GenericArgument::Type(inner) = arg {
+				*inner = replacement;
+				break;
+			}
+		}
+	}
+	ty
 }
 
 fn ilist_inner(ty: &Type) -> Option<Type> {

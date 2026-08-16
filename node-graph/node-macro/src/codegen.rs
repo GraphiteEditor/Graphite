@@ -734,7 +734,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth);
 	let level_delta = node.output.shape.depth as i8 - subject_depth as i8;
 	let pushed_levels = level_delta.max(0) as u8;
-	let output_row = crate::codegen::ir::strip_ilist(&slot_value_type(&parsed.output_type)).0;
+	let output_row = slot_value_type(&parsed.output_type);
 	let snapshot_ctx = async_fn && matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
 
 	let mut ctx_bounds: Vec<TokenStream2> = match ctx_param {
@@ -1270,7 +1270,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// A bare `Attr<M>` in the return type cannot elide its lifetime, so the
 	// kernel gets a fresh one; reference-valued writes name their real
 	// lifetime explicitly and pass through untouched.
-	let kernel_output = record_io.then(|| inject_attr_lifetimes(&crate::codegen::ir::strip_ilist(&parsed.output_type).0)).flatten();
+	let kernel_output = record_io.then(|| inject_attr_lifetimes(&parsed.output_type)).flatten();
 	let attr_lifetime = kernel_output.is_some().then(|| quote!('__attr,));
 	let kernel_output = match derive_routing {
 		true => {
