@@ -2,13 +2,14 @@
 //! content once per copy and compose the per-copy transform onto each row.
 //! Test-category until the flip swaps them in for the eager variants.
 
+use core::f64::consts::TAU;
 use core_types::attribute::{Attr, Transform};
 use core_types::context::ExtractIndex;
 use core_types::extent::{ExtentIn, LevelIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, Interrupt};
 use core_types::registry::types::{Angle, PixelSize};
 use core_types::{Ctx, DeriveCtx};
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 
 /// The rank-model Repeat Array: each copy evaluates the lazy content at its
 /// own index and composes the linear step onto the row's transform.
@@ -43,6 +44,41 @@ fn repeat_array_extent(content: ExtentIn<'_>, _direction: ValueIn<'_, PixelSize>
 	}
 }
 
+/// The rank-model Repeat Radial: each copy evaluates the lazy content at its
+/// own index and rotates it around the center by its share of the turn.
+#[node_macro::node(category("Test"), extent(repeat_radial_extent))]
+fn repeat_radial<T>(
+	ctx: impl Ctx + DeriveCtx + ExtractIndex,
+	content: impl Node<Context<'_>, Output = (T, Attr<Transform>)>,
+	start_angle: Angle,
+	#[unit(" px")]
+	#[default(5)]
+	radius: f64,
+	#[default(5)]
+	#[hard(1..)]
+	count: u32,
+) -> Result<IList<(T, Attr<Transform>)>, Interrupt> {
+	let spilled = ctx.index_head();
+	let copy = ctx.innermost_index() % count as u64;
+	let (element, local) = content.eval(&ctx.promoted(&spilled, copy))?;
+
+	let angle = DAffine2::from_angle((TAU / count as f64) * copy as f64 + start_angle.to_radians());
+	let translation = DAffine2::from_translation(radius * DVec2::Y);
+	let step = angle * translation;
+	let local_translation = DAffine2::from_translation(local.translation);
+	let local_matrix = DAffine2::from_mat2(local.matrix2);
+	Ok(emit(element, Attr(local_translation * step * local_matrix)))
+}
+
+/// The pushed level's extent is the copy count; inner levels forward to the
+/// content, whose extent is taken uniform across copies (queried at copy 0).
+fn repeat_radial_extent(content: ExtentIn<'_>, _start_angle: ValueIn<'_, Angle>, _radius: ValueIn<'_, f64>, count: ValueIn<'_, u32>, level: LevelIn) -> GPoll<Extent> {
+	match level.pushed() {
+		true => count.get().map(|count| Extent::Exactly(count as usize)),
+		false => content.at(level),
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -52,7 +88,6 @@ mod tests {
 	use core_types::context::{ContextImpl, EvalScope};
 	use core_types::node::Node;
 	use core_types::record::{FieldWrite, Layout, Rec, RecordSource, RecordValue, element_write, stack};
-	use glam::DVec2;
 
 	struct ValueNode<T>(T);
 
@@ -132,6 +167,45 @@ mod tests {
 			// past the row's own (5, 5) translation.
 			let composed: DAffine2 = unsafe { rec.read(leveled.offset_of(Transform::NAME, 0).unwrap()) };
 			assert_eq!(composed, DAffine2::from_translation(DVec2::new(5. + copy as f64 * 5., 5.)));
+			// SAFETY: the element and transform were read out above, so no borrow into this lane's frames remains.
+			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
+	fn repeat_radial_rotates_each_copy_around_the_center() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = transform_layout();
+		let local = DAffine2::from_translation(DVec2::new(1., 0.));
+		let content = TransformSource {
+			layout: layout.clone(),
+			element: 7.,
+			transform: local,
+		};
+
+		let mut node = RepeatRadialNode::new(RecordSource::new(content, &layout, &layout), ValueNode(90.0f64), ValueNode(2.0f64), ValueNode(4u32), &layout);
+		Node::<ContextImpl>::set_layout(&mut node, repeat_radial_layout_meta().resolve(&[Some(&layout)]));
+		let leveled = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(4)));
+
+		let head = ctx.index_head();
+		for copy in 0..4u64 {
+			let mark = stack::sp();
+			let lane = ctx.promoted(&head, copy);
+			let GPoll::Final(value) = node.eval(&lane) else {
+				panic!("expected a final record");
+			};
+			let rec = leveled.rec(&value);
+			assert_eq!(unsafe { rec.element::<f64>() }, 7.);
+			// The kernel's own formula, so the float operations match exactly.
+			let step = DAffine2::from_angle((TAU / 4.) * copy as f64 + 90.0f64.to_radians()) * DAffine2::from_translation(2. * DVec2::Y);
+			let expected = DAffine2::from_translation(local.translation) * step * DAffine2::from_mat2(local.matrix2);
+			let composed: DAffine2 = unsafe { rec.read(leveled.offset_of(Transform::NAME, 0).unwrap()) };
+			assert_eq!(composed, expected);
 			// SAFETY: the element and transform were read out above, so no borrow into this lane's frames remains.
 			unsafe { stack::rewind(mark) };
 		}
