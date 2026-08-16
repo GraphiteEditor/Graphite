@@ -61,57 +61,7 @@ mod blend_std {
 	}
 }
 
-#[inline(always)]
-pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
-	let target_color = match blend_mode {
-		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
-		BlendMode::Erase => return background.alpha_subtract(foreground),
-		BlendMode::Restore => return background.alpha_add(foreground),
-		BlendMode::MultiplyAlpha => return background.alpha_multiply(foreground),
-		blend_mode => apply_blend_mode(foreground, background, blend_mode),
-	};
-
-	background.alpha_blend(target_color.apply_opacity(opacity))
-}
-
-pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendMode) -> Color {
-	match blend_mode {
-		// Normal group
-		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
-		// Darken group
-		BlendMode::Darken => background.blend_rgb(foreground, Color::blend_darken),
-		BlendMode::Multiply => background.blend_rgb(foreground, Color::blend_multiply),
-		BlendMode::ColorBurn => background.blend_rgb(foreground, Color::blend_color_burn),
-		BlendMode::LinearBurn => background.blend_rgb(foreground, Color::blend_linear_burn),
-		BlendMode::DarkerColor => background.blend_darker_color(foreground),
-		// Lighten group
-		BlendMode::Lighten => background.blend_rgb(foreground, Color::blend_lighten),
-		BlendMode::Screen => background.blend_rgb(foreground, Color::blend_screen),
-		BlendMode::ColorDodge => background.blend_rgb(foreground, Color::blend_color_dodge),
-		BlendMode::LinearDodge => background.blend_rgb(foreground, Color::blend_linear_dodge),
-		BlendMode::LighterColor => background.blend_lighter_color(foreground),
-		// Contrast group
-		BlendMode::Overlay => foreground.blend_rgb(background, Color::blend_hardlight),
-		BlendMode::SoftLight => background.blend_rgb(foreground, Color::blend_softlight),
-		BlendMode::HardLight => background.blend_rgb(foreground, Color::blend_hardlight),
-		BlendMode::VividLight => background.blend_rgb(foreground, Color::blend_vivid_light),
-		BlendMode::LinearLight => background.blend_rgb(foreground, Color::blend_linear_light),
-		BlendMode::PinLight => background.blend_rgb(foreground, Color::blend_pin_light),
-		BlendMode::HardMix => background.blend_rgb(foreground, Color::blend_hard_mix),
-		// Inversion group
-		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_difference),
-		BlendMode::Exclusion => background.blend_rgb(foreground, Color::blend_exclusion),
-		BlendMode::Subtract => background.blend_rgb(foreground, Color::blend_subtract),
-		BlendMode::Divide => background.blend_rgb(foreground, Color::blend_divide),
-		// Component group
-		BlendMode::Hue => background.blend_hue(foreground),
-		BlendMode::Saturation => background.blend_saturation(foreground),
-		BlendMode::Color => background.blend_color(foreground),
-		BlendMode::Luminosity => background.blend_luminosity(foreground),
-		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
-		_ => panic!("Used blend mode without alpha blend"),
-	}
-}
+pub use no_std_types::blending::{apply_blend_mode, blend_colors};
 
 #[node_macro::node(category("Raster"), cfg(feature = "std"))]
 fn mix<T: Blend<Color> + Send>(
