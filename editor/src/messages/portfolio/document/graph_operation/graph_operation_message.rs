@@ -11,7 +11,7 @@ use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, Stroke};
-use graphene_std::vector::{Gradient, PointId, VectorModificationType};
+use graphene_std::vector::{Gradient, MeshGradient, PointId, VectorModificationType};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -31,6 +31,10 @@ pub enum GraphOperationMessage {
 		gradient_form: GradientForm,
 		gradient_settings: GradientSettings,
 		transform: DAffine2,
+	},
+	FillMeshGradientSet {
+		layer: LayerNodeIdentifier,
+		mesh_gradient: MeshGradient,
 	},
 	BlendingFillSet {
 		layer: LayerNodeIdentifier,
@@ -76,6 +80,10 @@ pub enum GraphOperationMessage {
 	GradientInterpolationSet {
 		layer: LayerNodeIdentifier,
 		gradient_interpolation: GradientInterpolation,
+	},
+	MeshGradientSet {
+		layer: LayerNodeIdentifier,
+		mesh_gradient: MeshGradient,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
