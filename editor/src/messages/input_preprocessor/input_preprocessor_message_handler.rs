@@ -16,6 +16,7 @@ pub struct InputPreprocessorMessageHandler {
 	pub time: u64,
 	pub keyboard: KeyStates,
 	pub mouse: PointerState,
+	pointer_down_time: f64,
 }
 
 #[message_handler_data]
@@ -143,6 +144,13 @@ impl InputPreprocessorMessageHandler {
 				responses.add(InputMapperMessage::KeyUp(key));
 			}
 		}
+
+		let raw_time = new_state.time.unwrap_or(self.time as f64);
+		if self.mouse.mouse_keys == MouseKeys::empty() {
+			self.pointer_down_time = raw_time;
+		}
+		let interacting = (self.mouse.mouse_keys | new_state.mouse_keys) != MouseKeys::empty();
+		new_state.time = interacting.then_some(raw_time - self.pointer_down_time);
 
 		self.mouse = new_state;
 	}
