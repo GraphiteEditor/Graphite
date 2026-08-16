@@ -2,9 +2,9 @@ mod mesh_gradient;
 
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::renderer::mesh_gradient::{
-	DisplacementMapSamples, MESH_COLOR_ERROR_TOLERANCE, MESH_MINIMUM_SUBPATCH_SIZE, MESH_POSITION_ERROR_TOLERANCE, PATCH_INFLATION_IN_VIEWPORT_PX, SvgMeshVLayers,
-	alpha_curve_to_gradient_stops_string, clamped_ramp_gradient_stops_string, coons_bbox_to_source_displacements, displacements_to_map_png, mesh_boundary_path, mesh_subpatch_transform,
-	render_vello_subpatch_alpha, render_vello_subpatch_color, subdivide_patches_adaptive, u_alpha_curve_to_gradient_stops_string, u_color_curve_to_gradient_stops_string,
+	DisplacementMapSamples, MESH_COLOR_ERROR_TOLERANCE, MESH_POSITION_ERROR_TOLERANCE, PATCH_INFLATION_IN_VIEWPORT_PX, SvgMeshVLayers, alpha_curve_to_gradient_stops_string,
+	clamped_ramp_gradient_stops_string, coons_bbox_to_source_displacements, displacements_to_map_png, mesh_boundary_path, mesh_subpatch_transform, render_vello_subpatch_alpha,
+	render_vello_subpatch_color, subdivide_patches_adaptive, u_alpha_curve_to_gradient_stops_string, u_color_curve_to_gradient_stops_string,
 };
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use base64::Engine;
@@ -2764,14 +2764,7 @@ impl Render for List<MeshGradient> {
 			let Some(evaluator) = mesh_gradient.evaluator(space, interpolation_method) else {
 				continue;
 			};
-			let Some(subpatches) = subdivide_patches_adaptive(
-				&evaluator,
-				MESH_MINIMUM_SUBPATCH_SIZE,
-				mesh_transform,
-				parent_transform,
-				MESH_POSITION_ERROR_TOLERANCE,
-				MESH_COLOR_ERROR_TOLERANCE,
-			) else {
+			let Some(subpatches) = subdivide_patches_adaptive(&evaluator, mesh_transform, parent_transform, MESH_POSITION_ERROR_TOLERANCE, MESH_COLOR_ERROR_TOLERANCE) else {
 				continue;
 			};
 

@@ -18,8 +18,6 @@ use vello::{Scene, peniko};
 pub(super) const MESH_POSITION_ERROR_TOLERANCE: f64 = 1.5;
 /// Maximum allowed color approximation error per channel.
 pub(super) const MESH_COLOR_ERROR_TOLERANCE: f32 = 2. / 255.;
-/// Smallest subpatch dimension allowed in viewport pixels.
-pub(super) const MESH_MINIMUM_SUBPATCH_SIZE: f64 = 8.;
 /// Maximum subpatches one mesh may divide into, bounding what a color field the tolerance cannot reach can allocate.
 pub(super) const MESH_MAXIMUM_SUBPATCHES: usize = 4096;
 /// Patch padding in viewport pixels for hiding anti-aliasing gaps.
@@ -458,25 +456,19 @@ pub(super) struct MeshSubpatch {
 /// Recursively subdivides regions until their parallelogram approximation is within the position and color tolerances.
 pub(super) fn subdivide_patches_adaptive(
 	evaluator: &MeshGradientEvaluator,
-	minimum_subpatch_size: f64,
 	mesh_transform: DAffine2,
 	parent_transform: DAffine2,
 	position_error_tolerance: f64,
 	color_error_tolerance: f32,
 ) -> Option<Vec<MeshSubpatch>> {
-	if !minimum_subpatch_size.is_finite()
-		|| minimum_subpatch_size < 0.
-		|| !position_error_tolerance.is_finite()
-		|| position_error_tolerance < 0.
-		|| !color_error_tolerance.is_finite()
-		|| color_error_tolerance < 0.
-	{
+	if !position_error_tolerance.is_finite() || position_error_tolerance < 0. || !color_error_tolerance.is_finite() || color_error_tolerance < 0. {
 		return None;
 	}
 
 	let samples = [0., 0.25, 0.5, 0.75, 1.];
 	let mut subpatches = Vec::new();
 	let patch_count = evaluator.patch_evaluators().count();
+	let minimum_subpatch_stride = ((patch_count as f64 / MESH_MAXIMUM_SUBPATCHES as f64).sqrt()).min(1.);
 	for (patch_index, patch) in evaluator.patch_evaluators().enumerate() {
 		// Every later patch still owes at least its own root region, so reserve that before spending the budget here.
 		let patches_after_this = patch_count - patch_index - 1;
@@ -491,18 +483,11 @@ pub(super) fn subdivide_patches_adaptive(
 			let corner_positions = corner_uvs.map(|uv| mesh_transform.transform_point2(patch.evaluate_position(uv.x, uv.y)));
 			let [top_left_pos, top_right_pos, bottom_left_pos, _bottom_right_pos] = corner_positions;
 
-			let patch_to_viewport = parent_transform * mesh_transform;
-			let [top_left, top_right, bottom_left, bottom_right] = corner_uvs.map(|uv| patch_to_viewport.transform_point2(patch.evaluate_position(uv.x, uv.y)));
-			let u_size = top_left.distance(top_right).max(bottom_left.distance(bottom_right));
-			let v_size = top_left.distance(bottom_left).max(top_right.distance(bottom_right));
-			if !u_size.is_finite() || !v_size.is_finite() {
-				return None;
-			}
-			let reached_minimum_size = u_size.max(v_size) <= minimum_subpatch_size;
+			let reached_minimum_stride = stride <= minimum_subpatch_stride;
 			// Each split replaces one pending region with four, so stop refining once the budget cannot absorb another.
 			let budget_spent = subpatches.len() + pending.len() + patches_after_this + 4 > MESH_MAXIMUM_SUBPATCHES;
 
-			let stop_refining = reached_minimum_size || budget_spent;
+			let stop_refining = reached_minimum_stride || budget_spent;
 
 			let uv_min = DVec2::new(u_start, v_start).as_vec2();
 			let uv_max = DVec2::new(u_start + stride, v_start + stride).as_vec2();
@@ -882,8 +867,8 @@ mod tests {
 	fn adaptive_subdivision_accounts_for_color_error() {
 		let mesh = MeshGradient::default();
 		let evaluator = mesh.evaluator(GradientSpace::RgbGamma, GradientInterpolation::Smooth).unwrap();
-		let geometry_only = subdivide_patches_adaptive(&evaluator, 0.125, DAffine2::IDENTITY, DAffine2::IDENTITY, f64::MAX, f32::MAX).unwrap();
-		let with_color = subdivide_patches_adaptive(&evaluator, 0.125, DAffine2::IDENTITY, DAffine2::IDENTITY, f64::MAX, 0.).unwrap();
+		let geometry_only = subdivide_patches_adaptive(&evaluator, DAffine2::IDENTITY, DAffine2::IDENTITY, f64::MAX, f32::MAX).unwrap();
+		let with_color = subdivide_patches_adaptive(&evaluator, DAffine2::IDENTITY, DAffine2::IDENTITY, f64::MAX, 0.).unwrap();
 
 		assert!(with_color.len() > geometry_only.len());
 	}
@@ -894,6 +879,6 @@ mod tests {
 		let evaluator = mesh.evaluator(GradientSpace::RgbGamma, GradientInterpolation::Smooth).unwrap();
 		let non_finite_transform = DAffine2::from_scale(DVec2::splat(f64::NAN));
 
-		assert!(subdivide_patches_adaptive(&evaluator, 0.125, DAffine2::IDENTITY, non_finite_transform, 0.25, 0.01).is_none());
+		assert!(subdivide_patches_adaptive(&evaluator, DAffine2::IDENTITY, non_finite_transform, 0.25, 0.01).is_none());
 	}
 }
