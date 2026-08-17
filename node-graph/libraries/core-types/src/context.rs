@@ -734,6 +734,7 @@ pub trait DeriveCtx {
 	fn varargs_head(&self) -> Option<&VarArgLink<'_>>;
 	fn promoted<'s>(&'s self, spilled_head: &'s IndexLink<'s>, inner_index: u64) -> Derived<'s, Self>;
 	fn push_level<'s>(&'s self, frame: &'s mut IndexLink<'s>, copy: u64, inner: u64) -> Derived<'s, Self>;
+	fn replaced<'s>(&'s self, inner_index: u64) -> Derived<'s, Self>;
 	fn with_footprint<'s>(&'s self, footprint: &'s Footprint) -> Derived<'s, Self>;
 	fn with_varargs<'s>(&'s self, varargs: &'s VarArgLink<'s>) -> Derived<'s, Self>;
 	fn with_position<'s>(&'s self, position: &'s PositionLink<'s>) -> Derived<'s, Self>;
@@ -1017,6 +1018,18 @@ impl<'a> ContextImpl<'a> {
 		frame.outer = self.index.outer;
 		self.promoted(frame, inner)
 	}
+
+	/// Derives the context with the innermost index replaced and the chain
+	/// above it preserved: the remap primitive for same-level extent changes.
+	pub fn replaced(&self, inner_index: u64) -> ContextImpl<'a> {
+		ContextImpl {
+			index: IndexLink {
+				index: inner_index,
+				outer: self.index.outer,
+			},
+			..*self
+		}
+	}
 }
 
 impl Ctx for ContextImpl<'_> {}
@@ -1126,6 +1139,10 @@ impl<'a> DeriveCtx for ContextImpl<'a> {
 
 	fn push_level<'s>(&'s self, frame: &'s mut IndexLink<'s>, copy: u64, inner: u64) -> ContextImpl<'s> {
 		ContextImpl::push_level(self, frame, copy, inner)
+	}
+
+	fn replaced<'s>(&'s self, inner_index: u64) -> ContextImpl<'s> {
+		ContextImpl::replaced(self, inner_index)
 	}
 
 	fn with_footprint<'s>(&'s self, footprint: &'s Footprint) -> ContextImpl<'s> {
