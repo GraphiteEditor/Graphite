@@ -188,6 +188,8 @@ enum SlotKind {
 	Value(Type),
 	/// A record edge whose element extracts to the node's plain value input.
 	Extracted(Type),
+	/// A ranked record edge consumed whole; no layout rides to the constructor.
+	Ranked(Type),
 	/// A plain value edge.
 	Plain(Type),
 	/// A lazy node edge.
@@ -227,6 +229,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 			match &field.ty {
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => SlotKind::Lazy(output_type.clone()),
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match ir::value_binding(&node, index) {
+					ir::ValueBinding::Materialized => SlotKind::Ranked(ty.clone()),
 					ir::ValueBinding::ReadingSecondary | ir::ValueBinding::RecordElement => SlotKind::Value(ty.clone()),
 					// One wire kind: a record node's plain value still rides a
 					// record edge, extracted to its element at construction.
@@ -240,7 +243,9 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 	// Every non-base value/plain/lazy input must be concrete.
 	let values_concrete = regular_fields.iter().zip(&slots).all(|(field, slot)| match slot {
 		SlotKind::BaseGeneric(_) | SlotKind::BaseConcrete(_) => true,
-		SlotKind::Value(ty) | SlotKind::Extracted(ty) | SlotKind::Plain(ty) | SlotKind::Lazy(ty) => !contains_open_generic(parsed, ty) && (lend(field) || !type_disqualifies(ty)),
+		SlotKind::Value(ty) | SlotKind::Extracted(ty) | SlotKind::Ranked(ty) | SlotKind::Plain(ty) | SlotKind::Lazy(ty) => {
+			!contains_open_generic(parsed, ty) && (lend(field) || !type_disqualifies(ty))
+		}
 	});
 	if !values_concrete {
 		return quote!();
@@ -252,7 +257,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 
 	let input_types = slots.iter().map(|slot| match slot {
 		SlotKind::BaseGeneric(name) => quote!(gcore::registry::generic_record_edge_type(#name)),
-		SlotKind::BaseConcrete(ty) | SlotKind::Value(ty) | SlotKind::Extracted(ty) => quote!(gcore::registry::record_edge_type::<#ty>()),
+		SlotKind::BaseConcrete(ty) | SlotKind::Value(ty) | SlotKind::Extracted(ty) | SlotKind::Ranked(ty) => quote!(gcore::registry::record_edge_type::<#ty>()),
 		SlotKind::Plain(ty) | SlotKind::Lazy(ty) => quote!(gcore::registry::edge_type::<#ty>()),
 	});
 
@@ -276,6 +281,9 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 				let #handle = inputs.next().unwrap();
 				let #layout = #handle.layout().clone();
 				let #name = gcore::record::RecordExtract::<#value_ty, _>::new(#handle.downcast_record::<#value_ty>()?, &#layout);
+			},
+			SlotKind::Ranked(value_ty) => quote! {
+				let #name = inputs.next().unwrap().downcast_record::<#value_ty>()?;
 			},
 			SlotKind::Plain(value_ty) | SlotKind::Lazy(value_ty) => quote!(let #name = inputs.next().unwrap().downcast::<#value_ty>()?;),
 		}

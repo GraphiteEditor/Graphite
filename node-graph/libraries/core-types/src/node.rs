@@ -177,7 +177,7 @@ pub struct List<'a, T> {
 	_element: PhantomData<T>,
 }
 
-impl<'a, T: Copy> List<'a, T> {
+impl<'a, T> List<'a, T> {
 	/// # Safety
 	/// `T` must be the batch's record element type, proven at the consumer's wiring.
 	pub unsafe fn new(batch: RecordBatch<'a>) -> Self {
@@ -192,12 +192,30 @@ impl<'a, T: Copy> List<'a, T> {
 		self.batch.is_empty()
 	}
 
-	pub fn get(&self, index: usize) -> T {
+	pub fn get(&self, index: usize) -> T
+	where
+		T: Copy,
+	{
 		// SAFETY: `List::new` established that `T` is the batch's element type.
 		unsafe { self.batch.get(index).element::<T>() }
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
+	/// Borrows lane `index`'s element, through the park for droppable types.
+	pub fn element_ref(&self, index: usize) -> &T {
+		// SAFETY: `List::new` established that `T` is the batch's element type,
+		// and the borrow lives within the batch's own lifetime.
+		unsafe { crate::record::borrow_element::<T>(self.batch.get(index).rec()) }
+	}
+
+	/// Lane `index`'s record, for attribute reads beside the element.
+	pub fn lane(&self, index: usize) -> RecordLane<'a> {
+		self.batch.get(index)
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = T> + '_
+	where
+		T: Copy,
+	{
 		(0..self.len()).map(move |index| self.get(index))
 	}
 }

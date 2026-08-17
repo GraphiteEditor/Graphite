@@ -42,6 +42,23 @@ impl<'a> ExtentIn<'a> {
 	}
 }
 
+/// A ranked (`IList`) input materialized whole: `get` drives the batch and
+/// yields the level as a [`List`](crate::node::List), for extents that depend
+/// on the input's data rather than its counts alone.
+pub struct ListIn<'a, T> {
+	get: &'a dyn Fn() -> GPoll<crate::node::List<'a, T>>,
+}
+
+impl<'a, T> ListIn<'a, T> {
+	pub fn new(get: &'a dyn Fn() -> GPoll<crate::node::List<'a, T>>) -> Self {
+		Self { get }
+	}
+
+	pub fn get(&self) -> GPoll<crate::node::List<'a, T>> {
+		(self.get)()
+	}
+}
+
 /// The queried absolute level (innermost `0`), paired with the node's depth.
 #[derive(Clone, Copy, Debug)]
 pub struct LevelIn {

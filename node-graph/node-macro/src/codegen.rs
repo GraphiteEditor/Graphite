@@ -978,6 +978,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let record_value_ty: Type = syn::parse_quote!(#core_types::record::RecordValue<'__record>);
 	let node_bounds = regular_fields.iter().enumerate().zip(&node_generics).map(|((index, field), node_generic)| match &field.ty {
+		// A ranked input rides a record edge whatever the node kind; the
+		// materialized batch reads its lanes.
+		ParsedFieldType::Regular(_) if ir::materialized_levels(&node, index) > 0 => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
 		ParsedFieldType::Regular(_) if flip => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
 		ParsedFieldType::Node(_) if flip => match derives {
 			true => quote! {
@@ -1283,6 +1286,29 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					_ => extent_edge(&query, &arg),
 				},
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match ir::value_binding(&node, index) {
+					// A ranked input materializes whole, so a data-dependent
+					// extent can walk its lanes.
+					ValueBinding::Materialized => {
+						let levels = ir::materialized_levels(&node, index);
+						quote! {
+							let #query = || {
+								let __arena = #core_types::context::ExtractArena::arena(__input);
+								let __count = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Below(#levels)) {
+									#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => __count,
+									#core_types::gpoll::GPoll::Pending => return #core_types::gpoll::GPoll::Pending,
+									_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("extent over a non-exact ranked input"))),
+								};
+								match #core_types::record::materialize_batch(&self.#name, __input, 0..__count as u64, __arena) {
+									#core_types::node::BatchStatus::Lent(__batch, _) => #core_types::gpoll::GPoll::Final(unsafe { #core_types::node::List::<#ty>::new(__batch) }),
+									#core_types::node::BatchStatus::Filled(__batch, _) => #core_types::gpoll::GPoll::Final(unsafe { #core_types::node::List::<#ty>::new(__batch.into_shared()) }),
+									#core_types::node::BatchStatus::Pending => #core_types::gpoll::GPoll::Pending,
+									#core_types::node::BatchStatus::Error(__error) => #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(__error)),
+									_ => #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("extent could not materialize a ranked input"))),
+								}
+							};
+							let #arg = #core_types::extent::ListIn::new(&#query);
+						}
+					}
 					ValueBinding::RecordElement | ValueBinding::ReadingSecondary => {
 						let slot = format_ident!("__in_{index}");
 						quote! {

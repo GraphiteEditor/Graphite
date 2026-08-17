@@ -322,7 +322,13 @@ fn has_attr_io(node: &Node) -> bool {
 /// Levels of `input[index]` the output does not carry; `> 0` folds the input
 /// into a `List` before the kernel.
 pub(crate) fn materialized_levels(node: &Node, index: usize) -> u8 {
-	node.inputs[index].shape.depth.saturating_sub(node.output.shape.depth)
+	let input = &node.inputs[index];
+	// A ranked subject folds the levels the output collapses; a ranked
+	// non-subject input is consumed whole.
+	match input.subject {
+		true => input.shape.depth.saturating_sub(node.output.shape.depth),
+		false => input.shape.depth,
+	}
 }
 
 pub(crate) fn value_binding(node: &Node, index: usize) -> ValueBinding {
