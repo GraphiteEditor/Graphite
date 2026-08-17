@@ -9,6 +9,10 @@ use graphene_std::raster::color::Color;
 use graphene_std::raster::*;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::registry::{ConstructionError, EdgeHandle, NodeIOTypes, RegistryEntry};
+#[cfg(feature = "gpu")]
+use graphene_std::SourceId;
+#[cfg(feature = "gpu")]
+use graphene_std::runtime::RuntimeHandle;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Context, Graphic, ProtoNodeIdentifier, concrete};
