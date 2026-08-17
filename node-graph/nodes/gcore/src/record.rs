@@ -165,6 +165,80 @@ fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll
 	}
 }
 
+/// Resolves a signed index over `total` lanes: negatives count from the end,
+/// out of range resolves to nothing.
+fn resolve_index(index: f64, total: u64) -> Option<u64> {
+	let index = index as i64;
+	match index < 0 {
+		true => total.checked_sub(index.unsigned_abs()),
+		false => ((index as u64) < total).then_some(index as u64),
+	}
+}
+
+/// Rank-model Omit Element: the top level shrinks by one; lanes at or past
+/// the omitted index read one lane further. An out-of-range index passes the
+/// level through unchanged.
+#[node_macro::node(category("Test"), extent(omit_element_extent))]
+fn omit_element<T>(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: impl Node<Context<'_>, Output = T>, index: f64) -> Result<T, Interrupt> {
+	let total = match content.extent(ctx, Level::Total) {
+		GPoll::Final(Extent::Exactly(count)) => count as u64,
+		GPoll::Pending => return Err(Interrupt::Pending),
+		_ => return Err(GraphError::new("omit over a non-exact extent").into()),
+	};
+	let lane = ctx.innermost_index();
+	let source = match resolve_index(index, total) {
+		Some(omitted) if lane >= omitted => lane + 1,
+		_ => lane,
+	};
+	let mut shifted = *ctx;
+	shifted.set_index(source);
+	content.eval(&shifted)
+}
+
+fn omit_element_extent(content: ExtentIn<'_>, index: ValueIn<'_, f64>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => index.get().zip(content.at(level)).map(|(index, extent)| match extent {
+			Extent::Exactly(count) if resolve_index(index, count as u64).is_some() => Extent::Exactly(count - 1),
+			extent => extent,
+		}),
+		false => content.at(level),
+	}
+}
+
+/// Rank-model Index Elements: a one-lane level holding the item at the index
+/// with its attributes, or an empty level when the index is out of range.
+#[node_macro::node(category("Test"), extent(index_elements_extent))]
+fn index_elements<T>(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: impl Node<Context<'_>, Output = T>, index: f64) -> Result<T, Interrupt> {
+	let total = match content.extent(ctx, Level::Total) {
+		GPoll::Final(Extent::Exactly(count)) => count as u64,
+		GPoll::Pending => return Err(Interrupt::Pending),
+		_ => return Err(GraphError::new("index elements over a non-exact extent").into()),
+	};
+	let Some(source) = resolve_index(index, total) else {
+		return Err(GraphError::new("index elements addressed its empty selection").into());
+	};
+	let mut shifted = *ctx;
+	shifted.set_index(source);
+	content.eval(&shifted)
+}
+
+fn index_elements_extent(content: ExtentIn<'_>, index: ValueIn<'_, f64>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => index.get().zip(content.at(level)).map(|(index, extent)| match extent {
+			Extent::Exactly(count) => Extent::Exactly(resolve_index(index, count as u64).is_some() as usize),
+			_ => Extent::Exactly(1),
+		}),
+		false => content.at(level),
+	}
+}
+
+/// Rank-model Extract Element: the bare element at the index, or the element
+/// type's default when the index is out of range.
+#[node_macro::node(category("Test"))]
+fn extract_element(_: impl Ctx + InjectIndex + Copy, list: IList<f64>, index: f64) -> f64 {
+	resolve_index(index, list.len() as u64).map(|resolved| list.get(resolved as usize)).unwrap_or_default()
+}
+
 #[node_macro::node(category("Test"))]
 fn source_opacity(_: impl Ctx, _: (), element: f64, opacity: f64) -> (f64, Attr<Opacity>) {
 	(element, Attr(opacity))
@@ -371,6 +445,21 @@ mod tests {
 			})
 			.collect();
 		Layout::default().with_writes(0, core_types::record::element_write::<f64>(), &writes)
+	}
+
+	fn leveled_f64_layout(names: &[&'static str]) -> Layout {
+		let writes: Vec<core_types::record::FieldWrite> = names
+			.iter()
+			.map(|name| core_types::record::FieldWrite {
+				name,
+				level: 0,
+				size: 8,
+				align: 8,
+				read_erased: <Opacity as AttributeMarker>::read_erased,
+				repark: None,
+			})
+			.collect();
+		Layout::default().with_writes(1, core_types::record::element_write::<f64>(), &writes)
 	}
 
 	fn reserve_for(layouts: &[&Layout]) {
@@ -668,20 +757,6 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let leveled_f64_layout = |names: &[&'static str]| {
-			let writes: Vec<core_types::record::FieldWrite> = names
-				.iter()
-				.map(|name| core_types::record::FieldWrite {
-					name,
-					level: 0,
-					size: 8,
-					align: 8,
-					read_erased: <Opacity as AttributeMarker>::read_erased,
-					repark: None,
-				})
-				.collect();
-			Layout::default().with_writes(1, core_types::record::element_write::<f64>(), &writes)
-		};
 		let base_layout = leveled_f64_layout(&[Opacity::NAME]);
 		let new_layout = leveled_f64_layout(&[Length::NAME]);
 		let union = Layout::union(&[&base_layout, &new_layout]);
@@ -734,6 +809,130 @@ mod tests {
 			}
 			// SAFETY: the element and attrs were read out above, so no borrow into this lane's frames remains.
 			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
+	fn omit_element_shrinks_the_level_and_shifts_the_tail() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = leveled_f64_layout(&[]);
+		reserve_for(&[&layout]);
+		let meta = || core_types::record::LayoutMeta {
+			sources: vec![0],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 0,
+		};
+		let build = |index: f64| {
+			let content = LeveledSourceNode {
+				layout: layout.clone(),
+				elements: vec![10., 11., 12.],
+				field: None,
+			};
+			let (index_edge, index_layout) = lifted_value(index);
+			install(
+				OmitElementNode::new(RecordSource::new(content, &layout, &layout), index_edge, &layout, &index_layout),
+				meta(),
+				&[Some(&layout)],
+			)
+		};
+
+		for (index, expected) in [(1., vec![10., 12.]), (-1., vec![10., 11.]), (5., vec![10., 11., 12.])] {
+			let node = build(index);
+			assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(expected.len())), "omit at {index}");
+			let head = ctx.index_head();
+			for (lane, &element) in expected.iter().enumerate() {
+				let mark = stack::sp();
+				let scoped = ctx.promoted(&head, lane as u64);
+				let GPoll::Final(value) = node.eval(&scoped) else {
+					panic!("expected a final record");
+				};
+				assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, element, "omit at {index}, lane {lane}");
+				// SAFETY: the element was read out above, so no borrow into this lane's frames remains.
+				unsafe { stack::rewind(mark) };
+			}
+		}
+	}
+
+	#[test]
+	fn index_elements_selects_one_lane_with_its_attrs() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = leveled_f64_layout(&[Opacity::NAME]);
+		reserve_for(&[&layout]);
+		let build = |index: f64| {
+			let content = LeveledSourceNode {
+				layout: layout.clone(),
+				elements: vec![10., 11., 12.],
+				field: Some((layout.offset_of(Opacity::NAME, 0).unwrap(), 0.5)),
+			};
+			let (index_edge, index_layout) = lifted_value(index);
+			let meta = core_types::record::LayoutMeta {
+				sources: vec![0],
+				reads: vec![],
+				element: core_types::record::ElementSpec::Carried,
+				writes: vec![],
+				removes: vec![],
+				level_delta: 0,
+			};
+			install(
+				IndexElementsNode::new(RecordSource::new(content, &layout, &layout), index_edge, &layout, &index_layout),
+				meta,
+				&[Some(&layout)],
+			)
+		};
+
+		for (index, expected) in [(1., Some(11.)), (-1., Some(12.)), (9., None)] {
+			let node = build(index);
+			assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(expected.is_some() as usize)), "index {index}");
+			let Some(element) = expected else { continue };
+			let head = ctx.index_head();
+			let mark = stack::sp();
+			let scoped = ctx.promoted(&head, 0);
+			let GPoll::Final(value) = node.eval(&scoped) else {
+				panic!("expected a final record");
+			};
+			let rec = layout.rec(&value);
+			assert_eq!(unsafe { rec.element::<f64>() }, element);
+			// The selected item keeps its attributes.
+			assert_eq!(unsafe { rec.read::<f64>(layout.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
+			// SAFETY: the element and attr were read out above, so no borrow into this lane's frames remains.
+			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
+	fn extract_element_reads_the_bare_element_or_the_default() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = leveled_f64_layout(&[]);
+		let out = f64_layout(&[]);
+		reserve_for(&[&layout, &out]);
+
+		for (index, expected) in [(1., 11.), (-1., 12.), (9., 0.)] {
+			let content = LeveledSourceNode {
+				layout: layout.clone(),
+				elements: vec![10., 11., 12.],
+				field: None,
+			};
+			let (index_edge, index_layout) = lifted_value(index);
+			let node = install_flip(ExtractElementNode::new(RecordSource::new(content, &layout, &layout), index_edge, &layout, &index_layout), &out);
+			let GPoll::Final(value) = node.eval(&ctx) else {
+				panic!("expected a final record");
+			};
+			assert_eq!(unsafe { out.rec(&value).element::<f64>() }, expected, "extract at {index}");
 		}
 	}
 
