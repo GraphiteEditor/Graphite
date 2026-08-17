@@ -464,6 +464,7 @@ impl IntoGraphicList for List<String> {
 	}
 }
 
+// TODO: Remove this
 impl IntoGraphicList for Item<DAffine2> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::default())
@@ -471,6 +472,7 @@ impl IntoGraphicList for Item<DAffine2> {
 }
 
 // DAffine2
+// TODO: Remove this
 impl From<Item<DAffine2>> for Graphic {
 	fn from(_: Item<DAffine2>) -> Self {
 		Graphic::default()
@@ -480,7 +482,20 @@ impl From<Item<DAffine2>> for Graphic {
 // DVec2
 impl From<Item<DVec2>> for Graphic {
 	fn from(position: Item<DVec2>) -> Self {
-		Graphic::VectorList(List::new_from_element(Vector::from_anchor_position(position.into_element())))
+		let (position, attributes) = position.into_parts();
+
+		Graphic::Vector(Box::new(Item::from_parts(Vector::from_anchor_position(position), attributes)))
+	}
+}
+impl From<List<DVec2>> for Graphic {
+	fn from(positions: List<DVec2>) -> Self {
+		let anchors = positions.into_iter().map(|position| {
+			let (position, attributes) = position.into_parts();
+
+			Item::from_parts(Vector::from_anchor_position(position), attributes)
+		});
+
+		Graphic::VectorList(anchors.collect())
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -990,12 +1005,8 @@ mod tests {
 		assert!(!graphic_list.attribute_keys().any(|key| key == ATTR_EDITOR_LAYER_PATH));
 	}
 
-	// Round-tripping through that wrapper must not collapse the items' distinct stamps onto item 0's
-	#[test]
-	fn round_trip_through_the_wrapper_preserves_per_item_layer_paths() {
-		let flattened: List<Vector> = vector_list_stamped_with_layers([7, 9]).into_flattened_list();
-
-		let layers = (0..flattened.len())
+	fn layer_stamps(flattened: &List<Vector>) -> Vec<Option<NodeId>> {
+		(0..flattened.len())
 			.map(|index| {
 				flattened
 					.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index)
@@ -1004,9 +1015,25 @@ mod tests {
 					.next_back()
 					.copied()
 			})
-			.collect::<Vec<_>>();
+			.collect()
+	}
 
-		assert_eq!(layers, [Some(NodeId(7)), Some(NodeId(9))]);
+	// Round-tripping through that wrapper must not collapse the items' distinct stamps onto item 0's
+	#[test]
+	fn round_trip_through_the_wrapper_preserves_per_item_layer_paths() {
+		let flattened: List<Vector> = vector_list_stamped_with_layers([7, 9]).into_flattened_list();
+
+		assert_eq!(layer_stamps(&flattened), [Some(NodeId(7)), Some(NodeId(9))]);
+	}
+
+	// The embedding adapter reaches the same flattened stamps as the wrapper, each item carrying its own inside its variant
+	#[test]
+	fn embedding_each_item_preserves_per_item_layer_paths() {
+		let embedded: List<Graphic> = vector_list_stamped_with_layers([7, 9]).into_iter().map(|item| Item::new_from_element(Graphic::from(item))).collect();
+
+		let flattened: List<Vector> = embedded.into_flattened_list();
+
+		assert_eq!(layer_stamps(&flattened), [Some(NodeId(7)), Some(NodeId(9))]);
 	}
 
 	// Flattening must not invent attributes that neither the parent graphic nor the child carried

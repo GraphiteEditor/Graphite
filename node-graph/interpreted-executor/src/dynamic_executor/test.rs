@@ -74,14 +74,14 @@ fn item_wire_promotes_to_list_connector() {
 	assert!(result.is_some(), "The promoted wire should execute end-to-end");
 }
 
-// The layer content path: a rank-0 content wire enters Wrap Graphic's `List` connector by singleton raise, and the
-// wrapped `Item<Graphic>` raises again at Extend's `List` connector, so layers accept rank-0 chains without new machinery
+// The layer content path: a rank-0 content wire enters Into Group's `List` connector by singleton raise, and the
+// grouped `Item<Graphic>` raises again at Extend's `List` connector, so layers accept rank-0 chains without new machinery
 #[test]
 fn rank_0_content_promotes_through_the_layer_coercion_path() {
 	let content_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(Vector)).into()), vec![NodeId(0)]);
 
-	let mut wrap_graphic_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
-	wrap_graphic_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::WrapGraphicNode");
+	let mut into_group_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	into_group_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::IntoGroupNode");
 
 	let base_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(list!(graphene_std::Graphic)).into()), vec![NodeId(2)]);
 
@@ -91,12 +91,12 @@ fn rank_0_content_promotes_through_the_layer_coercion_path() {
 	let network = ProtoNetwork {
 		inputs: vec![],
 		output: NodeId(3),
-		nodes: vec![(NodeId(0), content_node), (NodeId(1), wrap_graphic_node), (NodeId(2), base_node), (NodeId(3), extend_node)],
+		nodes: vec![(NodeId(0), content_node), (NodeId(1), into_group_node), (NodeId(2), base_node), (NodeId(3), extend_node)],
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("A rank-0 content wire should resolve the layer coercion path via promotion");
-	assert!(typing_context.promotions(NodeId(1)).is_some(), "The rank-0 content should be raised at Wrap Graphic's List connector");
-	assert!(typing_context.promotions(NodeId(3)).is_some(), "The wrapped Item<Graphic> should be raised at Extend's List connector");
+	assert!(typing_context.promotions(NodeId(1)).is_some(), "The rank-0 content should be raised at Into Group's List connector");
+	assert!(typing_context.promotions(NodeId(3)).is_some(), "The grouped Item<Graphic> should be raised at Extend's List connector");
 	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion adapters should instantiate");
 
 	let context: Context = None;
@@ -346,7 +346,38 @@ fn position_value_converts_through_the_vector_input_adapter() {
 	assert!(result.is_some(), "The position should arrive as an Item<Vector> single-anchor path");
 }
 
-// The 'Colors to Gradient' node turns an entire `List<Color>` wire into one gradient with those colors as its stops
+// 'Into Group' reduces whole lists, so a rank-0 position reaches it by singleton raise rather than a row of its own
+#[test]
+fn position_value_raises_into_the_into_group_reducer() {
+	use graphene_std::Graphic;
+
+	let position_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::DVec2(glam::DVec2::new(3., 4.)).into()), vec![NodeId(0)]);
+
+	let mut into_group_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	into_group_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::IntoGroupNode");
+
+	let network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(1),
+		nodes: vec![(NodeId(0), position_node), (NodeId(1), into_group_node)],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&network).expect("An Item<DVec2> wire should raise into Into Group's List<DVec2> row");
+	assert!(typing_context.promotions(NodeId(1)).is_some(), "The rank-0 position should be raised at Into Group's List connector");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The reducer constructor should instantiate");
+
+	let context: Context = None;
+	let result: Option<Item<Graphic>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let grouped = result.expect("The position should arrive as an Item<Graphic>");
+
+	let Graphic::VectorList(anchors) = grouped.element() else {
+		panic!("expected a vector list graphic")
+	};
+	assert_eq!(anchors.len(), 1, "The single position should group as one anchor point");
+}
+
+// The 'Colors to Gradient' node turns an entire color wire into one gradient with those colors as its stops,
+// reaching its `List<Graphic>` connector through the embedding adapter
 #[test]
 fn color_list_wraps_through_the_colors_to_gradient_node() {
 	let color_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Color(graphene_std::Color::WHITE).into()), vec![NodeId(0)]);
@@ -354,22 +385,75 @@ fn color_list_wraps_through_the_colors_to_gradient_node() {
 	let mut raise_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	raise_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::ItemToListNode<Color>");
 
-	let mut colors_to_gradient_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
+	let mut graphic_adapter = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
+	graphic_adapter.identifier = ProtoNodeIdentifier::new("input_adapter<Graphic>");
+
+	let mut colors_to_gradient_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2)]), vec![NodeId(3)]);
 	colors_to_gradient_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::ColorsToGradientNode");
 
 	let network = ProtoNetwork {
 		inputs: vec![],
-		output: NodeId(2),
-		nodes: vec![(NodeId(0), color_node), (NodeId(1), raise_node), (NodeId(2), colors_to_gradient_node)],
+		output: NodeId(3),
+		nodes: vec![(NodeId(0), color_node), (NodeId(1), raise_node), (NodeId(2), graphic_adapter), (NodeId(3), colors_to_gradient_node)],
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
-	typing_context.update(&network).expect("A List<Color> wire should resolve the node's List<Color> implementation");
+	typing_context.update(&network).expect("A List<Color> wire should embed into the node's List<Graphic> connector");
 	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The node constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<graphene_std::vector::Gradient>> = futures::executor::block_on(tree.eval(NodeId(2), context));
+	let result: Option<Item<graphene_std::vector::Gradient>> = futures::executor::block_on(tree.eval(NodeId(3), context));
 	let gradient = result.expect("The color list should arrive wrapped as a gradient");
 	assert_eq!(gradient.element().len(), 1, "The single color should become the gradient's one stop");
+}
+
+// As Graphic asserts the type without changing rank, so a vector list arrives as one graphic per item rather than one group
+#[test]
+fn as_graphic_converts_a_vector_list_element_wise() {
+	use graphene_std::Graphic;
+
+	// Two radii frame the Circle generator into a two-element `List<Vector>`, the wire As Graphic then converts
+	let primary = ProtoNode::value(ConstructionArgs::Value(TaggedValue::None.into()), vec![NodeId(0)]);
+	let radii = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![10., 20.]).into()), vec![NodeId(1)]);
+
+	let mut radius_adapter = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
+	radius_adapter.identifier = ProtoNodeIdentifier::new("input_adapter<f64>");
+
+	let mut circle_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(2)]), vec![NodeId(3)]);
+	circle_node.identifier = graphene_std::vector_nodes::circle::IDENTIFIER;
+
+	let mut graphic_adapter = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(3)]), vec![NodeId(4)]);
+	graphic_adapter.identifier = ProtoNodeIdentifier::new("input_adapter<Graphic>");
+
+	let mut as_graphic_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(4)]), vec![NodeId(5)]);
+	as_graphic_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::AsGraphicNode");
+
+	let network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(5),
+		nodes: vec![
+			(NodeId(0), primary),
+			(NodeId(1), radii),
+			(NodeId(2), radius_adapter),
+			(NodeId(3), circle_node),
+			(NodeId(4), graphic_adapter),
+			(NodeId(5), as_graphic_node),
+		],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context
+		.update(&network)
+		.expect("A List<Vector> wire should resolve As Graphic's mapped variant through the embedding adapter");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The mapped constructor should instantiate");
+
+	let context: Context = None;
+	let result: Option<List<Graphic>> = futures::executor::block_on(tree.eval(NodeId(5), context));
+	let graphics = result.expect("The vector list should arrive as a graphic list");
+
+	assert_eq!(graphics.len(), 2, "Each vector should become its own graphic rather than collapsing into one group");
+	assert!(
+		graphics.iter_element_values().all(|graphic| matches!(graphic, Graphic::Vector(_))),
+		"Each element should embed as the rank-0 vector variant that mirrors its wire"
+	);
 }
 
 // A paint wire feeding a `Graphic` connector embeds whole, so the gradient's own attributes stay on the item inside the variant

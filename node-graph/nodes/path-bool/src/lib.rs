@@ -19,11 +19,10 @@ pub use vector_types::vector::misc::BooleanOperation;
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category("Vector: Modifier"), memoize)]
-async fn boolean_operation<I: graphic_types::IntoGraphicList>(
+async fn boolean_operation(
 	_: impl Ctx,
 	/// The `List` of vector paths to perform the boolean operation on. Nested `List`s are automatically flattened.
-	#[implementations(List<Graphic>, List<Vector>)]
-	content: I,
+	content: List<Graphic>,
 	/// Which boolean operation to perform on the paths.
 	///
 	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
@@ -33,7 +32,6 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 	operation: Item<BooleanOperation>,
 ) -> Item<Vector> {
 	let operation = operation.into_element();
-	let content = content.into_graphic_list();
 
 	// The first index is the bottom of the stack
 	let flattened = flatten_vector(&content);

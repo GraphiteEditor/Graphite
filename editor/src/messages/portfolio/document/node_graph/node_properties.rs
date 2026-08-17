@@ -2439,9 +2439,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	}
 
 	// Pass blank_assist=false because the assist slot is filled below ("Reverse Stops" button when in gradient mode)
-	let mut widgets_first_row = start_widgets(&ParameterWidgetsInfo::new(node_id, FillInput, false, context));
+	let mut widgets_first_row = start_widgets(&ParameterWidgetsInfo::new(node_id, PaintInput, false, context));
 
-	if get_document_node(node_id, context).is_ok_and(|node| node.input(FillInput).is_some_and(|input| input.is_exposed())) {
+	if get_document_node(node_id, context).is_ok_and(|node| node.input(PaintInput).is_some_and(|input| input.is_exposed())) {
 		return vec![LayoutGroup::row(widgets_first_row)];
 	}
 
@@ -2450,7 +2450,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let layer = root_layer_for_chain_node(node_id, context);
 
 	let fill = match get_document_node(node_id, context) {
-		Ok(document_node) => match document_node.input_value(FillInput) {
+		Ok(document_node) => match document_node.input_value(PaintInput) {
 			Some(TaggedValue::Color(color)) => ResolvedFill::Solid(Some(*color)),
 			Some(value) if value.is_no_paint() => ResolvedFill::Solid(None),
 			Some(TaggedValue::MeshGradient(surface)) => ResolvedFill::MeshGradient { surface: Box::new(surface.clone()) },
@@ -2503,7 +2503,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				.on_update(update_value(
 					move |_| TaggedValue::GradientRamp(GradientRamp::from(stops.reversed(settings.cyclic)).with_settings(settings)),
 					node_id,
-					FillInput,
+					PaintInput,
 				))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
@@ -2529,7 +2529,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let mut messages = vec![
 			NodeGraphMessage::SetInputValue {
 				node_id,
-				input_index: FillInput::INDEX,
+				input_index: PaintInput::INDEX,
 				value: color.map_or_else(TaggedValue::no_paint, TaggedValue::Color).into(),
 			}
 			.into(),
@@ -2551,7 +2551,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		messages: Box::new([
 			NodeGraphMessage::SetInputValue {
 				node_id,
-				input_index: FillInput::INDEX,
+				input_index: PaintInput::INDEX,
 				value: TaggedValue::GradientRamp(ramp.clone()).into(),
 			}
 			.into(),
@@ -2591,15 +2591,15 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let entries = vec![
 			RadioEntryData::new("solid")
 				.label("Solid")
-				.on_update(update_value(move |_| backup_color.map_or_else(TaggedValue::no_paint, TaggedValue::Color), node_id, FillInput))
+				.on_update(update_value(move |_| backup_color.map_or_else(TaggedValue::no_paint, TaggedValue::Color), node_id, PaintInput))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::GradientRamp(backup_gradient.clone()), node_id, FillInput))
+				.on_update(update_value(move |_| TaggedValue::GradientRamp(backup_gradient.clone()), node_id, PaintInput))
 				.on_commit(commit_value),
 			RadioEntryData::new("mesh-gradient")
 				.label("Mesh Gradient")
-				.on_update(update_value(move |_| TaggedValue::MeshGradient(backup_mesh_gradient.clone()), node_id, FillInput))
+				.on_update(update_value(move |_| TaggedValue::MeshGradient(backup_mesh_gradient.clone()), node_id, PaintInput))
 				.on_commit(commit_value),
 		];
 		let selected_index = match fill {
@@ -2623,7 +2623,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			messages: Box::new([
 				NodeGraphMessage::SetInputValue {
 					node_id,
-					input_index: FillInput::INDEX,
+					input_index: PaintInput::INDEX,
 					value: TaggedValue::MeshGradient(surface.clone()).into(),
 				}
 				.into(),
