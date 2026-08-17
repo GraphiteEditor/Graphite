@@ -1,4 +1,4 @@
-use core_types::context::{Context, ContextModification, Ctx, DeriveCtx};
+use core_types::context::{ContextModification, Ctx, DeriveCtx};
 use core_types::gpoll::Interrupt;
 
 /// Filters out what should be unused components of the context based on the specified requirements.

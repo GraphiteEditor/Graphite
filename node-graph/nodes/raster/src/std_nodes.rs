@@ -16,7 +16,6 @@ use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
 use std::fmt::Debug;
-use std::hash::Hash;
 
 #[derive(Debug, DynAny)]
 pub enum Error {

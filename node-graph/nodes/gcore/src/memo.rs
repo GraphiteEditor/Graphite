@@ -1,11 +1,10 @@
 use core_types::arena::ArenaCell;
-use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ExtractArena};
+use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll};
 use core_types::extent::{ExtentIn, LevelIn};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Extent, Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::IORecord;
-use core_types::node::Node;
 use core_types::record::{OwnedRecord, RecordCapture, RecordValue, copy_record_bytes, record_from_bytes};
 use core_types::registry::cache_key;
 use std::sync::Arc;
@@ -125,7 +124,8 @@ mod tests {
 	use core_types::SourceId;
 	use core_types::arena::Arena;
 	use core_types::context::{ContextImpl, EvalScope};
-	use core_types::registry::{EdgeHandle, ErasedNode, ErasedRecordNode};
+	use core_types::node::Node;
+	use core_types::registry::{EdgeHandle, ErasedRecordNode};
 	use std::sync::atomic::{AtomicU32, Ordering};
 
 	struct CountingNode(AtomicU32);

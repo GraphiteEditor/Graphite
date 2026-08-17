@@ -168,7 +168,7 @@ impl<S: Spawner> Runtime for GraphRuntime<S> {
 mod tests {
 	use super::*;
 	use crate::arena::Arena;
-	use crate::context::{ContextImpl, Ctx, CtxSnapshot, EvalScope, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots};
+	use crate::context::{ContextImpl, Ctx, EvalScope, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots};
 	use crate::gpoll::GPoll;
 	use crate::node::Node;
 	use crate::record::{Layout, RecordExtract, RecordLift, element_write, stack};

@@ -1,6 +1,4 @@
 use glam::{DAffine2, DVec2, IVec2};
-use graph_craft::application_io::PlatformEditorApi;
-use graph_craft::document::value::RenderOutput;
 use graphene_std::gradient::GradientStops;
 use graphene_std::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
 #[cfg(target_family = "wasm")]
@@ -10,13 +8,10 @@ use graphene_std::raster::GPU;
 use graphene_std::raster::color::Color;
 use graphene_std::raster::*;
 use graphene_std::raster::{CPU, Raster};
-use graphene_std::registry::{ConstructionError, EdgeHandle, ErasedNode, NodeIOTypes, RegistryEntry};
-use graphene_std::render_node::RenderIntermediate;
-use graphene_std::runtime::RuntimeHandle;
-use graphene_std::transform::Footprint;
+use graphene_std::registry::{ConstructionError, EdgeHandle, NodeIOTypes, RegistryEntry};
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
-use graphene_std::{Artboard, Context, Graphic, ProtoNodeIdentifier, SourceId, concrete, fn_type};
+use graphene_std::{Artboard, Context, Graphic, ProtoNodeIdentifier, concrete};
 use node_registry_macros::{convert_node, into_node};
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
