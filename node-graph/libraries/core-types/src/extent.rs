@@ -75,4 +75,10 @@ impl LevelIn {
 	pub fn pushed(&self) -> bool {
 		self.level + 1 == self.depth
 	}
+
+	/// Whether the query targets the topmost level; `pushed` under the name a
+	/// non-creator (concat, remap) reads naturally.
+	pub fn top(&self) -> bool {
+		self.pushed()
+	}
 }

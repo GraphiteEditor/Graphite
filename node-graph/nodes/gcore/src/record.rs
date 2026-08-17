@@ -8,7 +8,7 @@
 use core_types::attribute::{Attr, Opacity, RemoveAttr};
 use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex};
 use core_types::extent::{ExtentIn, LevelIn, ValueIn};
-use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt};
+use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
 use core_types::Ctx;
 
 core_types::attribute! {
@@ -129,6 +129,39 @@ fn repeat_faded_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, level: Le
 	match level.pushed() {
 		true => count.get().map(|count| Extent::Exactly(count as usize)),
 		false => content.at(level),
+	}
+}
+
+/// Rank-model Extend: the output's top level is `base`'s lanes followed by
+/// `new`'s, each side evaluated within its own index range.
+#[node_macro::node(category("Test"), extent(extend_extent))]
+fn extend<T>(
+	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	base: impl Node<Context<'_>, Output = T>,
+	new: impl Node<Context<'_>, Output = T>,
+) -> Result<T, Interrupt> {
+	let split = match base.extent(ctx, Level::Total) {
+		GPoll::Final(Extent::Exactly(count)) => count as u64,
+		GPoll::Pending => return Err(Interrupt::Pending),
+		_ => return Err(GraphError::new("extend over a non-exact base extent").into()),
+	};
+	let lane = ctx.innermost_index();
+	match lane < split {
+		true => base.eval(ctx),
+		false => {
+			let mut shifted = *ctx;
+			shifted.set_index(lane - split);
+			new.eval(&shifted)
+		}
+	}
+}
+
+/// The top level sums both sides; inner levels forward the base's, which the
+/// new side must match (rectangular).
+fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => Extent::sum(base.at(level), new.at(level)),
+		false => base.at(level),
 	}
 }
 
@@ -261,6 +294,37 @@ mod tests {
 				true => GPoll::Partial(value),
 				false => GPoll::Final(value),
 			}
+		}
+	}
+
+	struct LeveledSourceNode {
+		layout: Layout,
+		elements: Vec<f64>,
+		field: Option<(usize, f64)>,
+	}
+
+	impl<'e> Node<ContextImpl<'e>> for LeveledSourceNode {
+		type Output = RecordValue<'e>;
+
+		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+			let element = self.elements[input.innermost_index() as usize % self.elements.len()];
+			let dst = stack::push(self.layout.frame_bytes());
+			unsafe {
+				dst.cast::<f64>().write(element);
+				if let Some((offset, value)) = self.field {
+					dst.add(offset).cast::<f64>().write(value);
+				}
+			}
+			stack::pop(dst);
+			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+		}
+
+		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+			GPoll::Final(Extent::Exactly(self.elements.len()))
+		}
+
+		fn layout(&self) -> &Layout {
+			&self.layout
 		}
 	}
 
@@ -593,6 +657,82 @@ mod tests {
 			assert_eq!(unsafe { rec.element::<f64>() }, 7.);
 			assert_eq!(unsafe { rec.read::<f64>(leveled.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5 * (copy + 1) as f64);
 			// SAFETY: the element and attr were read out above, so no borrow into this lane's frames remains.
+			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
+	fn extend_concatenates_the_top_level_and_fills_the_union() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let leveled_f64_layout = |names: &[&'static str]| {
+			let writes: Vec<core_types::record::FieldWrite> = names
+				.iter()
+				.map(|name| core_types::record::FieldWrite {
+					name,
+					level: 0,
+					size: 8,
+					align: 8,
+					read_erased: <Opacity as AttributeMarker>::read_erased,
+					repark: None,
+				})
+				.collect();
+			Layout::default().with_writes(1, core_types::record::element_write::<f64>(), &writes)
+		};
+		let base_layout = leveled_f64_layout(&[Opacity::NAME]);
+		let new_layout = leveled_f64_layout(&[Length::NAME]);
+		let union = Layout::union(&[&base_layout, &new_layout]);
+		reserve_for(&[&base_layout, &new_layout, &union]);
+
+		let base = LeveledSourceNode {
+			layout: base_layout.clone(),
+			elements: vec![10., 11.],
+			field: Some((base_layout.offset_of(Opacity::NAME, 0).unwrap(), 0.5)),
+		};
+		let new = LeveledSourceNode {
+			layout: new_layout.clone(),
+			elements: vec![100., 101., 102.],
+			field: Some((new_layout.offset_of(Length::NAME, 0).unwrap(), 7.)),
+		};
+		let meta = core_types::record::LayoutMeta {
+			sources: vec![0, 1],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 0,
+		};
+		let node = install(
+			ExtendNode::new(RecordSource::new(base, &base_layout, &union), RecordSource::new(new, &new_layout, &union), &union),
+			meta,
+			&[Some(&base_layout), Some(&new_layout)],
+		);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(out.depth, 1);
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(5)), "the top level sums both sides");
+
+		let head = ctx.index_head();
+		let expected = [10., 11., 100., 101., 102.];
+		for (lane, &element) in expected.iter().enumerate() {
+			let mark = stack::sp();
+			let scoped = ctx.promoted(&head, lane as u64);
+			let GPoll::Final(value) = node.eval(&scoped) else {
+				panic!("expected a final record");
+			};
+			let rec = out.rec(&value);
+			assert_eq!(unsafe { rec.element::<f64>() }, element);
+			let opacity = unsafe { rec.read::<f64>(out.offset_of(Opacity::NAME, 0).unwrap()) };
+			let length = unsafe { rec.read::<f64>(out.offset_of(Length::NAME, 0).unwrap()) };
+			match lane < 2 {
+				// The base side wrote its opacity; length fills from the census.
+				true => assert_eq!((opacity, length), (0.5, 0.)),
+				// The new side wrote its length; opacity fills from the census.
+				false => assert_eq!((opacity, length), (1., 7.)),
+			}
+			// SAFETY: the element and attrs were read out above, so no borrow into this lane's frames remains.
 			unsafe { stack::rewind(mark) };
 		}
 	}

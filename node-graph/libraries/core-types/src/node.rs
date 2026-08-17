@@ -490,6 +490,15 @@ impl<'a, N> LazyInput<'a, N> {
 	{
 		self.cell.eval_input(self.input_index, self.node, ctx)
 	}
+
+	/// The edge's composite extent, for kernels that split or shift indices
+	/// over their sources.
+	pub fn extent<Input>(&self, ctx: &Input, at: Level) -> GPoll<Extent>
+	where
+		N: Node<Input>,
+	{
+		self.node.extent(ctx, at)
+	}
 }
 
 #[cfg(test)]

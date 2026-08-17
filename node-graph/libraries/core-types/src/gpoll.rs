@@ -185,6 +185,16 @@ impl Extent {
 			_ => Extent::Free,
 		})
 	}
+
+	/// The sum of two extents, used to concatenate a level; a free operand
+	/// counts as one lane, so a scalar edge joins a concat as a single item.
+	pub fn sum(a: GPoll<Extent>, b: GPoll<Extent>) -> GPoll<Extent> {
+		let lanes = |extent| match extent {
+			Extent::Exactly(count) => count,
+			Extent::Free => 1,
+		};
+		a.zip(b).map(|(a, b)| Extent::Exactly(lanes(a) + lanes(b)))
+	}
 }
 
 /// A query over a node's nesting levels: one level, the product below or above
