@@ -400,7 +400,7 @@ mod tests {
 	}
 
 	#[test]
-	fn fill_paint_color_default_parses_against_its_list_wire() {
+	fn fill_paint_color_default_parses_against_its_graphic_wire() {
 		let node_registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
 		let metadata_registry = core_types::registry::NODE_METADATA.lock().unwrap();
 
@@ -414,7 +414,7 @@ mod tests {
 		assert_eq!(
 			*paint,
 			TaggedValue::Color(Color::BLACK),
-			"The paint input's `Color::BLACK` default should parse against its `List<Graphic>` wire type"
+			"The paint input's `Color::BLACK` default should parse against its `Item<Graphic>` wire type"
 		);
 	}
 }

@@ -725,7 +725,7 @@ fn find_fill_node(document: &DocumentMessageHandler) -> (Vec<graph_craft::docume
 fn fill_paint_value(document: &DocumentMessageHandler) -> graph_craft::document::value::TaggedValue {
 	let (network_path, node_id) = find_fill_node(document);
 	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
-	let input = network.nodes[&node_id].input(graphene_std::vector::fill::FillInput).expect("Fill should have a paint input");
+	let input = network.nodes[&node_id].input(graphene_std::vector::fill::PaintInput).expect("Fill should have a paint input");
 	input.as_value().expect("the paint input should hold a value").clone()
 }
 
@@ -740,7 +740,7 @@ async fn none_fill_survives_document_reopen() {
 	editor
 		.handle_message(NodeGraphMessage::SetInputValue {
 			node_id: fill_node_id,
-			input_index: graphene_std::vector::fill::FillInput::INDEX,
+			input_index: graphene_std::vector::fill::PaintInput::INDEX,
 			value: graph_craft::document::value::TaggedValue::no_paint().into(),
 		})
 		.await;
@@ -785,7 +785,7 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 	let fill_node = &network.nodes[&node_id];
 
 	assert_eq!(fill_node.inputs.len(), 7, "the legacy Fill should upgrade to the 7-input shape");
-	let paint = fill_node.input(graphene_std::vector::fill::FillInput);
+	let paint = fill_node.input(graphene_std::vector::fill::PaintInput);
 	assert!(
 		matches!(paint, Some(graph_craft::document::NodeInput::Node { .. })),
 		"the wired legacy fill should keep its connection, but became {paint:?}"
@@ -844,7 +844,7 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 
 	assert_eq!(fill_node.inputs.len(), 7, "the eight-input Fill should fold down to the 7-input shape");
 
-	let paint = fill_node.input_value(graphene_std::vector::fill::FillInput);
+	let paint = fill_node.input_value(graphene_std::vector::fill::PaintInput);
 	let Some(TaggedValue::GradientRamp(ramp)) = paint else {
 		panic!("the fill input should keep its gradient ramp value, but became {paint:?}");
 	};

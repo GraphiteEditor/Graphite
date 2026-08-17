@@ -1002,9 +1002,8 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 /// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
-pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
-	let graphic_list = content.into_graphic_list();
-	let mut output: List<Vector> = graphic_list.clone().into_flattened_list();
+pub async fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
+	let mut output: List<Vector> = content.clone().into_flattened_list();
 
 	// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
 	// TODO: Flattening here erases the upstream `List<Graphic>` hierarchy that editor metadata collection walks
@@ -1014,20 +1013,20 @@ pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(L
 	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
 	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Combine Paths,
 	// TODO: Morph, Rasterize) become unnecessary.
-	if !output.is_empty() && !is_lone_anonymous_leaf(&graphic_list) {
+	if !output.is_empty() && !is_lone_anonymous_leaf(&content) {
 		// Item 0 carries a composed transform inherited from the flattened input, but the merged_layers
 		// already holds the original transforms; pre-compensate by item 0's inverse so the renderer's
 		// `upstream_footprint *= item_0_transform` recursion cancels out and leaves the originals intact.
-		let mut graphic_list = graphic_list;
+		let mut merged_layers = content;
 		let item_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		if item_0_transform.matrix2.determinant().abs() > f64::EPSILON {
 			let inverse = item_0_transform.inverse();
-			for transform in graphic_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			for transform in merged_layers.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 				*transform = inverse * *transform;
 			}
 		}
 
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
+		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, merged_layers);
 	}
 
 	output
@@ -1035,25 +1034,25 @@ pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(L
 
 /// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Raster"))]
-pub async fn flatten_raster<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Raster<CPU>>)] content: T) -> List<Raster<CPU>> {
+pub async fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("General"))]
-pub async fn flatten_color<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] content: T) -> List<Color> {
+pub async fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
-pub async fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Gradient>)] content: T) -> List<Gradient> {
+pub async fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
 	content.into_flattened_list()
 }
 
 /// Constructs a gradient from a `Color[]`, where each color becomes a gradient stop. A `position` attribute on the colors places their stops along the ramp and a `midpoint` attribute skews each transition, while colors carrying neither are distributed evenly across the 0 to 1 range.
 #[node_macro::node(category("Gradient"), name("Colors to Gradient"))]
-fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> Item<Gradient> {
+fn colors_to_gradient(_: impl Ctx, colors: List<Graphic>) -> Item<Gradient> {
 	Item::new_from_element(Gradient::from(colors.into_flattened_list::<Color>()))
 }
 
@@ -1069,6 +1068,11 @@ mod test {
 
 	fn list_of<T>(elements: impl IntoIterator<Item = T>) -> List<T> {
 		elements.into_iter().map(Item::new_from_element).collect()
+	}
+
+	/// Stands in for the embedding adapter a compiled graph inserts ahead of a `List<Graphic>` connector.
+	fn embed_colors(colors: List<Color>) -> List<Graphic> {
+		colors.into_iter().map(|item| Item::new_from_element(Graphic::from(item))).collect()
 	}
 
 	fn elements<T: Clone>(list: &List<T>) -> Vec<T> {
@@ -1196,7 +1200,7 @@ mod test {
 		let colors = gradient_to_colors((), Item::new_from_element(gradient.clone()));
 		assert_eq!(elements(&colors), [Color::RED, Color::GREEN, Color::BLUE], "every stop should come out as its color");
 
-		let restored = colors_to_gradient((), colors);
+		let restored = colors_to_gradient((), embed_colors(colors));
 		assert_eq!(
 			restored.element(),
 			&gradient,
@@ -1209,7 +1213,7 @@ mod test {
 		let gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
 		assert!(!gradient.has_position_attribute(), "even spacing is stored as the attribute's absence");
 
-		let restored = colors_to_gradient((), gradient_to_colors((), Item::new_from_element(gradient.clone())));
+		let restored = colors_to_gradient((), embed_colors(gradient_to_colors((), Item::new_from_element(gradient.clone()))));
 		assert_eq!(restored.element(), &gradient, "a default ramp should round trip without gaining attributes it never had");
 	}
 }

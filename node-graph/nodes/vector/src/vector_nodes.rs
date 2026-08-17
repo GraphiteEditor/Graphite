@@ -15,7 +15,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, is_paint_present};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, IntoPaint, stamp_coverage};
+use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, stamp_coverage};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
@@ -303,18 +303,12 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<V, F: IntoPaint + 'n + Send + 'static>(
+async fn fill<V>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
-	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
+	#[implementations(Vector, Graphic)]
 	content: Item<V>,
-	/// The fill to paint the path with.
-	#[default(Color::BLACK)]
-	#[implementations(
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-	)]
-	fill: F,
+	#[default(Color::BLACK)] paint: Item<Graphic>,
 	_backup_color: Item<Color>,
 	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: Item<Gradient>,
 	_gradient_form: Item<GradientForm>,
@@ -328,67 +322,85 @@ where
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
 
 	let mut content = content;
-	let mut fill = fill.into_paint();
+	// The paint is the element alone: keeping the wire envelope's attributes would nest the paint as a group, changing how it renders
+	let mut paint = paint.into_element();
 
 	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
-	if let Graphic::GradientList(gradient) = &mut fill {
-		if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
-				*value = _gradient_form;
-			}
+	let (needs_form, needs_transform) = match &paint {
+		Graphic::Gradient(item) => (item.attribute::<GradientForm>(ATTR_GRADIENT_FORM).is_none(), item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none()),
+		Graphic::GradientList(list) => (
+			list.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none(),
+			list.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none(),
+		),
+		_ => (false, false),
+	};
+
+	let stamped_transform = needs_transform.then(|| {
+		// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
+		if _has_transform {
+			return _transform;
 		}
 
-		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
-			// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
-			let transform = if _has_transform {
-				_transform
-			} else {
-				let mut bounds: Option<[DVec2; 2]> = None;
-				content.for_each_vector_mut(|vector, _| {
-					if let Some([min, max]) = vector.bounding_box() {
-						bounds = Some(match bounds {
-							Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
-							None => [min, max],
-						});
-					}
+		let mut bounds: Option<[DVec2; 2]> = None;
+		content.for_each_vector_mut(|vector, _| {
+			if let Some([min, max]) = vector.bounding_box() {
+				bounds = Some(match bounds {
+					Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
+					None => [min, max],
 				});
+			}
+		});
 
-				// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
-				let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
-				if max.x - min.x < 1e-10 {
-					max.x = min.x + 1.;
-				}
-				if max.y - min.y < 1e-10 {
-					max.y = min.y + 1.;
-				}
-				initial_gradient_transform_for_bounding_box([min, max])
-			};
+		// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
+		let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		if max.x - min.x < 1e-10 {
+			max.x = min.x + 1.;
+		}
+		if max.y - min.y < 1e-10 {
+			max.y = min.y + 1.;
+		}
+		initial_gradient_transform_for_bounding_box([min, max])
+	});
 
-			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-				*value = transform;
+	match &mut paint {
+		Graphic::Gradient(item) => {
+			if needs_form {
+				item.set_attribute(ATTR_GRADIENT_FORM, _gradient_form);
+			}
+			if let Some(transform) = stamped_transform {
+				item.set_attribute(ATTR_TRANSFORM, transform);
 			}
 		}
+		Graphic::GradientList(list) => {
+			if needs_form {
+				for value in list.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
+					*value = _gradient_form;
+				}
+			}
+			if let Some(transform) = stamped_transform {
+				for value in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+					*value = transform;
+				}
+			}
+		}
+		_ => {}
 	}
 
 	// Appending follows the painter's algorithm: the most downstream paint node in the chain paints on top
-	stamp_coverage(&mut content, Coverage::new_fill(), fill, CoverPlacement::Above);
+	stamp_coverage(&mut content, Coverage::new_fill(), paint, CoverPlacement::Above);
 	content
 }
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, P: IntoPaint + 'n + Send + 'static>(
+async fn stroke<V>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
-	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
+	#[implementations(Vector, Graphic)]
 	content: Item<V>,
 	/// The stroke paint.
 	#[default(Color::BLACK)]
-	#[implementations(
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-	)]
-	paint: P,
+	paint: Item<Graphic>,
 	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
@@ -433,7 +445,8 @@ where
 		transform: DAffine2::IDENTITY,
 	};
 
-	let paint = paint.into_paint();
+	// The wire envelope is dropped for the same reason as in `fill` above
+	let paint = paint.into_element();
 
 	// The coverage records the stroke's authoring space, so the item transform is composed in. Its translation
 	// cancels out in every consumer, so it is cleared to let an otherwise-identity capture elide.
@@ -1240,7 +1253,6 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 	})
 }
 
-// TODO: After the Graphic lowering refactor, measure a group as one enclosing box instead of one box per shape
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
@@ -1260,7 +1272,6 @@ async fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementati
 	})
 }
 
-// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 	let dimensions = content
@@ -1714,7 +1725,6 @@ async fn separate_subpaths<V: ExpandVectorItems + 'n + Send>(_: impl Ctx, #[impl
 	})
 }
 
-// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 /// Determines if the subpath at the given index is closed, meaning its ends are connected together forming a loop.
 #[node_macro::node(name("Path is Closed"), category("Vector: Measure"), path(core_types::vector))]
 async fn path_is_closed(
@@ -1751,9 +1761,9 @@ async fn map_points<V: MapVectorItems + 'n + Send>(
 
 /// Combines every vector path across the input into a single compound path.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub async fn combine_paths<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> Item<Vector> {
-	let graphic_list = content.into_graphic_list();
-	let flattened = graphic_list.clone().into_flattened_list::<Vector>();
+pub async fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
+	let graphic_list = content.clone();
+	let flattened = content.into_flattened_list::<Vector>();
 
 	// Create a `List` with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
 	let mut output_list = List::new_from_element(Vector::default());
@@ -2154,7 +2164,6 @@ async fn cut_segments<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementati
 	})
 }
 
-// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 /// Determines the position of a point on the path, given by its progression from 0 to 1 along the path.
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
@@ -2192,7 +2201,6 @@ async fn position_on_path(
 	Item::new_from_element(position)
 }
 
-// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 /// Determines the angle of the tangent at a point on the path, given by its progression from 0 to 1 along the path.
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
@@ -2483,11 +2491,10 @@ async fn offset_points<V: MapVectorItems + 'n + Send>(
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn morph<I: IntoGraphicList>(
+async fn morph(
 	_: impl Ctx,
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
-	#[implementations(List<Graphic>, List<Vector>)]
-	content: I,
+	content: List<Graphic>,
 	/// The fractional part `[0, 1)` traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
 	progression: Item<Progression>,
 	/// Swap the direction of the progression between objects or along the control path.
@@ -2736,9 +2743,9 @@ async fn morph<I: IntoGraphicList>(
 	let (progression, reverse, distribution) = (progression.into_element(), reverse.into_element(), distribution.into_element());
 
 	// Preserve original `List<Graphic>` as upstream data so this group layer's nested layers can be edited by the tools.
-	let mut graphic_list_content = content.clone().into_graphic_list();
+	let mut graphic_list_content = content.clone();
 
-	// If the input isn't a List<Vector>, we convert it into one by flattening any List<Graphic> content.
+	// Only vector content can interpolate, so the rest is discarded by flattening.
 	let content = content.into_flattened_list::<Vector>();
 
 	// Not enough elements to interpolate between, so we return the input as-is
@@ -3459,7 +3466,6 @@ fn close_path<V: MapVectorItems + Send + Sync + 'static>(_: impl Ctx, #[implemen
 	})
 }
 
-// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<bool> {
 	let point = point.into_element();
@@ -3476,7 +3482,6 @@ async fn list_length(_: impl Ctx, content: ListDyn) -> Item<f64> {
 	Item::new_from_element(content.len() as f64)
 }
 
-// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 async fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
 	let count = content.element().point_domain.positions().len() as f64;
@@ -3484,7 +3489,6 @@ async fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
 	Item::new_from_element(count)
 }
 
-// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index within a vector element.
 /// If no value exists at that index, the position (0, 0) is returned.
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
@@ -3513,7 +3517,6 @@ async fn index_points(
 	Item::new_from_element(positions[index])
 }
 
-// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
 	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -3529,7 +3532,6 @@ async fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
 	Item::new_from_element(length)
 }
 
-// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>) -> Item<f64> {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
@@ -3542,7 +3544,6 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Cont
 	Item::new_from_element(area)
 }
 
-// TODO: Accept graphic input once the Graphic lowering refactor gives group leaves a single Vector to measure
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>, centroid_type: Item<CentroidType>) -> Item<DVec2> {
 	let centroid_type = centroid_type.into_element();
@@ -3607,6 +3608,11 @@ mod test {
 
 	fn vector_node_from_bezpath(bezpath: BezPath) -> List<Vector> {
 		List::new_from_element(Vector::from_bezpath(bezpath))
+	}
+
+	/// Stands in for the embedding adapter a compiled graph inserts ahead of a `List<Graphic>` connector.
+	fn embed_vectors(vectors: List<Vector>) -> List<Graphic> {
+		vectors.into_iter().map(|item| Item::new_from_element(Graphic::from(item))).collect()
 	}
 
 	fn vector_item_from_bezpath(bezpath: BezPath) -> Item<Vector> {
@@ -3923,7 +3929,7 @@ mod test {
 
 		let morphed = super::morph(
 			Footprint::default(),
-			rectangles,
+			embed_vectors(rectangles),
 			Item::new_from_element(0.5),
 			Item::new_from_element(false),
 			Item::new_from_element(InterpolationDistribution::default()),
@@ -3949,7 +3955,7 @@ mod test {
 			v
 		};
 
-		let solid_fill = |color: Color| Appearance::new_single(Coverage::new_fill(), List::new_from_element(color).into_paint());
+		let solid_fill = |color: Color| Appearance::new_single(Coverage::new_fill(), Graphic::from(List::new_from_element(color)));
 		let item_a = Item::new_from_element(rect())
 			.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY)
 			.with_attribute(ATTR_APPEARANCE, solid_fill(Color::RED));
@@ -3962,7 +3968,7 @@ mod test {
 
 		let morphed = super::morph(
 			Footprint::default(),
-			content,
+			embed_vectors(content),
 			Item::new_from_element(0.5),
 			Item::new_from_element(false),
 			Item::new_from_element(InterpolationDistribution::default()),
@@ -4001,8 +4007,8 @@ mod test {
 		// The two endpoints list their covers in opposite paint orders, which pairing by position would cross
 		let appearance = |fill: Color, stroke: Color, stroke_placement| {
 			let mut appearance = Appearance::default();
-			appearance.replace_or_insert(Coverage::new_fill(), List::new_from_element(fill).into_paint(), CoverPlacement::Above);
-			appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), List::new_from_element(stroke).into_paint(), stroke_placement);
+			appearance.replace_or_insert(Coverage::new_fill(), Graphic::from(List::new_from_element(fill)), CoverPlacement::Above);
+			appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), Graphic::from(List::new_from_element(stroke)), stroke_placement);
 			appearance
 		};
 
@@ -4018,7 +4024,7 @@ mod test {
 
 		let morphed = super::morph(
 			Footprint::default(),
-			content,
+			embed_vectors(content),
 			Item::new_from_element(0.5),
 			Item::new_from_element(false),
 			Item::new_from_element(InterpolationDistribution::default()),
