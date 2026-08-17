@@ -45,6 +45,14 @@ pub struct NodeReplacement<'a> {
 	aliases: &'a [&'a str],
 }
 
+/// Every name the Merge layer network's two type-coercion nodes have gone by, which is every alias of the node they both converged on.
+fn into_group_aliases() -> impl Iterator<Item = &'static &'static str> {
+	NODE_REPLACEMENTS
+		.iter()
+		.filter(|replacement| replacement.node == graphene_std::graphic::into_group::IDENTIFIER)
+		.flat_map(|replacement| replacement.aliases)
+}
+
 const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	// ================================
 	// blending
@@ -1071,7 +1079,7 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 
 	// Every Merge layer network is built from the two nodes that became "As Graphic" and "Into Group", so their definitions
 	// are reset to pick up the current plumbing instead of the alias migration meant for standalone copies of those nodes.
-	if document_serialized_content.contains("ToGraphicNode") || document_serialized_content.contains("WrapGraphicNode") {
+	if into_group_aliases().any(|alias| document_serialized_content.contains(alias)) {
 		return true;
 	}
 
@@ -2960,6 +2968,17 @@ mod tests {
 	fn removed_definition_swap_targets_resolve() {
 		assert!(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).is_some());
 		assert!(resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER).is_some());
+	}
+
+	// Migrating a Merge network's coercion nodes by alias would leave a reducer in the primary slot, so every alias must reset instead
+	#[test]
+	fn every_into_group_alias_resets_the_merge_definition() {
+		for alias in into_group_aliases() {
+			assert!(
+				document_migration_reset_node_definition(&format!(r#""implementation":{{"ProtoNode":"{alias}"}}"#)),
+				"a document referencing `{alias}` should reset its layer definitions"
+			);
+		}
 	}
 
 	#[test]
