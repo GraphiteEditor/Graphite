@@ -5,9 +5,10 @@
 //! tests; the node forms are the production authoring surface, and the
 //! wiring is by hand until the compiler pass constructs layouts.
 
-use core_types::attribute::{Attr, Opacity, RemoveAttr};
+use core_types::attribute::{Attr, Opacity, RemoveAttr, Transform};
+use glam::DAffine2;
 use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex};
-use core_types::extent::{ExtentIn, LevelIn, ValueIn};
+use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
 use core_types::Ctx;
 
@@ -239,6 +240,47 @@ fn extract_element(_: impl Ctx + InjectIndex + Copy, list: IList<f64>, index: f6
 	resolve_index(index, list.len() as u64).map(|resolved| list.get(resolved as usize)).unwrap_or_default()
 }
 
+/// Rank-model Mirror kernel: the level holds the content's lanes followed by
+/// reflected copies (or the reflected copies alone), each reflected transform
+/// mirrored about the level's horizontal center.
+#[node_macro::node(category("Test"), extent(mirror_extent))]
+fn mirror(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<f64>, keep_original: bool) -> Result<IList<(f64, Attr<Transform>)>, Interrupt> {
+	let total = content.len() as u64;
+	let lane = ctx.innermost_index();
+	let (source, mirrored) = match (keep_original, lane < total) {
+		(true, true) => (lane, false),
+		(true, false) => (lane - total, true),
+		(false, _) => (lane, true),
+	};
+	if source >= total {
+		return Err(GraphError::new("mirror addressed past its copy count").into());
+	}
+
+	let (min, max) = (0..content.len()).fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), row| {
+		let x = content.lane(row).attr::<Transform>().translation.x;
+		(min.min(x), max.max(x))
+	});
+	let center = (min + max) / 2.;
+
+	let element = content.get(source as usize);
+	let mut transform: DAffine2 = content.lane(source as usize).attr::<Transform>();
+	if mirrored {
+		transform.translation.x = 2. * center - transform.translation.x;
+	}
+	Ok((element, Attr(transform)))
+}
+
+/// The level doubles when the originals are kept.
+fn mirror_extent(content: ListIn<'_, f64>, keep_original: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => keep_original.get().zip(content.get()).map(|(keep, content)| match keep {
+			true => Extent::Exactly(2 * content.len()),
+			false => Extent::Exactly(content.len()),
+		}),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
+}
+
 #[node_macro::node(category("Test"))]
 fn source_opacity(_: impl Ctx, _: (), element: f64, opacity: f64) -> (f64, Attr<Opacity>) {
 	(element, Attr(opacity))
@@ -395,6 +437,34 @@ mod tests {
 
 		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
 			GPoll::Final(Extent::Exactly(self.elements.len()))
+		}
+
+		fn layout(&self) -> &Layout {
+			&self.layout
+		}
+	}
+
+	struct LeveledTransformSource {
+		layout: Layout,
+		rows: Vec<(f64, DAffine2)>,
+	}
+
+	impl<'e> Node<ContextImpl<'e>> for LeveledTransformSource {
+		type Output = RecordValue<'e>;
+
+		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+			let (element, transform) = self.rows[input.innermost_index() as usize % self.rows.len()];
+			let dst = stack::push(self.layout.frame_bytes());
+			unsafe {
+				dst.cast::<f64>().write(element);
+				dst.add(self.layout.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()).cast::<DAffine2>().write(transform);
+			}
+			stack::pop(dst);
+			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+		}
+
+		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+			GPoll::Final(Extent::Exactly(self.rows.len()))
 		}
 
 		fn layout(&self) -> &Layout {
@@ -934,6 +1004,58 @@ mod tests {
 			};
 			assert_eq!(unsafe { out.rec(&value).element::<f64>() }, expected, "extract at {index}");
 		}
+	}
+
+	#[test]
+	fn mirror_reflects_about_the_levels_center() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = Layout::default().with_writes(1, core_types::record::element_write::<f64>(), &[core_types::record::FieldWrite::of::<Transform>(0)]);
+		reserve_for(&[&layout]);
+		let content = |rows: &[(f64, f64)]| LeveledTransformSource {
+			layout: layout.clone(),
+			rows: rows.iter().map(|&(element, x)| (element, DAffine2::from_translation(glam::DVec2::new(x, 0.)))).collect(),
+		};
+		let rows = [(1., 10.), (2., 30.), (3., 20.)];
+		let build = |keep: bool| {
+			install(
+				MirrorNode::new(RecordSource::new(content(&rows), &layout, &layout), ValueNode(keep)),
+				mirror_layout_meta(),
+				&[Some(&layout)],
+			)
+		};
+
+		// Center of translations {10, 30, 20} is 20; reflection x' = 40 - x.
+		let kept = build(true);
+		let out = Node::<ContextImpl>::layout(&kept).clone();
+		assert_eq!(out.depth, 1);
+		assert_eq!(kept.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(6)));
+		let expected = [(1., 10.), (2., 30.), (3., 20.), (1., 30.), (2., 10.), (3., 20.)];
+		let head = ctx.index_head();
+		for (lane, &(element, x)) in expected.iter().enumerate() {
+			let mark = stack::sp();
+			let scoped = ctx.promoted(&head, lane as u64);
+			let GPoll::Final(value) = kept.eval(&scoped) else {
+				panic!("expected a final record");
+			};
+			let rec = out.rec(&value);
+			assert_eq!(unsafe { rec.element::<f64>() }, element, "lane {lane}");
+			let transform: DAffine2 = unsafe { rec.read(out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()) };
+			assert_eq!(transform.translation.x, x, "lane {lane}");
+			// SAFETY: the element and transform were read out above, so no borrow into this lane's frames remains.
+			unsafe { stack::rewind(mark) };
+		}
+
+		let replaced = build(false);
+		assert_eq!(replaced.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(3)));
+		let GPoll::Final(value) = replaced.eval(&ctx.promoted(&head, 0)) else {
+			panic!("expected a final record");
+		};
+		let transform: DAffine2 = unsafe { out.rec(&value).read(out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()) };
+		assert_eq!(transform.translation.x, 30., "without originals every lane reflects");
 	}
 
 	#[test]
