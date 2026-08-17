@@ -473,7 +473,7 @@ mod tests {
 	#[test]
 	fn painted_cover_distinguishes_none_paint_from_absence() {
 		let mut appearance = Appearance::default();
-		appearance.replace_or_insert(Coverage::new_fill(), Graphic::None, CoverPlacement::Above);
+		appearance.replace_or_insert(Coverage::new_fill(), Graphic::default(), CoverPlacement::Above);
 
 		assert!(appearance.has_cover(Cover::Fill), "a none-painted coverage still exists");
 		assert!(!appearance.has_painted_cover(Cover::Fill), "a none-painted coverage draws nothing");

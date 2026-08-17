@@ -223,8 +223,16 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 				item
 			};
 
-			match graphic.clone() {
+			// A boxed single graphic is the rank-0 version of the same nesting, so it flattens through the group path
+			let graphic = match graphic.clone() {
+				Graphic::Graphic(item) => Graphic::GraphicList(List::new_from_item(*item)),
+				other => other,
+			};
+
+			match graphic {
+				Graphic::Vector(item) => vec![compose_parent(*item)],
 				Graphic::VectorList(vector) => vector.into_iter().map(compose_parent).collect::<Vec<_>>(),
+				Graphic::Text(item) => text_nodes::shape_text_list(&List::new_from_item(item), false).into_iter().map(compose_parent).collect::<Vec<_>>(),
 				Graphic::TextList(text) => text_nodes::shape_text_list(&text, false).into_iter().map(compose_parent).collect::<Vec<_>>(),
 				Graphic::GraphicList(mut graphic) => {
 					if parent_has_transform {
@@ -261,7 +269,10 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					}
 				}
 				// Rasters, colors, and gradients (mesh gradients included) bound no region, so they contribute no operand
-				Graphic::None | Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::ColorList(_) | Graphic::GradientList(_) | Graphic::MeshGradientList(_) => Vec::new(),
+				Graphic::None(_) | Graphic::NoneList(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) | Graphic::MeshGradient(_) => Vec::new(),
+				Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::ColorList(_) | Graphic::GradientList(_) | Graphic::MeshGradientList(_) => Vec::new(),
+				// Normalized to GraphicList above
+				Graphic::Graphic(_) => Vec::new(),
 			}
 		})
 		.collect()

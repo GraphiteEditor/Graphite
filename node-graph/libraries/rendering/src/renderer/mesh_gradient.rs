@@ -1,13 +1,18 @@
 use std::collections::VecDeque;
+use std::fmt::Write;
 use std::ops::{Add, Mul, Sub};
 
 use crate::renderer::{gradient_placement, singular_values, transform_is_invertible};
 use crate::to_peniko::ToPenikoColor;
+use crate::{SvgRender, format_transform_matrix};
+use base64::Engine;
+use core_types::uuid::generate_uuid;
 use core_types::{Color, color::SRGBA8};
 use glam::{DAffine2, DMat2, DVec2, Vec2, Vec4};
 use image::ImageEncoder;
-use kurbo::{BezPath, Shape};
+use kurbo::{Affine, BezPath, Shape};
 use vector_types::GradientInterpolation;
+use vector_types::gradient::MeshPatch;
 use vector_types::{
 	gradient::GradientSpace,
 	mesh_gradient::{MeshGradientEvaluator, MeshPatchEvaluator},
@@ -889,6 +894,309 @@ pub(super) fn render_vello_subpatch_color(scene: &mut Scene, patch_evaluator: &M
 pub(super) fn render_vello_subpatch_alpha(scene: &mut Scene, patch_evaluator: &MeshPatchEvaluator, subpatch: &MeshSubpatch, parent_transform: DAffine2) {
 	let brushes = vello_subpatch_alpha_brushes(patch_evaluator, subpatch);
 	render_vello_subpatch_brushes(scene, subpatch, parent_transform, brushes);
+}
+
+// ============
+// SVG renderer
+// ============
+
+pub(super) struct SvgMeshPatchRenderer<'mesh, 'field> {
+	mesh_evaluator: &'mesh MeshGradientEvaluator,
+	v_layers: SvgMeshVLayers,
+	alpha_mask_gradient_ids: Vec<String>,
+	parent_transform: DAffine2,
+	mesh_transform: DAffine2,
+	mesh_transparency_field: Option<&'field mut String>,
+}
+
+impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
+	pub(super) fn new(
+		render: &mut SvgRender,
+		mesh_evaluator: &'mesh MeshGradientEvaluator,
+		parent_transform: DAffine2,
+		mesh_transform: DAffine2,
+		mesh_transparency_field: Option<&'field mut String>,
+	) -> Self {
+		// The layer stack is what carries the color space: gamma sRGB uses the bicubic Bernstein stack,
+		// while a nonlinear space stacks approximated rows so the compositor's linear blend still lands on the true surface.
+		let v_layers = SvgMeshVLayers::new(mesh_evaluator);
+
+		// The v-direction mask to simulate 2D interpolation
+		let alpha_mask_gradient_ids = Self::render_alpha_mask_gradient(render, &v_layers);
+
+		Self {
+			mesh_evaluator,
+			v_layers,
+			alpha_mask_gradient_ids,
+			parent_transform,
+			mesh_transform,
+			mesh_transparency_field,
+		}
+	}
+
+	/// Define N-1 alpha functions from the v-direction layer weights and write them as approximated linear gradients, then return the ids.
+	/// They compensate for attenuation accumulated through source-over compositing,
+	/// making the final weights of the N color layers equal the layer scheme's weights.
+	/// The v-direction masks encode only those weights with no patch specific color data, so they can be shared by all patches.
+	fn render_alpha_mask_gradient(render: &mut SvgRender, v_layers: &SvgMeshVLayers) -> Vec<String> {
+		let alpha_mask_gradient_group_id = generate_uuid();
+		(0..v_layers.layer_count() - 1)
+			.map(|i| {
+				let id = format!("mg-ag{i}-{alpha_mask_gradient_group_id}");
+				match v_layers.source_over_ramp(i) {
+					// Linear interpolation mask to blend i-th and (i+1)-th u direction gradients
+					Some([start, end]) => write!(
+						&mut render.svg_defs,
+						r##"<linearGradient id="{id}" x1="0.5" y1="{start}" x2="0.5" y2="{end}" gradientUnits="userSpaceOnUse">{}</linearGradient>"##,
+						clamped_ramp_gradient_stops_string(),
+					),
+					// 4 Bernstein base functions for the v direction
+					None => write!(
+						&mut render.svg_defs,
+						r##"<linearGradient id="{id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse">{}</linearGradient>"##,
+						alpha_curve_to_gradient_stops_string(&|t| v_layers.source_over_alpha(i, t)),
+					),
+				}
+				.unwrap();
+
+				id
+			})
+			.collect::<Vec<_>>()
+	}
+
+	fn render_alpha_mask(&self, render: &mut SvgRender, patch_unique_id: u64, map_region: [f64; 4]) -> Vec<String> {
+		let [map_x, map_y, map_width, map_height] = map_region;
+		self.alpha_mask_gradient_ids
+			.iter()
+			.enumerate()
+			.map(|(i, gradient_id)| {
+				let mask_id = format!("mg-am{i}-{patch_unique_id}");
+				write!(
+					&mut render.svg_defs,
+					r##"<mask
+					id="{mask_id}"
+					x="{map_x}"
+					y="{map_y}"
+					width="{map_width}"
+					height="{map_height}"
+					maskUnits="userSpaceOnUse"
+					maskContentUnits="userSpaceOnUse"
+					mask-type="alpha">
+						<rect
+						x="{map_x}"
+						y="{map_y}"
+						width="{map_width}"
+						height="{map_height}"
+						fill="url(#{gradient_id})"/>
+					</mask>"##,
+				)
+				.unwrap();
+				mask_id
+			})
+			.collect::<Vec<_>>()
+	}
+
+	pub(super) fn render_patch(&mut self, render: &mut SvgRender, patch: &MeshPatch) {
+		let unique_id = generate_uuid();
+		let Some(patch_evaluator) = self.mesh_evaluator.patch_evaluator(patch.index) else { return };
+
+		// Construct a closed path of the patch boundary for calculating the bounding box and create a clipping mask
+		let mut patch_boundary_path = patch.boundary_path();
+		let bounds = patch_boundary_path.bounding_box();
+		let bounds_min = DVec2::new(bounds.x0, bounds.y0);
+		let bounds_max = DVec2::new(bounds.x1, bounds.y1);
+		let bounds_size = bounds_max - bounds_min;
+		if !bounds_size.is_finite() || bounds_size.x <= f64::EPSILON || bounds_size.y <= f64::EPSILON {
+			return;
+		}
+		// Encode the deformation in normalized patch-bounding-box space so patch translation and axis-aligned scaling do not consume PNG channel precision.
+		let unit_to_patch_bbox = DAffine2::from_cols(DVec2::new(bounds_size.x, 0.), DVec2::new(0., bounds_size.y), bounds_min);
+		let unit_to_output = self.parent_transform * self.mesh_transform * unit_to_patch_bbox;
+		let (_, smallest_output_scale) = singular_values(unit_to_output);
+		if !smallest_output_scale.is_finite() || smallest_output_scale <= f64::EPSILON {
+			return;
+		}
+
+		let DisplacementMapSamples { displacements, region } = coons_bbox_to_source_displacements(patch_evaluator, &unit_to_patch_bbox, &patch_boundary_path);
+		let [map_x, map_y, map_width, map_height] = region;
+		// feDisplacementMap decodes each channel as scale * (channel - 0.5).
+		// Twice the largest absolute component is therefore the smallest scale that covers every displacement and maximizes quantization precision.
+		let max_displacement = displacements.iter().map(|displacement| displacement.abs().max_element()).fold(0_f64, f64::max);
+		// Keep the scale nonzero when all displacements are zero.
+		let scale = (max_displacement * 2.).max(f64::EPSILON);
+
+		let Some(displacement_map_png) = displacements_to_map_png(&displacements, scale) else { return };
+		let preamble = "data:image/png;base64,";
+		let mut displacement_map_data_url = String::with_capacity(preamble.len() + displacement_map_png.len() * 4 / 3 + 4);
+		displacement_map_data_url.push_str(preamble);
+		base64::engine::general_purpose::STANDARD.encode_string(displacement_map_png, &mut displacement_map_data_url);
+
+		let v_alpha_mask_ids = self.render_alpha_mask(render, unique_id, region);
+
+		let u_color_curves_gradient_ids = (0..self.v_layers.layer_count())
+			.map(|i| {
+				let u_color_curve = |u| self.v_layers.evaluate_layer_u_color(patch_evaluator, i, u);
+				let stops = u_color_curve_to_gradient_stops_string(&u_color_curve);
+				let id = format!("mg-cg{i}-{unique_id}");
+
+				write!(
+					&mut render.svg_defs,
+					r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+				)
+				.unwrap();
+
+				id
+			})
+			.collect::<Vec<_>>();
+
+		write!(
+			&mut render.svg_defs,
+			r##"<filter
+			id="fd{unique_id}"
+			x="{map_x}"
+			y="{map_y}"
+			width="{map_width}"
+			height="{map_height}"
+			filterUnits="userSpaceOnUse"
+			primitiveUnits="userSpaceOnUse"
+			color-interpolation-filters="sRGB">
+				<feImage
+				href="{displacement_map_data_url}"
+				x="{map_x}"
+				y="{map_y}"
+				width="{map_width}"
+				height="{map_height}"
+				preserveAspectRatio="none"
+				result="gmmap{unique_id}"/>
+				<feDisplacementMap
+					x="{map_x}"
+					y="{map_y}"
+					width="{map_width}"
+					height="{map_height}"
+					in="SourceGraphic"
+					in2="gmmap{unique_id}"
+				scale="{scale}"
+				xChannelSelector="R"
+				yChannelSelector="G"/>
+		</filter>"##
+		)
+		.unwrap();
+
+		// Add a centered stroke to expand the patch along its boundary normal and hide antialiasing gaps between patches.
+		let patch_clip_stroke_width = 2. * PATCH_INFLATION_SIZE / smallest_output_scale;
+		patch_boundary_path.apply_affine(Affine::new(unit_to_patch_bbox.inverse().to_cols_array()));
+		let patch_boundary_d = patch_boundary_path.to_svg();
+
+		write!(
+			&mut render.svg_defs,
+			r##"<mask
+			id="mc{unique_id}"
+			x="{map_x}"
+			y="{map_y}"
+			width="{map_width}"
+			height="{map_height}"
+			maskUnits="userSpaceOnUse"
+			maskContentUnits="userSpaceOnUse"
+			mask-type="alpha">
+				<path d="{patch_boundary_d}" fill="#fff" stroke="#fff" stroke-width="{patch_clip_stroke_width}" stroke-linejoin="round"/>
+			</mask>"##
+		)
+		.unwrap();
+
+		let patch_transform_str = format_transform_matrix(self.mesh_transform * unit_to_patch_bbox);
+		render.parent_tag(
+			"g",
+			|attributes| {
+				attributes.push("transform", patch_transform_str.clone());
+			},
+			|render| {
+				render.parent_tag(
+					"g",
+					|attributes| {
+						attributes.push("mask", format!("url(#mc{unique_id})"));
+					},
+					|render| {
+						render.parent_tag(
+							"g",
+							|attributes| {
+								attributes.push("style", "isolation:isolate");
+								attributes.push("filter", format!("url(#fd{unique_id})"));
+							},
+							|render| {
+								u_color_curves_gradient_ids.iter().enumerate().rev().for_each(|(i, gradient_id)| {
+									render.leaf_tag("rect", |attributes| {
+										attributes.push("x", map_x.to_string());
+										attributes.push("y", map_y.to_string());
+										attributes.push("width", map_width.to_string());
+										attributes.push("height", map_height.to_string());
+										attributes.push("fill", format!("url(#{gradient_id})"));
+										if let Some(mask_id) = v_alpha_mask_ids.get(i) {
+											attributes.push("mask", format!("url(#{mask_id})"));
+										}
+									});
+								});
+							},
+						);
+					},
+				);
+			},
+		);
+
+		self.collect_transparency_field(render, patch, unique_id, patch_transform_str, region, &v_alpha_mask_ids);
+	}
+
+	fn collect_transparency_field(
+		&mut self,
+		render: &mut SvgRender,
+		patch: &MeshPatch,
+		patch_unique_id: u64,
+		patch_transform: String,
+		map_region: [f64; 4],
+		v_alpha_mask_ids: &[String],
+	) -> Option<()> {
+		let mesh_transparency_field = self.mesh_transparency_field.as_deref_mut()?;
+		let patch_evaluator = self.mesh_evaluator.patch_evaluator(patch.index)?;
+		let [map_x, map_y, map_width, map_height] = map_region;
+
+		// Keep transparency as an opaque grayscale field until every patch has been assembled into one mesh-wide luminance mask.
+		let u_transparency_curves_gradient_ids: Vec<String> = (0..self.v_layers.layer_count())
+			.map(|i| {
+				// Only takes alpha value
+				let u_alpha_curve = |t| self.v_layers.evaluate_layer_u_color(patch_evaluator, i, t).w;
+				let stops = u_alpha_curve_to_gradient_stops_string(&u_alpha_curve);
+				let id = format!("mg-cag{i}-{patch_unique_id}");
+
+				write!(
+					&mut render.svg_defs,
+					r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+				)
+				.unwrap();
+
+				id
+			})
+			.collect();
+
+		let mut patch_transparency_field = String::new();
+		for (i, gradient_id) in u_transparency_curves_gradient_ids.iter().enumerate().rev() {
+			let mask = match v_alpha_mask_ids.get(i) {
+				Some(mask_id) => format!(r##" mask="url(#{mask_id})""##),
+				None => String::new(),
+			};
+			write!(
+				patch_transparency_field,
+				r##"<rect x="{map_x}" y="{map_y}" width="{map_width}" height="{map_height}" fill="url(#{gradient_id})"{mask}/>"##,
+			)
+			.unwrap();
+		}
+
+		write!(
+			mesh_transparency_field,
+			r##"<g transform="{patch_transform}" mask="url(#mc{patch_unique_id})"><g style="isolation:isolate" filter="url(#fd{patch_unique_id})">{patch_transparency_field}</g></g>"##,
+		)
+		.unwrap();
+
+		Some(())
+	}
 }
 
 #[cfg(test)]

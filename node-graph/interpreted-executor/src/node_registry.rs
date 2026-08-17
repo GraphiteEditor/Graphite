@@ -506,6 +506,27 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	node_types.extend(input_adapter_row!(from_element: String, element: BoxCorners));
 	// A number wire may feed the ranked `Item<BoxCorners>` connector, each number becoming a uniform radius for all four corners
 	node_types.extend(input_adapter_row!(from_element: f64, element: BoxCorners));
+	// The embedding counterpart of `input_adapter_row!`, for element types like `Graphic` whose variants embed/wrap whole ranked values.
+	// Each item moves inside its matching variant, attributes and all, rather than mapping only its element.
+	macro_rules! embed_adapter_row {
+		(from_element: $from:ty, element: $element:ty) => {{
+			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+				input_adapter_row!(node: EmbedItemNode, from: Item<$from>, to: Item<$element>, element: $element),
+				input_adapter_row!(node: EmbedListNode, from: List<$from>, to: List<$element>, element: $element),
+			];
+			entries
+		}};
+	}
+	// Any paintable wire may feed a ranked `Item<Graphic>` connector, each item embedding as its matching `Graphic` variant.
+	// This is what lets a paint list zip element-wise against the content it paints.
+	node_types.extend(embed_adapter_row!(from_element: Color, element: Graphic));
+	node_types.extend(embed_adapter_row!(from_element: Gradient, element: Graphic));
+	node_types.extend(embed_adapter_row!(from_element: MeshGradient, element: Graphic));
+	node_types.extend(embed_adapter_row!(from_element: String, element: Graphic));
+	node_types.extend(embed_adapter_row!(from_element: Vector, element: Graphic));
+	node_types.extend(embed_adapter_row!(from_element: Raster<CPU>, element: Graphic));
+	#[cfg(feature = "gpu")]
+	node_types.extend(embed_adapter_row!(from_element: Raster<GPU>, element: Graphic));
 	// The `Convert`-based counterpart of `input_adapter_row!`, for casts the std `Into` trait cannot express
 	macro_rules! convert_adapter_node {
 		(from_element: $from:ty, element: $element:ty) => {{

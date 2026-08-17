@@ -573,13 +573,34 @@ impl TableItemLayout for BoxCorners {
 	}
 }
 
+impl TableItemLayout for graphene_std::core_types::none::None {
+	fn type_name() -> &'static str {
+		"None"
+	}
+	fn identifier(&self) -> String {
+		"None".to_string()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		label("None")
+	}
+}
+
 impl TableItemLayout for Graphic {
 	fn type_name() -> &'static str {
 		"Graphic"
 	}
 	fn identifier(&self) -> String {
 		match self {
-			Self::None => "None".to_string(),
+			Self::None(item) => item.identifier(),
+			Self::Graphic(item) => item.identifier(),
+			Self::Vector(item) => item.identifier(),
+			Self::RasterCPU(item) => item.identifier(),
+			Self::RasterGPU(item) => item.identifier(),
+			Self::Color(item) => item.identifier(),
+			Self::Gradient(item) => item.identifier(),
+			Self::MeshGradient(item) => item.identifier(),
+			Self::Text(item) => item.identifier(),
+			Self::NoneList(list) => list.identifier(),
 			Self::GraphicList(list) => list.identifier(),
 			Self::VectorList(list) => list.identifier(),
 			Self::RasterCPUList(list) => list.identifier(),
@@ -596,7 +617,16 @@ impl TableItemLayout for Graphic {
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
-			Self::None => label("None"),
+			Self::None(item) => item.layout_with_breadcrumb(data),
+			Self::Graphic(item) => item.layout_with_breadcrumb(data),
+			Self::Vector(item) => item.layout_with_breadcrumb(data),
+			Self::RasterCPU(item) => item.layout_with_breadcrumb(data),
+			Self::RasterGPU(item) => item.layout_with_breadcrumb(data),
+			Self::Color(item) => item.layout_with_breadcrumb(data),
+			Self::Gradient(item) => item.layout_with_breadcrumb(data),
+			Self::MeshGradient(item) => item.layout_with_breadcrumb(data),
+			Self::Text(item) => item.layout_with_breadcrumb(data),
+			Self::NoneList(list) => list.layout_with_breadcrumb(data),
 			Self::GraphicList(list) => list.layout_with_breadcrumb(data),
 			Self::VectorList(list) => list.layout_with_breadcrumb(data),
 			Self::RasterCPUList(list) => list.layout_with_breadcrumb(data),

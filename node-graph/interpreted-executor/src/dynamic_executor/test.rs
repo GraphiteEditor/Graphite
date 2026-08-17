@@ -372,6 +372,44 @@ fn color_list_wraps_through_the_colors_to_gradient_node() {
 	assert_eq!(gradient.element().len(), 1, "The single color should become the gradient's one stop");
 }
 
+// A paint wire feeding a `Graphic` connector embeds whole, so the gradient's own attributes stay on the item inside the variant
+#[test]
+fn gradient_value_embeds_through_the_graphic_input_adapter() {
+	use core_types::ATTR_GRADIENT_SPREAD;
+	use graphene_std::Graphic;
+	use graphene_std::vector::{Gradient, GradientRamp, GradientSpread};
+
+	let ramp = GradientRamp {
+		gradient_spread: GradientSpread::Reflect,
+		..GradientRamp::from(Gradient::default())
+	};
+	let gradient_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::GradientRamp(ramp).into()), vec![NodeId(0)]);
+
+	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<Graphic>");
+
+	let network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(1),
+		nodes: vec![(NodeId(0), gradient_node), (NodeId(1), input_adapter_node)],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&network).expect("An Item<Gradient> wire should resolve the adapter's embedding row");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The embedding constructor should instantiate");
+
+	let context: Context = None;
+	let result: Option<Item<Graphic>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let embedded = result.expect("The gradient should arrive as an Item<Graphic>");
+
+	assert!(embedded.attributes().iter_any().next().is_none(), "The fresh outer envelope describes the graphic, so it starts empty");
+	let Graphic::Gradient(inner) = embedded.element() else { panic!("expected a gradient graphic") };
+	assert_eq!(
+		inner.attribute::<GradientSpread>(ATTR_GRADIENT_SPREAD),
+		Some(&GradientSpread::Reflect),
+		"The gradient's placement attributes should ride the item inside the variant, where the renderer reads them"
+	);
+}
+
 // A scalar wire feeding a `DVec2` connector splats into both axes through the input adapter's `Convert` row
 #[test]
 fn number_value_splats_through_the_vec2_input_adapter() {

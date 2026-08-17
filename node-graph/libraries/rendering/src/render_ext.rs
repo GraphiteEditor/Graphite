@@ -1,4 +1,4 @@
-use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, spread_adjusted_samples, transform_is_invertible};
+use crate::renderer::{ClearGuardPlacement, ItemRef, RenderParams, format_transform_matrix, gradient_placement, gradient_settings_from_item, spread_adjusted_samples, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
@@ -10,7 +10,7 @@ use graphic_types::vector_types::gradient::GradientForm;
 use graphic_types::vector_types::vector::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
-use vector_types::gradient::{GradientSettings, GradientSpread};
+use vector_types::gradient::GradientSpread;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -50,6 +50,24 @@ pub trait RenderExt {
 	) -> Self::Output;
 }
 
+/// The paint attribute for a solid color, or the SVG `none` keyword when the color is absent.
+/// `for_mask` keeps the fill opacity at full, as [`ItemRef::paint_opacity`] explains.
+fn render_color_paint(item: Option<ItemRef<'_, Color>>, target: PaintTarget, for_mask: bool) -> String {
+	let unpainted = || format!(r#" {}="none""#, target.paint_attr());
+
+	let Some(item) = item else { return unpainted() };
+	let Some(color) = item.element() else { return unpainted() };
+
+	let alpha = color.a() * item.paint_opacity(for_mask);
+
+	let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
+	if alpha < 1. {
+		let _ = write!(result, r#" {}="{}""#, target.opacity_attr(), (alpha * 1000.).round() / 1000.);
+	}
+
+	result
+}
+
 impl RenderExt for List<Color> {
 	type Output = String;
 
@@ -60,26 +78,106 @@ impl RenderExt for List<Color> {
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
-		_render_params: &RenderParams,
+		render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
-		let Some(color) = self.element(0) else {
-			return format!(r#" {}="none""#, target.paint_attr());
-		};
-
-		let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
-		if color.a() < 1. {
-			let _ = write!(result, r#" {}="{}""#, target.opacity_attr(), (color.a() * 1000.).round() / 1000.);
-		}
-
-		result
+		render_color_paint((!self.is_empty()).then_some(ItemRef::ListItem(self, 0)), target, render_params.for_mask)
 	}
 }
 
-impl RenderExt for List<Gradient> {
-	type Output = u64;
+/// Adds one gradient item's def into `svg_defs` and returns the gradient ID, or `None` when the item is absent.
+/// `for_mask` keeps the fill opacity at full, as [`ItemRef::paint_opacity`] explains.
+fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2, for_mask: bool) -> Option<u64> {
+	let mut stop = String::new();
 
-	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
+	let item = item?;
+	let stops = item.element()?;
+	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let local_gradient_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let settings = gradient_settings_from_item(item);
+
+	let (mut samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
+
+	let paint_opacity = item.paint_opacity(for_mask);
+	if paint_opacity < 1. {
+		for (_, color, _) in &mut samples {
+			*color = color.with_alpha(color.a() * paint_opacity);
+		}
+	}
+
+	for (position, color, original_midpoint) in samples {
+		stop.push_str("<stop");
+		if position != 0. {
+			let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
+		}
+		let _ = write!(stop, r##" stop-color="#{}""##, SRGBA8::from(color).to_rgb_hex());
+		if color.a() < 1. {
+			let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
+		}
+		if let Some(midpoint) = original_midpoint {
+			let _ = write!(stop, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
+		}
+		stop.push_str(" />")
+	}
+
+	// A gradient with no stops paints as solid black, matching `Gradient::evaluate` (a stopless def would otherwise render as no paint per the SVG spec)
+	if stop.is_empty() {
+		stop.push_str(r##"<stop stop-color="#000000""##);
+		if paint_opacity < 1. {
+			let _ = write!(stop, r#" stop-opacity="{}""#, (paint_opacity * 1000.).round() / 1000.);
+		}
+		stop.push_str(" />");
+	}
+
+	// Need to cancel out the element's transform as it is already applied to the path itself.
+	let element_transform_inverse = if transform_is_invertible(element_transform) {
+		element_transform.inverse()
+	} else {
+		DAffine2::IDENTITY
+	};
+
+	let document_transform = item_transform * local_gradient_transform;
+
+	let placement = gradient_placement(document_transform, gradient_form);
+	let gradient_transform = format_transform_matrix(element_transform_inverse * placement);
+	let gradient_transform = if gradient_transform.is_empty() {
+		String::new()
+	} else {
+		format!(r#" gradientTransform="{gradient_transform}""#)
+	};
+
+	let gradient_spread = if matches!(settings.spread, GradientSpread::Pad | GradientSpread::Clear) {
+		String::new()
+	} else {
+		format!(r#" spreadMethod="{}""#, settings.spread.svg_name())
+	};
+
+	let gradient_id = generate_uuid();
+
+	match gradient_form {
+		GradientForm::Linear => {
+			let _ = write!(
+				svg_defs,
+				r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread}{gradient_transform}>{}</linearGradient>"#,
+				gradient_id, stop
+			);
+		}
+		GradientForm::Radial => {
+			let _ = write!(
+				svg_defs,
+				r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread}{gradient_transform}>{}</radialGradient>"#,
+				gradient_id, stop
+			);
+		}
+	}
+
+	Some(gradient_id)
+}
+
+impl RenderExt for List<Gradient> {
+	type Output = Option<u64>;
+
+	/// Adds the gradient def through mutating the first argument, returning the gradient ID, or `None` when the list is empty.
 	fn render(
 		&self,
 		svg_defs: &mut String,
@@ -87,81 +185,16 @@ impl RenderExt for List<Gradient> {
 		element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
-		_render_params: &RenderParams,
+		render_params: &RenderParams,
 		_target: PaintTarget,
 	) -> Self::Output {
-		let mut stop = String::new();
-
-		let Some(stops) = self.element(0) else { return 0 };
-		let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, 0);
-		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let settings = GradientSettings::from_list_row_attributes(self, 0);
-
-		let (samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
-
-		for (position, color, original_midpoint) in samples {
-			stop.push_str("<stop");
-			if position != 0. {
-				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
-			}
-			let _ = write!(stop, r##" stop-color="#{}""##, SRGBA8::from(color).to_rgb_hex());
-			if color.a() < 1. {
-				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
-			}
-			if let Some(midpoint) = original_midpoint {
-				let _ = write!(stop, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
-			}
-			stop.push_str(" />")
-		}
-
-		// A gradient with no stops paints as solid black, matching `Gradient::evaluate` (a stopless def would otherwise render as no paint per the SVG spec)
-		if stop.is_empty() {
-			stop.push_str(r##"<stop stop-color="#000000" />"##);
-		}
-
-		// Need to cancel out the element's transform as it is already applied to the path itself.
-		let element_transform_inverse = if transform_is_invertible(element_transform) {
-			element_transform.inverse()
-		} else {
-			DAffine2::IDENTITY
-		};
-
-		let document_transform = item_transform * local_gradient_transform;
-
-		let placement = gradient_placement(document_transform, gradient_form);
-		let gradient_transform = format_transform_matrix(element_transform_inverse * placement);
-		let gradient_transform = if gradient_transform.is_empty() {
-			String::new()
-		} else {
-			format!(r#" gradientTransform="{gradient_transform}""#)
-		};
-
-		let gradient_spread = if matches!(settings.spread, GradientSpread::Pad | GradientSpread::Clear) {
-			String::new()
-		} else {
-			format!(r#" spreadMethod="{}""#, settings.spread.svg_name())
-		};
-
-		let gradient_id = generate_uuid();
-
-		match gradient_form {
-			GradientForm::Linear => {
-				let _ = write!(
-					svg_defs,
-					r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread}{gradient_transform}>{}</linearGradient>"#,
-					gradient_id, stop
-				);
-			}
-			GradientForm::Radial => {
-				let _ = write!(
-					svg_defs,
-					r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread}{gradient_transform}>{}</radialGradient>"#,
-					gradient_id, stop
-				);
-			}
-		}
-
-		gradient_id
+		render_gradient_paint(
+			(!self.is_empty()).then_some(ItemRef::ListItem(self, 0)),
+			svg_defs,
+			item_transform,
+			element_transform,
+			render_params.for_mask,
+		)
 	}
 }
 
@@ -242,13 +275,23 @@ impl RenderExt for List<Graphic> {
 		let paint_attr = target.paint_attr();
 
 		match fill_graphic {
+			Some(Graphic::Color(item)) => render_color_paint(Some(ItemRef::Item(item)), target, render_params.for_mask),
 			Some(Graphic::ColorList(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
-			Some(Graphic::GradientList(gradient_list)) => {
-				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target);
-				format!(r##" {paint_attr}="url(#{gradient_id})""##)
-			}
-			Some(Graphic::None) => format!(r#" {paint_attr}="none""#),
-			Some(Graphic::VectorList(_))
+			Some(Graphic::Gradient(item)) => render_gradient_paint(Some(ItemRef::Item(item)), svg_defs, item_transform, element_transform, render_params.for_mask)
+				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
+				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
+			Some(Graphic::GradientList(gradient_list)) => gradient_list
+				.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target)
+				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
+				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
+			Some(Graphic::None(_)) | Some(Graphic::NoneList(_)) => format!(r#" {paint_attr}="none""#),
+			Some(Graphic::Graphic(_))
+			| Some(Graphic::Vector(_))
+			| Some(Graphic::RasterCPU(_))
+			| Some(Graphic::RasterGPU(_))
+			| Some(Graphic::Text(_))
+			| Some(Graphic::MeshGradient(_))
+			| Some(Graphic::VectorList(_))
 			| Some(Graphic::RasterCPUList(_))
 			| Some(Graphic::RasterGPUList(_))
 			| Some(Graphic::GraphicList(_))
