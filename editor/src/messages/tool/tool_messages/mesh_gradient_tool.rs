@@ -594,6 +594,15 @@ impl Fsm for MeshGradientToolFsmState {
 
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 
+				if let Some(corner_index) = tool_data.color_picker_editing_color_stop
+					&& let Some(selected_mesh) = tool_data.selected_mesh.as_ref()
+					&& let Some(corner) = selected_mesh.surface.mesh.corners().find(|corner| corner.index == corner_index)
+				{
+					let mesh_to_viewport = metadata.document_to_viewport * selected_mesh.mesh_to_document;
+					let position = mesh_to_viewport.transform_point2(corner.position).into();
+					responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color: corner.color.into(), position });
+				}
+
 				match self {
 					MeshGradientToolFsmState::Ready { selected, .. } => MeshGradientToolFsmState::Ready {
 						hovering: if hovering_corner {

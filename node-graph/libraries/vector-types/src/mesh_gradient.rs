@@ -981,10 +981,17 @@ impl MeshGradientEvaluator {
 
 			match (backward_diff, forward_diff) {
 				(Some(backward), Some(forward)) => {
-					let central = (backward + forward) / 2.;
+					let backward_weight = 2. * next_distance + prev_distance;
+					let forward_weight = next_distance + 2. * prev_distance;
 
 					// Prevent overshooting by using a zero slope at a local extremum.
-					Vec4::from_array(std::array::from_fn(|channel| if backward[channel] * forward[channel] <= 0. { 0. } else { central[channel] }))
+					Vec4::from_array(std::array::from_fn(|channel| {
+						if backward[channel] * forward[channel] <= 0. {
+							0.
+						} else {
+							(backward_weight + forward_weight) / (backward_weight / backward[channel] + forward_weight / forward[channel])
+						}
+					}))
 				}
 				(Some(backward), None) => backward,
 				(None, Some(forward)) => forward,
