@@ -346,6 +346,36 @@ fn position_value_converts_through_the_vector_input_adapter() {
 	assert!(result.is_some(), "The position should arrive as an Item<Vector> single-anchor path");
 }
 
+// 'Into Group' reduces whole lists, so a rank-0 position reaches it by singleton raise rather than a row of its own
+#[test]
+fn position_value_raises_into_the_into_group_reducer() {
+	use graphene_std::Graphic;
+
+	let position_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::DVec2(glam::DVec2::new(3., 4.)).into()), vec![NodeId(0)]);
+
+	let mut into_group_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	into_group_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::IntoGroupNode");
+
+	let network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(1),
+		nodes: vec![(NodeId(0), position_node), (NodeId(1), into_group_node)],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&network).expect("An Item<DVec2> wire should raise into Into Group's List<DVec2> row");
+	assert!(typing_context.promotions(NodeId(1)).is_some(), "The rank-0 position should be raised at Into Group's List connector");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The reducer constructor should instantiate");
+
+	let context: Context = None;
+	let result: Option<Item<Graphic>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let grouped = result.expect("The position should arrive as an Item<Graphic>");
+
+	let Graphic::VectorList(anchors) = grouped.element() else {
+		panic!("expected a vector list graphic")
+	};
+	assert_eq!(anchors.len(), 1, "The single position should group as one anchor point");
+}
+
 // The 'Colors to Gradient' node turns an entire `List<Color>` wire into one gradient with those colors as its stops
 #[test]
 fn color_list_wraps_through_the_colors_to_gradient_node() {

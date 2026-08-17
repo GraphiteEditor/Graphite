@@ -940,8 +940,8 @@ pub async fn into_group<T: Into<Graphic> + 'n>(
 		List<Color>,
 		List<Gradient>,
 		List<String>,
-		Item<DAffine2>,
-		Item<DVec2>,
+		List<DVec2>,
+		Item<DAffine2>, // TODO: Remove this
 	)]
 	content: T,
 ) -> Item<Graphic> {
