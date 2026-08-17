@@ -4,7 +4,7 @@
 
 use core::f64::consts::TAU;
 use core_types::attribute::{Attr, Transform};
-use core_types::context::ExtractIndex;
+use core_types::context::{ExtractIndex, IndexLink};
 use core_types::extent::{ExtentIn, LevelIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, Interrupt};
 use core_types::registry::types::{Angle, PixelSize};
@@ -23,9 +23,11 @@ fn repeat_array<T>(
 	#[hard(1..)]
 	count: u32,
 ) -> Result<IList<(T, Attr<Transform>)>, Interrupt> {
-	let spilled = ctx.index_head();
-	let copy = ctx.innermost_index() % count as u64;
-	let (element, local) = content.eval(&ctx.promoted(&spilled, copy))?;
+	let inner = content.inner_extent(ctx)?;
+	let (copy, rest) = ctx.split_innermost(inner);
+	let copy = copy % count.max(1) as u64;
+	let mut frame = IndexLink { index: 0, outer: None };
+	let (element, local) = content.eval(&ctx.push_level(&mut frame, copy, rest))?;
 
 	// A single copy has no steps between copies, so the denominator stays 1.
 	let total = (count - 1).max(1) as f64;
@@ -58,9 +60,11 @@ fn repeat_radial<T>(
 	#[hard(1..)]
 	count: u32,
 ) -> Result<IList<(T, Attr<Transform>)>, Interrupt> {
-	let spilled = ctx.index_head();
-	let copy = ctx.innermost_index() % count as u64;
-	let (element, local) = content.eval(&ctx.promoted(&spilled, copy))?;
+	let inner = content.inner_extent(ctx)?;
+	let (copy, rest) = ctx.split_innermost(inner);
+	let copy = copy % count.max(1) as u64;
+	let mut frame = IndexLink { index: 0, outer: None };
+	let (element, local) = content.eval(&ctx.push_level(&mut frame, copy, rest))?;
 
 	let angle = DAffine2::from_angle((TAU / count as f64) * copy as f64 + start_angle.to_radians());
 	let translation = DAffine2::from_translation(radius * DVec2::Y);

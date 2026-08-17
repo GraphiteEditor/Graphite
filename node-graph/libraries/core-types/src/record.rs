@@ -729,15 +729,17 @@ pub struct RecordLazyInput<'a, 'e, N> {
 	node: &'a N,
 	cell: &'a crate::node::StatusCell,
 	input_index: usize,
+	inner_levels: u8,
 	_lifetime: std::marker::PhantomData<fn() -> RecordValue<'e>>,
 }
 
 impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
-	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize) -> Self {
+	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, inner_levels: u8) -> Self {
 		Self {
 			node,
 			cell,
 			input_index,
+			inner_levels,
 			_lifetime: std::marker::PhantomData,
 		}
 	}
@@ -748,6 +750,36 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 	{
 		Ok(self.node.eval_derived(self.cell, self.input_index, ctx)?.rebind())
 	}
+
+	/// The flat lane count of one copy: the product of the edge's inner-level
+	/// extents, queried uniform across copies (at copy 0). The dividend of a
+	/// structure node's decompose-and-promote.
+	pub fn inner_extent<B>(&self, ctx: &B) -> Result<u64, crate::gpoll::Interrupt>
+	where
+		B: crate::context::DeriveCtx,
+		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
+	{
+		inner_extent_of(self.node, ctx, self.inner_levels)
+	}
+}
+
+/// See [`RecordLazyInput::inner_extent`].
+fn inner_extent_of<B, N>(node: &N, ctx: &B, levels: u8) -> Result<u64, crate::gpoll::Interrupt>
+where
+	B: crate::context::DeriveCtx,
+	N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
+{
+	let head = ctx.index_head();
+	let derived = ctx.promoted(&head, 0);
+	let mut inner: u64 = 1;
+	for level in 0..levels {
+		match node.extent_at_derived(&derived, level) {
+			GPoll::Final(crate::gpoll::Extent::Exactly(count)) => inner *= count as u64,
+			GPoll::Pending => return Err(crate::gpoll::Interrupt::Pending),
+			_ => return Err(crate::gpoll::GraphError::new("structure decomposition over a non-exact extent").into()),
+		}
+	}
+	Ok(inner)
 }
 
 /// The derive-routing carrier beside its declared attribute reads: evaluating
@@ -759,6 +791,7 @@ pub struct DerivedLazyInput<'a, 'e, Out, N> {
 	node: &'a N,
 	cell: &'a crate::node::StatusCell,
 	input_index: usize,
+	inner_levels: u8,
 	reads: &'a [Option<usize>],
 	read: unsafe fn(Rec, &[Option<usize>]) -> Out,
 	_lifetime: std::marker::PhantomData<fn() -> RecordValue<'e>>,
@@ -767,15 +800,25 @@ pub struct DerivedLazyInput<'a, 'e, Out, N> {
 impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
 	/// `read` must be sound against the layout the offsets in `reads` were
 	/// resolved from; the macro proves both at wiring.
-	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, reads: &'a [Option<usize>], read: unsafe fn(Rec, &[Option<usize>]) -> Out) -> Self {
+	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, inner_levels: u8, reads: &'a [Option<usize>], read: unsafe fn(Rec, &[Option<usize>]) -> Out) -> Self {
 		Self {
 			node,
 			cell,
 			input_index,
+			inner_levels,
 			reads,
 			read,
 			_lifetime: std::marker::PhantomData,
 		}
+	}
+
+	/// The flat lane count of one copy; see [`RecordLazyInput::inner_extent`].
+	pub fn inner_extent<B>(&self, ctx: &B) -> Result<u64, crate::gpoll::Interrupt>
+	where
+		B: crate::context::DeriveCtx,
+		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
+	{
+		inner_extent_of(self.node, ctx, self.inner_levels)
 	}
 
 	pub fn eval<'d, C>(&self, ctx: &C) -> Result<Out, crate::gpoll::Interrupt>
@@ -1397,6 +1440,10 @@ where
 				value.map(|value| RecordValue::spilled(unsafe { plan.translate(plan.source.rec(&value), dst) }))
 			}
 		}
+	}
+
+	fn extent_at(&self, input: &C, level: u8) -> GPoll<crate::gpoll::Extent> {
+		self.edge.extent_at(input, level)
 	}
 
 	fn layout(&self) -> &Layout {

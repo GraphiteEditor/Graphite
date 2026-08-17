@@ -39,6 +39,18 @@ pub trait ExtractIndex {
 	fn innermost_index(&self) -> u64 {
 		self.try_index().and_then(|mut indices| indices.next()).unwrap_or(0) as u64
 	}
+
+	/// The decompose half of decompose-and-promote: splits the flat innermost
+	/// index over the content's inner extent into the pushed level's copy and
+	/// the lane within it. Rectangular domains; an empty inner extent maps
+	/// everything to copy 0.
+	fn split_innermost(&self, inner: u64) -> (u64, u64) {
+		let flat = self.innermost_index();
+		match inner {
+			0 => (0, 0),
+			inner => (flat / inner, flat % inner),
+		}
+	}
 }
 pub trait ExtractVarArgs {
 	// TODO: Consider returning a slice or something like that
@@ -721,6 +733,7 @@ pub trait DeriveCtx {
 	fn position_head(&self) -> Option<&PositionLink<'_>>;
 	fn varargs_head(&self) -> Option<&VarArgLink<'_>>;
 	fn promoted<'s>(&'s self, spilled_head: &'s IndexLink<'s>, inner_index: u64) -> Derived<'s, Self>;
+	fn push_level<'s>(&'s self, frame: &'s mut IndexLink<'s>, copy: u64, inner: u64) -> Derived<'s, Self>;
 	fn with_footprint<'s>(&'s self, footprint: &'s Footprint) -> Derived<'s, Self>;
 	fn with_varargs<'s>(&'s self, varargs: &'s VarArgLink<'s>) -> Derived<'s, Self>;
 	fn with_position<'s>(&'s self, position: &'s PositionLink<'s>) -> Derived<'s, Self>;
@@ -1109,6 +1122,10 @@ impl<'a> DeriveCtx for ContextImpl<'a> {
 
 	fn promoted<'s>(&'s self, spilled_head: &'s IndexLink<'s>, inner_index: u64) -> ContextImpl<'s> {
 		ContextImpl::promoted(self, spilled_head, inner_index)
+	}
+
+	fn push_level<'s>(&'s self, frame: &'s mut IndexLink<'s>, copy: u64, inner: u64) -> ContextImpl<'s> {
+		ContextImpl::push_level(self, frame, copy, inner)
 	}
 
 	fn with_footprint<'s>(&'s self, footprint: &'s Footprint) -> ContextImpl<'s> {

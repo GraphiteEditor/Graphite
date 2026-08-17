@@ -6,7 +6,7 @@
 //! wiring is by hand until the compiler pass constructs layouts.
 
 use core_types::attribute::{Attr, Opacity, RemoveAttr};
-use core_types::context::{DeriveCtx, ExtractArena, ExtractIndex, InjectIndex};
+use core_types::context::{DeriveCtx, ExtractArena, ExtractIndex, IndexLink, InjectIndex};
 use core_types::extent::{ExtentIn, LevelIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt};
 use core_types::{Context, Ctx};
@@ -82,13 +82,15 @@ fn repeat<T>(
 	count: u32,
 	reverse: bool,
 ) -> Result<IList<T>, Interrupt> {
-	let spilled = ctx.index_head();
-	let copy = ctx.innermost_index() % count as u64;
+	let inner = content.inner_extent(ctx)?;
+	let (copy, rest) = ctx.split_innermost(inner);
+	let copy = copy % count.max(1) as u64;
 	let copy = match reverse {
 		true => count as u64 - 1 - copy,
 		false => copy,
 	};
-	content.eval(&ctx.promoted(&spilled, copy))
+	let mut frame = IndexLink { index: 0, outer: None };
+	content.eval(&ctx.push_level(&mut frame, copy, rest))
 }
 
 /// The pushed level's extent is the copy count; inner levels forward to the
@@ -108,9 +110,11 @@ fn repeat_faded<T>(
 	content: impl Node<Context<'_>, Output = (T, Attr<Opacity>)>,
 	count: u32,
 ) -> Result<IList<(T, Attr<Opacity>)>, Interrupt> {
-	let spilled = ctx.index_head();
-	let copy = ctx.innermost_index() % count as u64;
-	let (element, opacity) = content.eval(&ctx.promoted(&spilled, copy))?;
+	let inner = content.inner_extent(ctx)?;
+	let (copy, rest) = ctx.split_innermost(inner);
+	let copy = copy % count.max(1) as u64;
+	let mut frame = IndexLink { index: 0, outer: None };
+	let (element, opacity) = content.eval(&ctx.push_level(&mut frame, copy, rest))?;
 	Ok(emit(element, Attr(*opacity * (copy + 1) as f64)))
 }
 
@@ -263,7 +267,9 @@ mod tests {
 		type Output = RecordValue<'e>;
 
 		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			let element = input.innermost_index() as f64;
+			// Depth-0 content varying per copy: the enclosing (pushed) level's
+			// index sits one link above the content's own innermost lane.
+			let element = input.try_index().and_then(|mut indices| indices.nth(1)).unwrap_or(0) as f64;
 			let mut value = RecordValue::zeroed();
 			let dst = match self.layout.frame_bytes() {
 				0 => value.as_mut_ptr(),
@@ -491,6 +497,55 @@ mod tests {
 			// Reversed: copy `j` evaluates its content at index `count - 1 - j`.
 			assert_eq!(unsafe { leveled.rec(&value).element::<f64>() }, (3 - copy) as f64);
 			// SAFETY: the copy's element was read out above, so no borrow into its frame remains.
+			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
+	fn repeat_decomposes_the_flat_index_over_depth_one_content() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let base = f64_layout(&[]);
+		let leveled_content = repeat_opacity_layout(&base);
+		let (count_edge, count_layout) = lifted_value(2u32);
+		let (reverse_edge, reverse_layout) = lifted_value(false);
+		reserve_for(&[&base, &leveled_content, &count_layout, &reverse_layout]);
+
+		let content = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let meta = core_types::record::LayoutMeta {
+			sources: vec![0],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 1,
+		};
+		let repeat = install(
+			RepeatNode::new(RecordSource::new(content, &leveled_content, &leveled_content), count_edge, reverse_edge, &leveled_content, &count_layout, &reverse_layout),
+			meta,
+			&[Some(&leveled_content)],
+		);
+		let two_level = Node::<ContextImpl>::layout(&repeat).clone();
+		assert_eq!(two_level.depth, 2, "the pushed level sits above the content's own level");
+		assert_eq!(repeat.extent_at(&ctx, 1), GPoll::Final(Extent::Exactly(2)), "the pushed level's extent is the copy count");
+		assert_eq!(repeat.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(3)), "the content's level forwards");
+
+		let head = ctx.index_head();
+		for flat in 0..6u64 {
+			let mark = stack::sp();
+			let lane = ctx.promoted(&head, flat);
+			let GPoll::Final(value) = repeat.eval(&lane) else {
+				panic!("expected a final record");
+			};
+			let rec = two_level.rec(&value);
+			assert_eq!(unsafe { rec.element::<f64>() }, 7.);
+			// The flat index decomposes: the content sees the remainder as its
+			// own innermost lane, so its per-lane opacity is `flat % 3`.
+			assert_eq!(unsafe { rec.read::<f64>(two_level.offset_of(Opacity::NAME, 0).unwrap()) }, (flat % 3) as f64);
+			// SAFETY: the element and attr were read out above, so no borrow into this lane's frames remains.
 			unsafe { stack::rewind(mark) };
 		}
 	}

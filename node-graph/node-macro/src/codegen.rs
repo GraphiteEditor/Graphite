@@ -1161,20 +1161,20 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				// A raw poll edge is threaded straight through, so it does not bind here.
 				(LazyBinding::Plain, true) => quote!(),
 				(LazyBinding::DeriveRouting, _) => quote! {
-					let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index);
+					let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels));
 				},
 				(LazyBinding::DeriveCarrier, _) => {
 					let reads = reads_of(index);
 					let read_fn = format_ident!("__{}_read_{}", fn_name, index);
 					match reads.is_empty() {
 						true => quote! {
-							let #name = #core_types::record::DerivedLazyInput::new(&self.#name, &__cell, #index, &[], #core_types::record::token_only);
+							let #name = #core_types::record::DerivedLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels), &[], #core_types::record::token_only);
 						},
 						false => {
 							let slot_idents: Vec<Ident> = reads.iter().map(|(slot, _)| format_ident!("__read_{slot}")).collect();
 							quote! {
 								let __carrier_reads = [#(self.#slot_idents),*];
-								let #name = #core_types::record::DerivedLazyInput::new(&self.#name, &__cell, #index, &__carrier_reads, self::#read_fn);
+								let #name = #core_types::record::DerivedLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels), &__carrier_reads, self::#read_fn);
 							}
 						}
 					}
