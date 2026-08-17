@@ -272,14 +272,14 @@ pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeN
 pub fn get_fill_node_id_with_direct_fill_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
 	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
-	matches!(fill_node.input(graphene_std::vector::fill::FillInput)?, NodeInput::Value { .. }).then_some(fill_node_id)
+	matches!(fill_node.input(graphene_std::vector::fill::PaintInput)?, NodeInput::Value { .. }).then_some(fill_node_id)
 }
 
 /// Determine the input connector where the gradient chain enters the layer.
 /// Returns Fill's fill input if the layer has a "Fill" node, otherwise returns the layer's content input.
 pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> InputConnector {
 	if let Some(fill_node_id) = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER)) {
-		InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput)
+		InputConnector::node(fill_node_id, graphene_std::vector::fill::PaintInput)
 	} else {
 		InputConnector::layer_secondary_input(layer.to_node())
 	}
@@ -382,7 +382,7 @@ pub fn get_upstream_color_value_node_id(layer: LayerNodeIdentifier, network_inte
 pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
 	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
-	let NodeInput::Node { node_id, .. } = fill_node.input(graphene_std::vector::fill::FillInput)? else {
+	let NodeInput::Node { node_id, .. } = fill_node.input(graphene_std::vector::fill::PaintInput)? else {
 		return None;
 	};
 	Some(*node_id)
@@ -410,7 +410,7 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 			.document_network()
 			.nodes
 			.get(&fill_node_id)
-			.and_then(|node| node.input(graphene_std::vector::fill::FillInput))
+			.and_then(|node| node.input(graphene_std::vector::fill::PaintInput))
 			.and_then(|input| input.as_value())
 			.and_then(|value| if let TaggedValue::GradientRamp(ramp) = value { Some(Gradient::from(ramp)) } else { None });
 	}
@@ -499,7 +499,7 @@ pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
 
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
-	let TaggedValue::Color(color) = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::fill::FillInput)? else {
+	let TaggedValue::Color(color) = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::fill::PaintInput)? else {
 		return None;
 	};
 	Some(*color)
@@ -812,7 +812,7 @@ pub struct FillNodeGradient {
 pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOnce() -> [DVec2; 2]) -> Option<FillNodeGradient> {
 	use graphene_std::vector::fill;
 
-	let TaggedValue::GradientRamp(ramp) = fill_node.input(fill::FillInput)?.as_value()? else {
+	let TaggedValue::GradientRamp(ramp) = fill_node.input(fill::PaintInput)?.as_value()? else {
 		return None;
 	};
 	let settings = GradientSettings::from(ramp);
@@ -885,7 +885,7 @@ pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<Selected
 		let fill_choice = (|| {
 			let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-			match fill_node.input(graphene_std::vector::fill::FillInput)?.as_value()? {
+			match fill_node.input(graphene_std::vector::fill::PaintInput)?.as_value()? {
 				TaggedValue::Color(color) => Some(FillChoice::Solid(*color)),
 				TaggedValue::GradientRamp(ramp) => Some(FillChoice::Gradient(ramp.clone())),
 				value if value.is_no_paint() => Some(FillChoice::None),

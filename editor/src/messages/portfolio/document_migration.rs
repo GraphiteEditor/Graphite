@@ -1910,7 +1910,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// This must run before the stale-List-default cleanup below, which would otherwise adopt the definition's default paint.
 	{
 		let legacy_no_paint = TaggedValue::TypeDefault(list!(graphene_std::Graphic));
-		let paint_parameters: &[ParameterRef] = &[graphene_std::vector::fill::FillInput.into(), graphene_std::vector::stroke::PaintInput.into()];
+		let paint_parameters: &[ParameterRef] = &[graphene_std::vector::fill::PaintInput.into(), graphene_std::vector::stroke::PaintInput.into()];
 		for parameter in paint_parameters {
 			if reference != DefinitionIdentifier::ProtoNode(parameter.node_identifier.clone()) {
 				continue;

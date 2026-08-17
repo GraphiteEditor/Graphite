@@ -308,7 +308,7 @@ async fn fill<V>(
 	/// The content with vector paths to apply the fill style to.
 	#[implementations(Vector, Graphic)]
 	content: Item<V>,
-	#[default(Color::BLACK)] fill: Item<Graphic>,
+	#[default(Color::BLACK)] paint: Item<Graphic>,
 	_backup_color: Item<Color>,
 	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: Item<Gradient>,
 	_gradient_form: Item<GradientForm>,
@@ -323,10 +323,10 @@ where
 
 	let mut content = content;
 	// The paint is the element alone: keeping the wire envelope's attributes would nest the paint as a group, changing how it renders
-	let mut fill = fill.into_element();
+	let mut paint = paint.into_element();
 
 	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
-	let (needs_form, needs_transform) = match &fill {
+	let (needs_form, needs_transform) = match &paint {
 		Graphic::Gradient(item) => (item.attribute::<GradientForm>(ATTR_GRADIENT_FORM).is_none(), item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none()),
 		Graphic::GradientList(list) => (
 			list.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none(),
@@ -362,7 +362,7 @@ where
 		initial_gradient_transform_for_bounding_box([min, max])
 	});
 
-	match &mut fill {
+	match &mut paint {
 		Graphic::Gradient(item) => {
 			if needs_form {
 				item.set_attribute(ATTR_GRADIENT_FORM, _gradient_form);
@@ -387,7 +387,7 @@ where
 	}
 
 	// Appending follows the painter's algorithm: the most downstream paint node in the chain paints on top
-	stamp_coverage(&mut content, Coverage::new_fill(), fill, CoverPlacement::Above);
+	stamp_coverage(&mut content, Coverage::new_fill(), paint, CoverPlacement::Above);
 	content
 }
 
