@@ -887,7 +887,7 @@ impl MeshPatchEvaluator {
 		let MeshPatchInterpolation::Smooth { bezier_control_points, .. } = &self.interpolation else {
 			return None;
 		};
-		let [a, b, c, d] = bezier_control_points[row];
+		let &[a, b, c, d] = bezier_control_points.get(row)?;
 		let one_minus_u = 1. - u;
 		Some(a * one_minus_u.powi(3) + b * (3. * u * one_minus_u.powi(2)) + c * (3. * u.powi(2) * one_minus_u) + d * u.powi(3))
 	}

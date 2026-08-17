@@ -685,6 +685,10 @@ impl Fsm for MeshGradientToolFsmState {
 						selected_mesh.update_gradient_in_graph(responses);
 						responses.add(DocumentMessage::EndTransaction);
 						responses.add(OverlaysMessage::Draw);
+
+						// Inserting a grid line removes the selected segment, so discard its now-stale ID and deletion hint.
+						tool_data.selected_mesh = None;
+						return MeshGradientToolFsmState::default();
 					}
 					_ => {}
 				};

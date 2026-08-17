@@ -145,7 +145,7 @@ impl From<List<Gradient>> for Graphic {
 // MeshGradient
 impl From<MeshGradient> for Graphic {
 	fn from(mesh_gradient: MeshGradient) -> Self {
-		Graphic::MeshGradientList(List::new_from_element(mesh_gradient))
+		Graphic::MeshGradient(Box::new(Item::new_from_element(mesh_gradient)))
 	}
 }
 impl From<Item<MeshGradient>> for Graphic {
