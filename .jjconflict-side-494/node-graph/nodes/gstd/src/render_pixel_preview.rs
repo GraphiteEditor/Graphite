@@ -1,5 +1,4 @@
 use core_types::gpoll::Interrupt;
-use core_types::list::Item;
 use core_types::transform::{Footprint, Transform};
 use core_types::{Ctx, DeriveCtx, ExtractAll};
 use glam::{DAffine2, DVec2, UVec2, Vec2};
@@ -12,9 +11,9 @@ use wgpu_executor::{WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 #[node_macro::node(category(""))]
 pub fn render_pixel_preview(
 	ctx: impl Ctx + ExtractAll + DeriveCtx,
-	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
-	data: impl Node<Context<'_>, Output = Item<RenderOutput>>,
-) -> Result<Item<RenderOutput>, Interrupt> {
+	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
+	data: impl Node<Context<'_>, Output = RenderOutput>,
+) -> Result<RenderOutput, Interrupt> {
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()).cloned() else {
 		log::error!("invalid render params for pixel preview");
 		return data.eval(&ctx.derived());
@@ -52,16 +51,14 @@ pub fn render_pixel_preview(
 	};
 
 	let scoped = ctx.push_vararg(&render_params);
-	let mut result = data.eval(&scoped.ctx().with_footprint(&upstream_footprint))?.into_element();
+	let mut result = data.eval(&scoped.ctx().with_footprint(&upstream_footprint))?;
 
-	let RenderOutputType::Texture(ref source_texture) = result.data else {
-		return Ok(Item::new_from_element(result));
-	};
+	let RenderOutputType::Texture(ref source_texture) = result.data else { return Ok(result) };
 
 	let logical_transform = DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * footprint.transform;
 	let transform = DAffine2::from_translation(-upstream_min) * logical_transform.inverse() * DAffine2::from_scale(logical_resolution);
 
-	let resampled = pipeline.into_element().run::<PixelPreview>(&PixelPreviewArgs {
+	let resampled = pipeline.run::<PixelPreview>(&PixelPreviewArgs {
 		source: source_texture.as_ref(),
 		transform: &transform,
 		size: physical_resolution,
@@ -71,19 +68,19 @@ pub fn render_pixel_preview(
 
 	result.metadata.apply_transform(footprint.transform * DAffine2::from_translation(upstream_min));
 
-	Ok(Item::new_from_element(result))
+	Ok(result)
 }
 
 #[node_macro::node(category(""), inject_scope)]
 fn pixel_preview_pipeline(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<wgpu_executor::WgpuExecutorHandle>>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<wgpu_executor::WgpuExecutorHandle>,
 	#[data] pipeline: WgpuPipelineCache,
-) -> Item<WgpuPipelineCache> {
-	if let Some(executor) = executor.into_element() {
+) -> WgpuPipelineCache {
+	if let Some(executor) = executor {
 		executor.pipeline_init::<PixelPreview>(pipeline);
 	}
-	Item::new_from_element(pipeline.clone())
+	pipeline.clone()
 }
 
 pub struct PixelPreview {

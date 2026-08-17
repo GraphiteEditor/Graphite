@@ -1,4 +1,4 @@
-use crate::{ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
+use crate::{Color, ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
 pub use no_std_types::registry::types;
 use std::collections::HashMap;
@@ -29,6 +29,8 @@ pub struct FieldMetadata {
 	pub exposed: bool,
 	pub widget_override: RegistryWidgetOverride,
 	pub value_source: RegistryValueSource,
+	/// The default expression's colors, resolved by the macro when the expression consists solely of `Color::*` constants.
+	pub default_colors: Option<&'static [Color]>,
 	pub default_type: Option<Type>,
 	/// The slider's suggested extent, from `#[soft(a..b)]`. Typed values may exceed it.
 	pub number_soft_min: Option<f64>,

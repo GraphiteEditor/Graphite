@@ -1,0 +1,26 @@
+name: "Audit Security Advisories"
+
+on:
+  # Run once each week
+  schedule:
+    - cron: "0 0 * * 0"
+
+jobs:
+  cargo-deny:
+    if: github.repository == 'GraphiteEditor/Graphite' # Don't run on forks by default
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+
+      - name: 🔒 Check crate security advisories for root workspace
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
+
+      - name: 🔒 Check crate security advisories for /libraries/rawkit
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
+          manifest-path: libraries/rawkit/Cargo.toml

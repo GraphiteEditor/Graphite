@@ -9,7 +9,7 @@ use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
-use vector_types::gradient::{GradientSpreadMethod, GradientType};
+use vector_types::gradient::{GradientSpread, GradientType};
 use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
@@ -568,7 +568,7 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<Artboard>,
 		List<BlendMode>,
 		List<GradientType>,
-		List<GradientSpreadMethod>,
+		List<GradientSpread>,
 	)]
 	content: List<T>,
 	/// The attribute name (key) to write or replace.
@@ -730,18 +730,18 @@ fn read_attribute_gradient_type(
 	result
 }
 
-/// Reads a named `GradientSpreadMethod` attribute from the input list, outputting each value as an element of a new `GradientSpreadMethod[]`.
+/// Reads a named `GradientSpread` attribute from the input list, outputting each value as an element of a new `GradientSpread[]`.
 #[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_spread_method(
+fn read_attribute_gradient_spread(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: Item<String>,
-) -> List<GradientSpreadMethod> {
+) -> List<GradientSpread> {
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
+		let Some(value) = content.attribute::<GradientSpread>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result

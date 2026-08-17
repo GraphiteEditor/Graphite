@@ -2165,7 +2165,7 @@ mod test_gradient {
 				let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
 				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-				let (stops, gradient_spread) = match fill_node.input(fill::FillInput)?.as_value()? {
+				let (stops, gradient_spread) = match fill_node.input(fill::PaintInput)?.as_value()? {
 					TaggedValue::GradientRamp(ramp) => (Gradient::from(ramp), ramp.gradient_spread),
 					_ => return None,
 				};
@@ -2306,7 +2306,7 @@ mod test_gradient {
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
 				output_connector: OutputConnector::primary_output(gradient_node_id),
-				input_connector: InputConnector::node(fill_node_id, fill::FillInput),
+				input_connector: InputConnector::node(fill_node_id, fill::PaintInput),
 			})
 			.await;
 
@@ -3033,7 +3033,7 @@ mod test_gradient {
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
 				output_connector: OutputConnector::primary_output(gradient_value_id),
-				input_connector: InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput),
+				input_connector: InputConnector::node(fill_node_id, graphene_std::vector::fill::PaintInput),
 			})
 			.await;
 		editor

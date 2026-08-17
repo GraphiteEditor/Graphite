@@ -435,7 +435,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(fill_node_id) = existing_fill_node_id.or_else(|| self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true)) else {
 			return;
 		};
-		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput);
+		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::PaintInput);
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupColorInput);
 
 		// The backup remembers the last solid color, so the red-slash "none" choice leaves it untouched
@@ -462,7 +462,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
 		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput),
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::PaintInput),
 			NodeInput::value(TaggedValue::GradientRamp(ramp), false),
 			true,
 		);
