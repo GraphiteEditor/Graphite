@@ -2340,6 +2340,20 @@ fn gradient_control_outline(gradient_form: GradientForm) -> Subpath<graphic_type
 	}
 }
 
+/// The mesh's painted region as a click/outline target.
+fn mesh_control_target(mesh: &MeshGradient) -> ClickTarget {
+	let subpaths = mesh
+		.patches()
+		.flatten()
+		.map(|patch| {
+			let [top, bottom, left, right] = patch.edges;
+			Subpath::from_beziers(&[top, right, bottom.reverse(), left.reverse()], true)
+		})
+		.collect::<Vec<_>>();
+
+	ClickTarget::new_with_compound_path(subpaths, 0.)
+}
+
 /// Whether the control geometry's interior is a draggable click area: a radial's main ellipse acts as the layer's handle regardless of spread, while a linear's control line has no interior.
 fn gradient_control_interior_is_clickable(gradient_form: GradientForm) -> bool {
 	gradient_form == GradientForm::Radial
@@ -2601,6 +2615,7 @@ impl Render for List<MeshGradient> {
 			// while a nonlinear space stacks approximated rows so the compositor's linear blend still lands on the true surface.
 			let v_layers = SvgMeshVLayers::new(&mesh_evaluator);
 			let mesh_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let logical_parent_transform = DAffine2::from_scale(DVec2::splat(1. / render_params.scale)) * render_params.footprint.transform * render.transform;
 			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
@@ -2668,9 +2683,9 @@ impl Render for List<MeshGradient> {
 						}
 						// Encode the deformation in normalized patch-bounding-box space so patch translation and axis-aligned scaling do not consume PNG channel precision.
 						let unit_to_patch_bbox = DAffine2::from_cols(DVec2::new(bounds_size.x, 0.), DVec2::new(0., bounds_size.y), bounds_min);
-						let unit_to_mesh = mesh_transform * unit_to_patch_bbox;
-						let (_, smallest_mesh_scale) = singular_values(unit_to_mesh);
-						if !smallest_mesh_scale.is_finite() || smallest_mesh_scale <= f64::EPSILON {
+						let unit_to_output = logical_parent_transform * mesh_transform * unit_to_patch_bbox;
+						let (_, smallest_output_scale) = singular_values(unit_to_output);
+						if !smallest_output_scale.is_finite() || smallest_output_scale <= f64::EPSILON {
 							continue;
 						}
 
@@ -2682,7 +2697,9 @@ impl Render for List<MeshGradient> {
 						// Keep the scale nonzero when all displacements are zero.
 						let scale = (max_displacement * 2.).max(f64::EPSILON);
 
-						let displacement_map_png = displacements_to_map_png(&displacements, scale);
+						let Some(displacement_map_png) = displacements_to_map_png(&displacements, scale) else {
+							continue;
+						};
 						let preamble = "data:image/png;base64,";
 						let mut displacement_map_data_url = String::with_capacity(preamble.len() + displacement_map_png.len() * 4 / 3 + 4);
 						displacement_map_data_url.push_str(preamble);
@@ -2803,7 +2820,7 @@ impl Render for List<MeshGradient> {
 						});
 
 						// Add a centered stroke to expand the patch along its boundary normal and hide antialiasing gaps between patches.
-						let patch_clip_stroke_width = 2. * PATCH_INFLATION_SIZE / smallest_mesh_scale;
+						let patch_clip_stroke_width = 2. * PATCH_INFLATION_SIZE / smallest_output_scale;
 						patch_boundary_path.apply_affine(Affine::new(unit_to_patch_bbox.inverse().to_cols_array()));
 						let patch_boundary_d = patch_boundary_path.to_svg();
 
@@ -2965,6 +2982,53 @@ impl Render for List<MeshGradient> {
 				scene.pop_layer();
 			}
 		}
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, _footprint: Footprint, element_id: Option<NodeId>, _inherited_appearance: Option<&Appearance>) {
+		let Some(element_id) = element_id else { return };
+		if self.is_empty() {
+			return;
+		}
+
+		// Targets are baked relative to item 0's transform, which `Graphic::collect_metadata` records as `local_transforms[element_id]`
+		let item_zero_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		let item_zero_inverse = if transform_is_invertible(item_zero_transform) {
+			item_zero_transform.inverse()
+		} else {
+			DAffine2::IDENTITY
+		};
+
+		let mut targets = Vec::new();
+		for index in 0..self.len() {
+			let Some(mesh) = self.element(index) else { continue };
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+
+			let mut target = mesh_control_target(mesh);
+			target.apply_transform(item_zero_inverse * item_transform);
+			targets.push(Arc::new(target));
+		}
+
+		if targets.is_empty() {
+			return;
+		}
+		metadata.outlines.insert(element_id, targets.clone());
+		// The painted region is the mesh boundary itself, so its interior is what a click lands on
+		metadata.click_targets.insert(element_id, targets);
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
+		for index in 0..self.len() {
+			let Some(mesh) = self.element(index) else { continue };
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+
+			let mut target = mesh_control_target(mesh);
+			target.apply_transform(transform);
+			click_targets.push(target);
+		}
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
+		self.add_upstream_click_targets(outlines, inherited_appearance);
 	}
 }
 

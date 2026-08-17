@@ -19,6 +19,7 @@ pub(super) const MESH_POSITION_ERROR_TOLERANCE: f64 = 1.5;
 /// Maximum allowed color approximation error per channel.
 pub(super) const MESH_COLOR_ERROR_TOLERANCE: f32 = 2. / 255.;
 /// Maximum subpatches one mesh may divide into, bounding what a color field the tolerance cannot reach can allocate.
+/// A mesh with more patches than this still emits one subpatch each, since a patch cannot render without its own region.
 pub(super) const MESH_MAXIMUM_SUBPATCHES: usize = 4096;
 /// Smallest uv stride a region may refine to.
 const MINIMUM_SUBPATCH_STRIDE: f64 = 1. / 4096.;
@@ -178,7 +179,7 @@ impl SvgMeshVLayers {
 	pub(super) fn evaluate_layer_u_color(&self, patch_evaluator: &MeshPatchEvaluator, index: usize, u: f32) -> Vec4 {
 		match self {
 			Self::Stepped => Vec4::from_array(patch_evaluator.evaluate_color(0., 0.)),
-			Self::BicubicBernstein => patch_evaluator.evaluate_bicubic_bezier_row(index, u),
+			Self::BicubicBernstein => patch_evaluator.evaluate_bicubic_bezier_row(index, u).expect("Bicubic Bernstein layers should have the control points"),
 			Self::LinearRows(knots) => Vec4::from_array(patch_evaluator.evaluate_color(u, knots[index])),
 		}
 	}
@@ -288,6 +289,7 @@ pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: &MeshPatchEval
 
 	let mut inverse_uvs = vec![None::<DVec2>; size * size];
 	let mut attempted = vec![false; size * size];
+	let mut reseed_attempted = vec![false; size * size];
 	let mut inside_queue = VecDeque::new();
 	let mut outside_queue = VecDeque::new();
 
@@ -301,34 +303,59 @@ pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: &MeshPatchEval
 		}
 	}
 
+	let neighbors = |x: isize, y: isize| [(0, -1), (-1, 0), (1, 0), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)].into_iter().map(move |(dx, dy)| (x + dx, y + dy));
+	let out_of_map_range = |x: isize, y: isize| x < 0 || x >= size as isize || y < 0 || y >= size as isize;
+
 	// Resolve the patch interior first, deferring successfully inverted exterior texels until it is complete.
-	while let Some(index) = inside_queue.pop_front() {
-		let initial_uv = inverse_uvs[index].expect("Only successfully inverted texels should be queued");
-		let x = (index % size) as isize;
-		let y = (index / size) as isize;
+	loop {
+		while let Some(index) = inside_queue.pop_front() {
+			let initial_uv = inverse_uvs[index].expect("Only successfully inverted texels should be queued");
+			let x = (index % size) as isize;
+			let y = (index / size) as isize;
 
-		for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (0, 1)] {
-			let neighbor_x = x + dx;
-			let neighbor_y = y + dy;
-			if neighbor_x < 0 || neighbor_x >= size as isize || neighbor_y < 0 || neighbor_y >= size as isize {
-				continue;
-			}
+			for (neighbor_x, neighbor_y) in neighbors(x, y) {
+				if out_of_map_range(neighbor_x, neighbor_y) {
+					continue;
+				}
 
-			let neighbor_index = neighbor_y as usize * size + neighbor_x as usize;
-			if attempted[neighbor_index] || !sampled_region[neighbor_index] {
-				continue;
-			}
+				let neighbor_index = neighbor_y as usize * size + neighbor_x as usize;
 
-			attempted[neighbor_index] = true;
-			let (_, target_position_in_mesh) = target_positions(neighbor_index);
-			if let Some(uv) = patch_evaluator.try_inverse_patch_position(target_position_in_mesh, initial_uv) {
-				inverse_uvs[neighbor_index] = Some(uv);
-				if inside_patch[neighbor_index] {
-					inside_queue.push_back(neighbor_index);
-				} else {
-					outside_queue.push_back(neighbor_index);
+				if attempted[neighbor_index] || !sampled_region[neighbor_index] {
+					continue;
+				}
+
+				attempted[neighbor_index] = true;
+				let (_, target_position_in_mesh) = target_positions(neighbor_index);
+				if let Some(uv) = patch_evaluator.try_inverse_patch_position(target_position_in_mesh, initial_uv) {
+					inverse_uvs[neighbor_index] = Some(uv);
+					if inside_patch[neighbor_index] {
+						inside_queue.push_back(neighbor_index);
+					} else {
+						outside_queue.push_back(neighbor_index);
+					}
 				}
 			}
+		}
+
+		// Rasterizing the patch at the displacement-map resolution can split its interior into disconnected regions.
+		// If any interior texels remain unresolved, restart the inverse search using the initial UV seeds.
+		let next_seed = inverse_uvs
+			.iter()
+			.enumerate()
+			.find(|(index, result)| inside_patch[*index] && result.is_none() && !reseed_attempted[*index])
+			.map(|(index, _)| index);
+
+		let Some(next_seed) = next_seed else { break };
+
+		reseed_attempted[next_seed] = true;
+		attempted[next_seed] = true;
+
+		let (_, target_position_in_mesh) = target_positions(next_seed);
+		let initial_uv = initial_uv_from_seeds(target_position_in_mesh);
+
+		if let Some(uv) = patch_evaluator.try_inverse_patch_position(target_position_in_mesh, initial_uv) {
+			inverse_uvs[next_seed] = Some(uv);
+			inside_queue.push_back(next_seed);
 		}
 	}
 
@@ -338,15 +365,14 @@ pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: &MeshPatchEval
 		let x = (index % size) as isize;
 		let y = (index / size) as isize;
 
-		for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (0, 1)] {
-			let neighbor_x = x + dx;
-			let neighbor_y = y + dy;
-			if neighbor_x < 0 || neighbor_x >= size as isize || neighbor_y < 0 || neighbor_y >= size as isize {
+		for (neighbor_x, neighbor_y) in neighbors(x, y) {
+			if out_of_map_range(neighbor_x, neighbor_y) {
 				continue;
 			}
 
 			let neighbor_index = neighbor_y as usize * size + neighbor_x as usize;
-			if attempted[neighbor_index] || inside_patch[neighbor_index] || !sampled_region[neighbor_index] {
+
+			if attempted[neighbor_index] || !sampled_region[neighbor_index] || inside_patch[neighbor_index] {
 				continue;
 			}
 
@@ -359,12 +385,40 @@ pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: &MeshPatchEval
 		}
 	}
 
+	// As a fallback, fill unresolved buffer texels using the source UV of the nearest resolved interior texel
+	let resolved_inside_samples = (0..size * size)
+		.filter_map(|index| (inside_patch[index]).then(|| inverse_uvs[index].map(|uv| (index, uv))).flatten())
+		.collect::<Vec<_>>();
+	for index in 0..size * size {
+		if !sampled_region[index] || inside_patch[index] || inverse_uvs[index].is_some() {
+			continue;
+		}
+
+		let x = index % size;
+		let y = index / size;
+
+		let nearest_uv = resolved_inside_samples
+			.iter()
+			.min_by_key(|(candidate, _)| {
+				let candidate_x = candidate % size;
+				let candidate_y = candidate / size;
+				let dx = x.abs_diff(candidate_x);
+				let dy = y.abs_diff(candidate_y);
+				dx * dx + dy * dy
+			})
+			.map(|(_, uv)| uv.clamp(DVec2::ZERO, DVec2::ONE));
+
+		if let Some(uv) = nearest_uv {
+			inverse_uvs[index] = Some(uv);
+		}
+	}
+
 	let displacements = inverse_uvs
 		.into_iter()
 		.enumerate()
 		.map(|(index, inverse_uv)| {
 			let (target_position, _) = target_positions(index);
-			// Failed and unsampled positions use zero displacement rather than estimating from a non-converged numerical source position.
+			// For positions outside the buffer, use zero displacement rather than estimating from a non-converged numerical source.
 			// This prevents unexpected jumps in the displacement that would increase the quantization scale.
 			let source_position = inverse_uv.map(|uv| uv.clamp(DVec2::ZERO, DVec2::ONE)).unwrap_or(target_position);
 
@@ -378,7 +432,7 @@ pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: &MeshPatchEval
 }
 
 /// Encodes target-to-source displacement samples as an RGBA8 PNG for feDisplacementMap.
-pub(super) fn displacements_to_map_png(displacements: &[DVec2], scale: f64) -> Vec<u8> {
+pub(super) fn displacements_to_map_png(displacements: &[DVec2], scale: f64) -> Option<Vec<u8>> {
 	let mut rgba8_bytes = Vec::with_capacity(DISPLACEMENT_MAP_SIZE * DISPLACEMENT_MAP_SIZE * 4);
 
 	let encode_displacement = |displacement: DVec2| {
@@ -395,9 +449,9 @@ pub(super) fn displacements_to_map_png(displacements: &[DVec2], scale: f64) -> V
 	let mut displacement_map_png = Vec::new();
 	::image::codecs::png::PngEncoder::new(&mut displacement_map_png)
 		.write_image(&rgba8_bytes, DISPLACEMENT_MAP_SIZE as u32, DISPLACEMENT_MAP_SIZE as u32, ::image::ExtendedColorType::Rgba8)
-		.expect("failed to encode displacement map as 8-bit PNG");
+		.ok()?;
 
-	displacement_map_png
+	Some(displacement_map_png)
 }
 
 // SVG gradient definitions
@@ -565,8 +619,9 @@ pub(super) fn subdivide_patches_adaptive(
 
 	let mut regions = (0..patches.len()).map(|patch_index| measure(patch_index, DVec2::ZERO, 1.)).collect::<Option<Vec<_>>>()?;
 
-	// Each split replaces one region with four, so stop once the budget cannot absorb another
-	while regions.len() + 3 <= MESH_MAXIMUM_SUBPATCHES {
+	// Every patch owes at least its own root region, so the cap bounds the refinement on top of that rather than the total
+	let budget = MESH_MAXIMUM_SUBPATCHES.max(regions.len());
+	while regions.len() + 3 <= budget {
 		let worst = regions
 			.iter()
 			.enumerate()
@@ -599,7 +654,7 @@ pub(super) fn mesh_subpatch_transform(subpatch: &MeshSubpatch) -> Option<DAffine
 	let [top_left, top_right, bottom_left, _] = subpatch.corner_positions;
 	let transform = DAffine2::from_cols(top_right - top_left, bottom_left - top_left, top_left);
 	let determinant = transform.matrix2.determinant();
-	(determinant.is_finite() && determinant > 0.).then_some(transform)
+	(determinant.is_finite() && determinant != 0.).then_some(transform)
 }
 
 /// Returns the local clip and paint inflation needed to hide gaps around a transformed subpatch.

@@ -590,9 +590,11 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Write the mesh gradient to the Fill node's direct value, adding a 'Fill' node to the layer when it has none.
 	pub fn fill_mesh_gradient_set(&mut self, mesh_gradient: MeshGradientSurface) {
-		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
+		let existing_fill_node_id = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, false);
+		let Some(fill_node_id) = existing_fill_node_id.or_else(|| self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true)) else {
 			return;
 		};
+
 		self.set_input_with_refresh(
 			InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupMeshGradientInput),
 			NodeInput::value(TaggedValue::MeshGradient(mesh_gradient.clone()), false),
@@ -603,6 +605,10 @@ impl<'a> ModifyInputsContext<'a> {
 			NodeInput::value(TaggedValue::MeshGradient(mesh_gradient), false),
 			false,
 		);
+
+		if existing_fill_node_id.is_none() {
+			self.restore_default_stroke_order();
+		}
 	}
 
 	/// Write the mesh gradient to the Mesh Gradient Value node feeding the layer.

@@ -883,13 +883,13 @@ impl MeshPatchEvaluator {
 	}
 
 	/// Evaluates one horizontal Bezier control row of a smooth patch.
-	pub fn evaluate_bicubic_bezier_row(&self, row: usize, u: f32) -> Vec4 {
+	pub fn evaluate_bicubic_bezier_row(&self, row: usize, u: f32) -> Option<Vec4> {
 		let MeshPatchInterpolation::Smooth { bezier_control_points, .. } = &self.interpolation else {
-			unreachable!("Bicubic Bernstein layers require smooth interpolation");
+			return None;
 		};
 		let [a, b, c, d] = bezier_control_points[row];
 		let one_minus_u = 1. - u;
-		a * one_minus_u.powi(3) + b * (3. * u * one_minus_u.powi(2)) + c * (3. * u.powi(2) * one_minus_u) + d * u.powi(3)
+		Some(a * one_minus_u.powi(3) + b * (3. * u * one_minus_u.powi(2)) + c * (3. * u.powi(2) * one_minus_u) + d * u.powi(3))
 	}
 }
 

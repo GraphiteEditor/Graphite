@@ -1236,6 +1236,7 @@ macro_rules! known_item_types {
 			List<Raster<GPU>>,
 			List<Color>,
 			List<Gradient>,
+			List<MeshGradient>,
 			List<String>,
 			List<f64>,
 			Gradient,

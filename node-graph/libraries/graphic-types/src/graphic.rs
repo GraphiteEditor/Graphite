@@ -515,8 +515,8 @@ impl Graphic {
 			}
 			Graphic::ColorList(list) => list.element(0).is_some_and(|color| color.is_opaque()),
 			Graphic::GradientList(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
-			// TODO: Graphic::MeshGradientList should be able to have this check
-			Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::TextList(_) | Graphic::MeshGradientList(_) => false,
+			Graphic::MeshGradientList(list) => list.element(0).is_some_and(|mesh| mesh.corners().all(|corner| corner.color.is_opaque())),
+			Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::TextList(_) => false,
 		}
 	}
 
@@ -551,8 +551,8 @@ impl Graphic {
 			}),
 			Graphic::ColorList(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::GradientList(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
-			// TODO: Graphic::MeshGradientList should be able to have this check
-			Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::TextList(_) | Graphic::MeshGradientList(_) => false,
+			Graphic::MeshGradientList(list) => list.iter_element_values().all(|mesh| mesh.corners().all(|corner| corner.color.a() == 0.)),
+			Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::TextList(_) => false,
 		}
 	}
 

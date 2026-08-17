@@ -2619,6 +2619,23 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 	if let ResolvedFill::MeshGradient { surface } = fill.clone() {
 		let surface = *surface;
+		let set_mesh_surface = move |surface: MeshGradientSurface| Message::Batched {
+			messages: Box::new([
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: FillInput::INDEX,
+					value: TaggedValue::MeshGradient(surface.clone()).into(),
+				}
+				.into(),
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: BackupMeshGradientInput::INDEX,
+					value: TaggedValue::MeshGradient(surface).into(),
+				}
+				.into(),
+			]),
+		};
+
 		let space_entries = graph_modification_utils::mesh_gradient_space_sections()
 			.into_iter()
 			.map(|section| {
@@ -2630,16 +2647,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 							.label(metadata.label)
 							.tooltip_label(metadata.label)
 							.tooltip_description(metadata.description.unwrap_or_default())
-							.on_update(update_value(
-								move |_| {
-									TaggedValue::MeshGradient(MeshGradientSurface {
-										gradient_space: space,
-										..surface.clone()
-									})
-								},
-								node_id,
-								FillInput,
-							))
+							.on_update(move |_| {
+								set_mesh_surface(MeshGradientSurface {
+									gradient_space: space,
+									..surface.clone()
+								})
+							})
 							.on_commit(commit_value)
 					})
 					.collect()
@@ -2670,16 +2683,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 							.label(metadata.label)
 							.tooltip_label(metadata.label)
 							.tooltip_description(metadata.description.unwrap_or_default())
-							.on_update(update_value(
-								move |_| {
-									TaggedValue::MeshGradient(MeshGradientSurface {
-										gradient_interpolation: interpolation,
-										..surface.clone()
-									})
-								},
-								node_id,
-								FillInput,
-							))
+							.on_update(move |_| {
+								set_mesh_surface(MeshGradientSurface {
+									gradient_interpolation: interpolation,
+									..surface.clone()
+								})
+							})
 							.on_commit(commit_value)
 					})
 					.collect()

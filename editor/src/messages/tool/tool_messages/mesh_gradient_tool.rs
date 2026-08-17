@@ -2,21 +2,21 @@ use super::tool_prelude::*;
 use crate::consts::{COLOR_OVERLAY_BLUE, DRAG_THRESHOLD, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::portfolio::document::overlays::utility_functions::overlay_bezier_handles;
 use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasis, OverlayContext};
-use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_upstream_mesh_gradient_value_node_id};
+use crate::messages::tool::common_functionality::graph_modification_utils::{
+	self, MeshGradientPaint, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_mesh_gradient_paint, get_upstream_mesh_gradient_value_node_id,
+};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graphene_std::color::SRGBA8;
-use graphene_std::list::List;
 use graphene_std::raster::color::Color;
 use graphene_std::subpath::{BezierHandles, pathseg_points};
 use graphene_std::vector::algorithms::util::pathseg_tangent;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::style::{GradientSpace, MeshGradientSurface};
 use graphene_std::vector::{GradientInterpolation, HandleId, MeshGradient, SegmentId};
-use graphene_std::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_TRANSFORM, Cover, Graphic};
 use kurbo::{DEFAULT_ACCURACY, ParamCurve, ParamCurveNearest};
 
 #[derive(Default, ExtractField)]
@@ -146,6 +146,21 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Mesh
 			}
 			_ => {
 				self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
+
+				if let Some(surface) = first_selected_mesh_gradient_surface(context.document) {
+					let mut needs_refresh = false;
+					if self.options.space != surface.gradient_space {
+						self.options.space = surface.gradient_space;
+						needs_refresh = true;
+					}
+					if self.options.interpolation != surface.gradient_interpolation {
+						self.options.interpolation = surface.gradient_interpolation;
+						needs_refresh = true;
+					}
+					if needs_refresh {
+						self.refresh_options(responses);
+					}
+				}
 			}
 		}
 	}
@@ -213,24 +228,23 @@ impl LayoutHolder for MeshGradientTool {
 	}
 }
 
-/// The mesh gradient a layer's fill coverage paints, if that is what it paints.
-fn layer_mesh_gradient_paint(metadata: &DocumentMetadata, layer: LayerNodeIdentifier) -> Option<&List<MeshGradient>> {
-	let paint = metadata.layer_appearance_attributes.get(&layer)?.first_paint_of(Cover::Fill)?;
-	let Graphic::MeshGradientList(meshes) = paint else { return None };
-	(!meshes.is_empty()).then(|| meshes)
+/// The mesh gradient a layer paints.
+fn layer_mesh_gradient_paint(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> Option<MeshGradientPaint> {
+	get_mesh_gradient_paint(layer, &document.network_interface, || document.metadata().nonzero_bounding_box(layer))
 }
 
 /// Returns the first mesh gradient painted by the selection, paired with the settings riding alongside it.
 fn first_selected_mesh_gradient_surface(document: &DocumentMessageHandler) -> Option<MeshGradientSurface> {
-	document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface).find_map(|layer| {
-		let meshes = layer_mesh_gradient_paint(document.metadata(), layer)?;
-		meshes.element(0).map(|mesh| mesh_gradient_surface(meshes, 0, mesh))
-	})
+	document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_layers(&document.network_interface)
+		.find_map(|layer| layer_mesh_gradient_paint(document, layer).map(|paint| paint.surface))
 }
 
 /// Whether the layer's fill already paints a mesh gradient.
 fn layer_paints_mesh_gradient(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> bool {
-	layer_mesh_gradient_paint(document.metadata(), layer).is_some()
+	layer_mesh_gradient_paint(document, layer).is_some()
 }
 
 /// Rewrites the settings of the first mesh gradient of every selected layer, leaving its geometry and colors alone.
@@ -243,8 +257,7 @@ fn apply_mesh_gradient_options(context: &mut ToolActionMessageContext, responses
 		let Some(source) = resolve_mesh_gradient_source(layer, &document.network_interface) else {
 			continue;
 		};
-		let Some(meshes) = layer_mesh_gradient_paint(document.metadata(), layer) else { continue };
-		let Some(mut surface) = meshes.element(0).map(|mesh| mesh_gradient_surface(meshes, 0, mesh)) else {
+		let Some(mut surface) = layer_mesh_gradient_paint(document, layer).map(|paint| paint.surface) else {
 			continue;
 		};
 		update(&mut surface);
@@ -285,7 +298,6 @@ impl Default for MeshGradientToolFsmState {
 #[derive(Clone, Debug, PartialEq)]
 struct SelectedMeshGradient {
 	layer: LayerNodeIdentifier,
-	mesh_index: usize,
 	surface: MeshGradientSurface,
 	mesh_to_document: DAffine2,
 	source: GradientSource,
@@ -312,15 +324,6 @@ impl SelectedMeshGradient {
 enum GradientSource {
 	Direct,
 	Chain,
-}
-
-/// Pairs a rendered mesh with the whole-mesh settings riding alongside it as list attributes.
-fn mesh_gradient_surface(meshes: &List<MeshGradient>, index: usize, mesh: &MeshGradient) -> MeshGradientSurface {
-	MeshGradientSurface {
-		mesh: mesh.clone(),
-		gradient_space: meshes.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, index),
-		gradient_interpolation: meshes.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, index),
-	}
 }
 
 fn resolve_mesh_gradient_source(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientSource> {
@@ -494,19 +497,16 @@ impl Fsm for MeshGradientToolFsmState {
 				let mut hovering_corner = false;
 
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
-					let Some(meshes) = layer_mesh_gradient_paint(metadata, layer) else {
+					let Some(paint) = layer_mesh_gradient_paint(document, layer) else {
 						continue;
 					};
 
 					let layer_to_viewport = metadata.transform_to_viewport(layer);
 
-					for index in 0..meshes.len() {
-						let Some(mesh) = meshes.element(index) else {
-							continue;
-						};
+					{
+						let mesh = &paint.surface.mesh;
 
-						let mesh_to_layer: DAffine2 = meshes.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-						let mesh_to_viewport = layer_to_viewport * mesh_to_layer;
+						let mesh_to_viewport = layer_to_viewport * paint.transform;
 						let geometry = mesh.geometry();
 
 						// Render the mesh geometry's outline in the same manner as the path tool does
@@ -515,7 +515,7 @@ impl Fsm for MeshGradientToolFsmState {
 						}
 
 						if let Some(selected_segment_id) = tool_data.selected_mesh.as_ref().and_then(|selected_mesh| {
-							if selected_mesh.layer != layer || selected_mesh.mesh_index != index {
+							if selected_mesh.layer != layer {
 								return None;
 							}
 							match selected_mesh.target {
@@ -550,7 +550,6 @@ impl Fsm for MeshGradientToolFsmState {
 									selected_mesh.target,
 									MeshGradientTarget::Corner{corner_index, ..}
 										if selected_mesh.layer == layer
-											&& selected_mesh.mesh_index == index
 											&& corner_index == corner.index
 								)
 							});
@@ -704,7 +703,7 @@ impl Fsm for MeshGradientToolFsmState {
 				let tolerance_squared = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
-					let Some(meshes) = layer_mesh_gradient_paint(metadata, layer) else {
+					let Some(paint) = layer_mesh_gradient_paint(document, layer) else {
 						continue;
 					};
 					let Some(source) = resolve_mesh_gradient_source(layer, &document.network_interface) else {
@@ -713,13 +712,10 @@ impl Fsm for MeshGradientToolFsmState {
 
 					let layer_to_viewport = metadata.transform_to_viewport(layer);
 
-					for index in 0..meshes.len() {
-						let Some(gradient) = meshes.element(index) else {
-							continue;
-						};
+					{
+						let gradient = &paint.surface.mesh;
 
-						let mesh_to_layer: DAffine2 = meshes.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-						let mesh_to_viewport = layer_to_viewport * mesh_to_layer;
+						let mesh_to_viewport = layer_to_viewport * paint.transform;
 						let mesh_to_document = document_to_viewport.inverse() * mesh_to_viewport;
 						let local_mouse = mesh_to_viewport.inverse().transform_point2(mouse);
 
@@ -733,8 +729,7 @@ impl Fsm for MeshGradientToolFsmState {
 
 								tool_data.selected_mesh = Some(SelectedMeshGradient {
 									layer,
-									mesh_index: index,
-									surface: mesh_gradient_surface(meshes, index, gradient),
+									surface: paint.surface.clone(),
 									mesh_to_document,
 									source,
 									target: MeshGradientTarget::Corner {
@@ -787,8 +782,7 @@ impl Fsm for MeshGradientToolFsmState {
 
 							tool_data.selected_mesh = Some(SelectedMeshGradient {
 								layer,
-								mesh_index: index,
-								surface: mesh_gradient_surface(meshes, index, gradient),
+								surface: paint.surface.clone(),
 								mesh_to_document,
 								source,
 								target: MeshGradientTarget::Handle {
@@ -821,8 +815,7 @@ impl Fsm for MeshGradientToolFsmState {
 
 								tool_data.selected_mesh = Some(SelectedMeshGradient {
 									layer,
-									mesh_index: index,
-									surface: mesh_gradient_surface(meshes, index, gradient),
+									surface: paint.surface.clone(),
 									mesh_to_document,
 									source,
 									target: MeshGradientTarget::Segment {

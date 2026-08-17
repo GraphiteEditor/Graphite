@@ -283,14 +283,16 @@ fn render_svg_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, 
 		return None;
 	}
 
+	let pattern_transform = stroke_transform * DAffine2::from_translation(min);
+
 	// Render the pattern content recursively
 	let mut content = SvgRender::new();
+	content.transform = pattern_transform;
 	fill_graphic_list.render_svg(&mut content, &render_params.for_pattern());
 
 	// Unwrap the inner def element
 	write!(svg_defs, "{}", content.svg_defs).unwrap();
 
-	let pattern_transform = stroke_transform * DAffine2::from_translation(min);
 	let transform_str = format_transform_matrix(pattern_transform);
 	let transform_attr = if transform_str.is_empty() {
 		String::new()

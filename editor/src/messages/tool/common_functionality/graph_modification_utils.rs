@@ -14,7 +14,9 @@ use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{FillChoice, GradientSpace, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
+use graphene_std::vector::style::{
+	FillChoice, GradientSpace, MeshGradientSurface, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box, initial_mesh_gradient_transform_for_bounding_box,
+};
 use graphene_std::vector::{Gradient, GradientForm, GradientRamp, GradientSettings, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
@@ -521,6 +523,51 @@ pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
 /// Try to find a "Mesh Gradient Value" node that is connected to a "Fill" node, or to a layer directly.
 pub fn get_upstream_mesh_gradient_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	get_upstream_paint_value_node_id(layer, network_interface, graphene_std::math_nodes::mesh_gradient_value::IDENTIFIER)
+}
+
+/// A mesh gradient read back out of the graph.
+pub struct MeshGradientPaint {
+	pub surface: MeshGradientSurface,
+	pub transform: DAffine2,
+}
+
+/// Decode a 'Fill' node's direct mesh gradient value.
+/// Take an explicit mesh transform when the node carries one, otherwise the automatic fit over the paint target's bounds.
+pub fn read_fill_node_mesh_gradient(fill_node: &DocumentNode, bounding_box: impl FnOnce() -> [DVec2; 2]) -> Option<MeshGradientPaint> {
+	use graphene_std::vector::fill;
+
+	let TaggedValue::MeshGradient(surface) = fill_node.input(fill::FillInput)?.as_value()? else {
+		return None;
+	};
+	let has_transform = matches!(fill_node.input(fill::HasMeshTransformInput).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
+	let transform_input = fill_node.input(fill::MeshTransformInput).and_then(|input| input.as_value());
+	let transform = match (has_transform, transform_input) {
+		(true, Some(&TaggedValue::DAffine2(value))) => value,
+		(false, _) => initial_mesh_gradient_transform_for_bounding_box(bounding_box()),
+		_ => DAffine2::IDENTITY,
+	};
+
+	Some(MeshGradientPaint { surface: surface.clone(), transform })
+}
+
+/// Read the mesh gradient a layer paints with straight out of the graph.
+pub fn get_mesh_gradient_paint(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, bounding_box: impl FnOnce() -> [DVec2; 2]) -> Option<MeshGradientPaint> {
+	// A Fill node holding a direct mesh gradient value decodes through the shared reader
+	if let Some(fill_node_id) = get_fill_node_id_with_direct_fill_input(layer, network_interface) {
+		let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
+		return read_fill_node_mesh_gradient(fill_node, bounding_box);
+	}
+
+	// Otherwise the mesh comes from a 'Mesh Gradient Value' node feeding the chain, whose placement the Fill node fits
+	let value_node = network_interface.document_network().nodes.get(&get_upstream_mesh_gradient_value_node_id(layer, network_interface)?)?;
+	let TaggedValue::MeshGradient(surface) = value_node.input(graphene_std::math_nodes::mesh_gradient_value::MeshGradientInput)?.as_value()? else {
+		return None;
+	};
+
+	Some(MeshGradientPaint {
+		surface: surface.clone(),
+		transform: initial_mesh_gradient_transform_for_bounding_box(bounding_box()),
+	})
 }
 
 /// Get the current fill of a layer from the closest "Fill" node.

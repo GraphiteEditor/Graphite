@@ -269,7 +269,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Arc::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Arc::new(Item::new_from_element(BoxCorners::from(values))),
 					Self::GradientRamp(ramp) => Arc::new(Item::<Gradient>::from(ramp)),
-					Self::MeshGradient(surface) => Arc::new(Item::<MeshGradient>::from(surface.clone())),
+					Self::MeshGradient(surface) => Arc::new(Item::<MeshGradient>::from(surface)),
 					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
