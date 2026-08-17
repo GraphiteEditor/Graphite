@@ -2973,7 +2973,10 @@ mod tests {
 	// Migrating a Merge network's coercion nodes by alias would leave a reducer in the primary slot, so every alias must reset instead
 	#[test]
 	fn every_into_group_alias_resets_the_merge_definition() {
-		for alias in into_group_aliases() {
+		let aliases = into_group_aliases().collect::<Vec<_>>();
+		assert!(!aliases.is_empty(), "the reset is driven by these aliases, so losing them all would disable it unnoticed");
+
+		for alias in aliases {
 			assert!(
 				document_migration_reset_node_definition(&format!(r#""implementation":{{"ProtoNode":"{alias}"}}"#)),
 				"a document referencing `{alias}` should reset its layer definitions"
