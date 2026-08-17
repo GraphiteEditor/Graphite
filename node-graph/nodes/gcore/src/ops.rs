@@ -77,6 +77,19 @@ fn into_list<'i, T: 'i + Send + Into<E>, E: 'i + Send>(_: impl Ctx, value: List<
 		.collect()
 }
 
+/// Moves a whole `Item` wire inside an element type like `Graphic` that embeds ranked values as its variants.
+/// The attributes describe the element they arrived with, so they travel inside it and the fresh envelope starts empty.
+#[node_macro::node(category(""), skip_impl)]
+fn embed_item<'i, T: 'i + Send, E: 'i + Send + From<Item<T>>>(_: impl Ctx, value: Item<T>, _element_ty: PhantomData<E>) -> Item<E> {
+	Item::new_from_element(value.into())
+}
+
+/// The `List` counterpart of `embed_item`, each item moving whole inside its own embedding element.
+#[node_macro::node(category(""), skip_impl)]
+fn embed_list<'i, T: 'i + Send, E: 'i + Send + From<Item<T>>>(_: impl Ctx, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
+	value.into_iter().map(|item| Item::new_from_element(E::from(item))).collect()
+}
+
 /// The [`Convert`]-based counterpart of `into_item`, casting an `Item` wire's element to a connector's numeric element type.
 #[node_macro::node(category(""), skip_impl)]
 async fn convert_item<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: Item<T>, _element_ty: PhantomData<E>) -> Item<E> {
