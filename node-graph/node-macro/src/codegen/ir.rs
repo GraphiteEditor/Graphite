@@ -215,7 +215,13 @@ fn ilist_inner(ty: &Type) -> Option<Type> {
 /// Emits the `LayoutMeta` literal from the IR. `element_spec` is supplied by the
 /// caller since it is the one row-dependent facet; the rest folds from the node.
 pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_types: &TokenStream2) -> TokenStream2 {
-	let sources = node.inputs.iter().enumerate().filter(|(_, input)| input.subject).map(|(index, _)| index as u8);
+	// A materialized subject is folded, not carried: it contributes no layout.
+	let sources = node
+		.inputs
+		.iter()
+		.enumerate()
+		.filter(|(index, input)| input.subject && materialized_levels(node, *index) == 0)
+		.map(|(index, _)| index as u8);
 	let reads = node.inputs.iter().enumerate().filter_map(|(index, input)| {
 		(matches!(input.evaluation, Evaluation::Eager) && !input.shape.attrs.is_empty()).then(|| {
 			let descs = field_writes(&input.shape.attrs, core_types);
@@ -254,8 +260,15 @@ fn field_writes(attrs: &[LevelAttr], core_types: &TokenStream2) -> Vec<TokenStre
 }
 
 fn level_delta(node: &Node) -> i8 {
-	let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth as i8);
-	node.output.shape.depth as i8 - subject_depth
+	// A materialized subject contributes no base layout, so the delta is
+	// relative to the fresh (empty) base.
+	let base_depth = node
+		.inputs
+		.iter()
+		.enumerate()
+		.find(|(index, input)| input.subject && materialized_levels(node, *index) == 0)
+		.map_or(0, |(_, input)| input.shape.depth as i8);
+	node.output.shape.depth as i8 - base_depth
 }
 
 /// How an eager value input binds in eval.
@@ -323,11 +336,11 @@ fn has_attr_io(node: &Node) -> bool {
 /// into a `List` before the kernel.
 pub(crate) fn materialized_levels(node: &Node, index: usize) -> u8 {
 	let input = &node.inputs[index];
-	// A ranked subject folds the levels the output collapses; a ranked
-	// non-subject input is consumed whole.
-	match input.subject {
-		true => input.shape.depth.saturating_sub(node.output.shape.depth),
-		false => input.shape.depth,
+	// An eager input's declared `IList` nesting IS its materialization count,
+	// independent of the rank delta; lazy edges never materialize.
+	match input.evaluation {
+		Evaluation::Eager => input.shape.depth,
+		Evaluation::Lazy => 0,
 	}
 }
 
@@ -472,7 +485,13 @@ mod tests {
 		};
 		let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth as i8);
 		Facts {
-			sources: node.inputs.iter().enumerate().filter(|(_, input)| input.subject).map(|(index, _)| index).collect(),
+			sources: node
+				.inputs
+				.iter()
+				.enumerate()
+				.filter(|(index, input)| input.subject && materialized_levels(node, *index) == 0)
+				.map(|(index, _)| index)
+				.collect(),
 			carried,
 			writes: markers(node.output.shape.attrs.iter().map(|attr| &attr.marker)),
 			removes: markers(node.output.removes.iter().map(|attr| &attr.marker)),

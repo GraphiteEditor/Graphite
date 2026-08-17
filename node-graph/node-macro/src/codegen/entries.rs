@@ -327,7 +327,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 
 	let (prelude, new_layout_args, layout_meta) = match ir::node_kind(&node) {
 		ir::NodeKind::RecordIo => {
-			let carrier_arg = node.inputs.first().is_some_and(|input| input.subject).then(|| quote!(&__layout_0,));
+			let carrier_arg = (node.inputs.first().is_some_and(|input| input.subject) && ir::materialized_levels(&node, 0) == 0).then(|| quote!(&__layout_0,));
 			let layout_meta_fn = format_ident!("{}_layout_meta", fn_name);
 			(quote!(), quote!(#carrier_arg #(#value_layout_args)*), quote!(Some(self::#layout_meta_fn())))
 		}
