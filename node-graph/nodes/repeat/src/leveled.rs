@@ -26,7 +26,9 @@ fn repeat_array<T>(
 ) -> Result<IList<(T, Attr<Transform>)>, Interrupt> {
 	let inner = content.inner_extent(ctx)?;
 	let (copy, rest) = ctx.split_innermost(inner);
-	let copy = copy % count.max(1) as u64;
+	if copy >= count as u64 {
+		return Err(GraphError::new("repeat addressed past its copy count").into());
+	}
 	let mut frame = IndexLink { index: 0, outer: None };
 	let (element, local) = content.eval(&ctx.push_level(&mut frame, copy, rest))?;
 
@@ -63,7 +65,9 @@ fn repeat_radial<T>(
 ) -> Result<IList<(T, Attr<Transform>)>, Interrupt> {
 	let inner = content.inner_extent(ctx)?;
 	let (copy, rest) = ctx.split_innermost(inner);
-	let copy = copy % count.max(1) as u64;
+	if copy >= count as u64 {
+		return Err(GraphError::new("repeat addressed past its copy count").into());
+	}
 	let mut frame = IndexLink { index: 0, outer: None };
 	let (element, local) = content.eval(&ctx.push_level(&mut frame, copy, rest))?;
 

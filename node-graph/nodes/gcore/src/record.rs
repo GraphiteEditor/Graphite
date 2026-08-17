@@ -6,10 +6,10 @@
 //! wiring is by hand until the compiler pass constructs layouts.
 
 use core_types::attribute::{Attr, Opacity, RemoveAttr};
-use core_types::context::{DeriveCtx, ExtractArena, ExtractIndex, IndexLink, InjectIndex};
+use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex};
 use core_types::extent::{ExtentIn, LevelIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt};
-use core_types::{Context, Ctx};
+use core_types::Ctx;
 
 core_types::attribute! {
 	/// Test-only measured length of an element.
@@ -55,6 +55,7 @@ fn fade<T>(_: impl Ctx, (element, opacity): (T, Attr<Opacity>), factor: f64) -> 
 /// writes a per-copy opacity indexed by the copy's own index.
 #[node_macro::node(category("Test"), extent(repeat_opacity_extent))]
 fn repeat_opacity(ctx: impl Ctx + ExtractIndex, element: f64, count: u32) -> IList<(f64, Attr<Opacity>)> {
+	debug_assert!(ctx.innermost_index() < count as u64, "repeat addressed past its copy count");
 	emit(element, Attr(ctx.innermost_index() as f64))
 }
 
@@ -84,7 +85,9 @@ fn repeat<T>(
 ) -> Result<IList<T>, Interrupt> {
 	let inner = content.inner_extent(ctx)?;
 	let (copy, rest) = ctx.split_innermost(inner);
-	let copy = copy % count.max(1) as u64;
+	if copy >= count as u64 {
+		return Err(GraphError::new("repeat addressed past its copy count").into());
+	}
 	let copy = match reverse {
 		true => count as u64 - 1 - copy,
 		false => copy,
@@ -112,7 +115,9 @@ fn repeat_faded<T>(
 ) -> Result<IList<(T, Attr<Opacity>)>, Interrupt> {
 	let inner = content.inner_extent(ctx)?;
 	let (copy, rest) = ctx.split_innermost(inner);
-	let copy = copy % count.max(1) as u64;
+	if copy >= count as u64 {
+		return Err(GraphError::new("repeat addressed past its copy count").into());
+	}
 	let mut frame = IndexLink { index: 0, outer: None };
 	let (element, opacity) = content.eval(&ctx.push_level(&mut frame, copy, rest))?;
 	Ok(emit(element, Attr(*opacity * (copy + 1) as f64)))
@@ -359,7 +364,7 @@ mod tests {
 		let leveled = repeat_opacity_layout(&base);
 		reserve_for(&[&base, &leveled]);
 
-		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(8u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
 		assert_eq!(node.layout(), &leveled);
 		let GPoll::Final(value) = node.eval(&indexed) else {
 			panic!("expected a final record");
