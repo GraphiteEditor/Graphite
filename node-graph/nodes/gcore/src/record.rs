@@ -65,6 +65,11 @@ fn sum(_: impl Ctx + InjectIndex + Copy, items: IList<f64>) -> f64 {
 	items.into_iter().sum()
 }
 
+#[node_macro::node(category("Test"))]
+fn sum_nested(_: impl Ctx + InjectIndex + Copy, items: IList<IList<f64>>) -> f64 {
+	items.into_iter().sum()
+}
+
 /// The pushed level's extent is the copy count; other levels forward to the carrier.
 fn repeat_opacity_extent(element: ExtentIn<'_>, count: ValueIn<'_, u32>, level: LevelIn) -> GPoll<Extent> {
 	match level.pushed() {
@@ -1056,6 +1061,45 @@ mod tests {
 		};
 		let transform: DAffine2 = unsafe { out.rec(&value).read(out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()) };
 		assert_eq!(transform.translation.x, 30., "without originals every lane reflects");
+	}
+
+	#[test]
+	fn nested_fold_collapses_two_levels() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let base = f64_layout(&[]);
+		let leveled_content = repeat_opacity_layout(&base);
+		let (count_edge, count_layout) = lifted_value(2u32);
+		let (reverse_edge, reverse_layout) = lifted_value(false);
+		let out = f64_layout(&[]);
+		reserve_for(&[&base, &leveled_content, &count_layout, &reverse_layout, &out]);
+
+		let content = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let meta = core_types::record::LayoutMeta {
+			sources: vec![0],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 1,
+		};
+		let nested = install(
+			RepeatNode::new(RecordSource::new(content, &leveled_content, &leveled_content), count_edge, reverse_edge, &leveled_content, &count_layout, &reverse_layout),
+			meta,
+			&[Some(&leveled_content)],
+		);
+		let two_level = Node::<ContextImpl>::layout(&nested).clone();
+		assert_eq!(two_level.depth, 2);
+
+		let node = install_flip(SumNestedNode::new(nested, &two_level), &out);
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		// Two copies of three lanes of 7: the nested fold flattens 2 x 3.
+		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 42.);
 	}
 
 	#[test]
