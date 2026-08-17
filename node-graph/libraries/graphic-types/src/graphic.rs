@@ -437,6 +437,7 @@ impl IntoGraphicList for List<String> {
 	}
 }
 
+// TODO: Remove this
 impl IntoGraphicList for Item<DAffine2> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::default())
@@ -444,6 +445,7 @@ impl IntoGraphicList for Item<DAffine2> {
 }
 
 // DAffine2
+// TODO: Remove this
 impl From<Item<DAffine2>> for Graphic {
 	fn from(_: Item<DAffine2>) -> Self {
 		Graphic::default()
@@ -453,7 +455,20 @@ impl From<Item<DAffine2>> for Graphic {
 // DVec2
 impl From<Item<DVec2>> for Graphic {
 	fn from(position: Item<DVec2>) -> Self {
-		Graphic::VectorList(List::new_from_element(Vector::from_anchor_position(position.into_element())))
+		let (position, attributes) = position.into_parts();
+
+		Graphic::Vector(Box::new(Item::from_parts(Vector::from_anchor_position(position), attributes)))
+	}
+}
+impl From<List<DVec2>> for Graphic {
+	fn from(positions: List<DVec2>) -> Self {
+		let anchors = positions.into_iter().map(|position| {
+			let (position, attributes) = position.into_parts();
+
+			Item::from_parts(Vector::from_anchor_position(position), attributes)
+		});
+
+		Graphic::VectorList(anchors.collect())
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
