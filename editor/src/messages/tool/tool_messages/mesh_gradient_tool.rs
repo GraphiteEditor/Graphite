@@ -318,6 +318,16 @@ impl SelectedMeshGradient {
 		};
 		responses.add(message);
 	}
+
+	fn update_color_picker_position(&self, corner_index: usize, document_to_viewport: DAffine2, responses: &mut VecDeque<Message>) -> bool {
+		let Some(corner) = self.surface.mesh.corners().find(|corner| corner.index == corner_index) else {
+			return false;
+		};
+		let mesh_to_viewport = document_to_viewport * self.mesh_to_document;
+		let position = mesh_to_viewport.transform_point2(corner.position).into();
+		responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color: corner.color.into(), position });
+		true
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -596,11 +606,8 @@ impl Fsm for MeshGradientToolFsmState {
 
 				if let Some(corner_index) = tool_data.color_picker_editing_color_stop
 					&& let Some(selected_mesh) = tool_data.selected_mesh.as_ref()
-					&& let Some(corner) = selected_mesh.surface.mesh.corners().find(|corner| corner.index == corner_index)
 				{
-					let mesh_to_viewport = metadata.document_to_viewport * selected_mesh.mesh_to_document;
-					let position = mesh_to_viewport.transform_point2(corner.position).into();
-					responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color: corner.color.into(), position });
+					selected_mesh.update_color_picker_position(corner_index, metadata.document_to_viewport, responses);
 				}
 
 				match self {
@@ -661,21 +668,19 @@ impl Fsm for MeshGradientToolFsmState {
 				}
 
 				let Some(selected_mesh) = tool_data.selected_mesh.as_mut() else { return self };
-				let mesh_to_viewport = document.metadata().document_to_viewport * selected_mesh.mesh_to_document;
+				let document_to_viewport = document.metadata().document_to_viewport;
 
 				match selected_mesh.target {
 					// Display color picker when the mesh corner color gizmo is double clicked
 					MeshGradientTarget::Corner { corner_index, .. } => {
-						let Some(corner) = selected_mesh.surface.mesh.corners().find(|corner| corner.index == corner_index) else {
+						if !selected_mesh.update_color_picker_position(corner_index, document_to_viewport, responses) {
 							return self;
-						};
+						}
 
-						tool_data.color_picker_editing_color_stop = Some(corner.index);
-
-						let position = mesh_to_viewport.transform_point2(corner.position).into();
-						responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color: corner.color.into(), position });
+						tool_data.color_picker_editing_color_stop = Some(corner_index);
 					}
 					MeshGradientTarget::Segment { segment_id, .. } => {
+						let mesh_to_viewport = document_to_viewport * selected_mesh.mesh_to_document;
 						let Some(segment) = selected_mesh.surface.mesh.edges().find(|edge| edge.segment_id == segment_id) else {
 							return self;
 						};
