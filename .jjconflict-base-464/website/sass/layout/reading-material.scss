@@ -1,0 +1,50 @@
+.reading-material.reading-material {
+	font-size: 16px;
+	line-height: 1.625;
+	max-width: var(--max-width-reading-material);
+
+	article {
+		width: 100%;
+
+		h1,
+		h2,
+		h3,
+		h4,
+		h5,
+		h6 {
+			display: block;
+			margin-top: 80px;
+
+			&:first-child {
+				margin-top: 0;
+			}
+		}
+
+		// Captions below images in blog posts
+		p:has(> img) + center:has(> em) {
+			margin-top: 10px;
+		}
+
+		@media (min-width: 1200px) {
+			.wide {
+				margin-left: -140px;
+				margin-right: -140px;
+			}
+		}
+
+		p ~ img {
+			width: auto;
+			max-width: 100%;
+		}
+
+		hr {
+			margin-top: 40px;
+			margin-bottom: 40px;
+		}
+
+		+ hr {
+			margin-top: calc(80 * var(--variable-px));
+			margin-bottom: calc(40 * var(--variable-px));
+		}
+	}
+}

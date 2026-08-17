@@ -1,0 +1,169 @@
+extern crate log;
+
+pub mod bounds;
+pub mod consts;
+pub mod context;
+pub mod generic;
+pub mod list;
+pub mod math;
+pub mod memo;
+pub mod misc;
+pub mod ops;
+pub mod registry;
+pub mod render_complexity;
+pub mod transform;
+pub mod uuid;
+pub mod value;
+
+pub use crate as core_types;
+pub use blending::*;
+pub use color::Color;
+pub use context::*;
+pub use ctor;
+pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
+pub use graphene_hash;
+pub use graphene_hash::CacheHash;
+pub use list::{
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_END,
+	ATTR_FONT, ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION,
+	ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_NAME, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_START, ATTR_TEXT_ALIGN, ATTR_TRANSFORM, ATTR_TYPE,
+};
+pub use memo::MemoHash;
+pub use no_std_types::AsU32;
+pub use no_std_types::blending;
+pub use no_std_types::choice_type;
+pub use no_std_types::color;
+pub use no_std_types::shaders;
+pub use num_traits;
+use std::any::TypeId;
+use std::future::Future;
+use std::pin::Pin;
+#[cfg(feature = "wasm")]
+pub use tsify;
+pub use types::Cow;
+
+// pub trait Node: for<'n> NodeIO<'n> {
+/// The node trait allows for defining any node. Nodes can only take one call argument input, however they can store references to other nodes inside the struct.
+/// See `node-graph/README.md` for information on how to define a new node.
+pub trait Node<'i, Input> {
+	type Output: 'i;
+	/// Evaluates the node with the single specified input.
+	fn eval(&'i self, input: Input) -> Self::Output;
+	/// Resets the node, e.g. the LetNode's cache is set to None.
+	fn reset(&self) {}
+	/// Returns the name of the node for diagnostic purposes.
+	fn node_name(&self) -> &'static str {
+		std::any::type_name::<Self>()
+	}
+	/// Serialize the node which is used for the `introspect` function which can retrieve values from monitor nodes.
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		log::warn!("Node::serialize not implemented for {}", std::any::type_name::<Self>());
+		None
+	}
+}
+
+mod types;
+pub use types::*;
+
+pub trait NodeIO<'i, Input>: Node<'i, Input>
+where
+	Self::Output: 'i + StaticTypeSized,
+	Input: StaticTypeSized,
+{
+	fn input_type(&self) -> TypeId {
+		TypeId::of::<Input::Static>()
+	}
+	fn input_type_name(&self) -> &'static str {
+		std::any::type_name::<Input>()
+	}
+	fn output_type(&self) -> TypeId {
+		TypeId::of::<<Self::Output as StaticTypeSized>::Static>()
+	}
+	fn output_type_name(&self) -> &'static str {
+		std::any::type_name::<Self::Output>()
+	}
+	fn to_node_io(&self, inputs: Vec<Type>) -> NodeIOTypes {
+		NodeIOTypes {
+			call_argument: concrete!(<Input as StaticTypeSized>::Static),
+			return_value: concrete!(<Self::Output as StaticTypeSized>::Static),
+			inputs,
+		}
+	}
+	fn to_async_node_io(&self, inputs: Vec<Type>) -> NodeIOTypes
+	where
+		<Self::Output as Future>::Output: StaticTypeSized,
+		Self::Output: Future,
+	{
+		NodeIOTypes {
+			call_argument: concrete!(<Input as StaticTypeSized>::Static),
+			return_value: future!(<<Self::Output as Future>::Output as StaticTypeSized>::Static),
+			inputs,
+		}
+	}
+}
+
+impl<'i, N: Node<'i, I>, I> NodeIO<'i, I> for N
+where
+	N::Output: 'i + StaticTypeSized,
+	I: StaticTypeSized,
+{
+}
+
+impl<'i, I: 'i, N: Node<'i, I> + ?Sized> Node<'i, I> for &'i N {
+	type Output = N::Output;
+	fn eval(&'i self, input: I) -> N::Output {
+		(*self).eval(input)
+	}
+}
+impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for Box<N> {
+	type Output = O;
+	fn eval(&'i self, input: I) -> O {
+		(**self).eval(input)
+	}
+}
+impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for std::sync::Arc<N> {
+	type Output = O;
+	fn eval(&'i self, input: I) -> O {
+		(**self).eval(input)
+	}
+}
+
+impl<'i, I, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
+	type Output = O;
+	fn eval(&'i self, input: I) -> O {
+		(**self).eval(input)
+	}
+}
+impl<'i, I, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)> {
+	type Output = O;
+	fn eval(&'i self, input: I) -> O {
+		(**self).eval(input)
+	}
+}
+
+/// A compile-time symbol naming one parameter of one proto node.
+/// The node macro generates a unit struct implementing this for every parameter, so code can pass the type itself (e.g. `stroke::WeightInput`) instead of a raw input index.
+pub trait NodeParameter {
+	/// The proto node this parameter belongs to.
+	const NODE_IDENTIFIER: ProtoNodeIdentifier;
+	/// Position of this parameter among the node's inputs.
+	/// Prefer passing the symbol to an API that accepts it; reach for this only at genuinely index-based boundaries.
+	const INDEX: usize;
+}
+
+/// A runtime reference to one parameter of one proto node, for heterogeneous tables and runtime-chosen parameters.
+/// Convert a symbol with `.into()`; unlike a raw index, the node identifier and index always stay paired.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ParameterRef {
+	pub node_identifier: ProtoNodeIdentifier,
+	pub input_index: usize,
+}
+
+impl<P: NodeParameter> From<P> for ParameterRef {
+	fn from(_: P) -> Self {
+		ParameterRef {
+			node_identifier: P::NODE_IDENTIFIER,
+			input_index: P::INDEX,
+		}
+	}
+}

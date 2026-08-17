@@ -934,10 +934,10 @@ pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
-		List<Vector>,
+	 	List<Vector>,
 		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
+	 	List<Raster<GPU>>,
+	 	List<Color>,
 		List<Gradient>,
 		List<String>,
 		Item<DAffine2>,
@@ -981,15 +981,9 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
-			// A boxed single graphic is the rank-0 spelling of the same nesting, so it flattens through the list path
-			let current_element = match current_element {
-				Graphic::Graphic(item) if recurse => Graphic::GraphicList(List::new_from_item(*item)),
-				element => element,
-			};
-
 			match current_element {
 				// If we're allowed to recurse, flatten any graphics we encounter
-				Graphic::GraphicList(mut current_element) if recurse => {
+				Graphic::Graphic(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
 					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 						*graphic_transform = current_transform * *graphic_transform;
@@ -997,7 +991,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 					flatten_list(output_graphic_list, current_element, fully_flatten, recursion_depth + 1);
 				}
-				// Push any leaf element: a group beyond the recursion depth, or any non-group variant
+				// Push any leaf elements we encounter: either `Graphic::Graphic(...)` values beyond the recursion depth, or non-`Graphic::Graphic` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`, `Graphic::Text`)
 				_ => {
 					let attributes = current_graphic_list.clone_item_attributes(index);
 					output_graphic_list.push(Item::from_parts(current_element, attributes));

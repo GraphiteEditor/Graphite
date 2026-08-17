@@ -707,14 +707,14 @@ impl TaggedValue {
 		}
 	}
 
-	/// The stored form of a paint input's red-slash "no paint" choice: the `Item<Graphic>` type default, materializing as a `Graphic::None` paint.
+	/// The stored form of a paint input's red-slash "no paint" choice: the `List<Graphic>` type default, materializing as an empty paint list.
 	pub fn no_paint() -> Self {
-		TaggedValue::TypeDefault(item!(Graphic))
+		TaggedValue::TypeDefault(list!(Graphic))
 	}
 
-	/// Whether this is the `Item<Graphic>` type default created by [`Self::no_paint`] (and by disconnecting a paint wire).
+	/// Whether this is the `List<Graphic>` type default created by [`Self::no_paint`] (and by disconnecting a paint wire).
 	pub fn is_no_paint(&self) -> bool {
-		matches!(self, TaggedValue::TypeDefault(td) if *td == item!(Graphic))
+		matches!(self, TaggedValue::TypeDefault(td) if *td == list!(Graphic))
 	}
 }
 

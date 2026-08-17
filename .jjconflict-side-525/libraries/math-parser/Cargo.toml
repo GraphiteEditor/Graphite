@@ -1,0 +1,20 @@
+[package]
+name = "math-parser"
+version = "0.0.0"
+rust-version = "1.85"
+edition = "2024"
+authors = ["Graphite Authors <contact@graphite.art>"]
+description = "Parser for Graphite style mathematics expressions"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+thiserror = "2.0"
+num-complex = "0.4"
+chumsky = { version = "0.10", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "bench"
+harness = false

@@ -1,0 +1,24 @@
+[package]
+name = "dyn-any-derive"
+version = "0.3.0"
+edition = "2024"
+authors = ["Graphite Authors <contact@graphite.art>"]
+
+description = "#[derive(DynAny)]"
+documentation = "https://docs.rs/dyn-any-derive"
+repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/dyn-any/derive"
+license = "MIT OR Apache-2.0"
+readme = "../README.md"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# Workspace dependencies
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true }
+
+[dev-dependencies]
+# Local dependencies
+dyn-any = { path = "..", features = ["derive"] }

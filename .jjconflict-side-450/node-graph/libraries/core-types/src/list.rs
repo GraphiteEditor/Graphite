@@ -80,7 +80,7 @@ pub const ATTR_MIDPOINT: &str = "midpoint";
 /// Item's ordered list of paint passes, of type `Appearance`. Earlier coverages paint first, compositing below later ones.
 pub const ATTR_APPEARANCE: &str = "appearance";
 // TODO: Add a "fill_rule" attribute as a sibling of "paint" on the coverage list (uniform across covers) once a FillRule type ships
-/// Coverage's `Graphic` paint (implicit default `Graphic::None`, painting nothing), on the
+/// Coverage's `List<Graphic>` paint (implicit default empty, painting nothing), on the
 /// `List<Coverage>` inside an `Appearance`.
 pub const ATTR_PAINT: &str = "paint";
 /// Stroke coverage's line thickness (`f64`, implicit default `0.`), on the `Item<Cover>` inside a `Coverage`.
@@ -1329,19 +1329,6 @@ impl<T> FromIterator<Item<T>> for List<T> {
 pub struct Item<T> {
 	element: T,
 	attributes: ItemAttributeValues,
-}
-
-impl<T: BoundingBox> BoundingBox for Item<T> {
-	/// Computes the element's bounding box, composing the item's transform attribute with the given transform.
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
-		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
-		self.element().bounding_box(transform * item_transform, include_stroke)
-	}
-
-	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
-		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
-		self.element().thumbnail_bounding_box(transform * item_transform, include_stroke)
-	}
 }
 
 impl<T: Default> Default for Item<T> {

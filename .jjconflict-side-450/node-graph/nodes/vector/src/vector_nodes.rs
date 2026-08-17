@@ -15,7 +15,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, is_paint_present};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, IntoPaint, stamp_coverage};
+use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, stamp_coverage};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
@@ -47,31 +47,14 @@ trait VectorListIterMut {
 impl VectorListIterMut for List<Graphic> {
 	fn for_each_vector_list_mut(&mut self, mut f: impl FnMut(&mut List<Vector>)) {
 		for graphic in self.iter_element_values_mut() {
-			match graphic {
-				// A lone vector is lifted into a one-item list for the duration of the call, so the shared per-list logic reaches it
-				Graphic::Vector(item) => {
-					let mut lifted = List::new_from_item(std::mem::take(&mut **item));
-					f(&mut lifted);
-					if let Some(updated) = lifted.into_iter().next() {
-						**item = updated;
-					}
-				}
-				graphic => {
-					if let Some(vector_list) = graphic.as_vector_list_mut() {
-						f(vector_list);
-					}
-				}
-			}
+			if let Some(vector_list) = graphic.as_vector_mut() {
+				f(vector_list);
+			};
 		}
 	}
 
 	fn vector_count(&self) -> usize {
-		self.iter_element_values()
-			.map(|element| match element {
-				Graphic::Vector(_) => 1,
-				element => element.as_vector_list().map_or(0, List::len),
-			})
-			.sum()
+		self.iter_element_values().filter_map(|element| element.as_vector()).map(|list| list.len()).sum()
 	}
 }
 
@@ -100,18 +83,10 @@ impl VectorItemMut for Item<Vector> {
 
 impl VectorItemMut for Item<Graphic> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
-		match self.element_mut() {
-			Graphic::Vector(item) => {
-				let transform = item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
-				f(item.element_mut(), transform);
-			}
-			element => {
-				let Some(vector_list) = element.as_vector_list_mut() else { return };
-				let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
-				for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
-					f(vector, *transform);
-				}
-			}
+		let Some(vector_list) = self.element_mut().as_vector_mut() else { return };
+		let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
+		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
+			f(vector, *transform);
 		}
 	}
 }
@@ -140,10 +115,8 @@ impl MapVectorItems for Graphic {
 		fn map_nested(graphic: &mut Graphic, f: &mut impl FnMut(Item<Vector>) -> Item<Vector>) {
 			match graphic {
 				// Collecting from zero items would drop the attribute columns, so an empty list is left alone
-				Graphic::VectorList(list) if !list.is_empty() => *list = std::mem::take(list).into_iter().map(&mut *f).collect(),
-				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| map_nested(nested, f)),
-				Graphic::Vector(item) => **item = f(std::mem::take(&mut **item)),
-				Graphic::Graphic(item) => map_nested(item.element_mut(), f),
+				Graphic::Vector(list) if !list.is_empty() => *list = std::mem::take(list).into_iter().map(&mut *f).collect(),
+				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| map_nested(nested, f)),
 				_ => {}
 			}
 		}
@@ -157,10 +130,8 @@ impl MapVectorItems for Graphic {
 	fn vector_elements_mut(content: &mut Item<Graphic>) -> Vec<&mut Vector> {
 		fn collect<'a>(graphic: &'a mut Graphic, elements: &mut Vec<&'a mut Vector>) {
 			match graphic {
-				Graphic::VectorList(list) => elements.extend(list.iter_element_values_mut()),
-				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| collect(nested, elements)),
-				Graphic::Vector(item) => elements.push(item.element_mut()),
-				Graphic::Graphic(item) => collect(item.element_mut(), elements),
+				Graphic::Vector(list) => elements.extend(list.iter_element_values_mut()),
+				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| collect(nested, elements)),
 				_ => {}
 			}
 		}
@@ -188,20 +159,14 @@ impl ExpandVectorItems for Graphic {
 		fn expand_nested(graphic: &mut Graphic, f: &mut impl FnMut(Item<Vector>) -> List<Vector>) {
 			match graphic {
 				// Collecting from zero items would drop the attribute columns, so an empty list is left alone
-				Graphic::VectorList(list) if !list.is_empty() => {
+				Graphic::Vector(list) if !list.is_empty() => {
 					let mut expanded = List::with_capacity(list.len());
 					for item in std::mem::take(list) {
 						expanded.extend(f(item));
 					}
 					*list = expanded;
 				}
-				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(|nested| expand_nested(nested, f)),
-				// One item expanding into many is a rank raise, so the leaf becomes the list it grew into
-				Graphic::Vector(item) => {
-					let expanded = f(std::mem::take(&mut **item));
-					*graphic = Graphic::VectorList(expanded);
-				}
-				Graphic::Graphic(item) => expand_nested(item.element_mut(), f),
+				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(|nested| expand_nested(nested, f)),
 				_ => {}
 			}
 		}
@@ -274,7 +239,7 @@ where
 			};
 
 			let color = evaluator.evaluate(factor);
-			let color_paint = Graphic::ColorList(List::new_from_element(color));
+			let color_paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {
 				vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
@@ -303,7 +268,7 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<V, F: IntoPaint + 'n + Send + 'static>(
+async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
 	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
@@ -311,8 +276,8 @@ async fn fill<V, F: IntoPaint + 'n + Send + 'static>(
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	#[implementations(
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	fill: F,
 	_backup_color: Item<Color>,
@@ -328,10 +293,12 @@ where
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
 
 	let mut content = content;
-	let mut fill = fill.into_paint();
+	let mut fill = fill.into_graphic_list();
 
 	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
-	if let Graphic::GradientList(gradient) = &mut fill {
+	for graphic in fill.iter_element_values_mut() {
+		let Graphic::Gradient(gradient) = graphic else { continue };
+
 		if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
 				*value = _gradient_form;
@@ -377,7 +344,7 @@ where
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, P: IntoPaint + 'n + Send + 'static>(
+async fn stroke<V, P: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
 	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
@@ -385,8 +352,8 @@ async fn stroke<V, P: IntoPaint + 'n + Send + 'static>(
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	#[implementations(
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		Item<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	paint: P,
 	/// The stroke thickness.
@@ -433,7 +400,7 @@ where
 		transform: DAffine2::IDENTITY,
 	};
 
-	let paint = paint.into_paint();
+	let paint = paint.into_graphic_list();
 
 	// The coverage records the stroke's authoring space, so the item transform is composed in. Its translation
 	// cancels out in every consumer, so it is cleared to let an otherwise-identity capture elide.
@@ -1543,14 +1510,8 @@ impl SolidifyStroke for Graphic {
 	fn solidify_strokes(content: Item<Graphic>) -> List<Graphic> {
 		fn solidify_nested(graphic: &mut Graphic) {
 			match graphic {
-				Graphic::VectorList(list) if !list.is_empty() => *list = solidify_stroke_list_with_snapshot(std::mem::take(list)),
-				Graphic::GraphicList(list) => list.iter_element_values_mut().for_each(solidify_nested),
-				// Solidifying can split one path into separate fill and stroke items, so the leaf becomes a list
-				Graphic::Vector(item) => {
-					let solidified = solidify_stroke_list_with_snapshot(List::new_from_item(std::mem::take(&mut **item)));
-					*graphic = Graphic::VectorList(solidified);
-				}
-				Graphic::Graphic(item) => solidify_nested(item.element_mut()),
+				Graphic::Vector(list) if !list.is_empty() => *list = solidify_stroke_list_with_snapshot(std::mem::take(list)),
+				Graphic::Graphic(list) => list.iter_element_values_mut().for_each(solidify_nested),
 				_ => {}
 			}
 		}
@@ -2612,25 +2573,6 @@ async fn morph<I: IntoGraphicList>(
 		build_transform_with_y_preservation(metadata_source_transform, start, end)
 	}
 
-	/// The two paint kinds that can interpolate, read from either rank so the pairings below stay at four cases.
-	/// A gradient normalizes to the list form because the interpolation carries its placement attributes along.
-	enum InterpolablePaint<'a> {
-		Color(&'a Color),
-		Gradient(List<Gradient>),
-	}
-
-	impl<'a> InterpolablePaint<'a> {
-		fn from_graphic(graphic: &'a Graphic) -> Option<Self> {
-			match graphic {
-				Graphic::Color(item) => Some(InterpolablePaint::Color(item.element())),
-				Graphic::ColorList(list) => list.element(0).map(InterpolablePaint::Color),
-				Graphic::Gradient(item) => Some(InterpolablePaint::Gradient(List::new_from_item(item.clone()))),
-				Graphic::GradientList(list) => list.element(0).is_some().then(|| InterpolablePaint::Gradient(list.clone())),
-				_ => None,
-			}
-		}
-	}
-
 	// Lerp between two graphics. Solid color and gradient pairings interpolate; all other pairings step at the midpoint.
 	fn lerp_graphic(a: Option<&List<Graphic>>, b: Option<&List<Graphic>>, time: f64) -> Option<List<Graphic>> {
 		let transparent = List::new_from_element(Color::TRANSPARENT).into_graphic_list();
@@ -2652,33 +2594,33 @@ async fn morph<I: IntoGraphicList>(
 			} else {
 				gradient_list.push(Item::new_from_element(stops));
 			}
-			Graphic::GradientList(gradient_list)
+			Graphic::Gradient(gradient_list)
 		};
 
-		let graphic = match (a.element(0).and_then(InterpolablePaint::from_graphic), b.element(0).and_then(InterpolablePaint::from_graphic)) {
-			(Some(InterpolablePaint::Color(color_a)), Some(InterpolablePaint::Color(color_b))) => Some(Graphic::from(color_a.lerp(color_b, time as f32))),
-			(Some(InterpolablePaint::Color(color_a)), Some(InterpolablePaint::Gradient(gradient_list_b))) => gradient_list_b.element(0).cloned().map(|stops_b| {
+		let graphic = match (a.element(0), b.element(0)) {
+			(Some(Graphic::Color(color_list_a)), Some(Graphic::Color(color_list_b))) => color_list_a
+				.element(0)
+				.zip(color_list_b.element(0))
+				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
+			(Some(Graphic::Color(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
 				let solid_to_gradient = stops_b.map_colors(|_| *color_a);
-				let stops = solid_to_gradient.lerp(&stops_b, time);
-				gradient_with_stops(gradient_list_b, stops)
+				let stops = solid_to_gradient.lerp(stops_b, time);
+				gradient_with_stops(gradient_list_b.clone(), stops)
 			}),
-			(Some(InterpolablePaint::Gradient(gradient_list_a)), Some(InterpolablePaint::Color(color_b))) => gradient_list_a.element(0).cloned().map(|stops_a| {
+			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Color(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
 				let gradient_to_solid = stops_a.map_colors(|_| *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
-				gradient_with_stops(gradient_list_a, stops)
+				gradient_with_stops(gradient_list_a.clone(), stops)
 			}),
-			(Some(InterpolablePaint::Gradient(gradient_list_a)), Some(InterpolablePaint::Gradient(gradient_list_b))) => gradient_list_a
-				.element(0)
-				.zip(gradient_list_b.element(0))
-				.map(|(stops_a, stops_b)| stops_a.lerp(stops_b, time))
-				.map(|stops| {
-					let transform = lerp_gradient_transform(&gradient_list_a, &gradient_list_b, time);
+			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Gradient(gradient_list_b))) => gradient_list_a.element(0).zip(gradient_list_b.element(0)).map(|(stops_a, stops_b)| {
+				let stops = stops_a.lerp(stops_b, time);
+				let metadata_source = if time < 0.5 { gradient_list_a } else { gradient_list_b };
 
-					let mut gradient_list = if time < 0.5 { gradient_list_a } else { gradient_list_b };
-					gradient_list.set_attribute(ATTR_TRANSFORM, 0, transform);
+				let mut gradient_list = metadata_source.clone();
+				gradient_list.set_attribute(ATTR_TRANSFORM, 0, lerp_gradient_transform(gradient_list_a, gradient_list_b, time));
 
-					gradient_with_stops(gradient_list, stops)
-				}),
+				gradient_with_stops(gradient_list, stops)
+			}),
 			// Pairings beyond solid colors and gradients (raster, vector, or mixed) can't be interpolated, so step at the midpoint
 			_ => return Some(if time < 0.5 { a.clone() } else { b.clone() }),
 		};
@@ -2720,12 +2662,7 @@ async fn morph<I: IntoGraphicList>(
 			};
 
 			// An unmatched side falls to `None` here, which `lerp_graphic` fades against transparent
-			let source_paint = source_index.and_then(|index| a.paint_at(index)).map(|paint| List::new_from_element(paint.clone()));
-			let target_paint = target_index.and_then(|index| b.paint_at(index)).map(|paint| List::new_from_element(paint.clone()));
-			let paint = lerp_graphic(source_paint.as_ref(), target_paint.as_ref(), time)
-				.and_then(|list| list.into_iter().next())
-				.map(Item::into_element)
-				.unwrap_or_default();
+			let paint = lerp_graphic(source_index.and_then(|index| a.paint_at(index)), target_index.and_then(|index| b.paint_at(index)), time).unwrap_or_default();
 
 			result.replace_or_insert(coverage, paint, CoverPlacement::Above);
 		}
@@ -3822,7 +3759,7 @@ mod test {
 			Item::new_from_element(0),
 		)
 		.await;
-		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(copy_to_points))).await);
+		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(copy_to_points))).await);
 		let combined_copy_to_points = combined.element(0).unwrap();
 
 		assert_eq!(combined_copy_to_points.region_manipulator_groups().count(), expected_points.len());
@@ -3949,7 +3886,7 @@ mod test {
 			v
 		};
 
-		let solid_fill = |color: Color| Appearance::new_single(Coverage::new_fill(), List::new_from_element(color).into_paint());
+		let solid_fill = |color: Color| Appearance::new_single(Coverage::new_fill(), List::new_from_element(color).into_graphic_list());
 		let item_a = Item::new_from_element(rect())
 			.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY)
 			.with_attribute(ATTR_APPEARANCE, solid_fill(Color::RED));
@@ -3975,10 +3912,10 @@ mod test {
 		let fill = appearance.first_paint_of(Cover::Fill).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
-		let Graphic::Color(color) = fill else {
-			panic!("Expected a solid color fill, got {fill:?}");
+		let Some(Graphic::Color(colors)) = fill.element(0) else {
+			panic!("Expected a solid color fill, got {:?}", fill.element(0));
 		};
-		let color = *color.element();
+		let color = *colors.element(0).expect("Color present");
 		assert!(color.r() > 0. && color.b() > 0., "Fill should be a red-to-blue blend, got {color:?}");
 	}
 
@@ -3992,17 +3929,17 @@ mod test {
 
 		let paint_color = |appearance: &Appearance, cover| {
 			let paint = appearance.first_paint_of(cover).expect("Morph should keep both paints at the midpoint");
-			let Graphic::Color(color) = paint else {
-				panic!("Expected a solid color paint, got {paint:?}");
+			let Some(Graphic::Color(colors)) = paint.element(0) else {
+				panic!("Expected a solid color paint, got {:?}", paint.element(0));
 			};
-			*color.element()
+			*colors.element(0).expect("Color present")
 		};
 
 		// The two endpoints list their covers in opposite paint orders, which pairing by position would cross
 		let appearance = |fill: Color, stroke: Color, stroke_placement| {
 			let mut appearance = Appearance::default();
-			appearance.replace_or_insert(Coverage::new_fill(), List::new_from_element(fill).into_paint(), CoverPlacement::Above);
-			appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), List::new_from_element(stroke).into_paint(), stroke_placement);
+			appearance.replace_or_insert(Coverage::new_fill(), List::new_from_element(fill).into_graphic_list(), CoverPlacement::Above);
+			appearance.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), List::new_from_element(stroke).into_graphic_list(), stroke_placement);
 			appearance
 		};
 
@@ -4165,46 +4102,5 @@ mod test {
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
 		assert_eq!(beveled.segment_domain.ids().len(), 5);
-	}
-
-	// A rank-0 vector reaches the same per-list styling path as a vector list, rather than being skipped
-	#[tokio::test]
-	async fn assign_colors_reaches_rank_0_vector_graphics() {
-		let leaf = Graphic::Vector(Box::new(vector_item_from_bezpath(Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY))));
-		let content = List::new_from_element(leaf);
-
-		let styled = super::assign_colors(
-			Footprint::default(),
-			content,
-			Item::new_from_element(true),
-			Item::new_from_element(false),
-			Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE])),
-			Item::new_from_element(false),
-			Item::new_from_element(false),
-			Item::new_from_element(SeedValue::default()),
-			Item::new_from_element(0_u32),
-		)
-		.await;
-
-		let Some(Graphic::Vector(item)) = styled.element(0) else {
-			panic!("the leaf should stay a rank-0 vector")
-		};
-		let appearance = item.attribute::<Appearance>(ATTR_APPEARANCE).expect("the leaf should have gained an appearance");
-		assert!(appearance.has_painted_cover(Cover::Fill), "the fill of a rank-0 vector should be styled like a list element");
-	}
-
-	// Fill's automatic gradient placement measures rank-0 vector content instead of falling back to the unit box
-	#[test]
-	fn vector_item_mut_reaches_a_rank_0_vector_graphic() {
-		let transform = DAffine2::from_translation(DVec2::new(7., 3.));
-		let item = create_vector_item(Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY), transform);
-		let mut content = Item::new_from_element(Graphic::Vector(Box::new(item)));
-
-		let mut visited = Vec::new();
-		content.for_each_vector_mut(|vector, vector_transform| visited.push((vector.bounding_box(), vector_transform)));
-
-		assert_eq!(visited.len(), 1, "the lone vector should be visited exactly once");
-		assert_eq!(visited[0].1, transform, "its own transform attribute should come along for placement");
-		assert!(visited[0].0.is_some(), "its geometry should be measurable for the automatic gradient bounds");
 	}
 }

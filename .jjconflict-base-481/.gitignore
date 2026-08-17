@@ -1,0 +1,15 @@
+branding/
+target/
+third-party-licenses.txt*
+result/
+.flatpak-builder/
+*.spv
+*.exrc
+perf.data*
+profile.json
+profile.json.gz
+flamegraph.svg
+.idea/
+.direnv
+.DS_Store
+.nvim.lua
