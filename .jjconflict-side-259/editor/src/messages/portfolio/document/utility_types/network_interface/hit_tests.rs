@@ -33,8 +33,8 @@ impl NodeNetworkInterface {
 		let nodes = network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>();
 		self.with_import_export_ports(network_path, |import_export_click_targets| {
 			for port in import_export_click_targets.click_targets() {
-				if let ClickTargetType::Subpath(subpath) = port.target_type() {
-					connector_click_targets.push(subpath.to_bezpath().to_svg());
+				if let ClickTargetType::Path(path) = port.target_type() {
+					connector_click_targets.push(path.to_svg());
 				}
 			}
 		});
@@ -42,29 +42,29 @@ impl NodeNetworkInterface {
 			self.with_node_click_targets(&node_id, network_path, |node_click_targets| {
 				let mut node_path = String::new();
 
-				if let ClickTargetType::Subpath(subpath) = node_click_targets.node_click_target.target_type() {
-					node_path.push_str(subpath.to_bezpath().to_svg().as_str())
+				if let ClickTargetType::Path(path) = node_click_targets.node_click_target.target_type() {
+					node_path.push_str(path.to_svg().as_str())
 				}
 				all_node_click_targets.push((node_id, node_path));
 				for port in node_click_targets.port_click_targets.click_targets() {
-					if let ClickTargetType::Subpath(subpath) = port.target_type() {
-						connector_click_targets.push(subpath.to_bezpath().to_svg());
+					if let ClickTargetType::Path(path) = port.target_type() {
+						connector_click_targets.push(path.to_svg());
 					}
 				}
 				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
 					// Visibility button (eye icon)
-					if let ClickTargetType::Subpath(subpath) = layer_metadata.visibility_click_target.target_type() {
-						icon_click_targets.push(subpath.to_bezpath().to_svg());
+					if let ClickTargetType::Path(path) = layer_metadata.visibility_click_target.target_type() {
+						icon_click_targets.push(path.to_svg());
 					}
 					// Lock button (padlock icon), only when the layer is locked
 					if let Some(lock_click_target) = &layer_metadata.lock_click_target
-						&& let ClickTargetType::Subpath(subpath) = lock_click_target.target_type()
+						&& let ClickTargetType::Path(path) = lock_click_target.target_type()
 					{
-						icon_click_targets.push(subpath.to_bezpath().to_svg());
+						icon_click_targets.push(path.to_svg());
 					}
 					// Drag grip (dotted symbol)
-					if let ClickTargetType::Subpath(subpath) = layer_metadata.grip_click_target.target_type() {
-						icon_click_targets.push(subpath.to_bezpath().to_svg());
+					if let ClickTargetType::Path(path) = layer_metadata.grip_click_target.target_type() {
+						icon_click_targets.push(path.to_svg());
 					}
 				}
 			});
@@ -80,8 +80,7 @@ impl NodeNetworkInterface {
 		});
 
 		let bounds = self.all_nodes_bounding_box(network_path).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
-		let rect = Subpath::<PointId>::new_rectangle(bounds[0], bounds[1]);
-		let all_nodes_bounding_box = rect.to_bezpath().to_svg();
+		let all_nodes_bounding_box = rectangle_path(bounds[0], bounds[1]).to_svg();
 
 		let mut modify_import_export = Vec::new();
 		self.with_modify_import_export(network_path, |modify_import_export_click_targets| {
@@ -90,8 +89,8 @@ impl NodeNetworkInterface {
 				.click_targets()
 				.chain(modify_import_export_click_targets.reorder_imports_exports.click_targets())
 			{
-				if let ClickTargetType::Subpath(subpath) = click_target.target_type() {
-					modify_import_export.push(subpath.to_bezpath().to_svg());
+				if let ClickTargetType::Path(path) = click_target.target_type() {
+					modify_import_export.push(path.to_svg());
 				}
 			}
 		});
@@ -342,8 +341,8 @@ impl NodeNetworkInterface {
 			return None;
 		};
 
-		let bounding_box_subpath = Subpath::<PointId>::new_rectangle(bounds[0], bounds[1]);
-		bounding_box_subpath.bounding_box_with_transform(network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport)
+		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+		Some((node_graph_to_viewport * Quad::from_box(bounds)).bounding_box())
 	}
 
 	pub fn collect_layer_widths(&self, network_path: &[NodeId]) -> (HashMap<NodeId, u32>, HashMap<NodeId, u32>, HashMap<NodeId, bool>) {

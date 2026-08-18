@@ -13,11 +13,10 @@ use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::math::quad::Quad;
-use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::{PointId, SegmentId, Vector};
-use kurbo::{self, Affine, CubicBez, ParamCurve, PathSeg};
+use kurbo::{self, Affine, BezPath, CubicBez, ParamCurve, PathSeg};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
@@ -931,50 +930,33 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	fn push_path(&mut self, bezpath: &BezPath, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
-		for subpath in subpaths {
-			let subpath = subpath.borrow();
-			let mut curves = subpath.iter().peekable();
 
-			let Some(&first) = curves.peek() else {
-				continue;
-			};
+		let snap_start = |context: &Self, point: kurbo::Point| context.snap_to_physical_pixel(transform.transform_point2(point_to_dvec2(point)));
+		let snap_center = |context: &Self, point: kurbo::Point| context.snap_to_physical_pixel_center(transform.transform_point2(point_to_dvec2(point)));
 
-			let start_point = transform.transform_point2(point_to_dvec2(first.start()));
-			let start_point = self.snap_to_physical_pixel(start_point);
-			self.render_context.move_to(start_point.x, start_point.y);
-
-			for curve in curves {
-				match curve {
-					PathSeg::Line(line) => {
-						let a = transform.transform_point2(point_to_dvec2(line.p1));
-						let a = self.snap_to_physical_pixel_center(a);
-						self.render_context.line_to(a.x, a.y);
-					}
-					PathSeg::Quad(quad_bez) => {
-						let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
-						let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
-						let a = self.snap_to_physical_pixel_center(a);
-						let b = self.snap_to_physical_pixel_center(b);
-						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y);
-					}
-					PathSeg::Cubic(cubic_bez) => {
-						let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
-						let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
-						let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
-						let a = self.snap_to_physical_pixel_center(a);
-						let b = self.snap_to_physical_pixel_center(b);
-						let c = self.snap_to_physical_pixel_center(c);
-						self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y);
-					}
+		for element in bezpath.elements() {
+			match *element {
+				kurbo::PathEl::MoveTo(point) => {
+					let point = snap_start(self, point);
+					self.render_context.move_to(point.x, point.y);
 				}
-			}
-
-			if subpath.closed() {
-				self.render_context.close_path();
+				kurbo::PathEl::LineTo(point) => {
+					let point = snap_center(self, point);
+					self.render_context.line_to(point.x, point.y);
+				}
+				kurbo::PathEl::QuadTo(a, b) => {
+					let (a, b) = (snap_center(self, a), snap_center(self, b));
+					self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y);
+				}
+				kurbo::PathEl::CurveTo(a, b, c) => {
+					let (a, b, c) = (snap_center(self, a), snap_center(self, b), snap_center(self, c));
+					self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y);
+				}
+				kurbo::PathEl::ClosePath => self.render_context.close_path(),
 			}
 		}
 
@@ -983,18 +965,17 @@ impl OverlayContext {
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
-		let mut subpaths: Vec<Subpath<PointId>> = vec![];
+		let mut combined = BezPath::new();
 
 		target_types.for_each(|target_type| match target_type.borrow() {
 			ClickTargetType::FreePoint(point) => {
 				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
 			}
-			ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
-			ClickTargetType::CompoundPath(compound) => subpaths.extend(compound.iter().cloned()),
+			ClickTargetType::Path(bezpath) => combined.extend(bezpath.elements().iter().copied()),
 		});
 
-		if !subpaths.is_empty() {
-			self.push_path(subpaths.iter(), transform);
+		if !combined.is_empty() {
+			self.push_path(&combined, transform);
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
@@ -1005,8 +986,8 @@ impl OverlayContext {
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.push_path(subpaths, transform);
+	pub fn fill_path(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
+		self.push_path(bezpath, transform);
 
 		self.render_context.set_fill_style_str(color);
 		self.render_context.fill();
@@ -1014,7 +995,7 @@ impl OverlayContext {
 
 	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
 	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+	pub fn fill_path_pattern(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
 		const PATTERN_WIDTH: usize = 4;
 		const PATTERN_HEIGHT: usize = 4;
 
@@ -1047,7 +1028,7 @@ impl OverlayContext {
 		pattern_context.put_image_data(&image_data, 0, 0).unwrap();
 		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
 
-		self.push_path(subpaths, transform);
+		self.push_path(bezpath, transform);
 
 		self.render_context.set_fill_style_canvas_pattern(&pattern);
 		self.render_context.fill();

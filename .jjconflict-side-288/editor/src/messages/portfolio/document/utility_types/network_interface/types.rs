@@ -1,5 +1,29 @@
 use super::*;
 use graphene_std::ParameterRef;
+use graphene_std::vector::misc::dvec2_to_point;
+use kurbo::{DEFAULT_ACCURACY, Shape};
+
+/// Axis-aligned rectangle spanning the two opposite corners, used for node graph chrome click targets.
+pub fn rectangle_path(corner1: DVec2, corner2: DVec2) -> BezPath {
+	kurbo::Rect::from_points(dvec2_to_point(corner1), dvec2_to_point(corner2)).to_path(DEFAULT_ACCURACY)
+}
+
+/// Same as [`rectangle_path`] but with per-corner radii ordered top left, top right, bottom right, bottom left.
+pub fn rounded_rectangle_path(corner1: DVec2, corner2: DVec2, radii: [f64; 4]) -> BezPath {
+	let rect = kurbo::Rect::from_points(dvec2_to_point(corner1), dvec2_to_point(corner2));
+	if radii.iter().all(|radius| *radius == 0.) {
+		return rect.to_path(DEFAULT_ACCURACY);
+	}
+
+	let [top_left, top_right, bottom_right, bottom_left] = radii;
+	kurbo::RoundedRect::from_rect(rect, kurbo::RoundedRectRadii::new(top_left, top_right, bottom_right, bottom_left)).to_path(DEFAULT_ACCURACY)
+}
+
+/// Ellipse inscribed in the box spanning the two opposite corners.
+pub fn ellipse_path(corner1: DVec2, corner2: DVec2) -> BezPath {
+	let rect = kurbo::Rect::from_points(dvec2_to_point(corner1), dvec2_to_point(corner2));
+	kurbo::Ellipse::new(rect.center(), (rect.width() / 2., rect.height() / 2.), 0.).to_path(DEFAULT_ACCURACY)
+}
 
 #[derive(PartialEq)]
 pub enum FlowType {
@@ -227,8 +251,8 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_input_port_at_center(&mut self, input_index: usize, center: DVec2) {
-		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_input_port(input_index, ClickTarget::new_with_subpath(subpath, 0.));
+		let path = ellipse_path(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
+		self.insert_custom_input_port(input_index, ClickTarget::new_with_path(path, 0.));
 	}
 
 	pub(crate) fn insert_custom_input_port(&mut self, input_index: usize, click_target: ClickTarget) {
@@ -236,8 +260,8 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_output_port_at_center(&mut self, output_index: usize, center: DVec2) {
-		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_output_port(output_index, ClickTarget::new_with_subpath(subpath, 0.));
+		let path = ellipse_path(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
+		self.insert_custom_output_port(output_index, ClickTarget::new_with_path(path, 0.));
 	}
 
 	pub(crate) fn insert_custom_output_port(&mut self, output_index: usize, click_target: ClickTarget) {

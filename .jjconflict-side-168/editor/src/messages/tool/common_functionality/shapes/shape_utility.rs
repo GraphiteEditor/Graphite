@@ -17,6 +17,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::subpath::Subpath;
+use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
@@ -445,9 +446,11 @@ pub fn star_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessa
 	let diameter: f64 = radius1 * 2.;
 	let inner_diameter = radius2 * 2.;
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))];
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(
+		Subpath::<PointId>::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter).to_bezpath(),
+	)];
 
-	overlay_context.outline(subpath.iter(), viewport, None);
+	overlay_context.outline(targets.iter(), viewport, None);
 }
 
 /// Outlines the geometric shape made by polygon-node
@@ -462,9 +465,9 @@ pub fn polygon_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMe
 	let points = sides as u64;
 	let radius: f64 = radius * 2.;
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))];
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(Subpath::<PointId>::new_regular_polygon(DVec2::splat(-radius), points, radius).to_bezpath())];
 
-	overlay_context.outline(subpath.iter(), viewport, None);
+	overlay_context.outline(targets.iter(), viewport, None);
 }
 
 /// Outlines the geometric shape made by an Arc node
@@ -475,15 +478,11 @@ pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessag
 		return;
 	};
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_arc(
-		radius,
-		start_angle / 360. * std::f64::consts::TAU,
-		sweep_angle / 360. * std::f64::consts::TAU,
-		arc_type,
-	))];
+	let arc = Subpath::<PointId>::new_arc(radius, start_angle / 360. * std::f64::consts::TAU, sweep_angle / 360. * std::f64::consts::TAU, arc_type);
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(arc.to_bezpath())];
 	let viewport = document.metadata().transform_to_viewport(layer);
 
-	overlay_context.outline(subpath.iter(), viewport, None);
+	overlay_context.outline(targets.iter(), viewport, None);
 }
 
 /// Check if the the cursor is inside the geometric star shape made by the Star node without any upstream node modifications
