@@ -169,8 +169,7 @@ fn regular_polygon<T: AsU64>(
 	radius: Item<f64>,
 ) -> Item<Vector> {
 	let points = sides.element().as_u64();
-	let radius: f64 = *radius.element() * 2.;
-	Item::new_from_element(Vector::from_bezpath(shapes::regular_polygon_bezpath(DVec2::splat(-radius), points, radius)))
+	Item::new_from_element(Vector::from_bezpath(shapes::regular_polygon_bezpath(DVec2::ZERO, points, *radius.element())))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
@@ -190,10 +189,7 @@ fn star<T: AsU64>(
 	radius_2: Item<f64>,
 ) -> Item<Vector> {
 	let points = sides.element().as_u64();
-	let diameter: f64 = *radius_1.element() * 2.;
-	let inner_diameter = *radius_2.element() * 2.;
-
-	Item::new_from_element(Vector::from_bezpath(shapes::star_polygon_bezpath(DVec2::splat(-diameter), points, diameter, inner_diameter)))
+	Item::new_from_element(Vector::from_bezpath(shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element())))
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

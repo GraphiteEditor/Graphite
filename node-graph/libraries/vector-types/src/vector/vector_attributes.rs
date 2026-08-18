@@ -1035,7 +1035,7 @@ impl Vector {
 		}
 	}
 
-	/// Construct and return an iterator of Vec of `(ManipulatorGroup], bool)` for stroke.
+	/// Construct and return an iterator of `(Vec<ManipulatorGroup>, bool)` for each stroke.
 	/// The boolean in the tuple indicates if the path is closed.
 	pub fn stroke_manipulator_groups(&self) -> impl Iterator<Item = (Vec<ManipulatorGroup>, bool)> {
 		self.build_stroke_path_iter()

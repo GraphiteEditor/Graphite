@@ -187,8 +187,7 @@ pub fn regular_polygon_bezpath(center: DVec2, sides: u64, radius: f64) -> BezPat
 	let angle_increment = TAU / (sides as f64);
 	let positions = (0..sides).map(|i| {
 		let angle = (i as f64) * angle_increment - std::f64::consts::FRAC_PI_2;
-		let center = center + DVec2::ONE * radius;
-		DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)) * 0.5
+		center + radius * DVec2::new(f64::cos(angle), f64::sin(angle))
 	});
 
 	polyline_bezpath(positions, true)
@@ -200,9 +199,8 @@ pub fn star_polygon_bezpath(center: DVec2, sides: u64, radius: f64, inner_radius
 	let angle_increment = 0.5 * TAU / (sides as f64);
 	let positions = (0..sides * 2).map(|i| {
 		let angle = (i as f64) * angle_increment - std::f64::consts::FRAC_PI_2;
-		let center = center + DVec2::ONE * radius;
 		let radius = if i % 2 == 0 { radius } else { inner_radius };
-		DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)) * 0.5
+		center + radius * DVec2::new(f64::cos(angle), f64::sin(angle))
 	});
 
 	polyline_bezpath(positions, true)
