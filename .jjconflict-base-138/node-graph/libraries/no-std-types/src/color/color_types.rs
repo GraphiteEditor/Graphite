@@ -704,10 +704,13 @@ impl Color {
 		c_b + c_s - 1.
 	}
 
-	/// Whole-color "Darker Color" blend: keeps whichever color has the lower mean RGB.
+	/// Whole-color "Darker Color" blend: keeps whichever color has the lower mean RGB, with `other`'s alpha.
 	#[inline(always)]
 	pub fn blend_darker_color(&self, other: Color) -> Color {
-		if self.average_rgb_channels() <= other.average_rgb_channels() { *self } else { other }
+		let background = self.to_unassociated_alpha();
+		let darker = if background.average_rgb_channels() <= other.average_rgb_channels() { background } else { other };
+
+		darker.with_alpha(other.alpha)
 	}
 
 	/// Per-channel "Screen" blend.
@@ -734,10 +737,13 @@ impl Color {
 		c_b + c_s
 	}
 
-	/// Whole-color "Lighter Color" blend: keeps whichever color has the higher mean RGB.
+	/// Whole-color "Lighter Color" blend: keeps whichever color has the higher mean RGB, with `other`'s alpha.
 	#[inline(always)]
 	pub fn blend_lighter_color(&self, other: Color) -> Color {
-		if self.average_rgb_channels() >= other.average_rgb_channels() { *self } else { other }
+		let background = self.to_unassociated_alpha();
+		let lighter = if background.average_rgb_channels() >= other.average_rgb_channels() { background } else { other };
+
+		lighter.with_alpha(other.alpha)
 	}
 
 	/// Per-channel "Soft Light" blend.
@@ -757,6 +763,11 @@ impl Color {
 		} else {
 			Color::blend_screen(2. * c_s - 1., c_b)
 		}
+	}
+
+	/// Per-channel "Overlay" blend, which is "Hard Light" with the backdrop and source channels swapped.
+	pub fn blend_overlay(c_b: f32, c_s: f32) -> f32 {
+		Color::blend_hardlight(c_s, c_b)
 	}
 
 	/// Per-channel "Vivid Light" blend.
@@ -811,33 +822,36 @@ impl Color {
 		if c_b == 0. { 1. } else { c_b / c_s }
 	}
 
-	/// Whole-color "Hue" blend: source hue with this color's saturation and Rec.601 luma.
+	/// Whole-color "Hue" blend: source hue with this color's saturation and Rec.601 luma, with `c_s`'s alpha.
 	pub fn blend_hue(&self, c_s: Color) -> Color {
-		let sat_b = self.chroma_range();
-		let lum_b = self.luminance_rec_601();
-		c_s.with_saturation(sat_b).with_luminance(lum_b)
+		let background = self.to_unassociated_alpha();
+		let sat_b = background.chroma_range();
+		let lum_b = background.luminance_rec_601();
+
+		c_s.with_saturation(sat_b).with_luminance(lum_b).with_alpha(c_s.alpha)
 	}
 
-	/// Whole-color "Saturation" blend: this color's hue/luma with source saturation.
+	/// Whole-color "Saturation" blend: this color's hue/luma with source saturation, with `c_s`'s alpha.
 	pub fn blend_saturation(&self, c_s: Color) -> Color {
+		let background = self.to_unassociated_alpha();
 		let sat_s = c_s.chroma_range();
-		let lum_b = self.luminance_rec_601();
+		let lum_b = background.luminance_rec_601();
 
-		self.with_saturation(sat_s).with_luminance(lum_b)
+		background.with_saturation(sat_s).with_luminance(lum_b).with_alpha(c_s.alpha)
 	}
 
-	/// Whole-color "Color" blend: source hue/saturation with this color's luma.
+	/// Whole-color "Color" blend: source hue/saturation with this color's luma, with `c_s`'s alpha.
 	pub fn blend_color(&self, c_s: Color) -> Color {
-		let lum_b = self.luminance_rec_601();
+		let lum_b = self.to_unassociated_alpha().luminance_rec_601();
 
-		c_s.with_luminance(lum_b)
+		c_s.with_luminance(lum_b).with_alpha(c_s.alpha)
 	}
 
-	/// Whole-color "Luminosity" blend: this color's hue/saturation with source luma.
+	/// Whole-color "Luminosity" blend: this color's hue/saturation with source luma, with `c_s`'s alpha.
 	pub fn blend_luminosity(&self, c_s: Color) -> Color {
 		let lum_s = c_s.luminance_rec_601();
 
-		self.with_luminance(lum_s)
+		self.to_unassociated_alpha().with_luminance(lum_s).with_alpha(c_s.alpha)
 	}
 
 	/// All four channels as `(red, green, blue, alpha)`.
