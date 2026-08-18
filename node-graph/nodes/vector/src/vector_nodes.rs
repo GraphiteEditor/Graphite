@@ -1284,7 +1284,7 @@ async fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 }
 
 /// Type-asserts a value to be vector data.
-#[node_macro::node(category("Vector"), name("As Vector"), path(core_types::vector))]
+#[node_macro::node(category("Type Assertion"), path(core_types::vector))]
 fn as_vector(_: impl Ctx, value: Item<Vector>) -> Item<Vector> {
 	value
 }
