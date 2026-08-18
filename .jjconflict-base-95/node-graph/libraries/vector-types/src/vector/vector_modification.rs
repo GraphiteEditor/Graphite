@@ -16,7 +16,7 @@ use std::hash::Hash;
 /// Represents a procedural change to the [`PointDomain`] in [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct PointModification {
+pub(crate) struct PointModification {
 	add: Vec<PointId>,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
 	remove: HashSet<PointId>,
@@ -83,7 +83,7 @@ impl PointModification {
 /// Represents a procedural change to the [`SegmentDomain`] in [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct SegmentModification {
+pub(crate) struct SegmentModification {
 	add: Vec<SegmentId>,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
 	remove: HashSet<SegmentId>,
@@ -261,7 +261,7 @@ impl SegmentModification {
 /// Represents a procedural change to the [`RegionDomain`] in [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct RegionModification {
+pub(crate) struct RegionModification {
 	add: Vec<RegionId>,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
 	remove: HashSet<RegionId>,
@@ -579,7 +579,7 @@ where
 }
 
 /// Serializes as sorted `[value, ...]` (JSON array)
-pub fn serialize_hashset<T, S, H>(set: &HashSet<T, H>, serializer: S) -> Result<S::Ok, S::Error>
+pub(crate) fn serialize_hashset<T, S, H>(set: &HashSet<T, H>, serializer: S) -> Result<S::Ok, S::Error>
 where
 	T: Serialize + Eq + Hash + Ord,
 	S: Serializer,
@@ -639,7 +639,7 @@ where
 /// Matches Kurbo's default path accuracy, so points within an offset operation's own precision are not split into separate anchors.
 const CLOSE_POINT_TOLERANCE: f64 = 1e-6;
 
-pub struct AppendBezpath<'a> {
+pub(crate) struct AppendBezpath<'a> {
 	first_point: Option<Point>,
 	last_point: Option<Point>,
 	first_point_index: Option<usize>,

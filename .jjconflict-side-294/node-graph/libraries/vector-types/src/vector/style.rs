@@ -295,7 +295,7 @@ impl Stroke {
 	}
 
 	/// Get the effective stroke weight.
-	pub fn effective_width(&self) -> f64 {
+	pub(crate) fn effective_width(&self) -> f64 {
 		self.weight
 			* match self.align {
 				StrokeAlign::Center => 1.,
@@ -342,45 +342,12 @@ impl Stroke {
 		self.dash_offset
 	}
 
-	pub fn cap_index(&self) -> u32 {
-		self.cap as u32
-	}
-
-	pub fn join_index(&self) -> u32 {
-		self.join as u32
-	}
-
 	pub fn join_miter_limit(&self) -> f32 {
 		self.join_miter_limit as f32
 	}
 
 	pub fn with_weight(mut self, weight: f64) -> Self {
 		self.weight = weight;
-		self
-	}
-
-	pub fn with_dash_offset(mut self, dash_offset: f64) -> Self {
-		self.dash_offset = dash_offset;
-		self
-	}
-
-	pub fn with_stroke_cap(mut self, stroke_cap: StrokeCap) -> Self {
-		self.cap = stroke_cap;
-		self
-	}
-
-	pub fn with_stroke_join(mut self, stroke_join: StrokeJoin) -> Self {
-		self.join = stroke_join;
-		self
-	}
-
-	pub fn with_stroke_join_miter_limit(mut self, limit: f64) -> Self {
-		self.join_miter_limit = limit;
-		self
-	}
-
-	pub fn with_stroke_align(mut self, stroke_align: StrokeAlign) -> Self {
-		self.align = stroke_align;
 		self
 	}
 

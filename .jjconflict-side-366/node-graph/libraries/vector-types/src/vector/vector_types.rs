@@ -1,6 +1,6 @@
 use super::misc::dvec2_to_point;
 use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-pub use super::vector_attributes::*;
+use super::vector_attributes::*;
 use crate::vector::misc::{BezierHandles, ManipulatorGroup};
 use crate::vector::misc::{HandleId, ManipulatorPointId};
 use crate::vector::vector_modification::VectorExt;
@@ -174,7 +174,7 @@ impl Vector {
 	}
 
 	/// Compute the bounding boxes of the bezpaths with the specified transform
-	pub fn bounding_box_with_transform_rect(&self, transform: DAffine2) -> Option<Rect> {
+	fn bounding_box_with_transform_rect(&self, transform: DAffine2) -> Option<Rect> {
 		let combine = |r1: Rect, r2: Rect| r1.union(r2);
 		self.stroke_bezpath_iter()
 			.map(|mut bezpath| {
