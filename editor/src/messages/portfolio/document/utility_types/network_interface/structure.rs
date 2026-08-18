@@ -38,9 +38,12 @@ impl NodeNetworkInterface {
 		let vector = self.upstream_path_node_vector(layer)?;
 
 		let mut targets = Vec::new();
-		let subpaths: Vec<Subpath<PointId>> = vector.stroke_bezier_paths().collect();
-		if !subpaths.is_empty() {
-			targets.push(ClickTargetType::CompoundPath(subpaths));
+		let mut combined = BezPath::new();
+		for subpath in vector.stroke_bezier_paths() {
+			combined.extend(subpath.to_bezpath().elements().iter().copied());
+		}
+		if !combined.is_empty() {
+			targets.push(ClickTargetType::Path(combined));
 		}
 
 		for &point_id in vector.point_domain.ids() {

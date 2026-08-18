@@ -109,12 +109,10 @@ fn overlay_bezier_handle_specific_point(
 	let not_under_anchor = |position: DVec2, anchor: DVec2| position.distance_squared(anchor) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 
 	match segment_to_handles(&segment) {
-		BezierHandles::Quadratic { handle } => {
-			if not_under_anchor(handle, segment_start) && not_under_anchor(handle, segment_end) {
-				let anchor = if start == point_to_render { segment_start } else { segment_end };
-				overlay_context.line(handle, anchor, None, None);
-				overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
-			}
+		BezierHandles::Quadratic { handle } if not_under_anchor(handle, segment_start) && not_under_anchor(handle, segment_end) => {
+			let anchor = if start == point_to_render { segment_start } else { segment_end };
+			overlay_context.line(handle, anchor, None, None);
+			overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 		}
 		BezierHandles::Cubic { handle_start, handle_end } => {
 			if not_under_anchor(handle_start, segment_start) && (point_to_render == start) {

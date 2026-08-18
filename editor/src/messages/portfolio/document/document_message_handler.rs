@@ -42,6 +42,7 @@ use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
 use graphene_std::subpath::Subpath;
+use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::style::RenderMode;
@@ -1876,18 +1877,15 @@ impl DocumentMessageHandler {
 		let layer_click_targets = self.network_interface.document_metadata().click_targets(*layer);
 		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
 
+		let viewport_polygon_bezpath = viewport_polygon.to_bezpath();
+
 		layer_click_targets.is_some_and(|targets| {
 			targets.iter().all(|target| match target.target_type() {
-				ClickTargetType::Subpath(subpath) => {
-					let mut subpath = subpath.clone();
-					subpath.apply_transform(layer_transform);
-					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				ClickTargetType::Path(path) => {
+					let mut path = path.clone();
+					path.apply_affine(Affine::new(layer_transform.to_cols_array()));
+					bezpath_is_inside_bezpath(&path, &viewport_polygon_bezpath, None, None)
 				}
-				ClickTargetType::CompoundPath(subpaths) => subpaths.iter().all(|subpath| {
-					let mut subpath = subpath.clone();
-					subpath.apply_transform(layer_transform);
-					subpath.is_inside_subpath(&viewport_polygon, None, None)
-				}),
 				ClickTargetType::FreePoint(point) => {
 					let mut point = *point;
 					point.apply_transform(layer_transform);
@@ -3814,13 +3812,7 @@ fn quad_to_kurbo(quad: Quad) -> BezPath {
 
 fn click_targets_to_kurbo<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> BezPath {
 	let segments = click_targets
-		.filter_map(|target| {
-			if let ClickTargetType::Subpath(subpath) = target.target_type() {
-				Some(subpath.iter())
-			} else {
-				None
-			}
-		})
+		.filter_map(|target| if let ClickTargetType::Path(path) = target.target_type() { Some(path.segments()) } else { None })
 		.flatten()
 		.map(|bezier| Affine::new(transform.to_cols_array()) * bezier);
 	BezPath::from_path_segments(segments)
