@@ -14,16 +14,16 @@ use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN,
-	ATTR_TRANSFORM,
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME,
+	ATTR_FOCAL_CENTER, ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
+	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
-use graphic_types::vector_types::gradient::{Gradient, GradientForm};
+use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientGeometry};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
@@ -519,6 +519,14 @@ pub(crate) fn gradient_settings_from_item(item: ItemRef<'_, Gradient>) -> Gradie
 	}
 }
 
+/// The two-circle geometry a gradient item carries beside its element, defaulting each absent one.
+pub(crate) fn gradient_geometry_from_item(item: ItemRef<'_, Gradient>) -> GradientGeometry {
+	match item {
+		ItemRef::ListItem(list, index) => GradientGeometry::from_list_row_attributes(list, index),
+		ItemRef::Item(item) => GradientGeometry::from_item_attributes(item),
+	}
+}
+
 /// Whether the affine transform inverts to a finite matrix (a zero, subnormal, or NaN determinant does not).
 pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 	transform.matrix2.determinant().recip().is_finite()
@@ -650,10 +658,17 @@ fn peniko_extend(gradient_spread: GradientSpread) -> peniko::Extend {
 fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied_transform: &DAffine2, for_mask: bool) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_item.element()?;
 
-	let gradient_form: GradientForm = gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let geometry = gradient_geometry_from_item(gradient_item);
+	let focal_center: DVec2 = gradient_item.attribute_cloned_or_default(ATTR_FOCAL_CENTER);
 	let gradient_transform: DAffine2 = gradient_item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let settings = gradient_settings_from_item(gradient_item);
 
+	// Angular (conic/sweep) gradients have no SVG representation, so they render nothing
+	if geometry.angular {
+		return None;
+	}
+
+	let gradient_form = geometry.form();
 	let (mut samples, span) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
 
 	let paint_opacity = gradient_item.paint_opacity(for_mask);
@@ -673,6 +688,9 @@ fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
 	let (start, end, gradient_to_device) = (DVec2::X * span.0, DVec2::X * span.1, gradient_placement(multiplied_transform * gradient_transform, gradient_form));
 
+	// The two circles' radii in unit space: `1 / curvature`, where a line (zero curvature) is an infinite radius
+	let (radius_a, radius_b) = geometry.radii();
+
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
 		kind: match gradient_form {
 			GradientForm::Linear => peniko::LinearGradientPosition {
@@ -680,13 +698,21 @@ fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied
 				end: to_point(end),
 			}
 			.into(),
-			GradientForm::Radial => peniko::RadialGradientPosition {
-				start_center: to_point(start),
-				start_radius: 0.,
-				end_center: to_point(start),
-				end_radius: start.distance(end) as f32,
+			GradientForm::Radial => {
+				// Circle A is the focal/start circle, offset by the focal center; circle B is the end circle around the origin.
+				// The radii scale with the span so the ramp's offset range always covers the visible gradient.
+				// A zero curvature (a line) has an infinite radius, which peniko cannot represent; clamp it like the SVG exporter does.
+				let span_radius = start.distance(end);
+				let start_radius = if radius_a.is_finite() { radius_a * span_radius } else { 0. };
+				let end_radius = if radius_b.is_finite() { radius_b * span_radius } else { 0. };
+				peniko::RadialGradientPosition {
+					start_center: to_point(focal_center),
+					start_radius: start_radius as f32,
+					end_center: to_point(start),
+					end_radius: end_radius as f32,
+				}
+				.into()
 			}
-			.into(),
 		},
 		extend: peniko_extend(settings.spread),
 		stops: peniko_stops,
@@ -2699,7 +2725,7 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
-	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let gradient_form = gradient_geometry_from_item(item).form();
 	let settings = gradient_settings_from_item(item);
 	let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 	render.leaf_tag(tag, |attributes| {
@@ -2785,7 +2811,7 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut Scene,
 
 	{
 		let Some(gradient) = item.element() else { return };
-		let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+		let gradient_form = gradient_geometry_from_item(item).form();
 		let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 		let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
@@ -2861,7 +2887,7 @@ fn collect_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, G
 	let mut outline_targets = Vec::new();
 	let mut click_targets = Vec::new();
 	for item in items {
-		let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+		let gradient_form = gradient_geometry_from_item(item).form();
 		let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
 		// The first item's transform is the reference all targets bake against
@@ -2889,7 +2915,7 @@ fn collect_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, G
 
 /// Collects one gradient item's control geometry as a click target when its interior is draggable.
 fn add_gradient_item_click_targets(item: ItemRef<'_, Gradient>, click_targets: &mut Vec<ClickTarget>) {
-	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let gradient_form = gradient_geometry_from_item(item).form();
 	if !gradient_control_interior_is_clickable(gradient_form) {
 		return;
 	}
@@ -2902,7 +2928,7 @@ fn add_gradient_item_click_targets(item: ItemRef<'_, Gradient>, click_targets: &
 
 /// Collects one gradient item's control geometry as an outline target.
 fn add_gradient_item_outline_targets(item: ItemRef<'_, Gradient>, outlines: &mut Vec<ClickTarget>) {
-	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let gradient_form = gradient_geometry_from_item(item).form();
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
 	let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);

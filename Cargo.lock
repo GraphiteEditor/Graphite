@@ -2391,6 +2391,7 @@ dependencies = [
  "serde_json",
  "simplecss",
  "spin",
+ "svgtypes",
  "thiserror 2.0.18",
  "tokio",
  "tsify",

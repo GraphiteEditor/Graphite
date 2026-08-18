@@ -60,6 +60,15 @@ pub const ATTR_CLIP: &str = "clip";
 pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
 /// Gradient's `GradientForm` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
+/// The reparameterized curvature of the gradient's start circle (the focal circle for a radial gradient).
+/// Stored as `atan(curvature) * 2 / π` so the infinite range of `1/radius` maps to `[-1, 1]`, with `0` meaning a
+/// line (infinite radius). Omitting the attribute defaults to a linear gradient.
+pub const ATTR_GRADIENT_CURVATURE_A: &str = "gradient_curvature_a";
+/// The reparameterized curvature of the gradient's end circle. Same encoding as `ATTR_GRADIENT_CURVATURE_A`.
+pub const ATTR_GRADIENT_CURVATURE_B: &str = "gradient_curvature_b";
+/// Gradient's `bool` (implicit default `false`) for whether the gradient is a conic (angular/sweep) gradient painted
+/// along the field's V direction. SVG has no conic gradient, so such gradients render nothing.
+pub const ATTR_GRADIENT_ANGULAR: &str = "gradient_angular";
 /// Gradient's `GradientSpace`, the color space its stops interpolate in.
 pub const ATTR_GRADIENT_SPACE: &str = "gradient_space";
 /// Gradient's `GradientHueDirection` (`Shorter`, `Longer`, `Increasing`, or `Decreasing`), which way around the
@@ -97,6 +106,8 @@ pub const ATTR_JOIN: &str = "join";
 pub const ATTR_JOIN_MITER_LIMIT: &str = "join_miter_limit";
 /// Stroke coverage's `StrokeAlign` (implicit default `Center`), on the `Item<Cover>` inside a `Coverage`.
 pub const ATTR_ALIGN: &str = "align";
+/// Radial gradient's `DVec2` focal center relative to the start/center.
+pub const ATTR_FOCAL_CENTER: &str = "focal_center";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
 /// Text item's font, as a `Resource` of the loaded font file.
