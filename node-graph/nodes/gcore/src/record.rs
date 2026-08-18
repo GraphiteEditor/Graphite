@@ -1064,6 +1064,95 @@ mod tests {
 	}
 
 	#[test]
+	fn batch_lanes_match_per_lane_eval() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = Layout::default().with_writes(1, core_types::record::element_write::<f64>(), &[core_types::record::FieldWrite::of::<Transform>(0)]);
+		reserve_for(&[&layout]);
+		let content = LeveledTransformSource {
+			layout: layout.clone(),
+			rows: [(1., 10.), (2., 30.), (3., 20.)]
+				.iter()
+				.map(|&(element, x)| (element, DAffine2::from_translation(glam::DVec2::new(x, 0.))))
+				.collect(),
+		};
+		let node = install(MirrorNode::new(RecordSource::new(content, &layout, &layout), ValueNode(true)), mirror_layout_meta(), &[Some(&layout)]);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		let head = ctx.index_head();
+		let scoped = ctx.promoted(&head, 0);
+
+		assert!(matches!(node.eval_batch(&scoped, 0..6, None), core_types::node::BatchStatus::NeedBuffer));
+		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 6 * out.lane_stride() / 8];
+		let core_types::node::BatchStatus::Filled(batch, finality) = node.eval_batch(&scoped, 0..6, Some(&mut scratch)) else {
+			panic!("expected a filled batch");
+		};
+		assert_eq!(finality, core_types::gpoll::Finality::AllFinal);
+		let batch = batch.into_shared();
+		assert_eq!(batch.len(), 6);
+		for lane in 0..6 {
+			let mark = stack::sp();
+			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+				panic!("expected a final record");
+			};
+			let rec = out.rec(&value);
+			assert_eq!(unsafe { batch.get(lane).element::<f64>() }, unsafe { rec.element::<f64>() }, "lane {lane}");
+			let batched: DAffine2 = batch.get(lane).attr::<Transform>();
+			let single: DAffine2 = unsafe { rec.read(out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()) };
+			assert_eq!(batched, single, "lane {lane}");
+			// SAFETY: the lane was read out above, so no borrow into its frames remains.
+			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
+	fn batch_binds_eager_inputs_once() {
+		struct CountingValue<'a>(bool, &'a std::cell::Cell<u32>);
+
+		impl<Input> Node<Input> for CountingValue<'_> {
+			type Output = bool;
+
+			fn eval(&self, _input: &Input) -> GPoll<bool> {
+				self.1.set(self.1.get() + 1);
+				GPoll::Final(self.0)
+			}
+		}
+
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = Layout::default().with_writes(1, core_types::record::element_write::<f64>(), &[core_types::record::FieldWrite::of::<Transform>(0)]);
+		reserve_for(&[&layout]);
+		let content = LeveledTransformSource {
+			layout: layout.clone(),
+			rows: [(1., 10.), (2., 30.), (3., 20.)]
+				.iter()
+				.map(|&(element, x)| (element, DAffine2::from_translation(glam::DVec2::new(x, 0.))))
+				.collect(),
+		};
+		let evals = std::cell::Cell::new(0u32);
+		let node = install(
+			MirrorNode::new(RecordSource::new(content, &layout, &layout), CountingValue(true, &evals)),
+			mirror_layout_meta(),
+			&[Some(&layout)],
+		);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		let head = ctx.index_head();
+		let scoped = ctx.promoted(&head, 0);
+
+		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 6 * out.lane_stride() / 8];
+		let core_types::node::BatchStatus::Filled(batch, _) = node.eval_batch(&scoped, 0..6, Some(&mut scratch)) else {
+			panic!("expected a filled batch");
+		};
+		assert_eq!(batch.len(), 6);
+		assert_eq!(evals.get(), 1, "an eager value binds once per batch");
+	}
+
+	#[test]
 	fn nested_fold_collapses_two_levels() {
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
