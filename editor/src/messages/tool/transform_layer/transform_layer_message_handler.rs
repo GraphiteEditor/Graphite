@@ -162,7 +162,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				let selected_segments = shape_editor.selected_segments().collect::<HashSet<_>>();
 				let mut affected_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
 
-				for (segment_id, _, start, end) in vector.segment_bezier_iter() {
+				for (segment_id, _, start, end) in vector.segment_iter() {
 					if selected_segments.contains(&segment_id) {
 						affected_points.push(ManipulatorPointId::Anchor(start));
 						affected_points.push(ManipulatorPointId::Anchor(end));
