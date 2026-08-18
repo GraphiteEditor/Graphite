@@ -32,8 +32,8 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientGeometry, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign, StrokeCap,
-	StrokeJoin, build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientForm, GradientGeometry, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign,
+	StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};

@@ -61,7 +61,11 @@ impl GradientGeometry {
 
 	/// The default radial gradient: the start circle is a point (infinite curvature) and the end circle has unit radius.
 	pub fn radial() -> Self {
-		Self { curvature_a: reparameterize_curvature(f64::INFINITY), curvature_b: reparameterize_curvature(1.), angular: false }
+		Self {
+			curvature_a: reparameterize_curvature(f64::INFINITY),
+			curvature_b: reparameterize_curvature(1.),
+			angular: false,
+		}
 	}
 
 	/// The derived form of a gradient from its geometry: a conic is not linear or radial, both-zero curvatures is linear, anything else is radial.
@@ -1136,7 +1140,11 @@ impl Gradient {
 	/// (`curvature_b = reparameterize_curvature(1.)`), since the gradient's transform normalizes the outer radius to 1.
 	pub fn set_focal_geometry(&mut self, focal_center: DVec2, focal_radius: f64) {
 		self.0.set_attribute(ATTR_FOCAL_CENTER, 0, focal_center);
-		let curvature_a = if focal_radius > 0. { reparameterize_curvature(1. / focal_radius) } else { reparameterize_curvature(f64::INFINITY) };
+		let curvature_a = if focal_radius > 0. {
+			reparameterize_curvature(1. / focal_radius)
+		} else {
+			reparameterize_curvature(f64::INFINITY)
+		};
 		self.0.set_attribute(ATTR_GRADIENT_CURVATURE_A, 0, curvature_a);
 		self.0.set_attribute(ATTR_GRADIENT_CURVATURE_B, 0, reparameterize_curvature(1.));
 	}
