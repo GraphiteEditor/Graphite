@@ -2,7 +2,6 @@ use super::misc::dvec2_to_point;
 use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 pub use super::vector_attributes::*;
 use crate::subpath::{BezierHandles, ManipulatorGroup, Subpath};
-use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::vector::misc::{HandleId, ManipulatorPointId};
 use crate::vector::vector_modification::VectorExt;
 use core::borrow::Borrow;
@@ -135,18 +134,6 @@ impl Vector {
 		}
 	}
 
-	pub fn append_free_point(&mut self, point: &FreePoint, preserve_id: bool) {
-		let mut point_id = self.point_domain.next_id();
-
-		// Use the current point ID if it's not already in the domain, otherwise generate a new one
-		let id = if preserve_id && !self.point_domain.ids().contains(&point.id) {
-			point.id
-		} else {
-			point_id.next_id()
-		};
-		self.point_domain.push(id, point.position);
-	}
-
 	/// Construct some new vector path from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
@@ -165,24 +152,6 @@ impl Vector {
 
 		for subpath in subpaths.into_iter() {
 			vector.append_subpath(subpath, preserve_id);
-		}
-
-		vector
-	}
-
-	pub fn from_target_types(target_types: impl IntoIterator<Item = impl Borrow<ClickTargetType>>, preserve_id: bool) -> Self {
-		let mut vector = Self::default();
-
-		for target_type in target_types.into_iter() {
-			match target_type.borrow() {
-				ClickTargetType::Subpath(subpath) => vector.append_subpath(subpath, preserve_id),
-				ClickTargetType::FreePoint(point) => vector.append_free_point(point, preserve_id),
-				ClickTargetType::CompoundPath(subpaths) => {
-					for subpath in subpaths {
-						vector.append_subpath(subpath, preserve_id);
-					}
-				}
-			}
 		}
 
 		vector
@@ -321,13 +290,6 @@ impl Vector {
 		[bounds_min, bounds_max]
 	}
 
-	/// Compute the pivot of the layer in layerspace (the coordinates of the subpaths)
-	pub fn layerspace_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
-		let [bounds_min, bounds_max] = self.nonzero_bounding_box();
-		let bounds_size = bounds_max - bounds_min;
-		bounds_min + bounds_size * normalized_pivot
-	}
-
 	pub fn start_point(&self) -> impl Iterator<Item = PointId> + '_ {
 		self.segment_domain.start_point().iter().map(|&index| self.point_domain.ids()[index])
 	}
@@ -360,11 +322,6 @@ impl Vector {
 
 	pub fn segment_end_from_id(&self, segment: SegmentId) -> Option<PointId> {
 		self.segment_domain.segment_end_from_id(segment).map(|index| self.point_domain.ids()[index])
-	}
-
-	/// Returns an array for the start and end points of a segment.
-	pub fn points_from_id(&self, segment: SegmentId) -> Option<[PointId; 2]> {
-		self.segment_domain.points_from_id(segment).map(|val| val.map(|index| self.point_domain.ids()[index]))
 	}
 
 	/// Attempts to find another point in the segment that is not the one passed in.
@@ -595,7 +552,13 @@ mod tests {
 	#[test]
 	fn construct_open_subpath() {
 		let bezier = PathSeg::Cubic(CubicBez::new(Point::ZERO, Point::new(-1., -1.), Point::new(1., 1.), Point::new(1., 0.)));
-		let subpath = Subpath::from_bezier(bezier);
+		let subpath = Subpath::new(
+			vec![
+				ManipulatorGroup::new(DVec2::ZERO, None, Some(DVec2::new(-1., -1.))),
+				ManipulatorGroup::new(DVec2::new(1., 0.), Some(DVec2::new(1., 1.)), None),
+			],
+			false,
+		);
 		let vector: Vector = Vector::from_subpath(&subpath);
 		assert_eq!(vector.point_domain.ids().len(), 2);
 		let bezier_paths = vector.segment_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
@@ -607,8 +570,13 @@ mod tests {
 
 	#[test]
 	fn construct_many_subpath() {
-		let curve = PathSeg::Cubic(CubicBez::new(Point::ZERO, Point::new(-1., -1.), Point::new(1., 1.), Point::new(1., 0.)));
-		let curve = Subpath::from_bezier(curve);
+		let curve = Subpath::new(
+			vec![
+				ManipulatorGroup::new(DVec2::ZERO, None, Some(DVec2::new(-1., -1.))),
+				ManipulatorGroup::new(DVec2::new(1., 0.), Some(DVec2::new(1., 1.)), None),
+			],
+			false,
+		);
 		let circle = Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
 
 		let vector: Vector = Vector::from_subpaths([&curve, &circle], false);

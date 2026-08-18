@@ -363,13 +363,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id);
-				modify_inputs.insert_vector(subpaths, layer, true, true, true);
-				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
 			GraphOperationMessage::NewTextLayer {
 				id,
 				text,

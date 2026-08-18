@@ -323,8 +323,8 @@ mod test {
 		.await;
 		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
-		assert_eq!(vector.region_manipulator_groups().count(), 3);
-		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
+		assert_eq!(vector.stroke_manipulator_groups().count(), 3);
+		for (index, (manipulator_groups, _)) in vector.stroke_manipulator_groups().enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
 		}
 	}
@@ -342,9 +342,9 @@ mod test {
 		.await;
 		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
-		assert_eq!(vector.region_manipulator_groups().count(), 1);
+		assert_eq!(vector.stroke_manipulator_groups().count(), 1);
 
-		let (_, manipulator_groups) = vector.region_manipulator_groups().next().unwrap();
+		let (manipulator_groups, _) = vector.stroke_manipulator_groups().next().unwrap();
 		let anchor = manipulator_groups[0].anchor;
 		assert!(anchor.length() < 1e-5, "Expected the single copy to be untransformed, found anchor {anchor}");
 	}
@@ -364,8 +364,8 @@ mod test {
 		.await;
 		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
-		assert_eq!(vector.region_manipulator_groups().count(), 8);
-		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
+		assert_eq!(vector.stroke_manipulator_groups().count(), 8);
+		for (index, (manipulator_groups, _)) in vector.stroke_manipulator_groups().enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
 		}
 	}
@@ -383,9 +383,9 @@ mod test {
 		.await;
 		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
-		assert_eq!(vector.region_manipulator_groups().count(), 8);
+		assert_eq!(vector.stroke_manipulator_groups().count(), 8);
 
-		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
+		for (index, (manipulator_groups, _)) in vector.stroke_manipulator_groups().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
 
 			let center = (manipulator_groups[0].anchor + manipulator_groups[2].anchor) / 2.;

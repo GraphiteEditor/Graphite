@@ -77,37 +77,6 @@ impl<PointId: Identifier> ManipulatorGroup<PointId> {
 	pub fn is_finite(&self) -> bool {
 		self.anchor.is_finite() && self.in_handle.is_none_or(|handle| handle.is_finite()) && self.out_handle.is_none_or(|handle| handle.is_finite())
 	}
-
-	/// Reverse directions of handles
-	pub fn flip(mut self) -> Self {
-		std::mem::swap(&mut self.in_handle, &mut self.out_handle);
-		self
-	}
-
-	pub fn has_in_handle(&self) -> bool {
-		self.in_handle.map(|handle| Self::has_handle(self.anchor, handle)).unwrap_or(false)
-	}
-
-	pub fn has_out_handle(&self) -> bool {
-		self.out_handle.map(|handle| Self::has_handle(self.anchor, handle)).unwrap_or(false)
-	}
-
-	fn has_handle(anchor: DVec2, handle: DVec2) -> bool {
-		!((handle.x - anchor.x).abs() < f64::EPSILON && (handle.y - anchor.y).abs() < f64::EPSILON)
-	}
-}
-
-#[derive(Copy, Clone)]
-pub enum AppendType {
-	IgnoreStart,
-	SmoothJoin(f64),
-}
-
-#[derive(Copy, Clone, Eq, PartialEq, Hash, graphene_hash::CacheHash)]
-pub enum ArcType {
-	Open,
-	Closed,
-	PieSlice,
 }
 
 /// Representation of the handle point(s) in a bezier segment.
@@ -130,10 +99,6 @@ pub enum BezierHandles {
 }
 
 impl BezierHandles {
-	pub fn is_cubic(&self) -> bool {
-		matches!(self, Self::Cubic { .. })
-	}
-
 	pub fn is_finite(&self) -> bool {
 		match self {
 			BezierHandles::Linear => true,

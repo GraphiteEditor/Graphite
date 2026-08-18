@@ -1,6 +1,5 @@
-use super::consts::*;
 use super::*;
-use crate::vector::misc::{SpiralType, point_to_dvec2};
+use crate::vector::misc::{ArcType, SpiralType, point_to_dvec2};
 use glam::DVec2;
 use kurbo::PathSeg;
 use std::f64::consts::TAU;
@@ -36,55 +35,6 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Self { manipulator_groups, closed }
 	}
 
-	/// Create a `Subpath` consisting of 2 manipulator groups from a `Bezier`.
-	pub fn from_bezier(segment: PathSeg) -> Self {
-		let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(segment);
-		Subpath::new(vec![ManipulatorGroup::new(p0, None, p1), ManipulatorGroup::new(p3, p2, None)], false)
-	}
-
-	/// Creates a subpath from a slice of [Bezier]. When two consecutive Beziers do not share an end and start point, this function
-	/// resolves the discrepancy by simply taking the start-point of the second Bezier as the anchor of the Manipulator Group.
-	pub fn from_beziers(beziers: &[PathSeg], closed: bool) -> Self {
-		assert!(!closed || beziers.len() > 1, "A closed Subpath must contain at least 1 Bezier.");
-		if beziers.is_empty() {
-			return Subpath::new(vec![], closed);
-		}
-
-		let beziers: Vec<_> = beziers.iter().map(|b| pathseg_points(*b)).collect();
-
-		let first = beziers.first().unwrap();
-		let mut manipulator_groups = vec![ManipulatorGroup {
-			anchor: first.p0,
-			in_handle: None,
-			out_handle: first.p1,
-			id: PointId::new(),
-		}];
-		let mut inner_groups: Vec<ManipulatorGroup<PointId>> = beziers
-			.windows(2)
-			.map(|bezier_pair| ManipulatorGroup {
-				anchor: bezier_pair[1].p0,
-				in_handle: bezier_pair[0].p2,
-				out_handle: bezier_pair[1].p1,
-				id: PointId::new(),
-			})
-			.collect::<Vec<ManipulatorGroup<PointId>>>();
-		manipulator_groups.append(&mut inner_groups);
-
-		let last = beziers.last().unwrap();
-		if !closed {
-			manipulator_groups.push(ManipulatorGroup {
-				anchor: last.p3,
-				in_handle: last.p2,
-				out_handle: None,
-				id: PointId::new(),
-			});
-			return Subpath::new(manipulator_groups, false);
-		}
-
-		manipulator_groups[0].in_handle = last.p2;
-		Subpath::new(manipulator_groups, true)
-	}
-
 	/// Returns true if the `Subpath` contains no [ManipulatorGroup].
 	pub fn is_empty(&self) -> bool {
 		self.manipulator_groups.is_empty()
@@ -93,23 +43,6 @@ impl<PointId: Identifier> Subpath<PointId> {
 	/// Returns the number of [ManipulatorGroup]s contained within the `Subpath`.
 	pub fn len(&self) -> usize {
 		self.manipulator_groups.len()
-	}
-
-	/// Returns the number of segments contained within the `Subpath`.
-	pub fn len_segments(&self) -> usize {
-		let mut number_of_curves = self.len();
-		if !self.closed && number_of_curves > 0 {
-			number_of_curves -= 1
-		}
-		number_of_curves
-	}
-
-	/// Returns a copy of the bezier segment at the given segment index, if this segment exists.
-	pub fn get_segment(&self, segment_index: usize) -> Option<PathSeg> {
-		if segment_index >= self.len_segments() {
-			return None;
-		}
-		Some(self[segment_index].to_bezier(&self[(segment_index + 1) % self.len()]))
 	}
 
 	/// Returns an iterator of the [Bezier]s along the `Subpath`.
@@ -138,22 +71,6 @@ impl<PointId: Identifier> Subpath<PointId> {
 	/// Returns a mutable reference to the [ManipulatorGroup]s in the `Subpath`.
 	pub fn manipulator_groups_mut(&mut self) -> &mut Vec<ManipulatorGroup<PointId>> {
 		&mut self.manipulator_groups
-	}
-
-	/// Returns a vector of all the anchors (DVec2) for this `Subpath`.
-	pub fn anchors(&self) -> Vec<DVec2> {
-		self.manipulator_groups().iter().map(|group| group.anchor).collect()
-	}
-
-	/// Returns if the Subpath is equivalent to a single point.
-	pub fn is_point(&self) -> bool {
-		if self.is_empty() {
-			return false;
-		}
-		let point = self.manipulator_groups[0].anchor;
-		self.manipulator_groups
-			.iter()
-			.all(|manipulator_group| manipulator_group.anchor.abs_diff_eq(point, MAX_ABSOLUTE_DIFFERENCE))
 	}
 
 	pub fn from_anchors(anchor_positions: impl IntoIterator<Item = DVec2>, closed: bool) -> Self {
@@ -406,7 +323,7 @@ pub fn spiral_point(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DVec
 }
 
 /// Returns the tangent direction at angle `theta` for the given spiral type.
-pub fn spiral_tangent(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DVec2 {
+fn spiral_tangent(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DVec2 {
 	match spiral_type {
 		SpiralType::Archimedean => archimedean_spiral_tangent(theta, a, b),
 		SpiralType::Logarithmic => log_spiral_tangent(theta, a, b),
@@ -414,7 +331,7 @@ pub fn spiral_tangent(theta: f64, a: f64, b: f64, spiral_type: SpiralType) -> DV
 }
 
 /// Computes arc length between two angles for the given spiral type.
-pub fn spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64, spiral_type: SpiralType) -> f64 {
+fn spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64, spiral_type: SpiralType) -> f64 {
 	match spiral_type {
 		SpiralType::Archimedean => archimedean_spiral_arc_length(theta_start, theta_end, a, b),
 		SpiralType::Logarithmic => log_spiral_arc_length(theta_start, theta_end, a, b),
@@ -422,19 +339,19 @@ pub fn spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64, spira
 }
 
 /// Returns a point on a logarithmic spiral at angle `theta`.
-pub fn log_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+fn log_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
 	let r = a * (b * theta).exp(); // a * e^(bθ)
 	DVec2::new(r * theta.cos(), -r * theta.sin())
 }
 
 /// Computes arc length along a logarithmic spiral between two angles.
-pub fn log_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
+fn log_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
 	let factor = (1. + b * b).sqrt();
 	(a / b) * factor * ((b * theta_end).exp() - (b * theta_start).exp())
 }
 
 /// Returns the tangent direction of a logarithmic spiral at angle `theta`.
-pub fn log_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
+fn log_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
 	let r = a * (b * theta).exp();
 	let dx = r * (b * theta.cos() - theta.sin());
 	let dy = r * (b * theta.sin() + theta.cos());
@@ -443,13 +360,13 @@ pub fn log_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
 }
 
 /// Returns a point on an Archimedean spiral at angle `theta`.
-pub fn archimedean_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
+fn archimedean_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
 	let r = a + b * theta;
 	DVec2::new(r * theta.cos(), -r * theta.sin())
 }
 
 /// Returns the tangent direction of an Archimedean spiral at angle `theta`.
-pub fn archimedean_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
+fn archimedean_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
 	let r = a + b * theta;
 	let dx = b * theta.cos() - r * theta.sin();
 	let dy = b * theta.sin() + r * theta.cos();
@@ -457,12 +374,12 @@ pub fn archimedean_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
 }
 
 /// Computes arc length along an Archimedean spiral between two angles.
-pub fn archimedean_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
+fn archimedean_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
 	archimedean_spiral_arc_length_origin(theta_end, a, b) - archimedean_spiral_arc_length_origin(theta_start, a, b)
 }
 
 /// Computes arc length from origin to a point on Archimedean spiral at angle `theta`.
-pub fn archimedean_spiral_arc_length_origin(theta: f64, a: f64, b: f64) -> f64 {
+fn archimedean_spiral_arc_length_origin(theta: f64, a: f64, b: f64) -> f64 {
 	let r = a + b * theta;
 	let sqrt_term = (r * r + b * b).sqrt();
 	(r * sqrt_term + b * b * ((r + sqrt_term).ln())) / (2. * b)
