@@ -319,7 +319,7 @@ impl ClickTarget {
 		{
 			// Check if the point is within the shape
 			match self.target_type() {
-				ClickTargetType::Path(path) => path.contains(dvec2_to_point(point)),
+				ClickTargetType::Path(path) => closed_contours(path).contains(dvec2_to_point(point)),
 				ClickTargetType::FreePoint(free_point) => free_point.position == point,
 			}
 		} else {
