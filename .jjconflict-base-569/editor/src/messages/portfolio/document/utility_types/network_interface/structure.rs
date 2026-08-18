@@ -39,8 +39,8 @@ impl NodeNetworkInterface {
 
 		let mut targets = Vec::new();
 		let mut combined = BezPath::new();
-		for subpath in vector.stroke_bezier_paths() {
-			combined.extend(subpath.to_bezpath().elements().iter().copied());
+		for bezpath in vector.stroke_bezpath_iter() {
+			combined.extend(bezpath.elements().iter().copied());
 		}
 		if !combined.is_empty() {
 			targets.push(ClickTargetType::Path(combined));

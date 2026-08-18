@@ -1,10 +1,9 @@
 use super::misc::dvec2_to_point;
 use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 pub use super::vector_attributes::*;
-use crate::subpath::{BezierHandles, ManipulatorGroup, Subpath};
+use crate::vector::misc::{BezierHandles, ManipulatorGroup};
 use crate::vector::misc::{HandleId, ManipulatorPointId};
 use crate::vector::vector_modification::VectorExt;
-use core::borrow::Borrow;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::StaticType;
@@ -74,13 +73,12 @@ impl core_types::transform::BakeTransform for Vector {
 }
 
 impl Vector {
-	/// Add a subpath to this vector path.
-	pub fn append_subpath(&mut self, subpath: impl Borrow<Subpath<PointId>>, preserve_id: bool) {
-		let subpath: &Subpath<PointId> = subpath.borrow();
+	/// Add a path of manipulator groups to this vector path.
+	pub fn append_manipulator_groups(&mut self, manipulator_groups: &[ManipulatorGroup], closed: bool, preserve_id: bool) {
 		let stroke_id = StrokeId::ZERO;
 		let mut point_id = self.point_domain.next_id();
 
-		let handles = |a: &ManipulatorGroup<_>, b: &ManipulatorGroup<_>| match (a.out_handle, b.in_handle) {
+		let handles = |a: &ManipulatorGroup, b: &ManipulatorGroup| match (a.out_handle, b.in_handle) {
 			(None, None) => BezierHandles::Linear,
 			(Some(handle), None) | (None, Some(handle)) => BezierHandles::Quadratic { handle },
 			(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic { handle_start, handle_end },
@@ -91,7 +89,7 @@ impl Vector {
 		let mut first_point = None;
 
 		// Construct a bezier segment from the two manipulators on the subpath.
-		for pair in subpath.manipulator_groups().windows(2) {
+		for pair in manipulator_groups.windows(2) {
 			let start = last_point.unwrap_or_else(|| {
 				let id = if preserve_id && !self.point_domain.ids().contains(&pair[0].id) {
 					pair[0].id
@@ -120,8 +118,8 @@ impl Vector {
 
 		let fill_id = FillId::ZERO;
 
-		if subpath.closed() {
-			if let (Some(last), Some(first), Some(first_id), Some(last_id)) = (subpath.manipulator_groups().last(), subpath.manipulator_groups().first(), first_point, last_point) {
+		if closed {
+			if let (Some(last), Some(first), Some(first_id), Some(last_id)) = (manipulator_groups.last(), manipulator_groups.first(), first_point, last_point) {
 				let id = segment_id.next_id();
 				first_seg = Some(first_seg.unwrap_or(id));
 				last_seg = Some(id);
@@ -134,26 +132,10 @@ impl Vector {
 		}
 	}
 
-	/// Construct some new vector path from a single subpath with an identity transform and black fill.
-	pub fn from_subpath(subpath: impl Borrow<Subpath<PointId>>) -> Self {
-		Self::from_subpaths([subpath], false)
-	}
-
 	/// Construct some new vector path from a single [`BezPath`] with an identity transform and black fill.
 	pub fn from_bezpath(bezpath: BezPath) -> Self {
 		let mut vector = Self::default();
 		vector.append_bezpath(bezpath);
-		vector
-	}
-
-	/// Construct some new vector path from subpaths with an identity transform and black fill.
-	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<Subpath<PointId>>>, preserve_id: bool) -> Self {
-		let mut vector = Self::default();
-
-		for subpath in subpaths.into_iter() {
-			vector.append_subpath(subpath, preserve_id);
-		}
-
 		vector
 	}
 
@@ -217,7 +199,7 @@ impl Vector {
 		let Some(stroke) = stroke else { return path_bounds };
 		// Stroke alignment is only honored by the renderer when every subpath is closed; open paths fall
 		// back to drawing a Center-aligned `weight`-wide stroke. Match that behavior to keep bounds in sync.
-		let aligned_renders = stroke.align != StrokeAlign::Center && self.stroke_bezier_paths().all(|p| p.closed());
+		let aligned_renders = stroke.align != StrokeAlign::Center && self.stroke_bezpath_iter().all(|path| matches!(path.elements().last(), Some(kurbo::PathEl::ClosePath)));
 		let kurbo_width = if aligned_renders { stroke.effective_width() } else { stroke.weight };
 		// `Inside`-aligned strokes never expand beyond the path bounds; a zero-weight stroke is invisible
 		if kurbo_width <= 0. {
@@ -519,75 +501,68 @@ impl RenderComplexity for Vector {
 
 #[cfg(test)]
 mod tests {
+	use crate::vector::algorithms::shapes::ellipse_bezpath;
 	use kurbo::{CubicBez, PathSeg, Point};
 
 	use super::*;
 
-	fn assert_subpath_eq(generated: &[Subpath<PointId>], expected: &[Subpath<PointId>]) {
-		assert_eq!(generated.len(), expected.len());
-		for (generated, expected) in generated.iter().zip(expected) {
-			assert_eq!(generated.manipulator_groups().len(), expected.manipulator_groups().len());
-			assert_eq!(generated.closed(), expected.closed());
-			for (generated, expected) in generated.manipulator_groups().iter().zip(expected.manipulator_groups()) {
-				assert_eq!(generated.in_handle, expected.in_handle);
-				assert_eq!(generated.out_handle, expected.out_handle);
-				assert_eq!(generated.anchor, expected.anchor);
-			}
-		}
+	fn open_curve_bezpath() -> BezPath {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to(Point::ZERO);
+		bezpath.curve_to(Point::new(-1., -1.), Point::new(1., 1.), Point::new(1., 0.));
+		bezpath
 	}
 
 	#[test]
-	fn construct_closed_subpath() {
-		let circle = Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
-		let vector: Vector = Vector::from_subpath(&circle);
+	fn construct_closed_path() {
+		let circle = ellipse_bezpath(DVec2::NEG_ONE, DVec2::ONE);
+		let vector = Vector::from_bezpath(circle.clone());
 		assert_eq!(vector.point_domain.ids().len(), 4);
-		let bezier_paths = vector.segment_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
-		assert_eq!(bezier_paths.len(), 4);
-		assert!(bezier_paths.iter().all(|&bezier| circle.iter().any(|original_bezier| original_bezier == bezier)));
 
-		let generated = vector.stroke_bezier_paths().collect::<Vec<_>>();
-		assert_subpath_eq(&generated, &[circle]);
+		let segments = vector.segment_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		assert_eq!(segments.len(), 4);
+		assert!(segments.iter().all(|&segment| circle.segments().any(|original| original == segment)));
+
+		let generated = vector.stroke_bezpath_iter().collect::<Vec<_>>();
+		assert_eq!(generated.len(), 1);
+		assert_eq!(generated[0].elements(), circle.elements());
 	}
 
 	#[test]
-	fn construct_open_subpath() {
-		let bezier = PathSeg::Cubic(CubicBez::new(Point::ZERO, Point::new(-1., -1.), Point::new(1., 1.), Point::new(1., 0.)));
-		let subpath = Subpath::new(
-			vec![
-				ManipulatorGroup::new(DVec2::ZERO, None, Some(DVec2::new(-1., -1.))),
-				ManipulatorGroup::new(DVec2::new(1., 0.), Some(DVec2::new(1., 1.)), None),
-			],
-			false,
-		);
-		let vector: Vector = Vector::from_subpath(&subpath);
+	fn construct_open_path() {
+		let curve = open_curve_bezpath();
+		let vector = Vector::from_bezpath(curve.clone());
 		assert_eq!(vector.point_domain.ids().len(), 2);
-		let bezier_paths = vector.segment_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
-		assert_eq!(bezier_paths, vec![bezier]);
 
-		let generated = vector.stroke_bezier_paths().collect::<Vec<_>>();
-		assert_subpath_eq(&generated, &[subpath]);
+		let segments = vector.segment_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		assert_eq!(segments, vec![PathSeg::Cubic(CubicBez::new(Point::ZERO, Point::new(-1., -1.), Point::new(1., 1.), Point::new(1., 0.)))]);
+
+		let generated = vector.stroke_manipulator_groups().collect::<Vec<_>>();
+		assert_eq!(generated.len(), 1);
+		let (groups, closed) = &generated[0];
+		assert!(!closed);
+		assert_eq!(groups.len(), 2);
+		assert_eq!((groups[0].anchor, groups[0].in_handle, groups[0].out_handle), (DVec2::ZERO, None, Some(DVec2::new(-1., -1.))));
+		assert_eq!((groups[1].anchor, groups[1].in_handle, groups[1].out_handle), (DVec2::new(1., 0.), Some(DVec2::new(1., 1.)), None));
 	}
 
 	#[test]
-	fn construct_many_subpath() {
-		let curve = Subpath::new(
-			vec![
-				ManipulatorGroup::new(DVec2::ZERO, None, Some(DVec2::new(-1., -1.))),
-				ManipulatorGroup::new(DVec2::new(1., 0.), Some(DVec2::new(1., 1.)), None),
-			],
-			false,
-		);
-		let circle = Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
+	fn construct_many_paths() {
+		let curve = open_curve_bezpath();
+		let circle = ellipse_bezpath(DVec2::NEG_ONE, DVec2::ONE);
 
-		let vector: Vector = Vector::from_subpaths([&curve, &circle], false);
+		let mut vector = Vector::from_bezpath(curve.clone());
+		vector.append_bezpath(circle.clone());
 		assert_eq!(vector.point_domain.ids().len(), 6);
 
-		let bezier_paths = vector.segment_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
-		assert_eq!(bezier_paths.len(), 5);
-		assert!(bezier_paths.iter().all(|&bezier| circle.iter().chain(curve.iter()).any(|original_bezier| original_bezier == bezier)));
+		let segments = vector.segment_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		assert_eq!(segments.len(), 5);
+		assert!(segments.iter().all(|&segment| circle.segments().chain(curve.segments()).any(|original| original == segment)));
 
-		let generated = vector.stroke_bezier_paths().collect::<Vec<_>>();
-		assert_subpath_eq(&generated, &[curve, circle]);
+		let generated = vector.stroke_bezpath_iter().collect::<Vec<_>>();
+		assert_eq!(generated.len(), 2);
+		assert_eq!(generated[0].elements(), curve.elements());
+		assert_eq!(generated[1].elements(), circle.elements());
 	}
 
 	// Verifies the `DVec2 -> List<Vector>` conversion that replaced the former "Vec2 to Point" node yields a path

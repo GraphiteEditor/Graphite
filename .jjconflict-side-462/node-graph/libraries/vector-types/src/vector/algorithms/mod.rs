@@ -4,5 +4,6 @@ pub mod intersection;
 pub mod merge_by_distance;
 pub mod offset_subpath;
 pub mod poisson_disk;
+pub mod shapes;
 pub mod spline;
 pub mod util;

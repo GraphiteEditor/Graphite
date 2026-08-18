@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::subpath::{calculate_growth_factor, spiral_point};
+use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
 use std::f64::consts::TAU;

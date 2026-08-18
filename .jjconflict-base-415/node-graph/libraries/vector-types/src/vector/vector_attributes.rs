@@ -1,5 +1,4 @@
-use crate::subpath::{BezierHandles, Identifier, ManipulatorGroup, Subpath};
-use crate::vector::misc::{HandleId, Tangent, dvec2_to_point};
+use crate::vector::misc::{BezierHandles, HandleId, ManipulatorGroup, Tangent, dvec2_to_point};
 use crate::vector::vector_types::Vector;
 use dyn_any::DynAny;
 use fixedbitset::FixedBitSet;
@@ -984,8 +983,8 @@ impl Vector {
 		}
 	}
 
-	/// Construct a [`Subpath`] from an iterator of segments with (handles, start point, end point) independently of discontinuities.
-	pub fn subpath_from_segments_ignore_discontinuities(&self, segments: impl Iterator<Item = (BezierHandles, usize, usize)>) -> Option<Subpath<PointId>> {
+	/// Construct a [`kurbo::BezPath`] from an iterator of segments with (handles, start point, end point) independently of discontinuities.
+	pub fn bezpath_from_segments_ignore_discontinuities(&self, segments: impl Iterator<Item = (BezierHandles, usize, usize)>) -> Option<kurbo::BezPath> {
 		let mut first_point = None;
 		let mut manipulators_list = Vec::new();
 		let mut last: Option<(usize, BezierHandles)> = None;
@@ -1018,7 +1017,7 @@ impl Vector {
 			}
 		}
 
-		Some(Subpath::new(manipulators_list, closed))
+		Some(crate::vector::misc::bezpath_from_manipulator_groups(&manipulators_list, closed))
 	}
 
 	pub fn build_stroke_path_iter(&self) -> StrokePathIter<'_> {
@@ -1036,14 +1035,9 @@ impl Vector {
 		}
 	}
 
-	/// Construct a [`Subpath`] for each stroke path.
-	pub fn stroke_bezier_paths(&self) -> impl Iterator<Item = Subpath<PointId>> {
-		self.build_stroke_path_iter().map(|(manipulators_list, closed)| Subpath::new(manipulators_list, closed))
-	}
-
-	/// Construct and return an iterator of Vec of `(ManipulatorGroup<PointId>], bool)` for stroke.
+	/// Construct and return an iterator of `(Vec<ManipulatorGroup>, bool)` for each stroke.
 	/// The boolean in the tuple indicates if the path is closed.
-	pub fn stroke_manipulator_groups(&self) -> impl Iterator<Item = (Vec<ManipulatorGroup<PointId>>, bool)> {
+	pub fn stroke_manipulator_groups(&self) -> impl Iterator<Item = (Vec<ManipulatorGroup>, bool)> {
 		self.build_stroke_path_iter()
 	}
 
@@ -1257,7 +1251,7 @@ pub struct StrokePathIter<'a> {
 }
 
 impl Iterator for StrokePathIter<'_> {
-	type Item = (Vec<ManipulatorGroup<PointId>>, bool);
+	type Item = (Vec<ManipulatorGroup>, bool);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let mut current_start = None;
@@ -1323,12 +1317,6 @@ impl Iterator for StrokePathIter<'_> {
 		}
 
 		Some((manipulators_list, closed))
-	}
-}
-
-impl Identifier for PointId {
-	fn new() -> Self {
-		Self::generate()
 	}
 }
 

@@ -28,8 +28,8 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
-use graphene_std::subpath::Subpath;
 use graphene_std::transform::ReferencePoint;
+use graphene_std::vector::algorithms::shapes::polyline_bezpath;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::style::FillChoice;
 use std::fmt;
@@ -575,7 +575,7 @@ impl SelectToolData {
 		if self.lasso_polygon.len() < 2 {
 			return Vec::new();
 		}
-		let polygon = Subpath::from_anchors(self.lasso_polygon.clone(), true);
+		let polygon = polyline_bezpath(self.lasso_polygon.iter().copied(), true);
 		document.intersect_polygon_no_artboards(polygon, viewport).collect()
 	}
 
@@ -583,7 +583,7 @@ impl SelectToolData {
 		if self.lasso_polygon.len() < 2 {
 			return false;
 		}
-		let polygon = Subpath::from_anchors(self.lasso_polygon.clone(), true);
+		let polygon = polyline_bezpath(self.lasso_polygon.iter().copied(), true);
 		document.is_layer_fully_inside_polygon(layer, viewport, polygon)
 	}
 

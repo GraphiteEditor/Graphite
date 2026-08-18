@@ -18,7 +18,7 @@ use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsU
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, should_extend};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::subpath::pathseg_points;
+use graphene_std::vector::misc::pathseg_points;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::style::FillChoice;
 use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, StrokeId, Vector, VectorModificationType};
@@ -1866,8 +1866,8 @@ impl Fsm for PenToolFsmState {
 										.find(|(id, _, _, _)| id == &edge.id)
 										.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
 								});
-								if let Some(subpath) = vector.subpath_from_segments_ignore_discontinuities(segments) {
-									fill_region.extend(subpath.to_bezpath().elements().iter().copied());
+								if let Some(bezpath) = vector.bezpath_from_segments_ignore_discontinuities(segments) {
+									fill_region.extend(bezpath.elements().iter().copied());
 								}
 							}
 

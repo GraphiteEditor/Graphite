@@ -245,7 +245,6 @@ mod test {
 	use std::future::Future;
 	use std::pin::Pin;
 	use vector_nodes::generator_nodes::RectangleNode;
-	use vector_types::subpath::Subpath;
 	use vector_types::vector::misc::BoxCorners;
 
 	fn vector_node_from_bezpath(bezpath: BezPath) -> List<Vector> {
@@ -294,7 +293,12 @@ mod test {
 		);
 
 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
-		let points = List::new_from_element(Vector::from_subpath(Subpath::from_anchors(positions, false)));
+		let mut polyline = BezPath::new();
+		polyline.move_to((positions[0].x, positions[0].y));
+		for position in &positions[1..] {
+			polyline.line_to((position.x, position.y));
+		}
+		let points = vector_node_from_bezpath(polyline);
 		let generated = super::repeat_on_points(context, points, &RaiseToListNode(rect), Item::new_from_element(false)).await;
 		assert_eq!(generated.len(), positions.len());
 		for (position, index) in positions.into_iter().zip(0..generated.len()) {

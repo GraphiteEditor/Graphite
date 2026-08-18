@@ -1,4 +1,4 @@
-use super::intersection::bezpath_intersections;
+use super::intersection::{bezpath_intersections, filtered_all_segment_intersections, pathseg_self_intersections};
 use super::poisson_disk::poisson_disk_sample;
 use super::util::pathseg_tangent;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
@@ -6,6 +6,9 @@ use core_types::math::polynomial::pathseg_to_parametric_polynomial;
 use glam::{DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI};
+
+/// Default threshold for comparing floating point values in intersection and centroid math.
+const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-3;
 
 /// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
 /// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
@@ -414,8 +417,8 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 	poisson_disk_sample(offset, width, height, separation_disk_diameter, point_in_shape_checker, line_intersect_shape_checker, rng)
 }
 
-// TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that should be trimmed. This could cause the Subpaths to be clipped
-// TODO: at the incorrect location. This can be avoided by first trimming the two Subpaths at any extrema, effectively ignoring loopbacks.
+// TODO: If a segment curls back on itself tightly enough it could intersect again at the portion that should be trimmed. This could cause the subpaths to be clipped
+// TODO: at the incorrect location. This can be avoided by first trimming the two subpaths at any extrema, effectively ignoring loopbacks.
 /// Helper function to clip overlap of two intersecting open BezPaths. Returns an Option because intersections may not exist for certain arrangements and distances.
 /// Assumes that the BezPaths represents simple Bezier segments, and clips the BezPaths at the last intersection of the first BezPath, and first intersection of the last BezPath.
 pub fn clip_simple_bezpaths(bezpath1: &BezPath, bezpath2: &BezPath) -> Option<(BezPath, BezPath)> {
@@ -565,6 +568,124 @@ pub fn bezpath_is_inside_bezpath(bezpath1: &BezPath, bezpath2: &BezPath, accurac
 	true
 }
 
+/// The segments of the [`BezPath`] always considering it as a closed path, synthesizing the closing line when it is open.
+fn closed_segments(bezpath: &BezPath) -> Vec<PathSeg> {
+	let mut segments = bezpath.segments().collect::<Vec<_>>();
+
+	if let (Some(first), Some(last)) = (segments.first(), segments.last())
+		&& last.end() != first.start()
+	{
+		segments.push(PathSeg::Line(Line::new(last.end(), first.start())));
+	}
+
+	segments
+}
+
+/// Returns a list of `t` values that correspond to all the self intersection points of the path always considering it as a closed path.
+/// The index and `t` value of both will be returned that corresponds to a point, sorted based on their index and `t` respectively.
+fn closed_bezpath_self_intersections(segments: &[PathSeg], accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+	let mut intersections_vec = Vec::new();
+	let err = accuracy.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
+	let num_curves = segments.len();
+
+	// O(n²) in the number of segments, since every segment pair is compared
+	segments.iter().enumerate().for_each(|(i, &other)| {
+		intersections_vec.extend(pathseg_self_intersections(other, accuracy, minimum_separation).iter().flat_map(|value| [(i, value.0), (i, value.1)]));
+		segments.iter().enumerate().skip(i + 1).for_each(|(j, &curve)| {
+			intersections_vec.extend(
+				filtered_all_segment_intersections(curve, other, accuracy, minimum_separation)
+					.iter()
+					.filter(|&value| (j != i + 1 || value.0 > err || (1. - value.1) > err) && (j != num_curves - 1 || i != 0 || value.1 > err || (1. - value.0) > err))
+					.flat_map(|value| [(j, value.0), (i, value.1)]),
+			);
+		});
+	});
+
+	intersections_vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+	intersections_vec
+}
+
+/// Return the area centroid, together with the area, of the [`BezPath`] always considering it as a closed path. The area will always be a positive value.
+///
+/// The area centroid is the center of mass for the area of a solid shape's interior.
+/// An infinitely flat material forming the path's closed shape would balance at this point.
+///
+/// It will return `None` if no segment is present. If the area is less than `error`, it will return `Some((DVec2::NAN, 0.))`.
+///
+/// Because the calculation of area and centroid for a self-intersecting path requires finding the intersections, the following parameters are used:
+/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+/// - `minimum_separation` - the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+///
+/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
+///
+/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
+pub fn bezpath_area_centroid_and_area(bezpath: &BezPath, error: Option<f64>, minimum_separation: Option<f64>) -> Option<(DVec2, f64)> {
+	let segments = closed_segments(bezpath);
+	let all_intersections = closed_bezpath_self_intersections(&segments, error, minimum_separation);
+	let mut current_sign: f64 = 1.;
+
+	let (x_sum, y_sum, area) = segments
+		.iter()
+		.enumerate()
+		.map(|(index, &bezier)| {
+			let (f_x, f_y) = pathseg_to_parametric_polynomial(bezier);
+			let (f_x, f_y) = (f_x.as_size::<10>().unwrap(), f_y.as_size::<10>().unwrap());
+			let f_y_prime = f_y.derivative();
+			let f_x_prime = f_x.derivative();
+			let f_xy = &f_x * &f_y;
+
+			let mut x_part = &f_xy * &f_x_prime;
+			let mut y_part = &f_xy * &f_y_prime;
+			let mut area_part = &f_x * &f_y_prime;
+			x_part.antiderivative_mut();
+			y_part.antiderivative_mut();
+			area_part.antiderivative_mut();
+
+			let mut curve_sum_x = -current_sign * x_part.eval(0.);
+			let mut curve_sum_y = -current_sign * y_part.eval(0.);
+			let mut curve_sum_area = -current_sign * area_part.eval(0.);
+			for (_, t) in all_intersections.iter().filter(|(i, _)| *i == index) {
+				curve_sum_x += 2. * current_sign * x_part.eval(*t);
+				curve_sum_y += 2. * current_sign * y_part.eval(*t);
+				curve_sum_area += 2. * current_sign * area_part.eval(*t);
+				current_sign *= -1.;
+			}
+			curve_sum_x += current_sign * x_part.eval(1.);
+			curve_sum_y += current_sign * y_part.eval(1.);
+			curve_sum_area += current_sign * area_part.eval(1.);
+
+			(-curve_sum_x, curve_sum_y, curve_sum_area)
+		})
+		.reduce(|(x1, y1, area1), (x2, y2, area2)| (x1 + x2, y1 + y2, area1 + area2))?;
+
+	if area.abs() < error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE) {
+		return Some((DVec2::NAN, 0.));
+	}
+
+	Some((DVec2::new(x_sum / area, y_sum / area), area.abs()))
+}
+
+/// Return the approximation of the length centroid, together with the length, of the [`BezPath`].
+///
+/// The length centroid is the center of mass for the arc length of the solid shape's perimeter.
+/// An infinitely thin wire forming the path's shape would balance at this point.
+///
+/// It will return `None` if no segment is present.
+/// - `accuracy` is used to approximate the curve.
+/// - `always_closed` is to consider the path as closed always.
+pub fn bezpath_length_centroid_and_length(bezpath: &BezPath, accuracy: Option<f64>, always_closed: bool) -> Option<(DVec2, f64)> {
+	let segments = if always_closed { closed_segments(bezpath) } else { bezpath.segments().collect() };
+
+	segments
+		.into_iter()
+		.map(|bezier| pathseg_length_centroid_and_length(bezier, accuracy))
+		.map(|(centroid, length)| (centroid * length, length))
+		.reduce(|(centroid_part1, length1), (centroid_part2, length2)| (centroid_part1 + centroid_part2, length1 + length2))
+		.map(|(centroid_part, length)| (centroid_part / length, length))
+		.map(|(centroid_part, length)| (DVec2::new(centroid_part.x, centroid_part.y), length))
+}
+
 #[cfg(test)]
 mod tests {
 	// TODO: add more intersection tests
@@ -593,5 +714,14 @@ mod tests {
 
 		let line_inside = Line::new(Point::new(101., 101.5), Point::new(150.2, 499.)).to_path(DEFAULT_ACCURACY);
 		assert!(bezpath_is_inside_bezpath(&line_inside, &boundary_polygon, None, None));
+	}
+
+	#[test]
+	fn centroid_rect() {
+		let rect = crate::vector::algorithms::shapes::rectangle_bezpath(glam::DVec2::new(100., 100.), glam::DVec2::new(300., 200.));
+		let (center, area) = super::bezpath_area_centroid_and_area(&rect, Some(1e-3), Some(1e-3)).unwrap();
+
+		assert_eq!(area, 200. * 100.);
+		assert_eq!(center, glam::DVec2::new(200., 150.));
 	}
 }
