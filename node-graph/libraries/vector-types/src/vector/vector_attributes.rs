@@ -1,4 +1,4 @@
-use crate::subpath::{Bezier, BezierHandles, Identifier, ManipulatorGroup, Subpath};
+use crate::subpath::{BezierHandles, Identifier, ManipulatorGroup, Subpath};
 use crate::vector::misc::{HandleId, Tangent, dvec2_to_point};
 use crate::vector::vector_types::Vector;
 use dyn_any::DynAny;
@@ -881,33 +881,26 @@ impl Vector {
 		}
 	}
 
-	/// Construct a [`Bezier`] curve spanning from the resolved position of the start and end points with the specified handles.
-	fn segment_to_bezier_with_index(&self, start: usize, end: usize, handles: BezierHandles) -> Bezier {
-		let start = self.point_domain.positions()[start];
-		let end = self.point_domain.positions()[end];
-		Bezier { start, end, handles }
+	/// Tries to convert a segment with the specified id to a [`PathSeg`], returning None if the id is invalid.
+	pub fn segment_from_id(&self, id: SegmentId) -> Option<PathSeg> {
+		self.segment_points_from_id(id).map(|(_, _, segment)| segment)
 	}
 
-	/// Tries to convert a segment with the specified id to a [`Bezier`], returning None if the id is invalid.
-	pub fn segment_from_id(&self, id: SegmentId) -> Option<Bezier> {
-		self.segment_points_from_id(id).map(|(_, _, bezier)| bezier)
-	}
-
-	/// Tries to convert a segment with the specified id to the start and end points and a [`Bezier`], returning None if the id is invalid.
-	pub fn segment_points_from_id(&self, id: SegmentId) -> Option<(PointId, PointId, Bezier)> {
+	/// Tries to convert a segment with the specified id to the start and end points and a [`PathSeg`], returning None if the id is invalid.
+	pub fn segment_points_from_id(&self, id: SegmentId) -> Option<(PointId, PointId, PathSeg)> {
 		Some(self.segment_points_from_index(self.segment_domain.id_to_index(id)?))
 	}
 
-	/// Tries to convert a segment with the specified index to the start and end points and a [`Bezier`].
-	pub fn segment_points_from_index(&self, index: usize) -> (PointId, PointId, Bezier) {
+	/// Converts a segment with the specified index to the start and end points and a [`PathSeg`].
+	pub fn segment_points_from_index(&self, index: usize) -> (PointId, PointId, PathSeg) {
 		let start = self.segment_domain.start_point[index];
 		let end = self.segment_domain.end_point[index];
 		let start_id = self.point_domain.ids()[start];
 		let end_id = self.point_domain.ids()[end];
-		(start_id, end_id, self.segment_to_bezier_with_index(start, end, self.segment_domain.handles[index]))
+		(start_id, end_id, self.path_segment_from_index(start, end, self.segment_domain.handles[index]))
 	}
 
-	/// Iterator over all of the [`Bezier`] following the order that they are stored in the segment domain, skipping invalid segments.
+	/// Iterator over all of the [`PathSeg`]s following the order that they are stored in the segment domain, skipping invalid segments.
 	pub fn segment_iter(&self) -> impl Iterator<Item = (SegmentId, PathSeg, PointId, PointId)> {
 		let to_segment = |(((&handles, &id), &start), &end)| (id, self.path_segment_from_index(start, end, handles), self.point_domain.ids()[start], self.point_domain.ids()[end]);
 
@@ -918,18 +911,6 @@ impl Vector {
 			.zip(self.segment_domain.start_point())
 			.zip(self.segment_domain.end_point())
 			.map(to_segment)
-	}
-
-	/// Iterator over all of the [`Bezier`] following the order that they are stored in the segment domain, skipping invalid segments.
-	pub fn segment_bezier_iter(&self) -> impl Iterator<Item = (SegmentId, Bezier, PointId, PointId)> + '_ {
-		let to_bezier = |(((&handles, &id), &start), &end)| (id, self.segment_to_bezier_with_index(start, end, handles), self.point_domain.ids()[start], self.point_domain.ids()[end]);
-		self.segment_domain
-			.handles
-			.iter()
-			.zip(&self.segment_domain.id)
-			.zip(self.segment_domain.start_point())
-			.zip(self.segment_domain.end_point())
-			.map(to_bezier)
 	}
 
 	pub fn auto_join_paths(&self) -> Vec<FoundSubpath> {
@@ -1003,7 +984,7 @@ impl Vector {
 		}
 	}
 
-	/// Construct a [`Bezier`] curve from an iterator of segments with (handles, start point, end point) independently of discontinuities.
+	/// Construct a [`Subpath`] from an iterator of segments with (handles, start point, end point) independently of discontinuities.
 	pub fn subpath_from_segments_ignore_discontinuities(&self, segments: impl Iterator<Item = (BezierHandles, usize, usize)>) -> Option<Subpath<PointId>> {
 		let mut first_point = None;
 		let mut manipulators_list = Vec::new();
@@ -1055,7 +1036,7 @@ impl Vector {
 		}
 	}
 
-	/// Construct a [`Bezier`] curve for stroke.
+	/// Construct a [`Subpath`] for each stroke path.
 	pub fn stroke_bezier_paths(&self) -> impl Iterator<Item = Subpath<PointId>> {
 		self.build_stroke_path_iter().map(|(manipulators_list, closed)| Subpath::new(manipulators_list, closed))
 	}

@@ -696,16 +696,6 @@ pub mod extrude_algorithms {
 	use vector_types::vector::StrokeId;
 	use vector_types::vector::misc::ExtrudeJoiningAlgorithm;
 
-	/// Convert [`vector_types::subpath::Bezier`] to [`kurbo::PathSeg`].
-	fn bezier_to_path_seg(bezier: vector_types::subpath::Bezier) -> kurbo::PathSeg {
-		let [start, end] = [(bezier.start().x, bezier.start().y), (bezier.end().x, bezier.end().y)];
-		match bezier.handles {
-			BezierHandles::Linear => kurbo::Line::new(start, end).into(),
-			BezierHandles::Quadratic { handle } => kurbo::QuadBez::new(start, (handle.x, handle.y), end).into(),
-			BezierHandles::Cubic { handle_start, handle_end } => kurbo::CubicBez::new(start, (handle_start.x, handle_start.y), (handle_end.x, handle_end.y), end).into(),
-		}
-	}
-
 	/// Convert [`kurbo::CubicBez`] to [`vector_types::subpath::BezierHandles`].
 	fn cubic_to_handles(cubic_bez: kurbo::CubicBez) -> BezierHandles {
 		BezierHandles::Cubic {
@@ -736,9 +726,9 @@ pub mod extrude_algorithms {
 		let mut next_segment = vector.segment_domain.next_id();
 
 		for segment_index in 0..segment_count {
-			let (_, _, bezier) = vector.segment_points_from_index(segment_index);
+			let (_, _, segment) = vector.segment_points_from_index(segment_index);
 			let mut start_index = vector.segment_domain.start_point()[segment_index];
-			let pathseg = bezier_to_path_seg(bezier).to_cubic();
+			let pathseg = segment.to_cubic();
 			let mut start_t = 0.;
 
 			for split_t in find_splits(pathseg, direction) {
