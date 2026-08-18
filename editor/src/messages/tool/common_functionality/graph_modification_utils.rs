@@ -13,7 +13,7 @@ use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
-use graphene_std::vector::{Gradient, GradientForm, GradientRamp, GradientSettings, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{Gradient, GradientForm, GradientGeometry, GradientRamp, GradientSettings, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 
@@ -468,8 +468,8 @@ pub fn gradient_to_viewport_transform(layer: LayerNodeIdentifier, network_interf
 }
 
 /// Tooltip description for a "Reverse Direction" gradient button, phrased for the given Gradient Form.
-pub fn reverse_direction_tooltip_description(gradient_form: GradientForm) -> &'static str {
-	match gradient_form {
+pub fn reverse_direction_tooltip_description(geometry: GradientGeometry) -> &'static str {
+	match geometry.form() {
 		GradientForm::Radial => "Reverse which end the gradient radiates from.",
 		GradientForm::Linear => "Swap the start and end points of the gradient line.",
 	}
@@ -791,7 +791,8 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 /// A Fill node's decoded gradient inputs, with the transform kept in its raw form (not yet baked into `start`/`end`).
 pub struct FillNodeGradient {
 	pub stops: Gradient,
-	pub gradient_form: GradientForm,
+	/// Unified two-circle geometry derived from the fill node's `GradientFormInput`.
+	pub geometry: GradientGeometry,
 	pub settings: GradientSettings,
 	pub transform: DAffine2,
 	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
@@ -807,9 +808,10 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	};
 	let settings = GradientSettings::from(ramp);
 	let stops = Gradient::from(ramp);
-	let gradient_form = match fill_node.input(fill::GradientFormInput).and_then(|input| input.as_value()) {
-		Some(&TaggedValue::GradientForm(value)) => value,
-		_ => GradientForm::default(),
+	// Read the GradientForm node input and convert to unified geometry (backward-compatible with legacy docs).
+	let geometry = match fill_node.input(fill::GradientFormInput).and_then(|input| input.as_value()) {
+		Some(&TaggedValue::GradientForm(value)) => GradientGeometry::from(value),
+		_ => GradientGeometry::default(),
 	};
 	let has_transform = matches!(fill_node.input(fill::HasTransformInput).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
 	let transform_input = fill_node.input(fill::TransformInput).and_then(|input| input.as_value());
@@ -821,7 +823,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 
 	Some(FillNodeGradient {
 		stops,
-		gradient_form,
+		geometry,
 		settings,
 		transform,
 		transform_is_value: transform_input.is_some(),
@@ -963,10 +965,11 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 				use graphene_std::vector::fill;
 				let fill_parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(fill::IDENTIFIER);
 
-				let gradient_form = match fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::GradientFormInput)) {
-					Some(TaggedValue::GradientForm(value)) => *value,
-					_ => GradientForm::default(),
+				let geometry = match fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::GradientFormInput)) {
+					Some(TaggedValue::GradientForm(value)) => GradientGeometry::from(*value),
+					_ => GradientGeometry::default(),
 				};
+				let gradient_form = geometry.form();
 				let has_transform = matches!(fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::HasTransformInput)), Some(TaggedValue::Bool(true)));
 				let transform = match (has_transform, fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::TransformInput))) {
 					(true, Some(TaggedValue::DAffine2(value))) => *value,

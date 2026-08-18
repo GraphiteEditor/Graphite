@@ -8,8 +8,8 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
-	ExtractAll, OwnedContextImpl,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_ANGULAR, ATTR_GRADIENT_CURVATURE_A, ATTR_GRADIENT_CURVATURE_B, ATTR_OPACITY, ATTR_OPACITY_FILL,
+	ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -22,7 +22,7 @@ use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use vector_types::GradientForm;
-use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
+use vector_types::gradient::{GradientGeometry, build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::vector::algorithms::bezpath_algorithms::{
 	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
 };
@@ -326,14 +326,20 @@ where
 	let mut paint = paint.into_element();
 
 	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
-	let (needs_form, needs_transform) = match &paint {
-		Graphic::Gradient(item) => (item.attribute::<GradientForm>(ATTR_GRADIENT_FORM).is_none(), item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none()),
-		Graphic::GradientList(list) => (
-			list.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none(),
-			list.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none(),
-		),
-		_ => (false, false),
+	let needs_geometry = match &paint {
+		Graphic::Gradient(item) => item.attribute::<f64>(ATTR_GRADIENT_CURVATURE_A).is_none(),
+		Graphic::GradientList(list) => list.iter_attribute_values::<f64>(ATTR_GRADIENT_CURVATURE_A).is_none(),
+		_ => false,
 	};
+	let needs_transform = match &paint {
+		Graphic::Gradient(item) => item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none(),
+		Graphic::GradientList(list) => list.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none(),
+		_ => false,
+	};
+
+	// The unified geometry: the two circles' curvatures (reparameterized) replace the form enum as the stored description.
+	// The focal center offset and radius for SVG `fr`/`fx`/`fy` ride as gradient attributes, stamped on import.
+	let stamped_geometry = needs_geometry.then(|| GradientGeometry::from(_gradient_form));
 
 	let stamped_transform = needs_transform.then(|| {
 		// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
@@ -364,17 +370,31 @@ where
 
 	match &mut paint {
 		Graphic::Gradient(item) => {
-			if needs_form {
-				item.set_attribute(ATTR_GRADIENT_FORM, _gradient_form);
+			if let Some(geometry) = stamped_geometry {
+				if item.attribute::<f64>(ATTR_GRADIENT_CURVATURE_A).is_none() {
+					item.set_attribute(ATTR_GRADIENT_CURVATURE_A, geometry.curvature_a);
+				}
+				if item.attribute::<f64>(ATTR_GRADIENT_CURVATURE_B).is_none() {
+					item.set_attribute(ATTR_GRADIENT_CURVATURE_B, geometry.curvature_b);
+				}
+				if item.attribute::<bool>(ATTR_GRADIENT_ANGULAR).is_none() {
+					item.set_attribute(ATTR_GRADIENT_ANGULAR, geometry.angular);
+				}
 			}
 			if let Some(transform) = stamped_transform {
 				item.set_attribute(ATTR_TRANSFORM, transform);
 			}
 		}
 		Graphic::GradientList(list) => {
-			if needs_form {
-				for value in list.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
-					*value = _gradient_form;
+			if let Some(geometry) = stamped_geometry {
+				for value in list.iter_attribute_values_mut_or_default::<f64>(ATTR_GRADIENT_CURVATURE_A) {
+					*value = geometry.curvature_a;
+				}
+				for value in list.iter_attribute_values_mut_or_default::<f64>(ATTR_GRADIENT_CURVATURE_B) {
+					*value = geometry.curvature_b;
+				}
+				for value in list.iter_attribute_values_mut_or_default::<bool>(ATTR_GRADIENT_ANGULAR) {
+					*value = geometry.angular;
 				}
 			}
 			if let Some(transform) = stamped_transform {
