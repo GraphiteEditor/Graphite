@@ -763,6 +763,15 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		]);
 	}
 
+	// A kernel-declared `ExtractArena<'e>` bound already carries the arena at
+	// its own lifetime; a second equality bound would contradict it.
+	let ctx_extracts_arena = ctx_param.is_some_and(|ctx_param| {
+		ctx_param
+			.bounds
+			.iter()
+			.any(|bound| matches!(bound, TypeParamBound::Trait(trait_bound) if trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "ExtractArena")))
+	});
+
 	let derives = ctx_param.is_some_and(|ctx_param| {
 		ctx_param.bounds.iter().any(|bound| match bound {
 			TypeParamBound::Trait(trait_bound) => trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "DeriveCtx"),
@@ -1641,7 +1650,18 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			true => quote!(let #element_binder = __kernel_value;),
 			false => quote!(let (#element_binder #(, #slot_binders)*) = __kernel_value;),
 		};
-		let element_store = element_write.map(|ty| quote!(unsafe { #core_types::record::write_field::<#ty>(__dst, 0, __element) };));
+		// A droppable element parks in the arena and rides as a reference.
+		let element_store = element_write.map(|ty| {
+			quote! {
+				if unsafe { #core_types::record::write_element::<#ty>(__dst, __element, #core_types::context::ExtractArena::arena(__input)) }.is_none() {
+					return #core_types::gpoll::Interrupt::from(#core_types::gpoll::GraphError {
+						kind: #core_types::gpoll::ErrorKind::ArenaExhausted,
+						trace: ::std::vec::Vec::new(),
+					})
+					.into();
+				}
+			}
+		});
 		let attr_stores = attr_binders.iter().enumerate().map(|(index, binder)| {
 			let slot = format_ident!("__write_{index}");
 			quote!(unsafe { #core_types::record::write_field(__dst, self.#slot, #binder) };)
@@ -1935,7 +1955,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 
 	let record_bounds: Vec<TokenStream2> = {
-		let arena_bound = (record_io && skips_carrier) || (record_io && lazy_carrier) || (!record_io && (derive_routing || flip));
+		let arena_bound = (record_io && (skips_carrier || lazy_carrier || (element_write.is_some() && !ctx_extracts_arena))) || (!record_io && (derive_routing || flip));
 		let mut bounds = if arena_bound {
 			vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
 		} else {
@@ -1950,6 +1970,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}));
 			if let Some(ty) = carrier_read_ty {
 				bounds.push(quote!(#ty: ::core::clone::Clone));
+			}
+			// The element store parks droppable elements in the arena.
+			if let Some(ty) = element_write {
+				bounds.push(quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static));
 			}
 		}
 		// A routing node's value elements copy out of their records.
