@@ -248,7 +248,7 @@ pub(crate) fn pathseg_length_centroid_and_length(segment: PathSeg, accuracy: Opt
 			let QuadBez { p0, p1, p2 } = quad_bez;
 			// Use Casteljau subdivision, noting that the length is more than the straight line distance from start to end but less than the straight line distance through the handles
 			fn recurse(a0: Vec2, a1: Vec2, a2: Vec2, accuracy: f64, level: u8) -> (f64, Vec2) {
-				let lower = (a2 - a1).length();
+				let lower = (a2 - a0).length();
 				let upper = (a1 - a0).length() + (a2 - a1).length();
 				if upper - lower <= 2. * accuracy || level >= 8 {
 					let length = (lower + upper) / 2.;
