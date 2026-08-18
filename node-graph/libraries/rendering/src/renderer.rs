@@ -26,9 +26,10 @@ use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
+use graphic_types::vector_types::vector::misc::dvec2_to_point;
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Appearance, Artboard, Cover, Coverage, FillAndStroke, Graphic, Vector};
-use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -1361,8 +1362,9 @@ impl Render for List<Artboard> {
 			let element_id = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = element_id {
-				let subpath = Subpath::new_rectangle(DVec2::ZERO, dimensions);
-				metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
+				metadata
+					.click_targets
+					.insert(element_id, vec![ClickTarget::new_with_path(rectangle_path(DVec2::ZERO, dimensions), 0.).into()]);
 				metadata.upstream_footprints.insert(element_id, footprint);
 				metadata.local_transforms.insert(element_id, DAffine2::from_translation(location));
 				if clip {
@@ -1381,8 +1383,7 @@ impl Render for List<Artboard> {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let dimensions: DVec2 = self.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
-			let subpath_rectangle = Subpath::new_rectangle(DVec2::ZERO, dimensions);
-			click_targets.push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
+			click_targets.push(ClickTarget::new_with_path(rectangle_path(DVec2::ZERO, dimensions), 0.));
 		}
 	}
 
@@ -2210,20 +2211,20 @@ impl Render for List<Vector> {
 	}
 }
 
-/// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
+/// Build one multi-contour `Path` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, geometry: &Vector, transform: DAffine2) {
 	// A coverage whose paint is `Graphic::None` exists but paints nothing, so it does not close subpaths for hit testing
 	let filled = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
 
-	let mut subpaths: Vec<Subpath<_>> = geometry.stroke_bezier_paths().collect();
-	let all_subpaths_closed = subpaths.iter().all(|subpath| subpath.closed());
+	let mut bezpaths: Vec<BezPath> = geometry.stroke_bezpath_iter().filter(|bezpath| !bezpath.elements().is_empty()).collect();
+	let all_contours_closed = bezpaths.iter().all(|bezpath| matches!(bezpath.elements().last(), Some(PathEl::ClosePath)));
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
 	let stroke_width = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map_or(0., |coverage| {
 		let stroke = coverage.stroke_params();
-		if stroke.align.is_not_centered() && all_subpaths_closed {
+		if stroke.align.is_not_centered() && all_contours_closed {
 			stroke.weight * 2.
 		} else {
 			stroke.weight
@@ -2231,13 +2232,20 @@ fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option
 	});
 
 	if filled {
-		for subpath in &mut subpaths {
-			subpath.set_closed(true);
+		for bezpath in &mut bezpaths {
+			if !matches!(bezpath.elements().last(), Some(PathEl::ClosePath)) {
+				bezpath.close_path();
+			}
 		}
 	}
 
-	if !subpaths.is_empty() {
-		let mut click_target = ClickTarget::new_with_compound_path(subpaths, stroke_width);
+	if !bezpaths.is_empty() {
+		let mut combined_path = BezPath::new();
+		for bezpath in bezpaths {
+			combined_path.extend(bezpath);
+		}
+
+		let mut click_target = ClickTarget::new_with_path(combined_path, stroke_width);
 		click_target.apply_transform(transform);
 		targets.push(click_target);
 	}
@@ -2412,9 +2420,9 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut S
 /// plus the first item's transform and any merged-layers snapshot when a first item exists.
 fn collect_raster_metadata<T>(first_row: Option<ItemRef<'_, T>>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 	let Some(element_id) = element_id else { return };
-	let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-
-	metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
+	metadata
+		.click_targets
+		.insert(element_id, vec![ClickTarget::new_with_path(rectangle_path(DVec2::ZERO, DVec2::ONE), 0.).into()]);
 	metadata.upstream_footprints.insert(element_id, footprint);
 	// TODO: Find a way to handle more than one item of the `List<Raster<...>>`
 	if let Some(item) = first_row {
@@ -2437,10 +2445,10 @@ fn collect_raster_metadata<T>(first_row: Option<ItemRef<'_, T>>, metadata: &mut 
 /// Adds the unit-square click target every raster item presents, placed by the item's transform.
 fn add_unit_square_click_target(transform: DAffine2, click_targets: &mut Vec<ClickTarget>) {
 	// The unit square is the raster's own space, so its placement only exists in the item transform
-	let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-	subpath.apply_transform(transform);
+	let mut path = rectangle_path(DVec2::ZERO, DVec2::ONE);
+	path.apply_affine(Affine::new(transform.to_cols_array()));
 
-	click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
+	click_targets.push(ClickTarget::new_with_path(path, 0.));
 }
 
 impl Render for List<Raster<CPU>> {
@@ -2630,11 +2638,28 @@ fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut Scene, rende
 	}
 }
 
+/// The closed rectangular path spanning the two opposite corners, used for the box-shaped click targets.
+fn rectangle_path(corner1: DVec2, corner2: DVec2) -> BezPath {
+	kurbo::Rect::from_points(dvec2_to_point(corner1), dvec2_to_point(corner2)).to_path(kurbo::DEFAULT_ACCURACY)
+}
+
 /// A gradient's control geometry in its local space: the unit circle a radial gradient's transform carries to its drawn ellipse, or the (0,0) to (1,0) gradient line for a linear one.
-fn gradient_control_outline(gradient_form: GradientForm) -> Subpath<graphic_types::vector_types::vector::PointId> {
+fn gradient_control_outline(gradient_form: GradientForm) -> BezPath {
 	match gradient_form {
-		GradientForm::Linear => Subpath::new_line(DVec2::ZERO, DVec2::X),
-		GradientForm::Radial => Subpath::new_ellipse(DVec2::splat(-1.), DVec2::splat(1.)),
+		GradientForm::Linear => BezPath::from_path_segments(std::iter::once(kurbo::PathSeg::Line(kurbo::Line::new(dvec2_to_point(DVec2::ZERO), dvec2_to_point(DVec2::X))))),
+		GradientForm::Radial => {
+			// Four-cubic kappa circle with anchors on the axes, so the tight bounding box is exactly the unit square
+			// <https://en.wikipedia.org/wiki/Composite_B%C3%A9zier_curve#Using_four_curves>
+			const KAPPA: f64 = 4. / 3. * (std::f64::consts::SQRT_2 - 1.);
+			let mut path = BezPath::new();
+			path.move_to((1., 0.));
+			path.curve_to((1., KAPPA), (KAPPA, 1.), (0., 1.));
+			path.curve_to((-KAPPA, 1.), (-1., KAPPA), (-1., 0.));
+			path.curve_to((-1., -KAPPA), (-KAPPA, -1.), (0., -1.));
+			path.curve_to((KAPPA, -1.), (1., -KAPPA), (1., 0.));
+			path.close_path();
+			path
+		}
 	}
 }
 
@@ -2867,7 +2892,7 @@ fn collect_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, G
 		// The first item's transform is the reference all targets bake against
 		let item_zero_inverse = *item_zero_inverse.get_or_insert_with(|| if transform_is_invertible(item_transform) { item_transform.inverse() } else { DAffine2::IDENTITY });
 
-		let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);
+		let mut target = ClickTarget::new_with_path(gradient_control_outline(gradient_form), 0.);
 		target.apply_transform(item_zero_inverse * item_transform);
 		let target = Arc::new(target);
 
@@ -2895,7 +2920,7 @@ fn add_gradient_item_click_targets(item: ItemRef<'_, Gradient>, click_targets: &
 	}
 
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);
+	let mut target = ClickTarget::new_with_path(gradient_control_outline(gradient_form), 0.);
 	target.apply_transform(transform);
 	click_targets.push(target);
 }
@@ -2905,7 +2930,7 @@ fn add_gradient_item_outline_targets(item: ItemRef<'_, Gradient>, outlines: &mut
 	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
-	let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);
+	let mut target = ClickTarget::new_with_path(gradient_control_outline(gradient_form), 0.);
 	target.apply_transform(transform);
 	outlines.push(target);
 }
@@ -3273,8 +3298,7 @@ fn collect_text_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, Strin
 		}
 
 		let Some((size, item_transform)) = text_item_size_and_transform(item) else { continue };
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, size);
-		let mut target = ClickTarget::new_with_subpath(subpath, 0.);
+		let mut target = ClickTarget::new_with_path(rectangle_path(DVec2::ZERO, size), 0.);
 		target.apply_transform(item_zero_inverse * item_transform);
 		accumulated_click_targets.entry(element_id).or_default().push(Arc::new(target));
 	}
@@ -3289,8 +3313,7 @@ fn collect_text_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, Strin
 /// Collects one text item's laid-out rectangle as a click target.
 fn add_text_item_click_targets(item: ItemRef<'_, String>, click_targets: &mut Vec<ClickTarget>) {
 	let Some((size, transform)) = text_item_size_and_transform(item) else { return };
-	let subpath = Subpath::new_rectangle(DVec2::ZERO, size);
-	let mut target = ClickTarget::new_with_subpath(subpath, 0.);
+	let mut target = ClickTarget::new_with_path(rectangle_path(DVec2::ZERO, size), 0.);
 	target.apply_transform(transform);
 	click_targets.push(target);
 }

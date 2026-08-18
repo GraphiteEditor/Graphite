@@ -3,15 +3,41 @@ use std::sync::{Arc, RwLock};
 use super::algorithms::{bezpath_algorithms::bezpath_is_inside_bezpath, intersection::filtered_segment_intersections};
 use super::misc::dvec2_to_point;
 use crate::math::QuadExt;
-use crate::subpath::Subpath;
 use crate::vector::PointId;
-use crate::vector::misc::point_to_dvec2;
 use core_types::math::quad::Quad;
 use core_types::transform::Transform;
 use glam::{DAffine2, DMat2, DVec2};
-use kurbo::{Affine, BezPath, ParamCurve, PathSeg, Shape};
+use kurbo::{Affine, BezPath, ParamCurve, PathEl, PathSeg, Shape};
 
 type BoundingBox = Option<[DVec2; 2]>;
+
+/// Per-segment tight bounding box union of the transformed path, or None if the path has no segments.
+fn bezpath_bounding_box_with_transform(bezpath: &BezPath, transform: DAffine2) -> BoundingBox {
+	let affine = Affine::new(transform.to_cols_array());
+	bezpath
+		.segments()
+		.map(|segment| (affine * segment).bounding_box())
+		.reduce(|a, b| a.union(b))
+		.map(|rect| [DVec2::new(rect.min_x(), rect.min_y()), DVec2::new(rect.max_x(), rect.max_y())])
+}
+
+/// The explicitly closed contours of the path, which together form its fillable region.
+fn closed_contours(bezpath: &BezPath) -> BezPath {
+	let elements = bezpath.elements();
+	let mut kept = Vec::new();
+	let mut contour_start = 0;
+
+	for (index, element) in elements.iter().enumerate() {
+		if matches!(element, PathEl::MoveTo(_)) {
+			contour_start = index;
+		}
+		if matches!(element, PathEl::ClosePath) {
+			kept.extend_from_slice(&elements[contour_start..=index]);
+		}
+	}
+
+	BezPath::from_vec(kept)
+}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -33,11 +59,10 @@ impl FreePoint {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTargetType {
-	Subpath(Subpath<PointId>),
-	FreePoint(FreePoint),
-	/// Multiple subpaths tested as one compound shape using the non-zero fill rule, so holes
+	/// One or more contours tested as one compound shape using the non-zero fill rule, so holes
 	/// (e.g. the inside of an "O") correctly count as outside the fill.
-	CompoundPath(Vec<Subpath<PointId>>),
+	Path(BezPath),
+	FreePoint(FreePoint),
 }
 
 /// Fixed-size ring buffer cache for rotated bounding boxes.
@@ -93,9 +118,9 @@ impl BoundingBoxCache {
 	}
 	/// Computes and caches bounding box for the given rotation, then applies scale/translation.
 	/// Returns the final transformed bounds.
-	fn add_to_cache(&mut self, subpath: &Subpath<PointId>, rotation: f64, scale: DVec2, translation: DVec2, fingerprint: u8) -> BoundingBox {
+	fn add_to_cache(&mut self, bezpath: &BezPath, rotation: f64, scale: DVec2, translation: DVec2, fingerprint: u8) -> BoundingBox {
 		// Compute bounds for pure rotation (expensive operation we want to cache)
-		let bounds = subpath.bounding_box_with_transform(DAffine2::from_angle(rotation));
+		let bounds = bezpath_bounding_box_with_transform(bezpath, DAffine2::from_angle(rotation));
 
 		if bounds.is_none() {
 			return bounds;
@@ -137,23 +162,12 @@ impl PartialEq for ClickTarget {
 }
 
 impl ClickTarget {
-	pub fn new_with_subpath(subpath: Subpath<PointId>, stroke_width: f64) -> Self {
-		let bounding_box = subpath.loose_bounding_box();
+	pub fn new_with_path(path: BezPath, stroke_width: f64) -> Self {
+		// The control-point hull serves as the loose bounding box
+		let control_box = path.control_box();
+		let bounding_box = (!path.elements().is_empty()).then(|| [DVec2::new(control_box.min_x(), control_box.min_y()), DVec2::new(control_box.max_x(), control_box.max_y())]);
 		Self {
-			target_type: ClickTargetType::Subpath(subpath),
-			stroke_width,
-			bounding_box,
-			bounding_box_cache: Default::default(),
-		}
-	}
-
-	pub fn new_with_compound_path(subpaths: Vec<Subpath<PointId>>, stroke_width: f64) -> Self {
-		let bounding_box = subpaths
-			.iter()
-			.filter_map(|subpath| subpath.loose_bounding_box())
-			.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)]);
-		Self {
-			target_type: ClickTargetType::CompoundPath(subpaths),
+			target_type: ClickTargetType::Path(path),
 			stroke_width,
 			bounding_box,
 			bounding_box_cache: Default::default(),
@@ -190,10 +204,10 @@ impl ClickTarget {
 
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> BoundingBox {
 		match self.target_type {
-			ClickTargetType::Subpath(ref subpath) => {
+			ClickTargetType::Path(ref path) => {
 				// Bypass cache for skewed transforms since rotation decomposition isn't valid
 				if transform.has_skew() {
-					return subpath.bounding_box_with_transform(transform);
+					return bezpath_bounding_box_with_transform(path, transform);
 				}
 
 				// Decompose transform into rotation, scale, translation for caching strategy
@@ -213,12 +227,8 @@ impl ClickTarget {
 
 				// Cache miss - compute and store new entry
 				let mut write_lock = self.bounding_box_cache.write().unwrap();
-				write_lock.add_to_cache(subpath, rotation, scale, translation, fingerprint)
+				write_lock.add_to_cache(path, rotation, scale, translation, fingerprint)
 			}
-			ClickTargetType::CompoundPath(ref subpaths) => subpaths
-				.iter()
-				.filter_map(|subpath| subpath.bounding_box_with_transform(transform))
-				.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)]),
 			// TODO: use point for calculation of bbox
 			ClickTargetType::FreePoint(_) => self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]),
 		}
@@ -226,13 +236,8 @@ impl ClickTarget {
 
 	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
 		match self.target_type {
-			ClickTargetType::Subpath(ref mut subpath) => {
-				subpath.apply_transform(affine_transform);
-			}
-			ClickTargetType::CompoundPath(ref mut subpaths) => {
-				for subpath in subpaths {
-					subpath.apply_transform(affine_transform);
-				}
+			ClickTargetType::Path(ref mut path) => {
+				path.apply_affine(Affine::new(affine_transform.to_cols_array()));
 			}
 			ClickTargetType::FreePoint(ref mut point) => {
 				point.apply_transform(affine_transform);
@@ -243,14 +248,8 @@ impl ClickTarget {
 
 	fn update_bbox(&mut self) {
 		match self.target_type {
-			ClickTargetType::Subpath(ref subpath) => {
-				self.bounding_box = subpath.bounding_box();
-			}
-			ClickTargetType::CompoundPath(ref subpaths) => {
-				self.bounding_box = subpaths
-					.iter()
-					.filter_map(|subpath| subpath.bounding_box())
-					.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)]);
+			ClickTargetType::Path(ref path) => {
+				self.bounding_box = bezpath_bounding_box_with_transform(path, DAffine2::IDENTITY);
 			}
 			ClickTargetType::FreePoint(ref point) => {
 				self.bounding_box = Some([point.position - DVec2::splat(self.stroke_width / 2.), point.position + DVec2::splat(self.stroke_width / 2.)]);
@@ -270,43 +269,26 @@ impl ClickTarget {
 		let mut bezier_iter = || bezier_iter().map(|bezier| Affine::new(inverse.to_cols_array()) * bezier);
 
 		match self.target_type() {
-			ClickTargetType::Subpath(subpath) => {
-				// Check if outlines intersect
-				let outline_intersects = |path_segment: PathSeg| bezier_iter().any(|line| !filtered_segment_intersections(path_segment, line, None, None).is_empty());
-				if subpath.iter().any(outline_intersects) {
-					return true;
-				}
-				// Check if selection is entirely within the shape
-				if subpath.closed() && bezier_iter().next().is_some_and(|bezier| subpath.contains_point(point_to_dvec2(bezier.start()))) {
-					return true;
-				}
-
-				let mut selection = BezPath::from_path_segments(bezier_iter());
-				selection.close_path();
-
-				// Check if shape is entirely within selection
-				bezpath_is_inside_bezpath(&subpath.to_bezpath(), &selection, None, None)
-			}
-			ClickTargetType::CompoundPath(subpaths) => {
+			ClickTargetType::Path(path) => {
 				// Outline intersection (catches strokes and both filled/unfilled shapes)
 				let outline_intersects = |path_segment: PathSeg| bezier_iter().any(|line| !filtered_segment_intersections(path_segment, line, None, None).is_empty());
-				if subpaths.iter().flat_map(|subpath| subpath.iter()).any(outline_intersects) {
+				if path.segments().any(outline_intersects) {
 					return true;
 				}
 
-				// Selection point inside compound fill (non-zero rule).
-				// Only closed subpaths contribute to the fill region; open segments would otherwise produce spurious winding on one side of the segment.
-				let combined: BezPath = subpaths.iter().filter(|subpath| subpath.closed()).flat_map(|subpath| subpath.to_bezpath()).collect();
-				if !combined.is_empty() && bezier_iter().next().is_some_and(|bezier| combined.contains(bezier.start())) {
+				// Selection point inside the fill (non-zero rule).
+				// Only closed contours contribute to the fill region; open segments would otherwise produce spurious winding on one side of the segment.
+				let fill_region = closed_contours(path);
+				if !fill_region.is_empty() && bezier_iter().next().is_some_and(|segment| fill_region.contains(segment.start())) {
 					return true;
 				}
 
-				// Build closed selection path, then check if all contours are entirely within it
+				// Build closed selection path, then check if the whole shape is entirely within it
 				let mut selection = BezPath::from_path_segments(bezier_iter());
 				selection.close_path();
-				subpaths.iter().all(|subpath| bezpath_is_inside_bezpath(&subpath.to_bezpath(), &selection, None, None))
+				bezpath_is_inside_bezpath(path, &selection, None, None)
 			}
-			ClickTargetType::FreePoint(point) => bezier_iter().map(|bezier: PathSeg| bezier.winding(dvec2_to_point(point.position))).sum::<i32>() != 0,
+			ClickTargetType::FreePoint(point) => bezier_iter().map(|segment: PathSeg| segment.winding(dvec2_to_point(point.position))).sum::<i32>() != 0,
 		}
 	}
 
@@ -337,11 +319,7 @@ impl ClickTarget {
 		{
 			// Check if the point is within the shape
 			match self.target_type() {
-				ClickTargetType::Subpath(subpath) => subpath.closed() && subpath.contains_point(point),
-				ClickTargetType::CompoundPath(subpaths) => {
-					let combined: BezPath = subpaths.iter().flat_map(|subpath| subpath.to_bezpath()).collect();
-					combined.contains(dvec2_to_point(point))
-				}
+				ClickTargetType::Path(path) => closed_contours(path).contains(dvec2_to_point(point)),
 				ClickTargetType::FreePoint(free_point) => free_point.position == point,
 			}
 		} else {
@@ -353,9 +331,13 @@ impl ClickTarget {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::subpath::Subpath;
 	use glam::DVec2;
+	use kurbo::{DEFAULT_ACCURACY, Rect};
 	use std::f64::consts::PI;
+
+	fn rectangle_path(corner1: DVec2, corner2: DVec2) -> BezPath {
+		Rect::new(corner1.x, corner1.y, corner2.x, corner2.y).to_path(DEFAULT_ACCURACY)
+	}
 
 	#[test]
 	fn test_bounding_box_cache_fingerprint_generation() {
@@ -386,8 +368,8 @@ mod tests {
 	fn test_bounding_box_cache_basic_operations() {
 		let mut cache = BoundingBoxCache::default();
 
-		// Create a simple rectangle subpath for testing
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100., 50.));
+		// Create a simple rectangle path for testing
+		let path = rectangle_path(DVec2::ZERO, DVec2::new(100., 50.));
 
 		let rotation = PI / 4.;
 		let scale = DVec2::new(2., 2.);
@@ -398,7 +380,7 @@ mod tests {
 		assert!(cache.try_read(rotation, scale, translation, fingerprint).is_none());
 
 		// Add to cache
-		let result = cache.add_to_cache(&subpath, rotation, scale, translation, fingerprint);
+		let result = cache.add_to_cache(&path, rotation, scale, translation, fingerprint);
 		assert!(result.is_some());
 
 		// Should now be able to read from cache
@@ -410,7 +392,7 @@ mod tests {
 	#[test]
 	fn test_bounding_box_cache_ring_buffer_behavior() {
 		let mut cache = BoundingBoxCache::default();
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(10., 10.));
+		let path = rectangle_path(DVec2::ZERO, DVec2::new(10., 10.));
 		let scale = DVec2::ONE;
 		let translation = DVec2::ZERO;
 
@@ -419,7 +401,7 @@ mod tests {
 
 		for rotation in &rotations {
 			let fingerprint = BoundingBoxCache::rotation_fingerprint(*rotation);
-			cache.add_to_cache(&subpath, *rotation, scale, translation, fingerprint);
+			cache.add_to_cache(&path, *rotation, scale, translation, fingerprint);
 		}
 
 		// First two entries should be overwritten (cache size is 8)
@@ -435,8 +417,8 @@ mod tests {
 	#[test]
 	fn test_click_target_bounding_box_caching() {
 		// Create a click target with a simple rectangle
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100., 50.));
-		let click_target = ClickTarget::new_with_subpath(subpath, 1.);
+		let path = rectangle_path(DVec2::ZERO, DVec2::new(100., 50.));
+		let click_target = ClickTarget::new_with_path(path, 1.);
 
 		let rotation = PI / 6.;
 		let scale = DVec2::new(1.5, 1.5);
@@ -472,8 +454,8 @@ mod tests {
 
 	#[test]
 	fn test_click_target_skew_bypass_cache() {
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100., 50.));
-		let click_target = ClickTarget::new_with_subpath(subpath.clone(), 1.);
+		let path = rectangle_path(DVec2::ZERO, DVec2::new(100., 50.));
+		let click_target = ClickTarget::new_with_path(path.clone(), 1.);
 
 		// Create a transform with skew (non-uniform scaling in different directions)
 		let skew_transform = DAffine2::from_cols_array(&[2., 0.5, 0., 1., 10., 20.]);
@@ -481,14 +463,14 @@ mod tests {
 
 		// Should bypass cache and compute directly
 		let result = click_target.bounding_box_with_transform(skew_transform);
-		let expected = subpath.bounding_box_with_transform(skew_transform);
+		let expected = bezpath_bounding_box_with_transform(&path, skew_transform);
 		assert_eq!(result, expected);
 	}
 
 	#[test]
 	fn test_cache_fingerprint_collision_handling() {
 		let mut cache = BoundingBoxCache::default();
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(10., 10.));
+		let path = rectangle_path(DVec2::ZERO, DVec2::new(10., 10.));
 		let scale = DVec2::ONE;
 		let translation = DVec2::ZERO;
 
@@ -501,7 +483,7 @@ mod tests {
 		// If we found a collision, test that exact rotation matching still works
 		if fp1 == fp2 && rotation1 != rotation2 {
 			// Add first rotation
-			cache.add_to_cache(&subpath, rotation1, scale, translation, fp1);
+			cache.add_to_cache(&path, rotation1, scale, translation, fp1);
 
 			// Should find the exact rotation
 			assert!(cache.try_read(rotation1, scale, translation, fp1).is_some());

@@ -22,7 +22,7 @@ use graphene_std::subpath::pathseg_points;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::style::FillChoice;
 use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, StrokeId, Vector, VectorModificationType};
-use kurbo::{CubicBez, PathSeg};
+use kurbo::{BezPath, CubicBez, PathSeg};
 
 #[derive(Default, ExtractField)]
 pub struct PenTool {
@@ -1857,21 +1857,22 @@ impl Fsm for PenToolFsmState {
 							let grouped_segments = vector.auto_join_paths();
 							let closed_paths = grouped_segments.iter().filter(|path| path.is_closed() && path.contains(segment_id));
 
-							let subpaths: Vec<_> = closed_paths
-								.filter_map(|path| {
-									let segments = path.edges.iter().filter_map(|edge| {
-										vector
-											.segment_domain
-											.iter()
-											.find(|(id, _, _, _)| id == &edge.id)
-											.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
-									});
-									vector.subpath_from_segments_ignore_discontinuities(segments)
-								})
-								.collect();
+							let mut fill_region = BezPath::new();
+							for path in closed_paths {
+								let segments = path.edges.iter().filter_map(|edge| {
+									vector
+										.segment_domain
+										.iter()
+										.find(|(id, _, _, _)| id == &edge.id)
+										.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
+								});
+								if let Some(subpath) = vector.subpath_from_segments_ignore_discontinuities(segments) {
+									fill_region.extend(subpath.to_bezpath().elements().iter().copied());
+								}
+							}
 
 							let fill_color = COLOR_OVERLAY_BLUE_05;
-							overlay_context.fill_path(subpaths.iter(), transform, fill_color);
+							overlay_context.fill_path(&fill_region, transform, fill_color);
 						}
 					}
 				}
