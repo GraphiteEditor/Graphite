@@ -6,13 +6,11 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, FloatExt};
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::renderer::Quad;
-use graphene_std::subpath::pathseg_points;
-use graphene_std::subpath::{Identifier, ManipulatorGroup, Subpath};
 use graphene_std::vector::PointId;
 use graphene_std::vector::algorithms::bezpath_algorithms::{pathseg_normals_to_point, pathseg_tangents_to_point};
 use graphene_std::vector::algorithms::intersection::filtered_segment_intersections;
-use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::misc::point_to_dvec2;
+use graphene_std::vector::algorithms::shapes::{ellipse_bezpath, line_bezpath};
+use graphene_std::vector::misc::{ManipulatorGroup, bezpath_from_manipulator_groups, dvec2_to_point, pathseg_points, point_to_dvec2};
 use kurbo::{Affine, BezPath, ParamCurve, PathEl, PathSeg};
 
 #[derive(Clone, Debug, Default)]
@@ -47,7 +45,7 @@ impl LayerSnapper {
 			self.paths_to_snap.push(SnapCandidatePath {
 				document_curve,
 				layer,
-				start: PointId::new(),
+				start: PointId::generate(),
 				target,
 				bounds: Some(bounds),
 			});
@@ -82,7 +80,7 @@ impl LayerSnapper {
 							self.paths_to_snap.push(SnapCandidatePath {
 								document_curve: Affine::new(transform.to_cols_array()) * curve,
 								layer,
-								start: PointId::new(),
+								start: PointId::generate(),
 								target: SnapTarget::Path(PathSnapTarget::AlongPath),
 								bounds: None,
 							});
@@ -95,10 +93,11 @@ impl LayerSnapper {
 				if let Some(vector) = document.network_interface.upstream_path_node_vector(layer) {
 					let path_aware_transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 					if path_aware_transform.is_finite() {
-						for subpath in vector.stroke_bezier_paths() {
-							for (start_index, curve) in subpath.iter().enumerate() {
-								let start = subpath.manipulator_groups()[start_index].id;
-								let end = subpath.manipulator_groups()[(start_index + 1) % subpath.len()].id;
+						for (groups, closed) in vector.stroke_manipulator_groups() {
+							let bezpath = bezpath_from_manipulator_groups(&groups, closed);
+							for (start_index, curve) in bezpath.segments().enumerate() {
+								let start = groups[start_index].id;
+								let end = groups[(start_index + 1) % groups.len()].id;
 								if snap_data.ignore_manipulator(layer, start) || snap_data.ignore_manipulator(layer, end) {
 									continue;
 								}
@@ -163,17 +162,17 @@ impl LayerSnapper {
 
 		let tolerance = snap_tolerance(document);
 		let constraint_path = if let SnapConstraint::Circle { center, radius } = constraint {
-			Subpath::new_ellipse(center - DVec2::splat(radius), center + DVec2::splat(radius))
+			ellipse_bezpath(center - DVec2::splat(radius), center + DVec2::splat(radius))
 		} else {
 			let constrained_point = constraint.projection(point.document_point);
 			let direction = constraint.direction().normalize_or_zero();
 			let start = constrained_point - tolerance * direction;
 			let end = constrained_point + tolerance * direction;
-			Subpath::<PointId>::new_line(start, end)
+			line_bezpath(start, end)
 		};
 
 		for path in &self.paths_to_snap {
-			for constraint_path in constraint_path.iter() {
+			for constraint_path in constraint_path.segments() {
 				for time in filtered_segment_intersections(path.document_curve, constraint_path, None, None) {
 					let snapped_point_document = point_to_dvec2(path.document_curve.eval(time));
 
@@ -555,13 +554,14 @@ fn handle_not_under(to_document: DAffine2) -> impl Fn(&DVec2) -> bool {
 	move |&offset: &DVec2| to_document.transform_vector2(offset).length_squared() >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE
 }
 
-fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<PointId>, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>, to_document: DAffine2) {
+fn manipulator_groups_anchor_snap_points(layer: LayerNodeIdentifier, groups: &[ManipulatorGroup], closed: bool, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>, to_document: DAffine2) {
 	let document = snap_data.document;
+	let bezpath = bezpath_from_manipulator_groups(groups, closed);
 
 	// Midpoints of linear segments
 	if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::LineMidpoint)) {
-		for (index, curve) in subpath.iter().enumerate() {
-			if snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[index].id) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(index + 1) % subpath.len()].id) {
+		for (index, curve) in bezpath.segments().enumerate() {
+			if snap_data.ignore_manipulator(layer, groups[index].id) || snap_data.ignore_manipulator(layer, groups[(index + 1) % groups.len()].id) {
 				continue;
 			}
 			if points.len() >= crate::consts::MAX_LAYER_SNAP_POINTS {
@@ -583,7 +583,7 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 	}
 
 	// Anchors
-	for (index, manipulators) in subpath.manipulator_groups().iter().enumerate() {
+	for (index, manipulators) in groups.iter().enumerate() {
 		if snap_data.ignore_manipulator(layer, manipulators.id) {
 			continue;
 		}
@@ -592,7 +592,7 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 			return;
 		}
 
-		let colinear = are_manipulator_handles_colinear(manipulators, to_document, subpath, index);
+		let colinear = are_manipulator_handles_colinear(manipulators, to_document, closed, index, groups.len());
 
 		// Colinear handles
 		if colinear && document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AnchorPointWithColinearHandles)) {
@@ -705,11 +705,11 @@ fn bezpath_anchor_snap_points(layer: LayerNodeIdentifier, bezpath: &BezPath, sna
 	}
 }
 
-pub fn are_manipulator_handles_colinear(manipulators: &ManipulatorGroup<PointId>, to_document: DAffine2, subpath: &Subpath<PointId>, index: usize) -> bool {
+pub fn are_manipulator_handles_colinear(manipulators: &ManipulatorGroup, to_document: DAffine2, closed: bool, index: usize, count: usize) -> bool {
 	let anchor = manipulators.anchor;
 	let handle_in = manipulators.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
 	let handle_out = manipulators.out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));
-	let anchor_is_endpoint = !subpath.closed() && (index == 0 || index == subpath.len() - 1);
+	let anchor_is_endpoint = !closed && (index == 0 || index == count - 1);
 
 	// Unless this is an endpoint, check if both handles are colinear (within an angular epsilon)
 	!anchor_is_endpoint && handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_to(handle_out) < 1e-5))
@@ -743,8 +743,8 @@ pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, p
 		// matching what the Path tool's overlay shows
 		if let Some(vector) = document.network_interface.upstream_path_node_vector(layer) {
 			let to_document = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
-			for subpath in vector.stroke_bezier_paths() {
-				subpath_anchor_snap_points(layer, &subpath, snap_data, points, to_document);
+			for (groups, closed) in vector.stroke_manipulator_groups() {
+				manipulator_groups_anchor_snap_points(layer, &groups, closed, snap_data, points, to_document);
 			}
 
 			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AnchorPointWithFreeHandles)) {

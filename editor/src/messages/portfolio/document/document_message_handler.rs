@@ -41,13 +41,12 @@ use graphene_std::Cover;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::subpath::Subpath;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::graphic_types;
 use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::vector::{PointId, graphic_types};
-use kurbo::{Affine, BezPath, Line, PathSeg};
+use kurbo::{Affine, BezPath, Line, PathSeg, Shape};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1832,17 +1831,16 @@ impl DocumentMessageHandler {
 		self.intersect_quad(viewport_quad, viewport).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
-	/// Runs an intersection test with all layers and a viewport space subpath
-	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	/// Runs an intersection test with all layers and a viewport space polygon path
+	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: BezPath, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		viewport_polygon.apply_transform(document_to_viewport.inverse());
+		viewport_polygon.apply_affine(Affine::new(document_to_viewport.inverse().to_cols_array()));
 
-		let polygon = BezPath::from_path_segments(viewport_polygon.iter_closed());
-		ClickXRayIter::new(&self.network_interface, XRayTarget::Path(polygon))
+		ClickXRayIter::new(&self.network_interface, XRayTarget::Path(viewport_polygon))
 	}
 
-	/// Runs an intersection test with all layers and a viewport space subpath; ignoring artboards
-	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	/// Runs an intersection test with all layers and a viewport space polygon path; ignoring artboards
+	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: BezPath, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.intersect_polygon(viewport_polygon, viewport)
 			.filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
@@ -1870,26 +1868,24 @@ impl DocumentMessageHandler {
 		layer_left >= quad_left && layer_right <= quad_right && layer_top <= quad_top && layer_bottom >= quad_bottom
 	}
 
-	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, viewport: &ViewportMessageHandler, mut viewport_polygon: Subpath<PointId>) -> bool {
+	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, viewport: &ViewportMessageHandler, mut viewport_polygon: BezPath) -> bool {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		viewport_polygon.apply_transform(document_to_viewport.inverse());
+		viewport_polygon.apply_affine(Affine::new(document_to_viewport.inverse().to_cols_array()));
 
 		let layer_click_targets = self.network_interface.document_metadata().click_targets(*layer);
 		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
-
-		let viewport_polygon_bezpath = viewport_polygon.to_bezpath();
 
 		layer_click_targets.is_some_and(|targets| {
 			targets.iter().all(|target| match target.target_type() {
 				ClickTargetType::Path(path) => {
 					let mut path = path.clone();
 					path.apply_affine(Affine::new(layer_transform.to_cols_array()));
-					bezpath_is_inside_bezpath(&path, &viewport_polygon_bezpath, None, None)
+					bezpath_is_inside_bezpath(&path, &viewport_polygon, None, None)
 				}
 				ClickTargetType::FreePoint(point) => {
 					let mut point = *point;
 					point.apply_transform(layer_transform);
-					viewport_polygon.contains_point(point.position)
+					viewport_polygon.contains(dvec2_to_point(point.position))
 				}
 			})
 		})
