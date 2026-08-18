@@ -2,7 +2,7 @@
 //!
 //! Anchor order and winding direction are load-bearing, since fills rely on every generator agreeing.
 
-use crate::vector::misc::{ArcType, SpiralType, dvec2_to_point};
+use crate::vector::misc::{ArcType, SpiralType, bezpath_from_anchors_and_handles};
 use glam::DVec2;
 use kurbo::BezPath;
 use std::f64::consts::TAU;
@@ -28,31 +28,8 @@ impl Anchor {
 	}
 }
 
-/// Stitches anchors into a path, emitting a cubic when both facing handles exist, a quadratic when only one does, and a line otherwise.
 fn bezpath_from_anchors(anchors: &[Anchor], closed: bool) -> BezPath {
-	let mut bezpath = BezPath::new();
-
-	let Some(first) = anchors.first() else { return bezpath };
-	bezpath.move_to(dvec2_to_point(first.position));
-	let mut out_handle = first.out_handle;
-
-	let connect_to = |bezpath: &mut BezPath, out_handle: Option<DVec2>, anchor: &Anchor| match (out_handle, anchor.in_handle) {
-		(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(anchor.position)),
-		(None, None) => bezpath.line_to(dvec2_to_point(anchor.position)),
-		(None, Some(handle)) | (Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(anchor.position)),
-	};
-
-	for anchor in anchors.iter().skip(1) {
-		connect_to(&mut bezpath, out_handle, anchor);
-		out_handle = anchor.out_handle;
-	}
-
-	if closed {
-		connect_to(&mut bezpath, out_handle, first);
-		bezpath.close_path();
-	}
-
-	bezpath
+	bezpath_from_anchors_and_handles(anchors.iter().map(|anchor| (anchor.position, anchor.in_handle, anchor.out_handle)), closed)
 }
 
 /// Stitches a sequence of sharp (handleless) anchors into a polyline, or a closed polygon.

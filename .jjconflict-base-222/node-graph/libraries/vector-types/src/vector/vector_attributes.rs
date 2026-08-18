@@ -1043,35 +1043,8 @@ impl Vector {
 
 	/// Construct a [`kurbo::BezPath`] curve for stroke.
 	pub fn stroke_bezpath_iter(&self) -> impl Iterator<Item = kurbo::BezPath> {
-		self.build_stroke_path_iter().map(|(manipulators_list, closed)| {
-			let mut bezpath = kurbo::BezPath::new();
-			let mut out_handle;
-
-			let Some(first) = manipulators_list.first() else { return bezpath };
-			bezpath.move_to(dvec2_to_point(first.anchor));
-			out_handle = first.out_handle;
-
-			for manipulator in manipulators_list.iter().skip(1) {
-				match (out_handle, manipulator.in_handle) {
-					(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(manipulator.anchor)),
-					(None, None) => bezpath.line_to(dvec2_to_point(manipulator.anchor)),
-					(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
-					(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
-				}
-				out_handle = manipulator.out_handle;
-			}
-
-			if closed {
-				match (out_handle, first.in_handle) {
-					(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(first.anchor)),
-					(None, None) => bezpath.line_to(dvec2_to_point(first.anchor)),
-					(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
-					(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
-				}
-				bezpath.close_path();
-			}
-			bezpath
-		})
+		self.build_stroke_path_iter()
+			.map(|(manipulators_list, closed)| crate::vector::misc::bezpath_from_manipulator_groups(&manipulators_list, closed))
 	}
 
 	pub fn transform(&mut self, transform: DAffine2) {

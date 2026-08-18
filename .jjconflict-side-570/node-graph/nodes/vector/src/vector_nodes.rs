@@ -27,7 +27,7 @@ use vector_types::vector::algorithms::bezpath_algorithms::{
 	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
 };
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
+use vector_types::vector::algorithms::offset_bezpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use vector_types::vector::misc::{
 	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, ManipulatorGroup, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,

@@ -1,5 +1,5 @@
 use super::PointId;
-use super::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
+use super::algorithms::consts::MAX_COINCIDENT_POINT_DISTANCE;
 use crate::vector::{SegmentId, Vector};
 use core_types::list::{Item, List};
 use dyn_any::DynAny;
@@ -227,34 +227,40 @@ pub fn handles_to_segment(start: DVec2, handles: BezierHandles, end: DVec2) -> P
 	}
 }
 
-pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup], closed: bool) -> BezPath {
-	let mut bezpath = kurbo::BezPath::new();
-	let mut out_handle;
+/// Stitches anchors into a path, emitting a cubic when both facing handles exist, a quadratic when only one does, and a line otherwise.
+///
+/// Each item is an anchor position paired with its incoming and outgoing handle positions, in absolute coordinates.
+pub fn bezpath_from_anchors_and_handles(anchors: impl IntoIterator<Item = (DVec2, Option<DVec2>, Option<DVec2>)>, closed: bool) -> BezPath {
+	let mut bezpath = BezPath::new();
+	let mut anchors = anchors.into_iter();
 
-	let Some(first) = manipulator_groups.first() else { return bezpath };
-	bezpath.move_to(dvec2_to_point(first.anchor));
-	out_handle = first.out_handle;
+	let Some((first_anchor, first_in_handle, first_out_handle)) = anchors.next() else {
+		return bezpath;
+	};
+	bezpath.move_to(dvec2_to_point(first_anchor));
+	let mut out_handle = first_out_handle;
 
-	for manipulator in manipulator_groups.iter().skip(1) {
-		match (out_handle, manipulator.in_handle) {
-			(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(manipulator.anchor)),
-			(None, None) => bezpath.line_to(dvec2_to_point(manipulator.anchor)),
-			(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
-			(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
-		}
-		out_handle = manipulator.out_handle;
+	let connect_to = |bezpath: &mut BezPath, out_handle: Option<DVec2>, anchor: DVec2, in_handle: Option<DVec2>| match (out_handle, in_handle) {
+		(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(anchor)),
+		(None, None) => bezpath.line_to(dvec2_to_point(anchor)),
+		(None, Some(handle)) | (Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(anchor)),
+	};
+
+	for (anchor, in_handle, anchor_out_handle) in anchors {
+		connect_to(&mut bezpath, out_handle, anchor, in_handle);
+		out_handle = anchor_out_handle;
 	}
 
 	if closed {
-		match (out_handle, first.in_handle) {
-			(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(first.anchor)),
-			(None, None) => bezpath.line_to(dvec2_to_point(first.anchor)),
-			(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
-			(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
-		}
+		connect_to(&mut bezpath, out_handle, first_anchor, first_in_handle);
 		bezpath.close_path();
 	}
+
 	bezpath
+}
+
+pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup], closed: bool) -> BezPath {
+	bezpath_from_anchors_and_handles(manipulator_groups.iter().map(|group| (group.anchor, group.in_handle, group.out_handle)), closed)
 }
 
 pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup>, bool) {
@@ -293,7 +299,7 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 ///
 /// This is different from simply checking if the segment is [`PathSeg::Line`] or [`PathSeg::Quad`] or [`PathSeg::Cubic`]. Bezier curve can also be a line if the control points are colinear to the start and end points. Therefore if the handles exceed the start and end point, it will still be considered as a line.
 pub fn is_linear(segment: PathSeg) -> bool {
-	let is_colinear = |a: Point, b: Point, c: Point| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() < MAX_ABSOLUTE_DIFFERENCE };
+	let is_colinear = |a: Point, b: Point, c: Point| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() < MAX_COINCIDENT_POINT_DISTANCE };
 
 	match segment {
 		PathSeg::Line(_) => true,
