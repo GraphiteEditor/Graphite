@@ -98,7 +98,7 @@ impl PointDomain {
 		self.position.reserve(additional);
 	}
 
-	pub fn retain(&mut self, segment_domain: &mut SegmentDomain, f: impl Fn(&PointId) -> bool) {
+	pub(crate) fn retain(&mut self, segment_domain: &mut SegmentDomain, f: impl Fn(&PointId) -> bool) {
 		let mut keep = self.id.iter().map(&f);
 		self.position.retain(|_| keep.next().unwrap_or_default());
 
@@ -171,16 +171,16 @@ impl PointDomain {
 		self.id.iter().position(|&check_id| check_id == id)
 	}
 
-	pub fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
+	pub(crate) fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.point_map.get(id).unwrap_or(id)));
 		self.position.extend(other.position.iter().map(|&pos| transform.transform_point2(pos)));
 	}
 
-	pub fn map_ids(&mut self, id_map: &IdMap) {
+	pub(crate) fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.point_map.get(id).unwrap_or(id));
 	}
 
-	pub fn transform(&mut self, transform: DAffine2) {
+	pub(crate) fn transform(&mut self, transform: DAffine2) {
 		for pos in &mut self.position {
 			*pos = transform.transform_point2(*pos);
 		}
@@ -232,7 +232,7 @@ impl SegmentDomain {
 		self.stroke.reserve(additional);
 	}
 
-	pub fn retain(&mut self, f: impl Fn(&SegmentId) -> bool, points_length: usize) {
+	pub(crate) fn retain(&mut self, f: impl Fn(&SegmentId) -> bool, points_length: usize) {
 		let additional_delete_ids = self
 			.id
 			.iter()
@@ -348,7 +348,7 @@ impl SegmentDomain {
 		nested.map(|((a, b), c)| (a, b, c))
 	}
 
-	pub fn stroke_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut StrokeId)> {
+	pub(crate) fn stroke_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut StrokeId)> {
 		self.id.iter().copied().zip(self.stroke.iter_mut())
 	}
 
@@ -387,7 +387,7 @@ impl SegmentDomain {
 		self.id.iter().position(|&check_id| check_id == id)
 	}
 
-	pub fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
+	pub(crate) fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.segment_map.get(id).unwrap_or(id)));
 		self.start_point.extend(other.start_point.iter().map(|&index| id_map.point_offset + index));
 		self.end_point.extend(other.end_point.iter().map(|&index| id_map.point_offset + index));
@@ -395,11 +395,11 @@ impl SegmentDomain {
 		self.stroke.extend(&other.stroke);
 	}
 
-	pub fn map_ids(&mut self, id_map: &IdMap) {
+	pub(crate) fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.segment_map.get(id).unwrap_or(id));
 	}
 
-	pub fn transform(&mut self, transform: DAffine2) {
+	pub(crate) fn transform(&mut self, transform: DAffine2) {
 		for handles in &mut self.handles {
 			*handles = handles.apply_transformation(|p| transform.transform_point2(p));
 		}
@@ -592,7 +592,7 @@ impl RegionDomain {
 		self.fill.reserve(additional);
 	}
 
-	pub fn retain(&mut self, f: impl Fn(&RegionId) -> bool) {
+	pub(crate) fn retain(&mut self, f: impl Fn(&RegionId) -> bool) {
 		let mut keep = self.id.iter().map(&f);
 		self.segment_range.retain(|_| keep.next().unwrap_or_default());
 		let mut keep = self.id.iter().map(&f);
@@ -603,7 +603,7 @@ impl RegionDomain {
 	/// Like [`Self::retain`] but also gives the function access to the segment range.
 	///
 	/// Note that this function requires an allocation that `retain` avoids.
-	pub fn retain_with_region(&mut self, f: impl Fn(&RegionId, &std::ops::RangeInclusive<SegmentId>) -> bool) {
+	pub(crate) fn retain_with_region(&mut self, f: impl Fn(&RegionId, &std::ops::RangeInclusive<SegmentId>) -> bool) {
 		let keep = self.id.iter().zip(self.segment_range.iter()).map(|(id, range)| f(id, range)).collect::<Vec<_>>();
 		let mut iter = keep.iter().copied();
 		self.segment_range.retain(|_| iter.next().unwrap());
@@ -638,11 +638,11 @@ impl RegionDomain {
 		self.id.iter().copied().max_by(|a, b| a.0.cmp(&b.0)).map(|mut id| id.next_id()).unwrap_or(RegionId::ZERO)
 	}
 
-	pub fn segment_range_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut std::ops::RangeInclusive<SegmentId>)> {
+	pub(crate) fn segment_range_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut std::ops::RangeInclusive<SegmentId>)> {
 		self.id.iter().copied().zip(self.segment_range.iter_mut())
 	}
 
-	pub fn fill_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut FillId)> {
+	pub(crate) fn fill_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut FillId)> {
 		self.id.iter().copied().zip(self.fill.iter_mut())
 	}
 
@@ -650,7 +650,7 @@ impl RegionDomain {
 		&self.id
 	}
 
-	pub fn segment_range(&self) -> &[std::ops::RangeInclusive<SegmentId>] {
+	pub(crate) fn segment_range(&self) -> &[std::ops::RangeInclusive<SegmentId>] {
 		&self.segment_range
 	}
 
@@ -658,7 +658,7 @@ impl RegionDomain {
 		&self.fill
 	}
 
-	pub fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
+	pub(crate) fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.region_map.get(id).unwrap_or(id)));
 		self.segment_range.extend(
 			other
@@ -669,7 +669,7 @@ impl RegionDomain {
 		self.fill.extend(&other.fill);
 	}
 
-	pub fn map_ids(&mut self, id_map: &IdMap) {
+	pub(crate) fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.region_map.get(id).unwrap_or(id));
 		self.segment_range
 			.iter_mut()
@@ -696,11 +696,11 @@ pub struct HalfEdge {
 }
 
 impl HalfEdge {
-	pub fn new(id: SegmentId, start: usize, end: usize, reverse: bool) -> Self {
+	fn new(id: SegmentId, start: usize, end: usize, reverse: bool) -> Self {
 		Self { id, start, end, reverse }
 	}
 
-	pub fn reversed(&self) -> Self {
+	fn reversed(&self) -> Self {
 		Self {
 			id: self.id,
 			start: self.start,
@@ -709,7 +709,7 @@ impl HalfEdge {
 		}
 	}
 
-	pub fn normalize_direction(&self) -> Self {
+	fn normalize_direction(&self) -> Self {
 		if self.reverse {
 			Self {
 				id: self.id,
@@ -729,14 +729,14 @@ pub struct FoundSubpath {
 }
 
 impl FoundSubpath {
-	pub fn endpoints(&self) -> Option<(&HalfEdge, &HalfEdge)> {
+	fn endpoints(&self) -> Option<(&HalfEdge, &HalfEdge)> {
 		match (self.edges.first(), self.edges.last()) {
 			(Some(first), Some(last)) => Some((first, last)),
 			_ => None,
 		}
 	}
 
-	pub fn push(&mut self, segment: HalfEdge) {
+	fn push(&mut self, segment: HalfEdge) {
 		self.edges.push(segment);
 	}
 
@@ -747,7 +747,7 @@ impl FoundSubpath {
 		}
 	}
 
-	pub fn from_segment(segment: HalfEdge) -> Self {
+	fn from_segment(segment: HalfEdge) -> Self {
 		Self { edges: vec![segment] }
 	}
 
@@ -1108,7 +1108,7 @@ impl Vector {
 		false
 	}
 
-	pub fn has_regions(&self) -> bool {
+	fn has_regions(&self) -> bool {
 		!self.region_domain.id.is_empty()
 	}
 
@@ -1321,7 +1321,7 @@ impl Iterator for StrokePathIter<'_> {
 }
 
 /// Represents the conversion of IDs used when concatenating vector paths with conflicting IDs.
-pub struct IdMap {
+pub(crate) struct IdMap {
 	pub point_offset: usize,
 	pub point_map: HashMap<PointId, PointId>,
 	pub segment_map: HashMap<SegmentId, SegmentId>,

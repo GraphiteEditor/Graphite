@@ -120,25 +120,6 @@ impl AsU64 for f64 {
 	}
 }
 
-pub trait AsI64 {
-	fn as_i64(&self) -> i64;
-}
-impl AsI64 for u32 {
-	fn as_i64(&self) -> i64 {
-		*self as i64
-	}
-}
-impl AsI64 for u64 {
-	fn as_i64(&self) -> i64 {
-		*self as i64
-	}
-}
-impl AsI64 for f64 {
-	fn as_i64(&self) -> i64 {
-		*self as i64
-	}
-}
-
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -322,7 +303,7 @@ pub fn is_linear(segment: PathSeg) -> bool {
 }
 
 /// Get an vec of all the points in a path segment.
-pub fn pathseg_points_vec(segment: PathSeg) -> Vec<Point> {
+fn pathseg_points_vec(segment: PathSeg) -> Vec<Point> {
 	match segment {
 		PathSeg::Line(line) => [line.p0, line.p1].to_vec(),
 		PathSeg::Quad(quad_bez) => [quad_bez.p0, quad_bez.p1, quad_bez.p2].to_vec(),
@@ -679,25 +660,6 @@ impl ManipulatorGroup {
 	pub fn new(anchor: DVec2, in_handle: Option<DVec2>, out_handle: Option<DVec2>) -> Self {
 		let id = PointId::generate();
 		Self { anchor, in_handle, out_handle, id }
-	}
-
-	/// Construct a new manipulator group from an anchor, in handle, out handle and an id
-	pub fn new_with_id(anchor: DVec2, in_handle: Option<DVec2>, out_handle: Option<DVec2>, id: PointId) -> Self {
-		Self { anchor, in_handle, out_handle, id }
-	}
-
-	/// Create a bezier curve that starts at the current manipulator group and finishes in the `end_group` manipulator group.
-	pub fn to_bezier(&self, end_group: &ManipulatorGroup) -> PathSeg {
-		let start = self.anchor;
-		let end = end_group.anchor;
-		let out_handle = self.out_handle;
-		let in_handle = end_group.in_handle;
-
-		match (out_handle, in_handle) {
-			(Some(handle1), Some(handle2)) => PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(handle1), dvec2_to_point(handle2), dvec2_to_point(end))),
-			(Some(handle), None) | (None, Some(handle)) => PathSeg::Quad(QuadBez::new(dvec2_to_point(start), dvec2_to_point(handle), dvec2_to_point(end))),
-			(None, None) => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
-		}
 	}
 
 	/// Apply a transformation to all of the [ManipulatorGroup] points
