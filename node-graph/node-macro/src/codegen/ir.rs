@@ -77,7 +77,7 @@ fn inputs(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &[Ident]) ->
 fn subject(index: usize, field: &ParsedField, carrier_subject: bool, routing: Option<&RoutingIo>) -> bool {
 	match &field.ty {
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
-			is_record_value(output_type) || routing.is_some_and(|routing| bare_ident(output_type) == Some(&routing.generic)) || (index == 0 && carrier_subject)
+			is_record_value(output_type) || routing.is_some_and(|routing| crate::codegen::classify::routing_source_output(output_type, &routing.generic)) || (index == 0 && carrier_subject)
 		}
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => routing.is_some_and(|routing| bare_ident(ty) == Some(&routing.generic)) || (index == 0 && carrier_subject),
 	}
@@ -653,7 +653,7 @@ mod tests {
 		let carrier_flip = flip && flip_carrier(parsed);
 		let derives = ctx_derives(parsed);
 		let generic = routing_generic(parsed);
-		let routing_source = |ty: &Type| generic.as_ref().is_some_and(|generic| bare_ident(ty) == Some(generic));
+		let routing_source = |ty: &Type| generic.as_ref().is_some_and(|generic| crate::codegen::classify::routing_source_output(ty, generic));
 		match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => {
 				if record && !skips_carrier && index == 0 {

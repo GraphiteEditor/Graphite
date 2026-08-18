@@ -437,7 +437,8 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 		_ => None,
 	};
 	let opaque_record_generic = |ty: &Type| {
-		let ident = match ty {
+		let (stripped, _) = crate::codegen::ir::strip_ilist(ty);
+		let ident = match &stripped {
 			Type::Path(path) => path.path.get_ident(),
 			_ => None,
 		};

@@ -867,7 +867,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
 			};
-			if matches!((&routing_generic, source_ty), (Some(generic), Type::Path(path)) if path.path.get_ident() == Some(generic)) {
+			if routing_generic.as_ref().is_some_and(|generic| crate::codegen::classify::routing_source_output(source_ty, generic)) {
 				let source_generic = format_ident!("__Source{index}");
 				generics.push(quote! {
 					#source_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>
@@ -922,7 +922,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => quote!(#core_types::node::Node<#ctx_ident, Output = #output_type>),
 	};
 
-	let routing_source = |ty: &Type| matches!((&routing_generic, ty), (Some(generic), Type::Path(path)) if path.path.get_ident() == Some(generic));
+	let routing_source = |ty: &Type| routing_generic.as_ref().is_some_and(|generic| crate::codegen::classify::routing_source_output(ty, generic));
 
 	let lazy_read_out = |field: &ParsedField, output_type: &Type| {
 		let attr_tys = field.attribute_reads.iter().map(|read| {

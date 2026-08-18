@@ -110,14 +110,15 @@ pub(crate) fn has_lazy_reads(parsed: &ParsedNodeFn) -> bool {
 		.any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Node(_)))
 }
 
-/// The value inputs of a routing node (every regular field that is not a
-/// routing source), with their indices into the regular fields.
+/// The value inputs of a routing node (every regular field that is neither a
+/// routing source nor a ranked whole-list input), with their indices into the
+/// regular fields.
 pub(crate) fn routing_value_indices(regular_fields: &[&ParsedField], generic: &Ident) -> Vec<usize> {
 	regular_fields
 		.iter()
 		.enumerate()
 		.filter(|(_, field)| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => !matches!(ty, Type::Path(path) if path.path.get_ident() == Some(generic)),
+			ParsedFieldType::Regular(RegularParsedField { ty, list_levels, .. }) => *list_levels == 0 && !matches!(ty, Type::Path(path) if path.path.get_ident() == Some(generic)),
 			ParsedFieldType::Node(_) => false,
 		})
 		.map(|(index, _)| index)
@@ -514,7 +515,7 @@ pub(crate) fn routing_io(parsed: &ParsedNodeFn) -> Option<RoutingIo> {
 				input_type,
 				implementations,
 			}) => {
-				if bare_ident(output_type) == Some(&ident) {
+				if routing_source_output(output_type, &ident) {
 					// A source forwards its whole record opaquely; declared
 					// reads contradict that and are rejected by validation.
 					if !implementations.is_empty() || type_contains_ident(input_type, &ident) || !field.attribute_reads.is_empty() {
@@ -543,6 +544,13 @@ pub(crate) fn routing_io(parsed: &ParsedNodeFn) -> Option<RoutingIo> {
 pub(crate) fn bare_ident(ty: &Type) -> Option<&Ident> {
 	let Type::Path(path) = ty else { return None };
 	path.path.get_ident()
+}
+
+/// Whether a lazy input's declared output is the routing generic, at any
+/// `IList` nesting: the nesting is rank depth, not a distinct row type.
+pub(crate) fn routing_source_output(output_type: &Type, generic: &Ident) -> bool {
+	let (stripped, _) = crate::codegen::ir::strip_ilist(output_type);
+	bare_ident(&stripped) == Some(generic)
 }
 
 pub(crate) fn tokens_contain_ident(tokens: TokenStream2, ident: &Ident) -> bool {
