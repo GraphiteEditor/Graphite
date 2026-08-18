@@ -16,7 +16,7 @@ use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::subpath::{self, Subpath};
+use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
@@ -479,11 +479,7 @@ pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessag
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
-		match arc_type {
-			ArcType::Open => subpath::ArcType::Open,
-			ArcType::Closed => subpath::ArcType::Closed,
-			ArcType::PieSlice => subpath::ArcType::PieSlice,
-		},
+		arc_type,
 	))];
 	let viewport = document.metadata().transform_to_viewport(layer);
 

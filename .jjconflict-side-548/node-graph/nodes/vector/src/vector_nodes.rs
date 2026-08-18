@@ -3776,12 +3776,12 @@ mod test {
 	async fn bounding_box() {
 		let bounding_box = super::bounding_box((), Item::new_from_element(Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)))).await;
 		let bounding_box = bounding_box.element();
-		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
+		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
-			.region_manipulator_groups()
+			.stroke_manipulator_groups()
 			.next()
 			.unwrap()
-			.1
+			.0
 			.iter()
 			.map(|manipulators| manipulators.anchor)
 			.collect::<Vec<DVec2>>();
@@ -3794,12 +3794,12 @@ mod test {
 		square.with_attribute_mut_or_default(ATTR_TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
 		let bounding_box = BoundingBoxNodeMapped { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
 		let bounding_box = bounding_box.element(0).unwrap();
-		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
+		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
-			.region_manipulator_groups()
+			.stroke_manipulator_groups()
 			.next()
 			.unwrap()
-			.1
+			.0
 			.iter()
 			.map(|manipulators| manipulators.anchor)
 			.collect::<Vec<DVec2>>();
@@ -3831,9 +3831,9 @@ mod test {
 		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(copy_to_points))).await);
 		let combined_copy_to_points = combined.element(0).unwrap();
 
-		assert_eq!(combined_copy_to_points.region_manipulator_groups().count(), expected_points.len());
+		assert_eq!(combined_copy_to_points.stroke_manipulator_groups().count(), expected_points.len());
 
-		for (index, (_, manipulator_groups)) in combined_copy_to_points.region_manipulator_groups().enumerate() {
+		for (index, (manipulator_groups, _)) in combined_copy_to_points.stroke_manipulator_groups().enumerate() {
 			let offset = expected_points[index];
 			let manipulator_groups_anchors = manipulator_groups.iter().map(|manipulators| manipulators.anchor).collect::<Vec<DVec2>>();
 			assert_eq!(

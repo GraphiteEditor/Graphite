@@ -14,12 +14,6 @@ pub fn pathseg_tangent(segment: PathSeg, t: f64) -> DVec2 {
 	DVec2::new(tangent.x, tangent.y)
 }
 
-// Compare two f64s with some maximum absolute difference to account for floating point errors
-#[cfg(test)]
-pub fn compare_f64s(f1: f64, f2: f64) -> bool {
-	(f1 - f2).abs() < super::contants::MAX_ABSOLUTE_DIFFERENCE
-}
-
 /// Compare points by allowing some maximum absolute difference to account for floating point errors
 #[cfg(test)]
 pub fn compare_points(p1: kurbo::Point, p2: kurbo::Point) -> bool {
