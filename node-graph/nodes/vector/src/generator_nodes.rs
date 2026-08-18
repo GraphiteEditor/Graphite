@@ -42,11 +42,7 @@ fn arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
-		match arc_type {
-			ArcType::Open => subpath::ArcType::Open,
-			ArcType::Closed => subpath::ArcType::Closed,
-			ArcType::PieSlice => subpath::ArcType::PieSlice,
-		},
+		arc_type,
 	)))
 }
 

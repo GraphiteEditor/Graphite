@@ -93,11 +93,6 @@ impl PointDomain {
 		Self { id: Vec::new(), position: Vec::new() }
 	}
 
-	pub fn clear(&mut self) {
-		self.id.clear();
-		self.position.clear();
-	}
-
 	#[inline(always)]
 	pub fn reserve(&mut self, additional: usize) {
 		self.id.reserve(additional);
@@ -227,14 +222,6 @@ impl SegmentDomain {
 			handles: Vec::new(),
 			stroke: Vec::new(),
 		}
-	}
-
-	pub fn clear(&mut self) {
-		self.id.clear();
-		self.start_point.clear();
-		self.end_point.clear();
-		self.handles.clear();
-		self.stroke.clear();
 	}
 
 	#[inline(always)]
@@ -399,16 +386,6 @@ impl SegmentDomain {
 		debug_assert_eq!(self.id.len(), self.start_point.len());
 		debug_assert_eq!(self.id.len(), self.end_point.len());
 		self.id.iter().position(|&check_id| check_id == id)
-	}
-
-	fn resolve_range(&self, range: &std::ops::RangeInclusive<SegmentId>) -> Option<std::ops::RangeInclusive<usize>> {
-		match (self.id_to_index(*range.start()), self.id_to_index(*range.end())) {
-			(Some(start), Some(end)) if start.max(end) < self.handles.len().min(self.id.len()).min(self.start_point.len()).min(self.end_point.len()) => Some(start..=end),
-			_ => {
-				warn!("Resolving range with invalid id");
-				None
-			}
-		}
 	}
 
 	pub fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
@@ -609,12 +586,6 @@ impl RegionDomain {
 		}
 	}
 
-	pub fn clear(&mut self) {
-		self.id.clear();
-		self.segment_range.clear();
-		self.fill.clear();
-	}
-
 	#[inline(always)]
 	pub fn reserve(&mut self, additional: usize) {
 		self.id.reserve(additional);
@@ -759,10 +730,6 @@ pub struct FoundSubpath {
 }
 
 impl FoundSubpath {
-	pub fn new(segments: Vec<HalfEdge>) -> Self {
-		Self { edges: segments }
-	}
-
 	pub fn endpoints(&self) -> Option<(&HalfEdge, &HalfEdge)> {
 		match (self.edges.first(), self.edges.last()) {
 			(Some(first), Some(last)) => Some((first, last)),
@@ -772,21 +739,6 @@ impl FoundSubpath {
 
 	pub fn push(&mut self, segment: HalfEdge) {
 		self.edges.push(segment);
-	}
-
-	pub fn insert(&mut self, index: usize, segment: HalfEdge) {
-		self.edges.insert(index, segment);
-	}
-
-	pub fn extend(&mut self, segments: impl IntoIterator<Item = HalfEdge>) {
-		self.edges.extend(segments);
-	}
-
-	pub fn splice<I>(&mut self, range: std::ops::Range<usize>, replace_with: I)
-	where
-		I: IntoIterator<Item = HalfEdge>,
-	{
-		self.edges.splice(range, replace_with);
 	}
 
 	pub fn is_closed(&self) -> bool {
@@ -1088,49 +1040,6 @@ impl Vector {
 		Some(Subpath::new(manipulators_list, closed))
 	}
 
-	/// Construct a [`Bezier`] curve for each region, skipping invalid regions.
-	pub fn region_manipulator_groups(&self) -> impl Iterator<Item = (RegionId, Vec<ManipulatorGroup<PointId>>)> + '_ {
-		self.region_domain
-			.id
-			.iter()
-			.zip(&self.region_domain.segment_range)
-			.filter_map(|(&id, segment_range)| self.segment_domain.resolve_range(segment_range).map(|range| (id, range)))
-			.filter_map(|(id, range)| {
-				let segments_iter = self
-					.segment_domain
-					.handles
-					.get(range.clone())?
-					.iter()
-					.zip(self.segment_domain.start_point.get(range.clone())?)
-					.zip(self.segment_domain.end_point.get(range)?)
-					.map(|((&handles, &start), &end)| (handles, start, end));
-
-				let mut manipulator_groups = Vec::new();
-				let mut in_handle = None;
-
-				for segment in segments_iter {
-					let (handles, start_point_index, _end_point_index) = segment;
-					let start_point_id = self.point_domain.id[start_point_index];
-					let start_point = self.point_domain.position[start_point_index];
-
-					let (manipulator_group, next_in_handle) = match handles {
-						BezierHandles::Linear => (ManipulatorGroup::new_with_id(start_point, in_handle, None, start_point_id), None),
-						BezierHandles::Quadratic { handle } => (ManipulatorGroup::new_with_id(start_point, in_handle, Some(handle), start_point_id), None),
-						BezierHandles::Cubic { handle_start, handle_end } => (ManipulatorGroup::new_with_id(start_point, in_handle, Some(handle_start), start_point_id), Some(handle_end)),
-					};
-
-					in_handle = next_in_handle;
-					manipulator_groups.push(manipulator_group);
-				}
-
-				if let Some(first) = manipulator_groups.first_mut() {
-					first.in_handle = in_handle;
-				}
-
-				Some((id, manipulator_groups))
-			})
-	}
-
 	pub fn build_stroke_path_iter(&self) -> StrokePathIter<'_> {
 		let mut points = vec![StrokePathIterPointMetadata::default(); self.point_domain.ids().len()];
 		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
@@ -1188,16 +1097,6 @@ impl Vector {
 			}
 			bezpath
 		})
-	}
-
-	/// Construct an iterator [`ManipulatorGroup`] for stroke.
-	pub fn manipulator_groups(&self) -> impl Iterator<Item = ManipulatorGroup<PointId>> + '_ {
-		self.stroke_bezier_paths().flat_map(|mut path| std::mem::take(path.manipulator_groups_mut()))
-	}
-
-	pub fn manipulator_group_id(&self, id: impl Into<PointId>) -> Option<ManipulatorGroup<PointId>> {
-		let id = id.into();
-		self.manipulator_groups().find(|manipulators| manipulators.id == id)
 	}
 
 	pub fn transform(&mut self, transform: DAffine2) {

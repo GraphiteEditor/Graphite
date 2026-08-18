@@ -390,7 +390,6 @@ macro_rules! tagged_value {
 					Type::Generic(_) => None,
 					Type::Concrete(concrete_type) => {
 						let name = concrete_type.name.as_ref();
-						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
 						if name == std::any::type_name::<Gradient>() { return Some(TaggedValue::GradientRamp(GradientRamp::default())) }
@@ -671,7 +670,6 @@ impl TaggedValue {
 			Type::Concrete(concrete_type) => {
 				let ty = concrete_type.id?;
 				use std::any::TypeId;
-				// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 				// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 				let ty = match () {
 					() if ty == TypeId::of::<()>() => TaggedValue::None,
