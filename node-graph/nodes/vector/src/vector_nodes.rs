@@ -23,14 +23,15 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use vector_types::GradientForm;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
-use vector_types::subpath::{BezierHandles, ManipulatorGroup};
-use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
+use vector_types::vector::algorithms::bezpath_algorithms::{
+	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
+};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use vector_types::vector::misc::{
-	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
-	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
+	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, ManipulatorGroup, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,
+	bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
@@ -692,11 +693,11 @@ fn merge_by_distance<V: MapVectorItems + Send + Sync + 'static>(
 pub mod extrude_algorithms {
 	use glam::DVec2;
 	use kurbo::{ParamCurve, ParamCurveDeriv};
-	use vector_types::subpath::BezierHandles;
 	use vector_types::vector::StrokeId;
+	use vector_types::vector::misc::BezierHandles;
 	use vector_types::vector::misc::ExtrudeJoiningAlgorithm;
 
-	/// Convert [`kurbo::CubicBez`] to [`vector_types::subpath::BezierHandles`].
+	/// Convert [`kurbo::CubicBez`] to [`vector_types::vector::misc::BezierHandles`].
 	fn cubic_to_handles(cubic_bez: kurbo::CubicBez) -> BezierHandles {
 		BezierHandles::Cubic {
 			handle_start: DVec2::new(cubic_bez.p1.x, cubic_bez.p1.y),
@@ -1114,20 +1115,22 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 
 		let mut result = Vector::default();
 
-		for mut subpath in source.stroke_bezier_paths() {
-			subpath.apply_transform(transform);
+		for (mut manipulators_list, is_closed) in source.stroke_manipulator_groups() {
+			for manipulator in &mut manipulators_list {
+				manipulator.anchor = transform.transform_point2(manipulator.anchor);
+				manipulator.in_handle = manipulator.in_handle.map(|handle| transform.transform_point2(handle));
+				manipulator.out_handle = manipulator.out_handle.map(|handle| transform.transform_point2(handle));
+			}
 
-			let manipulators_list = subpath.manipulator_groups();
 			if manipulators_list.len() < 2 {
 				// Not enough points for softening or handle removal
-				result.append_subpath(subpath, true);
+				result.append_manipulator_groups(&manipulators_list, is_closed, true);
 				continue;
 			}
 
 			let mut new_manipulators_list = Vec::with_capacity(manipulators_list.len());
 			// Track which manipulator indices were given auto-tangent (colinear) handles
 			let mut auto_tangented = vec![false; manipulators_list.len()];
-			let is_closed = subpath.closed();
 
 			for i in 0..manipulators_list.len() {
 				let current = &manipulators_list[i];
@@ -2514,7 +2517,7 @@ async fn morph(
 
 	/// Subdivides the last segment of a manipulator group list at its midpoint, adding one new manipulator.
 	/// For closed paths, the "last segment" is the closing segment from the last back to the first manipulator.
-	fn subdivide_last_manipulator_segment(manips: &mut Vec<ManipulatorGroup<PointId>>, closed: bool) {
+	fn subdivide_last_manipulator_segment(manips: &mut Vec<ManipulatorGroup>, closed: bool) {
 		let len = manips.len();
 		if len < 2 {
 			return;
@@ -2562,7 +2565,7 @@ async fn morph(
 
 	/// Pushes a subpath (list of manipulators) directly into a Vector's point, segment, and region domains,
 	/// bypassing the BezPath intermediate representation used by `append_bezpath`.
-	fn push_manipulators_to_vector(vector: &mut Vector, manips: &[ManipulatorGroup<PointId>], closed: bool, point_id: &mut PointId, segment_id: &mut SegmentId) {
+	fn push_manipulators_to_vector(vector: &mut Vector, manips: &[ManipulatorGroup], closed: bool, point_id: &mut PointId, segment_id: &mut SegmentId) {
 		let Some(first) = manips.first() else { return };
 
 		let first_point_index = vector.point_domain.ids().len();
@@ -3047,7 +3050,7 @@ async fn morph(
 		}
 
 		// Build interpolated manipulator groups
-		let mut interpolated: Vec<ManipulatorGroup<PointId>> = source_manips
+		let mut interpolated: Vec<ManipulatorGroup> = source_manips
 			.iter()
 			.zip(target_manips.iter())
 			.map(|(s, t)| ManipulatorGroup {
@@ -3552,14 +3555,14 @@ fn element_centroid(element: &Vector, transform: DAffine2, centroid_type: Centro
 	let mut centroid = DVec2::ZERO;
 	let mut sum = 0.;
 
-	for subpath in element.stroke_bezier_paths() {
+	for bezpath in element.stroke_bezpath_iter() {
 		let partial = match centroid_type {
-			CentroidType::Area => subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
-			CentroidType::Length => subpath.length_centroid_and_length(None, true),
+			CentroidType::Area => bezpath_area_centroid_and_area(&bezpath, Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
+			CentroidType::Length => bezpath_length_centroid_and_length(&bezpath, None, true),
 		};
-		if let Some((subpath_centroid, area_or_length)) = partial {
+		if let Some((path_centroid, area_or_length)) = partial {
 			sum += area_or_length;
-			centroid += area_or_length * transform.transform_point2(subpath_centroid);
+			centroid += area_or_length * transform.transform_point2(path_centroid);
 		}
 	}
 
@@ -3671,11 +3674,11 @@ mod test {
 				.collect()
 		}
 
-		// The Rectangle and Ellipse generators define the framework's fill winding convention; each is built from these
-		// subpath constructors (`Subpath::new_rectangle` / `Subpath::new_ellipse`), so their winding is the source of truth.
-		use vector_types::subpath::Subpath;
-		let rectangle = Vector::from_subpath(Subpath::new_rectangle(DVec2::new(-50., -50.), DVec2::new(50., 50.)));
-		let ellipse = Vector::from_subpath(Subpath::new_ellipse(DVec2::new(-50., -25.), DVec2::new(50., 25.)));
+		// The Rectangle and Ellipse generators define the framework's fill winding convention, built from these
+		// shape constructors (`rectangle_bezpath` / `ellipse_bezpath`), so their winding is the source of truth.
+		use vector_types::vector::algorithms::shapes::{ellipse_bezpath, rectangle_bezpath};
+		let rectangle = Vector::from_bezpath(rectangle_bezpath(DVec2::new(-50., -50.), DVec2::new(50., 50.)));
+		let ellipse = Vector::from_bezpath(ellipse_bezpath(DVec2::new(-50., -25.), DVec2::new(50., 25.)));
 		let expected = subpath_winding_signs(&rectangle)[0];
 		assert_eq!(subpath_winding_signs(&ellipse)[0], expected, "Rectangle and Ellipse should agree on winding");
 

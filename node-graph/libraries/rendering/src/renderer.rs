@@ -24,7 +24,6 @@ use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
-use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
@@ -476,11 +475,9 @@ fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::C
 }
 
 fn draw_raster_outline(scene: &mut Scene, outline_transform: &DAffine2, render_params: &RenderParams) {
-	use graphic_types::vector_types::vector::PointId;
-
 	let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
 
-	let mut outline_path = Subpath::<PointId>::new_rectangle(DVec2::ZERO, DVec2::ONE).to_bezpath();
+	let mut outline_path = rectangle_path(DVec2::ZERO, DVec2::ONE);
 	outline_path.apply_affine(Affine::new(outline_transform.to_cols_array()));
 
 	scene.stroke(&outline_stroke, Affine::IDENTITY, outline_color_peniko, None, &outline_path);
@@ -1486,7 +1483,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		MaskType::Mask
 	};
 
-	let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
+	let path_is_closed = vector.stroke_bezpath_iter().all(|path| matches!(path.elements().last(), Some(PathEl::ClosePath)));
 	let can_draw_aligned_stroke = path_is_closed
 		&& stroke_params.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 		&& stroke_paint.is_some_and(|graphic| !graphic.is_guaranteed_fully_transparent());
@@ -1750,7 +1747,9 @@ fn render_vector_item_to_vello(
 	// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 	let stroke = stroke_params.as_ref();
 	let stroke_fully_transparent = stroke_paint.is_none_or(|paint| paint.is_guaranteed_fully_transparent());
-	let can_draw_aligned_stroke = !stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
+	let can_draw_aligned_stroke = !stroke_fully_transparent
+		&& stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered())
+		&& element.stroke_bezpath_iter().all(|p| matches!(p.elements().last(), Some(PathEl::ClosePath)));
 
 	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 	let needs_blend_layer = opacity < 1. || blend_mode_attr != BlendMode::default();

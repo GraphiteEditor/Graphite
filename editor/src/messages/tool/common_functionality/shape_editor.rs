@@ -12,10 +12,9 @@ use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration
 use crate::messages::tool::common_functionality::utility_functions::is_visible_point;
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use glam::{DAffine2, DVec2};
-use graphene_std::subpath::{BezierHandles, Subpath};
-use graphene_std::subpath::{PathSegPoints, pathseg_points};
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2, segment_to_handles};
+use graphene_std::vector::algorithms::shapes::polyline_bezpath;
+use graphene_std::vector::misc::{BezierHandles, HandleId, ManipulatorPointId, PathSegPoints, bezpath_from_manipulator_groups, dvec2_to_point, pathseg_points, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModificationType};
 use kurbo::{Affine, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveNearest, PathSeg, Rect, Shape};
 use std::f64::consts::TAU;
@@ -750,9 +749,9 @@ impl ShapeState {
 
 		let mut selected_stack = Vec::new();
 		// Find all subpaths that have been clicked
-		for stroke in vector.stroke_bezier_paths() {
-			if stroke.contains_point(layer_mouse)
-				&& let Some(first) = stroke.manipulator_groups().first()
+		for (groups, closed) in vector.stroke_manipulator_groups() {
+			if bezpath_from_manipulator_groups(&groups, closed).contains(dvec2_to_point(layer_mouse))
+				&& let Some(first) = groups.first()
 			{
 				selected_stack.push(first.id);
 			}
@@ -2223,12 +2222,11 @@ impl ShapeState {
 				assert!(vector.point_domain.ids().contains(&end));
 			}
 
-			let polygon_subpath = if let SelectionShape::Lasso(polygon) = selection_shape {
+			let polygon_bezpath = if let SelectionShape::Lasso(polygon) = selection_shape {
 				if polygon.len() < 2 {
 					return (points_inside, segments_inside);
 				}
-				let polygon: Subpath<PointId> = Subpath::from_anchors(polygon.to_vec(), true);
-				Some(polygon)
+				Some(polyline_bezpath(polygon.iter().copied(), true))
 			} else {
 				None
 			};
@@ -2256,13 +2254,13 @@ impl ShapeState {
 							}
 						}
 						SelectionShape::Lasso(_) => {
-							let polygon = polygon_subpath.as_ref().expect("If `selection_shape` is a polygon then subpath is constructed beforehand.");
+							let polygon = polygon_bezpath.as_ref().expect("If `selection_shape` is a polygon then its path is constructed beforehand.");
 
 							// Sample 10 points on the bezier and check if all or some lie inside the polygon
 							let points = pathseg_compute_lookup_table(segment, Some(10), false);
 							match selection_mode {
-								SelectionMode::Enclosed => points.map(|p| transform.transform_point2(p)).all(|p| polygon.contains_point(p)),
-								_ => points.map(|p| transform.transform_point2(p)).any(|p| polygon.contains_point(p)),
+								SelectionMode::Enclosed => points.map(|p| transform.transform_point2(p)).all(|p| polygon.contains(dvec2_to_point(p))),
+								_ => points.map(|p| transform.transform_point2(p)).any(|p| polygon.contains(dvec2_to_point(p))),
 							}
 						}
 					};
@@ -2281,10 +2279,10 @@ impl ShapeState {
 
 					let select = match selection_shape {
 						SelectionShape::Box(rect) => rect.contains(dvec2_to_point(transformed_position)),
-						SelectionShape::Lasso(_) => polygon_subpath
+						SelectionShape::Lasso(_) => polygon_bezpath
 							.as_ref()
-							.expect("If `selection_shape` is a polygon then subpath is constructed beforehand.")
-							.contains_point(transformed_position),
+							.expect("If `selection_shape` is a polygon then its path is constructed beforehand.")
+							.contains(dvec2_to_point(transformed_position)),
 					};
 
 					if select && select_points {
@@ -2306,10 +2304,10 @@ impl ShapeState {
 
 				let select = match selection_shape {
 					SelectionShape::Box(rect) => rect.contains(dvec2_to_point(transformed_position)),
-					SelectionShape::Lasso(_) => polygon_subpath
+					SelectionShape::Lasso(_) => polygon_bezpath
 						.as_ref()
-						.expect("If `selection_shape` is a polygon then subpath is constructed beforehand.")
-						.contains_point(transformed_position),
+						.expect("If `selection_shape` is a polygon then its path is constructed beforehand.")
+						.contains(dvec2_to_point(transformed_position)),
 				};
 
 				if select && select_points {

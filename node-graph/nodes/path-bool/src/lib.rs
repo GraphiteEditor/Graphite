@@ -1,16 +1,15 @@
 use core_types::list::{ATTR_APPEARANCE, Item, List, NodeIdPath};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Ctx};
-use glam::{DAffine2, DVec2};
+use glam::DAffine2;
 use graphic_types::Appearance;
 use graphic_types::graphic::bake_paint_transforms;
-use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
-use graphic_types::vector_types::vector::PointId;
+use graphic_types::vector_types::vector::VectorExt;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
-use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
+use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathEl, PathSeg, Point, QuadBez};
 pub use vector_types::vector::misc::BooleanOperation;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
@@ -168,8 +167,8 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		}
 	};
 	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
-	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
-		row.element_mut().append_subpath(subpath, false);
+	for contour in contours.contours() {
+		row.element_mut().append_bezpath(closed(contour.path.clone()));
 	}
 
 	list.push(row);
@@ -292,65 +291,36 @@ fn quantize_segment(seg: PathSeg) -> PathSeg {
 	}
 }
 
-fn to_bez_path(vector: &Vector, transform: DAffine2) -> BezPath {
-	let mut path = BezPath::new();
-	for subpath in vector.stroke_bezier_paths() {
-		push_subpath(&mut path, &subpath, transform);
+/// Every operand and result region is treated as closed, so an open path gets its closing segment here.
+fn closed(mut path: BezPath) -> BezPath {
+	if !path.elements().is_empty() && path.elements().last() != Some(&PathEl::ClosePath) {
+		path.close_path();
 	}
 	path
 }
 
-fn push_subpath(path: &mut BezPath, subpath: &Subpath<PointId>, transform: DAffine2) {
+fn to_bez_path(vector: &Vector, transform: DAffine2) -> BezPath {
 	let transform = Affine::new(transform.to_cols_array());
-	let mut first = true;
+	let mut path = BezPath::new();
 
-	for seg in subpath.iter_closed() {
-		let quantized = quantize_segment(transform * seg);
-		if first {
-			first = false;
-			path.move_to(quantized.start());
+	for subpath in vector.stroke_bezpath_iter() {
+		let mut first = true;
+
+		for segment in closed(subpath).segments() {
+			let quantized = quantize_segment(transform * segment);
+			if first {
+				first = false;
+				path.move_to(quantized.start());
+			}
+			path.push(quantized.as_path_el());
 		}
-		path.push(quantized.as_path_el());
-	}
-	path.close_path();
-}
 
-fn from_bez_paths<'a>(paths: impl Iterator<Item = &'a BezPath>) -> Vec<Subpath<PointId>> {
-	let mut all_subpaths = Vec::new();
-
-	for path in paths {
-		let cubics: Vec<CubicBez> = path.segments().map(|segment| segment.to_cubic()).collect();
-		let mut manipulators_list = Vec::new();
-		let mut current_start = None;
-
-		for (index, cubic) in cubics.iter().enumerate() {
-			let d = |p: Point| DVec2::new(p.x, p.y);
-			let [start, handle1, handle2, end] = [d(cubic.p0), d(cubic.p1), d(cubic.p2), d(cubic.p3)];
-
-			if current_start.is_none() {
-				// Use the correct in-handle (None) and out-handle for the start point
-				manipulators_list.push(ManipulatorGroup::new(start, None, Some(handle1)));
-			} else {
-				// Update the out-handle of the previous point
-				if let Some(last) = manipulators_list.last_mut() {
-					last.out_handle = Some(handle1);
-				}
-			}
-
-			// Add the end point with the correct in-handle and out-handle (None)
-			manipulators_list.push(ManipulatorGroup::new(end, Some(handle2), None));
-
-			current_start = Some(end);
-
-			// Check if this is the last segment
-			if index == cubics.len() - 1 {
-				all_subpaths.push(Subpath::new(manipulators_list, true));
-				manipulators_list = Vec::new(); // Reset manipulators for the next path
-			}
+		if !first {
+			path.close_path();
 		}
 	}
 
-	all_subpaths
+	path
 }
 
 pub fn boolean_intersect(a: &BezPath, b: &BezPath) -> Vec<BezPath> {

@@ -49,7 +49,7 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 		return BezPath::new();
 	}
 
-	// Clip or join consecutive Subpaths
+	// Clip or join consecutive subpaths
 	for i in 0..bezpaths.len() - 1 {
 		let j = i + 1;
 		let bezpath1 = &bezpaths[i];
@@ -63,7 +63,7 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 			continue;
 		}
 
-		// The angle is concave. The Subpath overlap and must be clipped
+		// The angle is concave. The subpaths overlap and must be clipped
 		let mut apply_join = true;
 
 		if let Some((clipped_subpath1, clipped_subpath2)) = clip_simple_bezpaths(bezpath1, bezpath2) {
@@ -71,7 +71,7 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 			bezpaths[j] = clipped_subpath2;
 			apply_join = false;
 		}
-		// The angle is convex. The Subpath must be joined using the specified join type
+		// The angle is convex. The subpaths must be joined using the specified join type
 		if apply_join {
 			match join {
 				Join::Bevel => {
