@@ -30,7 +30,7 @@ use graphene_std::transform::ReferencePoint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::algorithms::util::pathseg_tangent;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::{HandleExt, NoHashBuilder, PointId, SegmentId, Vector, VectorModificationType};
 use kurbo::{DEFAULT_ACCURACY, ParamCurve, ParamCurveNearest, PathSeg, Rect};
 use std::vec;
@@ -1647,7 +1647,7 @@ impl Fsm for PathToolFsmState {
 
 							let selected_state = shape_editor.selected_shape_state.entry(layer).or_default();
 
-							for (segment, _, start, end) in vector.segment_bezier_iter() {
+							for (segment, _, start, end) in vector.segment_iter() {
 								if selected_state.is_segment_selected(segment) {
 									selected_state.select_point(ManipulatorPointId::Anchor(start));
 									selected_state.select_point(ManipulatorPointId::Anchor(end));
@@ -1700,7 +1700,7 @@ impl Fsm for PathToolFsmState {
 
 							let selected_state = shape_editor.selected_shape_state.entry(layer).or_default();
 
-							for (segment, _, start, end) in vector.segment_bezier_iter() {
+							for (segment, _, start, end) in vector.segment_iter() {
 								let first_selected = selected_state.is_point_selected(ManipulatorPointId::Anchor(start));
 								let second_selected = selected_state.is_point_selected(ManipulatorPointId::Anchor(end));
 								if first_selected && second_selected {
@@ -1764,7 +1764,7 @@ impl Fsm for PathToolFsmState {
 								// The points which are part of only one segment will be rendered
 								let mut selected_segments_by_point: HashMap<PointId, Vec<SegmentId>> = HashMap::new();
 
-								for (segment_id, _bezier, start, end) in vector.segment_bezier_iter() {
+								for (segment_id, _, start, end) in vector.segment_iter() {
 									if focused_segments.contains(&segment_id) {
 										selected_segments_by_point.entry(start).or_default().push(segment_id);
 										selected_segments_by_point.entry(end).or_default().push(segment_id);
@@ -2764,7 +2764,7 @@ impl Fsm for PathToolFsmState {
 
 					let mut selected_points_by_segment = HashSet::new();
 					old_vector
-						.segment_bezier_iter()
+						.segment_iter()
 						.filter(|(segment, _, _, _)| layer_selection_state.is_segment_selected(*segment))
 						.for_each(|(_, _, start, end)| {
 							selected_points_by_segment.insert(start);
@@ -2781,7 +2781,7 @@ impl Fsm for PathToolFsmState {
 					let find_index = |id: PointId| new_vector.point_domain.iter().enumerate().find(|(_, (point_id, _))| *point_id == id).map(|(index, _)| index);
 
 					// Add segments which have selected ends
-					for ((segment_id, bezier, start, end), stroke) in old_vector.segment_bezier_iter().zip(old_vector.segment_domain.stroke().iter()) {
+					for ((segment_id, segment, start, end), stroke) in old_vector.segment_iter().zip(old_vector.segment_domain.stroke().iter()) {
 						let both_ends_selected = layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(end));
 
 						let segment_selected = layer_selection_state.is_segment_selected(segment_id);
@@ -2791,7 +2791,7 @@ impl Fsm for PathToolFsmState {
 								error!("Point does not exist in point domain");
 								return PathToolFsmState::Ready;
 							};
-							new_vector.segment_domain.push(segment_id, start_index, end_index, bezier.handles, *stroke);
+							new_vector.segment_domain.push(segment_id, start_index, end_index, segment_to_handles(&segment), *stroke);
 						}
 					}
 
@@ -2945,7 +2945,7 @@ impl Fsm for PathToolFsmState {
 					// Add all the selected points
 					let mut selected_points_by_segment = HashSet::new();
 					old_vector
-						.segment_bezier_iter()
+						.segment_iter()
 						.filter(|(segment, _, _, _)| layer_selection_state.is_segment_selected(*segment))
 						.for_each(|(_, _, start, end)| {
 							selected_points_by_segment.insert(start);
@@ -3398,7 +3398,7 @@ fn calculate_adjacent_anchor_tangent(currently_dragged_handle: ManipulatorPointI
 		0 => {
 			// Find non-shared segments
 			let non_shared_segment: Vec<_> = vector
-				.segment_bezier_iter()
+				.segment_iter()
 				.filter_map(|(segment_id, _, start, end)| {
 					let touches_adjacent = start == adjacent_anchor || end == adjacent_anchor;
 					let shares_with_dragged = start == dragged_handle_anchor || end == dragged_handle_anchor;
