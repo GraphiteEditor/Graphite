@@ -759,18 +759,28 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 		B: crate::context::DeriveCtx,
 		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
 	{
-		inner_extent_of(self.node, ctx, self.inner_levels)
+		inner_extent_of(self.node, ctx, 0, self.inner_levels)
+	}
+
+	/// The flat lane count of the copy at `copy`, for edges whose inner
+	/// extents vary per copy.
+	pub fn inner_extent_at<B>(&self, ctx: &B, copy: u64) -> Result<u64, crate::gpoll::Interrupt>
+	where
+		B: crate::context::DeriveCtx,
+		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
+	{
+		inner_extent_of(self.node, ctx, copy, self.inner_levels)
 	}
 }
 
 /// See [`RecordLazyInput::inner_extent`].
-fn inner_extent_of<B, N>(node: &N, ctx: &B, levels: u8) -> Result<u64, crate::gpoll::Interrupt>
+fn inner_extent_of<B, N>(node: &N, ctx: &B, copy: u64, levels: u8) -> Result<u64, crate::gpoll::Interrupt>
 where
 	B: crate::context::DeriveCtx,
 	N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
 {
 	let head = ctx.index_head();
-	let derived = ctx.promoted(&head, 0);
+	let derived = ctx.promoted(&head, copy);
 	let mut inner: u64 = 1;
 	for level in 0..levels {
 		match node.extent_at_derived(&derived, level) {
@@ -818,7 +828,7 @@ impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
 		B: crate::context::DeriveCtx,
 		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
 	{
-		inner_extent_of(self.node, ctx, self.inner_levels)
+		inner_extent_of(self.node, ctx, 0, self.inner_levels)
 	}
 
 	pub fn eval<'d, C>(&self, ctx: &C) -> Result<Out, crate::gpoll::Interrupt>
