@@ -1,7 +1,7 @@
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
-use core_types::blending::BlendMode;
+use core_types::blending::{BlendMode, apply_blend_mode};
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
@@ -104,6 +104,66 @@ impl<'a, T> ItemRef<'a, T> {
 	fn layer(self) -> Option<NodeId> {
 		self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).and_then(|path| path.0.iter_element_values().next_back().copied())
 	}
+}
+
+/// The color one paint item contributes, faded by its opacity attributes.
+pub(crate) fn faded_paint_color(item: ItemRef<'_, Color>, for_mask: bool) -> Option<Color> {
+	let color = item.element()?;
+
+	Some(color.with_alpha(color.a() * item.paint_opacity(for_mask)))
+}
+
+/// Composites one paint color over the stack beneath it, mixing by the blend mode and then source-over in straight alpha.
+fn composite_paint_over(over: Color, under: Color, blend_mode: BlendMode) -> Color {
+	let (over_alpha, under_alpha) = (over.a(), under.a());
+
+	// These modes only move the backdrop's alpha, leaving its color alone
+	match blend_mode {
+		BlendMode::Erase => return under.with_alpha((under_alpha - over_alpha).clamp(0., 1.)),
+		BlendMode::Restore => return under.with_alpha((under_alpha + over_alpha).clamp(0., 1.)),
+		BlendMode::MultiplyAlpha => return under.with_alpha(under_alpha * over_alpha),
+		_ => {}
+	}
+
+	let result_alpha = over_alpha + under_alpha * (1. - over_alpha);
+	if result_alpha <= 0. {
+		return Color::TRANSPARENT;
+	}
+
+	// The blend formulas read their backdrop premultiplied
+	let premultiplied_under = Color::from_rgbaf32_unchecked(under.r() * under_alpha, under.g() * under_alpha, under.b() * under_alpha, under_alpha);
+	let mixed = apply_blend_mode(over, premultiplied_under, blend_mode);
+
+	// The mode only mixes where the backdrop has coverage, so its alpha interpolates each source channel from the raw color to the mixed color
+	let source_channel = |over_channel: f32, mixed_channel: f32| over_channel * (1. - under_alpha) + mixed_channel * under_alpha;
+
+	let channel =
+		|mixed_channel: f32, over_channel: f32, under_channel: f32| (source_channel(over_channel, mixed_channel) * over_alpha + under_channel * under_alpha * (1. - over_alpha)) / result_alpha;
+
+	Color::from_rgbaf32_unchecked(
+		channel(mixed.r(), over.r(), under.r()),
+		channel(mixed.g(), over.g(), under.g()),
+		channel(mixed.b(), over.b(), under.b()),
+		result_alpha,
+	)
+}
+
+/// Flattens a rank-1 color paint into the single color the fast path emits, stacking the items in paint order.
+pub(crate) fn composite_paint_colors(list: &List<Color>, for_mask: bool) -> Option<Color> {
+	let mut composited = None;
+
+	for index in 0..list.len() {
+		let item = ItemRef::ListItem(list, index);
+		let Some(faded) = faded_paint_color(item, for_mask) else { continue };
+
+		composited = Some(match composited {
+			// The lowest paint has nothing beneath it, so its blend mode has nothing to act on
+			None => faded,
+			Some(under) => composite_paint_over(faded, under, item.attribute_cloned_or_default(ATTR_BLEND_MODE)),
+		});
+	}
+
+	composited
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1762,9 +1822,8 @@ fn render_vector_item_to_vello(
 
 		for paint_index in 0..fill_graphic.len() {
 			let Some(paint) = fill_graphic.element(paint_index) else { continue };
-			let solid_fill = |scene: &mut Scene, item: ItemRef<'_, Color>| {
-				let Some(color) = item.element() else { return };
-				let color = color.with_alpha(color.a() * item.paint_opacity(render_params.for_mask));
+			let solid_fill = |scene: &mut Scene, color: Option<Color>| {
+				let Some(color) = color else { return };
 
 				let fill = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
 				scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
@@ -1785,12 +1844,14 @@ fn render_vector_item_to_vello(
 
 			match paint {
 				Graphic::None(_) | Graphic::NoneList(_) => continue,
-				Graphic::Color(item) => solid_fill(scene, ItemRef::Item(item)),
-				Graphic::ColorList(list) => solid_fill(scene, ItemRef::ListItem(list, 0)),
+				Graphic::Color(item) => solid_fill(scene, faded_paint_color(ItemRef::Item(item), render_params.for_mask)),
+				Graphic::ColorList(list) => solid_fill(scene, composite_paint_colors(list, render_params.for_mask)),
 				Graphic::Gradient(item) => gradient_fill(scene, ItemRef::Item(item)),
-				Graphic::GradientList(list) => gradient_fill(scene, ItemRef::ListItem(list, 0)),
+				// Stacked gradients cannot be composited into one brush, so they fall through to the clipped texture path
+				Graphic::GradientList(list) if list.len() <= 1 => gradient_fill(scene, ItemRef::ListItem(list, 0)),
 				// Any other graphic content paints as a texture clipped to the path
-				Graphic::Graphic(_)
+				Graphic::GradientList(_)
+				| Graphic::Graphic(_)
 				| Graphic::Vector(_)
 				| Graphic::RasterCPU(_)
 				| Graphic::RasterGPU(_)
@@ -1861,9 +1922,8 @@ fn render_vector_item_to_vello(
 				continue;
 			};
 
-			let solid_stroke = |scene: &mut Scene, item: ItemRef<'_, Color>| {
-				let Some(color) = item.element() else { return };
-				let color = color.with_alpha(color.a() * item.paint_opacity(render_params.for_mask));
+			let solid_stroke = |scene: &mut Scene, color: Option<Color>| {
+				let Some(color) = color else { return };
 
 				let brush = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
 
@@ -1885,12 +1945,14 @@ fn render_vector_item_to_vello(
 
 			match stroke_graphic {
 				Graphic::None(_) | Graphic::NoneList(_) => continue,
-				Graphic::Color(item) => solid_stroke(scene, ItemRef::Item(item)),
-				Graphic::ColorList(list) => solid_stroke(scene, ItemRef::ListItem(list, 0)),
+				Graphic::Color(item) => solid_stroke(scene, faded_paint_color(ItemRef::Item(item), render_params.for_mask)),
+				Graphic::ColorList(list) => solid_stroke(scene, composite_paint_colors(list, render_params.for_mask)),
 				Graphic::Gradient(item) => gradient_stroke(scene, ItemRef::Item(item)),
-				Graphic::GradientList(list) => gradient_stroke(scene, ItemRef::ListItem(list, 0)),
+				// Stacked gradients cannot be composited into one brush, so they fall through to the clipped texture path
+				Graphic::GradientList(list) if list.len() <= 1 => gradient_stroke(scene, ItemRef::ListItem(list, 0)),
 				// Any other graphic content paints as a texture clipped to the stroked region
-				Graphic::Graphic(_)
+				Graphic::GradientList(_)
+				| Graphic::Graphic(_)
 				| Graphic::Vector(_)
 				| Graphic::RasterCPU(_)
 				| Graphic::RasterGPU(_)
@@ -3341,6 +3403,44 @@ impl SvgRenderAttrs<'_> {
 mod tests {
 	use super::*;
 	use vector_types::gradient::GradientSpace;
+
+	#[test]
+	fn stacked_paint_colors_composite_in_straight_alpha() {
+		// A half-transparent red over an opaque blue lands halfway between the two
+		let mut list = List::new();
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(0., 0., 1., 1.)));
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(1., 0., 0., 0.5)));
+
+		let composited = composite_paint_colors(&list, false).expect("a non-empty paint list composites to a color");
+
+		assert!((composited.r() - 0.5).abs() < 1e-5, "red was {}", composited.r());
+		assert!((composited.g() - 0.).abs() < 1e-5, "green was {}", composited.g());
+		assert!((composited.b() - 0.5).abs() < 1e-5, "blue was {}", composited.b());
+		assert!((composited.a() - 1.).abs() < 1e-5, "alpha was {}", composited.a());
+	}
+
+	#[test]
+	fn stacked_paint_blending_interpolates_by_backdrop_coverage() {
+		// Multiply over half-covering black only half-multiplies the red
+		let mut list = List::new();
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(0., 0., 0., 0.5)));
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(1., 0., 0., 1.)).with_attribute(ATTR_BLEND_MODE, BlendMode::Multiply));
+
+		let composited = composite_paint_colors(&list, false).expect("a non-empty paint list composites to a color");
+
+		assert!((composited.r() - 0.5).abs() < 1e-5, "red was {}", composited.r());
+		assert!((composited.a() - 1.).abs() < 1e-5, "alpha was {}", composited.a());
+
+		// Multiply over no backdrop at all leaves the source color untouched
+		let mut list = List::new();
+		list.push(Item::new_from_element(Color::TRANSPARENT));
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(1., 0., 0., 1.)).with_attribute(ATTR_BLEND_MODE, BlendMode::Multiply));
+
+		let composited = composite_paint_colors(&list, false).expect("a non-empty paint list composites to a color");
+
+		assert!((composited.r() - 1.).abs() < 1e-5, "red was {}", composited.r());
+		assert!((composited.a() - 1.).abs() < 1e-5, "alpha was {}", composited.a());
+	}
 
 	#[test]
 	fn spread_adjusted_samples_wraps_clear_in_transparent_guards() {
