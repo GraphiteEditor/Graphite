@@ -12,7 +12,7 @@ const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-3;
 
 /// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
 /// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
-pub fn split_bezpath_at_segment(bezpath: &BezPath, segment_index: usize, t: f64) -> Option<(BezPath, BezPath)> {
+fn split_bezpath_at_segment(bezpath: &BezPath, segment_index: usize, t: f64) -> Option<(BezPath, BezPath)> {
 	if t <= f64::EPSILON || (1. - t) <= f64::EPSILON || bezpath.segments().count() == 0 {
 		return None;
 	}
@@ -184,7 +184,7 @@ pub enum TValue {
 }
 
 /// Default LUT step size in `compute_lookup_table` function.
-pub const DEFAULT_LUT_STEP_SIZE: usize = 10;
+const DEFAULT_LUT_STEP_SIZE: usize = 10;
 
 /// Return a selection of equidistant points on the bezier curve.
 /// If no value is provided for `steps`, then the function will default `steps` to be 10.
@@ -488,7 +488,7 @@ pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Opti
 
 /// Computes the [`PathEl`] to form a circular join from `left` to `right`, along a circle around `center`.
 /// By default, the angle is assumed to be 180 degrees.
-pub fn compute_circular_subpath_details(left: DVec2, arc_point: DVec2, right: DVec2, center: DVec2, angle: Option<f64>) -> [PathEl; 2] {
+fn compute_circular_subpath_details(left: DVec2, arc_point: DVec2, right: DVec2, center: DVec2, angle: Option<f64>) -> [PathEl; 2] {
 	let center_to_arc_point = arc_point - center;
 
 	// Based on https://pomax.github.io/bezierinfo/#circles_cubic

@@ -25,7 +25,7 @@ fn cubic_cubic_intersections_lyon(cubic1: kurbo::CubicBez, cubic2: kurbo::CubicB
 /// that segment where the intersection occurred.
 ///
 /// `minimum_separation` is the minimum difference that two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
-pub fn bezpath_and_segment_intersections(bezpath: &BezPath, segment: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+fn bezpath_and_segment_intersections(bezpath: &BezPath, segment: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 	bezpath
 		.segments()
 		.enumerate()
@@ -39,7 +39,7 @@ pub fn bezpath_and_segment_intersections(bezpath: &BezPath, segment: PathSeg, ac
 }
 
 /// Calculates the intersection points the bezpath has with another given bezpath and returns a list of parametric `t`-values.
-pub fn bezpath_intersections(bezpath1: &BezPath, bezpath2: &BezPath, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+pub(crate) fn bezpath_intersections(bezpath1: &BezPath, bezpath2: &BezPath, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 	let mut intersection_t_values: Vec<(usize, f64)> = bezpath2
 		.segments()
 		.flat_map(|bezier| bezpath_and_segment_intersections(bezpath1, bezier, accuracy, minimum_separation))
@@ -50,7 +50,7 @@ pub fn bezpath_intersections(bezpath1: &BezPath, bezpath2: &BezPath, accuracy: O
 }
 
 /// Calculates the intersection points the segment has with another given segment and returns a list of parametric `t`-values with given accuracy.
-pub fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>) -> Vec<(f64, f64)> {
+fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>) -> Vec<(f64, f64)> {
 	let accuracy = accuracy.unwrap_or(DEFAULT_ACCURACY);
 
 	match (segment1, segment2) {
@@ -66,7 +66,7 @@ pub fn segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Opt
 	}
 }
 
-pub fn subsegment_intersections(segment1: PathSeg, min_t1: f64, max_t1: f64, segment2: PathSeg, min_t2: f64, max_t2: f64, accuracy: Option<f64>) -> Vec<(f64, f64)> {
+fn subsegment_intersections(segment1: PathSeg, min_t1: f64, max_t1: f64, segment2: PathSeg, min_t2: f64, max_t2: f64, accuracy: Option<f64>) -> Vec<(f64, f64)> {
 	let accuracy = accuracy.unwrap_or(DEFAULT_ACCURACY);
 
 	match (segment1, segment2) {
@@ -180,7 +180,7 @@ pub fn filtered_segment_intersections(segment1: PathSeg, segment2: PathSeg, accu
 /// `error`, for intersections where the provided bezier is non-linear, defines the threshold for bounding boxes to be considered an intersection point.
 ///
 /// `minimum_separation` is the minimum difference between adjacent `t` values in sorted order
-pub fn filtered_all_segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(f64, f64)> {
+pub(crate) fn filtered_all_segment_intersections(segment1: PathSeg, segment2: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(f64, f64)> {
 	let mut intersection_t_values = segment_intersections(segment1, segment2, accuracy);
 	intersection_t_values.sort_by(|a, b| (a.0 + a.1).partial_cmp(&(b.0 + b.1)).unwrap());
 
@@ -240,7 +240,7 @@ fn pathseg_self_intersection(segment: PathSeg, accuracy: Option<f64>) -> Vec<(f6
 /// If the difference between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
 /// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 /// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
-pub fn pathseg_self_intersections(segment: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(f64, f64)> {
+pub(crate) fn pathseg_self_intersections(segment: PathSeg, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(f64, f64)> {
 	let mut intersection_t_values = pathseg_self_intersection(segment, accuracy);
 	intersection_t_values.sort_by(|a, b| (a.0 + a.1).partial_cmp(&(b.0 + b.1)).unwrap());
 

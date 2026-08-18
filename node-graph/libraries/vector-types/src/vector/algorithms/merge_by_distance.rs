@@ -224,7 +224,7 @@ pub(crate) struct Point {
 /// Useful indexes to speed up various operations on [`Vector`].
 ///
 /// Important: It is the user's responsibility to ensure the indexes remain valid after mutations to the data.
-pub struct VectorIndex {
+pub(crate) struct VectorIndex {
 	/// Points and segments form a graph. Store it here in a form amenable to graph algorithms.
 	///
 	/// Currently, segment data is not stored as it is not used, but it could easily be added.
@@ -237,7 +237,7 @@ pub struct VectorIndex {
 
 impl VectorIndex {
 	/// Construct a [`VectorIndex`] by building indexes from the given [`Vector`]. Takes `O(n)` time.
-	pub fn build_from(data: &Vector) -> Self {
+	fn build_from(data: &Vector) -> Self {
 		let point_to_offset = data.point_domain.ids().iter().copied().enumerate().map(|(a, b)| (b, a)).collect::<FxHashMap<_, _>>();
 
 		let mut point_to_node = FxHashMap::default();
@@ -270,7 +270,7 @@ impl VectorIndex {
 	/// # Panics
 	///
 	/// Will panic if no segment with the given ID is found.
-	pub fn segment_chord_length(&self, id: SegmentId) -> f64 {
+	fn segment_chord_length(&self, id: SegmentId) -> f64 {
 		let edge_idx = self.segment_to_edge[&id];
 		let (start, end) = self.point_graph.edge_endpoints(edge_idx).unwrap();
 		let start_position = self.point_graph.node_weight(start).unwrap().position;
@@ -285,7 +285,7 @@ impl VectorIndex {
 	/// # Panics
 	///
 	/// This function will panic if the ID is not present.
-	pub fn segment_ends(&self, id: SegmentId) -> [NodeIndex; 2] {
+	fn segment_ends(&self, id: SegmentId) -> [NodeIndex; 2] {
 		let (start, end) = self.point_graph.edge_endpoints(self.segment_to_edge[&id]).unwrap();
 		if start < end { [start, end] } else { [end, start] }
 	}
@@ -295,7 +295,7 @@ impl VectorIndex {
 	/// # Panics
 	///
 	/// Will panic if `id` isn't in the data.
-	pub fn point_position(&self, id: PointId, data: &Vector) -> DVec2 {
+	fn point_position(&self, id: PointId, data: &Vector) -> DVec2 {
 		let offset = self.point_to_offset[&id];
 		data.point_domain.positions()[offset]
 	}

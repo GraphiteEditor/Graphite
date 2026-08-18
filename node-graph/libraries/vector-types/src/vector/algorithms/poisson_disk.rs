@@ -8,7 +8,7 @@ const DEEPEST_SUBDIVISION_LEVEL_BEFORE_DISCARDING: usize = 8;
 /// Based on the paper:
 /// "Poisson Disk Point Sets by Hierarchical Dart Throwing"
 /// <https://scholarsarchive.byu.edu/facpub/237/>
-pub fn poisson_disk_sample(
+pub(crate) fn poisson_disk_sample(
 	offset: DVec2,
 	width: f64,
 	height: f64,
@@ -187,23 +187,23 @@ where
 
 /// A square (represented by its top left corner position and width/height of `square_size`) that is currently a candidate for targetting by the dart throwing process.
 /// The positive sign bit encodes if the square is contained entirely within the masking shape, or negative if it's outside or intersects the shape path.
-pub struct ActiveSquare(DVec2);
+struct ActiveSquare(DVec2);
 
 impl ActiveSquare {
-	pub fn new(top_left_corner: DVec2, fully_in_shape: bool) -> Self {
+	fn new(top_left_corner: DVec2, fully_in_shape: bool) -> Self {
 		Self(if fully_in_shape { top_left_corner } else { -top_left_corner })
 	}
 
-	pub fn top_left_corner(&self) -> DVec2 {
+	fn top_left_corner(&self) -> DVec2 {
 		self.0.abs()
 	}
 
-	pub fn fully_in_shape(&self) -> bool {
+	fn fully_in_shape(&self) -> bool {
 		self.0.x.is_sign_positive()
 	}
 }
 
-pub struct ActiveListLevel {
+struct ActiveListLevel {
 	/// List of all subdivided squares of the same size that are currently candidates for targetting by the dart throwing process
 	active_squares: Vec<ActiveSquare>,
 	/// Width and height of the squares in this level of subdivision
@@ -214,7 +214,7 @@ pub struct ActiveListLevel {
 
 impl ActiveListLevel {
 	#[inline(always)]
-	pub fn new(square_size: f64) -> Self {
+	fn new(square_size: f64) -> Self {
 		Self {
 			active_squares: Vec::new(),
 			square_size,
@@ -222,7 +222,7 @@ impl ActiveListLevel {
 		}
 	}
 
-	pub fn new_filled(
+	fn new_filled(
 		square_size: f64,
 		offset: DVec2,
 		width: f64,
@@ -295,14 +295,14 @@ impl ActiveListLevel {
 
 	#[must_use]
 	#[inline(always)]
-	pub fn take_square(&mut self, active_square_index: usize) -> ActiveSquare {
+	fn take_square(&mut self, active_square_index: usize) -> ActiveSquare {
 		let targetted_square = self.active_squares.swap_remove(active_square_index);
 		self.total_area = self.square_size.powi(2) * self.active_squares.len() as f64;
 		targetted_square
 	}
 
 	#[inline(always)]
-	pub fn add_squares(&mut self, new_squares: impl Iterator<Item = ActiveSquare>) {
+	fn add_squares(&mut self, new_squares: impl Iterator<Item = ActiveSquare>) {
 		for new_square in new_squares {
 			self.active_squares.push(new_square);
 		}
@@ -310,28 +310,28 @@ impl ActiveListLevel {
 	}
 
 	#[inline(always)]
-	pub fn square_size(&self) -> f64 {
+	fn square_size(&self) -> f64 {
 		self.square_size
 	}
 
 	#[inline(always)]
-	pub fn square_area(&self) -> f64 {
+	fn square_area(&self) -> f64 {
 		self.square_size.powi(2)
 	}
 
 	#[inline(always)]
-	pub fn total_area(&self) -> f64 {
+	fn total_area(&self) -> f64 {
 		self.total_area
 	}
 
 	#[inline(always)]
-	pub fn not_empty(&self) -> bool {
+	fn not_empty(&self) -> bool {
 		!self.active_squares.is_empty()
 	}
 }
 
 #[derive(Clone, Default)]
-pub struct PointsList {
+struct PointsList {
 	// The worst-case number of points in a 3x3 grid is 16 (one at each intersection of the four gridlines per axis)
 	storage_slots: [DVec2; 16],
 	length: usize,
@@ -339,19 +339,19 @@ pub struct PointsList {
 
 impl PointsList {
 	#[inline(always)]
-	pub fn push(&mut self, point: DVec2) {
+	fn push(&mut self, point: DVec2) {
 		self.storage_slots[self.length] = point;
 		self.length += 1;
 	}
 
 	#[inline(always)]
-	pub fn list_cell_and_neighbors(&self) -> impl Iterator<Item = DVec2> {
+	fn list_cell_and_neighbors(&self) -> impl Iterator<Item = DVec2> {
 		// The negative bit is used to store whether a point belongs to a neighboring cell
 		self.storage_slots.into_iter().take(self.length).map(|point| (point.x.abs(), point.y.abs()).into())
 	}
 
 	#[inline(always)]
-	pub fn list_cell(&self) -> impl Iterator<Item = DVec2> {
+	fn list_cell(&self) -> impl Iterator<Item = DVec2> {
 		// The negative bit is used to store whether a point belongs to a neighboring cell
 		self.storage_slots
 			.into_iter()
@@ -360,7 +360,7 @@ impl PointsList {
 	}
 }
 
-pub struct AccelerationGrid {
+struct AccelerationGrid {
 	size: f64,
 	dimension_x: usize,
 	dimension_y: usize,
@@ -369,7 +369,7 @@ pub struct AccelerationGrid {
 
 impl AccelerationGrid {
 	#[inline(always)]
-	pub fn new(width: f64, height: f64, size: f64) -> Self {
+	fn new(width: f64, height: f64, size: f64) -> Self {
 		let dimension_x = (width / size).ceil() as usize + 1;
 		let dimension_y = (height / size).ceil() as usize + 1;
 
@@ -382,7 +382,7 @@ impl AccelerationGrid {
 	}
 
 	#[inline(always)]
-	pub fn insert(&mut self, point: DVec2) {
+	fn insert(&mut self, point: DVec2) {
 		let x = (point.x / self.size).floor() as usize;
 		let y = (point.y / self.size).floor() as usize;
 
@@ -408,7 +408,7 @@ impl AccelerationGrid {
 	}
 
 	#[inline(always)]
-	pub fn nearby_points(&self, point: DVec2) -> impl Iterator<Item = DVec2> {
+	fn nearby_points(&self, point: DVec2) -> impl Iterator<Item = DVec2> {
 		let x = (point.x / self.size).floor() as usize;
 		let y = (point.y / self.size).floor() as usize;
 
@@ -416,7 +416,7 @@ impl AccelerationGrid {
 	}
 
 	#[inline(always)]
-	pub fn final_points(&self, offset: DVec2) -> Vec<DVec2> {
+	fn final_points(&self, offset: DVec2) -> Vec<DVec2> {
 		self.cells.iter().flat_map(|cell| cell.list_cell()).map(|point| point + offset).collect()
 	}
 }
