@@ -1,14 +1,12 @@
+use super::consts::MAX_ABSOLUTE_DIFFERENCE;
 use super::intersection::{bezpath_intersections, filtered_all_segment_intersections, pathseg_self_intersections};
 use super::poisson_disk::poisson_disk_sample;
 use super::util::pathseg_tangent;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
 use core_types::math::polynomial::pathseg_to_parametric_polynomial;
 use glam::{DMat2, DVec2};
-use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
+use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI};
-
-/// Default threshold for comparing floating point values in intersection and centroid math.
-const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-3;
 
 /// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
 /// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
@@ -79,11 +77,7 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t_value: TValue, segments_length: O
 	let (segment_index, t) = eval_bezpath(bezpath, t_value, segments_length);
 	let segment = bezpath.get_seg(segment_index + 1).unwrap();
 
-	match segment {
-		PathSeg::Line(line) => line.deriv().eval(t),
-		PathSeg::Quad(quad_bez) => quad_bez.deriv().eval(t),
-		PathSeg::Cubic(cubic_bez) => cubic_bez.deriv().eval(t),
-	}
+	dvec2_to_point(pathseg_tangent(segment, t))
 }
 
 /// Computes sample locations along a bezpath, returning parametric `(segment_index, t)` pairs and whether the path was closed.
