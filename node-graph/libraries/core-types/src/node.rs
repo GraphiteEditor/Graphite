@@ -21,6 +21,15 @@ pub enum BatchStatus<'a> {
 	InvalidRange,
 }
 
+impl From<Interrupt> for BatchStatus<'_> {
+	fn from(interrupt: Interrupt) -> Self {
+		match interrupt {
+			Interrupt::Pending => BatchStatus::Pending,
+			Interrupt::Error(error) => BatchStatus::Error(*error),
+		}
+	}
+}
+
 /// A shared view over a batch of records in one flat frame buffer: lane `i`
 /// starts at `frames + i * stride` with `stride = layout.lane_stride()`.
 /// Frame bytes carry no drop glue (droppable elements ride parked,
@@ -176,6 +185,15 @@ pub struct List<'a, T> {
 	batch: RecordBatch<'a>,
 	_element: PhantomData<T>,
 }
+
+// A shared view regardless of `T`: copying the list copies no elements.
+impl<T> Clone for List<'_, T> {
+	fn clone(&self) -> Self {
+		*self
+	}
+}
+
+impl<T> Copy for List<'_, T> {}
 
 impl<'a, T> List<'a, T> {
 	/// # Safety
@@ -443,6 +461,18 @@ impl StatusCell {
 				error.trace.push(input_index);
 				Err(Interrupt::Error(error))
 			}
+		}
+	}
+
+	/// A new cell holding a copy of the accumulated status; the error stays in
+	/// place, cloned rather than taken.
+	pub fn snapshot(&self) -> StatusCell {
+		let error = self.error.take();
+		self.error.set(error.clone());
+		StatusCell {
+			finality: Cell::new(self.finality.get()),
+			error: Cell::new(error),
+			no_partial: self.no_partial,
 		}
 	}
 
