@@ -1084,8 +1084,18 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.collect::<Vec<(usize, &AttributeRead)>>()
 	};
 
-	let bind_body = |index: usize, field: &ParsedField| {
+	let bind_body = |index: usize, field: &ParsedField, batch_mode: bool| {
 		let name = &field.pat_ident.ident;
+		// The bind's failure exits return through the enclosing fn: `GPoll` in
+		// `eval`, `BatchStatus` in the generated `eval_batch`.
+		let pending = match batch_mode {
+			false => quote!(return #core_types::gpoll::GPoll::Pending),
+			true => quote!(return #core_types::node::BatchStatus::Pending),
+		};
+		let fail = |error: TokenStream2| match batch_mode {
+			false => quote!(return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#error))),
+			true => quote!(return #core_types::node::BatchStatus::Error(#error)),
+		};
 		match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match ir::value_binding(&node, index) {
 				// A carrier primary evaluates beyond the node's own frame (in the
@@ -1093,19 +1103,22 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ValueBinding::Carrier => quote!(),
 				ValueBinding::Materialized => {
 					let levels = ir::materialized_levels(&node, index);
+					let non_exact = fail(quote!(#core_types::gpoll::GraphError::new("reduce over a non-exact extent")));
+					let batch_error = fail(quote!(__error));
+					let batch_failed = fail(quote!(#core_types::gpoll::GraphError::new("reduce batch failed")));
 					quote! {
 						let __arena = #core_types::context::ExtractArena::arena(__input);
 						let __count = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Below(#levels)) {
 							#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => __count,
-							#core_types::gpoll::GPoll::Pending => return #core_types::gpoll::GPoll::Pending,
-							_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("reduce over a non-exact extent"))),
+							#core_types::gpoll::GPoll::Pending => #pending,
+							_ => #non_exact,
 						};
 						let __batch = match #core_types::record::materialize_batch(&self.#name, __input, 0..__count as u64, __arena) {
 							#core_types::node::BatchStatus::Lent(__batch, _) => __batch,
 							#core_types::node::BatchStatus::Filled(__batch, _) => __batch.into_shared(),
-							#core_types::node::BatchStatus::Pending => return #core_types::gpoll::GPoll::Pending,
-							#core_types::node::BatchStatus::Error(__error) => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(__error)),
-							_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("reduce batch failed"))),
+							#core_types::node::BatchStatus::Pending => #pending,
+							#core_types::node::BatchStatus::Error(__error) => #batch_error,
+							_ => #batch_failed,
 						};
 						let #name = unsafe { #core_types::node::List::<#ty>::new(__batch) };
 					}
@@ -1371,23 +1384,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#ctx_ident: #core_types::context::InjectIndex + Copy,
 	};
 	let produces_records = record_io || routing_generic.is_some() || flip;
-	let batch_impl = match (&parsed.attributes.batch, produces_records) {
-		(Some(path), _) => quote! {
-			#batch_signature
-			{
-				#path(self, __input, __range, __scratch)
-			}
-		},
-		// The eager forward runs the shared copy-out loop with statically
-		// dispatched evals, so an erased batch costs one virtual call.
-		(None, true) => quote! {
-			#batch_signature
-			{
-				#core_types::record::fill_frames(self, __input, __range, __scratch)
-			}
-		},
-		(None, false) => quote!(),
-	};
 
 	let ctx_pat = &parsed.input.pat_ident;
 	let fn_where = &parsed.where_clause;
@@ -1552,7 +1548,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#fallback
 		}
 	};
-	let record_tail = record_io.then(|| {
+	let record_tail_core = record_io.then(|| {
 		let tuple_arg = |field: &ParsedField, value: TokenStream2| match field.attribute_reads.is_empty() {
 			true => value,
 			false => {
@@ -1668,6 +1664,11 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				#core_types::record::stack::truncate_above(__dst, self.__frame_bytes);
 				__value = #core_types::record::RecordValue::spilled(unsafe { #core_types::record::Rec::new(__dst.cast_const()) });
 			}
+		}
+	});
+	let record_tail = record_tail_core.clone().map(|core| {
+		quote! {
+			#core
 			__cell.finish(__value)
 		}
 	});
@@ -1785,6 +1786,154 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	};
 
+	// The default batch body binds every non-lazy input once at the batch's
+	// base lane, so the per-lane loop runs only the kernel and the carrier;
+	// eager inputs are batch-invariant by contract (per-lane variance rides
+	// lazy carriers).
+	let hoisted_lane_poll = match tail_form {
+		Tail::Record => record_tail_core.clone().map(|core| {
+			quote! {
+				#core
+				let __poll = __cell.finish(__value);
+			}
+		}),
+		Tail::Forward if routing_generic.is_some() => Some(quote!(let __poll = #lift;)),
+		_ => None,
+	};
+	let hoisted_batch = parsed.attributes.batch.is_none() && produces_records && hoisted_lane_poll.is_some();
+	let batch_impl = match (&parsed.attributes.batch, produces_records, hoisted_lane_poll) {
+		(Some(path), ..) => quote! {
+			#batch_signature
+			{
+				#path(self, __input, __range, __scratch)
+			}
+		},
+		(None, true, Some(lane_poll)) => {
+			// A non-materialized subject rides the per-lane record, so it binds
+			// in the loop (or in the tail, for a carrier); everything else is
+			// batch-invariant and hoists.
+			let hoists = |index: usize| matches!(ir::value_binding(&node, index), ValueBinding::Materialized) || !node.inputs[index].subject;
+			let hoisted_binds = regular_fields
+				.iter()
+				.enumerate()
+				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index))
+				.map(|(index, field)| {
+					let body = bind_body(index, field, true);
+					match ir::value_binding(&node, index).reads_out() {
+						false => body,
+						true => {
+							let mark = format_ident!("__mark_{index}");
+							quote! {
+								let #mark = #core_types::record::stack::sp();
+								#body
+								unsafe { #core_types::record::stack::rewind(#mark) };
+							}
+						}
+					}
+				});
+			let hoisted_clamps = regular_fields
+				.iter()
+				.enumerate()
+				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index))
+				.filter_map(|(_, field)| clamp_tokens(field));
+			let lane_binds = regular_fields
+				.iter()
+				.enumerate()
+				.filter(|(index, field)| match field.ty {
+					ParsedFieldType::Node(_) => true,
+					ParsedFieldType::Regular(_) => !hoists(*index) && !matches!(ir::value_binding(&node, *index), ValueBinding::Carrier),
+				})
+				.map(|(index, field)| {
+					let body = bind_body(index, field, true);
+					let clamp = clamp_tokens(field);
+					quote!(#body #clamp)
+				});
+			// A hoisted value is moved into every lane's kernel call, so each
+			// lane consumes a clone; view and borrow binds copy freely.
+			let lane_rebinds = regular_fields
+				.iter()
+				.enumerate()
+				.filter(|(index, field)| {
+					matches!(field.ty, ParsedFieldType::Regular(_))
+						&& hoists(*index)
+						&& matches!(ir::value_binding(&node, *index), ValueBinding::Plain | ValueBinding::ReadingSecondary | ValueBinding::RecordElement)
+				})
+				.map(|(_, field)| {
+					let name = &field.pat_ident.ident;
+					quote!(let #name = ::core::clone::Clone::clone(&#name);)
+				});
+			quote! {
+				#batch_signature
+				{
+					let ::core::option::Option::Some(__scratch) = __scratch else {
+						return #core_types::node::BatchStatus::NeedBuffer;
+					};
+					let ::core::option::Option::Some(__len) = __range.end.checked_sub(__range.start).and_then(|__len| usize::try_from(__len).ok()) else {
+						return #core_types::node::BatchStatus::InvalidRange;
+					};
+					let __node_layout = <Self as #core_types::node::Node<#ctx_ident>>::layout(self);
+					let __stride = __node_layout.lane_stride();
+					if __scratch.len() * 8 < __len * __stride {
+						return #core_types::node::BatchStatus::InvalidRange;
+					}
+					let __entry_mark = #core_types::record::stack::sp();
+					let __cell = #cell_constructor;
+					let __base_ctx = {
+						let mut __ctx = *__input;
+						#core_types::context::InjectIndex::set_index(&mut __ctx, __range.start);
+						__ctx
+					};
+					let __input = &__base_ctx;
+					#(#hoisted_binds)*
+					#(#hoisted_clamps)*
+					let __frames = __scratch.as_mut_ptr().cast::<u8>();
+					let mut __finality = #core_types::gpoll::Finality::AllFinal;
+					let mut __lane_ctx = __base_ctx;
+					for __lane in 0..__len {
+						#core_types::context::InjectIndex::set_index(&mut __lane_ctx, __range.start + __lane as u64);
+						let __input = &__lane_ctx;
+						let __lane_mark = #core_types::record::stack::sp();
+						let __cell = __cell.snapshot();
+						#(#lane_rebinds)*
+						#(#lane_binds)*
+						#lane_poll
+						let __value = match __poll {
+							#core_types::gpoll::GPoll::Final(__value) => __value,
+							#core_types::gpoll::GPoll::Partial(__value) => {
+								__finality = #core_types::gpoll::Finality::Partial;
+								__value
+							}
+							#core_types::gpoll::GPoll::Pending => return #core_types::node::BatchStatus::Pending,
+							#core_types::gpoll::GPoll::Fallback(__boxed) => return #core_types::node::BatchStatus::Error(__boxed.1),
+							#core_types::gpoll::GPoll::Error(__error) => return #core_types::node::BatchStatus::Error(*__error),
+						};
+						// SAFETY: the lane region is in-bounds by the scratch check,
+						// and the frame is fully copied out before the rewind.
+						unsafe {
+							::core::ptr::copy_nonoverlapping(__node_layout.rec(&__value).ptr(), __frames.add(__lane * __stride), __stride);
+							#core_types::record::stack::rewind(__lane_mark);
+						}
+					}
+					// SAFETY: every lane was copied into the caller's scratch, so
+					// nothing above the entry mark is live.
+					unsafe { #core_types::record::stack::rewind(__entry_mark) };
+					// SAFETY: all `__len` lanes were filled above with records of
+					// the node's layout.
+					#core_types::node::BatchStatus::Filled(unsafe { #core_types::node::RecordBatchMut::new(__scratch, __len, __node_layout) }, __finality)
+				}
+			}
+		}
+		// The eager forward runs the shared copy-out loop with statically
+		// dispatched evals, so an erased batch costs one virtual call.
+		(None, true, None) => quote! {
+			#batch_signature
+			{
+				#core_types::record::fill_frames(self, __input, __range, __scratch)
+			}
+		},
+		(None, false, _) => quote!(),
+	};
+
 	let record_bounds: Vec<TokenStream2> = {
 		let arena_bound = (record_io && skips_carrier) || (record_io && lazy_carrier) || (!record_io && (derive_routing || flip));
 		let mut bounds = if arena_bound {
@@ -1807,6 +1956,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		if let Some(generic) = &routing_generic {
 			bounds.extend(routing_value_indices(&regular_fields, generic).into_iter().filter_map(|index| match &regular_fields[index].ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),
+				_ => None,
+			}));
+		}
+		// The batch loop clones each hoisted value per lane.
+		if hoisted_batch {
+			bounds.extend(regular_fields.iter().enumerate().filter_map(|(index, field)| match &field.ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, .. })
+					if !node.inputs[index].subject && matches!(ir::value_binding(&node, index), ValueBinding::Plain | ValueBinding::ReadingSecondary | ValueBinding::RecordElement) =>
+				{
+					Some(quote!(#ty: ::core::clone::Clone))
+				}
 				_ => None,
 			}));
 		}
@@ -2032,7 +2192,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.collect();
 	let eval_body = eval_steps.iter().map(|step| match step {
 		EvalStep::Bind(index, field) => {
-			let body = bind_body(*index, field);
+			let body = bind_body(*index, field, false);
 			let reads_out = matches!(&field.ty, ParsedFieldType::Regular(_)) && ir::value_binding(&node, *index).reads_out();
 			match reads_out {
 				false => body,
