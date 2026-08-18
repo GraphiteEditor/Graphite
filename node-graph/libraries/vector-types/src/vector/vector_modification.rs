@@ -746,7 +746,11 @@ impl<'a> AppendBezpath<'a> {
 			let close_path = elements.peek().is_some_and(|elm| **elm == PathEl::ClosePath);
 
 			match *element {
-				PathEl::MoveTo(point) => this.append_first_point(point),
+				PathEl::MoveTo(point) => {
+					// Clear any segment state left by a preceding open contour so its segments don't leak into this contour's region
+					this.reset();
+					this.append_first_point(point);
+				}
 				PathEl::LineTo(point) => {
 					let handle = BezierHandles::Linear;
 					if close_path {
