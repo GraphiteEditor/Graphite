@@ -190,11 +190,14 @@ impl Display for BlendMode {
 /// Composites `foreground` over `background` with the given blend mode, fading the result by `opacity`.
 #[inline(always)]
 pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
+	// The alpha-only utility modes composite no color, so opacity interpolates their alpha toward the backdrop's instead
+	let faded_alpha = |applied: Color| background.with_alpha(background.a() + (applied.a() - background.a()) * opacity);
+
 	let target_color = match blend_mode {
 		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
-		BlendMode::Erase => return background.alpha_subtract(foreground),
-		BlendMode::Restore => return background.alpha_add(foreground),
-		BlendMode::MultiplyAlpha => return background.alpha_multiply(foreground),
+		BlendMode::Erase => return faded_alpha(background.alpha_subtract(foreground)),
+		BlendMode::Restore => return faded_alpha(background.alpha_add(foreground)),
+		BlendMode::MultiplyAlpha => return faded_alpha(background.alpha_multiply(foreground)),
 		blend_mode => apply_blend_mode(foreground, background, blend_mode),
 	};
 
@@ -219,7 +222,7 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 		BlendMode::LinearDodge => background.blend_rgb(foreground, Color::blend_linear_dodge),
 		BlendMode::LighterColor => background.blend_lighter_color(foreground),
 		// Contrast group
-		BlendMode::Overlay => foreground.blend_rgb(background, Color::blend_hardlight),
+		BlendMode::Overlay => background.blend_rgb(foreground, Color::blend_overlay),
 		BlendMode::SoftLight => background.blend_rgb(foreground, Color::blend_softlight),
 		BlendMode::HardLight => background.blend_rgb(foreground, Color::blend_hardlight),
 		BlendMode::VividLight => background.blend_rgb(foreground, Color::blend_vivid_light),
@@ -236,7 +239,7 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 		BlendMode::Saturation => background.blend_saturation(foreground),
 		BlendMode::Color => background.blend_color(foreground),
 		BlendMode::Luminosity => background.blend_luminosity(foreground),
-		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
-		_ => panic!("Used blend mode without alpha blend"),
+		// The alpha-only utility modes mix no color, so the foreground passes through for the caller to composite
+		BlendMode::Erase | BlendMode::Restore | BlendMode::MultiplyAlpha => foreground,
 	}
 }
