@@ -198,7 +198,7 @@ impl RenderExt for List<Gradient> {
 impl RenderExt for Stroke {
 	type Output = String;
 
-	/// Provide the shape-related SVG attributes for the stroke. The paint-related attributes for the stroke are generated from `List<Graphic>.render` with `PaintTarget::Stroke`.
+	/// Provide the shape-related SVG attributes for the stroke. The paint-related attributes for the stroke are generated from `Graphic::render` with `PaintTarget::Stroke`.
 	fn render(
 		&self,
 		_svg_defs: &mut String,
