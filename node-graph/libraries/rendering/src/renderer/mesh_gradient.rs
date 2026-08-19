@@ -669,10 +669,11 @@ pub(super) fn mesh_subpatch_transform(subpatch: &MeshSubpatch) -> Option<DAffine
 }
 
 /// Returns the local clip and paint inflation needed to hide gaps around a transformed subpatch.
-fn mesh_subpatch_inflation(subpatch_to_scene: DAffine2) -> (f64, f64) {
+fn mesh_subpatch_inflation(subpatch_to_scene: DAffine2, viewport_zoom: f64) -> (f64, f64) {
 	let (_, smallest_scale) = singular_values(subpatch_to_scene);
-	let clip_inflation = if smallest_scale.is_finite() && smallest_scale > f64::EPSILON {
-		(1. / smallest_scale).min(MESH_MAXIMUM_CLIP_INFLATION)
+	let smallest_viewport_scale = smallest_scale * viewport_zoom;
+	let clip_inflation = if smallest_viewport_scale.is_finite() && smallest_viewport_scale > f64::EPSILON {
+		(1. / smallest_viewport_scale).min(MESH_MAXIMUM_CLIP_INFLATION)
 	} else {
 		0.
 	};
@@ -864,7 +865,7 @@ fn render_vello_masked_brush(
 }
 
 /// Renders the weighted top and bottom brushes into an inflated subpatch.
-fn render_vello_subpatch_brushes(scene: &mut Scene, subpatch: &MeshSubpatch, parent_transform: DAffine2, brushes: VelloSubpatchBrushes) {
+fn render_vello_subpatch_brushes(scene: &mut Scene, subpatch: &MeshSubpatch, parent_transform: DAffine2, viewport_zoom: f64, brushes: VelloSubpatchBrushes) {
 	let Some(subpatch_to_parent) = mesh_subpatch_transform(subpatch) else { return };
 
 	let subpatch_to_device = parent_transform * subpatch_to_parent;
@@ -872,7 +873,7 @@ fn render_vello_subpatch_brushes(scene: &mut Scene, subpatch: &MeshSubpatch, par
 		return;
 	};
 	let subpatch_to_scene = kurbo::Affine::new(subpatch_to_device.to_cols_array());
-	let (clip_inflation, paint_inflation) = mesh_subpatch_inflation(subpatch_to_device);
+	let (clip_inflation, paint_inflation) = mesh_subpatch_inflation(subpatch_to_device, viewport_zoom);
 	let clip_rect = kurbo::Rect::new(-clip_inflation, -clip_inflation, 1. + clip_inflation, 1. + clip_inflation);
 	let paint_rect = kurbo::Rect::new(-paint_inflation, -paint_inflation, 1. + paint_inflation, 1. + paint_inflation);
 
@@ -891,15 +892,15 @@ fn render_vello_subpatch_brushes(scene: &mut Scene, subpatch: &MeshSubpatch, par
 }
 
 /// Renders the opaque RGB field of one adaptively subdivided patch.
-pub(super) fn render_vello_subpatch_color(scene: &mut Scene, patch_evaluator: &MeshPatchEvaluator, subpatch: &MeshSubpatch, parent_transform: DAffine2) {
+pub(super) fn render_vello_subpatch_color(scene: &mut Scene, patch_evaluator: &MeshPatchEvaluator, subpatch: &MeshSubpatch, parent_transform: DAffine2, viewport_zoom: f64) {
 	let brushes = vello_subpatch_color_brushes(patch_evaluator, subpatch);
-	render_vello_subpatch_brushes(scene, subpatch, parent_transform, brushes);
+	render_vello_subpatch_brushes(scene, subpatch, parent_transform, viewport_zoom, brushes);
 }
 
 /// Adds one inflated, opaque grayscale subpatch to the mesh-wide luminance mask.
-pub(super) fn render_vello_subpatch_alpha(scene: &mut Scene, patch_evaluator: &MeshPatchEvaluator, subpatch: &MeshSubpatch, parent_transform: DAffine2) {
+pub(super) fn render_vello_subpatch_alpha(scene: &mut Scene, patch_evaluator: &MeshPatchEvaluator, subpatch: &MeshSubpatch, parent_transform: DAffine2, viewport_zoom: f64) {
 	let brushes = vello_subpatch_alpha_brushes(patch_evaluator, subpatch);
-	render_vello_subpatch_brushes(scene, subpatch, parent_transform, brushes);
+	render_vello_subpatch_brushes(scene, subpatch, parent_transform, viewport_zoom, brushes);
 }
 
 // ============

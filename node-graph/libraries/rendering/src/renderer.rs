@@ -3028,7 +3028,9 @@ fn render_mesh_gradient_item_to_vello(item: ItemRef<'_, MeshGradient>, scene: &m
 	let space: GradientSpace = item.attribute_cloned_or_default(ATTR_GRADIENT_SPACE);
 	let interpolation_method: GradientInterpolation = item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION);
 	let Some(evaluator) = mesh_gradient.evaluator(space, interpolation_method) else { return };
-	let Some(subpatches) = subdivide_patches_adaptive(&evaluator, mesh_transform, parent_transform, MESH_POSITION_ERROR_TOLERANCE, MESH_COLOR_ERROR_TOLERANCE) else {
+	let viewport_zoom = if render_params.viewport_zoom > 0. { render_params.viewport_zoom } else { 1. };
+	let position_error_tolerance = MESH_POSITION_ERROR_TOLERANCE / viewport_zoom;
+	let Some(subpatches) = subdivide_patches_adaptive(&evaluator, mesh_transform, parent_transform, position_error_tolerance, MESH_COLOR_ERROR_TOLERANCE) else {
 		return;
 	};
 
@@ -3064,7 +3066,7 @@ fn render_mesh_gradient_item_to_vello(item: ItemRef<'_, MeshGradient>, scene: &m
 		};
 
 		for subpatch in patch_subpatches {
-			render_vello_subpatch_color(scene, patch_evaluator, subpatch, parent_transform);
+			render_vello_subpatch_color(scene, patch_evaluator, subpatch, parent_transform, viewport_zoom);
 		}
 	}
 
@@ -3078,7 +3080,7 @@ fn render_mesh_gradient_item_to_vello(item: ItemRef<'_, MeshGradient>, scene: &m
 			};
 
 			for subpatch in patch_subpatches {
-				render_vello_subpatch_alpha(scene, patch_evaluator, subpatch, parent_transform);
+				render_vello_subpatch_alpha(scene, patch_evaluator, subpatch, parent_transform, viewport_zoom);
 			}
 		}
 		scene.pop_layer();
