@@ -219,24 +219,30 @@ fn linear_row_interval_error(evaluator: &MeshGradientEvaluator, start: f32, end:
 // =====================
 
 pub(super) struct DisplacementMapSamples {
-	/// Displacement-map region in normalized bounding-box coordinates, including its margin. [x, y, width, height]
+	/// Displacement-map region in local patch coordinates, including its margin. [x, y, width, height]
 	pub region: [f64; 4],
 	/// Row-major target-to-source displacement samples over `region`.
 	pub displacements: Vec<DVec2>,
 }
 
-/// Returns target-to-source displacement samples mapping normalized patch-bounding-box positions to source UVs.
-pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: &MeshPatchEvaluator, unit_to_patch_bbox: &DAffine2, boundary: &BezPath) -> DisplacementMapSamples {
-	let size = DISPLACEMENT_MAP_SIZE;
+/// Returns the displacement-map region covering `patch_extent` plus the margin reserved on each side, as `(min, size)`.
+fn displacement_map_region(patch_extent: DVec2) -> (DVec2, DVec2) {
 	let margin = DISPLACEMENT_MAP_MARGIN_PERCENTAGE / (1. - 2. * DISPLACEMENT_MAP_MARGIN_PERCENTAGE);
-	let map_min = DVec2::splat(-margin);
-	let map_size = DVec2::splat(1. + 2. * margin);
+	(-margin * patch_extent, (1. + 2. * margin) * patch_extent)
+}
+
+/// Returns target-to-source displacement samples mapping local patch-bounding-box positions to source UVs.
+/// `patch_extent` is the patch bounding box measured in the local space, so both the sampled region and the source UVs
+/// span it rather than a unit square.
+pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: &MeshPatchEvaluator, local_to_patch_bbox: &DAffine2, patch_extent: DVec2, boundary: &BezPath) -> DisplacementMapSamples {
+	let size = DISPLACEMENT_MAP_SIZE;
+	let (map_min, map_size) = displacement_map_region(patch_extent);
 	let target_positions = |index: usize| {
 		let x = index % size;
 		let y = index / size;
 		let image_uv = DVec2::new((x as f64 + 0.5) / size as f64, (y as f64 + 0.5) / size as f64);
-		let normalized_bbox = map_min + image_uv * map_size;
-		(normalized_bbox, unit_to_patch_bbox.transform_point2(normalized_bbox))
+		let local_position = map_min + image_uv * map_size;
+		(local_position, local_to_patch_bbox.transform_point2(local_position))
 	};
 
 	// 81 samples of (uv, position) tuples in the patch
@@ -425,7 +431,7 @@ pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: &MeshPatchEval
 			let (target_position, _) = target_positions(index);
 			// For positions outside the buffer, use zero displacement rather than estimating from a non-converged numerical source.
 			// This prevents unexpected jumps in the displacement that would increase the quantization scale.
-			let source_position = inverse_uv.map(|uv| uv.clamp(DVec2::ZERO, DVec2::ONE)).unwrap_or(target_position);
+			let source_position = inverse_uv.map(|uv| uv.clamp(DVec2::ZERO, DVec2::ONE) * patch_extent).unwrap_or(target_position);
 
 			source_position - target_position
 		})
@@ -1009,15 +1015,25 @@ impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
 		if !bounds_size.is_finite() || bounds_size.x <= f64::EPSILON || bounds_size.y <= f64::EPSILON {
 			return;
 		}
-		// Encode the deformation in normalized patch-bounding-box space so patch translation and axis-aligned scaling do not consume PNG channel precision.
-		let unit_to_patch_bbox = DAffine2::from_cols(DVec2::new(bounds_size.x, 0.), DVec2::new(0., bounds_size.y), bounds_min);
-		let unit_to_output = self.parent_transform * self.mesh_transform * unit_to_patch_bbox;
-		let (_, smallest_output_scale) = singular_values(unit_to_output);
+		// Encode the deformation in a local patch-bounding-box space so patch translation and scaling do not consume PNG channel precision.
+		// That space has to reach the output through a uniform scale, since Firefox as of version 154 has a bug
+		// that converts `feDisplacementMap`'s `scale` into one isotropic filter-space length instead of one length per axis,
+		// so a local space that reaches the output non-uniformly displaces both axes by the wrong amount there.
+		let mesh_to_output = (self.parent_transform * self.mesh_transform).matrix2;
+		let output_scales = DVec2::new(mesh_to_output.x_axis.length(), mesh_to_output.y_axis.length());
+		if !output_scales.is_finite() || output_scales.min_element() <= f64::EPSILON {
+			return;
+		}
+		let local_axes = DVec2::new(bounds_size.y * output_scales.y / output_scales.x, bounds_size.y);
+		let patch_extent = bounds_size / local_axes;
+		let local_to_patch_bbox = DAffine2::from_cols(DVec2::new(local_axes.x, 0.), DVec2::new(0., local_axes.y), bounds_min);
+		let local_to_output = self.parent_transform * self.mesh_transform * local_to_patch_bbox;
+		let (_, smallest_output_scale) = singular_values(local_to_output);
 		if !smallest_output_scale.is_finite() || smallest_output_scale <= f64::EPSILON {
 			return;
 		}
 
-		let DisplacementMapSamples { displacements, region } = coons_bbox_to_source_displacements(patch_evaluator, &unit_to_patch_bbox, &patch_boundary_path);
+		let DisplacementMapSamples { displacements, region } = coons_bbox_to_source_displacements(patch_evaluator, &local_to_patch_bbox, patch_extent, &patch_boundary_path);
 		let [map_x, map_y, map_width, map_height] = region;
 		// feDisplacementMap decodes each channel as scale * (channel - 0.5).
 		// Twice the largest absolute component is therefore the smallest scale that covers every displacement and maximizes quantization precision.
@@ -1033,6 +1049,7 @@ impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
 
 		let v_alpha_mask_ids = self.render_alpha_mask(render, unique_id, region);
 
+		let extent_x = patch_extent.x;
 		let u_color_curves_gradient_ids = (0..self.v_layers.layer_count())
 			.map(|i| {
 				let u_color_curve = |u| self.v_layers.evaluate_layer_u_color(patch_evaluator, i, u);
@@ -1041,7 +1058,7 @@ impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
 
 				write!(
 					&mut render.svg_defs,
-					r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+					r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="{extent_x}" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
 				)
 				.unwrap();
 
@@ -1084,7 +1101,7 @@ impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
 
 		// Add a centered stroke to expand the patch along its boundary normal and hide antialiasing gaps between patches.
 		let patch_clip_stroke_width = 2. * PATCH_INFLATION_SIZE / smallest_output_scale;
-		patch_boundary_path.apply_affine(Affine::new(unit_to_patch_bbox.inverse().to_cols_array()));
+		patch_boundary_path.apply_affine(Affine::new(local_to_patch_bbox.inverse().to_cols_array()));
 		let patch_boundary_d = patch_boundary_path.to_svg();
 
 		write!(
@@ -1103,7 +1120,7 @@ impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
 		)
 		.unwrap();
 
-		let patch_transform_str = format_transform_matrix(self.mesh_transform * unit_to_patch_bbox);
+		let patch_transform_str = format_transform_matrix(self.mesh_transform * local_to_patch_bbox);
 		render.parent_tag(
 			"g",
 			|attributes| {
@@ -1142,21 +1159,15 @@ impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
 			},
 		);
 
-		self.collect_transparency_field(render, patch, unique_id, patch_transform_str, region, &v_alpha_mask_ids);
+		self.collect_transparency_field(render, patch, unique_id, patch_transform_str, patch_extent, &v_alpha_mask_ids);
 	}
 
-	fn collect_transparency_field(
-		&mut self,
-		render: &mut SvgRender,
-		patch: &MeshPatch,
-		patch_unique_id: u64,
-		patch_transform: String,
-		map_region: [f64; 4],
-		v_alpha_mask_ids: &[String],
-	) -> Option<()> {
+	fn collect_transparency_field(&mut self, render: &mut SvgRender, patch: &MeshPatch, patch_unique_id: u64, patch_transform: String, patch_extent: DVec2, v_alpha_mask_ids: &[String]) -> Option<()> {
 		let mesh_transparency_field = self.mesh_transparency_field.as_deref_mut()?;
 		let patch_evaluator = self.mesh_evaluator.patch_evaluator(patch.index)?;
-		let [map_x, map_y, map_width, map_height] = map_region;
+		let (map_min, map_size) = displacement_map_region(patch_extent);
+		let (map_x, map_y, map_width, map_height) = (map_min.x, map_min.y, map_size.x, map_size.y);
+		let extent_x = patch_extent.x;
 
 		// Keep transparency as an opaque grayscale field until every patch has been assembled into one mesh-wide luminance mask.
 		let u_transparency_curves_gradient_ids: Vec<String> = (0..self.v_layers.layer_count())
@@ -1168,7 +1179,7 @@ impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
 
 				write!(
 					&mut render.svg_defs,
-					r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+					r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="{extent_x}" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
 				)
 				.unwrap();
 
