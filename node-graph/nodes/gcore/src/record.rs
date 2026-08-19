@@ -636,6 +636,7 @@ mod tests {
 			writes: vec![],
 			removes: vec![],
 			level_delta: 1,
+			folded: None,
 		};
 		let node = install(
 			RepeatNode::new(RecordSource::new(bare_source(&base, 7.), &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
@@ -671,6 +672,7 @@ mod tests {
 			writes: vec![],
 			removes: vec![],
 			level_delta: 1,
+			folded: None,
 		};
 		let repeat = install(
 			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
@@ -712,6 +714,7 @@ mod tests {
 			writes: vec![],
 			removes: vec![],
 			level_delta: 1,
+			folded: None,
 		};
 		let repeat = install(
 			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
@@ -755,6 +758,7 @@ mod tests {
 			writes: vec![],
 			removes: vec![],
 			level_delta: 1,
+			folded: None,
 		};
 		let repeat = install(
 			RepeatNode::new(RecordSource::new(content, &leveled_content, &leveled_content), count_edge, reverse_edge, &leveled_content, &count_layout, &reverse_layout),
@@ -854,6 +858,7 @@ mod tests {
 			writes: vec![],
 			removes: vec![],
 			level_delta: 0,
+			folded: None,
 		};
 		let node = install(
 			ExtendNode::new(RecordSource::new(base, &base_layout, &union), RecordSource::new(new, &new_layout, &union), &union),
@@ -903,6 +908,7 @@ mod tests {
 			writes: vec![],
 			removes: vec![],
 			level_delta: 0,
+			folded: None,
 		};
 		let build = |index: f64| {
 			let content = LeveledSourceNode {
@@ -958,6 +964,7 @@ mod tests {
 				writes: vec![],
 				removes: vec![],
 				level_delta: 0,
+				folded: None,
 			};
 			install(
 				IndexElementsNode::new(RecordSource::new(content, &layout, &layout), index_edge, &layout, &index_layout),
@@ -1174,6 +1181,7 @@ mod tests {
 			writes: vec![],
 			removes: vec![],
 			level_delta: 1,
+			folded: None,
 		};
 		let nested = install(
 			RepeatNode::new(RecordSource::new(content, &leveled_content, &leveled_content), count_edge, reverse_edge, &leveled_content, &count_layout, &reverse_layout),
@@ -1234,6 +1242,7 @@ mod tests {
 			writes: vec![],
 			removes: vec![],
 			level_delta: 1,
+			folded: None,
 		};
 		let repeat = install(
 			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),

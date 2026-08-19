@@ -409,6 +409,7 @@ mod tests {
 			writes: vec![],
 			removes: vec![],
 			level_delta,
+			folded: None,
 		}
 	}
 

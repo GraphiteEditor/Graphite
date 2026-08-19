@@ -236,6 +236,10 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 		quote!((<#marker as #core_types::attribute::Attribute>::NAME, #level))
 	});
 	let level_delta = level_delta(node);
+	let folded = match folded_subject(node) {
+		Some((index, levels)) => quote!(::core::option::Option::Some((#index, #levels))),
+		None => quote!(::core::option::Option::None),
+	};
 	quote! {
 		#core_types::record::LayoutMeta {
 			sources: ::std::vec![#(#sources),*],
@@ -244,8 +248,18 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 			writes: ::std::vec![#(#writes),*],
 			removes: ::std::vec![#(#removes),*],
 			level_delta: #level_delta,
+			folded: #folded,
 		}
 	}
+}
+
+/// The materialized subject a node folds, as `(input, levels)`.
+pub(crate) fn folded_subject(node: &Node) -> Option<(u8, u8)> {
+	node.inputs
+		.iter()
+		.enumerate()
+		.find(|(index, input)| input.subject && materialized_levels(node, *index) > 0)
+		.map(|(index, _)| (index as u8, materialized_levels(node, index)))
 }
 
 fn field_writes(attrs: &[LevelAttr], core_types: &TokenStream2) -> Vec<TokenStream2> {

@@ -284,6 +284,10 @@ pub struct LayoutMeta {
 	/// The depth change the node applies: `0` for elementwise and flip nodes,
 	/// `+1` for a creator, `-1` for a reducer.
 	pub level_delta: i8,
+	/// The materialized subject a reducer folds, as `(input, levels)`: the
+	/// output keeps the subject's levels above the folded ones, so the depth
+	/// derives from its layout even though it contributes no fields.
+	pub folded: Option<(u8, u8)>,
 }
 
 /// The attributes a node reads from one input, recorded on [`LayoutMeta`] for
@@ -314,6 +318,7 @@ impl LayoutMeta {
 			writes: Vec::new(),
 			removes: Vec::new(),
 			level_delta: 0,
+			folded: None,
 		}
 	}
 
@@ -328,7 +333,13 @@ impl LayoutMeta {
 			sources => Layout::union(sources),
 		}
 		.without(&self.removes);
-		let depth = (base.depth as i8 + self.level_delta).max(0) as u8;
+		let depth = match self.folded {
+			Some((input, levels)) => {
+				let subject = inputs[input as usize].expect("layout fold folded input has no layout");
+				(subject.depth.saturating_sub(levels) as i8 + self.level_delta).max(0) as u8
+			}
+			None => (base.depth as i8 + self.level_delta).max(0) as u8,
+		};
 		let element = match &self.element {
 			ElementSpec::Concrete(element) => *element,
 			ElementSpec::Carried => base.element,
