@@ -61,12 +61,12 @@ fn repeat_opacity(ctx: impl Ctx + ExtractIndex, element: f64, count: u32) -> ILi
 }
 
 #[node_macro::node(category("Test"))]
-fn sum(_: impl Ctx + InjectIndex + Copy, items: IList<f64>) -> f64 {
+fn sum(_: impl Ctx + ExtractIndex + InjectIndex + Copy, items: IList<f64>) -> f64 {
 	items.into_iter().sum()
 }
 
 #[node_macro::node(category("Test"))]
-fn sum_nested(_: impl Ctx + InjectIndex + Copy, items: IList<IList<f64>>) -> f64 {
+fn sum_nested(_: impl Ctx + ExtractIndex + InjectIndex + Copy, items: IList<IList<f64>>) -> f64 {
 	items.into_iter().sum()
 }
 
@@ -1157,6 +1157,58 @@ mod tests {
 		};
 		assert_eq!(batch.len(), 6);
 		assert_eq!(evals.get(), 1, "an eager value binds once per batch");
+	}
+
+	#[test]
+	fn partial_fold_keeps_the_outer_level() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let base = f64_layout(&[]);
+		let leveled_content = repeat_opacity_layout(&base);
+		let (count_edge, count_layout) = lifted_value(2u32);
+		let (reverse_edge, reverse_layout) = lifted_value(false);
+		reserve_for(&[&base, &leveled_content, &count_layout, &reverse_layout]);
+
+		// Element = the outer copy, so each outer row folds to a distinct sum.
+		let content = install(
+			RepeatOpacityNode::new(IndexSourceNode { layout: base.clone() }, ValueNode(3u32), &base),
+			repeat_opacity_layout_meta(),
+			&[Some(&base)],
+		);
+		let meta = core_types::record::LayoutMeta {
+			sources: vec![0],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 1,
+			folded: None,
+		};
+		let nested = install(
+			RepeatNode::new(RecordSource::new(content, &leveled_content, &leveled_content), count_edge, reverse_edge, &leveled_content, &count_layout, &reverse_layout),
+			meta,
+			&[Some(&leveled_content)],
+		);
+		let two_level = Node::<ContextImpl>::layout(&nested).clone();
+		assert_eq!(two_level.depth, 2);
+
+		let node = install(SumNode::new(nested, &two_level), sum_layout_meta(), &[Some(&two_level)]);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(out.depth, 1, "the fold keeps the subject's outer level");
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(2)), "the outer extent shifts down");
+
+		let head = ctx.index_head();
+		for (lane, expected) in [(0u64, 0.), (1, 3.)] {
+			let mark = stack::sp();
+			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane)) else {
+				panic!("expected a final record");
+			};
+			assert_eq!(unsafe { out.rec(&value).element::<f64>() }, expected, "row {lane}");
+			unsafe { stack::rewind(mark) };
+		}
 	}
 
 	#[test]
