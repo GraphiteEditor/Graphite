@@ -28,15 +28,15 @@ pub(super) const MESH_COLOR_ERROR_TOLERANCE: f32 = 2. / 255.;
 pub(super) const MESH_MAXIMUM_SUBPATCHES: usize = 4096;
 /// Smallest uv stride a region may refine to.
 const MINIMUM_SUBPATCH_STRIDE: f64 = 1. / 4096.;
-/// Patch padding size for hiding anti-aliasing gaps.
-pub(super) const PATCH_INFLATION_SIZE: f64 = 1.;
+/// Patch padding for hiding anti-aliasing gaps, as a fraction of the patch's local height.
+pub(super) const PATCH_INFLATION_FRACTION: f64 = 0.005;
 
 /// Width and height of each generated displacement map.
 const DISPLACEMENT_MAP_SIZE: usize = 128;
 /// Fraction of the displacement map reserved as margin on each side to absorb floating-point error.
-const DISPLACEMENT_MAP_MARGIN_PERCENTAGE: f64 = 0.02;
+const DISPLACEMENT_MAP_MARGIN_PERCENTAGE: f64 = 0.03;
 /// Exterior texels evaluated around the patch to cover displacement-map filtering.
-const DISPLACEMENT_MAP_OUTSIDE_BUFFER_TEXELS: usize = 2;
+const DISPLACEMENT_MAP_OUTSIDE_BUFFER_TEXELS: usize = 3;
 /// Maximum local inflation applied to a subpatch clip.
 const MESH_MAXIMUM_CLIP_INFLATION: f64 = 0.5;
 
@@ -1027,11 +1027,6 @@ impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
 		let local_axes = DVec2::new(bounds_size.y * output_scales.y / output_scales.x, bounds_size.y);
 		let patch_extent = bounds_size / local_axes;
 		let local_to_patch_bbox = DAffine2::from_cols(DVec2::new(local_axes.x, 0.), DVec2::new(0., local_axes.y), bounds_min);
-		let local_to_output = self.parent_transform * self.mesh_transform * local_to_patch_bbox;
-		let (_, smallest_output_scale) = singular_values(local_to_output);
-		if !smallest_output_scale.is_finite() || smallest_output_scale <= f64::EPSILON {
-			return;
-		}
 
 		let DisplacementMapSamples { displacements, region } = coons_bbox_to_source_displacements(patch_evaluator, &local_to_patch_bbox, patch_extent, &patch_boundary_path);
 		let [map_x, map_y, map_width, map_height] = region;
@@ -1100,7 +1095,7 @@ impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
 		.unwrap();
 
 		// Add a centered stroke to expand the patch along its boundary normal and hide antialiasing gaps between patches.
-		let patch_clip_stroke_width = 2. * PATCH_INFLATION_SIZE / smallest_output_scale;
+		let patch_clip_stroke_width = 2. * PATCH_INFLATION_FRACTION;
 		patch_boundary_path.apply_affine(Affine::new(local_to_patch_bbox.inverse().to_cols_array()));
 		let patch_boundary_d = patch_boundary_path.to_svg();
 
