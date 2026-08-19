@@ -247,50 +247,12 @@ impl SegmentModification {
 	}
 }
 
-/// Represents a procedural change to the [`RegionDomain`] in [`Vector`].
-#[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub(crate) struct RegionModification {
-	add: Vec<RegionId>,
-	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
-	remove: HashSet<RegionId>,
-	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
-	segment_range: HashMap<RegionId, std::ops::RangeInclusive<SegmentId>>,
-}
-
-impl RegionModification {
-	/// Apply this modification to the specified [`RegionDomain`].
-	pub fn apply(&self, region_domain: &mut RegionDomain) {
-		region_domain.retain(|id| !self.remove.contains(id));
-
-		for (id, segment_range) in region_domain.segment_range_mut() {
-			let Some(new) = self.segment_range.get(&id) else { continue };
-			*segment_range = new.clone(); // Range inclusive is not copy
-		}
-
-		for &add_id in &self.add {
-			let Some(segment_range) = self.segment_range.get(&add_id) else { continue };
-			region_domain.push(add_id, segment_range.clone());
-		}
-	}
-
-	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector(vector: &Vector) -> Self {
-		Self {
-			add: vector.region_domain.ids().to_vec(),
-			remove: HashSet::new(),
-			segment_range: vector.region_domain.ids().iter().copied().zip(vector.region_domain.segment_range().iter().cloned()).collect(),
-		}
-	}
-}
-
 /// Represents a procedural change to the [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorModification {
 	points: PointModification,
 	segments: SegmentModification,
-	regions: RegionModification,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
 	add_g1_continuous: HashSet<[HandleId; 2]>,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
@@ -323,7 +285,6 @@ pub enum VectorModificationType {
 struct ModificationCategoryCounts {
 	points: [usize; 3],
 	segments: [usize; 3],
-	regions: [usize; 3],
 	smooth_handles: [usize; 3],
 }
 
@@ -331,7 +292,7 @@ impl ModificationCategoryCounts {
 	/// Returns the `[added, removed, modified]` totals across all categories.
 	fn totals(&self) -> [usize; 3] {
 		let mut totals = [0; 3];
-		for [a, r, m] in [self.points, self.segments, self.regions, self.smooth_handles] {
+		for [a, r, m] in [self.points, self.segments, self.smooth_handles] {
 			totals[0] += a;
 			totals[1] += r;
 			totals[2] += m;
@@ -341,7 +302,7 @@ impl ModificationCategoryCounts {
 
 	/// Iterates over each named category and its `[added, removed, modified]` counts.
 	fn iter_categories(&self) -> impl Iterator<Item = (&str, [usize; 3])> {
-		[("Points", self.points), ("Segments", self.segments), ("Regions", self.regions), ("Smooth Handles", self.smooth_handles)].into_iter()
+		[("Points", self.points), ("Segments", self.segments), ("Smooth Handles", self.smooth_handles)].into_iter()
 	}
 }
 
@@ -351,7 +312,6 @@ impl VectorModification {
 		// Build sets of added IDs so we can distinguish true modifications from initial values stored for newly added items
 		let add_points: HashSet<_> = self.points.add.iter().copied().collect();
 		let add_segments: HashSet<_> = self.segments.add.iter().copied().collect();
-		let add_regions: HashSet<_> = self.regions.add.iter().copied().collect();
 
 		let point_modifications = self.points.delta.keys().filter(|id| !add_points.contains(id)).count();
 
@@ -363,15 +323,9 @@ impl VectorModification {
 		modified_segments.extend(self.segments.handle_primary.keys().filter(not_added_segment));
 		modified_segments.extend(self.segments.handle_end.keys().filter(not_added_segment));
 
-		// Count unique modified region IDs across all field maps
-		let mut modified_regions: HashSet<&RegionId> = HashSet::with_capacity(self.regions.segment_range.len());
-		let not_added_region = |id: &&RegionId| !add_regions.contains(id);
-		modified_regions.extend(self.regions.segment_range.keys().filter(not_added_region));
-
 		ModificationCategoryCounts {
 			points: [self.points.add.len(), self.points.remove.len(), point_modifications],
 			segments: [self.segments.add.len(), self.segments.remove.len(), modified_segments.len()],
-			regions: [self.regions.add.len(), self.regions.remove.len(), modified_regions.len()],
 			smooth_handles: [self.add_g1_continuous.len(), self.remove_g1_continuous.len(), 0],
 		}
 	}
@@ -423,7 +377,6 @@ impl VectorModification {
 	pub fn apply(&self, vector: &mut Vector) {
 		self.points.apply(&mut vector.point_domain, &mut vector.segment_domain);
 		self.segments.apply(&mut vector.segment_domain, &vector.point_domain);
-		self.regions.apply(&mut vector.region_domain);
 
 		let valid = |val: &[HandleId; 2]| vector.segment_domain.ids().contains(&val[0].segment) && vector.segment_domain.ids().contains(&val[1].segment);
 		vector
@@ -497,7 +450,6 @@ impl VectorModification {
 		Self {
 			points: PointModification::create_from_vector(vector),
 			segments: SegmentModification::create_from_vector(vector),
-			regions: RegionModification::create_from_vector(vector),
 			add_g1_continuous: vector.colinear_manipulators.iter().copied().collect(),
 			remove_g1_continuous: HashSet::new(),
 		}
@@ -622,8 +574,6 @@ pub(crate) struct AppendBezpath<'a> {
 	last_point: Option<Point>,
 	first_point_index: Option<usize>,
 	last_point_index: Option<usize>,
-	first_segment_id: Option<SegmentId>,
-	last_segment_id: Option<SegmentId>,
 	point_id: PointId,
 	segment_id: SegmentId,
 	vector: &'a mut Vector,
@@ -636,8 +586,6 @@ impl<'a> AppendBezpath<'a> {
 			last_point: None,
 			first_point_index: None,
 			last_point_index: None,
-			first_segment_id: None,
-			last_segment_id: None,
 			point_id: vector.point_domain.next_id(),
 			segment_id: vector.segment_domain.next_id(),
 			vector,
@@ -664,13 +612,6 @@ impl<'a> AppendBezpath<'a> {
 		self.vector
 			.segment_domain
 			.push(next_segment_id, self.last_point_index.unwrap(), self.first_point_index.unwrap(), handle);
-
-		// Create a new region.
-		let next_region_id = self.vector.region_domain.next_id();
-		let first_segment_id = self.first_segment_id.unwrap_or(next_segment_id);
-		let last_segment_id = next_segment_id;
-
-		self.vector.region_domain.push(next_region_id, first_segment_id..=last_segment_id);
 	}
 
 	fn append_segment(&mut self, end_point: Point, handle: BezierHandles) {
@@ -687,9 +628,6 @@ impl<'a> AppendBezpath<'a> {
 		// Update the states.
 		self.last_point = Some(end_point);
 		self.last_point_index = Some(next_point_index);
-
-		self.first_segment_id = Some(self.first_segment_id.unwrap_or(next_segment_id));
-		self.last_segment_id = Some(next_segment_id);
 	}
 
 	fn append_first_point(&mut self, point: Point) {
@@ -710,8 +648,6 @@ impl<'a> AppendBezpath<'a> {
 		self.last_point = None;
 		self.first_point_index = None;
 		self.last_point_index = None;
-		self.first_segment_id = None;
-		self.last_segment_id = None;
 	}
 
 	pub fn append_bezpath(vector: &'a mut Vector, bezpath: BezPath) {

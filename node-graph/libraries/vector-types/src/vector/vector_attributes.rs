@@ -48,7 +48,7 @@ macro_rules! create_ids {
 	};
 }
 
-create_ids! { PointId, SegmentId, RegionId }
+create_ids! { PointId, SegmentId }
 
 /// A no-op hasher that allows writing u64s (the id type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -550,110 +550,6 @@ impl SegmentDomain {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Hash, graphene_hash::CacheHash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the
-/// [`SegmentDomain`]. In future this will be extendable at runtime with custom attributes.
-pub struct RegionDomain {
-	#[cfg_attr(feature = "serde", serde(alias = "ids"))]
-	id: Vec<RegionId>,
-	segment_range: Vec<std::ops::RangeInclusive<SegmentId>>,
-}
-
-impl RegionDomain {
-	pub const fn new() -> Self {
-		Self {
-			id: Vec::new(),
-			segment_range: Vec::new(),
-		}
-	}
-
-	#[inline(always)]
-	pub fn reserve(&mut self, additional: usize) {
-		self.id.reserve(additional);
-		self.segment_range.reserve(additional);
-	}
-
-	pub(crate) fn retain(&mut self, f: impl Fn(&RegionId) -> bool) {
-		let mut keep = self.id.iter().map(&f);
-		self.segment_range.retain(|_| keep.next().unwrap_or_default());
-		self.id.retain(&f);
-	}
-
-	/// Like [`Self::retain`] but also gives the function access to the segment range.
-	///
-	/// Note that this function requires an allocation that `retain` avoids.
-	pub(crate) fn retain_with_region(&mut self, f: impl Fn(&RegionId, &std::ops::RangeInclusive<SegmentId>) -> bool) {
-		let keep = self.id.iter().zip(self.segment_range.iter()).map(|(id, range)| f(id, range)).collect::<Vec<_>>();
-		let mut iter = keep.iter().copied();
-		self.segment_range.retain(|_| iter.next().unwrap());
-		let mut iter = keep.iter().copied();
-		self.id.retain(|_| iter.next().unwrap());
-	}
-
-	pub fn push(&mut self, id: RegionId, segment_range: std::ops::RangeInclusive<SegmentId>) {
-		#[cfg(debug_assertions)]
-		if self.id.contains(&id) {
-			warn!("Tried to push a duplicate region to a region domain");
-			return;
-		}
-
-		self.push_unchecked(id, segment_range);
-	}
-
-	#[inline(always)]
-	pub fn push_unchecked(&mut self, id: RegionId, segment_range: std::ops::RangeInclusive<SegmentId>) {
-		self.id.push(id);
-		self.segment_range.push(segment_range);
-	}
-
-	fn _resolve_id(&self, id: RegionId) -> Option<usize> {
-		self.id.iter().position(|&check_id| check_id == id)
-	}
-
-	pub fn next_id(&self) -> RegionId {
-		self.id.iter().copied().max_by(|a, b| a.0.cmp(&b.0)).map(|mut id| id.next_id()).unwrap_or(RegionId::ZERO)
-	}
-
-	pub(crate) fn segment_range_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut std::ops::RangeInclusive<SegmentId>)> {
-		self.id.iter().copied().zip(self.segment_range.iter_mut())
-	}
-
-	pub fn ids(&self) -> &[RegionId] {
-		&self.id
-	}
-
-	pub(crate) fn segment_range(&self) -> &[std::ops::RangeInclusive<SegmentId>] {
-		&self.segment_range
-	}
-
-	pub(crate) fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
-		self.id.extend(other.id.iter().map(|id| *id_map.region_map.get(id).unwrap_or(id)));
-		self.segment_range.extend(
-			other
-				.segment_range
-				.iter()
-				.map(|range| *id_map.segment_map.get(range.start()).unwrap_or(range.start())..=*id_map.segment_map.get(range.end()).unwrap_or(range.end())),
-		);
-	}
-
-	pub(crate) fn map_ids(&mut self, id_map: &IdMap) {
-		self.id.iter_mut().for_each(|id| *id = *id_map.region_map.get(id).unwrap_or(id));
-		self.segment_range
-			.iter_mut()
-			.for_each(|range| *range = *id_map.segment_map.get(range.start()).unwrap_or(range.start())..=*id_map.segment_map.get(range.end()).unwrap_or(range.end()));
-	}
-
-	/// Iterates over regions in the domain.
-	///
-	/// Tuple is: (id, segment_range)
-	pub fn iter(&self) -> impl Iterator<Item = (RegionId, std::ops::RangeInclusive<SegmentId>)> + '_ {
-		let ids = self.id.iter().copied();
-		let segment_range = self.segment_range.iter().cloned();
-		zip(ids, segment_range)
-	}
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HalfEdge {
 	pub id: SegmentId,
@@ -1022,18 +918,15 @@ impl Vector {
 	pub fn vector_new_ids_from_hash(&mut self, node_id: u64) {
 		let point_map = self.point_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
 		let segment_map = self.segment_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
-		let region_map = self.region_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
 
 		let id_map = IdMap {
 			point_offset: self.point_domain.ids().len(),
 			point_map,
 			segment_map,
-			region_map,
 		};
 
 		self.point_domain.map_ids(&id_map);
 		self.segment_domain.map_ids(&id_map);
-		self.region_domain.map_ids(&id_map);
 	}
 
 	pub fn is_branching(&self) -> bool {
@@ -1048,17 +941,10 @@ impl Vector {
 		false
 	}
 
-	fn has_regions(&self) -> bool {
-		!self.region_domain.id.is_empty()
-	}
-
-	/// Determines if face-by-face fill rendering should be used.
-	/// Branching vectors without regions (e.g. mesh grids) need face-by-face fill rendering.
-	/// Branching vectors with regions (e.g. boolean operation results) use even-odd fill
-	/// on the main stroke path instead, since face decomposition can't determine which
-	/// bounded faces should vs. shouldn't be filled in boolean results.
+	/// Determines if face-by-face fill rendering should be used. Branching vectors are meshes, whose
+	/// bounded faces are found and filled individually rather than filling the stroke path directly.
 	pub fn use_face_fill(&self) -> bool {
-		self.is_branching() && !self.has_regions()
+		self.is_branching()
 	}
 
 	pub fn construct_faces(&self) -> FaceIterator<'_> {
@@ -1265,5 +1151,4 @@ pub(crate) struct IdMap {
 	pub point_offset: usize,
 	pub point_map: HashMap<PointId, PointId>,
 	pub segment_map: HashMap<SegmentId, SegmentId>,
-	pub region_map: HashMap<RegionId, RegionId>,
 }

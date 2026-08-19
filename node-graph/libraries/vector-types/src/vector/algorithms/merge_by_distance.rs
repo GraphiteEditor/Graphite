@@ -94,10 +94,6 @@ impl MergeByDistanceExt for Vector {
 			points_to_delete.extend(collapse_set)
 		}
 
-		// Remove faces whose start or end segments are removed
-		// TODO: Adjust faces and only delete if all (or all but one) segments are removed
-		self.region_domain
-			.retain_with_region(|_, segment_range| segments_to_delete.contains(segment_range.start()) || segments_to_delete.contains(segment_range.end()));
 		self.segment_domain.retain(|id| !segments_to_delete.contains(id), usize::MAX);
 		self.point_domain.retain(&mut self.segment_domain, |id| !points_to_delete.contains(id));
 	}
