@@ -34,8 +34,7 @@ use vector_types::vector::misc::{
 	bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
-use vector_types::vector::{PointDomain, RegionDomain};
+use vector_types::vector::{PointDomain, PointId, RegionDomain, RegionId, SegmentDomain, SegmentId, VectorExt};
 
 /// Implemented for `List` types that contain vector items reachable via mutable access.
 /// Used by the whole-collection Assign Colors node so it can apply to either `List<Graphic>` or `List<Vector>`.
@@ -693,7 +692,6 @@ fn merge_by_distance<V: MapVectorItems + Send + Sync + 'static>(
 pub mod extrude_algorithms {
 	use glam::DVec2;
 	use kurbo::{ParamCurve, ParamCurveDeriv};
-	use vector_types::vector::StrokeId;
 	use vector_types::vector::misc::BezierHandles;
 	use vector_types::vector::misc::ExtrudeJoiningAlgorithm;
 
@@ -740,7 +738,7 @@ pub mod extrude_algorithms {
 
 				let middle_point_index = vector.point_domain.len();
 				vector.point_domain.push(middle_point, DVec2::new(first.end().x, first.end().y));
-				vector.segment_domain.push(start_segment, start_index, middle_point_index, first_handles, StrokeId::ZERO);
+				vector.segment_domain.push(start_segment, start_index, middle_point_index, first_handles);
 				vector.segment_domain.set_start_point(segment_index, middle_point_index);
 				vector.segment_domain.set_handles(segment_index, second_handles);
 
@@ -766,7 +764,6 @@ pub mod extrude_algorithms {
 				vector.segment_domain.start_point()[index] + points_count,
 				vector.segment_domain.end_point()[index] + points_count,
 				vector.segment_domain.handles()[index].apply_transformation(|x| x + direction),
-				vector.segment_domain.stroke()[index],
 			);
 		}
 	}
@@ -817,9 +814,7 @@ pub mod extrude_algorithms {
 				continue;
 			}
 
-			vector
-				.segment_domain
-				.push(next_segment.next_id(), index, index + first_half_points, BezierHandles::Linear, StrokeId::ZERO);
+			vector.segment_domain.push(next_segment.next_id(), index, index + first_half_points, BezierHandles::Linear);
 		}
 	}
 
@@ -828,7 +823,7 @@ pub mod extrude_algorithms {
 		let mut next_segment = vector.segment_domain.next_id();
 		let first_half = vector.point_domain.len() / 2;
 		for index in 0..first_half {
-			vector.segment_domain.push(next_segment.next_id(), index, index + first_half, BezierHandles::Linear, StrokeId::ZERO);
+			vector.segment_domain.push(next_segment.next_id(), index, index + first_half, BezierHandles::Linear);
 		}
 	}
 
@@ -1298,15 +1293,13 @@ async fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implem
 
 		if points_count >= 2 {
 			(0..points_count - 1).for_each(|i| {
-				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear);
 			});
 
 			if closed && points_count != 2 {
-				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear);
 
-				vector
-					.region_domain
-					.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap(), FillId::generate());
+				vector.region_domain.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap());
 			}
 		}
 
@@ -1417,11 +1410,11 @@ pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2
 				let id = next_segment.next_id();
 				first_segment.get_or_insert(id);
 				last_segment = Some(id);
-				segment_domain.push(id, start, end, BezierHandles::Linear, StrokeId::ZERO);
+				segment_domain.push(id, start, end, BezierHandles::Linear);
 			}
 
 			if let (Some(first), Some(last)) = (first_segment, last_segment) {
-				region_domain.push(next_region.next_id(), first..=last, FillId::ZERO);
+				region_domain.push(next_region.next_id(), first..=last);
 			}
 		}
 	} else {
@@ -1457,7 +1450,7 @@ pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2
 				}
 				let edge = if start < end { (start, end) } else { (end, start) };
 				if seen_edges.insert(edge) {
-					segment_domain.push(next_segment.next_id(), start, end, BezierHandles::Linear, StrokeId::ZERO);
+					segment_domain.push(next_segment.next_id(), start, end, BezierHandles::Linear);
 				}
 			}
 		}
@@ -2310,8 +2303,6 @@ async fn spline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Gr
 				solve_spline_first_handle_open(&positions)
 			};
 
-			let stroke_id = StrokeId::ZERO;
-
 			// Create segments with computed Bezier handles and add them to the output vector element's segment domain.
 			for i in 0..(positions.len() - if closed { 0 } else { 1 }) {
 				let next_index = (i + 1) % positions.len();
@@ -2323,7 +2314,7 @@ async fn spline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Gr
 				let handle_end = positions[next_index] * 2. - first_handles[next_index];
 				let handles = BezierHandles::Cubic { handle_start, handle_end };
 
-				segment_domain.push(next_id.next_id(), start_index, end_index, handles, stroke_id);
+				segment_domain.push(next_id.next_id(), start_index, end_index, handles);
 			}
 		}
 
@@ -2580,7 +2571,7 @@ async fn morph(
 			let handles = handles_from_manips(manip_window[0].out_handle, manip_window[1].in_handle);
 			let seg_id = segment_id.next_id();
 			first_segment_id.get_or_insert(seg_id);
-			vector.segment_domain.push_unchecked(seg_id, prev_point_index, point_index, handles, StrokeId::ZERO);
+			vector.segment_domain.push_unchecked(seg_id, prev_point_index, point_index, handles);
 
 			prev_point_index = point_index;
 		}
@@ -2589,10 +2580,10 @@ async fn morph(
 			let handles = handles_from_manips(manips.last().unwrap().out_handle, manips[0].in_handle);
 			let closing_seg_id = segment_id.next_id();
 			first_segment_id.get_or_insert(closing_seg_id);
-			vector.segment_domain.push_unchecked(closing_seg_id, prev_point_index, first_point_index, handles, StrokeId::ZERO);
+			vector.segment_domain.push_unchecked(closing_seg_id, prev_point_index, first_point_index, handles);
 
 			let region_id = vector.region_domain.next_id();
-			vector.region_domain.push_unchecked(region_id, first_segment_id.unwrap()..=closing_seg_id, FillId::ZERO);
+			vector.region_domain.push_unchecked(region_id, first_segment_id.unwrap()..=closing_seg_id);
 		}
 	}
 
@@ -3426,7 +3417,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 
 		for &[start, end] in new_segments {
 			let handles = BezierHandles::Linear;
-			vector.segment_domain.push(next_id.next_id(), start, end, handles, StrokeId::ZERO);
+			vector.segment_domain.push(next_id.next_id(), start, end, handles);
 		}
 	}
 

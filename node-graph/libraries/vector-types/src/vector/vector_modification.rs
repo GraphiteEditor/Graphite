@@ -95,8 +95,6 @@ pub(crate) struct SegmentModification {
 	handle_primary: HashMap<SegmentId, Option<DVec2>>,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	handle_end: HashMap<SegmentId, Option<DVec2>>,
-	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
-	stroke: HashMap<SegmentId, StrokeId>,
 }
 
 impl SegmentModification {
@@ -167,17 +165,11 @@ impl SegmentModification {
 			};
 		}
 
-		for (id, stroke) in segment_domain.stroke_mut() {
-			let Some(&new) = self.stroke.get(&id) else { continue };
-			*stroke = new;
-		}
-
 		for &add_id in &self.add {
 			let Some(&start) = self.start_point.get(&add_id) else { continue };
 			let Some(&end) = self.end_point.get(&add_id) else { continue };
 			let Some(&handle_start) = self.handle_primary.get(&add_id) else { continue };
 			let Some(&handle_end) = self.handle_end.get(&add_id) else { continue };
-			let Some(&stroke) = self.stroke.get(&add_id) else { continue };
 
 			let Some(start_index) = point_domain.resolve_id(start) else {
 				warn!("invalid start id: {start:#?}");
@@ -204,7 +196,7 @@ impl SegmentModification {
 				continue;
 			}
 
-			segment_domain.push(add_id, start_index, end_index, handles, stroke);
+			segment_domain.push(add_id, start_index, end_index, handles);
 		}
 
 		assert!(
@@ -233,18 +225,16 @@ impl SegmentModification {
 				.segment_iter()
 				.map(|(id, segment, _, _)| (id, segment_to_handles(&segment).end().map(|handle| handle - point_to_dvec2(segment.end()))))
 				.collect(),
-			stroke: vector.segment_domain.ids().iter().copied().zip(vector.segment_domain.stroke().iter().cloned()).collect(),
 		}
 	}
 
-	fn push(&mut self, id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2], stroke: StrokeId) {
+	fn push(&mut self, id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2]) {
 		self.remove.remove(&id);
 		self.add.push(id);
 		self.start_point.insert(id, points[0]);
 		self.end_point.insert(id, points[1]);
 		self.handle_primary.insert(id, handles[0]);
 		self.handle_end.insert(id, handles[1]);
-		self.stroke.insert(id, stroke);
 	}
 
 	fn remove(&mut self, id: SegmentId) {
@@ -254,7 +244,6 @@ impl SegmentModification {
 		self.end_point.remove(&id);
 		self.handle_primary.remove(&id);
 		self.handle_end.remove(&id);
-		self.stroke.remove(&id);
 	}
 }
 
@@ -267,8 +256,6 @@ pub(crate) struct RegionModification {
 	remove: HashSet<RegionId>,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	segment_range: HashMap<RegionId, std::ops::RangeInclusive<SegmentId>>,
-	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
-	fill: HashMap<RegionId, FillId>,
 }
 
 impl RegionModification {
@@ -281,15 +268,9 @@ impl RegionModification {
 			*segment_range = new.clone(); // Range inclusive is not copy
 		}
 
-		for (id, fill) in region_domain.fill_mut() {
-			let Some(&new) = self.fill.get(&id) else { continue };
-			*fill = new;
-		}
-
 		for &add_id in &self.add {
 			let Some(segment_range) = self.segment_range.get(&add_id) else { continue };
-			let Some(&fill) = self.fill.get(&add_id) else { continue };
-			region_domain.push(add_id, segment_range.clone(), fill);
+			region_domain.push(add_id, segment_range.clone());
 		}
 	}
 
@@ -299,7 +280,6 @@ impl RegionModification {
 			add: vector.region_domain.ids().to_vec(),
 			remove: HashSet::new(),
 			segment_range: vector.region_domain.ids().iter().copied().zip(vector.region_domain.segment_range().iter().cloned()).collect(),
-			fill: vector.region_domain.ids().iter().copied().zip(vector.region_domain.fill().iter().cloned()).collect(),
 		}
 	}
 }
@@ -382,13 +362,11 @@ impl VectorModification {
 		modified_segments.extend(self.segments.end_point.keys().filter(not_added_segment));
 		modified_segments.extend(self.segments.handle_primary.keys().filter(not_added_segment));
 		modified_segments.extend(self.segments.handle_end.keys().filter(not_added_segment));
-		modified_segments.extend(self.segments.stroke.keys().filter(not_added_segment));
 
 		// Count unique modified region IDs across all field maps
 		let mut modified_regions: HashSet<&RegionId> = HashSet::with_capacity(self.regions.segment_range.len());
 		let not_added_region = |id: &&RegionId| !add_regions.contains(id);
 		modified_regions.extend(self.regions.segment_range.keys().filter(not_added_region));
-		modified_regions.extend(self.regions.fill.keys().filter(not_added_region));
 
 		ModificationCategoryCounts {
 			points: [self.points.add.len(), self.points.remove.len(), point_modifications],
@@ -462,7 +440,7 @@ impl VectorModification {
 	/// Add a [`VectorModificationType`] to this modification.
 	pub fn modify(&mut self, vector_modification: &VectorModificationType) {
 		match vector_modification {
-			VectorModificationType::InsertSegment { id, points, handles } => self.segments.push(*id, *points, *handles, StrokeId::ZERO),
+			VectorModificationType::InsertSegment { id, points, handles } => self.segments.push(*id, *points, *handles),
 			VectorModificationType::InsertPoint { id, position } => self.points.push(*id, *position),
 
 			VectorModificationType::RemoveSegment { id } => self.segments.remove(*id),
@@ -685,14 +663,14 @@ impl<'a> AppendBezpath<'a> {
 		let next_segment_id = self.segment_id.next_id();
 		self.vector
 			.segment_domain
-			.push(next_segment_id, self.last_point_index.unwrap(), self.first_point_index.unwrap(), handle, StrokeId::ZERO);
+			.push(next_segment_id, self.last_point_index.unwrap(), self.first_point_index.unwrap(), handle);
 
 		// Create a new region.
 		let next_region_id = self.vector.region_domain.next_id();
 		let first_segment_id = self.first_segment_id.unwrap_or(next_segment_id);
 		let last_segment_id = next_segment_id;
 
-		self.vector.region_domain.push(next_region_id, first_segment_id..=last_segment_id, FillId::ZERO);
+		self.vector.region_domain.push(next_region_id, first_segment_id..=last_segment_id);
 	}
 
 	fn append_segment(&mut self, end_point: Point, handle: BezierHandles) {
@@ -704,9 +682,7 @@ impl<'a> AppendBezpath<'a> {
 
 		// Append the segment.
 		let next_segment_id = self.segment_id.next_id();
-		self.vector
-			.segment_domain
-			.push(next_segment_id, self.last_point_index.unwrap(), next_point_index, handle, StrokeId::ZERO);
+		self.vector.segment_domain.push(next_segment_id, self.last_point_index.unwrap(), next_point_index, handle);
 
 		// Update the states.
 		self.last_point = Some(end_point);
