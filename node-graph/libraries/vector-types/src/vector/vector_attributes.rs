@@ -3,7 +3,7 @@ use crate::vector::vector_types::Vector;
 use dyn_any::DynAny;
 use fixedbitset::FixedBitSet;
 use glam::{DAffine2, DVec2};
-use kurbo::{CubicBez, Line, PathSeg, QuadBez};
+use kurbo::{CubicBez, Line, ParamCurve, PathSeg, QuadBez};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::iter::zip;
@@ -983,7 +983,9 @@ impl Vector {
 		// Subtract each negative space loop from the kept faces that cover it. Faces sharing segments with the loop
 		// already exclude it through their own boundary, and the winding test naturally skips faces it lies outside of.
 		for (negative_path, negative_segments) in &negative_regions {
-			let Some(&kurbo::PathEl::MoveTo(sample)) = negative_path.elements().first() else { continue };
+			// A segment midpoint is a safe winding sample, whereas snapping can place a vertex exactly on the covering contour
+			let Some(first_segment) = negative_path.segments().next() else { continue };
+			let sample = first_segment.eval(0.5);
 			let reversed_negative = negative_path.reverse_subpaths();
 			for (face_path, face_segments) in kept_faces.iter_mut() {
 				if face_segments.is_disjoint(negative_segments) && kurbo::Shape::winding(face_path, sample) != 0 {
@@ -1258,13 +1260,9 @@ impl Vector {
 
 		// Reverse the segments of each loop whose drawn winding disagrees with its nesting parity
 		for (loop_index, loop_sides) in loops.iter().enumerate() {
-			let (first_segment, first_reversed) = loop_sides[0];
-			let sample_index = if first_reversed {
-				self.segment_domain.end_point[first_segment]
-			} else {
-				self.segment_domain.start_point[first_segment]
-			};
-			let sample = dvec2_to_point(self.point_domain.positions()[sample_index]);
+			// A segment midpoint is a safe winding sample, as in `construct_faces`
+			let Some(first_segment) = loop_paths[loop_index].segments().next() else { continue };
+			let sample = first_segment.eval(0.5);
 			let loop_segments: HashSet<usize> = loop_sides.iter().map(|&(segment_index, _)| segment_index).collect();
 			let depth = bounded_orbits
 				.iter()
@@ -1521,6 +1519,30 @@ mod tests {
 		assert_eq!(faces.len(), 1);
 		assert_ne!(faces[0].winding(kurbo::Point::new(1., 1.)), 0, "the ring around the hole should be filled");
 		assert_eq!(faces[0].winding(kurbo::Point::new(5., 5.)), 0, "the reverse-wound hole should stay empty");
+	}
+
+	/// The disjoint hole again, but with a vertex snapped exactly onto the covering contour,
+	/// where a winding test sampled at that vertex would be unreliable.
+	#[test]
+	fn hole_with_a_vertex_snapped_onto_the_covering_contour_still_subtracts() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(5., 10.),
+			DVec2::new(7., 6.),
+			DVec2::new(3., 6.),
+			DVec2::new(1., 5.),
+		];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 4), (0, 7)];
+		let vector = build_vector(&points, &segments);
+		assert!(vector.is_branching());
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 1);
+		assert_ne!(faces[0].winding(kurbo::Point::new(1., 1.)), 0, "the region around the hole should be filled");
+		assert_eq!(faces[0].winding(kurbo::Point::new(5., 7.5)), 0, "the snapped hole should stay empty");
 	}
 
 	/// A pen mesh of two cells sharing a wall, with the first cell's loop happening to be drawn in the
