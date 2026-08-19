@@ -9,7 +9,7 @@ use vector_types::vector::algorithms::shapes;
 use vector_types::vector::misc::BezierHandles;
 use vector_types::vector::misc::{ArcType, AsU64, BoxCorners, GridType};
 use vector_types::vector::misc::{HandleId, SpiralType};
-use vector_types::vector::{PointId, SegmentId, StrokeId};
+use vector_types::vector::{PointId, SegmentId};
 
 /// Generates a circle shape with a chosen radius.
 #[node_macro::node(category("Vector: Shape"))]
@@ -364,7 +364,7 @@ fn grid<T: GridSpacing>(
 			// Helper function to connect points with line segments.
 			let mut push_segment = |to_index: Option<usize>| {
 				if let Some(other_index) = to_index {
-					vector.segment_domain.push(segment_id.next_id(), other_index, current_index, BezierHandles::Linear, StrokeId::ZERO);
+					vector.segment_domain.push(segment_id.next_id(), other_index, current_index, BezierHandles::Linear);
 				}
 			};
 

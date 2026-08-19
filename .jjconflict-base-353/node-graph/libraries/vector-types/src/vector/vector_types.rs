@@ -75,7 +75,6 @@ impl core_types::transform::BakeTransform for Vector {
 impl Vector {
 	/// Add a path of manipulator groups to this vector path.
 	pub fn append_manipulator_groups(&mut self, manipulator_groups: &[ManipulatorGroup], closed: bool, preserve_id: bool) {
-		let stroke_id = StrokeId::ZERO;
 		let mut point_id = self.point_domain.next_id();
 
 		let handles = |a: &ManipulatorGroup, b: &ManipulatorGroup| match (a.out_handle, b.in_handle) {
@@ -111,23 +110,21 @@ impl Vector {
 			let id = segment_id.next_id();
 			first_seg = Some(first_seg.unwrap_or(id));
 			last_seg = Some(id);
-			self.segment_domain.push(id, start, end_index, handles(&pair[0], &pair[1]), stroke_id);
+			self.segment_domain.push(id, start, end_index, handles(&pair[0], &pair[1]));
 
 			last_point = Some(end_index);
 		}
-
-		let fill_id = FillId::ZERO;
 
 		if closed {
 			if let (Some(last), Some(first), Some(first_id), Some(last_id)) = (manipulator_groups.last(), manipulator_groups.first(), first_point, last_point) {
 				let id = segment_id.next_id();
 				first_seg = Some(first_seg.unwrap_or(id));
 				last_seg = Some(id);
-				self.segment_domain.push(id, last_id, first_id, handles(last, first), stroke_id);
+				self.segment_domain.push(id, last_id, first_id, handles(last, first));
 			}
 
 			if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
-				self.region_domain.push(self.region_domain.next_id(), first_seg..=last_seg, fill_id);
+				self.region_domain.push(self.region_domain.next_id(), first_seg..=last_seg);
 			}
 		}
 	}
@@ -157,7 +154,7 @@ impl Vector {
 
 		for (start, end) in segments_to_add {
 			let segment_id = self.segment_domain.next_id().next_id();
-			self.segment_domain.push(segment_id, start, end, BezierHandles::Linear, StrokeId::ZERO);
+			self.segment_domain.push(segment_id, start, end, BezierHandles::Linear);
 		}
 	}
 
@@ -280,7 +277,7 @@ impl Vector {
 		self.segment_domain.end_point().iter().map(|&index| self.point_domain.ids()[index])
 	}
 
-	pub fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: (Option<DVec2>, Option<DVec2>), stroke: StrokeId) {
+	pub fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: (Option<DVec2>, Option<DVec2>)) {
 		let [Some(start), Some(end)] = [start, end].map(|id| self.point_domain.resolve_id(id)) else {
 			return;
 		};
@@ -289,7 +286,7 @@ impl Vector {
 			(None, Some(handle)) | (Some(handle), None) => BezierHandles::Quadratic { handle },
 			(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic { handle_start, handle_end },
 		};
-		self.segment_domain.push(id, start, end, handles, stroke)
+		self.segment_domain.push(id, start, end, handles)
 	}
 
 	pub fn handles_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut BezierHandles, PointId, PointId)> {
