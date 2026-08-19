@@ -1848,7 +1848,6 @@ fn render_vector_item_to_vello(
 		};
 	};
 
-	// Branching vectors without regions (e.g. mesh grids) need face-by-face fill rendering.
 	let use_face_fill = element.use_face_fill();
 	let do_fill = |scene: &mut Scene, context: &mut RenderContext| {
 		if use_face_fill {

@@ -21,7 +21,6 @@ pub struct Vector {
 
 	pub point_domain: PointDomain,
 	pub segment_domain: SegmentDomain,
-	pub region_domain: RegionDomain,
 }
 unsafe impl StaticType for Vector {
 	type Static = Self;
@@ -33,7 +32,6 @@ impl Default for Vector {
 			colinear_manipulators: Vec::new(),
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
-			region_domain: RegionDomain::new(),
 		}
 	}
 }
@@ -42,7 +40,6 @@ impl graphene_hash::CacheHash for Vector {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.point_domain.cache_hash(state);
 		self.segment_domain.cache_hash(state);
-		self.region_domain.cache_hash(state);
 		self.colinear_manipulators.cache_hash(state);
 	}
 }
@@ -82,7 +79,6 @@ impl Vector {
 			(Some(handle), None) | (None, Some(handle)) => BezierHandles::Quadratic { handle },
 			(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic { handle_start, handle_end },
 		};
-		let [mut first_seg, mut last_seg] = [None, None];
 		let mut segment_id = self.segment_domain.next_id();
 		let mut last_point = None;
 		let mut first_point = None;
@@ -108,24 +104,14 @@ impl Vector {
 			self.point_domain.push(end, pair[1].anchor);
 
 			let id = segment_id.next_id();
-			first_seg = Some(first_seg.unwrap_or(id));
-			last_seg = Some(id);
 			self.segment_domain.push(id, start, end_index, handles(&pair[0], &pair[1]));
 
 			last_point = Some(end_index);
 		}
 
-		if closed {
-			if let (Some(last), Some(first), Some(first_id), Some(last_id)) = (manipulator_groups.last(), manipulator_groups.first(), first_point, last_point) {
-				let id = segment_id.next_id();
-				first_seg = Some(first_seg.unwrap_or(id));
-				last_seg = Some(id);
-				self.segment_domain.push(id, last_id, first_id, handles(last, first));
-			}
-
-			if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
-				self.region_domain.push(self.region_domain.next_id(), first_seg..=last_seg);
-			}
+		if closed && let (Some(last), Some(first), Some(first_id), Some(last_id)) = (manipulator_groups.last(), manipulator_groups.first(), first_point, last_point) {
+			let id = segment_id.next_id();
+			self.segment_domain.push(id, last_id, first_id, handles(last, first));
 		}
 	}
 
@@ -450,24 +436,14 @@ impl Vector {
 			.map(|&old| (old, old.generate_from_hash(collision_hash_seed)))
 			.collect::<HashMap<_, _>>();
 
-		let region_map = additional
-			.region_domain
-			.ids()
-			.iter()
-			.filter(|id| self.region_domain.ids().contains(id))
-			.map(|&old| (old, old.generate_from_hash(collision_hash_seed)))
-			.collect::<HashMap<_, _>>();
-
 		let id_map = IdMap {
 			point_offset: self.point_domain.ids().len(),
 			point_map,
 			segment_map,
-			region_map,
 		};
 
 		self.point_domain.concat(&additional.point_domain, transform_of_additional, &id_map);
 		self.segment_domain.concat(&additional.segment_domain, transform_of_additional, &id_map);
-		self.region_domain.concat(&additional.region_domain, transform_of_additional, &id_map);
 
 		self.colinear_manipulators.extend(additional.colinear_manipulators.iter().copied());
 	}

@@ -430,10 +430,10 @@ mod tests {
 
 	#[test]
 	fn grid_disconnected_cells_test() {
-		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath with a fillable region.
+		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath.
 		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_u32), item(3_u32), item((30., 30.).into()), item(false));
 		let vector = grid.element();
-		assert_eq!(vector.region_domain.ids().len(), 4);
+		assert_eq!(vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count(), 4);
 		assert_eq!(vector.point_domain.ids().len(), 4 * 4);
 		assert_eq!(vector.segment_domain.ids().len(), 4 * 4);
 
