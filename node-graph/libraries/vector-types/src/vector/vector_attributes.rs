@@ -962,18 +962,16 @@ impl Vector {
 				continue;
 			}
 
-			// An all-forward face is a reverse-wound loop's interior. It only counts as deliberate
-			// negative space when it is a standalone simple loop, or is embedded in surrounding fill
-			// (no wall borders the unbounded outside). A reverse-drawn cell of a wall-sharing mesh
-			// fails both and stays filled, since mesh users don't control the winding of shared walls.
+			// An all-forward face is a reverse-wound loop's interior. It only counts as deliberate negative
+			// space when it is a standalone simple loop or a single face surrounds it, the cases where its
+			// contour was drawn as one unit. Walls shared among several faces are mesh and stay filled.
 			let is_standalone_loop = non_spur_sides
 				.iter()
 				.all(|side| core_degree[self.segment_domain.start_point[side.segment_index]] == 2 && core_degree[self.segment_domain.end_point[side.segment_index]] == 2);
-			let borders_the_outside = non_spur_sides.iter().any(|side| {
-				let mirror_orbit = orbits.side_to_orbit[FaceSideSet::index_of(&side.mirrored())];
-				mirror_orbit == usize::MAX || orbits.areas[mirror_orbit] > 0.
-			});
-			if is_standalone_loop || !borders_the_outside {
+			let mut mirror_orbits = non_spur_sides.iter().map(|side| orbits.side_to_orbit[FaceSideSet::index_of(&side.mirrored())]);
+			let first_mirror_orbit = mirror_orbits.next().unwrap_or(usize::MAX);
+			let surrounded_by_one_face = first_mirror_orbit != usize::MAX && orbits.areas[first_mirror_orbit] <= 0. && mirror_orbits.all(|orbit| orbit == first_mirror_orbit);
+			if is_standalone_loop || surrounded_by_one_face {
 				negative_regions.push((path, segment_set));
 			} else {
 				kept_faces.push((path, segment_set));
@@ -1565,6 +1563,46 @@ mod tests {
 		assert_eq!(faces.len(), 2);
 		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(5., 5.)) != 0), "the reverse-drawn left cell should be filled");
 		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(15., 5.)) != 0), "the right cell should be filled");
+	}
+
+	/// A hub-and-spokes mesh whose hub cell happens to be drawn in the reverse direction: its walls
+	/// are shared with several sector cells, so it is mesh structure and must still fill.
+	#[test]
+	fn fully_enclosed_reverse_drawn_mesh_cell_still_fills() {
+		let points = [DVec2::new(4., 3.), DVec2::new(6., 3.), DVec2::new(5., 5.), DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(5., 10.)];
+		let segments = [(0, 2), (2, 1), (1, 0), (3, 4), (4, 5), (5, 3), (0, 3), (1, 4), (2, 5)];
+		let vector = build_vector(&points, &segments);
+		assert!(vector.is_branching());
+		assert!(drawn_signed_area(&vector, 0..3) < 0.);
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 4);
+		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(5., 4.)) != 0), "the enclosed hub cell should be filled");
+	}
+
+	/// A donut whose hole is bridged to the outer contour: every hole wall faces the single
+	/// surrounding ring, so its reverse winding still reads as a deliberate hole.
+	#[test]
+	fn bridged_donut_hole_stays_empty() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(3., 3.),
+			DVec2::new(3., 7.),
+			DVec2::new(7., 7.),
+			DVec2::new(7., 3.),
+		];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4), (0, 4)];
+		let vector = build_vector(&points, &segments);
+		assert!(vector.is_branching());
+		assert!(drawn_signed_area(&vector, 4..8) < 0.);
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 1);
+		assert_ne!(faces[0].winding(kurbo::Point::new(8., 5.)), 0, "the ring should be filled");
+		assert_eq!(faces[0].winding(kurbo::Point::new(5., 5.)), 0, "the bridged hole should stay empty");
 	}
 
 	/// A boolean-style hole nested under a contour that a pen-drawn chord has turned into a mesh:
