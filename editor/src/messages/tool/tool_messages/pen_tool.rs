@@ -21,7 +21,7 @@ use graphene_std::Color;
 use graphene_std::vector::misc::pathseg_points;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::style::FillChoice;
-use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, StrokeId, Vector, VectorModificationType};
+use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, Vector, VectorModificationType};
 use kurbo::{BezPath, CubicBez, PathSeg};
 
 #[derive(Default, ExtractField)]
@@ -1852,7 +1852,7 @@ impl Fsm for PenToolFsmState {
 						// We have the point. Join the 2 vertices and check if any path is closed.
 						if let Some(end) = closest_point {
 							let segment_id = SegmentId::generate();
-							vector.push(segment_id, start, end, (Some(handle_start), Some(handle_end)), StrokeId::ZERO);
+							vector.push(segment_id, start, end, (Some(handle_start), Some(handle_end)));
 
 							let grouped_segments = vector.auto_join_paths();
 							let closed_paths = grouped_segments.iter().filter(|path| path.is_closed() && path.contains(segment_id));

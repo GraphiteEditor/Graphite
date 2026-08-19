@@ -48,7 +48,7 @@ macro_rules! create_ids {
 	};
 }
 
-create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
+create_ids! { PointId, SegmentId, RegionId }
 
 /// A no-op hasher that allows writing u64s (the id type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -202,14 +202,13 @@ impl PointDomain {
 
 #[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Stores data which is per-segment. A segment is a bézier curve between two end points with a stroke. In future this will be extendable at runtime with custom attributes.
+/// Stores data which is per-segment. A segment is a bézier curve between two end points. In future this will be extendable at runtime with custom attributes.
 pub struct SegmentDomain {
 	#[cfg_attr(feature = "serde", serde(alias = "ids"))]
 	id: Vec<SegmentId>,
 	start_point: Vec<usize>,
 	end_point: Vec<usize>,
 	handles: Vec<BezierHandles>,
-	stroke: Vec<StrokeId>,
 }
 
 impl SegmentDomain {
@@ -219,7 +218,6 @@ impl SegmentDomain {
 			start_point: Vec::new(),
 			end_point: Vec::new(),
 			handles: Vec::new(),
-			stroke: Vec::new(),
 		}
 	}
 
@@ -229,7 +227,6 @@ impl SegmentDomain {
 		self.start_point.reserve(additional);
 		self.end_point.reserve(additional);
 		self.handles.reserve(additional);
-		self.stroke.reserve(additional);
 	}
 
 	pub(crate) fn retain(&mut self, f: impl Fn(&SegmentId) -> bool, points_length: usize) {
@@ -261,8 +258,6 @@ impl SegmentDomain {
 		self.end_point.retain(|_| keep.next().unwrap_or_default());
 		let mut keep = self.id.iter().map(can_delete());
 		self.handles.retain(|_| keep.next().unwrap_or_default());
-		let mut keep = self.id.iter().map(can_delete());
-		self.stroke.retain(|_| keep.next().unwrap_or_default());
 
 		let mut delete_iter = additional_delete_ids.iter().peekable();
 		self.id.retain(move |id| {
@@ -307,27 +302,22 @@ impl SegmentDomain {
 		&self.handles
 	}
 
-	pub fn stroke(&self) -> &[StrokeId] {
-		&self.stroke
-	}
-
-	pub fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
+	pub fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles) {
 		#[cfg(debug_assertions)]
 		if self.id.contains(&id) {
 			warn!("Tried to push a duplicate segment to a segment domain");
 			return;
 		}
 
-		self.push_unchecked(id, start, end, handles, stroke);
+		self.push_unchecked(id, start, end, handles);
 	}
 
 	#[inline(always)]
-	pub fn push_unchecked(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
+	pub fn push_unchecked(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles) {
 		self.id.push(id);
 		self.start_point.push(start);
 		self.end_point.push(end);
 		self.handles.push(handles);
-		self.stroke.push(stroke);
 	}
 
 	pub(crate) fn start_point_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut usize)> {
@@ -346,10 +336,6 @@ impl SegmentDomain {
 	pub fn handles_and_points_mut(&mut self) -> impl Iterator<Item = (&mut BezierHandles, &mut usize, &mut usize)> {
 		let nested = self.handles.iter_mut().zip(&mut self.start_point).zip(&mut self.end_point);
 		nested.map(|((a, b), c)| (a, b, c))
-	}
-
-	pub(crate) fn stroke_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut StrokeId)> {
-		self.id.iter().copied().zip(self.stroke.iter_mut())
 	}
 
 	pub(crate) fn segment_start_from_id(&self, segment: SegmentId) -> Option<usize> {
@@ -392,7 +378,6 @@ impl SegmentDomain {
 		self.start_point.extend(other.start_point.iter().map(|&index| id_map.point_offset + index));
 		self.end_point.extend(other.end_point.iter().map(|&index| id_map.point_offset + index));
 		self.handles.extend(other.handles.iter().map(|handles| handles.apply_transformation(|p| transform.transform_point2(p))));
-		self.stroke.extend(&other.stroke);
 	}
 
 	pub(crate) fn map_ids(&mut self, id_map: &IdMap) {
@@ -568,12 +553,11 @@ impl SegmentDomain {
 #[derive(Clone, Debug, Default, PartialEq, Hash, graphene_hash::CacheHash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the
-/// [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
+/// [`SegmentDomain`]. In future this will be extendable at runtime with custom attributes.
 pub struct RegionDomain {
 	#[cfg_attr(feature = "serde", serde(alias = "ids"))]
 	id: Vec<RegionId>,
 	segment_range: Vec<std::ops::RangeInclusive<SegmentId>>,
-	fill: Vec<FillId>,
 }
 
 impl RegionDomain {
@@ -581,7 +565,6 @@ impl RegionDomain {
 		Self {
 			id: Vec::new(),
 			segment_range: Vec::new(),
-			fill: Vec::new(),
 		}
 	}
 
@@ -589,14 +572,11 @@ impl RegionDomain {
 	pub fn reserve(&mut self, additional: usize) {
 		self.id.reserve(additional);
 		self.segment_range.reserve(additional);
-		self.fill.reserve(additional);
 	}
 
 	pub(crate) fn retain(&mut self, f: impl Fn(&RegionId) -> bool) {
 		let mut keep = self.id.iter().map(&f);
 		self.segment_range.retain(|_| keep.next().unwrap_or_default());
-		let mut keep = self.id.iter().map(&f);
-		self.fill.retain(|_| keep.next().unwrap_or_default());
 		self.id.retain(&f);
 	}
 
@@ -608,26 +588,23 @@ impl RegionDomain {
 		let mut iter = keep.iter().copied();
 		self.segment_range.retain(|_| iter.next().unwrap());
 		let mut iter = keep.iter().copied();
-		self.fill.retain(|_| iter.next().unwrap());
-		let mut iter = keep.iter().copied();
 		self.id.retain(|_| iter.next().unwrap());
 	}
 
-	pub fn push(&mut self, id: RegionId, segment_range: std::ops::RangeInclusive<SegmentId>, fill: FillId) {
+	pub fn push(&mut self, id: RegionId, segment_range: std::ops::RangeInclusive<SegmentId>) {
 		#[cfg(debug_assertions)]
 		if self.id.contains(&id) {
 			warn!("Tried to push a duplicate region to a region domain");
 			return;
 		}
 
-		self.push_unchecked(id, segment_range, fill);
+		self.push_unchecked(id, segment_range);
 	}
 
 	#[inline(always)]
-	pub fn push_unchecked(&mut self, id: RegionId, segment_range: std::ops::RangeInclusive<SegmentId>, fill: FillId) {
+	pub fn push_unchecked(&mut self, id: RegionId, segment_range: std::ops::RangeInclusive<SegmentId>) {
 		self.id.push(id);
 		self.segment_range.push(segment_range);
-		self.fill.push(fill);
 	}
 
 	fn _resolve_id(&self, id: RegionId) -> Option<usize> {
@@ -642,20 +619,12 @@ impl RegionDomain {
 		self.id.iter().copied().zip(self.segment_range.iter_mut())
 	}
 
-	pub(crate) fn fill_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut FillId)> {
-		self.id.iter().copied().zip(self.fill.iter_mut())
-	}
-
 	pub fn ids(&self) -> &[RegionId] {
 		&self.id
 	}
 
 	pub(crate) fn segment_range(&self) -> &[std::ops::RangeInclusive<SegmentId>] {
 		&self.segment_range
-	}
-
-	pub fn fill(&self) -> &[FillId] {
-		&self.fill
 	}
 
 	pub(crate) fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
@@ -666,7 +635,6 @@ impl RegionDomain {
 				.iter()
 				.map(|range| *id_map.segment_map.get(range.start()).unwrap_or(range.start())..=*id_map.segment_map.get(range.end()).unwrap_or(range.end())),
 		);
-		self.fill.extend(&other.fill);
 	}
 
 	pub(crate) fn map_ids(&mut self, id_map: &IdMap) {
@@ -678,12 +646,11 @@ impl RegionDomain {
 
 	/// Iterates over regions in the domain.
 	///
-	/// Tuple is: (id, segment_range, fill)
-	pub fn iter(&self) -> impl Iterator<Item = (RegionId, std::ops::RangeInclusive<SegmentId>, FillId)> + '_ {
+	/// Tuple is: (id, segment_range)
+	pub fn iter(&self) -> impl Iterator<Item = (RegionId, std::ops::RangeInclusive<SegmentId>)> + '_ {
 		let ids = self.id.iter().copied();
 		let segment_range = self.segment_range.iter().cloned();
-		let fill = self.fill.iter().copied();
-		zip(ids, zip(segment_range, fill)).map(|(id, (segment_range, fill))| (id, segment_range, fill))
+		zip(ids, segment_range)
 	}
 }
 
