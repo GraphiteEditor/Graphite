@@ -12,6 +12,10 @@ async fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Bo
 	let mut vector = vector;
 	modification.into_element().apply(vector.element_mut());
 
+	// Users draw subpaths in arbitrary winding directions, so normalize them here rather than
+	// letting the drawn direction decide fill insideness downstream
+	vector.element_mut().normalize_winding_directions();
+
 	// Drop the stale click-target override so hit testing uses the geometry the user is now editing
 	vector.remove_attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET);
 

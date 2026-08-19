@@ -3,8 +3,8 @@ use crate::vector::vector_types::Vector;
 use dyn_any::DynAny;
 use fixedbitset::FixedBitSet;
 use glam::{DAffine2, DVec2};
-use kurbo::{CubicBez, Line, PathSeg, QuadBez};
-use std::collections::HashMap;
+use kurbo::{CubicBez, Line, ParamCurve, PathSeg, QuadBez};
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::iter::zip;
 
@@ -625,6 +625,16 @@ struct FaceSide {
 	reversed: bool,
 }
 
+impl FaceSide {
+	/// The same segment walked in the opposite direction.
+	fn mirrored(&self) -> Self {
+		Self {
+			segment_index: self.segment_index,
+			reversed: !self.reversed,
+		}
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct FaceSideSet {
 	set: FixedBitSet,
@@ -636,8 +646,12 @@ impl FaceSideSet {
 		}
 	}
 
-	fn index(&self, side: FaceSide) -> usize {
+	fn index_of(side: &FaceSide) -> usize {
 		(side.segment_index << 1) | (side.reversed as usize)
+	}
+
+	fn index(&self, side: FaceSide) -> usize {
+		Self::index_of(&side)
 	}
 
 	fn insert(&mut self, side: FaceSide) {
@@ -659,54 +673,25 @@ struct Faces {
 	face_start: Vec<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct FaceIterator<'a> {
-	vector: &'a Vector,
+/// Every face orbit of the segment graph: the flattened side lists plus each orbit's traced path,
+/// signed area (bounded faces are walked clockwise so they come out negative, silhouettes positive),
+/// and a lookup from any side to the orbit containing it.
+struct FaceOrbits {
 	faces: Faces,
-	current_face: usize,
+	paths: Vec<kurbo::BezPath>,
+	areas: Vec<f64>,
+	side_to_orbit: Vec<usize>,
 }
 
-impl FaceIterator<'_> {
-	fn new(faces: Faces, vector: &Vector) -> FaceIterator<'_> {
-		FaceIterator { vector, faces, current_face: 0 }
+impl FaceOrbits {
+	fn face_count(&self) -> usize {
+		self.faces.face_start.len()
 	}
 
-	fn get_point(&self, point: usize) -> kurbo::Point {
-		dvec2_to_point(self.vector.point_domain.positions()[point])
-	}
-}
-
-impl Iterator for FaceIterator<'_> {
-	type Item = kurbo::BezPath;
-	fn next(&mut self) -> Option<Self::Item> {
-		let start_side = self.faces.face_start.get(self.current_face).copied()?;
-		self.current_face += 1;
-		let end_side = self.faces.face_start.get(self.current_face).copied().unwrap_or(self.faces.sides.len());
-
-		let mut path = kurbo::BezPath::new();
-
-		let segment_domain = &self.vector.segment_domain;
-		let first_side = self.faces.sides.get(start_side)?;
-		let start_point_index = if first_side.reversed {
-			segment_domain.end_point[first_side.segment_index]
-		} else {
-			segment_domain.start_point[first_side.segment_index]
-		};
-		path.move_to(self.get_point(start_point_index));
-		for side in &self.faces.sides[start_side..end_side] {
-			let (handle, end_index) = match side.reversed {
-				false => (segment_domain.handles[side.segment_index], segment_domain.end_point[side.segment_index]),
-				true => (segment_domain.handles[side.segment_index].reversed(), segment_domain.start_point[side.segment_index]),
-			};
-			let path_element = match handle {
-				BezierHandles::Linear => kurbo::PathEl::LineTo(self.get_point(end_index)),
-				BezierHandles::Quadratic { handle } => kurbo::PathEl::QuadTo(dvec2_to_point(handle), self.get_point(end_index)),
-				BezierHandles::Cubic { handle_start, handle_end } => kurbo::PathEl::CurveTo(dvec2_to_point(handle_start), dvec2_to_point(handle_end), self.get_point(end_index)),
-			};
-			path.push(path_element);
-		}
-
-		Some(path)
+	fn face_sides(&self, orbit_index: usize) -> &[FaceSide] {
+		let start = self.faces.face_start[orbit_index];
+		let end = self.faces.face_start.get(orbit_index + 1).copied().unwrap_or(self.faces.sides.len());
+		&self.faces.sides[start..end]
 	}
 }
 
@@ -947,7 +932,71 @@ impl Vector {
 		self.is_branching()
 	}
 
-	pub fn construct_faces(&self) -> FaceIterator<'_> {
+	/// Returns the fillable faces of the segment graph: bounded regions, skipping the unbounded
+	/// silhouette orbits and any face classified as deliberate negative space by its boundary winding.
+	/// Negative space loops are subtracted from any separately-bounded face covering them, so a
+	/// reverse-wound contour still punches its hole when it shares no points with what surrounds it.
+	pub fn construct_faces(&self) -> Vec<kurbo::BezPath> {
+		let orbits = self.face_orbits();
+		let (core_degree, ..) = self.two_core();
+
+		// Split the bounded orbits (negative area) into fillable faces and deliberate negative space
+		let mut kept_faces: Vec<(kurbo::BezPath, HashSet<usize>)> = Vec::new();
+		let mut negative_regions: Vec<(kurbo::BezPath, HashSet<usize>)> = Vec::new();
+		for orbit_index in 0..orbits.face_count() {
+			if orbits.areas[orbit_index] > 0. {
+				continue;
+			}
+			let sides = orbits.face_sides(orbit_index);
+
+			let side_set: HashSet<usize> = sides.iter().map(FaceSideSet::index_of).collect();
+			let non_spur_sides: Vec<FaceSide> = sides.iter().copied().filter(|side| !side_set.contains(&FaceSideSet::index_of(&side.mirrored()))).collect();
+			if non_spur_sides.is_empty() {
+				continue;
+			}
+
+			let path = orbits.paths[orbit_index].clone();
+			let segment_set: HashSet<usize> = sides.iter().map(|side| side.segment_index).collect();
+			if non_spur_sides.iter().any(|side| side.reversed) {
+				kept_faces.push((path, segment_set));
+				continue;
+			}
+
+			// An all-forward face is a reverse-wound loop's interior. It only counts as deliberate negative
+			// space when it is a standalone simple loop or a single face surrounds it, the cases where its
+			// contour was drawn as one unit. Walls shared among several faces are mesh and stay filled.
+			let is_standalone_loop = non_spur_sides
+				.iter()
+				.all(|side| core_degree[self.segment_domain.start_point[side.segment_index]] == 2 && core_degree[self.segment_domain.end_point[side.segment_index]] == 2);
+			let mut mirror_orbits = non_spur_sides.iter().map(|side| orbits.side_to_orbit[FaceSideSet::index_of(&side.mirrored())]);
+			let first_mirror_orbit = mirror_orbits.next().unwrap_or(usize::MAX);
+			let surrounded_by_one_face = first_mirror_orbit != usize::MAX && orbits.areas[first_mirror_orbit] <= 0. && mirror_orbits.all(|orbit| orbit == first_mirror_orbit);
+			if is_standalone_loop || surrounded_by_one_face {
+				negative_regions.push((path, segment_set));
+			} else {
+				kept_faces.push((path, segment_set));
+			}
+		}
+
+		// Subtract each negative space loop from the kept faces that cover it. Faces sharing segments with the loop
+		// already exclude it through their own boundary, and the winding test naturally skips faces it lies outside of.
+		for (negative_path, negative_segments) in &negative_regions {
+			// A segment midpoint is a safe winding sample, whereas snapping can place a vertex exactly on the covering contour
+			let Some(first_segment) = negative_path.segments().next() else { continue };
+			let sample = first_segment.eval(0.5);
+			let reversed_negative = negative_path.reverse_subpaths();
+			for (face_path, face_segments) in kept_faces.iter_mut() {
+				if face_segments.is_disjoint(negative_segments) && kurbo::Shape::winding(face_path, sample) != 0 {
+					face_path.extend(reversed_negative.clone());
+				}
+			}
+		}
+
+		kept_faces.into_iter().map(|(path, _)| path).collect()
+	}
+
+	/// Walks every face orbit of the segment graph and traces each one's path and signed area.
+	fn face_orbits(&self) -> FaceOrbits {
 		let mut adjacency: Vec<Vec<FaceSide>> = vec![Vec::new(); self.point_domain.len()];
 		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
 			adjacency[start].push(FaceSide { segment_index, reversed: false });
@@ -992,7 +1041,89 @@ impl Vector {
 			}
 		}
 
-		FaceIterator::new(faces, self)
+		let mut paths = Vec::with_capacity(faces.face_start.len());
+		let mut areas = Vec::with_capacity(faces.face_start.len());
+		let mut side_to_orbit = vec![usize::MAX; self.segment_domain.id.len() * 2];
+		for orbit_index in 0..faces.face_start.len() {
+			let start = faces.face_start[orbit_index];
+			let end = faces.face_start.get(orbit_index + 1).copied().unwrap_or(faces.sides.len());
+			let sides = &faces.sides[start..end];
+
+			for side in sides {
+				side_to_orbit[FaceSideSet::index_of(side)] = orbit_index;
+			}
+			let path = self.face_path(sides);
+			areas.push(kurbo::Shape::area(&path));
+			paths.push(path);
+		}
+
+		FaceOrbits { faces, paths, areas, side_to_orbit }
+	}
+
+	/// Computes each point's degree in the two-core: the graph left after iteratively stripping dead-end segments.
+	/// Returns the degrees and which segments were pruned as spurs.
+	fn two_core(&self) -> (Vec<usize>, Vec<bool>, Vec<Vec<usize>>) {
+		let segment_count = self.segment_domain.id.len();
+		let point_count = self.point_domain.len();
+
+		let mut degree = vec![0_usize; point_count];
+		let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); point_count];
+		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
+			degree[start] += 1;
+			degree[end] += 1;
+			adjacency[start].push(segment_index);
+			adjacency[end].push(segment_index);
+		}
+
+		let mut pruned = vec![false; segment_count];
+		let mut leaf_points: Vec<usize> = (0..point_count).filter(|&point| degree[point] == 1).collect();
+		while let Some(point) = leaf_points.pop() {
+			if degree[point] != 1 {
+				continue;
+			}
+			let Some(&segment_index) = adjacency[point].iter().find(|&&segment_index| !pruned[segment_index]) else {
+				continue;
+			};
+
+			pruned[segment_index] = true;
+			for endpoint in [self.segment_domain.start_point[segment_index], self.segment_domain.end_point[segment_index]] {
+				degree[endpoint] -= 1;
+				if degree[endpoint] == 1 {
+					leaf_points.push(endpoint);
+				}
+			}
+		}
+
+		(degree, pruned, adjacency)
+	}
+
+	/// Traces one face orbit's sides into a path, reversing each segment walked against its drawn direction.
+	fn face_path(&self, sides: &[FaceSide]) -> kurbo::BezPath {
+		let mut path = kurbo::BezPath::new();
+		let Some(first_side) = sides.first() else { return path };
+
+		let get_point = |point: usize| dvec2_to_point(self.point_domain.positions()[point]);
+		let start_point_index = if first_side.reversed {
+			self.segment_domain.end_point[first_side.segment_index]
+		} else {
+			self.segment_domain.start_point[first_side.segment_index]
+		};
+		path.move_to(get_point(start_point_index));
+
+		for side in sides {
+			let (handle, end_index) = match side.reversed {
+				false => (self.segment_domain.handles[side.segment_index], self.segment_domain.end_point[side.segment_index]),
+				true => (self.segment_domain.handles[side.segment_index].reversed(), self.segment_domain.start_point[side.segment_index]),
+			};
+			let path_element = match handle {
+				BezierHandles::Linear => kurbo::PathEl::LineTo(get_point(end_index)),
+				BezierHandles::Quadratic { handle } => kurbo::PathEl::QuadTo(dvec2_to_point(handle), get_point(end_index)),
+				BezierHandles::Cubic { handle_start, handle_end } => kurbo::PathEl::CurveTo(dvec2_to_point(handle_start), dvec2_to_point(handle_end), get_point(end_index)),
+			};
+			path.push(path_element);
+		}
+
+		path
 	}
 
 	fn construct_face(&self, adjacency: &[Vec<FaceSide>], first: FaceSide, faces: &mut Faces, seen: &mut FaceSideSet) -> Option<()> {
@@ -1023,6 +1154,129 @@ impl Vector {
 			}
 		}
 		None
+	}
+
+	/// Normalizes the winding direction of every simple closed loop so nesting depth alone decides fill:
+	/// loops at even depth wind positive and loops nested inside them wind negative, regardless of the direction they happened
+	/// to be drawn in. Loops passing through branch points, and open runs including dead-end spurs, are left untouched.
+	pub fn normalize_winding_directions(&mut self) {
+		let segment_count = self.segment_domain.id.len();
+
+		// Strip dead-end spurs first so a spur hanging off a loop doesn't disguise it
+		let (degree, pruned, adjacency) = self.two_core();
+
+		// Walk out each simple loop: a chain of surviving segments passing only through degree-2 points.
+		// Chains that reach a branch point are mesh or welded structure and keep their drawn directions.
+		let mut visited = pruned.clone();
+		let mut loops: Vec<Vec<(usize, bool)>> = Vec::new();
+		for first_segment in 0..segment_count {
+			if visited[first_segment] {
+				continue;
+			}
+			let start = self.segment_domain.start_point[first_segment];
+			let end = self.segment_domain.end_point[first_segment];
+			if degree[start] != 2 || degree[end] != 2 {
+				visited[first_segment] = true;
+				continue;
+			}
+
+			let mut loop_sides = vec![(first_segment, false)];
+			let mut current_point = end;
+			let mut is_simple_loop = false;
+			for _ in 0..segment_count {
+				if current_point == start {
+					is_simple_loop = true;
+					break;
+				}
+				if degree[current_point] != 2 {
+					break;
+				}
+				let previous_segment = loop_sides.last().unwrap().0;
+				let Some(&next_segment) = adjacency[current_point].iter().find(|&&candidate| !pruned[candidate] && candidate != previous_segment) else {
+					break;
+				};
+
+				let walked_reversed = self.segment_domain.end_point[next_segment] == current_point;
+				current_point = if walked_reversed {
+					self.segment_domain.start_point[next_segment]
+				} else {
+					self.segment_domain.end_point[next_segment]
+				};
+				loop_sides.push((next_segment, walked_reversed));
+			}
+
+			for &(segment_index, _) in &loop_sides {
+				visited[segment_index] = true;
+			}
+			if is_simple_loop {
+				loops.push(loop_sides);
+			}
+		}
+
+		// Trace each loop as a path so area gives its winding and other loops' winding gives containment
+		let loop_paths: Vec<kurbo::BezPath> = loops
+			.iter()
+			.map(|loop_sides| {
+				let mut path = kurbo::BezPath::new();
+				let (first_segment, first_reversed) = loop_sides[0];
+				let start_point = if first_reversed {
+					self.segment_domain.end_point[first_segment]
+				} else {
+					self.segment_domain.start_point[first_segment]
+				};
+				path.move_to(dvec2_to_point(self.point_domain.positions()[start_point]));
+				for &(segment_index, walked_reversed) in loop_sides {
+					let (handle, end_index) = match walked_reversed {
+						false => (self.segment_domain.handles[segment_index], self.segment_domain.end_point[segment_index]),
+						true => (self.segment_domain.handles[segment_index].reversed(), self.segment_domain.start_point[segment_index]),
+					};
+					let end = dvec2_to_point(self.point_domain.positions()[end_index]);
+					let path_element = match handle {
+						BezierHandles::Linear => kurbo::PathEl::LineTo(end),
+						BezierHandles::Quadratic { handle } => kurbo::PathEl::QuadTo(dvec2_to_point(handle), end),
+						BezierHandles::Cubic { handle_start, handle_end } => kurbo::PathEl::CurveTo(dvec2_to_point(handle_start), dvec2_to_point(handle_end), end),
+					};
+					path.push(path_element);
+				}
+				path.close_path();
+				path
+			})
+			.collect();
+
+		// Nesting depth counts the bounded face regions covering each loop, so containment still registers when the
+		// surrounding contour is branching mesh structure rather than a simple loop. The bounding box check keeps
+		// the containment tests from being `O(loops × faces × segments)` on many-loop paths like converted text.
+		let orbits = self.face_orbits();
+		let bounded_orbits: Vec<(&kurbo::BezPath, kurbo::Rect, HashSet<usize>)> = (0..orbits.face_count())
+			.filter(|&orbit_index| orbits.areas[orbit_index] <= 0.)
+			.map(|orbit_index| {
+				let path = &orbits.paths[orbit_index];
+				let segment_set = orbits.face_sides(orbit_index).iter().map(|side| side.segment_index).collect();
+				(path, kurbo::Shape::bounding_box(path), segment_set)
+			})
+			.collect();
+
+		// Reverse the segments of each loop whose drawn winding disagrees with its nesting parity
+		for (loop_index, loop_sides) in loops.iter().enumerate() {
+			// A segment midpoint is a safe winding sample, as in `construct_faces`
+			let Some(first_segment) = loop_paths[loop_index].segments().next() else { continue };
+			let sample = first_segment.eval(0.5);
+			let loop_segments: HashSet<usize> = loop_sides.iter().map(|&(segment_index, _)| segment_index).collect();
+			let depth = bounded_orbits
+				.iter()
+				.filter(|(path, bounding_box, segment_set)| segment_set.is_disjoint(&loop_segments) && bounding_box.contains(sample) && kurbo::Shape::winding(*path, sample) != 0)
+				.count();
+
+			let area = kurbo::Shape::area(&loop_paths[loop_index]);
+			let wants_positive = depth % 2 == 0;
+			if area != 0. && (area > 0.) != wants_positive {
+				for &(segment_index, _) in loop_sides {
+					let segment_domain = &mut self.segment_domain;
+					std::mem::swap(&mut segment_domain.start_point[segment_index], &mut segment_domain.end_point[segment_index]);
+					segment_domain.handles[segment_index] = segment_domain.handles[segment_index].reversed();
+				}
+			}
+		}
 	}
 }
 
@@ -1151,4 +1405,316 @@ pub(crate) struct IdMap {
 	pub point_offset: usize,
 	pub point_map: HashMap<PointId, PointId>,
 	pub segment_map: HashMap<SegmentId, SegmentId>,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use kurbo::Shape;
+
+	fn build_vector(points: &[DVec2], segments: &[(usize, usize)]) -> Vector {
+		let mut vector = Vector::default();
+		let mut point_id = PointId::ZERO;
+		for &position in points {
+			vector.point_domain.push(point_id.next_id(), position);
+		}
+		let mut segment_id = SegmentId::ZERO;
+		for &(start, end) in segments {
+			vector.segment_domain.push(segment_id.next_id(), start, end, BezierHandles::Linear);
+		}
+		vector
+	}
+
+	/// Square wound positively with a reverse-wound triangle welded to its corner:
+	/// the triangle's interior face is deliberate negative space, so only the surrounding face is filled.
+	#[test]
+	fn reverse_wound_loop_is_negative_space() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(2., 4.),
+			DVec2::new(4., 2.),
+		];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (0, 4), (4, 5), (5, 0)];
+		let vector = build_vector(&points, &segments);
+		assert!(vector.is_branching());
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 1);
+		assert_ne!(faces[0].winding(kurbo::Point::new(8., 8.)), 0, "the region around the triangle should be filled");
+		assert_eq!(faces[0].winding(kurbo::Point::new(1.5, 1.5)), 0, "the reverse-wound triangle interior should stay empty");
+	}
+
+	/// The same welded triangle wound the same way as the square reads as positive space, so both faces fill.
+	#[test]
+	fn same_wound_loop_is_positive_space() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(2., 4.),
+			DVec2::new(4., 2.),
+		];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (0, 5), (5, 4), (4, 0)];
+		let vector = build_vector(&points, &segments);
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 2);
+		assert!(
+			faces.iter().any(|face| face.winding(kurbo::Point::new(1.5, 1.5)) != 0),
+			"the same-wound triangle interior should be filled"
+		);
+		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(8., 8.)) != 0), "the region around the triangle should be filled");
+	}
+
+	/// A diamond-in-square mesh with every wall emitted once in index-canonical direction:
+	/// every cell is mixed-direction, so all five cells fill even though every point has even degree.
+	#[test]
+	fn mesh_cells_fill_regardless_of_wall_direction() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(5., 0.),
+			DVec2::new(10., 5.),
+			DVec2::new(5., 10.),
+			DVec2::new(0., 5.),
+		];
+		let segments = [(0, 4), (1, 4), (1, 5), (2, 5), (2, 6), (3, 6), (3, 7), (0, 7), (4, 5), (5, 6), (6, 7), (4, 7)];
+		let vector = build_vector(&points, &segments);
+		assert!(vector.use_face_fill());
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 5);
+		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(5., 5.)) != 0), "the center diamond cell should be filled");
+		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(1., 1.)) != 0), "the corner cells should be filled");
+	}
+
+	/// A boolean-style donut whose hole shares no points with the outer contour,
+	/// made branching by a pen-drawn spur: the hole must be subtracted from the disc face that covers it.
+	#[test]
+	fn disjoint_negative_loop_is_subtracted_from_covering_face() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(3., 3.),
+			DVec2::new(3., 7.),
+			DVec2::new(7., 7.),
+			DVec2::new(7., 3.),
+			DVec2::new(1., 5.),
+		];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4), (0, 8)];
+		let vector = build_vector(&points, &segments);
+		assert!(vector.is_branching());
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 1);
+		assert_ne!(faces[0].winding(kurbo::Point::new(1., 1.)), 0, "the ring around the hole should be filled");
+		assert_eq!(faces[0].winding(kurbo::Point::new(5., 5.)), 0, "the reverse-wound hole should stay empty");
+	}
+
+	/// The disjoint hole again, but with a vertex snapped exactly onto the covering contour,
+	/// where a winding test sampled at that vertex would be unreliable.
+	#[test]
+	fn hole_with_a_vertex_snapped_onto_the_covering_contour_still_subtracts() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(5., 10.),
+			DVec2::new(7., 6.),
+			DVec2::new(3., 6.),
+			DVec2::new(1., 5.),
+		];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 4), (0, 7)];
+		let vector = build_vector(&points, &segments);
+		assert!(vector.is_branching());
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 1);
+		assert_ne!(faces[0].winding(kurbo::Point::new(1., 1.)), 0, "the region around the hole should be filled");
+		assert_eq!(faces[0].winding(kurbo::Point::new(5., 7.5)), 0, "the snapped hole should stay empty");
+	}
+
+	/// A pen mesh of two cells sharing a wall, with the first cell's loop happening to be drawn in the
+	/// reverse direction: both cells must fill, since mesh users don't control shared wall winding.
+	#[test]
+	fn reverse_drawn_mesh_cell_still_fills() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(0., 10.),
+			DVec2::new(10., 10.),
+			DVec2::new(10., 0.),
+			DVec2::new(20., 0.),
+			DVec2::new(20., 10.),
+		];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (3, 4), (4, 5), (5, 2)];
+		let vector = build_vector(&points, &segments);
+		assert!(vector.is_branching());
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 2);
+		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(5., 5.)) != 0), "the reverse-drawn left cell should be filled");
+		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(15., 5.)) != 0), "the right cell should be filled");
+	}
+
+	/// A hub-and-spokes mesh whose hub cell happens to be drawn in the reverse direction: its walls
+	/// are shared with several sector cells, so it is mesh structure and must still fill.
+	#[test]
+	fn fully_enclosed_reverse_drawn_mesh_cell_still_fills() {
+		let points = [DVec2::new(4., 3.), DVec2::new(6., 3.), DVec2::new(5., 5.), DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(5., 10.)];
+		let segments = [(0, 2), (2, 1), (1, 0), (3, 4), (4, 5), (5, 3), (0, 3), (1, 4), (2, 5)];
+		let vector = build_vector(&points, &segments);
+		assert!(vector.is_branching());
+		assert!(drawn_signed_area(&vector, 0..3) < 0.);
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 4);
+		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(5., 4.)) != 0), "the enclosed hub cell should be filled");
+	}
+
+	/// A donut whose hole is bridged to the outer contour: every hole wall faces the single
+	/// surrounding ring, so its reverse winding still reads as a deliberate hole.
+	#[test]
+	fn bridged_donut_hole_stays_empty() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(3., 3.),
+			DVec2::new(3., 7.),
+			DVec2::new(7., 7.),
+			DVec2::new(7., 3.),
+		];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4), (0, 4)];
+		let vector = build_vector(&points, &segments);
+		assert!(vector.is_branching());
+		assert!(drawn_signed_area(&vector, 4..8) < 0.);
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 1);
+		assert_ne!(faces[0].winding(kurbo::Point::new(8., 5.)), 0, "the ring should be filled");
+		assert_eq!(faces[0].winding(kurbo::Point::new(5., 5.)), 0, "the bridged hole should stay empty");
+	}
+
+	/// A boolean-style hole nested under a contour that a pen-drawn chord has turned into a mesh:
+	/// the hole must survive normalization (its container is no longer a simple loop) and still subtract.
+	#[test]
+	fn hole_survives_when_its_container_becomes_a_mesh() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(1., 1.),
+			DVec2::new(1., 3.),
+			DVec2::new(3., 3.),
+			DVec2::new(3., 1.),
+		];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (1, 3), (4, 5), (5, 6), (6, 7), (7, 4)];
+		let mut vector = build_vector(&points, &segments);
+		assert!(drawn_signed_area(&vector, 5..9) < 0.);
+
+		vector.normalize_winding_directions();
+		assert!(drawn_signed_area(&vector, 5..9) < 0., "normalization must not flip a hole nested under mesh structure");
+
+		let faces = vector.construct_faces();
+		assert_eq!(faces.len(), 2);
+		assert!(faces.iter().all(|face| face.winding(kurbo::Point::new(2., 2.)) == 0), "the hole should stay empty");
+		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(0.5, 0.5)) != 0), "the triangle around the hole should be filled");
+		assert!(faces.iter().any(|face| face.winding(kurbo::Point::new(8., 8.)) != 0), "the other triangle should be filled");
+	}
+
+	/// A spur walked out and back within a face bounds no area, so it can neither fill a reverse-wound
+	/// loop's interior nor punch anything out of it.
+	#[test]
+	fn spur_does_not_rescue_a_negative_space_loop() {
+		let points = [DVec2::new(0., 0.), DVec2::new(0., 10.), DVec2::new(10., 10.), DVec2::new(10., 0.), DVec2::new(5., 5.)];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (0, 4)];
+		let vector = build_vector(&points, &segments);
+
+		let faces = vector.construct_faces();
+		assert!(faces.is_empty(), "a reverse-wound loop with an interior spur should produce no filled faces");
+	}
+
+	/// Shoelace sum over the drawn direction of a range of line segments, so tests can read the
+	/// stored winding directly rather than through a path walker that may pick its own direction.
+	fn drawn_signed_area(vector: &Vector, segment_range: std::ops::Range<usize>) -> f64 {
+		segment_range
+			.map(|segment_index| {
+				let start = vector.point_domain.positions()[vector.segment_domain.start_point()[segment_index]];
+				let end = vector.point_domain.positions()[vector.segment_domain.end_point()[segment_index]];
+				start.perp_dot(end)
+			})
+			.sum::<f64>()
+			/ 2.
+	}
+
+	#[test]
+	fn normalization_flips_a_reverse_wound_loop() {
+		let points = [DVec2::new(0., 0.), DVec2::new(0., 10.), DVec2::new(10., 10.), DVec2::new(10., 0.)];
+		let mut vector = build_vector(&points, &[(0, 1), (1, 2), (2, 3), (3, 0)]);
+		assert!(drawn_signed_area(&vector, 0..4) < 0.);
+		vector.normalize_winding_directions();
+
+		assert!(drawn_signed_area(&vector, 0..4) > 0., "a lone loop should wind positively after normalization");
+	}
+
+	#[test]
+	fn normalization_gives_nested_loops_alternating_winding() {
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(3., 3.),
+			DVec2::new(7., 3.),
+			DVec2::new(7., 7.),
+			DVec2::new(3., 7.),
+		];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4)];
+		let mut vector = build_vector(&points, &segments);
+		vector.normalize_winding_directions();
+
+		assert!(drawn_signed_area(&vector, 0..4) > 0., "the outer loop should wind positively");
+		assert!(drawn_signed_area(&vector, 4..8) < 0., "the nested loop should wind negatively");
+	}
+
+	/// Loops passing through a branch point are welded or mesh structure whose drawn winding is meaningful,
+	/// so normalization must not touch them.
+	#[test]
+	fn normalization_leaves_branching_structure_untouched() {
+		let points = [DVec2::new(0., 0.), DVec2::new(4., 0.), DVec2::new(2., 3.), DVec2::new(-4., 0.), DVec2::new(-2., -3.)];
+		let segments = [(0, 1), (1, 2), (2, 0), (0, 3), (3, 4), (4, 0)];
+		let mut vector = build_vector(&points, &segments);
+
+		let starts_before = vector.segment_domain.start_point().to_vec();
+		let ends_before = vector.segment_domain.end_point().to_vec();
+		vector.normalize_winding_directions();
+
+		assert_eq!(vector.segment_domain.start_point(), starts_before.as_slice());
+		assert_eq!(vector.segment_domain.end_point(), ends_before.as_slice());
+	}
+
+	/// Pruning dead-end spurs first lets the loop they hang off still be found and flipped,
+	/// while the spur segment itself keeps its direction.
+	#[test]
+	fn normalization_flips_a_loop_with_a_spur_attached() {
+		let points = [DVec2::new(0., 0.), DVec2::new(0., 10.), DVec2::new(10., 10.), DVec2::new(10., 0.), DVec2::new(5., 5.)];
+		let segments = [(0, 1), (1, 2), (2, 3), (3, 0), (0, 4)];
+		let mut vector = build_vector(&points, &segments);
+		vector.normalize_winding_directions();
+
+		assert_eq!(vector.segment_domain.start_point()[0], 1, "the reverse-wound loop should be flipped");
+		assert_eq!(vector.segment_domain.start_point()[4], 0, "the spur should keep its drawn direction");
+		assert_eq!(vector.segment_domain.end_point()[4], 4);
+	}
 }
