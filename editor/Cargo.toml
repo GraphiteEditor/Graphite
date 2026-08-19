@@ -72,3 +72,5 @@ wasm-bindgen-futures = { workspace = true }
 # Workspace dependencies
 env_logger = { workspace = true }
 futures = { workspace = true }
+node-macro = { workspace = true }
+core-types = { workspace = true }
