@@ -16,7 +16,7 @@ impl MessageHandler<NetworkMessage, NetworkMessageContext> for NetworkMessageHan
 				if let Some(request) = request {
 					responses.add(request(self.client.clone()));
 				} else {
-					log::error!("received a empty NetworkMessage::Request");
+					log::error!("received an empty NetworkMessage::Request");
 				}
 			}
 		}

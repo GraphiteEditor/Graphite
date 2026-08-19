@@ -293,7 +293,7 @@ pub enum DecoderError {
 	TiffError(#[from] TiffError),
 	#[error("An error occurred when converting integer from one type to another")]
 	ConversionError(#[from] std::num::TryFromIntError),
-	#[error("An IO Error ocurred")]
+	#[error("An IO Error occurred")]
 	IoError(#[from] std::io::Error),
 	#[error("The thumbnail format is unsupported")]
 	UnsupportedThumbnailFormat,

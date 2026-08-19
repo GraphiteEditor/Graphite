@@ -18,7 +18,7 @@ impl Editor {
 		mut application_io: PlatformApplicationIo,
 		wake: Wake,
 	) -> Self {
-		ENVIRONMENT.set(environment).expect("Editor shoud only be initialized once");
+		ENVIRONMENT.set(environment).expect("Editor should only be initialized once");
 		graphene_std::uuid::set_uuid_seed(uuid_random_seed);
 
 		let mut dispatcher = Dispatcher::new(resource_storage, working_copy_root);
