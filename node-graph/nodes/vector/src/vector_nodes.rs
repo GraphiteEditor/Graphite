@@ -3545,10 +3545,11 @@ fn element_centroid(element: &Vector, transform: DAffine2, centroid_type: Centro
 mod test {
 	use super::*;
 	use core_types::Node;
-	use kurbo::{CubicBez, Ellipse, Point, Rect};
+	use kurbo::{CubicBez, Point, Rect};
 	use std::future::Future;
 	use std::pin::Pin;
 	use vector_types::vector::algorithms::bezpath_algorithms::{TValue, trim_pathseg};
+	use vector_types::vector::algorithms::shapes::ellipse_bezpath;
 	use vector_types::vector::misc::pathseg_abs_diff_eq;
 
 	#[derive(Clone)]
@@ -3844,7 +3845,7 @@ mod test {
 	async fn poisson() {
 		let poisson_points = super::scatter_points(
 			Footprint::default(),
-			vector_item_from_bezpath(Ellipse::from_rect(Rect::new(-50., -50., 50., 50.)).to_path(DEFAULT_ACCURACY)),
+			vector_item_from_bezpath(ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.))),
 			Item::new_from_element(10. * std::f64::consts::SQRT_2),
 			Item::new_from_element(0),
 		)

@@ -22,7 +22,11 @@ pub fn rounded_rectangle_path(corner1: DVec2, corner2: DVec2, radii: [f64; 4]) -
 /// Ellipse inscribed in the box spanning the two opposite corners.
 pub fn ellipse_path(corner1: DVec2, corner2: DVec2) -> BezPath {
 	let rect = kurbo::Rect::from_points(dvec2_to_point(corner1), dvec2_to_point(corner2));
-	kurbo::Ellipse::new(rect.center(), (rect.width() / 2., rect.height() / 2.), 0.).to_path(DEFAULT_ACCURACY)
+	let mut path = kurbo::Ellipse::new(rect.center(), (rect.width() / 2., rect.height() / 2.), 0.).to_path(DEFAULT_ACCURACY);
+
+	// Kurbo emits the ellipse as an unclosed 360 degree arc, but hit testing only fills explicitly closed contours
+	path.close_path();
+	path
 }
 
 #[derive(PartialEq)]
@@ -886,5 +890,25 @@ pub(crate) fn collect_input_resource(input: &NodeInput, out: &mut HashSet<Resour
 		&& let TaggedValue::Resource(id) = &**tagged_value
 	{
 		out.insert(*id);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn port_click_targets_are_clickable_at_their_center() {
+		let center = DVec2::new(100., 50.);
+		let mut ports = Ports::new();
+		ports.insert_input_port_at_center(0, center);
+		ports.insert_output_port_at_center(0, center + DVec2::new(200., 0.));
+
+		assert_eq!(ports.clicked_input_port_from_point(center), Some(0));
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(5., 5.)), Some(0));
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(20., 0.)), None);
+
+		assert_eq!(ports.clicked_output_port_from_point(center + DVec2::new(200., 0.)), Some(0));
+		assert_eq!(ports.clicked_output_port_from_point(center), None);
 	}
 }
