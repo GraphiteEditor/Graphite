@@ -1435,9 +1435,11 @@ pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2
 				if start == end {
 					continue;
 				}
+				// Emit shared walls in index-canonical direction: a cycle can't be monotone in point index,
+				// so no cell's boundary can wind coherently and read as deliberate negative space
 				let edge = if start < end { (start, end) } else { (end, start) };
 				if seen_edges.insert(edge) {
-					segment_domain.push(next_segment.next_id(), start, end, BezierHandles::Linear);
+					segment_domain.push(next_segment.next_id(), edge.0, edge.1, BezierHandles::Linear);
 				}
 			}
 		}
