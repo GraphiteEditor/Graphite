@@ -3,20 +3,26 @@ use core_types::registry::types::Percentage;
 use core_types::{Color, Ctx};
 use graphic_types::Graphic;
 
+pub mod basic_brush;
 pub mod brush;
 mod brush_cache;
 pub mod brush_stroke;
 
 pub use brush_types::*;
 
+pub(crate) const DEFAULT_DIAMETER: f64 = 40.;
+pub(crate) const DEFAULT_HARDNESS: f64 = 0.;
+pub(crate) const DEFAULT_FLOW: f64 = 100.;
+pub(crate) const DEFAULT_COLOR: Color = Color::BLACK;
+
 #[node_macro::node(category("Raster: Brush"))]
 fn brush_strokes(
 	_: impl Ctx,
 	strokes: List<Stroke>,
 	color: List<Color>,
-	#[default(40.)] diameter: f64,
-	#[default(0.)] hardness: Percentage,
-	#[default(100.)] flow: Percentage,
+	#[default(DEFAULT_DIAMETER)] diameter: f64,
+	#[default(DEFAULT_HARDNESS)] hardness: Percentage,
+	#[default(DEFAULT_FLOW)] flow: Percentage,
 ) -> List<Graphic> {
 	List::new_from_item(
 		Item::new_from_element(Graphic::from(strokes))
