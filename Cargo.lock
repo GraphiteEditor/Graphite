@@ -379,7 +379,6 @@ dependencies = [
  "graphic-types",
  "half",
  "node-macro",
- "raster-nodes",
  "raster-types",
  "serde",
  "tokio",

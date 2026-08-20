@@ -9,7 +9,6 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete, descriptor};
-use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
@@ -826,13 +825,6 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.vector_modify(&path_node_id, modification_type);
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
-	}
-
-	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
-		let Some(brush_node_id) = self.existing_proto_node_id(graphene_std::brush::brush::brush::IDENTIFIER, true) else {
-			return;
-		};
-		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
 	}
 
 	pub fn resize_artboard(&mut self, location: DVec2, dimensions: DVec2) {
