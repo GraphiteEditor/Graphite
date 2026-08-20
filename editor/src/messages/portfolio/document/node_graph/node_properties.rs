@@ -18,6 +18,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, No
 use graph_craft::{Type, concrete};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::brush::brush_stroke::BrushTrace;
+use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::{
@@ -33,8 +34,8 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign, StrokeCap, StrokeJoin,
-	build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, MeshGradientSurface, StrokeAlign,
+	StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -641,7 +642,20 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 }
 
 pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widgets: &mut Vec<LayoutGroup>) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
+
+	let store = update_value_at_index(|transform: &DAffine2| TaggedValue::DAffine2(*transform), node_id, index);
+	transform_widget_custom(parameter_widgets_info, extra_widgets, None, move |transform| store(&transform))
+}
+
+pub fn transform_widget_custom(
+	parameter_widgets_info: ParameterWidgetsInfo,
+	extra_widgets: &mut Vec<LayoutGroup>,
+	displayed: Option<DAffine2>,
+	store: impl Fn(DAffine2) -> Message + 'static + Send + Sync,
+) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, index, .. } = parameter_widgets_info;
+	let store = std::sync::Arc::new(store);
 
 	let mut location_widgets = start_widgets(&parameter_widgets_info);
 	location_widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
@@ -660,7 +674,12 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 		return Vec::new().into();
 	};
 
-	let widgets = if let Some(&TaggedValue::DAffine2(transform)) = input.as_non_exposed_value() {
+	let stored = match input.as_non_exposed_value() {
+		Some(&TaggedValue::DAffine2(transform)) => Some(transform),
+		_ => None,
+	};
+
+	let widgets = if let Some(transform) = stored.map(|stored| displayed.unwrap_or(stored)) {
 		let translation = transform.translation;
 		let (rotation, scale, skew) = transform.decompose_rotation_scale_skew();
 		let skew_matrix = DAffine2::from_cols_array(&[1., 0., skew, 1., 0., 0.]);
@@ -669,22 +688,28 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(translation.x))
 				.label("X")
 				.unit(" px")
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| {
-					let mut transform = transform;
-					transform.translation.x = x.value.unwrap_or(transform.translation.x);
-					TaggedValue::DAffine2(transform)
-				}))
+				.on_update({
+					let store = store.clone();
+					move |x: &NumberInput| {
+						let mut transform = transform;
+						transform.translation.x = x.value.unwrap_or(transform.translation.x);
+						store(transform)
+					}
+				})
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(translation.y))
 				.label("Y")
 				.unit(" px")
-				.on_update(parameter_widgets_info.update_value(move |y: &NumberInput| {
-					let mut transform = transform;
-					transform.translation.y = y.value.unwrap_or(transform.translation.y);
-					TaggedValue::DAffine2(transform)
-				}))
+				.on_update({
+					let store = store.clone();
+					move |y: &NumberInput| {
+						let mut transform = transform;
+						transform.translation.y = y.value.unwrap_or(transform.translation.y);
+						store(transform)
+					}
+				})
 				.on_commit(commit_value)
 				.widget_instance(),
 		]);
@@ -694,14 +719,10 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			.mode(NumberInputMode::Range)
 			.range_min(Some(-180.))
 			.range_max(Some(180.))
-			.on_update(update_value_at_index(
-				move |r: &NumberInput| {
-					let transform = DAffine2::from_scale_angle_translation(scale, r.value.map(|r| r.to_radians()).unwrap_or(rotation), translation) * skew_matrix;
-					TaggedValue::DAffine2(transform)
-				},
-				node_id,
-				index,
-			))
+			.on_update({
+				let store = store.clone();
+				move |r: &NumberInput| store(DAffine2::from_scale_angle_translation(scale, r.value.map(|r| r.to_radians()).unwrap_or(rotation), translation) * skew_matrix)
+			})
 			.on_commit(commit_value)
 			.widget_instance()]);
 
@@ -709,28 +730,20 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(scale.x))
 				.label("W")
 				.unit("x")
-				.on_update(update_value_at_index(
-					move |w: &NumberInput| {
-						let transform = DAffine2::from_scale_angle_translation(DVec2::new(w.value.unwrap_or(scale.x), scale.y), rotation, translation) * skew_matrix;
-						TaggedValue::DAffine2(transform)
-					},
-					node_id,
-					index,
-				))
+				.on_update({
+					let store = store.clone();
+					move |w: &NumberInput| store(DAffine2::from_scale_angle_translation(DVec2::new(w.value.unwrap_or(scale.x), scale.y), rotation, translation) * skew_matrix)
+				})
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(scale.y))
 				.label("H")
 				.unit("x")
-				.on_update(update_value_at_index(
-					move |h: &NumberInput| {
-						let transform = DAffine2::from_scale_angle_translation(DVec2::new(scale.x, h.value.unwrap_or(scale.y)), rotation, translation) * skew_matrix;
-						TaggedValue::DAffine2(transform)
-					},
-					node_id,
-					index,
-				))
+				.on_update({
+					let store = store.clone();
+					move |h: &NumberInput| store(DAffine2::from_scale_angle_translation(DVec2::new(scale.x, h.value.unwrap_or(scale.y)), rotation, translation) * skew_matrix)
+				})
 				.on_commit(commit_value)
 				.widget_instance(),
 		]);
@@ -2378,6 +2391,14 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	LayoutGroup::section(name, description, visible, pinned, expanded, node_id.0, Layout(layout))
 }
 
+/// Where the 'Fill' node places a mesh gradient on its own, mirroring the automatic fit its kernel applies while no
+/// explicit mesh transform is set. The panel shows this instead of the unset input's identity, so its numbers describe
+/// where the mesh actually sits and raising the placement flag leaves the mesh where it already was.
+fn automatic_mesh_transform(layer: Option<LayerNodeIdentifier>, context: &NodePropertiesContext) -> DAffine2 {
+	let bounds = layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer));
+	graphene_std::vector::style::initial_mesh_gradient_transform_for_bounding_box(bounds)
+}
+
 /// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
 /// is only loaded for the root document network, so a `LayerNodeIdentifier` can't be constructed there.
 fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContext) -> Option<LayerNodeIdentifier> {
@@ -2411,6 +2432,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
 			transform_is_value: bool,
 		},
+		MeshGradient {
+			surface: Box<MeshGradientSurface>,
+		},
 		Other,
 	}
 
@@ -2429,6 +2453,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Ok(document_node) => match document_node.input_value(PaintInput) {
 			Some(TaggedValue::Color(color)) => ResolvedFill::Solid(Some(*color)),
 			Some(value) if value.is_no_paint() => ResolvedFill::Solid(None),
+			Some(TaggedValue::MeshGradient(surface)) => ResolvedFill::MeshGradient { surface: Box::new(surface.clone()) },
 			Some(TaggedValue::GradientRamp(_)) => {
 				match graph_modification_utils::read_fill_node_gradient(document_node, || {
 					layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer))
@@ -2448,7 +2473,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Err(_) => ResolvedFill::Other,
 	};
 
-	let (backup_color, backup_gradient) = match get_document_node(node_id, context) {
+	let (backup_color, backup_gradient, backup_mesh_gradient) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
 			let backup_color = match document_node.input_value(BackupColorInput) {
 				Some(&TaggedValue::Color(color)) => Some(color),
@@ -2458,9 +2483,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				Some(TaggedValue::GradientRamp(ramp)) => ramp.clone(),
 				_ => GradientRamp::black_to_white(),
 			};
-			(backup_color, backup_stops)
+			let backup_mesh_gradient = match document_node.input_value(BackupMeshGradientInput) {
+				Some(TaggedValue::MeshGradient(mesh_gradient)) => mesh_gradient.clone(),
+				_ => MeshGradientSurface::default(),
+			};
+			(backup_color, backup_stops, backup_mesh_gradient)
 		}
-		Err(_) => (None, GradientRamp::black_to_white()),
+		Err(_) => (None, GradientRamp::black_to_white(), MeshGradientSurface::default()),
 	};
 
 	match &fill {
@@ -2486,13 +2515,14 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let widget_value = match &fill {
 		ResolvedFill::Solid(color) => {
 			if let Some(color) = color {
-				FillChoice::<SRGBA8>::Solid(SRGBA8::from(*color))
+				Some(FillChoice::<SRGBA8>::Solid(SRGBA8::from(*color)))
 			} else {
-				FillChoice::<SRGBA8>::None
+				Some(FillChoice::<SRGBA8>::None)
 			}
 		}
-		ResolvedFill::Gradient { gradient: stops, settings, .. } => FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops).with_settings(*settings)),
-		ResolvedFill::Other => FillChoice::<SRGBA8>::None,
+		ResolvedFill::Gradient { gradient: stops, settings, .. } => Some(FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops).with_settings(*settings))),
+		ResolvedFill::MeshGradient { .. } => None,
+		ResolvedFill::Other => Some(FillChoice::<SRGBA8>::None),
 	};
 
 	let solid_set_messages = move |color: Option<Color>| {
@@ -2534,21 +2564,23 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		]),
 	};
 
-	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-	widgets_first_row.push(
-		ColorInput::default()
-			.value(widget_value)
-			.on_update(move |x: &ColorInput| match &x.value {
-				FillChoice::<SRGBA8>::None => solid_set_messages(None),
-				FillChoice::<SRGBA8>::Solid(srgba8) => {
-					let color = Some(Color::from(*srgba8));
-					solid_set_messages(color)
-				}
-				FillChoice::<SRGBA8>::Gradient(ramp) => gradient_set_messages(GradientRamp::from(ramp)),
-			})
-			.on_commit(commit_value)
-			.widget_instance(),
-	);
+	if let Some(widget_value) = widget_value {
+		widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		widgets_first_row.push(
+			ColorInput::default()
+				.value(widget_value)
+				.on_update(move |x: &ColorInput| match &x.value {
+					FillChoice::<SRGBA8>::None => solid_set_messages(None),
+					FillChoice::<SRGBA8>::Solid(srgba8) => {
+						let color = Some(Color::from(*srgba8));
+						solid_set_messages(color)
+					}
+					FillChoice::<SRGBA8>::Gradient(ramp) => gradient_set_messages(GradientRamp::from(ramp)),
+				})
+				.on_commit(commit_value)
+				.widget_instance(),
+		);
+	}
 
 	let mut widgets = vec![LayoutGroup::row(widgets_first_row)];
 
@@ -2565,18 +2597,148 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				.label("Gradient")
 				.on_update(update_value(move |_| TaggedValue::GradientRamp(backup_gradient.clone()), node_id, PaintInput))
 				.on_commit(commit_value),
+			RadioEntryData::new("mesh-gradient")
+				.label("Mesh Gradient")
+				.on_update(update_value(move |_| TaggedValue::MeshGradient(backup_mesh_gradient.clone()), node_id, PaintInput))
+				.on_commit(commit_value),
 		];
+		let selected_index = match fill {
+			ResolvedFill::Gradient { .. } => 1,
+			ResolvedFill::MeshGradient { .. } => 2,
+			_ => 0,
+		};
 
 		row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(entries)
-				.selected_index(Some(if matches!(fill, ResolvedFill::Gradient { .. }) { 1 } else { 0 }))
-				.widget_instance(),
+			RadioInput::new(entries).selected_index(Some(selected_index)).widget_instance(),
 		]);
 
 		LayoutGroup::row(row)
 	};
 	widgets.push(fill_type_switch);
+
+	if let ResolvedFill::MeshGradient { surface } = fill.clone() {
+		let surface = *surface;
+		let set_mesh_surface = move |surface: MeshGradientSurface| Message::Batched {
+			messages: Box::new([
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: PaintInput::INDEX,
+					value: TaggedValue::MeshGradient(surface.clone()).into(),
+				}
+				.into(),
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: BackupMeshGradientInput::INDEX,
+					value: TaggedValue::MeshGradient(surface).into(),
+				}
+				.into(),
+			]),
+		};
+
+		let space_entries = graph_modification_utils::mesh_gradient_space_sections()
+			.into_iter()
+			.map(|section| {
+				section
+					.into_iter()
+					.map(|(space, metadata)| {
+						let surface = surface.clone();
+						MenuListEntry::new(metadata.name)
+							.label(metadata.label)
+							.tooltip_label(metadata.label)
+							.tooltip_description(metadata.description.unwrap_or_default())
+							.on_update(move |_| {
+								set_mesh_surface(MeshGradientSurface {
+									gradient_space: space,
+									..surface.clone()
+								})
+							})
+							.on_commit(commit_value)
+					})
+					.collect()
+			})
+			.collect();
+
+		let mut space_row = vec![TextLabel::new("Space").widget_instance()];
+		add_blank_assist(&mut space_row);
+		space_row.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			DropdownInput::new(space_entries)
+				.selected_index(graph_modification_utils::mesh_gradient_space_index(surface.gradient_space))
+				.tooltip_description("The color space the mesh interpolates its corner colors through.")
+				.widget_instance(),
+		]);
+		widgets.push(LayoutGroup::row(space_row));
+
+		let interpolation_entries = GradientInterpolation::list()
+			.iter()
+			.map(|section| {
+				section
+					.iter()
+					.map(|(interpolation, metadata)| {
+						let interpolation = *interpolation;
+						let surface = surface.clone();
+
+						MenuListEntry::new(metadata.name)
+							.label(metadata.label)
+							.tooltip_label(metadata.label)
+							.tooltip_description(metadata.description.unwrap_or_default())
+							.on_update(move |_| {
+								set_mesh_surface(MeshGradientSurface {
+									gradient_interpolation: interpolation,
+									..surface.clone()
+								})
+							})
+							.on_commit(commit_value)
+					})
+					.collect()
+			})
+			.collect();
+
+		let mut interpolation_row = vec![TextLabel::new("Interpolation").widget_instance()];
+		add_blank_assist(&mut interpolation_row);
+		interpolation_row.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			DropdownInput::new(interpolation_entries)
+				.selected_index(Some(surface.gradient_interpolation as u32))
+				.tooltip_description("The path the corners interpolate along, deciding whether the gradient jumps, turns corners, or flows smoothly through them.")
+				.widget_instance(),
+		]);
+		widgets.push(LayoutGroup::row(interpolation_row));
+
+		// Until the mesh carries a placement of its own it rides the kernel's automatic fit, so the rows show that fit and
+		// the first edit promotes it to an explicit placement by raising the flag alongside the transform it writes
+		let placed = matches!(
+			get_document_node(node_id, context).ok().and_then(|document_node| document_node.input_value(HasMeshTransformInput)),
+			Some(TaggedValue::Bool(true))
+		);
+		let displayed = (!placed).then(|| automatic_mesh_transform(layer, context));
+
+		let mut preceding_rows = Vec::new();
+		let last_row = transform_widget_custom(
+			ParameterWidgetsInfo::new(node_id, MeshTransformInput, true, context),
+			&mut preceding_rows,
+			displayed,
+			move |transform| Message::Batched {
+				messages: Box::new([
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: HasMeshTransformInput::INDEX,
+						value: TaggedValue::Bool(true).into(),
+					}
+					.into(),
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: MeshTransformInput::INDEX,
+						value: TaggedValue::DAffine2(transform).into(),
+					}
+					.into(),
+				]),
+			},
+		);
+		widgets.extend(preceding_rows);
+		widgets.push(last_row);
+	}
 
 	if let ResolvedFill::Gradient {
 		gradient_form,

@@ -407,22 +407,31 @@ mod editor_commands {
 
 	/// Update the color of the currently-edited gradient stop, from sRGB bytes (the wire format at the JS boundary).
 	fn update_gradient_stop_color(color: SRGBA8) -> Message {
-		GradientToolMessage::UpdateStopColor { color: Color::from(color) }.into()
+		let color = Color::from(color);
+		Message::Batched {
+			messages: Box::new([GradientToolMessage::UpdateStopColor { color }.into(), MeshGradientToolMessage::UpdateStopColor { color }.into()]),
+		}
 	}
 
 	/// Start a new undo transaction for gradient stop color editing
 	fn start_gradient_stop_color_transaction() -> Message {
-		GradientToolMessage::StartTransactionForColorStop.into()
+		Message::Batched {
+			messages: Box::new([GradientToolMessage::StartTransactionForColorStop.into(), MeshGradientToolMessage::StartTransactionForColorStop.into()]),
+		}
 	}
 
 	/// Commit the current gradient stop color transaction (called on pointer-up after each drag/click)
 	fn commit_gradient_stop_color_transaction() -> Message {
-		GradientToolMessage::CommitTransactionForColorStop.into()
+		Message::Batched {
+			messages: Box::new([GradientToolMessage::CommitTransactionForColorStop.into(), MeshGradientToolMessage::CommitTransactionForColorStop.into()]),
+		}
 	}
 
 	/// Close the gradient stop color picker and commit any pending transaction
 	fn close_gradient_stop_color_picker() -> Message {
-		GradientToolMessage::CloseStopColorPicker.into()
+		Message::Batched {
+			messages: Box::new([GradientToolMessage::CloseStopColorPicker.into(), MeshGradientToolMessage::CloseStopColorPicker.into()]),
+		}
 	}
 
 	/// Toggle clipping the alpha of a layer to the alpha of the layer below it in the layer stack

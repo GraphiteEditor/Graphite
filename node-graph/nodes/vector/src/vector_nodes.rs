@@ -21,8 +21,7 @@ use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArcle
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
-use vector_types::GradientForm;
-use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
+use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box, initial_mesh_gradient_transform_for_bounding_box};
 use vector_types::vector::algorithms::bezpath_algorithms::{
 	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
 };
@@ -35,6 +34,7 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{PointDomain, PointId, SegmentDomain, SegmentId, VectorExt};
+use vector_types::{GradientForm, MeshGradient};
 
 /// Implemented for `List` types that contain vector items reachable via mutable access.
 /// Used by the whole-collection Assign Colors node so it can apply to either `List<Graphic>` or `List<Vector>`.
@@ -83,6 +83,28 @@ impl VectorListIterMut for List<Vector> {
 	fn vector_count(&self) -> usize {
 		self.len()
 	}
+}
+
+/// The bounding box a paint falls back to when it carries no explicit placement of its own.
+fn paint_target_bounds(content: &mut impl VectorItemMut) -> [DVec2; 2] {
+	let mut bounds: Option<[DVec2; 2]> = None;
+	content.for_each_vector_mut(|vector, _| {
+		if let Some([min, max]) = vector.bounding_box() {
+			bounds = Some(match bounds {
+				Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
+				None => [min, max],
+			});
+		}
+	});
+
+	let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+	if max.x - min.x < 1e-10 {
+		max.x = min.x + 1.;
+	}
+	if max.y - min.y < 1e-10 {
+		max.y = min.y + 1.;
+	}
+	[min, max]
 }
 
 /// Element-level analog of [`VectorListIterMut`] for the element-wise fill and stroke nodes, operating on a
@@ -314,19 +336,23 @@ async fn fill<V>(
 	_gradient_form: Item<GradientForm>,
 	_has_transform: Item<bool>,
 	_transform: Item<DAffine2>,
+	_backup_mesh_gradient: Item<MeshGradient>,
+	_has_mesh_transform: Item<bool>,
+	_mesh_transform: Item<DAffine2>,
 ) -> Item<V>
 where
 	Item<V>: VectorItemMut + 'n + Send,
 {
 	let _gradient_form = _gradient_form.into_element();
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
+	let (_has_mesh_transform, _mesh_transform) = (_has_mesh_transform.into_element(), *_mesh_transform.element());
 
 	let mut content = content;
 	// The paint is the element alone: keeping the wire envelope's attributes would nest the paint as a group, changing how it renders
 	let mut paint = paint.into_element();
 
-	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
-	let (needs_form, needs_transform) = match &paint {
+	// Stamp the styling inputs onto any gradient or mesh-gradient paint missing them, whether the paint arrived as a picker value or a wire
+	let (needs_form, needs_gradient_transform) = match &paint {
 		Graphic::Gradient(item) => (item.attribute::<GradientForm>(ATTR_GRADIENT_FORM).is_none(), item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none()),
 		Graphic::GradientList(list) => (
 			list.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none(),
@@ -334,32 +360,24 @@ where
 		),
 		_ => (false, false),
 	};
+	let needs_mesh_transform = match &paint {
+		Graphic::MeshGradient(item) => item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none(),
+		Graphic::MeshGradientList(list) => list.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none(),
+		_ => false,
+	};
 
-	let stamped_transform = needs_transform.then(|| {
+	let stamped_gradient_transform = needs_gradient_transform.then(|| {
 		// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
 		if _has_transform {
 			return _transform;
 		}
-
-		let mut bounds: Option<[DVec2; 2]> = None;
-		content.for_each_vector_mut(|vector, _| {
-			if let Some([min, max]) = vector.bounding_box() {
-				bounds = Some(match bounds {
-					Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
-					None => [min, max],
-				});
-			}
-		});
-
-		// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
-		let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
-		if max.x - min.x < 1e-10 {
-			max.x = min.x + 1.;
+		initial_gradient_transform_for_bounding_box(paint_target_bounds(&mut content))
+	});
+	let stamped_mesh_transform = needs_mesh_transform.then(|| {
+		if _has_mesh_transform {
+			return _mesh_transform;
 		}
-		if max.y - min.y < 1e-10 {
-			max.y = min.y + 1.;
-		}
-		initial_gradient_transform_for_bounding_box([min, max])
+		initial_mesh_gradient_transform_for_bounding_box(paint_target_bounds(&mut content))
 	});
 
 	match &mut paint {
@@ -367,7 +385,7 @@ where
 			if needs_form {
 				item.set_attribute(ATTR_GRADIENT_FORM, _gradient_form);
 			}
-			if let Some(transform) = stamped_transform {
+			if let Some(transform) = stamped_gradient_transform {
 				item.set_attribute(ATTR_TRANSFORM, transform);
 			}
 		}
@@ -377,7 +395,19 @@ where
 					*value = _gradient_form;
 				}
 			}
-			if let Some(transform) = stamped_transform {
+			if let Some(transform) = stamped_gradient_transform {
+				for value in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+					*value = transform;
+				}
+			}
+		}
+		Graphic::MeshGradient(item) => {
+			if let Some(transform) = stamped_mesh_transform {
+				item.set_attribute(ATTR_TRANSFORM, transform);
+			}
+		}
+		Graphic::MeshGradientList(list) => {
+			if let Some(transform) = stamped_mesh_transform {
 				for value in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 					*value = transform;
 				}

@@ -10,7 +10,7 @@ use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
 use vector_types::gradient::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread};
-use vector_types::{Gradient, ReferencePoint};
+use vector_types::{Gradient, MeshGradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
@@ -939,6 +939,7 @@ pub async fn into_group<T: Into<Graphic> + 'n>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<MeshGradient>,
 		List<String>,
 		List<DVec2>,
 		Item<DAffine2>, // TODO: Remove this

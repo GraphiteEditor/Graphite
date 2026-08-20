@@ -287,12 +287,14 @@ impl RenderExt for Graphic {
 			| Graphic::RasterCPU(_)
 			| Graphic::RasterGPU(_)
 			| Graphic::Text(_)
+			| Graphic::MeshGradient(_)
 			| Graphic::VectorList(_)
 			| Graphic::RasterCPUList(_)
 			| Graphic::RasterGPUList(_)
 			| Graphic::GraphicList(_)
 			| Graphic::GradientList(_)
-			| Graphic::TextList(_) => {
+			| Graphic::TextList(_)
+			| Graphic::MeshGradientList(_) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };
@@ -312,7 +314,7 @@ impl RenderExt for Graphic {
 }
 
 /// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic as the paint content, and returns the pattern ID.
-/// Currently, this function is only used for clipping-based filling and stroking, not considering tiling yet.
+/// Currently, this function is only used for clipping-based filling and stroking, and for mesh gradients, not considering tiling yet.
 fn render_svg_pattern(svg_defs: &mut String, paint: &Graphic, stroke_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
 	let min = bounds.transform_point2(DVec2::ZERO);
 	let max = bounds.transform_point2(DVec2::ONE);
@@ -321,14 +323,16 @@ fn render_svg_pattern(svg_defs: &mut String, paint: &Graphic, stroke_transform: 
 		return None;
 	}
 
+	let pattern_transform = stroke_transform * DAffine2::from_translation(min);
+
 	// Render the pattern content recursively
 	let mut content = SvgRender::new();
+	content.transform = pattern_transform;
 	paint.render_svg(&mut content, &render_params.for_pattern());
 
 	// Unwrap the inner def element
 	write!(svg_defs, "{}", content.svg_defs).unwrap();
 
-	let pattern_transform = stroke_transform * DAffine2::from_translation(min);
 	let transform_str = format_transform_matrix(pattern_transform);
 	let transform_attr = if transform_str.is_empty() {
 		String::new()

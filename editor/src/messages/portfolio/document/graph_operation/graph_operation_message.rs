@@ -9,6 +9,7 @@ use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::MeshGradientSurface;
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, VectorModificationType};
 
@@ -30,6 +31,10 @@ pub enum GraphOperationMessage {
 		gradient_form: GradientForm,
 		gradient_settings: GradientSettings,
 		transform: DAffine2,
+	},
+	FillMeshGradientSet {
+		layer: LayerNodeIdentifier,
+		mesh_gradient: MeshGradientSurface,
 	},
 	BlendingFillSet {
 		layer: LayerNodeIdentifier,
@@ -75,6 +80,10 @@ pub enum GraphOperationMessage {
 	GradientInterpolationSet {
 		layer: LayerNodeIdentifier,
 		gradient_interpolation: GradientInterpolation,
+	},
+	MeshGradientSet {
+		layer: LayerNodeIdentifier,
+		mesh_gradient: MeshGradientSurface,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,

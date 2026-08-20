@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	ReplaceablePaintChain, get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
+	ReplaceablePaintChain, get_fill_input_node_id, get_upstream_gradient_value_node_id, get_upstream_mesh_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
 };
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
@@ -17,6 +17,7 @@ use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::MeshGradientSurface;
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
@@ -585,6 +586,39 @@ impl<'a> ModifyInputsContext<'a> {
 		let color_value_id = self.insert_color_value(color, output_layer, paint_chain.attachment_input);
 		let input_connector = InputConnector::node(color_value_id, graphene_std::math_nodes::color_value::ColorInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
+	}
+
+	/// Write the mesh gradient to the Fill node's direct value, adding a 'Fill' node to the layer when it has none.
+	pub fn fill_mesh_gradient_set(&mut self, mesh_gradient: MeshGradientSurface) {
+		let existing_fill_node_id = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, false);
+		let Some(fill_node_id) = existing_fill_node_id.or_else(|| self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true)) else {
+			return;
+		};
+
+		self.set_input_with_refresh(
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupMeshGradientInput),
+			NodeInput::value(TaggedValue::MeshGradient(mesh_gradient.clone()), false),
+			true,
+		);
+		self.set_input_with_refresh(
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::PaintInput),
+			NodeInput::value(TaggedValue::MeshGradient(mesh_gradient), false),
+			false,
+		);
+
+		if existing_fill_node_id.is_none() {
+			self.restore_default_stroke_order();
+		}
+	}
+
+	/// Write the mesh gradient to the Mesh Gradient Value node feeding the layer.
+	pub fn mesh_gradient_set(&mut self, mesh_gradient: MeshGradientSurface) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(mesh_gradient_value_id) = get_upstream_mesh_gradient_value_node_id(output_layer, self.network_interface) else {
+			return;
+		};
+		let input_connector = InputConnector::node(mesh_gradient_value_id, graphene_std::math_nodes::mesh_gradient_value::MeshGradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::MeshGradient(mesh_gradient), false), false);
 	}
 
 	/// Write the gradient stops to the 'Gradient Value' node feeding the layer.
