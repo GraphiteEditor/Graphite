@@ -18,12 +18,12 @@ use graphene_std::raster::{
 	CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice,
 };
 use graphene_std::raster_types::{CPU, GPU, Raster};
-use graphene_std::subpath::BezierHandles;
 use graphene_std::text::TextAlign;
 use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
-	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+	ArcType, BezierHandles, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,
+	SpiralType,
 };
 use graphene_std::vector::style::{
 	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, MeshGradient, StrokeAlign, StrokeCap, StrokeJoin,
@@ -653,7 +653,7 @@ impl TableItemLayout for Vector {
 		)
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let table_tab_entries = [VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Regions, VectorTableTab::Handles]
+		let table_tab_entries = [VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Handles]
 			.into_iter()
 			.map(|tab| {
 				RadioEntryData::new(format!("{tab:?}"))
@@ -697,17 +697,6 @@ impl TableItemLayout for Vector {
 						TextLabel::new(format!("Point {start}")).narrow(true).widget_instance(),
 						TextLabel::new(format!("Point {end}")).narrow(true).widget_instance(),
 						TextLabel::new(handles).narrow(true).widget_instance(),
-					]
-				}));
-			}
-			VectorTableTab::Regions => {
-				table_rows.push(column_headings(&["", "segment_range"]));
-				table_rows.extend(self.region_domain.iter().map(|(id, segment_range, _)| {
-					vec![
-						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format!("Segment {} – Segment {}", segment_range.start().inner(), segment_range.end().inner()))
-							.narrow(true)
-							.widget_instance(),
 					]
 				}));
 			}

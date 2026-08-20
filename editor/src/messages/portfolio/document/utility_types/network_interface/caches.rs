@@ -397,12 +397,12 @@ impl NodeNetworkInterface {
 
 					if *import_index == 0 {
 						let remove_import_center = reorder_import_center + DVec2::new(-4., 0.);
-						let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+						let remove_import = ClickTarget::new_with_path(rectangle_path(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
 						remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
 					} else {
 						let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
-						let reorder_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
-						let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+						let reorder_import = ClickTarget::new_with_path(rectangle_path(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
+						let remove_import = ClickTarget::new_with_path(rectangle_path(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
 						reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
 						remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
 					}
@@ -417,12 +417,12 @@ impl NodeNetworkInterface {
 
 					if *export_index == 0 {
 						let remove_export_center = reorder_export_center + DVec2::new(4., 0.);
-						let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+						let remove_export = ClickTarget::new_with_path(rectangle_path(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
 						remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
 					} else {
 						let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
-						let reorder_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
-						let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+						let reorder_export = ClickTarget::new_with_path(rectangle_path(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
+						let remove_export = ClickTarget::new_with_path(rectangle_path(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
 						reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
 						remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
 					}
@@ -1001,8 +1001,8 @@ impl NodeNetworkInterface {
 			let node_click_target_bottom_right = node_click_target_top_left + DVec2::new(width as f64, height as f64);
 
 			let radius = 3.;
-			let subpath = Subpath::new_rounded_rectangle(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
-			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
+			let path = rounded_rectangle_path(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
+			let node_click_target = ClickTarget::new_with_path(path, 0.);
 
 			DocumentNodeClickTargets {
 				node_click_target,
@@ -1032,22 +1032,22 @@ impl NodeNetworkInterface {
 
 			// Update visibility button click target
 			let visibility_offset = node_top_left + DVec2::new(width as f64, LAYER_VERTICAL_CENTER);
-			let subpath = Subpath::new_rounded_rectangle(
+			let path = rounded_rectangle_path(
 				DVec2::new(-ICON_HALF_EXTENT, -ICON_HALF_EXTENT) + visibility_offset,
 				DVec2::new(ICON_HALF_EXTENT, ICON_HALF_EXTENT) + visibility_offset,
 				[3.; 4],
 			);
-			let visibility_click_target = ClickTarget::new_with_subpath(subpath, 0.);
+			let visibility_click_target = ClickTarget::new_with_path(path, 0.);
 
 			// Update lock button click target, positioned one grid unit to the left of the visibility button (only when locked)
 			let lock_click_target = if locked {
 				let lock_offset = node_top_left + DVec2::new(width as f64 - GRID_SIZE as f64, LAYER_VERTICAL_CENTER);
-				let subpath = Subpath::new_rounded_rectangle(
+				let path = rounded_rectangle_path(
 					DVec2::new(-ICON_HALF_EXTENT, -ICON_HALF_EXTENT) + lock_offset,
 					DVec2::new(ICON_HALF_EXTENT, ICON_HALF_EXTENT) + lock_offset,
 					[3.; 4],
 				);
-				Some(ClickTarget::new_with_subpath(subpath, 0.))
+				Some(ClickTarget::new_with_path(path, 0.))
 			} else {
 				None
 			};
@@ -1057,12 +1057,12 @@ impl NodeNetworkInterface {
 			const GRIP_WIDTH: f64 = 8.;
 			let icons_width = if locked { GRID_SIZE as f64 } else { 0. };
 			let grip_offset_right_edge = node_top_left + DVec2::new(width as f64 - ICON_HALF_EXTENT - icons_width, LAYER_VERTICAL_CENTER);
-			let subpath = Subpath::new_rounded_rectangle(
+			let path = rounded_rectangle_path(
 				DVec2::new(-GRIP_WIDTH, -ICON_HALF_EXTENT) + grip_offset_right_edge,
 				DVec2::new(0., ICON_HALF_EXTENT) + grip_offset_right_edge,
 				[0.; 4],
 			);
-			let grip_click_target = ClickTarget::new_with_subpath(subpath, 0.);
+			let grip_click_target = ClickTarget::new_with_path(path, 0.);
 
 			// Update display-name text click target, used to detect double-click rename. Sized to the text bounds
 			// (not the surrounding `.details` area) so the rest of the layer still drills into the subgraph on double-click.
@@ -1091,8 +1091,8 @@ impl NodeNetworkInterface {
 					// The 1-grid-tall name strip is centered vertically in the 2-grid-tall layer.
 					let name_top = node_top_left.y + HALF_GRID_SIZE as f64;
 					let name_bottom = node_top_left.y + GRID_SIZE as f64 + HALF_GRID_SIZE as f64;
-					let subpath = Subpath::new_rounded_rectangle(DVec2::new(name_left, name_top), DVec2::new(name_right, name_bottom), [3.; 4]);
-					Some(ClickTarget::new_with_subpath(subpath, 0.))
+					let path = rounded_rectangle_path(DVec2::new(name_left, name_top), DVec2::new(name_right, name_bottom), [3.; 4]);
+					Some(ClickTarget::new_with_path(path, 0.))
 				} else {
 					None
 				}
@@ -1104,8 +1104,8 @@ impl NodeNetworkInterface {
 			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
 			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * GRID_SIZE) as f64, 0.);
 			const CORNER_RADIUS: f64 = 10.;
-			let subpath = Subpath::new_rounded_rectangle(chain_top_left, node_bottom_right, [CORNER_RADIUS; 4]);
-			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
+			let path = rounded_rectangle_path(chain_top_left, node_bottom_right, [CORNER_RADIUS; 4]);
+			let node_click_target = ClickTarget::new_with_path(path, 0.);
 
 			DocumentNodeClickTargets {
 				node_click_target,

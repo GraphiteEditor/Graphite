@@ -32,7 +32,7 @@ pub mod vector {
 	pub use vector_types::vector::algorithms;
 	pub use vector_types::vector::click_target;
 	pub use vector_types::vector::misc::HandleId;
-	pub use vector_types::vector::{PointId, RegionId, SegmentId, StrokeId};
+	pub use vector_types::vector::{PointId, SegmentId};
 	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap, serialize_hashmap_as_sorted_object};
 
 	// Re-export HandleExt trait and NoHashBuilder
@@ -53,10 +53,6 @@ pub mod artboard {
 	pub use graphic_types::artboard::*;
 }
 
-pub mod subpath {
-	pub use vector_types::subpath::*;
-}
-
 pub mod gradient {
 	pub use vector_types::{Gradient, GradientStop, MeshGradient};
 }
@@ -74,7 +70,7 @@ pub mod math {
 	pub use core_types::math::quad;
 
 	pub mod math_ext {
-		pub use vector_types::{QuadExt, RectExt};
+		pub use vector_types::QuadExt;
 	}
 }
 

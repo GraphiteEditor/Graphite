@@ -22,18 +22,18 @@ use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box, initial_mesh_gradient_transform_for_bounding_box};
-use vector_types::subpath::{BezierHandles, ManipulatorGroup};
-use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
+use vector_types::vector::algorithms::bezpath_algorithms::{
+	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
+};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
+use vector_types::vector::algorithms::offset_bezpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use vector_types::vector::misc::{
-	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
-	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
+	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, ManipulatorGroup, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,
+	bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
-use vector_types::vector::{PointDomain, RegionDomain};
+use vector_types::vector::{PointDomain, PointId, SegmentDomain, SegmentId, VectorExt};
 use vector_types::{GradientForm, MeshGradient};
 
 /// Implemented for `List` types that contain vector items reachable via mutable access.
@@ -722,21 +722,10 @@ fn merge_by_distance<V: MapVectorItems + Send + Sync + 'static>(
 pub mod extrude_algorithms {
 	use glam::DVec2;
 	use kurbo::{ParamCurve, ParamCurveDeriv};
-	use vector_types::subpath::BezierHandles;
-	use vector_types::vector::StrokeId;
+	use vector_types::vector::misc::BezierHandles;
 	use vector_types::vector::misc::ExtrudeJoiningAlgorithm;
 
-	/// Convert [`vector_types::subpath::Bezier`] to [`kurbo::PathSeg`].
-	fn bezier_to_path_seg(bezier: vector_types::subpath::Bezier) -> kurbo::PathSeg {
-		let [start, end] = [(bezier.start().x, bezier.start().y), (bezier.end().x, bezier.end().y)];
-		match bezier.handles {
-			BezierHandles::Linear => kurbo::Line::new(start, end).into(),
-			BezierHandles::Quadratic { handle } => kurbo::QuadBez::new(start, (handle.x, handle.y), end).into(),
-			BezierHandles::Cubic { handle_start, handle_end } => kurbo::CubicBez::new(start, (handle_start.x, handle_start.y), (handle_end.x, handle_end.y), end).into(),
-		}
-	}
-
-	/// Convert [`kurbo::CubicBez`] to [`vector_types::subpath::BezierHandles`].
+	/// Convert [`kurbo::CubicBez`] to [`vector_types::vector::misc::BezierHandles`].
 	fn cubic_to_handles(cubic_bez: kurbo::CubicBez) -> BezierHandles {
 		BezierHandles::Cubic {
 			handle_start: DVec2::new(cubic_bez.p1.x, cubic_bez.p1.y),
@@ -766,9 +755,9 @@ pub mod extrude_algorithms {
 		let mut next_segment = vector.segment_domain.next_id();
 
 		for segment_index in 0..segment_count {
-			let (_, _, bezier) = vector.segment_points_from_index(segment_index);
+			let (_, _, segment) = vector.segment_points_from_index(segment_index);
 			let mut start_index = vector.segment_domain.start_point()[segment_index];
-			let pathseg = bezier_to_path_seg(bezier).to_cubic();
+			let pathseg = segment.to_cubic();
 			let mut start_t = 0.;
 
 			for split_t in find_splits(pathseg, direction) {
@@ -779,7 +768,7 @@ pub mod extrude_algorithms {
 
 				let middle_point_index = vector.point_domain.len();
 				vector.point_domain.push(middle_point, DVec2::new(first.end().x, first.end().y));
-				vector.segment_domain.push(start_segment, start_index, middle_point_index, first_handles, StrokeId::ZERO);
+				vector.segment_domain.push(start_segment, start_index, middle_point_index, first_handles);
 				vector.segment_domain.set_start_point(segment_index, middle_point_index);
 				vector.segment_domain.set_handles(segment_index, second_handles);
 
@@ -805,7 +794,6 @@ pub mod extrude_algorithms {
 				vector.segment_domain.start_point()[index] + points_count,
 				vector.segment_domain.end_point()[index] + points_count,
 				vector.segment_domain.handles()[index].apply_transformation(|x| x + direction),
-				vector.segment_domain.stroke()[index],
 			);
 		}
 	}
@@ -856,9 +844,7 @@ pub mod extrude_algorithms {
 				continue;
 			}
 
-			vector
-				.segment_domain
-				.push(next_segment.next_id(), index, index + first_half_points, BezierHandles::Linear, StrokeId::ZERO);
+			vector.segment_domain.push(next_segment.next_id(), index, index + first_half_points, BezierHandles::Linear);
 		}
 	}
 
@@ -867,7 +853,7 @@ pub mod extrude_algorithms {
 		let mut next_segment = vector.segment_domain.next_id();
 		let first_half = vector.point_domain.len() / 2;
 		for index in 0..first_half {
-			vector.segment_domain.push(next_segment.next_id(), index, index + first_half, BezierHandles::Linear, StrokeId::ZERO);
+			vector.segment_domain.push(next_segment.next_id(), index, index + first_half, BezierHandles::Linear);
 		}
 	}
 
@@ -1154,20 +1140,22 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 
 		let mut result = Vector::default();
 
-		for mut subpath in source.stroke_bezier_paths() {
-			subpath.apply_transform(transform);
+		for (mut manipulators_list, is_closed) in source.stroke_manipulator_groups() {
+			for manipulator in &mut manipulators_list {
+				manipulator.anchor = transform.transform_point2(manipulator.anchor);
+				manipulator.in_handle = manipulator.in_handle.map(|handle| transform.transform_point2(handle));
+				manipulator.out_handle = manipulator.out_handle.map(|handle| transform.transform_point2(handle));
+			}
 
-			let manipulators_list = subpath.manipulator_groups();
 			if manipulators_list.len() < 2 {
 				// Not enough points for softening or handle removal
-				result.append_subpath(subpath, true);
+				result.append_manipulator_groups(&manipulators_list, is_closed, true);
 				continue;
 			}
 
 			let mut new_manipulators_list = Vec::with_capacity(manipulators_list.len());
 			// Track which manipulator indices were given auto-tangent (colinear) handles
 			let mut auto_tangented = vec![false; manipulators_list.len()];
-			let is_closed = subpath.closed();
 
 			for i in 0..manipulators_list.len() {
 				let current = &manipulators_list[i];
@@ -1314,12 +1302,12 @@ async fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 }
 
 /// Type-asserts a value to be vector data.
-#[node_macro::node(category("Vector"), name("As Vector"), path(core_types::vector))]
+#[node_macro::node(category("Type Assertion"), path(core_types::vector))]
 fn as_vector(_: impl Ctx, value: Item<Vector>) -> Item<Vector> {
 	value
 }
 
-/// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
+/// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
 async fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] points: Item<V>, #[default(true)] closed: Item<bool>) -> Item<V> {
 	let closed = *closed.element();
@@ -1335,15 +1323,11 @@ async fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implem
 
 		if points_count >= 2 {
 			(0..points_count - 1).for_each(|i| {
-				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear);
 			});
 
 			if closed && points_count != 2 {
-				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
-
-				vector
-					.region_domain
-					.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap(), FillId::generate());
+				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear);
 			}
 		}
 
@@ -1381,7 +1365,7 @@ async fn relax_points<V: MapVectorItems + 'n + Send>(
 
 /// Builds a Voronoi diagram from the anchor points. Each point claims the region of space closest to it, and those regions tessellate the plane. Cells around the outside are clipped to the convex hull of the points so the diagram stays finite.
 ///
-/// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh with no fillable regions.
+/// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh.
 #[node_macro::node(category("Vector"), path(core_types::vector))]
 async fn voronoi_cells<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
 	V::map_vector_items(source, |source| {
@@ -1401,7 +1385,7 @@ async fn voronoi_cells<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementat
 
 /// Builds a Delaunay triangulation connecting the anchor points. It is the geometric dual of the **Voronoi** node: a mesh of triangles in which no point lies inside any triangle's circumscribed circle.
 ///
-/// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh with no fillable regions.
+/// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh.
 #[node_macro::node(category("Vector"), path(core_types::vector))]
 async fn triangulate<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
 	V::map_vector_items(source, |source| {
@@ -1422,17 +1406,15 @@ async fn triangulate<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementatio
 	})
 }
 
-/// Replaces a vector's geometry (points, segments, and regions) with the given closed polygons, preserving its style.
+/// Replaces a vector's geometry (points and segments) with the given closed polygons, preserving its style.
 ///
-/// Without `connect_cells`, each polygon becomes its own closed subpath with a fillable region.
-/// With it, coincident vertices are welded and each shared edge is emitted once, producing a connected mesh with no regions.
+/// Without `connect_cells`, each polygon becomes its own closed subpath.
+/// With it, coincident vertices are welded and each shared edge is emitted once, producing a connected mesh.
 pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2>>, connect_cells: bool) {
 	let mut point_domain = PointDomain::new();
 	let mut segment_domain = SegmentDomain::new();
-	let mut region_domain = RegionDomain::new();
 	let mut next_point = PointId::ZERO;
 	let mut next_segment = SegmentId::ZERO;
-	let mut next_region = RegionId::ZERO;
 
 	if !connect_cells {
 		for polygon in &polygons {
@@ -1446,19 +1428,10 @@ pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2
 			}
 
 			let count = polygon.len();
-			let mut first_segment = None;
-			let mut last_segment = None;
 			for i in 0..count {
 				let start = base + i;
 				let end = base + (i + 1) % count;
-				let id = next_segment.next_id();
-				first_segment.get_or_insert(id);
-				last_segment = Some(id);
-				segment_domain.push(id, start, end, BezierHandles::Linear, StrokeId::ZERO);
-			}
-
-			if let (Some(first), Some(last)) = (first_segment, last_segment) {
-				region_domain.push(next_region.next_id(), first..=last, FillId::ZERO);
+				segment_domain.push(next_segment.next_id(), start, end, BezierHandles::Linear);
 			}
 		}
 	} else {
@@ -1492,9 +1465,11 @@ pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2
 				if start == end {
 					continue;
 				}
+				// Emit shared walls in index-canonical direction: a cycle can't be monotone in point index,
+				// so no cell's boundary can wind coherently and read as deliberate negative space
 				let edge = if start < end { (start, end) } else { (end, start) };
 				if seen_edges.insert(edge) {
-					segment_domain.push(next_segment.next_id(), start, end, BezierHandles::Linear, StrokeId::ZERO);
+					segment_domain.push(next_segment.next_id(), edge.0, edge.1, BezierHandles::Linear);
 				}
 			}
 		}
@@ -1502,7 +1477,6 @@ pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2
 
 	vector.point_domain = point_domain;
 	vector.segment_domain = segment_domain;
-	vector.region_domain = region_domain;
 }
 
 /// The distance below which two mesh vertices are welded into one, scaled to the diagram's size so it tracks coordinate magnitude.
@@ -2347,8 +2321,6 @@ async fn spline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Gr
 				solve_spline_first_handle_open(&positions)
 			};
 
-			let stroke_id = StrokeId::ZERO;
-
 			// Create segments with computed Bezier handles and add them to the output vector element's segment domain.
 			for i in 0..(positions.len() - if closed { 0 } else { 1 }) {
 				let next_index = (i + 1) % positions.len();
@@ -2360,7 +2332,7 @@ async fn spline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Gr
 				let handle_end = positions[next_index] * 2. - first_handles[next_index];
 				let handles = BezierHandles::Cubic { handle_start, handle_end };
 
-				segment_domain.push(next_id.next_id(), start_index, end_index, handles, stroke_id);
+				segment_domain.push(next_id.next_id(), start_index, end_index, handles);
 			}
 		}
 
@@ -2554,7 +2526,7 @@ async fn morph(
 
 	/// Subdivides the last segment of a manipulator group list at its midpoint, adding one new manipulator.
 	/// For closed paths, the "last segment" is the closing segment from the last back to the first manipulator.
-	fn subdivide_last_manipulator_segment(manips: &mut Vec<ManipulatorGroup<PointId>>, closed: bool) {
+	fn subdivide_last_manipulator_segment(manips: &mut Vec<ManipulatorGroup>, closed: bool) {
 		let len = manips.len();
 		if len < 2 {
 			return;
@@ -2600,36 +2572,28 @@ async fn morph(
 		}
 	}
 
-	/// Pushes a subpath (list of manipulators) directly into a Vector's point, segment, and region domains,
+	/// Pushes a subpath (list of manipulators) directly into a Vector's point and segment domains,
 	/// bypassing the BezPath intermediate representation used by `append_bezpath`.
-	fn push_manipulators_to_vector(vector: &mut Vector, manips: &[ManipulatorGroup<PointId>], closed: bool, point_id: &mut PointId, segment_id: &mut SegmentId) {
+	fn push_manipulators_to_vector(vector: &mut Vector, manips: &[ManipulatorGroup], closed: bool, point_id: &mut PointId, segment_id: &mut SegmentId) {
 		let Some(first) = manips.first() else { return };
 
 		let first_point_index = vector.point_domain.ids().len();
 		vector.point_domain.push_unchecked(point_id.next_id(), first.anchor);
 		let mut prev_point_index = first_point_index;
-		let mut first_segment_id = None;
 
 		for manip_window in manips.windows(2) {
 			let point_index = vector.point_domain.ids().len();
 			vector.point_domain.push_unchecked(point_id.next_id(), manip_window[1].anchor);
 
 			let handles = handles_from_manips(manip_window[0].out_handle, manip_window[1].in_handle);
-			let seg_id = segment_id.next_id();
-			first_segment_id.get_or_insert(seg_id);
-			vector.segment_domain.push_unchecked(seg_id, prev_point_index, point_index, handles, StrokeId::ZERO);
+			vector.segment_domain.push_unchecked(segment_id.next_id(), prev_point_index, point_index, handles);
 
 			prev_point_index = point_index;
 		}
 
 		if closed && manips.len() > 1 {
 			let handles = handles_from_manips(manips.last().unwrap().out_handle, manips[0].in_handle);
-			let closing_seg_id = segment_id.next_id();
-			first_segment_id.get_or_insert(closing_seg_id);
-			vector.segment_domain.push_unchecked(closing_seg_id, prev_point_index, first_point_index, handles, StrokeId::ZERO);
-
-			let region_id = vector.region_domain.next_id();
-			vector.region_domain.push_unchecked(region_id, first_segment_id.unwrap()..=closing_seg_id, FillId::ZERO);
+			vector.segment_domain.push_unchecked(segment_id.next_id(), prev_point_index, first_point_index, handles);
 		}
 	}
 
@@ -3045,7 +3009,6 @@ async fn morph(
 	// Pre-allocate domain storage based on total manipulator counts across all subpaths
 	let mut total_points = 0;
 	let mut total_segments = 0;
-	let mut total_regions = 0;
 	for ((source_manips, source_closed), (target_manips, _)) in source_subpaths.iter().zip(target_subpaths.iter()) {
 		if source_manips.is_empty() || target_manips.is_empty() {
 			continue;
@@ -3053,20 +3016,13 @@ async fn morph(
 		let manip_count = source_manips.len().max(target_manips.len());
 		total_points += manip_count;
 		total_segments += if *source_closed { manip_count } else { manip_count.saturating_sub(1) };
-		if *source_closed {
-			total_regions += 1;
-		}
 	}
 	for (manips, closed) in extra_source.iter().chain(extra_target.iter()) {
 		total_points += manips.len();
 		total_segments += if *closed { manips.len() } else { manips.len().saturating_sub(1) };
-		if *closed {
-			total_regions += 1;
-		}
 	}
 	vector.point_domain.reserve(total_points);
 	vector.segment_domain.reserve(total_segments);
-	vector.region_domain.reserve(total_regions);
 
 	let mut point_id = PointId::ZERO;
 	let mut segment_id = SegmentId::ZERO;
@@ -3087,7 +3043,7 @@ async fn morph(
 		}
 
 		// Build interpolated manipulator groups
-		let mut interpolated: Vec<ManipulatorGroup<PointId>> = source_manips
+		let mut interpolated: Vec<ManipulatorGroup> = source_manips
 			.iter()
 			.zip(target_manips.iter())
 			.map(|(s, t)| ManipulatorGroup {
@@ -3463,7 +3419,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 
 		for &[start, end] in new_segments {
 			let handles = BezierHandles::Linear;
-			vector.segment_domain.push(next_id.next_id(), start, end, handles, StrokeId::ZERO);
+			vector.segment_domain.push(next_id.next_id(), start, end, handles);
 		}
 	}
 
@@ -3592,14 +3548,14 @@ fn element_centroid(element: &Vector, transform: DAffine2, centroid_type: Centro
 	let mut centroid = DVec2::ZERO;
 	let mut sum = 0.;
 
-	for subpath in element.stroke_bezier_paths() {
+	for bezpath in element.stroke_bezpath_iter() {
 		let partial = match centroid_type {
-			CentroidType::Area => subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
-			CentroidType::Length => subpath.length_centroid_and_length(None, true),
+			CentroidType::Area => bezpath_area_centroid_and_area(&bezpath, Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
+			CentroidType::Length => bezpath_length_centroid_and_length(&bezpath, None, true),
 		};
-		if let Some((subpath_centroid, area_or_length)) = partial {
+		if let Some((path_centroid, area_or_length)) = partial {
 			sum += area_or_length;
-			centroid += area_or_length * transform.transform_point2(subpath_centroid);
+			centroid += area_or_length * transform.transform_point2(path_centroid);
 		}
 	}
 
@@ -3619,10 +3575,11 @@ fn element_centroid(element: &Vector, transform: DAffine2, centroid_type: Centro
 mod test {
 	use super::*;
 	use core_types::Node;
-	use kurbo::{CubicBez, Ellipse, Point, Rect};
+	use kurbo::{CubicBez, Point, Rect};
 	use std::future::Future;
 	use std::pin::Pin;
 	use vector_types::vector::algorithms::bezpath_algorithms::{TValue, trim_pathseg};
+	use vector_types::vector::algorithms::shapes::ellipse_bezpath;
 	use vector_types::vector::misc::pathseg_abs_diff_eq;
 
 	#[derive(Clone)]
@@ -3690,13 +3647,14 @@ mod test {
 	}
 
 	#[tokio::test]
-	async fn delaunay_disconnected_cells_make_one_region_per_triangle() {
+	async fn delaunay_disconnected_cells_make_one_subpath_per_triangle() {
 		let result = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
 		let vector = result.element();
 		// The square plus its center tessellates into four triangles, each its own closed subpath.
-		assert_eq!(vector.region_domain.ids().len(), 4);
+		assert_eq!(vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count(), 4);
 		assert_eq!(vector.segment_domain.ids().len(), 4 * 3);
 		assert_eq!(vector.point_domain.ids().len(), 4 * 3);
+		assert!(!vector.use_face_fill());
 	}
 
 	#[tokio::test]
@@ -3711,11 +3669,11 @@ mod test {
 				.collect()
 		}
 
-		// The Rectangle and Ellipse generators define the framework's fill winding convention; each is built from these
-		// subpath constructors (`Subpath::new_rectangle` / `Subpath::new_ellipse`), so their winding is the source of truth.
-		use vector_types::subpath::Subpath;
-		let rectangle = Vector::from_subpath(Subpath::new_rectangle(DVec2::new(-50., -50.), DVec2::new(50., 50.)));
-		let ellipse = Vector::from_subpath(Subpath::new_ellipse(DVec2::new(-50., -25.), DVec2::new(50., 25.)));
+		// The Rectangle and Ellipse generators define the framework's fill winding convention, built from these
+		// shape constructors (`rectangle_bezpath` / `ellipse_bezpath`), so their winding is the source of truth.
+		use vector_types::vector::algorithms::shapes::{ellipse_bezpath, rectangle_bezpath};
+		let rectangle = Vector::from_bezpath(rectangle_bezpath(DVec2::new(-50., -50.), DVec2::new(50., 50.)));
+		let ellipse = Vector::from_bezpath(ellipse_bezpath(DVec2::new(-50., -25.), DVec2::new(50., 25.)));
 		let expected = subpath_winding_signs(&rectangle)[0];
 		assert_eq!(subpath_winding_signs(&ellipse)[0], expected, "Rectangle and Ellipse should agree on winding");
 
@@ -3734,20 +3692,20 @@ mod test {
 	async fn delaunay_shared_mesh_welds_points_and_shares_edges() {
 		let result = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true)).await;
 		let vector = result.element();
-		// The connected mesh reuses the five input points and shares edges, with no fillable regions.
-		assert_eq!(vector.region_domain.ids().len(), 0);
+		// The connected mesh reuses the five input points and shares edges, so it fills face by face.
+		assert!(vector.use_face_fill());
 		assert_eq!(vector.point_domain.ids().len(), 5);
 		// Four hull edges plus four spokes to the center, each emitted once.
 		assert_eq!(vector.segment_domain.ids().len(), 8);
 	}
 
 	#[tokio::test]
-	async fn voronoi_disconnected_cells_make_a_region_per_cell() {
+	async fn voronoi_disconnected_cells_make_a_subpath_per_cell() {
 		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
 		let vector = result.element();
-		let regions = vector.region_domain.ids().len();
-		assert!(regions > 0, "expected at least one Voronoi region");
-		// Every region is a closed subpath, so segments and points come in matched per-region loops.
+		let cells = vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count();
+		assert!(cells > 0, "expected at least one Voronoi cell");
+		// Every cell is a closed subpath, so segments and points come in matched per-cell loops.
 		assert_eq!(vector.segment_domain.ids().len(), vector.point_domain.ids().len());
 
 		// Clipping to the convex hull keeps all cell vertices within the input bounds.
@@ -3758,10 +3716,10 @@ mod test {
 	}
 
 	#[tokio::test]
-	async fn voronoi_shared_mesh_has_no_regions() {
+	async fn voronoi_shared_mesh_uses_face_fill() {
 		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true)).await;
 		let vector = result.element();
-		assert_eq!(vector.region_domain.ids().len(), 0);
+		assert!(vector.use_face_fill());
 		assert!(vector.segment_domain.ids().len() > 0);
 	}
 
@@ -3806,12 +3764,12 @@ mod test {
 	async fn bounding_box() {
 		let bounding_box = super::bounding_box((), Item::new_from_element(Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)))).await;
 		let bounding_box = bounding_box.element();
-		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
+		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
-			.region_manipulator_groups()
+			.stroke_manipulator_groups()
 			.next()
 			.unwrap()
-			.1
+			.0
 			.iter()
 			.map(|manipulators| manipulators.anchor)
 			.collect::<Vec<DVec2>>();
@@ -3824,12 +3782,12 @@ mod test {
 		square.with_attribute_mut_or_default(ATTR_TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
 		let bounding_box = BoundingBoxNodeMapped { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
 		let bounding_box = bounding_box.element(0).unwrap();
-		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
+		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
-			.region_manipulator_groups()
+			.stroke_manipulator_groups()
 			.next()
 			.unwrap()
-			.1
+			.0
 			.iter()
 			.map(|manipulators| manipulators.anchor)
 			.collect::<Vec<DVec2>>();
@@ -3861,9 +3819,9 @@ mod test {
 		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(copy_to_points))).await);
 		let combined_copy_to_points = combined.element(0).unwrap();
 
-		assert_eq!(combined_copy_to_points.region_manipulator_groups().count(), expected_points.len());
+		assert_eq!(combined_copy_to_points.stroke_manipulator_groups().count(), expected_points.len());
 
-		for (index, (_, manipulator_groups)) in combined_copy_to_points.region_manipulator_groups().enumerate() {
+		for (index, (manipulator_groups, _)) in combined_copy_to_points.stroke_manipulator_groups().enumerate() {
 			let offset = expected_points[index];
 			let manipulator_groups_anchors = manipulator_groups.iter().map(|manipulators| manipulators.anchor).collect::<Vec<DVec2>>();
 			assert_eq!(
@@ -3917,7 +3875,7 @@ mod test {
 	async fn poisson() {
 		let poisson_points = super::scatter_points(
 			Footprint::default(),
-			vector_item_from_bezpath(Ellipse::from_rect(Rect::new(-50., -50., 50., 50.)).to_path(DEFAULT_ACCURACY)),
+			vector_item_from_bezpath(ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.))),
 			Item::new_from_element(10. * std::f64::consts::SQRT_2),
 			Item::new_from_element(0),
 		)

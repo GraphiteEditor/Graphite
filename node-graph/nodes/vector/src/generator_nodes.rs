@@ -4,10 +4,12 @@ use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
-use vector_types::subpath;
+use vector_types::vector::VectorExt;
+use vector_types::vector::algorithms::shapes;
+use vector_types::vector::misc::BezierHandles;
 use vector_types::vector::misc::{ArcType, AsU64, BoxCorners, GridType};
 use vector_types::vector::misc::{HandleId, SpiralType};
-use vector_types::vector::{PointId, SegmentId, StrokeId};
+use vector_types::vector::{PointId, SegmentId};
 
 /// Generates a circle shape with a chosen radius.
 #[node_macro::node(category("Vector: Shape"))]
@@ -19,7 +21,7 @@ fn circle(
 	radius: Item<f64>,
 ) -> Item<Vector> {
 	let radius = radius.element().abs();
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
+	Item::new_from_element(Vector::from_bezpath(shapes::ellipse_bezpath(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
@@ -38,15 +40,11 @@ fn arc(
 	arc_type: Item<ArcType>,
 ) -> Item<Vector> {
 	let (radius, start_angle, sweep_angle, arc_type) = (*radius.element(), *start_angle.element(), *sweep_angle.element(), arc_type.into_element());
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
+	Item::new_from_element(Vector::from_bezpath(shapes::arc_bezpath(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
-		match arc_type {
-			ArcType::Open => subpath::ArcType::Open,
-			ArcType::Closed => subpath::ArcType::Closed,
-			ArcType::PieSlice => subpath::ArcType::PieSlice,
-		},
+		arc_type,
 	)))
 }
 
@@ -69,7 +67,7 @@ fn spiral(
 		*outer_radius.element(),
 		*angular_resolution.element(),
 	);
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
+	Item::new_from_element(Vector::from_bezpath(shapes::spiral_bezpath(
 		inner_radius,
 		outer_radius,
 		turns,
@@ -95,7 +93,7 @@ fn ellipse(
 	let corner1 = -radius;
 	let corner2 = radius;
 
-	let mut ellipse = Vector::from_subpath(subpath::Subpath::new_ellipse(corner1, corner2));
+	let mut ellipse = Vector::from_bezpath(shapes::ellipse_bezpath(corner1, corner2));
 
 	let len = ellipse.segment_domain.ids().len();
 	for i in 0..len {
@@ -143,7 +141,7 @@ fn rectangle(
 		radii
 	};
 
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., radii)))
+	Item::new_from_element(Vector::from_bezpath(shapes::rounded_rectangle_bezpath(size / -2., size / 2., radii)))
 }
 
 /// Builds a set of four corner values, such as a rectangle's corner radii, from a list of one, two, three, or four values.
@@ -171,8 +169,7 @@ fn regular_polygon<T: AsU64>(
 	radius: Item<f64>,
 ) -> Item<Vector> {
 	let points = sides.element().as_u64();
-	let radius: f64 = *radius.element() * 2.;
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
+	Item::new_from_element(Vector::from_bezpath(shapes::regular_polygon_bezpath(DVec2::ZERO, points, *radius.element())))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
@@ -192,10 +189,7 @@ fn star<T: AsU64>(
 	radius_2: Item<f64>,
 ) -> Item<Vector> {
 	let points = sides.element().as_u64();
-	let diameter: f64 = *radius_1.element() * 2.;
-	let inner_diameter = *radius_2.element() * 2.;
-
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
+	Item::new_from_element(Vector::from_bezpath(shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element())))
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -253,11 +247,7 @@ fn qr_code(
 				for x in 0..dimension {
 					if qr_code.get_module(x as i32, y as i32) {
 						let corner1 = DVec2::new(x as f64, y as f64);
-						let corner2 = corner1 + DVec2::splat(1.);
-						vector.append_subpath(
-							subpath::Subpath::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true),
-							false,
-						);
+						vector.append_bezpath(shapes::rectangle_bezpath(corner1, corner1 + DVec2::splat(1.)));
 					}
 				}
 			}
@@ -285,12 +275,12 @@ fn arrow(
 	#[default(20)] head_length: Item<PixelLength>,
 ) -> Item<Vector> {
 	let (arrow_to, shaft_width, head_width, head_length) = (*arrow_to.element(), *shaft_width.element(), *head_width.element(), *head_length.element());
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
+	Item::new_from_element(Vector::from_bezpath(shapes::arrow_bezpath(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
 fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: Item<PixelSize>) -> Item<Vector> {
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, *line_to.element())))
+	Item::new_from_element(Vector::from_bezpath(shapes::line_bezpath(DVec2::ZERO, *line_to.element())))
 }
 
 trait GridSpacing {
@@ -374,9 +364,7 @@ fn grid<T: GridSpacing>(
 			// Helper function to connect points with line segments.
 			let mut push_segment = |to_index: Option<usize>| {
 				if let Some(other_index) = to_index {
-					vector
-						.segment_domain
-						.push(segment_id.next_id(), other_index, current_index, subpath::BezierHandles::Linear, StrokeId::ZERO);
+					vector.segment_domain.push(segment_id.next_id(), other_index, current_index, BezierHandles::Linear);
 				}
 			};
 
@@ -403,6 +391,8 @@ fn grid<T: GridSpacing>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use kurbo::ParamCurve;
+	use vector_types::vector::misc::point_to_dvec2;
 
 	fn item<T>(value: T) -> Item<T> {
 		Item::new_from_element(value)
@@ -417,14 +407,11 @@ mod tests {
 		// Works properly
 		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((30., 30.).into()), item(true));
 		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.element().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.element().segment_bezier_iter() {
-			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
-			assert!(
-				((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
-				"Length of {} should be 10",
-				(bezier.start - bezier.end).length()
-			);
+		assert_eq!(grid.element().segment_iter().count(), 4 * 5 + 4 * 9);
+		for (_, segment, _, _) in grid.element().segment_iter() {
+			assert!(matches!(segment, kurbo::PathSeg::Line(_)));
+			let span = point_to_dvec2(segment.start()) - point_to_dvec2(segment.end());
+			assert!((span.length() - 10.).abs() < 1e-5, "Length of {} should be 10", span.length());
 		}
 	}
 
@@ -432,10 +419,10 @@ mod tests {
 	fn skew_isometric_grid_test() {
 		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((40., 30.).into()), item(true));
 		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.element().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.element().segment_bezier_iter() {
-			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
-			let vector = bezier.start - bezier.end;
+		assert_eq!(grid.element().segment_iter().count(), 4 * 5 + 4 * 9);
+		for (_, segment, _, _) in grid.element().segment_iter() {
+			assert!(matches!(segment, kurbo::PathSeg::Line(_)));
+			let vector = point_to_dvec2(segment.start()) - point_to_dvec2(segment.end());
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
 			assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {angle}")
 		}
@@ -443,10 +430,10 @@ mod tests {
 
 	#[test]
 	fn grid_disconnected_cells_test() {
-		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath with a fillable region.
+		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath.
 		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_u32), item(3_u32), item((30., 30.).into()), item(false));
 		let vector = grid.element();
-		assert_eq!(vector.region_domain.ids().len(), 4);
+		assert_eq!(vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count(), 4);
 		assert_eq!(vector.point_domain.ids().len(), 4 * 4);
 		assert_eq!(vector.segment_domain.ids().len(), 4 * 4);
 

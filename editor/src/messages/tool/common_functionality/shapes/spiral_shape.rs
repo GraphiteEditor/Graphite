@@ -14,7 +14,7 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::subpath::{calculate_growth_factor, spiral_point};
+use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
 

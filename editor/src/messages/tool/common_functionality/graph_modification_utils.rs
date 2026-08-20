@@ -11,7 +11,6 @@ use graphene_std::Color;
 use graphene_std::choice_type::{ChoiceTypeStatic, VariantMetadata};
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
-use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{
@@ -172,7 +171,7 @@ pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifie
 	let transform = document.metadata().transform_to_document(layer);
 	let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
 
-	let segment = vector.segment_bezier_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
+	let segment = vector.segment_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
 	let Some((segment, _, mut segment_start_point, mut segment_end_point)) = segment else {
 		log::error!("Could not get the segment for second_endpoint.");
 		return;
@@ -208,15 +207,6 @@ pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifie
 	let id = SegmentId::generate();
 	let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
-}
-
-/// Create a new vector layer.
-pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
-	let insert_index = 0;
-	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index });
-	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
-
-	LayerNodeIdentifier::new_unchecked(id)
 }
 
 /// Create a new bitmap layer.

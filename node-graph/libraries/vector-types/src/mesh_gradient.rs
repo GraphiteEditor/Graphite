@@ -7,11 +7,10 @@ use kurbo::{BezPath, ParamCurve, PathSeg};
 use crate::{
 	Vector,
 	gradient::{GradientInterpolation, GradientSpace, color_from_gradient_space_channels, gradient_space_channels},
-	subpath::{BezierHandles, pathseg_points},
 	vector::{
-		PointId, SegmentId, StrokeId,
+		PointId, SegmentId,
 		algorithms::util::pathseg_tangent,
-		misc::{HandleId, HandleType, point_to_dvec2},
+		misc::{BezierHandles, HandleId, HandleType, pathseg_points, point_to_dvec2},
 	},
 };
 
@@ -321,7 +320,6 @@ impl MeshGradient {
 					corner_points[start_index],
 					corner_points[end_index],
 					line_to_cubic_bezier_handles(positions[start_index], positions[end_index]),
-					StrokeId::ZERO,
 				);
 				horizontal_edges.push(segment_id);
 			}
@@ -339,7 +337,6 @@ impl MeshGradient {
 					corner_points[start_index],
 					corner_points[end_index],
 					line_to_cubic_bezier_handles(positions[start_index], positions[end_index]),
-					StrokeId::ZERO,
 				);
 				vertical_edges.push(segment_id);
 			}
@@ -398,10 +395,10 @@ impl MeshGradient {
 		let right_edge_id = *self.vertical_edges.get(row, column + 1)?;
 
 		let edges = [
-			self.mesh_geometry.path_segment_from_id(top_edge_id)?,
-			self.mesh_geometry.path_segment_from_id(bottom_edge_id)?,
-			self.mesh_geometry.path_segment_from_id(left_edge_id)?,
-			self.mesh_geometry.path_segment_from_id(right_edge_id)?,
+			self.mesh_geometry.segment_from_id(top_edge_id)?,
+			self.mesh_geometry.segment_from_id(bottom_edge_id)?,
+			self.mesh_geometry.segment_from_id(left_edge_id)?,
+			self.mesh_geometry.segment_from_id(right_edge_id)?,
 		];
 
 		Some(MeshPatch { index, corners, colors, edges })
@@ -549,8 +546,7 @@ impl MeshGradient {
 			.map(|across| {
 				let [edge_row, edge_column] = axis.physical_indices(across, split_patch_index);
 				let segment_id = *split_edge_grid.get(edge_row, edge_column)?;
-				let [start_point_id, end_point_id] = self.mesh_geometry.points_from_id(segment_id)?;
-				let segment = self.mesh_geometry.path_segment_from_id(segment_id)?;
+				let (start_point_id, end_point_id, segment) = self.mesh_geometry.segment_points_from_id(segment_id)?;
 				Some(SegmentToSplit {
 					segment_id,
 					start_point_id,
@@ -588,13 +584,11 @@ impl MeshGradient {
 			let second_half = pathseg_points(source.segment.subsegment(time..1.));
 
 			let first_segment_id = self.mesh_geometry.segment_domain.next_id();
-			self.mesh_geometry
-				.push(first_segment_id, source.start_point_id, inserted_corner, (first_half.p1, first_half.p2), StrokeId::ZERO);
+			self.mesh_geometry.push(first_segment_id, source.start_point_id, inserted_corner, (first_half.p1, first_half.p2));
 			first_split_edges.push(first_segment_id);
 
 			let second_segment_id = self.mesh_geometry.segment_domain.next_id();
-			self.mesh_geometry
-				.push(second_segment_id, inserted_corner, source.end_point_id, (second_half.p1, second_half.p2), StrokeId::ZERO);
+			self.mesh_geometry.push(second_segment_id, inserted_corner, source.end_point_id, (second_half.p1, second_half.p2));
 			second_split_edges.push(second_segment_id);
 		}
 
@@ -604,8 +598,7 @@ impl MeshGradient {
 			let &[start, end] = corner_pair else { unreachable!() };
 			let &[start_position, end_position] = position_pair else { unreachable!() };
 			let connecting_segment_id = self.mesh_geometry.segment_domain.next_id();
-			self.mesh_geometry
-				.push(connecting_segment_id, start, end, line_to_cubic_bezier_handles(start_position, end_position), StrokeId::ZERO);
+			self.mesh_geometry.push(connecting_segment_id, start, end, line_to_cubic_bezier_handles(start_position, end_position));
 			connecting_edges.push(connecting_segment_id);
 		}
 
@@ -651,10 +644,9 @@ impl MeshGradient {
 			let [second_row, second_column] = axis.physical_indices(across, grid_line_index);
 			let first_segment_id = *split_edge_grid.get(first_row, first_column)?;
 			let second_segment_id = *split_edge_grid.get(second_row, second_column)?;
-			let first_segment = self.mesh_geometry.path_segment_from_id(first_segment_id)?.to_cubic();
-			let second_segment = self.mesh_geometry.path_segment_from_id(second_segment_id)?.to_cubic();
-			let [start_point_id, _] = self.mesh_geometry.points_from_id(first_segment_id)?;
-			let [_, end_point_id] = self.mesh_geometry.points_from_id(second_segment_id)?;
+			let (start_point_id, _, first_segment) = self.mesh_geometry.segment_points_from_id(first_segment_id)?;
+			let (_, end_point_id, second_segment) = self.mesh_geometry.segment_points_from_id(second_segment_id)?;
+			let [first_segment, second_segment] = [first_segment, second_segment].map(|segment| segment.to_cubic());
 
 			// Each half's control point was shortened by the split that produced it,
 			// so scale it back out by the share of the merged parameter range that half covers.
@@ -672,7 +664,7 @@ impl MeshGradient {
 			};
 
 			let merged_segment_id = self.mesh_geometry.segment_domain.next_id();
-			self.mesh_geometry.push(merged_segment_id, start_point_id, end_point_id, merged_handles, StrokeId::ZERO);
+			self.mesh_geometry.push(merged_segment_id, start_point_id, end_point_id, merged_handles);
 			merged_edges.push(merged_segment_id);
 			removed_edge_ids.extend([first_segment_id, second_segment_id]);
 		}
@@ -1442,13 +1434,13 @@ mod tests {
 			},
 		)
 		.unwrap();
-		let before = mesh.mesh_geometry.path_segment_from_id(edge).unwrap().to_cubic();
+		let before = mesh.mesh_geometry.segment_from_id(edge).unwrap().to_cubic();
 
 		mesh.insert_grid_line(edge, GradientSpace::RgbGamma, GradientInterpolation::Smooth, 0.5).unwrap();
 		let inserted = *mesh.vertical_edges.get(0, 1).unwrap();
 		mesh.remove_edge(inserted).unwrap();
 
-		let merged = mesh.mesh_geometry.path_segment_from_id(*mesh.horizontal_edges.get(0, 0).unwrap()).unwrap().to_cubic();
+		let merged = mesh.mesh_geometry.segment_from_id(*mesh.horizontal_edges.get(0, 0).unwrap()).unwrap().to_cubic();
 		for (actual, expected) in [(merged.p0, before.p0), (merged.p1, before.p1), (merged.p2, before.p2), (merged.p3, before.p3)] {
 			assert_position(point_to_dvec2(actual), point_to_dvec2(expected));
 		}

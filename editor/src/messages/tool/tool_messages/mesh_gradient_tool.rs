@@ -12,9 +12,8 @@ use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, 
 use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::subpath::{BezierHandles, pathseg_points};
 use graphene_std::vector::algorithms::util::pathseg_tangent;
-use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::misc::{BezierHandles, dvec2_to_point, pathseg_points, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::style::{GradientSpace, MeshGradientSurface};
 use graphene_std::vector::{GradientInterpolation, HandleId, MeshGradient, SegmentId};
 use kurbo::{DEFAULT_ACCURACY, ParamCurve, ParamCurveNearest};
@@ -538,8 +537,8 @@ impl Fsm for MeshGradientToolFsmState {
 						}
 
 						if overlay_context.visibility_settings.handles() {
-							for (segment_id, bezier, _, _) in geometry.segment_bezier_iter() {
-								overlay_bezier_handles(bezier, segment_id, mesh_to_viewport, |_| false, &mut overlay_context);
+							for (segment_id, segment, _, _) in geometry.segment_iter() {
+								overlay_bezier_handles(segment, segment_id, mesh_to_viewport, |_| false, &mut overlay_context);
 							}
 						}
 
@@ -766,7 +765,7 @@ impl Fsm for MeshGradientToolFsmState {
 						let hidden_distance_squared = HIDE_HANDLE_DISTANCE.powi(2);
 
 						// Change the handle position.
-						for (segment_id, bezier, _, _) in gradient.geometry().segment_bezier_iter() {
+						for (segment_id, segment, _, _) in gradient.geometry().segment_iter() {
 							let mut consider_handle = |handle_id: HandleId, handle: DVec2, anchor: DVec2, _other_anchor: Option<DVec2>| {
 								let handle_viewport = mesh_to_viewport.transform_point2(handle);
 								let anchor_viewport = mesh_to_viewport.transform_point2(anchor);
@@ -782,14 +781,17 @@ impl Fsm for MeshGradientToolFsmState {
 								}
 							};
 
-							match bezier.handles {
+							let segment_start = point_to_dvec2(segment.start());
+							let segment_end = point_to_dvec2(segment.end());
+
+							match segment_to_handles(&segment) {
 								BezierHandles::Linear => {}
 								BezierHandles::Quadratic { handle } => {
-									consider_handle(HandleId::primary(segment_id), handle, bezier.start, Some(bezier.end));
+									consider_handle(HandleId::primary(segment_id), handle, segment_start, Some(segment_end));
 								}
 								BezierHandles::Cubic { handle_start, handle_end } => {
-									consider_handle(HandleId::primary(segment_id), handle_start, bezier.start, None);
-									consider_handle(HandleId::end(segment_id), handle_end, bezier.end, None);
+									consider_handle(HandleId::primary(segment_id), handle_start, segment_start, None);
+									consider_handle(HandleId::end(segment_id), handle_end, segment_end, None);
 								}
 							}
 						}
