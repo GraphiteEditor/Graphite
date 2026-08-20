@@ -371,16 +371,20 @@ name = "brush-nodes"
 version = "0.1.0"
 dependencies = [
  "brush-types",
+ "bytemuck",
  "core-types",
  "dyn-any",
  "glam",
  "graphene-hash",
  "graphic-types",
+ "half",
  "node-macro",
  "raster-nodes",
  "raster-types",
  "serde",
  "tokio",
+ "wgpu",
+ "wgpu-executor",
 ]
 
 [[package]]

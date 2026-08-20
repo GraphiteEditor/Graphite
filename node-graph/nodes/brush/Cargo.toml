@@ -17,12 +17,16 @@ brush-types = { workspace = true }
 core-types = { workspace = true }
 graphene-hash = { workspace = true }
 graphic-types = { workspace = true }
-raster-types = { workspace = true }
+raster-types = { workspace = true, features = ["wgpu"] }
 raster-nodes = { workspace = true }
+wgpu-executor = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies
 glam = { workspace = true }
+half = { workspace = true }
+bytemuck = { workspace = true }
+wgpu = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true, features = ["derive"] }
