@@ -1,29 +1,9 @@
+use core_types::CacheHash;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::render_complexity::RenderComplexity;
-use core_types::{CacheHash, Color};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, Vec2};
 use std::f32::consts::{PI, TAU};
-
-#[derive(Clone, Copy, Debug, PartialEq, CacheHash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct BrushStyle {
-	pub color: Color,
-	pub diameter: f64,
-	pub hardness: f64,
-	pub flow: f64,
-}
-
-impl Default for BrushStyle {
-	fn default() -> Self {
-		Self {
-			color: Color::BLACK,
-			diameter: 20.,
-			hardness: 0.8,
-			flow: 1.,
-		}
-	}
-}
 
 #[derive(Clone, Debug, PartialEq, CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -40,21 +20,10 @@ impl<T: Copy> Channel<T> {
 		}
 	}
 
-	pub fn len(&self) -> Option<usize> {
+	fn len(&self) -> Option<usize> {
 		match self {
 			Self::Uniform(_) => None,
 			Self::Samples(values) => Some(values.len()),
-		}
-	}
-
-	pub fn is_uniform(&self) -> bool {
-		matches!(self, Self::Uniform(_))
-	}
-
-	pub fn is_empty(&self) -> bool {
-		match self {
-			Self::Uniform(_) => false,
-			Self::Samples(values) => values.is_empty(),
 		}
 	}
 }
@@ -114,12 +83,15 @@ impl Stroke {
 	pub fn sample_lerp(&self, index: usize, t: f32) -> Sample {
 		let a = self.sample(index);
 		let b = self.sample((index + 1).min(self.len().saturating_sub(1)));
-		let lerp = |a: f32, b: f32| a + (b - a) * t;
 		Sample {
 			position: a.position.lerp(b.position, t as f64),
-			pressure: lerp(a.pressure, b.pressure),
+			pressure: a.pressure + (b.pressure - a.pressure) * t,
 			tilt: a.tilt.lerp(b.tilt, t),
-			twist: lerp_angle(a.twist, b.twist, t),
+			twist: {
+				let delta = (b.twist - a.twist).rem_euclid(TAU);
+				let delta = if delta > PI { delta - TAU } else { delta };
+				a.twist + delta * t
+			},
 			time: a.time + (b.time - a.time) * t as f64,
 		}
 	}
@@ -156,10 +128,4 @@ pub struct Sample {
 	pub tilt: Vec2,
 	pub twist: f32,
 	pub time: f64,
-}
-
-fn lerp_angle(a: f32, b: f32, t: f32) -> f32 {
-	let delta = (b - a).rem_euclid(TAU);
-	let delta = if delta > PI { delta - TAU } else { delta };
-	a + delta * t
 }
