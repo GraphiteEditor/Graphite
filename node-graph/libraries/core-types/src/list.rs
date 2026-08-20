@@ -62,8 +62,14 @@ pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 pub const ATTR_FILL: &str = "fill";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
 pub const ATTR_STROKE: &str = "stroke";
-/// Brush stroke item's `brush_types::BrushStyle` — the brush settings its strokes were drawn with.
-pub const ATTR_BRUSH_STYLE: &str = "brush_style";
+/// Brush stroke item's `Color` its strokes are painted with.
+pub const ATTR_COLOR: &str = "color";
+/// Brush stroke item's tip diameter in document-space units (`f64`).
+pub const ATTR_DIAMETER: &str = "diameter";
+/// Brush stroke item's edge hardness from `0.` (softest) to `1.` (hardest) (`f64`).
+pub const ATTR_HARDNESS: &str = "hardness";
+/// Brush stroke item's per-pass paint coverage from `0.` to `1.` (`f64`).
+pub const ATTR_FLOW: &str = "flow";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
 /// Text item's font, as a `Resource` of the loaded font file.
