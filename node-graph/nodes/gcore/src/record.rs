@@ -162,12 +162,16 @@ fn extend<T>(
 	}
 }
 
-/// The top level sums both sides; inner levels forward the base's, which the
-/// new side must match (rectangular).
+/// The top level sums both sides; inner levels must agree (rectangular), a
+/// free side defers to the other.
 fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
 	match level.top() {
 		true => Extent::sum(base.at(level), new.at(level)),
-		false => base.at(level),
+		false => base.at(level).zip(new.at(level)).and_then(|extents| match extents {
+			(Extent::Free, other) | (other, Extent::Free) => GPoll::Final(other),
+			(base, new) if base == new => GPoll::Final(base),
+			_ => GPoll::error("extend inner extents differ"),
+		}),
 	}
 }
 
@@ -890,6 +894,85 @@ mod tests {
 			// SAFETY: the element and attrs were read out above, so no borrow into this lane's frames remains.
 			unsafe { stack::rewind(mark) };
 		}
+	}
+
+	#[test]
+	fn extend_forwards_matching_inner_extents_and_rejects_ragged() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let content_layout = leveled_f64_layout(&[]);
+		let meta = || core_types::record::LayoutMeta {
+			sources: vec![0],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 1,
+			folded: None,
+		};
+		let extend_meta = || core_types::record::LayoutMeta {
+			sources: vec![0, 1],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 0,
+			folded: None,
+		};
+		let (base_count, base_count_layout) = lifted_value(2u32);
+		let (base_reverse, base_reverse_layout) = lifted_value(false);
+		let (new_count, new_count_layout) = lifted_value(4u32);
+		let (new_reverse, new_reverse_layout) = lifted_value(false);
+		reserve_for(&[&content_layout, &base_count_layout, &new_count_layout]);
+
+		let repeat = |elements: Vec<f64>, count_edge, reverse_edge, count_layout: &Layout, reverse_layout: &Layout| {
+			let content = LeveledSourceNode {
+				layout: content_layout.clone(),
+				elements,
+				field: None,
+			};
+			install(
+				RepeatNode::new(RecordSource::new(content, &content_layout, &content_layout), count_edge, reverse_edge, &content_layout, count_layout, reverse_layout),
+				meta(),
+				&[Some(&content_layout)],
+			)
+		};
+		let base = repeat(vec![1., 2., 3.], base_count, base_reverse, &base_count_layout, &base_reverse_layout);
+		let two_level = Node::<ContextImpl>::layout(&base).clone();
+		assert_eq!(two_level.depth, 2);
+
+		// Matching inner extents: the top concatenates, the inner forwards.
+		let new = repeat(vec![10., 20., 30.], new_count, new_reverse, &new_count_layout, &new_reverse_layout);
+		let node = install(ExtendNode::new(base, new, &two_level), extend_meta(), &[Some(&two_level), Some(&two_level)]);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(out.depth, 2);
+		assert_eq!(node.extent_at(&ctx, 1), GPoll::Final(Extent::Exactly(6)), "the top level sums both sides' copies");
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(3)), "the inner level forwards the shared extent");
+
+		let head = ctx.index_head();
+		for (lane, element) in [(0u64, 1.), (5, 3.), (6, 10.), (17, 30.)] {
+			let mark = stack::sp();
+			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane)) else {
+				panic!("expected a final record at lane {lane}");
+			};
+			assert_eq!(unsafe { out.rec(&value).element::<f64>() }, element, "flat lane {lane}");
+			// SAFETY: the element was read out above, so no borrow into this lane's frames remains.
+			unsafe { stack::rewind(mark) };
+		}
+
+		// Mismatched inner extents: the top still sums, the inner query errors.
+		let (base_count, base_count_layout) = lifted_value(2u32);
+		let (base_reverse, base_reverse_layout) = lifted_value(false);
+		let (new_count, new_count_layout) = lifted_value(4u32);
+		let (new_reverse, new_reverse_layout) = lifted_value(false);
+		let base = repeat(vec![1., 2., 3.], base_count, base_reverse, &base_count_layout, &base_reverse_layout);
+		let new = repeat(vec![10., 20., 30., 40.], new_count, new_reverse, &new_count_layout, &new_reverse_layout);
+		let ragged = install(ExtendNode::new(base, new, &two_level), extend_meta(), &[Some(&two_level), Some(&two_level)]);
+		assert_eq!(ragged.extent_at(&ctx, 1), GPoll::Final(Extent::Exactly(6)));
+		assert!(matches!(ragged.extent_at(&ctx, 0), GPoll::Error(_)), "ragged inner extents must not report a flat total");
 	}
 
 	#[test]
