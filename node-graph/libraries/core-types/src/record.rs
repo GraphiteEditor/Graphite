@@ -499,6 +499,8 @@ where
 	let base = scratch.as_mut_ptr().cast::<u8>();
 	let mut local = *input;
 	let mut finality = crate::gpoll::Finality::AllFinal;
+	let mut filled = len;
+	let mut hint = crate::gpoll::Extent::AtLeast(range.end as usize);
 	for lane in 0..len {
 		local.set_index(range.start + lane as u64);
 		let mark = stack::sp();
@@ -510,6 +512,16 @@ where
 			}
 			GPoll::Pending => return BatchStatus::Pending,
 			GPoll::Fallback(boxed) => return BatchStatus::Error(boxed.1),
+			// A lane past a lower-bound level ends the data: the fill comes
+			// back short and the hint turns exact.
+			GPoll::Error(error) if error.kind == crate::gpoll::ErrorKind::PastEnd => {
+				filled = lane;
+				hint = crate::gpoll::Extent::Exactly(range.start as usize + lane);
+				// SAFETY: the failed lane produced no record, so nothing above
+				// its mark is live.
+				unsafe { stack::rewind(mark) };
+				break;
+			}
 			GPoll::Error(error) => return BatchStatus::Error(*error),
 		};
 		// SAFETY: the lane region is in-bounds by the scratch check, and the
@@ -519,8 +531,8 @@ where
 			stack::rewind(mark);
 		}
 	}
-	// SAFETY: all `len` lanes were filled above with records of `layout`.
-	BatchStatus::Filled(unsafe { crate::node::RecordBatchMut::new(scratch, len, layout) }, finality)
+	// SAFETY: the first `filled` lanes were filled above with records of `layout`.
+	BatchStatus::Filled(unsafe { crate::node::RecordBatchMut::new(scratch, filled, layout) }, finality, hint)
 }
 
 /// The driver a consumer runs on a record edge: a resident batch returns with

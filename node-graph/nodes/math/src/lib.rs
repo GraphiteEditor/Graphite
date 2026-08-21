@@ -1143,7 +1143,7 @@ mod graphene_test {
 		// One u64 word per lane: the uninstalled layout keeps the f64 inline.
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
 		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch));
-		let BatchStatus::Filled(batch, finality) = status else {
+		let BatchStatus::Filled(batch, finality, _) = status else {
 			panic!("expected filled, got {status:?}");
 		};
 		let mut got = Vec::new();

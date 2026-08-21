@@ -7,11 +7,15 @@ use std::ops::Range;
 
 #[derive(Debug)]
 pub enum BatchStatus<'a> {
-	/// Producer-resident lanes, shared: read-only for the caller.
-	Lent(RecordBatch<'a>, Finality),
+	/// Producer-resident lanes, shared: read-only for the caller. The extent
+	/// is the producer's knowledge of the level's total after serving the
+	/// range: a sound lower bound, or exact; a batch shorter than the
+	/// requested range carries `Exactly` and marks the end of the data.
+	Lent(RecordBatch<'a>, Finality, Extent),
 	/// The caller's scratch, filled: the caller is the exclusive owner and may
-	/// mutate the lanes or reclaim the buffer for in-place reuse.
-	Filled(RecordBatchMut<'a>, Finality),
+	/// mutate the lanes or reclaim the buffer for in-place reuse. The extent
+	/// hint is as for `Lent`.
+	Filled(RecordBatchMut<'a>, Finality, Extent),
 	/// No batch implementation behind this edge; a driver answers with the
 	/// per-lane eval and copy-out loop ([`crate::record::fill_frames`]).
 	Unbatched,

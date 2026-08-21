@@ -1145,8 +1145,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						};
 						let __start: u64 = #start;
 						let __batch = match #core_types::record::materialize_batch(&self.#name, __input, __start..__start + __count as u64, __arena) {
-							#core_types::node::BatchStatus::Lent(__batch, _) => __batch,
-							#core_types::node::BatchStatus::Filled(__batch, _) => __batch.into_shared(),
+							#core_types::node::BatchStatus::Lent(__batch, ..) => __batch,
+							#core_types::node::BatchStatus::Filled(__batch, ..) => __batch.into_shared(),
 							#core_types::node::BatchStatus::Pending => #pending,
 							#core_types::node::BatchStatus::Error(__error) => #batch_error,
 							_ => #batch_failed,
@@ -1343,8 +1343,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 									_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("extent over a non-exact ranked input"))),
 								};
 								match #core_types::record::materialize_batch(&self.#name, __input, 0..__count as u64, __arena) {
-									#core_types::node::BatchStatus::Lent(__batch, _) => #core_types::gpoll::GPoll::Final(unsafe { #core_types::node::List::<#ty>::new(__batch) }),
-									#core_types::node::BatchStatus::Filled(__batch, _) => #core_types::gpoll::GPoll::Final(unsafe { #core_types::node::List::<#ty>::new(__batch.into_shared()) }),
+									#core_types::node::BatchStatus::Lent(__batch, ..) => #core_types::gpoll::GPoll::Final(unsafe { #core_types::node::List::<#ty>::new(__batch) }),
+									#core_types::node::BatchStatus::Filled(__batch, ..) => #core_types::gpoll::GPoll::Final(unsafe { #core_types::node::List::<#ty>::new(__batch.into_shared()) }),
 									#core_types::node::BatchStatus::Pending => #core_types::gpoll::GPoll::Pending,
 									#core_types::node::BatchStatus::Error(__error) => #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(__error)),
 									_ => #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("extent could not materialize a ranked input"))),
@@ -1938,6 +1938,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					#(#hoisted_clamps)*
 					let __frames = __scratch.as_mut_ptr().cast::<u8>();
 					let mut __finality = #core_types::gpoll::Finality::AllFinal;
+					let mut __filled = __len;
+					let mut __hint = #core_types::gpoll::Extent::AtLeast(__range.end as usize);
 					let mut __lane_ctx = __base_ctx;
 					for __lane in 0..__len {
 						#core_types::context::InjectIndex::set_index(&mut __lane_ctx, __range.start + __lane as u64);
@@ -1955,6 +1957,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							}
 							#core_types::gpoll::GPoll::Pending => return #core_types::node::BatchStatus::Pending,
 							#core_types::gpoll::GPoll::Fallback(__boxed) => return #core_types::node::BatchStatus::Error(__boxed.1),
+							// A lane past a lower-bound level ends the data: the fill
+							// comes back short and the hint turns exact.
+							#core_types::gpoll::GPoll::Error(__error) if __error.kind == #core_types::gpoll::ErrorKind::PastEnd => {
+								__filled = __lane;
+								__hint = #core_types::gpoll::Extent::Exactly(__range.start as usize + __lane);
+								unsafe { #core_types::record::stack::rewind(__lane_mark) };
+								break;
+							}
 							#core_types::gpoll::GPoll::Error(__error) => return #core_types::node::BatchStatus::Error(*__error),
 						};
 						// SAFETY: the lane region is in-bounds by the scratch check,
@@ -1967,9 +1977,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					// SAFETY: every lane was copied into the caller's scratch, so
 					// nothing above the entry mark is live.
 					unsafe { #core_types::record::stack::rewind(__entry_mark) };
-					// SAFETY: all `__len` lanes were filled above with records of
-					// the node's layout.
-					#core_types::node::BatchStatus::Filled(unsafe { #core_types::node::RecordBatchMut::new(__scratch, __len, __node_layout) }, __finality)
+					// SAFETY: the first `__filled` lanes were filled above with
+					// records of the node's layout.
+					#core_types::node::BatchStatus::Filled(unsafe { #core_types::node::RecordBatchMut::new(__scratch, __filled, __node_layout) }, __finality, __hint)
 				}
 			}
 		}

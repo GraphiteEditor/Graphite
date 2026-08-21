@@ -171,8 +171,8 @@ where
 		_ => return Err(GPoll::error("map content extent is not exact")),
 	};
 	match materialize_batch(content, ctx, 0..count as u64, arena) {
-		BatchStatus::Lent(batch, _) => Ok(unsafe { core_types::node::List::new(batch) }),
-		BatchStatus::Filled(batch, _) => Ok(unsafe { core_types::node::List::new(batch.into_shared()) }),
+		BatchStatus::Lent(batch, ..) => Ok(unsafe { core_types::node::List::new(batch) }),
+		BatchStatus::Filled(batch, ..) => Ok(unsafe { core_types::node::List::new(batch.into_shared()) }),
 		BatchStatus::Pending => Err(GPoll::Pending),
 		BatchStatus::Error(error) => Err(GPoll::Error(Box::new(error))),
 		_ => Err(GPoll::error("map content could not materialize")),
@@ -533,7 +533,7 @@ mod tests {
 		let scoped = ctx.promoted(&head, 0);
 
 		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 5 * out.lane_stride() / 8];
-		let core_types::node::BatchStatus::Filled(batch, _) = node.eval_batch(&scoped, 0..5, Some(&mut scratch)) else {
+		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..5, Some(&mut scratch)) else {
 			panic!("expected a filled batch");
 		};
 		let batch = batch.into_shared();
@@ -643,7 +643,7 @@ mod tests {
 		let scoped = ctx.promoted(&head, 0);
 
 		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 3 * out.lane_stride() / 8];
-		let core_types::node::BatchStatus::Filled(batch, _) = node.eval_batch(&scoped, 0..3, Some(&mut scratch)) else {
+		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..3, Some(&mut scratch)) else {
 			panic!("expected a filled batch");
 		};
 		let batch = batch.into_shared();
