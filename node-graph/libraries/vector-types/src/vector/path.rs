@@ -79,6 +79,15 @@ impl Path {
 	}
 }
 
+/// Appends a segment to a bezpath already positioned at that segment's start point.
+pub fn append_segment(bezpath: &mut BezPath, segment: PathSeg) {
+	match segment {
+		PathSeg::Line(line) => bezpath.line_to(line.p1),
+		PathSeg::Quad(quad) => bezpath.quad_to(quad.p1, quad.p2),
+		PathSeg::Cubic(cubic) => bezpath.curve_to(cubic.p1, cubic.p2, cubic.p3),
+	}
+}
+
 /// The paths an item carries beside a vector element, absent when the pool is a bare point cloud.
 pub fn paths_from_item_attributes<T>(item: &Item<T>) -> Option<&List<Path>> {
 	item.attribute(ATTR_PATHS)

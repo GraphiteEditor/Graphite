@@ -1,6 +1,7 @@
 pub mod algorithms;
 pub mod click_target;
 mod connectivity;
+mod contour;
 pub mod misc;
 mod path;
 pub mod reference_point;
@@ -10,6 +11,7 @@ mod vector_modification;
 mod vector_types;
 
 pub use connectivity::*;
+pub use contour::*;
 pub use path::*;
 pub use reference_point::*;
 pub use vector_attributes::*;
