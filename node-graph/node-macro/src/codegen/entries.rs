@@ -240,6 +240,81 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 		})
 		.collect();
 
+	// A ranked input's element generic monomorphizes the kernel, so its
+	// implementations expand to one registry row each; every other slot
+	// (erased routing generics included) is row-invariant. The carried list
+	// mirrors the struct's carried generic parameters in declaration order.
+	let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
+	let ranked_generic_idents: Vec<Ident> = parsed
+		.fn_generics
+		.iter()
+		.filter_map(|param| match param {
+			GenericParam::Type(type_param) if Some(&type_param.ident) != ctx_ident.as_ref() => Some(type_param.ident.clone()),
+			_ => None,
+		})
+		.filter(|ident| {
+			regular_fields.iter().any(|field| match &field.ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, list_levels, .. }) => *list_levels > 0 && crate::codegen::type_contains_ident(ty, ident),
+				_ => false,
+			})
+		})
+		.collect();
+	let ranked_source = |generic: &Ident| {
+		regular_fields.iter().position(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, list_levels, implementations, .. }) => {
+				*list_levels > 0 && !implementations.is_empty() && generic_extractable(ty, generic)
+			}
+			_ => false,
+		})
+	};
+	let carried: Option<Vec<(Ident, usize)>> = ranked_generic_idents.iter().map(|ident| ranked_source(ident).map(|index| (ident.clone(), index))).collect();
+	let Some(carried) = carried else {
+		return quote!();
+	};
+	let impls_of = |index: usize| match &regular_fields[index].ty {
+		ParsedFieldType::Regular(RegularParsedField { implementations, .. }) => implementations.iter().cloned().collect::<Vec<Type>>(),
+		_ => Vec::new(),
+	};
+	let row_count = carried.iter().map(|(_, index)| impls_of(*index).len()).max().unwrap_or(1).max(1);
+	let row_assignments: Vec<Vec<(Ident, Type)>> = (0..row_count)
+		.map(|row| {
+			carried
+				.iter()
+				.filter_map(|(generic, index)| {
+					let impls = impls_of(*index);
+					let row_ty = ir::strip_ilist(&impls[row.min(impls.len() - 1)]).0;
+					let field_ty = match &regular_fields[*index].ty {
+						ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
+						_ => unreachable!("ranked sources are regular fields"),
+					};
+					generic_assignment(&field_ty, &row_ty, generic).map(|ty| (generic.clone(), ty))
+				})
+				.collect()
+		})
+		.collect();
+
+	let entries_name = format_ident!("{}_entries", fn_name);
+	let arity = regular_fields.len();
+	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
+
+	let entries: Vec<TokenStream2> = row_assignments.iter().filter_map(|assignments| {
+	// A row whose assignments did not all solve cannot instantiate the struct.
+	if assignments.len() != carried.len() {
+		return None;
+	}
+	let slots: Vec<SlotKind> = slots
+		.iter()
+		.map(|slot| match slot {
+			SlotKind::BaseGeneric(name) => SlotKind::BaseGeneric(name.clone()),
+			SlotKind::BaseConcrete(ty) => SlotKind::BaseConcrete(substitute_ident_types(ty, assignments)),
+			SlotKind::Value(ty) => SlotKind::Value(substitute_ident_types(ty, assignments)),
+			SlotKind::Extracted(ty) => SlotKind::Extracted(substitute_ident_types(ty, assignments)),
+			SlotKind::Ranked(ty) => SlotKind::Ranked(substitute_ident_types(ty, assignments)),
+			SlotKind::Plain(ty) => SlotKind::Plain(substitute_ident_types(ty, assignments)),
+			SlotKind::Lazy(ty) => SlotKind::Lazy(substitute_ident_types(ty, assignments)),
+		})
+		.collect();
+
 	// Every non-base value/plain/lazy input must be concrete.
 	let values_concrete = regular_fields.iter().zip(&slots).all(|(field, slot)| match slot {
 		SlotKind::BaseGeneric(_) | SlotKind::BaseConcrete(_) => true,
@@ -248,12 +323,8 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 		}
 	});
 	if !values_concrete {
-		return quote!();
+		return None;
 	}
-
-	let entries_name = format_ident!("{}_entries", fn_name);
-	let arity = regular_fields.len();
-	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
 
 	let input_types = slots.iter().map(|slot| match slot {
 		SlotKind::BaseGeneric(name) => quote!(gcore::registry::generic_record_edge_type(#name)),
@@ -304,16 +375,21 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 		quote!(Some(#meta))
 	};
 
-	// The output wire and node wrap follow the output element: a concrete element
-	// is a typed record; a generic or opaque element is an erased record carrying
-	// the first base slot's runtime type.
-	let (io_output, wrap) = match &node.output.shape.element {
-		ir::Element::Concrete(element) => (
+	// The output wire and node wrap follow the output element: a concrete (or
+	// row-assigned) element is a typed record; a generic or opaque element is
+	// an erased record carrying the first base slot's runtime type.
+	let output_element = match &node.output.shape.element {
+		ir::Element::Concrete(element) => Some(substitute_ident_types(element, assignments)),
+		ir::Element::Generic(ident) => assignments.iter().find(|(generic, _)| generic == ident).map(|(_, ty)| ty.clone()),
+		ir::Element::Opaque => None,
+	};
+	let (io_output, wrap) = match &output_element {
+		Some(element) => (
 			quote!(gcore::registry::record_type::<#element>()),
 			quote!(Ok(gcore::registry::EdgeHandle::new_record::<#element>(::std::sync::Arc::new(__node)))),
 		),
-		element => {
-			let name = match element {
+		None => {
+			let name = match &node.output.shape.element {
 				ir::Element::Generic(ident) => ident.to_string(),
 				_ => "T".to_string(),
 			};
@@ -351,26 +427,43 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 		ir::NodeKind::Flip => unreachable!("flip has its own multi-row emitter"),
 	};
 
+	// A carried generic instantiates through the struct's trailing phantom
+	// parameters, so the constructor names the row's types after one inferred
+	// slot per input field.
+	let turbofish = (!carried.is_empty()).then(|| {
+		let underscores = (0..arity).map(|_| quote!(_));
+		let carried_types = carried.iter().filter_map(|(generic, _)| assignments.iter().find(|(ident, _)| ident == generic).map(|(_, ty)| quote!(#ty)));
+		quote!(::<#(#underscores,)* #(#carried_types,)*>)
+	});
+
+	Some(quote! {
+		gcore::registry::RegistryEntry {
+			layout_meta: #layout_meta,
+			io: gcore::registry::NodeIOTypes::new(
+				gcore::concrete!(gcore::context::ContextImpl<'static>),
+				#io_output,
+				vec![#(#input_types),*],
+			),
+			constructor: |inputs| {
+				if inputs.len() != #arity {
+					return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });
+				}
+				let mut inputs = inputs.into_iter();
+				#(#downcasts)*
+				#prelude
+				let __node = #struct_name #turbofish::new(#(#names,)* #new_layout_args);
+				#wrap
+			},
+		}
+	})
+	}).collect();
+
+	if entries.is_empty() {
+		return quote!();
+	}
 	quote! {
 		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
-			vec![gcore::registry::RegistryEntry {
-				layout_meta: #layout_meta,
-				io: gcore::registry::NodeIOTypes::new(
-					gcore::concrete!(gcore::context::ContextImpl<'static>),
-					#io_output,
-					vec![#(#input_types),*],
-				),
-				constructor: |inputs| {
-					if inputs.len() != #arity {
-						return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });
-					}
-					let mut inputs = inputs.into_iter();
-					#(#downcasts)*
-					#prelude
-					let __node = #struct_name::new(#(#names,)* #new_layout_args);
-					#wrap
-				},
-			}]
+			vec![#(#entries),*]
 		}
 	}
 }
