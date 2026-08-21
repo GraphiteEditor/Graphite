@@ -261,16 +261,11 @@ pub fn spiral_bezpath(a: f64, outer_radius: f64, turns: f64, start_angle: f64, d
 }
 
 /// Constructs a teardrop with `corner1` and `corner2` as the two corners of the bounding box.
-pub fn teardrop_bezpath(corner1: DVec2, corner2: DVec2) -> BezPath {
+pub fn teardrop_bezpath(corner1: DVec2, corner2: DVec2, velocity: f64) -> BezPath {
 	let size = (corner1 - corner2).abs();
 
-	// the ratio of height to width at which the bottom half is a perfect circle. the optimal ratio.
-	// it looks good to have this value anywhere from 1.7 to 2.4. I hope to one day have a gizmo for this value.
-	// note also that the node's default values are currently calculated assuming a value of 1.7.
-	let height_width_ratio = 1.7;
-
 	// the bottom half of the teardrop is a circle, upon which these calculations are heavily based
-	let circle_center = DVec2::new((corner1.x + corner2.x) / 2., (corner1.y + (2. * height_width_ratio - 1.) * corner2.y) / (2. * height_width_ratio));
+	let circle_center = DVec2::new((corner1.x + corner2.x) / 2., (corner1.y + (2. * velocity - 1.) * corner2.y) / (2. * velocity));
 
 	let top = DVec2::new(circle_center.x, corner1.y);
 	let bottom = DVec2::new(circle_center.x, corner2.y);
@@ -280,14 +275,14 @@ pub fn teardrop_bezpath(corner1: DVec2, corner2: DVec2) -> BezPath {
 	// because we modify the dimensions vertically, the handle_offset remains the same as
 	// for a circle *horizontally*, but the vertical handle_offset must be adjusted
 	let horizontal_handle_offset = size * HANDLE_OFFSET_FACTOR * 0.5;
-	let vertical_handle_offset = horizontal_handle_offset / height_width_ratio;
+	let vertical_handle_offset = horizontal_handle_offset / velocity;
 
 	// I've found that the teardrop looks better when its sides go up a little steeper than they go down
 	let roundness_multiplier = 1.6;
 	let roundness = vertical_handle_offset * roundness_multiplier;
 
 	// let roundness_multiplier = 0.6;
-	// let roundness = vertical_handle_offset * roundness_multiplier * height_width_ratio;
+	// let roundness = vertical_handle_offset * roundness_multiplier * pointiness;
 
 	// both handles for the top point of the teardrop, to make it pointier
 	let point_handle_multiplier = 0.28;

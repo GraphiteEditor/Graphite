@@ -88,12 +88,17 @@ fn teardrop(
 	#[unit(" px")]
 	#[default(51)]
 	height: Item<f64>,
+	#[default(1.7)]
+	#[range]
+	#[soft(1.4..3.8)]
+	velocity: Item<f64>,
 ) -> Item<Vector> {
 	let radius = DVec2::new(*width.element(), *height.element());
 	let corner1 = -radius;
 	let corner2 = radius;
+	let velocity = *velocity.element();
 
-	let mut teardrop = Vector::from_bezpath(shapes::teardrop_bezpath(corner1, corner2));
+	let mut teardrop = Vector::from_bezpath(shapes::teardrop_bezpath(corner1, corner2, velocity));
 
 	let len = teardrop.segment_domain.ids().len();
 	for i in 0..len - 1 {
