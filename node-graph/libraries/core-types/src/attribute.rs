@@ -253,6 +253,8 @@ attribute! {
 	pub Location("location"): DVec2;
 	/// A regex named-capture-group's name, or empty for unnamed groups.
 	pub Name("name"): &str;
+	/// The document node path of the editor layer owning the item.
+	pub EditorLayerPath("editor:layer_path"): &[crate::uuid::NodeId];
 }
 
 #[cfg(test)]
