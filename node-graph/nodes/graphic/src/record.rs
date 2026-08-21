@@ -2,13 +2,10 @@
 //! expanders whose ragged nesting lives inside `Graphic` values, ahead of the
 //! flip. Wiring is by hand until the compiler pass constructs layouts.
 
-use core_types::arena::Arena;
 use core_types::attribute::{Attr, Transform};
-use core_types::context::{Derived, DeriveCtx, ExtractArena, ExtractIndex, IndexLink, InjectIndex};
+use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
-use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt, Level};
-use core_types::node::{BatchStatus, Node};
-use core_types::record::{DerivedRecordEdge, RecordValue, materialize_batch};
+use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
 use core_types::{ATTR_TRANSFORM, Ctx};
 use glam::DAffine2;
 use graphic_types::graphic::Graphic;
@@ -82,8 +79,9 @@ fn vararg_row(content: core_types::node::List<'_, Graphic>, row: usize) -> core_
 }
 
 /// Rank-model Map: one subgraph invocation per content row, the row riding as
-/// a vararg; the subgraph's own level nests under the content level.
-#[node_macro::node(category("Test"), extent_raw(map_extent))]
+/// a vararg; the subgraph's own level nests under the content level. The
+/// levels report a lower bound; consumers drain to the past-end signal.
+#[node_macro::node(category("Test"))]
 fn map<T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
 	content: IList<Graphic>,
@@ -101,12 +99,13 @@ fn map<T>(
 		let mut frame = IndexLink { index: 0, outer: None };
 		return mapped.eval(&scoped.ctx().push_level(&mut frame, row as u64, remaining));
 	}
-	Err(GraphError::new("map addressed past its lane count").into())
+	Err(GraphError::past_end().into())
 }
 
 /// Rank-model flat-map (the production Map): map's walk with the subgraph's
-/// lanes concatenated into one flat level.
-#[node_macro::node(category("Test"), extent_raw(flat_map_extent))]
+/// lanes concatenated into one flat level. The level reports a lower bound;
+/// consumers drain to the past-end signal.
+#[node_macro::node(category("Test"))]
 fn flat_map<T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
 	content: IList<Graphic>,
@@ -124,7 +123,7 @@ fn flat_map<T>(
 		let mut frame = IndexLink { index: 0, outer: None };
 		return mapped.eval(&scoped.ctx().push_level(&mut frame, row as u64, remaining));
 	}
-	Err(GraphError::new("flat map addressed past its lane count").into())
+	Err(GraphError::past_end().into())
 }
 
 /// Rank-model level collapse: two nested levels become one flat level. The
@@ -136,12 +135,14 @@ fn flatten_levels<T>(ctx: impl Ctx + DeriveCtx + ExtractIndex, content: impl Nod
 }
 
 /// The collapsed level's extent is the sum of the inner extents across the
-/// outer copies; the product composite cannot express a ragged total.
+/// outer copies; the product composite cannot express a ragged total. A
+/// lower-bound level keeps the sum a lower bound.
 fn flatten_levels_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
 	match level.top() {
 		true => {
 			let outer = match content.at_copy(0, LevelIn { level: 1, depth: 2 }) {
 				GPoll::Final(Extent::Exactly(outer)) => outer,
+				GPoll::Final(Extent::AtLeast(bound)) => return GPoll::Final(Extent::AtLeast(bound)),
 				GPoll::Final(Extent::Free) => return GPoll::error("flatten over an unbounded outer level"),
 				other => return other,
 			};
@@ -149,6 +150,7 @@ fn flatten_levels_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent>
 			for copy in 0..outer {
 				match content.at_copy(copy as u64, LevelIn { level: 0, depth: 2 }) {
 					GPoll::Final(Extent::Exactly(count)) => total += count,
+					GPoll::Final(Extent::AtLeast(count)) => return GPoll::Final(Extent::AtLeast(total + count)),
 					GPoll::Final(Extent::Free) => return GPoll::error("flatten over an unbounded inner level"),
 					other => return other,
 				}
@@ -156,88 +158,6 @@ fn flatten_levels_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent>
 			GPoll::Final(Extent::Exactly(total))
 		}
 		false => GPoll::Final(Extent::Exactly(1)),
-	}
-}
-
-/// The materialized content rows, or the poll to report.
-fn materialize_rows<'a, 'e, C, N0>(content: &'a N0, ctx: &'a C, arena: &'a Arena) -> Result<core_types::node::List<'a, Graphic>, GPoll<Extent>>
-where
-	C: core_types::context::InjectIndex + Copy,
-	N0: Node<C, Output = RecordValue<'e>>,
-{
-	let count = match content.extent(ctx, Level::Below(1)) {
-		GPoll::Final(Extent::Exactly(count)) => count,
-		GPoll::Pending => return Err(GPoll::Pending),
-		_ => return Err(GPoll::error("map content extent is not exact")),
-	};
-	match materialize_batch(content, ctx, 0..count as u64, arena) {
-		BatchStatus::Lent(batch, ..) => Ok(unsafe { core_types::node::List::new(batch) }),
-		BatchStatus::Filled(batch, ..) => Ok(unsafe { core_types::node::List::new(batch.into_shared()) }),
-		BatchStatus::Pending => Err(GPoll::Pending),
-		BatchStatus::Error(error) => Err(GPoll::Error(Box::new(error))),
-		_ => Err(GPoll::error("map content could not materialize")),
-	}
-}
-
-/// The subgraph's extent for one row, under that row's vararg at its copy.
-fn row_inner<C, N1>(rows: core_types::node::List<'_, Graphic>, mapped: &N1, ctx: &C, row: u64) -> GPoll<Extent>
-where
-	C: Ctx + DeriveCtx + Copy,
-	N1: for<'d> DerivedRecordEdge<'d, Derived<'d, C>>,
-{
-	let item = vararg_row(rows, row as usize);
-	let scoped = ctx.push_vararg(&item);
-	let base = scoped.ctx();
-	let head = base.index_head();
-	mapped.extent_at_derived(&base.promoted(&head, row), 0)
-}
-
-fn map_extent<'e, C, N0, N1>(node: &MapNode<N0, N1>, ctx: &C, level: u8) -> GPoll<Extent>
-where
-	C: Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy + ExtractArena<ArenaRef = &'e Arena>,
-	N0: Node<C, Output = RecordValue<'e>>,
-	N1: for<'d> DerivedRecordEdge<'d, Derived<'d, C>>,
-{
-	match level {
-		0 => {
-			let rows = match materialize_rows(&node.content, ctx, ExtractArena::arena(ctx)) {
-				Ok(rows) => rows,
-				Err(poll) => return poll,
-			};
-			let row = ctx.innermost_index();
-			if row >= rows.len() as u64 {
-				return GPoll::error("map inner extent past the content rows");
-			}
-			row_inner(rows, &node.mapped, ctx, row)
-		}
-		1 => node.content.extent_at(ctx, 0),
-		_ => GPoll::Final(Extent::Exactly(1)),
-	}
-}
-
-fn flat_map_extent<'e, C, N0, N1>(node: &FlatMapNode<N0, N1>, ctx: &C, level: u8) -> GPoll<Extent>
-where
-	C: Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy + ExtractArena<ArenaRef = &'e Arena>,
-	N0: Node<C, Output = RecordValue<'e>>,
-	N1: for<'d> DerivedRecordEdge<'d, Derived<'d, C>>,
-{
-	match level {
-		0 => {
-			let rows = match materialize_rows(&node.content, ctx, ExtractArena::arena(ctx)) {
-				Ok(rows) => rows,
-				Err(poll) => return poll,
-			};
-			let mut total = 0;
-			for row in 0..rows.len() {
-				match row_inner(rows, &node.mapped, ctx, row as u64) {
-					GPoll::Final(Extent::Exactly(count)) => total += count,
-					GPoll::Final(Extent::Free) => return GPoll::error("flat map over an unbounded subgraph level"),
-					other => return other,
-				}
-			}
-			GPoll::Final(Extent::Exactly(total))
-		}
-		_ => GPoll::Final(Extent::Exactly(1)),
 	}
 }
 
@@ -434,12 +354,12 @@ mod tests {
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(out.depth, 2);
-		assert_eq!(node.extent_at(&ctx, 1), GPoll::Final(Extent::Exactly(2)));
+		// The extent-fn-less levels report a lower bound; addressing below
+		// proves the lanes are all reachable regardless.
+		assert_eq!(node.extent_at(&ctx, 1), GPoll::Final(Extent::AtLeast(0)));
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::AtLeast(0)));
 
 		let head = ctx.index_head();
-		for (row, lanes) in [(0u64, 2usize), (1, 3)] {
-			assert_eq!(node.extent_at(&ctx.promoted(&head, row), 0), GPoll::Final(Extent::Exactly(lanes)), "row {row}");
-		}
 		let offset = out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
 		for (lane, &(label, x)) in RAGGED_FLAT.iter().enumerate() {
 			let mark = stack::sp();
@@ -487,8 +407,10 @@ mod tests {
 		let composed_out = Node::<ContextImpl>::layout(&composed).clone();
 		assert_eq!(flat_out.depth, 1);
 		assert_eq!(composed_out.depth, 1);
-		assert_eq!(flat.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(5)));
-		assert_eq!(composed.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(5)));
+		// Both spellings report the same lower bound; the lane loop below is
+		// the law.
+		assert_eq!(flat.extent_at(&ctx, 0), GPoll::Final(Extent::AtLeast(0)));
+		assert_eq!(composed.extent_at(&ctx, 0), GPoll::Final(Extent::AtLeast(0)));
 
 		let head = ctx.index_head();
 		let offset = flat_out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();

@@ -1433,6 +1433,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				#core_types::node::Node::extent_at(&self.#name, __input, __level + #folded_levels)
 			}
 		}
+	} else if node.output.shape.depth > 0 {
+		// A leveled output without an extent fn reports a lower bound;
+		// consumers size it by draining to the past-end signal.
+		quote! {
+			fn extent_at(&self, _: &#ctx_ident, _: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
+				#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::AtLeast(0))
+			}
+		}
 	} else {
 		quote!()
 	};
