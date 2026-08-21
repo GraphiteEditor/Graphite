@@ -204,7 +204,6 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 		MenuListEntry::new("Teardrop").label("Teardrop").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
 				options: ShapeOptionsUpdate::ShapeType(ShapeType::Teardrop),
-				// options: StrokeOptionsUpdate::Align(graphene_std::vector::style::StrokeAlign::Inside),
 			}
 			.into()
 		}),

@@ -281,9 +281,6 @@ pub fn teardrop_bezpath(corner1: DVec2, corner2: DVec2, velocity: f64) -> BezPat
 	let roundness_multiplier = 1.6;
 	let roundness = vertical_handle_offset * roundness_multiplier;
 
-	// let roundness_multiplier = 0.6;
-	// let roundness = vertical_handle_offset * roundness_multiplier * pointiness;
-
 	// both handles for the top point of the teardrop, to make it pointier
 	let point_handle_multiplier = 0.28;
 	let point_handles = Some(top + size * point_handle_multiplier * DVec2::Y);
