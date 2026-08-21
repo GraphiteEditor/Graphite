@@ -6,9 +6,12 @@ use core_types::attribute::{Attr, Transform};
 use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
-use core_types::{ATTR_TRANSFORM, Ctx};
+use core_types::{ATTR_TRANSFORM, Color, Ctx};
 use glam::DAffine2;
 use graphic_types::graphic::Graphic;
+use graphic_types::Vector;
+use raster_types::{CPU, Raster};
+use vector_types::GradientStops;
 
 /// Leaf rows a graphic expands to: its children's counts when the walk
 /// descends (top rows always, deeper groups only in a full flatten), one for
@@ -74,7 +77,7 @@ fn flatten_extent(content: ListIn<'_, Graphic>, fully_flatten: ValueIn<'_, bool>
 /// One content row as the production vararg shape: a single-item legacy list
 /// carrying the row's element only, so the list's dyn-hash is a complete
 /// cache key over the observables.
-fn vararg_row(content: core_types::node::List<'_, Graphic>, row: usize) -> core_types::list::List<Graphic> {
+fn vararg_row<Row: Clone + Send + Sync + 'static>(content: core_types::node::List<'_, Row>, row: usize) -> core_types::list::List<Row> {
 	core_types::list::List::new_from_element(content.element_ref(row).clone())
 }
 
@@ -82,9 +85,9 @@ fn vararg_row(content: core_types::node::List<'_, Graphic>, row: usize) -> core_
 /// a vararg; the subgraph's own level nests under the content level. The
 /// levels report a lower bound; consumers drain to the past-end signal.
 #[node_macro::node(category("Test"))]
-fn map<T>(
+fn map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	content: IList<Graphic>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<IList<T>>, Interrupt> {
 	let mut remaining = ctx.innermost_index();
@@ -106,9 +109,9 @@ fn map<T>(
 /// lanes concatenated into one flat level. The level reports a lower bound;
 /// consumers drain to the past-end signal.
 #[node_macro::node(category("Test"))]
-fn flat_map<T>(
+fn flat_map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	content: IList<Graphic>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<T>, Interrupt> {
 	let mut remaining = ctx.innermost_index();
@@ -344,7 +347,7 @@ mod tests {
 
 		let layout = graphic_layout();
 		let node = install(
-			MapNode::new(
+			MapNode::<_, _, Graphic>::new(
 				RecordSource::new(GraphicSource { layout: layout.clone(), rows: ragged_rows() }, &layout, &layout),
 				PerRowSource { layout: layout.clone() },
 				&layout,
@@ -383,7 +386,7 @@ mod tests {
 
 		let layout = graphic_layout();
 		let flat = install(
-			FlatMapNode::new(
+			FlatMapNode::<_, _, Graphic>::new(
 				RecordSource::new(GraphicSource { layout: layout.clone(), rows: ragged_rows() }, &layout, &layout),
 				PerRowSource { layout: layout.clone() },
 				&layout,
@@ -392,7 +395,7 @@ mod tests {
 			&[Some(&layout), Some(&layout)],
 		);
 		let mapped = install(
-			MapNode::new(
+			MapNode::<_, _, Graphic>::new(
 				RecordSource::new(GraphicSource { layout: layout.clone(), rows: ragged_rows() }, &layout, &layout),
 				PerRowSource { layout: layout.clone() },
 				&layout,
@@ -434,6 +437,19 @@ mod tests {
 	}
 
 	#[test]
+	fn flat_map_registers_one_row_per_content_type() {
+		let entries = _flat_map_mod::flat_map_entries();
+		assert_eq!(entries.len(), 6, "one registry row per content implementation");
+		let content_types: Vec<core_types::Type> = entries.iter().map(|entry| entry.io.inputs[0].clone()).collect();
+		assert_eq!(content_types[0], core_types::registry::record_edge_type::<Graphic>());
+		assert_eq!(content_types[1], core_types::registry::record_edge_type::<Vector>());
+		assert_eq!(content_types[5], core_types::registry::record_edge_type::<String>());
+		// The subject and the output stay erased across rows.
+		assert_eq!(entries[0].io.inputs[1], entries[5].io.inputs[1]);
+		assert_eq!(entries[0].io.return_value, entries[5].io.return_value);
+	}
+
+	#[test]
 	fn flat_map_batch_matches_per_lane_eval() {
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
@@ -442,7 +458,7 @@ mod tests {
 
 		let layout = graphic_layout();
 		let node = install(
-			FlatMapNode::new(
+			FlatMapNode::<_, _, Graphic>::new(
 				RecordSource::new(GraphicSource { layout: layout.clone(), rows: ragged_rows() }, &layout, &layout),
 				PerRowSource { layout: layout.clone() },
 				&layout,
