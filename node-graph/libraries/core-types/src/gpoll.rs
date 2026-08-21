@@ -3,6 +3,9 @@ pub enum ErrorKind {
 	Node(&'static str),
 	ArenaExhausted,
 	Panic,
+	/// A lane past the end of a lower-bound (`Extent::AtLeast`) level: the
+	/// end-of-data signal for draining consumers, an error for everyone else.
+	PastEnd,
 }
 
 impl PartialEq<&str> for ErrorKind {
@@ -28,6 +31,13 @@ impl GraphError {
 	pub fn traced(mut self, input_index: usize) -> Self {
 		self.trace.push(input_index);
 		self
+	}
+
+	pub fn past_end() -> Self {
+		Self {
+			kind: ErrorKind::PastEnd,
+			trace: Vec::new(),
+		}
 	}
 }
 
@@ -139,6 +149,10 @@ impl<T> GPoll<T> {
 			trace: Vec::new(),
 		}))
 	}
+
+	pub fn past_end() -> Self {
+		GPoll::Error(Box::new(GraphError::past_end()))
+	}
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -166,6 +180,8 @@ impl<T> From<Interrupt> for GPoll<T> {
 pub enum Extent {
 	Free,
 	Exactly(usize),
+	/// A sound lower bound; the true count is discoverable only by draining.
+	AtLeast(usize),
 }
 
 impl Extent {
@@ -173,27 +189,36 @@ impl Extent {
 		a.zip(b).and_then(|(a, b)| match (a, b) {
 			(Extent::Free, other) | (other, Extent::Free) => GPoll::Final(other),
 			(Extent::Exactly(n), Extent::Exactly(m)) if n == m => GPoll::Final(Extent::Exactly(n)),
+			(Extent::AtLeast(a), Extent::AtLeast(b)) => GPoll::Final(Extent::AtLeast(a.max(b))),
+			(Extent::AtLeast(bound), Extent::Exactly(n)) | (Extent::Exactly(n), Extent::AtLeast(bound)) if n >= bound => GPoll::Final(Extent::Exactly(n)),
+			(Extent::AtLeast(_), Extent::Exactly(n)) | (Extent::Exactly(n), Extent::AtLeast(_)) => GPoll::fallback(Extent::Exactly(n), "extent mismatch"),
 			(Extent::Exactly(n), Extent::Exactly(m)) => GPoll::fallback(Extent::Exactly(n.min(m)), "extent mismatch"),
 		})
 	}
 
 	/// The product of two extents, used to compose nested-level counts; an
-	/// unbounded operand leaves the product unbounded.
+	/// unbounded operand leaves the product unbounded, a lower-bound operand
+	/// keeps the product a lower bound.
 	pub fn mul(a: GPoll<Extent>, b: GPoll<Extent>) -> GPoll<Extent> {
 		a.zip(b).map(|(a, b)| match (a, b) {
+			(Extent::Free, _) | (_, Extent::Free) => Extent::Free,
 			(Extent::Exactly(n), Extent::Exactly(m)) => Extent::Exactly(n * m),
-			_ => Extent::Free,
+			(Extent::AtLeast(n) | Extent::Exactly(n), Extent::AtLeast(m) | Extent::Exactly(m)) => Extent::AtLeast(n * m),
 		})
 	}
 
 	/// The sum of two extents, used to concatenate a level; a free operand
-	/// counts as one lane, so a scalar edge joins a concat as a single item.
+	/// counts as one lane, so a scalar edge joins a concat as a single item,
+	/// and a lower-bound operand keeps the sum a lower bound.
 	pub fn sum(a: GPoll<Extent>, b: GPoll<Extent>) -> GPoll<Extent> {
 		let lanes = |extent| match extent {
-			Extent::Exactly(count) => count,
+			Extent::Exactly(count) | Extent::AtLeast(count) => count,
 			Extent::Free => 1,
 		};
-		a.zip(b).map(|(a, b)| Extent::Exactly(lanes(a) + lanes(b)))
+		a.zip(b).map(|(a, b)| match (a, b) {
+			(Extent::AtLeast(_), _) | (_, Extent::AtLeast(_)) => Extent::AtLeast(lanes(a) + lanes(b)),
+			_ => Extent::Exactly(lanes(a) + lanes(b)),
+		})
 	}
 }
 
