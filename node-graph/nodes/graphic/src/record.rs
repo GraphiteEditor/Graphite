@@ -74,6 +74,24 @@ fn flatten_extent(content: ListIn<'_, Graphic>, fully_flatten: ValueIn<'_, bool>
 	}
 }
 
+/// Rank-model Wrap: the content level collected into one group element
+/// riding a one-lane level (the production single-item list), the lanes'
+/// transforms embedded; the inverse of flatten's one-level descent.
+#[node_macro::node(category("Test"), extent(wrap_extent))]
+fn wrap(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>) -> Result<IList<Graphic>, Interrupt> {
+	let mut rows = core_types::list::List::new();
+	for row in 0..content.len() {
+		rows.push(core_types::list::Item::new_from_element(content.element_ref(row).clone()));
+		rows.set_attribute(ATTR_TRANSFORM, row, content.lane(row).attr::<Transform>());
+	}
+	Ok(Graphic::Graphic(rows))
+}
+
+/// The collected group is the level's single lane.
+fn wrap_extent(_content: ListIn<'_, Graphic>, _level: LevelIn) -> GPoll<Extent> {
+	GPoll::Final(Extent::Exactly(1))
+}
+
 /// One content row as the production vararg shape: a single-item legacy list
 /// carrying the row's element only, so the list's dyn-hash is a complete
 /// cache key over the observables.
@@ -535,6 +553,86 @@ mod tests {
 		let transform: DAffine2 = unsafe { rec.read(offset) };
 		assert_eq!(transform.translation.x, 4000.5);
 		unsafe { stack::rewind(mark) };
+	}
+
+	#[test]
+	fn wrap_collects_the_level_into_a_group() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = graphic_layout();
+		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
+		let node = install(
+			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows, }, &layout, &layout), &layout),
+			wrap_layout_meta(),
+			&[Some(&layout)],
+		);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(out.depth, 1);
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(1)), "the group is the level's single lane");
+
+		let head = ctx.index_head();
+		let GPoll::Final(value) = node.eval(&ctx.promoted(&head, 0)) else {
+			panic!("expected a final record");
+		};
+		let Graphic::Graphic(children) = (unsafe { record::borrow_element::<Graphic>(out.rec(&value)) }) else {
+			panic!("expected a group element");
+		};
+		assert_eq!(children.len(), 2);
+		for (index, (label, x)) in [("a", 1.), ("b", 2.)].into_iter().enumerate() {
+			assert_eq!(text_of(children.element(index).unwrap()), label, "child {index}");
+			assert_eq!(children.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index).translation.x, x, "child {index}");
+		}
+	}
+
+	#[test]
+	fn flatten_reverses_wrap() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = graphic_layout();
+		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
+		let wrapped = install(
+			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows, }, &layout, &layout), &layout),
+			wrap_layout_meta(),
+			&[Some(&layout)],
+		);
+		let wrap_out = Node::<ContextImpl>::layout(&wrapped).clone();
+		let head = ctx.index_head();
+		let group = {
+			let mark = stack::sp();
+			let GPoll::Final(value) = wrapped.eval(&ctx.promoted(&head, 0)) else {
+				panic!("expected a final record");
+			};
+			let group = unsafe { record::borrow_element::<Graphic>(wrap_out.rec(&value)) }.clone();
+			// SAFETY: the element was cloned out above, so no borrow into the frame remains.
+			unsafe { stack::rewind(mark) };
+			group
+		};
+
+		// One row holding the wrapped group flattens back to the lanes, the
+		// group's identity transform composed onto each child's.
+		let node = build!(layout, vec![(group, DAffine2::IDENTITY)], false);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(2)));
+
+		let head = ctx.index_head();
+		let offset = out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
+		for (lane, &(label, x)) in [("a", 1.), ("b", 2.)].iter().enumerate() {
+			let mark = stack::sp();
+			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+				panic!("expected a final record");
+			};
+			let rec = out.rec(&value);
+			assert_eq!(text_of(unsafe { record::borrow_element::<Graphic>(rec) }), label, "lane {lane}");
+			let transform: DAffine2 = unsafe { rec.read(offset) };
+			assert_eq!(transform.translation.x, x, "lane {lane}");
+			unsafe { stack::rewind(mark) };
+		}
 	}
 
 	#[test]
