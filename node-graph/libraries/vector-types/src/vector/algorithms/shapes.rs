@@ -416,3 +416,80 @@ fn archimedean_spiral_arc_length_origin(theta: f64, a: f64, b: f64) -> f64 {
 	let sqrt_term = (r * r + b * b).sqrt();
 	(r * sqrt_term + b * b * ((r + sqrt_term).ln())) / (2. * b)
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use kurbo::{PathEl, Shape};
+
+	fn default_heart() -> HeartProportions {
+		HeartProportions {
+			cleavage_depth: 0.2,
+			cleavage_angle: 45_f64.to_radians(),
+			lobe_fullness: 0.55,
+			shoulder_height: 0.5,
+			shoulder_width: 1.,
+			shoulder_tilt: 0.,
+			upper_curvature: 0.55,
+			lower_curvature: 1.,
+			point_sharpness: 30_f64.to_radians(),
+			taper_length: 0.7,
+		}
+	}
+
+	#[test]
+	fn heart_is_a_closed_path_of_four_curves() {
+		let bezpath = heart_bezpath(DVec2::ZERO, 50., default_heart());
+		let elements: Vec<_> = bezpath.elements().to_vec();
+
+		assert!(matches!(elements.first(), Some(PathEl::MoveTo(_))));
+		assert!(matches!(elements.last(), Some(PathEl::ClosePath)));
+		assert_eq!(elements.iter().filter(|element| matches!(element, PathEl::CurveTo(..))).count(), 4);
+	}
+
+	#[test]
+	fn heart_is_symmetric_about_the_vertical_axis() {
+		let bezpath = heart_bezpath(DVec2::ZERO, 50., default_heart());
+
+		// Every point on the path must have a mirrored twin, since the left half is built by mirroring the right.
+		let points: Vec<DVec2> = bezpath
+			.elements()
+			.iter()
+			.flat_map(|element| match element {
+				PathEl::MoveTo(p) | PathEl::LineTo(p) => vec![DVec2::new(p.x, p.y)],
+				PathEl::QuadTo(a, b) => vec![DVec2::new(a.x, a.y), DVec2::new(b.x, b.y)],
+				PathEl::CurveTo(a, b, c) => vec![DVec2::new(a.x, a.y), DVec2::new(b.x, b.y), DVec2::new(c.x, c.y)],
+				PathEl::ClosePath => vec![],
+			})
+			.collect();
+
+		for point in &points {
+			let mirrored = DVec2::new(-point.x, point.y);
+			assert!(points.iter().any(|other| other.distance(mirrored) < 1e-9), "no mirrored counterpart for {point:?}");
+		}
+	}
+
+	#[test]
+	fn heart_scales_linearly_with_radius() {
+		let small = heart_bezpath(DVec2::ZERO, 1., default_heart());
+		let large = heart_bezpath(DVec2::ZERO, 50., default_heart());
+
+		let small_box = small.bounding_box();
+		let large_box = large.bounding_box();
+
+		assert!((large_box.width() - small_box.width() * 50.).abs() < 1e-9);
+		assert!((large_box.height() - small_box.height() * 50.).abs() < 1e-9);
+	}
+
+	#[test]
+	fn heart_respects_its_center() {
+		let origin = heart_bezpath(DVec2::ZERO, 20., default_heart());
+		let offset = heart_bezpath(DVec2::new(100., -40.), 20., default_heart());
+
+		let origin_box = origin.bounding_box();
+		let offset_box = offset.bounding_box();
+
+		assert!((offset_box.center().x - (origin_box.center().x + 100.)).abs() < 1e-9);
+		assert!((offset_box.center().y - (origin_box.center().y - 40.)).abs() < 1e-9);
+	}
+}
