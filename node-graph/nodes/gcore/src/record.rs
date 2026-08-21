@@ -93,7 +93,7 @@ fn repeat<T>(
 	let inner = content.inner_extent(ctx)?;
 	let (copy, rest) = ctx.split_innermost(inner);
 	if copy >= count as u64 {
-		return Err(GraphError::new("repeat addressed past its copy count").into());
+		return Err(GraphError::past_end().into());
 	}
 	let copy = match reverse {
 		true => count as u64 - 1 - copy,
@@ -123,7 +123,7 @@ fn repeat_faded<T>(
 	let inner = content.inner_extent(ctx)?;
 	let (copy, rest) = ctx.split_innermost(inner);
 	if copy >= count as u64 {
-		return Err(GraphError::new("repeat addressed past its copy count").into());
+		return Err(GraphError::past_end().into());
 	}
 	let mut frame = IndexLink { index: 0, outer: None };
 	let (element, opacity) = content.eval(&ctx.push_level(&mut frame, copy, rest))?;
@@ -1602,6 +1602,63 @@ mod tests {
 			assert_eq!(unsafe { rec.read::<&[NodeId]>(offset) }, path.as_slice(), "lane {lane}");
 			unsafe { stack::rewind(mark) };
 		}
+	}
+
+	#[test]
+	fn repeat_decomposes_a_lower_bound_level() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let leveled = leveled_f64_layout(&[]);
+		let out = f64_layout(&[]);
+		reserve_for(&[&leveled, &out]);
+		let (count_edge, count_layout) = lifted_value(2u32);
+		let (reverse_edge, reverse_layout) = lifted_value(false);
+		let meta = core_types::record::LayoutMeta {
+			sources: vec![0],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 1,
+			folded: None,
+		};
+		let repeat = install(
+			RepeatNode::new(
+				RecordSource::new(DrainSourceNode { layout: leveled.clone(), count: 5 }, &leveled, &leveled),
+				count_edge,
+				reverse_edge,
+				&leveled,
+				&count_layout,
+				&reverse_layout,
+			),
+			meta,
+			&[Some(&leveled)],
+		);
+		let two_level = Node::<ContextImpl>::layout(&repeat).clone();
+		assert_eq!(two_level.depth, 2);
+
+		// The inner count comes from probing the lower-bound level, so the
+		// flat index decomposes across both copies.
+		let head = ctx.index_head();
+		for (lane, expected) in [(0u64, 0.), (7, 2.), (9, 4.)] {
+			let mark = stack::sp();
+			let GPoll::Final(value) = repeat.eval(&ctx.promoted(&head, lane)) else {
+				panic!("expected a final record at lane {lane}");
+			};
+			assert_eq!(unsafe { two_level.rec(&value).element::<f64>() }, expected, "lane {lane}");
+			unsafe { stack::rewind(mark) };
+		}
+
+		// A full fold over the composite drains through the structure node;
+		// the partial fold stays excluded with M3.
+		let node = install_flip(SumNestedNode::new(repeat, &two_level), &out);
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 20.);
 	}
 
 	#[test]
