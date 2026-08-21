@@ -2532,53 +2532,39 @@ fn inverse_linear_or_repair(linear: DMat2) -> DMat2 {
 	repaired.inverse()
 }
 
-/// Applies per-anchor displacement deltas to the anchor and handle positions of a vector element.
-fn apply_point_deltas(vector: &mut Vector, paths: &List<Path>, deltas: &[DVec2], transform: DAffine2) {
-	let mut delta_at = vec![DVec2::ZERO; vector.point_count()];
-	for (&anchor, &delta) in vector.anchor_indices(paths).iter().zip(deltas) {
-		delta_at[anchor] = delta;
+/// Applies displacement deltas to the anchors at the given pool indices, moving the handles of their segments along with them.
+fn apply_point_deltas(vector: &mut Vector, paths: &List<Path>, anchors: &[usize], deltas: &[DVec2]) {
+	let mut anchor_delta = vec![None; vector.point_count()];
+	for (&anchor, &delta) in anchors.iter().zip(deltas) {
+		anchor_delta[anchor] = Some(delta);
 	}
-	let delta_of = |index: u32| delta_at.get(index as usize).copied().unwrap_or_default();
+	let mut delta_at: Vec<DVec2> = anchor_delta.iter().map(|delta| delta.unwrap_or_default()).collect();
+	let delta_of = |anchor: u32| anchor_delta.get(anchor as usize).copied().flatten().unwrap_or_default();
 
-	let mut positions: Vec<DVec2> = vector.positions().collect();
-	let mut carried = vec![false; positions.len()];
-
-	// A handle travels with the anchor on its own side of the segment
+	// A handle travels with the anchor on its own side of the segment, unless it is also an anchor with a delta of its own
 	for span in spans(paths) {
 		let Some((start, end)) = span_endpoints(paths, span) else { continue };
 		let (start_delta, end_delta) = (delta_of(start), delta_of(end));
 
-		for anchor in [start, end] {
-			if let Some(slot) = carried.get_mut(anchor as usize) {
-				*slot = true;
-			}
-		}
+		let carried = match curve_type_at(paths, span.path as usize) {
+			CurveType::Linear => [(None, DVec2::ZERO); 2],
+			// A quadratic's lone handle answers to both anchors, so it splits the difference between them
+			CurveType::Quadratic => [(handle_point(paths, span, true), (start_delta + end_delta) / 2.), (None, DVec2::ZERO)],
+			CurveType::Cubic => [(handle_point(paths, span, true), start_delta), (handle_point(paths, span, false), end_delta)],
+		};
 
-		match curve_type_at(paths, span.path as usize) {
-			CurveType::Linear => {}
-			CurveType::Quadratic => {
-				if let Some(position) = handle_point(paths, span, true).and_then(|handle| positions.get_mut(handle as usize)) {
-					*position = transform.transform_point2(*position) + (start_delta + end_delta) / 2.;
-				}
-			}
-			CurveType::Cubic => {
-				for (handle, delta) in [(handle_point(paths, span, true), start_delta), (handle_point(paths, span, false), end_delta)] {
-					if let Some(position) = handle.and_then(|handle| positions.get_mut(handle as usize)) {
-						*position += delta;
-					}
-				}
+		for (handle, delta) in carried {
+			if let Some(handle) = handle
+				&& anchor_delta.get(handle as usize).is_some_and(Option::is_none)
+				&& let Some(slot) = delta_at.get_mut(handle as usize)
+			{
+				*slot = delta;
 			}
 		}
 	}
 
-	for (index, position) in positions.iter_mut().enumerate() {
-		if carried[index] {
-			*position += delta_at[index];
-		}
-	}
-
-	for (slot, position) in vector.0.iter_element_values_mut().zip(positions) {
-		*slot = position;
+	for (position, delta) in vector.0.iter_element_values_mut().zip(delta_at) {
+		*position += delta;
 	}
 }
 
@@ -2608,12 +2594,11 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
-		let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		edit_item_geometry(&mut content, |vector, paths| {
-			let deltas: Vec<_> = vector
-				.anchor_indices(paths)
-				.into_iter()
-				.map(|point_index| {
+			let anchors = vector.anchor_indices(paths);
+			let deltas: Vec<_> = anchors
+				.iter()
+				.map(|&point_index| {
 					let normal = if along_normals { vector.point_tangent(paths, point_index).map(|t| -t.perp()) } else { None };
 
 					let offset = if let Some(normal) = normal {
@@ -2626,7 +2611,7 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 				})
 				.collect();
 
-			apply_point_deltas(vector, paths, &deltas, transform);
+			apply_point_deltas(vector, paths, &anchors, &deltas);
 		});
 
 		content
@@ -2652,12 +2637,11 @@ async fn offset_points<V: MapVectorItems + 'n + Send>(
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
-		let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		edit_item_geometry(&mut content, |vector, paths| {
-			let deltas: Vec<_> = vector
-				.anchor_indices(paths)
-				.into_iter()
-				.map(|point_index| {
+			let anchors = vector.anchor_indices(paths);
+			let deltas: Vec<_> = anchors
+				.iter()
+				.map(|&point_index| {
 					let Some(normal) = vector.point_tangent(paths, point_index).map(|t| -t.perp()) else {
 						return DVec2::ZERO;
 					};
@@ -2666,7 +2650,7 @@ async fn offset_points<V: MapVectorItems + 'n + Send>(
 				})
 				.collect();
 
-			apply_point_deltas(vector, paths, &deltas, transform);
+			apply_point_deltas(vector, paths, &anchors, &deltas);
 		});
 
 		content
@@ -3851,6 +3835,57 @@ mod test {
 		let paths = paths_from_item_attributes(&result).cloned().unwrap_or_default();
 		assert_eq!(result.element().anchor_positions(&paths), SQUARE_WITH_CENTER);
 		assert_eq!(result.element().segment_iter(&paths).count(), 0);
+	}
+
+	// The lone handle of a quadratic answers to both anchors, so it moves by the average of their deltas
+	#[test]
+	fn point_deltas_carry_a_quadratic_handle_with_both_anchors() {
+		let mut quadratic = BezPath::new();
+		quadratic.move_to((0., 0.));
+		quadratic.quad_to((5., 10.), (10., 0.));
+
+		let (mut vector, paths) = Vector::from_bezpath(&quadratic);
+		let anchors = vector.anchor_indices(&paths);
+		super::apply_point_deltas(&mut vector, &paths, &anchors, &[DVec2::X, DVec2::X * 3.]);
+
+		assert_eq!(vector.position(0), Some(DVec2::new(1., 0.)));
+		assert_eq!(vector.position(1), Some(DVec2::new(7., 10.)));
+		assert_eq!(vector.position(2), Some(DVec2::new(13., 0.)));
+	}
+
+	// A point no segment touches still takes its delta, so jitter can shift a bare point cloud
+	#[test]
+	fn point_deltas_move_free_floating_points() {
+		let cloud = vector_item_from_points(&[DVec2::ZERO, DVec2::new(10., 0.)]);
+		let paths = item_paths(&cloud).clone();
+		let mut vector = cloud.element().clone();
+
+		let anchors = vector.anchor_indices(&paths);
+		super::apply_point_deltas(&mut vector, &paths, &anchors, &[DVec2::Y, DVec2::Y * 2.]);
+
+		assert_eq!(vector.position(0), Some(DVec2::new(0., 1.)));
+		assert_eq!(vector.position(1), Some(DVec2::new(10., 2.)));
+	}
+
+	// Point 1 is a handle of the first path and an anchor of the second, so it keeps its own delta rather than its neighbor's
+	#[test]
+	fn point_deltas_keep_an_anchor_that_is_also_a_handle_on_its_own_delta() {
+		let mut vector = Vector::default();
+		for x in 0..7 {
+			vector.0.push(Item::new_from_element(DVec2::new(x as f64 * 10., 0.)));
+		}
+		let mut paths = List::new();
+		vector_types::vector::push_path(&mut paths, CurveType::Cubic, [0, 1, 2, 3], []);
+		vector_types::vector::push_path(&mut paths, CurveType::Cubic, [1, 4, 5, 6], []);
+
+		let anchors = vector.anchor_indices(&paths);
+		assert_eq!(anchors, [0, 1, 3, 6]);
+		super::apply_point_deltas(&mut vector, &paths, &anchors, &[DVec2::X, DVec2::Y, DVec2::X * 2., DVec2::X * 3.]);
+
+		assert_eq!(vector.position(1), Some(DVec2::new(10., 1.)));
+		assert_eq!(vector.position(2), Some(DVec2::new(22., 0.)));
+		assert_eq!(vector.position(4), Some(DVec2::new(40., 1.)));
+		assert_eq!(vector.position(5), Some(DVec2::new(53., 0.)));
 	}
 
 	#[tokio::test]
