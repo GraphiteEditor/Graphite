@@ -148,6 +148,8 @@ fn extend<T>(
 ) -> Result<T, Interrupt> {
 	let split = match base.extent(ctx, Level::Total) {
 		GPoll::Final(Extent::Exactly(count)) => count as u64,
+		// A scalar side joins the concat as a single lane, per `Extent::sum`.
+		GPoll::Final(Extent::Free) => 1,
 		GPoll::Pending => return Err(Interrupt::Pending),
 		_ => return Err(GraphError::new("extend over a non-exact base extent").into()),
 	};
