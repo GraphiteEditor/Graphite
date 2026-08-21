@@ -897,6 +897,160 @@ mod tests {
 	}
 
 	#[test]
+	fn extend_chains_associatively() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let a_layout = leveled_f64_layout(&[Opacity::NAME]);
+		let b_layout = leveled_f64_layout(&[Length::NAME]);
+		let c_layout = leveled_f64_layout(&[Opacity::NAME]);
+		let ab = Layout::union(&[&a_layout, &b_layout]);
+		let bc = Layout::union(&[&b_layout, &c_layout]);
+		let left_union = Layout::union(&[&ab, &c_layout]);
+		let right_union = Layout::union(&[&a_layout, &bc]);
+		reserve_for(&[&a_layout, &b_layout, &c_layout, &ab, &bc, &left_union, &right_union]);
+
+		let a = || LeveledSourceNode {
+			layout: a_layout.clone(),
+			elements: vec![10., 11.],
+			field: Some((a_layout.offset_of(Opacity::NAME, 0).unwrap(), 0.5)),
+		};
+		let b = || LeveledSourceNode {
+			layout: b_layout.clone(),
+			elements: vec![100., 101., 102.],
+			field: Some((b_layout.offset_of(Length::NAME, 0).unwrap(), 7.)),
+		};
+		let c = || LeveledSourceNode {
+			layout: c_layout.clone(),
+			elements: vec![1000.],
+			field: Some((c_layout.offset_of(Opacity::NAME, 0).unwrap(), 0.25)),
+		};
+		let meta = || core_types::record::LayoutMeta {
+			sources: vec![0, 1],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 0,
+			folded: None,
+		};
+
+		let left_inner = install(
+			ExtendNode::new(RecordSource::new(a(), &a_layout, &ab), RecordSource::new(b(), &b_layout, &ab), &ab),
+			meta(),
+			&[Some(&a_layout), Some(&b_layout)],
+		);
+		let left = install(
+			ExtendNode::new(RecordSource::new(left_inner, &ab, &left_union), RecordSource::new(c(), &c_layout, &left_union), &left_union),
+			meta(),
+			&[Some(&ab), Some(&c_layout)],
+		);
+		let right_inner = install(
+			ExtendNode::new(RecordSource::new(b(), &b_layout, &bc), RecordSource::new(c(), &c_layout, &bc), &bc),
+			meta(),
+			&[Some(&b_layout), Some(&c_layout)],
+		);
+		let right = install(
+			ExtendNode::new(RecordSource::new(a(), &a_layout, &right_union), RecordSource::new(right_inner, &bc, &right_union), &right_union),
+			meta(),
+			&[Some(&a_layout), Some(&bc)],
+		);
+
+		let left_out = Node::<ContextImpl>::layout(&left).clone();
+		let right_out = Node::<ContextImpl>::layout(&right).clone();
+		assert_eq!(left.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(6)));
+		assert_eq!(right.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(6)));
+
+		let head = ctx.index_head();
+		let check = |poll: GPoll<RecordValue>, out: &Layout, lane: usize, (element, opacity, length): (f64, f64, f64)| {
+			let GPoll::Final(value) = poll else {
+				panic!("expected a final record at lane {lane}");
+			};
+			let rec = out.rec(&value);
+			assert_eq!(unsafe { rec.element::<f64>() }, element, "lane {lane}");
+			assert_eq!(unsafe { rec.read::<f64>(out.offset_of(Opacity::NAME, 0).unwrap()) }, opacity, "lane {lane}");
+			assert_eq!(unsafe { rec.read::<f64>(out.offset_of(Length::NAME, 0).unwrap()) }, length, "lane {lane}");
+		};
+		let expected = [(10., 0.5, 0.), (11., 0.5, 0.), (100., 1., 7.), (101., 1., 7.), (102., 1., 7.), (1000., 0.25, 0.)];
+		for (lane, &row) in expected.iter().enumerate() {
+			let scoped = ctx.promoted(&head, lane as u64);
+			let mark = stack::sp();
+			check(left.eval(&scoped), &left_out, lane, row);
+			// SAFETY: the element and attrs were read out above, so no borrow into this lane's frames remains.
+			unsafe { stack::rewind(mark) };
+			let mark = stack::sp();
+			check(right.eval(&scoped), &right_out, lane, row);
+			// SAFETY: as above.
+			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
+	fn reducer_folds_across_the_extend_seam() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let base_layout = leveled_f64_layout(&[Opacity::NAME]);
+		let new_layout = leveled_f64_layout(&[Length::NAME]);
+		let union = Layout::union(&[&base_layout, &new_layout]);
+		let out = f64_layout(&[]);
+		reserve_for(&[&base_layout, &new_layout, &union, &out]);
+
+		let base = LeveledSourceNode {
+			layout: base_layout.clone(),
+			elements: vec![10., 11.],
+			field: Some((base_layout.offset_of(Opacity::NAME, 0).unwrap(), 0.5)),
+		};
+		let new = LeveledSourceNode {
+			layout: new_layout.clone(),
+			elements: vec![100., 101., 102.],
+			field: Some((new_layout.offset_of(Length::NAME, 0).unwrap(), 7.)),
+		};
+		let meta = core_types::record::LayoutMeta {
+			sources: vec![0, 1],
+			reads: vec![],
+			element: core_types::record::ElementSpec::Carried,
+			writes: vec![],
+			removes: vec![],
+			level_delta: 0,
+			folded: None,
+		};
+		let extend = install(
+			ExtendNode::new(RecordSource::new(base, &base_layout, &union), RecordSource::new(new, &new_layout, &union), &union),
+			meta,
+			&[Some(&base_layout), Some(&new_layout)],
+		);
+		let wire = Node::<ContextImpl>::layout(&extend).clone();
+
+		let head = ctx.index_head();
+		let per_lane: f64 = (0..5u64)
+			.map(|lane| {
+				let mark = stack::sp();
+				let GPoll::Final(value) = extend.eval(&ctx.promoted(&head, lane)) else {
+					panic!("expected a final record at lane {lane}");
+				};
+				let element = unsafe { wire.rec(&value).element::<f64>() };
+				// SAFETY: the element was read out above, so no borrow into this lane's frames remains.
+				unsafe { stack::rewind(mark) };
+				element
+			})
+			.sum();
+
+		let node = install_flip(SumNode::new(extend, &wire), &out);
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		// The fold's batch walks both sides of the seam in one range.
+		let folded = unsafe { out.rec(&value).element::<f64>() };
+		assert_eq!(folded, per_lane);
+		assert_eq!(folded, 324.);
+	}
+
+	#[test]
 	fn extend_forwards_matching_inner_extents_and_rejects_ragged() {
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
