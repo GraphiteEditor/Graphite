@@ -7,13 +7,13 @@ use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as ReadFontsRef;
 use skrifa::{MetadataProvider, OutlineGlyph};
-use vector_types::subpath::{ManipulatorGroup, Subpath};
-use vector_types::vector::{PointId, Vector};
+use vector_types::kurbo::{Affine, BezPath, Point, Rect, Shape};
+use vector_types::vector::{Vector, VectorExt};
 
 pub struct PathBuilder {
-	current_subpath: Subpath<PointId>,
 	origin: DVec2,
-	glyph_subpaths: Vec<Subpath<PointId>>,
+	/// Contours of the glyph currently being drawn, accumulated as a single path.
+	glyph_bezpath: BezPath,
 	pub vector_list: List<Vector>,
 	/// Per-glyph AABBs collected in single-item mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
 	merged_click_target_bboxes: Vec<[DVec2; 2]>,
@@ -27,14 +27,12 @@ pub struct PathBuilder {
 	/// `local_transforms` stays stable when all glyphs are clipped during a resize drag.
 	first_glyph_offset: DVec2,
 	scale: f64,
-	id: PointId,
 }
 
 impl PathBuilder {
 	pub fn new(per_glyph_items: bool, scale: f64, text_frame_size: DVec2, first_glyph_offset: DVec2) -> Self {
 		Self {
-			current_subpath: Subpath::new(Vec::new(), false),
-			glyph_subpaths: Vec::new(),
+			glyph_bezpath: BezPath::new(),
 			vector_list: if per_glyph_items { List::new() } else { List::new_from_element(Vector::default()) },
 			merged_click_target_bboxes: Vec::new(),
 			merged_click_target_baselines: Vec::new(),
@@ -42,13 +40,12 @@ impl PathBuilder {
 			text_frame_size,
 			first_glyph_offset,
 			scale,
-			id: PointId::ZERO,
 			origin: DVec2::default(),
 		}
 	}
 
-	fn point(&self, x: f32, y: f32) -> DVec2 {
-		DVec2::new(self.origin.x + x as f64, self.origin.y - y as f64) * self.scale
+	fn point(&self, x: f32, y: f32) -> Point {
+		Point::new((self.origin.x + x as f64) * self.scale, (self.origin.y - y as f64) * self.scale)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -65,26 +62,23 @@ impl PathBuilder {
 		let location_ref = LocationRef::new(normalized_coords);
 		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
 		glyph.draw(settings, self).unwrap();
-		let has_geometry = !self.glyph_subpaths.is_empty();
+		let has_geometry = !self.glyph_bezpath.is_empty();
 
 		// Apply transforms in correct order: style-based skew first, then user-requested skew
 		// This ensures font synthesis (italic) is applied before user transformations
-		for glyph_subpath in &mut self.glyph_subpaths {
-			if let Some(style_skew) = style_skew {
-				glyph_subpath.apply_transform(style_skew);
-			}
-
-			glyph_subpath.apply_transform(skew);
+		if let Some(style_skew) = style_skew {
+			self.glyph_bezpath.apply_affine(Affine::new(style_skew.to_cols_array()));
 		}
+		self.glyph_bezpath.apply_affine(Affine::new(skew.to_cols_array()));
 
-		let glyph_bbox = subpaths_bounding_box(&self.glyph_subpaths);
+		let glyph_bbox = bezpath_bounding_box(&self.glyph_bezpath);
 
 		if per_glyph_items {
 			// Frame in item-local space: top-left at `-glyph_offset` so the item transform cancels it
 			// back to the layer-local frame origin, regardless of which glyph survived
 			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -glyph_offset);
 
-			let item = Item::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false))
+			let item = Item::new_from_element(Vector::from_bezpath(core::mem::take(&mut self.glyph_bezpath)))
 				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset))
 				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
 			self.vector_list.push(item);
@@ -92,10 +86,9 @@ impl PathBuilder {
 			// Defer click target creation to `finalize()` where adjacent AABBs get widened
 			self.per_glyph_bboxes.push(glyph_bbox);
 		} else {
-			for subpath in self.glyph_subpaths.drain(..) {
-				// Unwrapping here is ok because `self.vector_list` is initialized with a single `List<Vector>` item
-				self.vector_list.element_mut(0).unwrap().append_subpath(subpath, false);
-			}
+			// Unwrapping here is ok because `self.vector_list` is initialized with a single `List<Vector>` item
+			self.vector_list.element_mut(0).unwrap().append_bezpath(core::mem::take(&mut self.glyph_bezpath));
+
 			if let Some(bbox) = glyph_bbox {
 				self.merged_click_target_bboxes.push(bbox);
 				self.merged_click_target_baselines.push(glyph_offset.y);
@@ -196,8 +189,8 @@ impl PathBuilder {
 			// Project back to glyph-local and stamp as click targets
 			for (entry, widened) in entries.iter().zip(layer_bboxes.iter()) {
 				let glyph_local = [widened[0] - entry.1, widened[1] - entry.1];
-				let rect = Subpath::new_rectangle(glyph_local[0], glyph_local[1]);
-				self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, Vector::from_subpaths([rect], false));
+				let rect = rectangle_bezpath(glyph_local[0], glyph_local[1]);
+				self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, Vector::from_bezpath(rect));
 			}
 		}
 
@@ -206,8 +199,11 @@ impl PathBuilder {
 			let mut bboxes = self.merged_click_target_bboxes;
 			widen_horizontal_gaps(&mut bboxes, &self.merged_click_target_baselines);
 
-			let widened_subpaths: Vec<_> = bboxes.iter().map(|[min, max]| Subpath::new_rectangle(*min, *max)).collect();
-			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_subpaths(widened_subpaths, false));
+			let mut widened_bezpath = BezPath::new();
+			for [min, max] in &bboxes {
+				widened_bezpath.extend(rectangle_bezpath(*min, *max));
+			}
+			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_bezpath(widened_bezpath));
 		}
 
 		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
@@ -252,40 +248,37 @@ fn widen_horizontal_gaps(bboxes: &mut [[DVec2; 2]], baselines: &[f64]) {
 	}
 }
 
-fn subpaths_bounding_box(subpaths: &[Subpath<PointId>]) -> Option<[DVec2; 2]> {
-	subpaths
-		.iter()
-		.filter_map(|subpath| subpath.bounding_box())
-		.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)])
+fn bezpath_bounding_box(bezpath: &BezPath) -> Option<[DVec2; 2]> {
+	if bezpath.is_empty() {
+		return None;
+	}
+
+	let rect = bezpath.bounding_box();
+	Some([DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)])
+}
+
+fn rectangle_bezpath(corner1: DVec2, corner2: DVec2) -> BezPath {
+	Rect::new(corner1.x, corner1.y, corner2.x, corner2.y).to_path(0.)
 }
 
 impl OutlinePen for PathBuilder {
 	fn move_to(&mut self, x: f32, y: f32) {
-		if !self.current_subpath.is_empty() {
-			self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
-		}
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
+		self.glyph_bezpath.move_to(self.point(x, y));
 	}
 
 	fn line_to(&mut self, x: f32, y: f32) {
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
+		self.glyph_bezpath.line_to(self.point(x, y));
 	}
 
 	fn quad_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
-		let [handle, anchor] = [self.point(x1, y1), self.point(x2, y2)];
-		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle);
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, None, None, self.id.next_id()));
+		self.glyph_bezpath.quad_to(self.point(x1, y1), self.point(x2, y2));
 	}
 
 	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) {
-		let [handle1, handle2, anchor] = [self.point(x1, y1), self.point(x2, y2), self.point(x3, y3)];
-		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle1);
-		self.current_subpath
-			.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, Some(handle2), None, self.id.next_id()));
+		self.glyph_bezpath.curve_to(self.point(x1, y1), self.point(x2, y2), self.point(x3, y3));
 	}
 
 	fn close(&mut self) {
-		self.current_subpath.set_closed(true);
-		self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+		self.glyph_bezpath.close_path();
 	}
 }

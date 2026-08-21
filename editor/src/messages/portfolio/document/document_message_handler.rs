@@ -42,12 +42,12 @@ use graphene_std::Cover;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::subpath::Subpath;
+use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::graphic_types;
 use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::vector::{PointId, graphic_types};
-use kurbo::{Affine, BezPath, Line, PathSeg};
+use kurbo::{Affine, BezPath, Line, PathSeg, Shape};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -104,6 +104,7 @@ pub struct DocumentMessageHandler {
 	pub properties_panel_collapsed_sections: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
+	#[serde(skip_deserializing, default)]
 	pub commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
 	pub document_ptz: PTZ,
@@ -1835,16 +1836,16 @@ impl DocumentMessageHandler {
 		self.intersect_quad(viewport_quad, viewport).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
-	/// Runs an intersection test with all layers and a viewport space subpath
-	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	/// Runs an intersection test with all layers and a viewport space polygon path
+	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: BezPath, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		viewport_polygon.apply_transform(document_to_viewport.inverse());
+		viewport_polygon.apply_affine(Affine::new(document_to_viewport.inverse().to_cols_array()));
 
-		ClickXRayIter::new(&self.network_interface, XRayTarget::Polygon(viewport_polygon))
+		ClickXRayIter::new(&self.network_interface, XRayTarget::Path(viewport_polygon))
 	}
 
-	/// Runs an intersection test with all layers and a viewport space subpath; ignoring artboards
-	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	/// Runs an intersection test with all layers and a viewport space polygon path; ignoring artboards
+	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: BezPath, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.intersect_polygon(viewport_polygon, viewport)
 			.filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
@@ -1872,29 +1873,24 @@ impl DocumentMessageHandler {
 		layer_left >= quad_left && layer_right <= quad_right && layer_top <= quad_top && layer_bottom >= quad_bottom
 	}
 
-	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, viewport: &ViewportMessageHandler, mut viewport_polygon: Subpath<PointId>) -> bool {
+	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, viewport: &ViewportMessageHandler, mut viewport_polygon: BezPath) -> bool {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		viewport_polygon.apply_transform(document_to_viewport.inverse());
+		viewport_polygon.apply_affine(Affine::new(document_to_viewport.inverse().to_cols_array()));
 
 		let layer_click_targets = self.network_interface.document_metadata().click_targets(*layer);
 		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
 
 		layer_click_targets.is_some_and(|targets| {
 			targets.iter().all(|target| match target.target_type() {
-				ClickTargetType::Subpath(subpath) => {
-					let mut subpath = subpath.clone();
-					subpath.apply_transform(layer_transform);
-					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				ClickTargetType::Path(path) => {
+					let mut path = path.clone();
+					path.apply_affine(Affine::new(layer_transform.to_cols_array()));
+					bezpath_is_inside_bezpath(&path, &viewport_polygon, None, None)
 				}
-				ClickTargetType::CompoundPath(subpaths) => subpaths.iter().all(|subpath| {
-					let mut subpath = subpath.clone();
-					subpath.apply_transform(layer_transform);
-					subpath.is_inside_subpath(&viewport_polygon, None, None)
-				}),
 				ClickTargetType::FreePoint(point) => {
 					let mut point = *point;
 					point.apply_transform(layer_transform);
-					viewport_polygon.contains_point(point.position)
+					viewport_polygon.contains(dvec2_to_point(point.position))
 				}
 			})
 		})
@@ -2765,7 +2761,7 @@ impl DocumentMessageHandler {
 			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
 			let has_stroke = appearance.is_some_and(|appearance| {
 				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
-					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_fully_transparent())
+					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_guaranteed_fully_transparent())
 			});
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
@@ -3795,7 +3791,6 @@ enum XRayTarget {
 	Point(DVec2),
 	Quad(Quad),
 	Path(BezPath),
-	Polygon(Subpath<PointId>),
 }
 
 /// The result for the [`ClickXRayIter`] on the layer
@@ -3818,13 +3813,7 @@ fn quad_to_kurbo(quad: Quad) -> BezPath {
 
 fn click_targets_to_kurbo<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> BezPath {
 	let segments = click_targets
-		.filter_map(|target| {
-			if let ClickTargetType::Subpath(subpath) = target.target_type() {
-				Some(subpath.iter())
-			} else {
-				None
-			}
-		})
+		.filter_map(|target| if let ClickTargetType::Path(path) = target.target_type() { Some(path.segments()) } else { None })
 		.flatten()
 		.map(|bezier| Affine::new(transform.to_cols_array()) * bezier);
 	BezPath::from_path_segments(segments)
@@ -3895,10 +3884,6 @@ impl<'a> ClickXRayIter<'a> {
 			}
 			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_kurbo(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
-			XRayTarget::Polygon(polygon) => {
-				let polygon = BezPath::from_path_segments(polygon.iter_closed());
-				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
-			}
 		}
 	}
 }
@@ -4331,7 +4316,7 @@ mod document_message_handler_tests {
 
 		let instrumented = editor.eval_graph().await.unwrap();
 
-		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass vacuously
+		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass without checking anything
 		let base_lengths: Vec<usize> = instrumented
 			.grab_all_input::<graphene_std::graphic::extend::BaseInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
 			.map(|base| base.len())
@@ -4346,7 +4331,7 @@ mod document_message_handler_tests {
 		let phantom_count = news
 			.iter()
 			.flat_map(|new| new.iter_element_values())
-			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None))
+			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None(_)))
 			.count();
 		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
 	}

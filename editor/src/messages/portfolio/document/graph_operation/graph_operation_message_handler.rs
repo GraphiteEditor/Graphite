@@ -363,13 +363,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id);
-				modify_inputs.insert_vector(subpaths, layer, true, true, true);
-				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
 			GraphOperationMessage::NewTextLayer {
 				id,
 				text,
@@ -856,13 +849,13 @@ fn import_usvg_node_inner(
 
 /// Helper to apply path data (vector geometry, fill, stroke, transform) to a layer.
 fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, path: &usvg::Path, layer: LayerNodeIdentifier, gradient_info: &SvgGradientInfo) {
-	let subpaths = convert_usvg_path(path);
+	let bezpath = convert_usvg_path(path);
 
 	// Skip creating a Transform node entirely when the SVG-native transform is identity.
 	let node_transform = usvg_transform(node.abs_transform());
 	let has_transform = node_transform != DAffine2::IDENTITY;
 
-	modify_inputs.insert_vector(subpaths, layer, has_transform, path.fill().is_some(), path.stroke().is_some());
+	modify_inputs.insert_vector(bezpath, layer, has_transform, path.fill().is_some(), path.stroke().is_some());
 
 	if has_transform && let Some(transform_node_id) = modify_inputs.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) {
 		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, node_transform);

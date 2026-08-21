@@ -43,10 +43,9 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, No
 use graphene_std::Appearance;
 use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
-use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType, FreePoint};
-use graphene_std::vector::{PointId, Vector, VectorModificationType};
+use graphene_std::vector::{Vector, VectorModificationType};
 use kurbo::BezPath;
 use memo_network::MemoNetwork;
 use serde_json::{Value, json};

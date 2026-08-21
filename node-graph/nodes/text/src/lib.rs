@@ -189,7 +189,7 @@ fn string_value(_: impl Ctx, _primary: (), string: Item<TextArea>) -> Item<Strin
 }
 
 /// Type-asserts a value to be a string.
-#[node_macro::node(category("Debug"))]
+#[node_macro::node(category("Type Assertion"))]
 fn as_string(_: impl Ctx, value: Item<String>) -> Item<String> {
 	value
 }

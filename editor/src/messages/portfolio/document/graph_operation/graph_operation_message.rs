@@ -8,10 +8,9 @@ use graphene_std::Color;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
-use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
-use graphene_std::vector::{Gradient, PointId, VectorModificationType};
+use graphene_std::vector::{Gradient, VectorModificationType};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -159,12 +158,6 @@ pub enum GraphOperationMessage {
 	NewColorFillLayer {
 		node_id: NodeId,
 		color: Color,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
-	},
-	NewVectorLayer {
-		id: NodeId,
-		subpaths: Vec<Subpath<PointId>>,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

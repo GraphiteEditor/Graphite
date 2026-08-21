@@ -6,9 +6,9 @@ use crate::messages::tool::common_functionality::color_selector::solid;
 use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_upstream_color_value_node_id, gradient_chain_target_input, replaceable_paint_chain};
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::subpath::Subpath;
-use graphene_std::vector::PointId;
+use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::style::FillChoice;
+use kurbo::{BezPath, DEFAULT_ACCURACY, Rect, Shape};
 
 #[derive(Default, ExtractField)]
 pub struct FillTool {
@@ -150,9 +150,13 @@ impl Fsm for FillToolFsmState {
 
 					if paints_whole_expanse(layer, &document.network_interface) {
 						let expanse = whole_expanse_rect(layer, document, overlay_context.viewport.size().into_dvec2());
-						overlay_context.fill_path_pattern(std::iter::once(expanse), DAffine2::IDENTITY, &color_hex);
+						overlay_context.fill_path_pattern(&expanse, DAffine2::IDENTITY, &color_hex);
 					} else {
-						overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &color_hex);
+						let mut outline = BezPath::new();
+						for path in document.metadata().layer_outline(layer) {
+							outline.extend(path.elements().iter().copied());
+						}
+						overlay_context.fill_path_pattern(&outline, document.metadata().transform_to_viewport(layer), &color_hex);
 					}
 				}
 
@@ -244,15 +248,16 @@ fn paints_whole_expanse(layer: LayerNodeIdentifier, network_interface: &NodeNetw
 
 /// The viewport-space area a whole-expanse color paints: the artboard containing the layer, since the color fills it,
 /// or else the visible viewport for a layer living outside any artboard.
-fn whole_expanse_rect(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport_size: DVec2) -> Subpath<PointId> {
+fn whole_expanse_rect(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport_size: DVec2) -> BezPath {
 	let containing_artboard = layer
 		.ancestors(document.metadata())
 		.find(|&ancestor| ancestor != LayerNodeIdentifier::ROOT_PARENT && document.network_interface.is_artboard(&ancestor.to_node(), &[]));
 
-	match containing_artboard.and_then(|artboard| document.metadata().bounding_box_viewport(artboard)) {
-		Some([min, max]) => Subpath::new_rectangle(min, max),
-		None => Subpath::new_rectangle(DVec2::ZERO, viewport_size),
-	}
+	let [min, max] = containing_artboard
+		.and_then(|artboard| document.metadata().bounding_box_viewport(artboard))
+		.unwrap_or([DVec2::ZERO, viewport_size]);
+
+	Rect::from_points(dvec2_to_point(min), dvec2_to_point(max)).to_path(DEFAULT_ACCURACY)
 }
 
 #[cfg(test)]
@@ -269,7 +274,7 @@ mod test_fill {
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
-		instrumented.grab_all_input::<fill::FillInput, Item<Color>>(&editor.runtime).collect()
+		instrumented.grab_all_input::<fill::PaintInput, Item<Color>>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]
@@ -498,7 +503,7 @@ mod test_fill {
 		let ellipse_fill_id = get_fill_node_id_with_direct_fill_input(ellipse, &editor.active_document().network_interface).expect("the ellipse should have a Fill node");
 		editor.active_document_mut().network_interface.create_wire(
 			&OutputConnector::primary_output(shared_transform_id),
-			&InputConnector::node(ellipse_fill_id, graphene_std::vector::fill::FillInput),
+			&InputConnector::node(ellipse_fill_id, graphene_std::vector::fill::PaintInput),
 			&[],
 		);
 
@@ -518,7 +523,7 @@ mod test_fill {
 		assert_eq!(
 			document
 				.network_interface
-				.upstream_output_connector(&InputConnector::node(ellipse_fill_id, graphene_std::vector::fill::FillInput), &[])
+				.upstream_output_connector(&InputConnector::node(ellipse_fill_id, graphene_std::vector::fill::PaintInput), &[])
 				.and_then(|output| output.node_id()),
 			Some(shared_transform_id),
 			"the ellipse should keep being painted by the shared chain"

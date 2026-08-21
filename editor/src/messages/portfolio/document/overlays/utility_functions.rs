@@ -6,9 +6,9 @@ pub use crate::messages::portfolio::document::utility_types::text_metrics::text_
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
-use graphene_std::subpath::{Bezier, BezierHandles};
-use graphene_std::vector::misc::ManipulatorPointId;
+use graphene_std::vector::misc::{BezierHandles, ManipulatorPointId, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::{PointId, SegmentId, Vector};
+use kurbo::{Affine, ParamCurve, PathSeg};
 use std::collections::HashMap;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
@@ -59,7 +59,7 @@ pub fn selected_segments_for_layer(vector: &Vector, state: &SelectedLayerState) 
 		.collect::<Vec<_>>();
 
 	// Adding segments which are are connected to selected anchors
-	for (segment_id, _bezier, start, end) in vector.segment_bezier_iter() {
+	for (segment_id, _, start, end) in vector.segment_iter() {
 		if selected_anchors.contains(&start) || selected_anchors.contains(&end) {
 			selected_segments.push(segment_id);
 		}
@@ -67,23 +67,25 @@ pub fn selected_segments_for_layer(vector: &Vector, state: &SelectedLayerState) 
 	selected_segments
 }
 
-fn overlay_bezier_handles(bezier: Bezier, segment_id: SegmentId, transform: DAffine2, is_selected: impl Fn(ManipulatorPointId) -> bool, overlay_context: &mut OverlayContext) {
-	let bezier = bezier.apply_transformation(|point| transform.transform_point2(point));
+fn overlay_bezier_handles(segment: PathSeg, segment_id: SegmentId, transform: DAffine2, is_selected: impl Fn(ManipulatorPointId) -> bool, overlay_context: &mut OverlayContext) {
+	let segment = Affine::new(transform.to_cols_array()) * segment;
+	let segment_start = point_to_dvec2(segment.start());
+	let segment_end = point_to_dvec2(segment.end());
 	let not_under_anchor = |position: DVec2, anchor: DVec2| position.distance_squared(anchor) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 
-	match bezier.handles {
-		BezierHandles::Quadratic { handle } if not_under_anchor(handle, bezier.start) && not_under_anchor(handle, bezier.end) => {
-			overlay_context.line(handle, bezier.start, None, None);
-			overlay_context.line(handle, bezier.end, None, None);
+	match segment_to_handles(&segment) {
+		BezierHandles::Quadratic { handle } if not_under_anchor(handle, segment_start) && not_under_anchor(handle, segment_end) => {
+			overlay_context.line(handle, segment_start, None, None);
+			overlay_context.line(handle, segment_end, None, None);
 			overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 		}
 		BezierHandles::Cubic { handle_start, handle_end } => {
-			if not_under_anchor(handle_start, bezier.start) {
-				overlay_context.line(handle_start, bezier.start, None, None);
+			if not_under_anchor(handle_start, segment_start) {
+				overlay_context.line(handle_start, segment_start, None, None);
 				overlay_context.manipulator_handle(handle_start, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 			}
-			if not_under_anchor(handle_end, bezier.end) {
-				overlay_context.line(handle_end, bezier.end, None, None);
+			if not_under_anchor(handle_end, segment_end) {
+				overlay_context.line(handle_end, segment_end, None, None);
 				overlay_context.manipulator_handle(handle_end, is_selected(ManipulatorPointId::EndHandle(segment_id)), None);
 			}
 		}
@@ -92,7 +94,7 @@ fn overlay_bezier_handles(bezier: Bezier, segment_id: SegmentId, transform: DAff
 }
 
 fn overlay_bezier_handle_specific_point(
-	bezier: Bezier,
+	segment: PathSeg,
 	segment_id: SegmentId,
 	(start, end): (PointId, PointId),
 	point_to_render: PointId,
@@ -100,24 +102,24 @@ fn overlay_bezier_handle_specific_point(
 	is_selected: impl Fn(ManipulatorPointId) -> bool,
 	overlay_context: &mut OverlayContext,
 ) {
-	let bezier = bezier.apply_transformation(|point| transform.transform_point2(point));
+	let segment = Affine::new(transform.to_cols_array()) * segment;
+	let segment_start = point_to_dvec2(segment.start());
+	let segment_end = point_to_dvec2(segment.end());
 	let not_under_anchor = |position: DVec2, anchor: DVec2| position.distance_squared(anchor) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 
-	match bezier.handles {
-		BezierHandles::Quadratic { handle } => {
-			if not_under_anchor(handle, bezier.start) && not_under_anchor(handle, bezier.end) {
-				let end = if start == point_to_render { bezier.start } else { bezier.end };
-				overlay_context.line(handle, end, None, None);
-				overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
-			}
+	match segment_to_handles(&segment) {
+		BezierHandles::Quadratic { handle } if not_under_anchor(handle, segment_start) && not_under_anchor(handle, segment_end) => {
+			let anchor = if start == point_to_render { segment_start } else { segment_end };
+			overlay_context.line(handle, anchor, None, None);
+			overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 		}
 		BezierHandles::Cubic { handle_start, handle_end } => {
-			if not_under_anchor(handle_start, bezier.start) && (point_to_render == start) {
-				overlay_context.line(handle_start, bezier.start, None, None);
+			if not_under_anchor(handle_start, segment_start) && (point_to_render == start) {
+				overlay_context.line(handle_start, segment_start, None, None);
 				overlay_context.manipulator_handle(handle_start, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 			}
-			if not_under_anchor(handle_end, bezier.end) && (point_to_render == end) {
-				overlay_context.line(handle_end, bezier.end, None, None);
+			if not_under_anchor(handle_end, segment_end) && (point_to_render == end) {
+				overlay_context.line(handle_end, segment_end, None, None);
 				overlay_context.manipulator_handle(handle_end, is_selected(ManipulatorPointId::EndHandle(segment_id)), None);
 			}
 		}
@@ -152,23 +154,23 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 
 			match draw_handles {
 				DrawHandles::All => {
-					vector.segment_bezier_iter().for_each(|(segment_id, bezier, _start, _end)| {
-						overlay_bezier_handles(bezier, segment_id, transform, is_selected, overlay_context);
+					vector.segment_iter().for_each(|(segment_id, segment, _start, _end)| {
+						overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context);
 					});
 				}
 				DrawHandles::SelectedAnchors(ref selected_segments) => {
 					let Some(focused_segments) = selected_segments.get(&layer) else { continue };
 
 					vector
-						.segment_bezier_iter()
+						.segment_iter()
 						.filter(|(segment_id, ..)| focused_segments.contains(segment_id))
-						.for_each(|(segment_id, bezier, _start, _end)| {
-							overlay_bezier_handles(bezier, segment_id, transform, is_selected, overlay_context);
+						.for_each(|(segment_id, segment, _start, _end)| {
+							overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context);
 						});
 
-					for (segment_id, bezier, start, end) in vector.segment_bezier_iter() {
+					for (segment_id, segment, start, end) in vector.segment_iter() {
 						if let Some((corresponding_anchor, _)) = opposite_handles_data.iter().find(|(_, adj_segment_id)| adj_segment_id == &segment_id) {
-							overlay_bezier_handle_specific_point(bezier, segment_id, (start, end), *corresponding_anchor, transform, is_selected, overlay_context);
+							overlay_bezier_handle_specific_point(segment, segment_id, (start, end), *corresponding_anchor, transform, is_selected, overlay_context);
 						}
 					}
 				}
@@ -176,14 +178,14 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 					let Some(segment_endpoints) = segment_endpoints_by_layer.get(&layer) else { continue };
 
 					vector
-						.segment_bezier_iter()
+						.segment_iter()
 						.filter(|(segment_id, ..)| segment_endpoints.contains_key(segment_id))
-						.for_each(|(segment_id, bezier, start, end)| {
+						.for_each(|(segment_id, segment, start, end)| {
 							if segment_endpoints.get(&segment_id).unwrap().len() == 1 {
 								let point_to_render = segment_endpoints.get(&segment_id).unwrap()[0];
-								overlay_bezier_handle_specific_point(bezier, segment_id, (start, end), point_to_render, transform, is_selected, overlay_context);
+								overlay_bezier_handle_specific_point(segment, segment_id, (start, end), point_to_render, transform, is_selected, overlay_context);
 							} else {
-								overlay_bezier_handles(bezier, segment_id, transform, is_selected, overlay_context);
+								overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context);
 							}
 						});
 				}

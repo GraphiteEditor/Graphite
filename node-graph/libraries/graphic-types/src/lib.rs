@@ -8,7 +8,7 @@ pub use raster_types;
 pub use vector_types;
 
 // Re-export commonly used types at the crate root
-pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, IntoPaint, stamp_coverage};
+pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
 pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 
@@ -24,7 +24,7 @@ pub mod migrations {
 		use core_types::Color;
 		use dyn_any::DynAny;
 		use glam::{DAffine2, DVec2};
-		use vector_types::vector::{PointDomain, RegionDomain, SegmentDomain, misc::HandleId, style::Stroke};
+		use vector_types::vector::{PointDomain, SegmentDomain, misc::HandleId, style::Stroke};
 		use vector_types::{GradientRamp, Vector, vector};
 
 		#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
@@ -111,7 +111,6 @@ pub mod migrations {
 			pub colinear_manipulators: Vec<[HandleId; 2]>,
 			pub point_domain: PointDomain,
 			pub segment_domain: SegmentDomain,
-			pub region_domain: RegionDomain,
 		}
 
 		#[derive(serde::Deserialize)]
@@ -142,7 +141,6 @@ pub mod migrations {
 				colinear_manipulators: old.colinear_manipulators,
 				point_domain: old.point_domain,
 				segment_domain: old.segment_domain,
-				region_domain: old.region_domain,
 			}),
 			VectorFormat::Vector(vector) => Some(vector),
 			VectorFormat::List(list) => list.element.into_iter().next(),

@@ -13,11 +13,10 @@ use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
-use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
-use kurbo::{CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, PathSeg, Point, QuadBez, Shape};
+use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, PathSeg, Point, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
@@ -194,51 +193,6 @@ pub fn is_visible_point(
 			}
 		}
 	}
-}
-
-pub fn is_intersecting(bezier: Bezier, quad: [DVec2; 2], transform: DAffine2) -> bool {
-	let to_layerspace = transform.inverse();
-	let quad = [to_layerspace.transform_point2(quad[0]), to_layerspace.transform_point2(quad[1])];
-	let start = Point::new(bezier.start.x, bezier.start.y);
-	let end = Point::new(bezier.end.x, bezier.end.y);
-	let segment = match bezier.handles {
-		BezierHandles::Cubic { handle_start, handle_end } => {
-			let p1 = Point::new(handle_start.x, handle_start.y);
-			let p2 = Point::new(handle_end.x, handle_end.y);
-			PathSeg::Cubic(CubicBez::new(start, p1, p2, end))
-		}
-		BezierHandles::Quadratic { handle } => {
-			let p1 = Point::new(handle.x, handle.y);
-			PathSeg::Quad(QuadBez::new(start, p1, end))
-		}
-		BezierHandles::Linear => PathSeg::Line(Line::new(start, end)),
-	};
-
-	// Create a list of all the sides
-	let sides = [
-		Line::new((quad[0].x, quad[0].y), (quad[1].x, quad[0].y)),
-		Line::new((quad[0].x, quad[0].y), (quad[0].x, quad[1].y)),
-		Line::new((quad[1].x, quad[1].y), (quad[1].x, quad[0].y)),
-		Line::new((quad[1].x, quad[1].y), (quad[0].x, quad[1].y)),
-	];
-
-	let mut is_intersecting = false;
-	for line in sides {
-		let intersections = segment.intersect_line(line);
-		let mut intersects = false;
-		for intersection in intersections {
-			if intersection.line_t <= 1. && intersection.line_t >= 0. && intersection.segment_t <= 1. && intersection.segment_t >= 0. {
-				// There is a valid intersection point
-				intersects = true;
-				break;
-			}
-		}
-		if intersects {
-			is_intersecting = true;
-			break;
-		}
-	}
-	is_intersecting
 }
 
 #[allow(clippy::too_many_arguments)]
