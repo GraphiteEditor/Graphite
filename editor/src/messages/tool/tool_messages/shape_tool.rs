@@ -1454,7 +1454,11 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Spiral")]),
 					HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Turns")]),
 				],
-				ShapeType::Teardrop => vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Teardrop")])],
+				ShapeType::Teardrop => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Teardrop"),
+					HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
 				ShapeType::Grid => vec![HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Grid"),
 					HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
