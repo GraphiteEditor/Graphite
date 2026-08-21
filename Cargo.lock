@@ -370,15 +370,28 @@ dependencies = [
 name = "brush-nodes"
 version = "0.1.0"
 dependencies = [
+ "brush-types",
  "core-types",
  "dyn-any",
  "glam",
  "graphene-hash",
+ "graphic-types",
  "node-macro",
  "raster-nodes",
  "raster-types",
  "serde",
  "tokio",
+]
+
+[[package]]
+name = "brush-types"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphene-hash",
+ "serde",
 ]
 
 [[package]]
@@ -2208,6 +2221,7 @@ dependencies = [
 name = "graphic-nodes"
 version = "0.1.0"
 dependencies = [
+ "brush-types",
  "core-types",
  "dyn-any",
  "glam",
@@ -2223,6 +2237,7 @@ dependencies = [
 name = "graphic-types"
 version = "0.1.0"
 dependencies = [
+ "brush-types",
  "core-types",
  "dyn-any",
  "glam",
@@ -4871,6 +4886,7 @@ name = "rendering"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "brush-types",
  "core-types",
  "dyn-any",
  "glam",
