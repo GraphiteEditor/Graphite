@@ -553,7 +553,7 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.render_svg(render, render_params),
 			Graphic::Gradient(list) => list.render_svg(render, render_params),
 			Graphic::Text(list) => list.render_svg(render, render_params),
-			Graphic::Group(_) => (),
+			Graphic::Group(group) => graphic_types::graphic::group_to_legacy_list(group).render_svg(render, render_params),
 		}
 	}
 
@@ -566,14 +566,16 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Text(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Group(_) => (),
+			Graphic::Group(group) => graphic_types::graphic::group_to_legacy_list(group).render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			match self {
-				Graphic::Group(_) => {}
+				Graphic::Group(_) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+				}
 				Graphic::Graphic(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
@@ -640,7 +642,7 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id),
-			Graphic::Group(_) => (),
+			Graphic::Group(group) => graphic_types::graphic::group_to_legacy_list(group).collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
@@ -653,7 +655,7 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Text(list) => list.add_upstream_click_targets(click_targets),
-			Graphic::Group(_) => (),
+			Graphic::Group(group) => graphic_types::graphic::group_to_legacy_list(group).add_upstream_click_targets(click_targets),
 		}
 	}
 
@@ -666,7 +668,7 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Text(list) => list.add_upstream_outline_targets(outlines),
-			Graphic::Group(_) => (),
+			Graphic::Group(group) => graphic_types::graphic::group_to_legacy_list(group).add_upstream_outline_targets(outlines),
 		}
 	}
 

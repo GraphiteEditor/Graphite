@@ -632,6 +632,37 @@ mod tests {
 	}
 
 	#[test]
+	fn a_group_converts_to_its_legacy_list() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = graphic_layout();
+		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
+		let node = install(
+			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows, }, &layout, &layout), &layout),
+			wrap_layout_meta(),
+			&[Some(&layout)],
+		);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		let head = ctx.index_head();
+		let GPoll::Final(value) = node.eval(&ctx.promoted(&head, 0)) else {
+			panic!("expected a final record");
+		};
+		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(out.rec(&value)) }) else {
+			panic!("expected a group element");
+		};
+
+		let legacy = graphic_types::graphic::group_to_legacy_list(group);
+		assert_eq!(legacy.len(), 2);
+		for (index, (label, x)) in [("a", 1.), ("b", 2.)].into_iter().enumerate() {
+			assert_eq!(text_of(legacy.element(index).unwrap()), label, "item {index}");
+			assert_eq!(legacy.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index).translation.x, x, "item {index}");
+		}
+	}
+
+	#[test]
 	fn flatten_reverses_wrap() {
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
