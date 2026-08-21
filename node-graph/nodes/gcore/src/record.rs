@@ -5,11 +5,12 @@
 //! tests; the node forms are the production authoring surface, and the
 //! wiring is by hand until the compiler pass constructs layouts.
 
-use core_types::attribute::{Attr, Opacity, RemoveAttr, Transform};
+use core_types::attribute::{Attr, EditorLayerPath, Opacity, RemoveAttr, Transform};
 use glam::DAffine2;
 use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
+use core_types::uuid::NodeId;
 use core_types::Ctx;
 
 core_types::attribute! {
@@ -175,6 +176,17 @@ fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll
 			_ => GPoll::error("extend inner extents differ"),
 		}),
 	}
+}
+
+/// The layer-path stamp: the flip-time replacement for the Merge
+/// subnetwork's named attribute write.
+#[node_macro::node(category("Test"))]
+fn stamp_layer_path<'e, T>(ctx: impl Ctx + ExtractArena<'e>, element: T, path: Vec<NodeId>) -> Result<(T, Attr<'e, EditorLayerPath>), Interrupt> {
+	let (parked, _) = ctx.arena().alloc(path).ok_or(GraphError {
+		kind: ErrorKind::ArenaExhausted,
+		trace: Vec::new(),
+	})?;
+	Ok((element, Attr(parked.as_slice())))
 }
 
 /// Resolves a signed index over `total` lanes: negatives count from the end,
@@ -1552,6 +1564,42 @@ mod tests {
 				panic!("expected a final record at lane {lane}");
 			};
 			assert_eq!(unsafe { out.rec(&value).element::<Color>() }, expected, "lane {lane}");
+			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
+	fn the_stamp_writes_the_layer_path_on_each_lane() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source_layout = leveled_f64_layout(&[]);
+		reserve_for(&[&source_layout]);
+		let source = LeveledSourceNode {
+			layout: source_layout.clone(),
+			elements: vec![10., 11.],
+			field: None,
+		};
+		let path = vec![NodeId(7), NodeId(8)];
+		let node = install(
+			StampLayerPathNode::new(RecordSource::new(source, &source_layout, &source_layout), ValueNode(path.clone()), &source_layout),
+			stamp_layer_path_layout_meta(),
+			&[Some(&source_layout)],
+		);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		let offset = out.offset_of("editor:layer_path", 0).expect("the stamp writes the layer path");
+
+		let head = ctx.index_head();
+		for (lane, element) in [(0u64, 10.), (1, 11.)] {
+			let mark = stack::sp();
+			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane)) else {
+				panic!("expected a final record at lane {lane}");
+			};
+			let rec = out.rec(&value);
+			assert_eq!(unsafe { rec.element::<f64>() }, element, "lane {lane}");
+			assert_eq!(unsafe { rec.read::<&[NodeId]>(offset) }, path.as_slice(), "lane {lane}");
 			unsafe { stack::rewind(mark) };
 		}
 	}
