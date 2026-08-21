@@ -2158,7 +2158,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let flip_layout_meta_fn = flip_meta_concrete.then(|| {
 		let layout_meta_fn = format_ident!("{}_layout_meta", fn_name);
 		let element_spec = match element_write {
-			Some(ty) => quote!(#core_types::record::ElementSpec::Concrete(#core_types::record::element_write::<#ty>())),
+			Some(ty) => quote!(#core_types::record::ElementSpec::Concrete({ use #core_types::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&#core_types::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() })),
 			None => quote!(#core_types::record::ElementSpec::Carried),
 		};
 		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, core_types);
@@ -2187,7 +2187,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.collect();
 		let subtraction = (!remove_pairs.is_empty()).then(|| quote!(.without(&[#(#remove_pairs),*])));
 		let element = match element_write {
-			Some(ty) => quote!(#core_types::record::element_write::<#ty>()),
+			Some(ty) => quote!({ use #core_types::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&#core_types::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() }),
 			None => quote!(__carrier.element),
 		};
 		let layout_def = match skips_carrier {
@@ -2204,7 +2204,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		};
 		let layout_meta_fn = format_ident!("{}_layout_meta", fn_name);
 		let element_spec = match element_write {
-			Some(ty) => quote!(#core_types::record::ElementSpec::Concrete(#core_types::record::element_write::<#ty>())),
+			Some(ty) => quote!(#core_types::record::ElementSpec::Concrete({ use #core_types::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&#core_types::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() })),
 			None => quote!(#core_types::record::ElementSpec::Carried),
 		};
 		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, core_types);

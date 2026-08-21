@@ -140,7 +140,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 			let layout = format_ident!("__layout_{index}");
 			quote!(&#layout,)
 		});
-		let element_spec = quote!(gcore::record::ElementSpec::Concrete(gcore::record::element_write::<#row_output>()));
+		let element_spec = quote!(gcore::record::ElementSpec::Concrete({ use gcore::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&gcore::record::ElementWritePick::<#row_output>(::core::marker::PhantomData)).element_write() }));
 		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, &core_types);
 		Some(quote! {
 			gcore::registry::RegistryEntry {
