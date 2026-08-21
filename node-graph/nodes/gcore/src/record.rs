@@ -1519,6 +1519,38 @@ mod tests {
 	}
 
 	#[test]
+	fn read_row_exposes_the_vararg_items_as_lanes() {
+		use core_types::Color;
+
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let node = install(crate::context::ReadColorRowNode::new(), crate::context::read_color_row_layout_meta(), &[]);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(out.depth, 1);
+		// No row pushed: an empty level, matching the legacy empty-list return.
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(0)));
+
+		let mut item = core_types::list::List::new_from_element(Color::BLACK);
+		item.push(core_types::list::Item::new_from_element(Color::WHITE));
+		let scoped = ctx.push_vararg(&item);
+		let base = scoped.ctx();
+		assert_eq!(node.extent_at(&base, 0), GPoll::Final(Extent::Exactly(2)));
+
+		let head = base.index_head();
+		for (lane, expected) in [(0u64, Color::BLACK), (1, Color::WHITE)] {
+			let mark = stack::sp();
+			let GPoll::Final(value) = node.eval(&base.promoted(&head, lane)) else {
+				panic!("expected a final record at lane {lane}");
+			};
+			assert_eq!(unsafe { out.rec(&value).element::<Color>() }, expected, "lane {lane}");
+			unsafe { stack::rewind(mark) };
+		}
+	}
+
+	#[test]
 	fn reducer_drains_a_lower_bound_level() {
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
