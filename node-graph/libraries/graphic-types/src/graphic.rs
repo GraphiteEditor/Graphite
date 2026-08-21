@@ -1,6 +1,6 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, ItemAttributeValues, List};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, AttributeValueDyn, Item, ItemAttributeValues, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
@@ -667,6 +667,83 @@ fn group_bounding_box(group: &core_types::record::Group, transform: DAffine2, in
 				(None, true) => RenderBoundingBox::Infinite,
 				(None, false) => RenderBoundingBox::None,
 			}
+		}
+	}
+}
+
+/// One typed run as a legacy list, elements cloned and every attribute
+/// copied through its erased read.
+fn run_to_legacy_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::GroupItem) -> Option<List<T>> {
+	let lanes = item.typed_lanes::<T>()?;
+	let mut list = List::new();
+	for lane in 0..lanes.len() {
+		list.push(Item::new_from_element(lanes.element_ref(lane).clone()));
+	}
+	for field in &item.layout().fields {
+		for lane in 0..lanes.len() {
+			// SAFETY: the offset comes from the item's own layout.
+			let value = unsafe { (field.read_erased)(item.lanes().get(lane).rec().ptr().add(field.offset)) };
+			list.set_attribute_value_dyn(field.name, lane, AttributeValueDyn(value));
+		}
+	}
+	Some(list)
+}
+
+/// The graphic with every `Group` converted to its legacy list form.
+pub fn map_groups_to_legacy(graphic: &Graphic) -> Graphic {
+	match graphic {
+		Graphic::Group(group) => Graphic::Graphic(group_to_legacy_list(group)),
+		Graphic::Graphic(children) => {
+			let mut children = children.clone();
+			for child in children.iter_element_values_mut() {
+				*child = map_groups_to_legacy(child);
+			}
+			Graphic::Graphic(children)
+		}
+		other => other.clone(),
+	}
+}
+
+/// The group as a legacy `List<Graphic>`: a `Graphic` run becomes the items,
+/// another typed run becomes one item holding its typed list, and stack
+/// segments become one item each with the segment's row attributes.
+pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic> {
+	match &group.content {
+		core_types::record::GroupContent::Run(item) => {
+			if let Some(mut list) = run_to_legacy_list::<Graphic>(item) {
+				for element in list.iter_element_values_mut() {
+					*element = map_groups_to_legacy(element);
+				}
+				return list;
+			}
+			let element = None
+				.or_else(|| run_to_legacy_list::<Vector>(item).map(Graphic::Vector))
+				.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(Graphic::RasterCPU))
+				.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(Graphic::RasterGPU))
+				.or_else(|| run_to_legacy_list::<Color>(item).map(Graphic::Color))
+				.or_else(|| run_to_legacy_list::<GradientStops>(item).map(Graphic::Gradient))
+				.or_else(|| run_to_legacy_list::<String>(item).map(Graphic::Text));
+			match element {
+				Some(element) => List::new_from_element(element),
+				None => List::new(),
+			}
+		}
+		core_types::record::GroupContent::Stack(children) => {
+			let mut list = List::new();
+			for child in children {
+				list.push(Item::new_from_element(Graphic::Graphic(group_to_legacy_list(child))));
+				let index = list.len() - 1;
+				if let Some(row) = &child.row {
+					if !row.is_empty() {
+						for field in &row.layout().fields {
+							// SAFETY: the offset comes from the row's own layout.
+							let value = unsafe { (field.read_erased)(row.lanes().get(0).rec().ptr().add(field.offset)) };
+							list.set_attribute_value_dyn(field.name, index, AttributeValueDyn(value));
+						}
+					}
+				}
+			}
+			list
 		}
 	}
 }
