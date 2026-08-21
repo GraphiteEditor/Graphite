@@ -1,3 +1,4 @@
+mod addressing;
 pub mod algorithms;
 pub mod click_target;
 mod connectivity;
@@ -10,6 +11,7 @@ mod vector_attributes;
 mod vector_modification;
 mod vector_types;
 
+pub use addressing::*;
 pub use connectivity::*;
 pub use contour::*;
 pub use path::*;

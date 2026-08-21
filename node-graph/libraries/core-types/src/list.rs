@@ -115,8 +115,9 @@ pub const ATTR_CURVE_TYPE: &str = "curve_type";
 /// on the `List<u32>` inside a `Path` (implicit default `false`). Editing tools keep a smooth pair
 /// colinear. Rendering derives continuity from actual tangent geometry and does not read this.
 pub const ATTR_SMOOTH: &str = "smooth";
-/// Point's stable `PointId` for external addressing (modifications, tools, animation), on a
-/// `Vector`'s point pool. Indices are the internal addressing, so IDs are opt-in.
+/// Item's stable ID for external addressing (modifications, tools, animation), opt-in because indices are
+/// the internal addressing: a `PointId` on a `Vector`'s point pool, or a `SegmentId` on the `List<u32>`
+/// inside a `Path` at the anchor reference the segment departs from.
 pub const ATTR_ID: &str = "id";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
