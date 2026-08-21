@@ -91,6 +91,7 @@ pub struct ElementWrite {
 	pub size: usize,
 	pub align: usize,
 	pub parked: bool,
+	pub type_id: std::any::TypeId,
 	pub clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>,
 	pub repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
 	/// Hashes the element's content. `None` means the stored bytes are the
@@ -120,6 +121,7 @@ impl Default for ElementWrite {
 			size: 0,
 			align: 0,
 			parked: false,
+			type_id: std::any::TypeId::of::<()>(),
 			clone_out,
 			repark,
 			content_hash: None,
@@ -1164,6 +1166,7 @@ pub fn element_write<T: Clone + Send + Sync + 'static>() -> ElementWrite {
 		size,
 		align,
 		parked: element_parked::<T>(),
+		type_id: std::any::TypeId::of::<T>(),
 		clone_out: clone_out::<T>,
 		repark: repark::<T>,
 		content_hash: None,
@@ -1624,6 +1627,16 @@ impl GroupItem {
 	pub fn lanes(&self) -> crate::node::RecordBatch<'_> {
 		// SAFETY: `adopt` filled `len` lanes of `layout` at the layout's stride.
 		unsafe { crate::node::RecordBatch::new(self.frames, self.len, &self.layout) }
+	}
+
+	/// A typed view over the stored records, checked against the layout's
+	/// element type.
+	pub fn typed_lanes<T: 'static>(&self) -> Option<crate::node::List<'_, T>> {
+		match self.layout.element.type_id == std::any::TypeId::of::<T>() {
+			// SAFETY: the layout records the element type the lanes hold.
+			true => Some(unsafe { crate::node::List::new(self.lanes()) }),
+			false => None,
+		}
 	}
 }
 
