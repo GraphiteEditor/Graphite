@@ -492,6 +492,15 @@ impl TableItemLayout for Artboard {
 	}
 }
 
+impl TableItemLayout for graphene_std::brush::Stroke {
+	fn type_name() -> &'static str {
+		"Stroke"
+	}
+	fn identifier(&self) -> String {
+		format!("Stroke ({} {})", self.len(), if self.len() == 1 { "sample" } else { "samples" })
+	}
+}
+
 impl TableItemLayout for DashPattern {
 	fn type_name() -> &'static str {
 		"DashPattern"
@@ -605,6 +614,7 @@ impl TableItemLayout for Graphic {
 			Self::ColorList(list) => list.identifier(),
 			Self::GradientList(list) => list.identifier(),
 			Self::TextList(list) => list.identifier(),
+			Self::StrokeList(list) => list.identifier(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -629,6 +639,7 @@ impl TableItemLayout for Graphic {
 			Self::ColorList(list) => list.layout_with_breadcrumb(data),
 			Self::GradientList(list) => list.layout_with_breadcrumb(data),
 			Self::TextList(list) => list.layout_with_breadcrumb(data),
+			Self::StrokeList(list) => list.layout_with_breadcrumb(data),
 		}
 	}
 }
