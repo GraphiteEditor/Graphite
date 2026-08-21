@@ -19,6 +19,7 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::NodeId;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::ParameterRef;
 use std::collections::VecDeque;
 
 /// Pixel radius within which the mouse is considered to be hovering the handle.
@@ -72,6 +73,16 @@ impl GenericSliderGizmo {
 	pub fn handle_click(&mut self) {
 		if self.state == GenericSliderState::Hover {
 			self.state = GenericSliderState::Dragging;
+		}
+	}
+
+	/// The registry entry's parameter, re-paired with the node it was declared for. `ParameterRef` is the
+	/// runtime form of a parameter symbol: the generic gizmos choose their parameter from the registry at
+	/// runtime, so they cannot name a symbol at the call site, but the identifier and index still travel together.
+	fn parameter(&self) -> ParameterRef {
+		ParameterRef {
+			node_identifier: self.identifier.clone(),
+			input_index: self.info.parameter_index,
 		}
 	}
 
@@ -148,7 +159,7 @@ impl GenericSliderGizmo {
 		value = self.clamp(value);
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(self.node_id, self.info.parameter_index),
+			input_connector: InputConnector::node(self.node_id, self.parameter()),
 			input: NodeInput::value(TaggedValue::F64(value), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

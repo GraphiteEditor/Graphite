@@ -183,6 +183,79 @@ pub fn star_polygon_bezpath(center: DVec2, sides: u64, radius: f64, inner_radius
 	polyline_bezpath(positions, true)
 }
 
+/// Proportional controls for [`heart_bezpath`]. Lengths are fractions of the heart's radius and angles are
+/// in radians, so a heart keeps its shape at any size.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HeartProportions {
+	/// How far the top V dips below the upper bound of the heart.
+	pub cleavage_depth: f64,
+	/// Half-angle of the top V. Zero collapses the V into a smooth join.
+	pub cleavage_angle: f64,
+	/// Tangent length leaving the top cusp, controlling the upper roundness of each lobe.
+	pub lobe_fullness: f64,
+	/// Vertical position of the side anchor (positive raises the shoulder).
+	pub shoulder_height: f64,
+	/// Horizontal position of the side anchor.
+	pub shoulder_width: f64,
+	/// Rotation of the shoulder tangent from vertical. Positive leans the shoulder outward at top.
+	pub shoulder_tilt: f64,
+	/// Tangent length at the shoulder going up, controlling the curvature of the upper lobe side.
+	pub upper_curvature: f64,
+	/// Tangent length at the shoulder going down, controlling the curvature of the lower side.
+	pub lower_curvature: f64,
+	/// Half-angle of the bottom V. Zero produces a needle-sharp point with vertical tangents.
+	pub point_sharpness: f64,
+	/// Tangent length arriving at the bottom cusp, controlling how the sides taper into the point.
+	pub taper_length: f64,
+}
+
+/// Constructs a heart from a `radius` and a set of proportional controls. The path is closed and runs
+/// clockwise from the top cusp: top, right shoulder, bottom point, left shoulder. The two cusps are sharp
+/// joins; the shoulders are G1-continuous. The left half is a mirror of the right, so the shape is always
+/// symmetric about the vertical axis through `center`.
+pub fn heart_bezpath(center: DVec2, radius: f64, proportions: HeartProportions) -> BezPath {
+	let HeartProportions {
+		cleavage_depth,
+		cleavage_angle,
+		lobe_fullness,
+		shoulder_height,
+		shoulder_width,
+		shoulder_tilt,
+		upper_curvature,
+		lower_curvature,
+		point_sharpness,
+		taper_length,
+	} = proportions;
+
+	// Anchors for the right half plus the two y-axis cusps, in normalized coordinates (y points downward).
+	let top = DVec2::new(0., -1. + cleavage_depth);
+	let shoulder = DVec2::new(shoulder_width, -shoulder_height);
+	let bottom = DVec2::new(0., 1.);
+
+	// Unit tangent directions, all measured from the upward vertical.
+	let top_direction = DVec2::new(cleavage_angle.sin(), -cleavage_angle.cos());
+	let bottom_direction = DVec2::new(point_sharpness.sin(), -point_sharpness.cos());
+	let shoulder_up = DVec2::new(shoulder_tilt.sin(), -shoulder_tilt.cos());
+
+	// Cubic Bezier control points for the right half.
+	let top_out = top + top_direction * lobe_fullness;
+	let shoulder_in = shoulder + shoulder_up * upper_curvature;
+	let shoulder_out = shoulder - shoulder_up * lower_curvature;
+	let bottom_in = bottom + bottom_direction * taper_length;
+
+	let place = |point: DVec2| center + point * radius;
+	let mirror = |point: DVec2| DVec2::new(-point.x, point.y);
+
+	let anchors = [
+		Anchor::new(place(top), Some(place(mirror(top_out))), Some(place(top_out))),
+		Anchor::new(place(shoulder), Some(place(shoulder_in)), Some(place(shoulder_out))),
+		Anchor::new(place(bottom), Some(place(bottom_in)), Some(place(mirror(bottom_in)))),
+		Anchor::new(place(mirror(shoulder)), Some(place(mirror(shoulder_out))), Some(place(mirror(shoulder_in)))),
+	];
+
+	bezpath_from_anchors(&anchors, true)
+}
+
 /// Constructs a line from `point1` to `point2`.
 pub fn line_bezpath(point1: DVec2, point2: DVec2) -> BezPath {
 	polyline_bezpath([point1, point2], false)
