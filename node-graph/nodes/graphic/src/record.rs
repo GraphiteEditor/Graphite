@@ -75,11 +75,10 @@ fn flatten_extent(content: ListIn<'_, Graphic>, fully_flatten: ValueIn<'_, bool>
 }
 
 /// One content row as the production vararg shape: a single-item legacy list
-/// carrying the row's declared attributes.
+/// carrying the row's element only, so the list's dyn-hash is a complete
+/// cache key over the observables.
 fn vararg_row(content: core_types::node::List<'_, Graphic>, row: usize) -> core_types::list::List<Graphic> {
-	let mut item = core_types::list::List::new_from_element(content.element_ref(row).clone());
-	item.set_attribute(ATTR_TRANSFORM, 0, content.lane(row).attr::<Transform>());
-	item
+	core_types::list::List::new_from_element(content.element_ref(row).clone())
 }
 
 /// Rank-model Map: one subgraph invocation per content row, the row riding as
@@ -351,29 +350,30 @@ mod tests {
 	}
 
 	/// A subgraph source deriving its rows from the vararg: a `Text` row of
-	/// string `s` expands to `s.len()` lanes labeled `s{k}`, each translated by
-	/// the row's transform plus `k`.
+	/// string `s` expands to `s.len()` lanes labeled `s{k}`, each translated
+	/// by `k`. The vararg is attr-less, so the content rows' transforms must
+	/// not reach these lanes.
 	struct PerRowSource {
 		layout: Layout,
 	}
 
-	fn vararg_text(input: &ContextImpl<'_>) -> Option<(String, DAffine2)> {
+	fn vararg_text(input: &ContextImpl<'_>) -> Option<String> {
 		let arg = core_types::ExtractVarArgs::vararg(input, 0).ok()?;
 		let list = arg.downcast_ref::<core_types::list::List<Graphic>>()?;
 		let Graphic::Text(text) = list.element(0)? else { return None };
-		Some((text.element(0)?.clone(), list.attribute_cloned_or_default(ATTR_TRANSFORM, 0)))
+		Some(text.element(0)?.clone())
 	}
 
 	impl<'e> Node<ContextImpl<'e>> for PerRowSource {
 		type Output = RecordValue<'e>;
 
 		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			let Some((label, transform)) = vararg_text(input) else {
+			let Some(label) = vararg_text(input) else {
 				return GPoll::error("the subgraph fixture expects a text vararg");
 			};
 			let lane = input.innermost_index();
 			let graphic = text(&format!("{label}{lane}"));
-			let translated = DAffine2::from_translation(transform.translation + glam::DVec2::new(lane as f64, 0.));
+			let translated = DAffine2::from_translation(glam::DVec2::new(lane as f64, 0.));
 			let dst = stack::push(self.layout.frame_bytes());
 			if unsafe { record::write_element(dst, graphic, input.arena()) }.is_none() {
 				return GPoll::arena_exhausted();
@@ -387,7 +387,7 @@ mod tests {
 
 		fn extent_at(&self, input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
 			match vararg_text(input) {
-				Some((label, _)) => GPoll::Final(Extent::Exactly(label.len())),
+				Some(label) => GPoll::Final(Extent::Exactly(label.len())),
 				None => GPoll::error("the subgraph fixture expects a text vararg"),
 			}
 		}
@@ -413,7 +413,7 @@ mod tests {
 		}
 	}
 
-	const RAGGED_FLAT: [(&str, f64); 5] = [("ab0", 10.), ("ab1", 11.), ("xyz0", 20.), ("xyz1", 21.), ("xyz2", 22.)];
+	const RAGGED_FLAT: [(&str, f64); 5] = [("ab0", 0.), ("ab1", 1.), ("xyz0", 0.), ("xyz1", 1.), ("xyz2", 2.)];
 
 	#[test]
 	fn map_scans_ragged_rows() {
