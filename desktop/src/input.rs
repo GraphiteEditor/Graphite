@@ -48,7 +48,11 @@ impl InputState {
 	}
 
 	pub(crate) fn unlock_pointer(&mut self) -> Option<PhysicalPosition<f64>> {
-		self.pointer_lock_position.take()
+		let position = self.pointer_lock_position.take();
+		if let Some(position) = position {
+			self.pointer_position = position;
+		}
+		position
 	}
 
 	pub(crate) fn pointer_locked(&self) -> bool {
