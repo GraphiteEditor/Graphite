@@ -821,7 +821,7 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 		B: crate::context::DeriveCtx,
 		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
 	{
-		inner_extent_of(self.node, ctx, 0, self.inner_levels)
+		inner_extent_of(self.node, ctx, 0, self.inner_levels, self.input_index)
 	}
 
 	/// The flat lane count of the copy at `copy`, for edges whose inner
@@ -831,12 +831,12 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 		B: crate::context::DeriveCtx,
 		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
 	{
-		inner_extent_of(self.node, ctx, copy, self.inner_levels)
+		inner_extent_of(self.node, ctx, copy, self.inner_levels, self.input_index)
 	}
 }
 
 /// See [`RecordLazyInput::inner_extent`].
-fn inner_extent_of<B, N>(node: &N, ctx: &B, copy: u64, levels: u8) -> Result<u64, crate::gpoll::Interrupt>
+fn inner_extent_of<B, N>(node: &N, ctx: &B, copy: u64, levels: u8, input_index: usize) -> Result<u64, crate::gpoll::Interrupt>
 where
 	B: crate::context::DeriveCtx,
 	N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
@@ -847,11 +847,38 @@ where
 	for level in 0..levels {
 		match node.extent_at_derived(&derived, level) {
 			GPoll::Final(crate::gpoll::Extent::Exactly(count)) => inner *= count as u64,
+			GPoll::Final(crate::gpoll::Extent::AtLeast(_)) => return probed_inner(node, ctx, copy, input_index),
 			GPoll::Pending => return Err(crate::gpoll::Interrupt::Pending),
 			_ => return Err(crate::gpoll::GraphError::new("structure decomposition over a non-exact extent").into()),
 		}
 	}
 	Ok(inner)
+}
+
+/// The flat lane count of one copy of a lower-bound edge, probed by
+/// evaluating lanes to the past-end signal. The probed records are
+/// discarded, and their statuses land in a scratch cell.
+fn probed_inner<B, N>(node: &N, ctx: &B, copy: u64, input_index: usize) -> Result<u64, crate::gpoll::Interrupt>
+where
+	B: crate::context::DeriveCtx,
+	N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
+{
+	let cell = crate::node::StatusCell::new();
+	let mut count: u64 = 0;
+	loop {
+		let mark = stack::sp();
+		let mut frame = crate::context::IndexLink { index: 0, outer: None };
+		let probe = ctx.push_level(&mut frame, copy, count);
+		let result = node.eval_derived(&cell, input_index, &probe);
+		// SAFETY: the probed record is discarded, so nothing above the mark
+		// is live.
+		unsafe { stack::rewind(mark) };
+		match result {
+			Ok(_) => count += 1,
+			Err(crate::gpoll::Interrupt::Error(error)) if error.kind == crate::gpoll::ErrorKind::PastEnd => return Ok(count),
+			Err(interrupt) => return Err(interrupt),
+		}
+	}
 }
 
 /// The derive-routing carrier beside its declared attribute reads: evaluating
@@ -890,7 +917,7 @@ impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
 		B: crate::context::DeriveCtx,
 		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
 	{
-		inner_extent_of(self.node, ctx, 0, self.inner_levels)
+		inner_extent_of(self.node, ctx, 0, self.inner_levels, self.input_index)
 	}
 
 	pub fn eval<'d, C>(&self, ctx: &C) -> Result<Out, crate::gpoll::Interrupt>
