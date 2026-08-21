@@ -1623,9 +1623,28 @@ impl GroupItem {
 		&self.layout
 	}
 
+	/// A `GroupItem` over the batch's frames, without copying.
+	///
+	/// # Safety
+	/// The frames must stay valid for the evaluation. Arena-resident batches
+	/// qualify, caller stack scratch does not.
+	pub unsafe fn from_resident(batch: crate::node::RecordBatch<'_>) -> Self {
+		let layout = batch.layout().clone();
+		assert!(!layout.element.parked || layout.element.content_hash.is_some(), "a parked element adopts only with content glue");
+		for field in &layout.fields {
+			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");
+		}
+		Self {
+			frames: batch.frames_ptr(),
+			len: batch.len(),
+			layout,
+		}
+	}
+
 	/// A batch view over the stored records.
 	pub fn lanes(&self) -> crate::node::RecordBatch<'_> {
-		// SAFETY: `adopt` filled `len` lanes of `layout` at the layout's stride.
+		// SAFETY: the constructors store `len` lanes of `layout` at the
+		// layout's stride.
 		unsafe { crate::node::RecordBatch::new(self.frames, self.len, &self.layout) }
 	}
 

@@ -74,6 +74,10 @@ impl<'a> RecordBatch<'a> {
 		self.layout
 	}
 
+	pub(crate) fn frames_ptr(&self) -> *const u8 {
+		self.frames
+	}
+
 	pub fn get(&self, lane: usize) -> RecordLane<'a> {
 		assert!(lane < self.len, "lane {lane} out of bounds for a batch of {}", self.len);
 		RecordLane {
@@ -212,6 +216,10 @@ impl<'a, T> List<'a, T> {
 
 	pub fn is_empty(&self) -> bool {
 		self.batch.is_empty()
+	}
+
+	pub fn batch(&self) -> RecordBatch<'a> {
+		self.batch
 	}
 
 	pub fn get(&self, index: usize) -> T
