@@ -2,8 +2,8 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
-use brush_nodes::Stroke;
 use brush_nodes::brush_stroke::{BrushStroke, BrushTrace};
+use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::transform::Footprint;
@@ -99,6 +99,7 @@ macro_rules! tagged_value {
 			#[serde(alias = "BrushStrokeTable")]
 			BrushStrokes(Vec<BrushStroke>),
 			Strokes(Vec<Stroke>),
+			BrushCache(BrushCache),
 			// =======================
 			// AUTO-GENERATED VARIANTS
 			// =======================
@@ -143,6 +144,7 @@ macro_rules! tagged_value {
 					Self::GradientRamp(ramp) => ramp.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					Self::Strokes(strokes) => strokes.cache_hash(state),
+					Self::BrushCache(cache) => cache.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -210,6 +212,7 @@ macro_rules! tagged_value {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
+					Self::BrushCache(cache) => Box::new(Item::new_from_element(cache)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -277,6 +280,7 @@ macro_rules! tagged_value {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
+					Self::BrushCache(cache) => Arc::new(Item::new_from_element(cache)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -300,13 +304,14 @@ macro_rules! tagged_value {
 					// MANUAL VARIANTS
 					// ===============
 					Self::None => concrete!(()),
-					Self::TypeDefault(td) => td.clone(),
+				Self::TypeDefault(td) => td.clone(),
 					Self::F64Array(_) => list!(f64),
 					Self::DashPattern(_) => item!(DashPattern),
 					Self::BoxCorners(_) => item!(BoxCorners),
 					Self::GradientRamp(_) => item!(Gradient),
 					Self::BrushStrokes(_) => item!(BrushTrace),
 					Self::Strokes(_) => list!(Stroke),
+					Self::BrushCache(_) => item!(BrushCache),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -348,6 +353,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
 					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(downcast::<Item<BrushTrace>>(input).unwrap().into_element().0.iter_element_values().cloned().collect())),
 					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(downcast::<List<Stroke>>(input).unwrap().into_iter().map(Item::into_element).collect())),
+					x if x == TypeId::of::<Item<BrushCache>>() => Ok(TaggedValue::BrushCache(downcast::<Item<BrushCache>>(input).unwrap().into_element())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -383,6 +389,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
 					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Item<BrushTrace>>().unwrap().element().0.iter_element_values().cloned().collect())),
 					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(input.downcast_ref::<List<Stroke>>().unwrap().iter_element_values().cloned().collect())),
+					x if x == TypeId::of::<Item<BrushCache>>() => Ok(TaggedValue::BrushCache(input.downcast_ref::<Item<BrushCache>>().unwrap().element().clone())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -412,6 +419,7 @@ macro_rules! tagged_value {
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<BrushTrace>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						if name == std::any::type_name::<List<Stroke>>() { return Some(TaggedValue::Strokes(Vec::new())) }
+						if name == std::any::type_name::<BrushCache>() { return Some(TaggedValue::BrushCache(Default::default())) }
 						// Unranked types without a variant route through `TypeDefault`, with `to_dynany`/`to_any` constructing the actual default at execution time
 						macro_rules! check_bare {
 							($type_default:ty) => {
@@ -469,6 +477,7 @@ macro_rules! tagged_value {
 					Self::GradientRamp(ramp) => format!("GradientRamp({ramp:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
+					Self::BrushCache(cache) => format!("{cache:?}"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -739,7 +748,6 @@ impl TaggedValue {
 ///
 /// Routes legacy variant names into modern variants, in typed Rust. Each legacy name is also matched against the historical `#[serde(alias = "...")]` spellings the deleted variant accepted, so old-shape inner payloads are caught:
 ///
-/// - `BrushCache` → `TaggedValue::None` (purely runtime cache; no payload to preserve)
 /// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(list!(Graphic))`
 /// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(list!(Artboard))`
 /// - `Raster` (or alias `ImageFrame`/`RasterData`/`Image`):
@@ -764,7 +772,6 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 		&& let Some((tag, content)) = map.iter().next()
 	{
 		match tag.as_str() {
-			"BrushCache" => return Ok(MemoHash::new(TaggedValue::None)),
 			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Graphic)))),
 			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Artboard)))),
 			"Raster" | "ImageFrame" | "RasterData" | "Image" => {
