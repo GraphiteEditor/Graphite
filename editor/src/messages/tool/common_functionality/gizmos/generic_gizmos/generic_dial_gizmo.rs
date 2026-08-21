@@ -20,6 +20,7 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::NodeId;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::ParameterRef;
 use std::collections::VecDeque;
 
 /// Horizontal drag distance (viewport px) that corresponds to one integer step.
@@ -77,6 +78,16 @@ impl GenericDialGizmo {
 	pub fn handle_click(&mut self) {
 		if self.state == GenericDialState::Hover {
 			self.state = GenericDialState::Dragging;
+		}
+	}
+
+	/// The registry entry's parameter, re-paired with the node it was declared for. `ParameterRef` is the
+	/// runtime form of a parameter symbol: the generic gizmos choose their parameter from the registry at
+	/// runtime, so they cannot name a symbol at the call site, but the identifier and index still travel together.
+	fn parameter(&self) -> ParameterRef {
+		ParameterRef {
+			node_identifier: self.identifier.clone(),
+			input_index: self.info.parameter_index,
 		}
 	}
 
@@ -138,7 +149,7 @@ impl GenericDialGizmo {
 		let new_value = (self.initial_value as i64 + steps).clamp(min, max) as u32;
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(self.node_id, self.info.parameter_index),
+			input_connector: InputConnector::node(self.node_id, self.parameter()),
 			input: NodeInput::value(TaggedValue::U32(new_value), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

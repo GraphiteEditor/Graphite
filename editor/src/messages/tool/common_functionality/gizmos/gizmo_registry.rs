@@ -13,9 +13,9 @@
 //! See `GENERIC_GIZMOS.md` (next to this file) for a full walkthrough.
 
 use graph_craft::ProtoNodeIdentifier;
-use graphene_std::NodeInputDecleration;
+use graphene_std::NodeParameter;
 use graphene_std::vector::generator_nodes;
-use graphene_std::vector::generator_nodes::{grid, spiral};
+use graphene_std::vector::generator_nodes::{arc, circle, grid, heart, regular_polygon, spiral, star};
 
 /// The kind of interactive control a gizmo presents, which also determines the underlying
 /// [`TaggedValue`](graph_craft::document::value::TaggedValue) type of the parameter it edits.
@@ -68,7 +68,7 @@ pub struct GizmoInfo {
 // --- Per-node gizmo declarations ------------------------------------------------------------
 
 const CIRCLE_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
-	parameter_index: 1,
+	parameter_index: circle::RadiusInput::INDEX,
 	gizmo_type: GizmoType::Slider,
 	name: "Radius",
 	min: Some(0.),
@@ -79,7 +79,7 @@ const CIRCLE_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 // Only the sides dial: a polygon's radius is already adjustable via the transform cage, and a
 // `(radius, 0)` slider handle lands off the polygon's geometry, so it adds confusion without value.
 const POLYGON_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
-	parameter_index: 1,
+	parameter_index: regular_polygon::SidesInput::INDEX,
 	gizmo_type: GizmoType::Dial,
 	name: "Sides",
 	min: Some(3.),
@@ -89,7 +89,7 @@ const POLYGON_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 
 const STAR_GIZMOS: &[GizmoInfo] = &[
 	GizmoInfo {
-		parameter_index: 1,
+		parameter_index: star::SidesInput::INDEX,
 		gizmo_type: GizmoType::Dial,
 		name: "Points",
 		min: Some(3.),
@@ -97,7 +97,7 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		position_hint: PositionHint::BoundingBoxCenter,
 	},
 	GizmoInfo {
-		parameter_index: 2,
+		parameter_index: star::Radius1Input::INDEX,
 		gizmo_type: GizmoType::Slider,
 		name: "Outer Radius",
 		min: Some(0.),
@@ -105,7 +105,7 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
-		parameter_index: 3,
+		parameter_index: star::Radius2Input::INDEX,
 		gizmo_type: GizmoType::Slider,
 		name: "Inner Radius",
 		min: Some(0.),
@@ -116,7 +116,7 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 
 const ARC_GIZMOS: &[GizmoInfo] = &[
 	GizmoInfo {
-		parameter_index: 1,
+		parameter_index: arc::RadiusInput::INDEX,
 		gizmo_type: GizmoType::Slider,
 		name: "Radius",
 		min: Some(0.),
@@ -124,7 +124,7 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
-		parameter_index: 2,
+		parameter_index: arc::StartAngleInput::INDEX,
 		gizmo_type: GizmoType::Angle,
 		name: "Start Angle",
 		min: None,
@@ -132,7 +132,7 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
-		parameter_index: 3,
+		parameter_index: arc::SweepAngleInput::INDEX,
 		gizmo_type: GizmoType::Angle,
 		name: "Sweep Angle",
 		min: None,
@@ -171,7 +171,7 @@ const SPIRAL_GIZMOS: &[GizmoInfo] = &[
 // Only the radius slider: the heart's many shaping parameters (cleavage, lobes, shoulders, point)
 // are fine-tuned via the Properties panel, while the overall size reads naturally as a canvas handle.
 const HEART_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
-	parameter_index: 1,
+	parameter_index: heart::RadiusInput::INDEX,
 	gizmo_type: GizmoType::Slider,
 	name: "Radius",
 	min: Some(0.),
@@ -197,7 +197,7 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 		position_hint: PositionHint::BoundingBoxCorner,
 	},
 	GizmoInfo {
-		parameter_index: grid::SpacingInput::<f64>::INDEX,
+		parameter_index: grid::SpacingInput::INDEX,
 		gizmo_type: GizmoType::Position,
 		name: "Spacing",
 		min: Some(0.),
