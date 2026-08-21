@@ -21,10 +21,25 @@ pub struct FieldWrite {
 	pub align: usize,
 	pub read_erased: unsafe fn(*const u8) -> Box<dyn crate::list::AnyAttributeValue>,
 	pub repark: Option<unsafe fn(&dyn crate::list::AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>>,
+	/// Hashes the field's content. `None` means the stored bytes are the
+	/// content, which holds for every unparked value.
+	pub content_hash: Option<unsafe fn(*const u8, &mut dyn core::hash::Hasher)>,
+	/// Compares two fields' content. `None` as for `content_hash`.
+	pub content_eq: Option<unsafe fn(*const u8, *const u8) -> bool>,
 }
 
 impl FieldWrite {
-	pub fn of<A: crate::attribute::Attribute>(level: u8) -> Self {
+	pub fn of<A: crate::attribute::Attribute>(level: u8) -> Self
+	where
+		A::Value<'static>: graphene_hash::CacheHash + PartialEq,
+	{
+		unsafe fn content_hash<V: graphene_hash::CacheHash>(ptr: *const u8, state: &mut dyn core::hash::Hasher) {
+			let mut state = state;
+			unsafe { &*ptr.cast::<V>() }.cache_hash(&mut state);
+		}
+		unsafe fn content_eq<V: PartialEq>(a: *const u8, b: *const u8) -> bool {
+			unsafe { &*a.cast::<V>() == &*b.cast::<V>() }
+		}
 		Self {
 			name: A::NAME,
 			level,
@@ -32,6 +47,8 @@ impl FieldWrite {
 			align: align_of::<A::Value<'static>>(),
 			read_erased: A::read_erased,
 			repark: A::REPARK,
+			content_hash: Some(content_hash::<A::Value<'static>>),
+			content_eq: Some(content_eq::<A::Value<'static>>),
 		}
 	}
 }
@@ -50,6 +67,11 @@ pub struct FieldDesc {
 	pub align: usize,
 	pub read_erased: unsafe fn(*const u8) -> Box<dyn crate::list::AnyAttributeValue>,
 	pub repark: Option<unsafe fn(&dyn crate::list::AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>>,
+	/// Hashes the field's content. `None` means the stored bytes are the
+	/// content, which holds for every unparked value.
+	pub content_hash: Option<unsafe fn(*const u8, &mut dyn core::hash::Hasher)>,
+	/// Compares two fields' content. `None` as for `content_hash`.
+	pub content_eq: Option<unsafe fn(*const u8, *const u8) -> bool>,
 }
 
 impl PartialEq for FieldDesc {
@@ -71,6 +93,11 @@ pub struct ElementWrite {
 	pub parked: bool,
 	pub clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>,
 	pub repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
+	/// Hashes the element's content. `None` means the stored bytes are the
+	/// content, which holds for every unparked element.
+	pub content_hash: Option<unsafe fn(*const u8, &mut dyn core::hash::Hasher)>,
+	/// Compares two elements' content. `None` as for `content_hash`.
+	pub content_eq: Option<unsafe fn(*const u8, *const u8) -> bool>,
 }
 
 impl PartialEq for ElementWrite {
@@ -95,6 +122,8 @@ impl Default for ElementWrite {
 			parked: false,
 			clone_out,
 			repark,
+			content_hash: None,
+			content_eq: None,
 		}
 	}
 }
@@ -155,6 +184,8 @@ impl Layout {
 				align: field.align,
 				read_erased: field.read_erased,
 				repark: field.repark,
+				content_hash: field.content_hash,
+				content_eq: field.content_eq,
 			})
 			.collect();
 		for &write in writes {
@@ -179,6 +210,8 @@ impl Layout {
 					align: write.align,
 					read_erased: write.read_erased,
 					repark: write.repark,
+					content_hash: write.content_hash,
+					content_eq: write.content_eq,
 				};
 				offset += write.size;
 				desc
@@ -207,6 +240,8 @@ impl Layout {
 				align: field.align,
 				read_erased: field.read_erased,
 				repark: field.repark,
+				content_hash: field.content_hash,
+				content_eq: field.content_eq,
 			})
 			.collect();
 		Layout::default().with_writes(self.depth, self.element, &retained)
@@ -229,6 +264,8 @@ impl Layout {
 					align: field.align,
 					read_erased: field.read_erased,
 					repark: field.repark,
+				content_hash: field.content_hash,
+				content_eq: field.content_eq,
 				})
 				.collect();
 			union = union.with_writes(union.depth, union.element, &writes);
@@ -1129,6 +1166,51 @@ pub fn element_write<T: Clone + Send + Sync + 'static>() -> ElementWrite {
 		parked: element_parked::<T>(),
 		clone_out: clone_out::<T>,
 		repark: repark::<T>,
+		content_hash: None,
+		content_eq: None,
+	}
+}
+
+/// [`element_write`] plus the content hashing and equality glue, for element
+/// types that support them.
+pub fn element_write_hashed<T: Clone + Send + Sync + graphene_hash::CacheHash + PartialEq + 'static>() -> ElementWrite {
+	unsafe fn content_hash<T: graphene_hash::CacheHash>(ptr: *const u8, state: &mut dyn core::hash::Hasher) {
+		let mut state = state;
+		unsafe { borrow_element::<T>(Rec::new(ptr)) }.cache_hash(&mut state);
+	}
+	unsafe fn content_eq<T: PartialEq>(a: *const u8, b: *const u8) -> bool {
+		unsafe { borrow_element::<T>(Rec::new(a)) == borrow_element::<T>(Rec::new(b)) }
+	}
+	ElementWrite {
+		content_hash: Some(content_hash::<T>),
+		content_eq: Some(content_eq::<T>),
+		..element_write::<T>()
+	}
+}
+
+/// Selects [`element_write_hashed`] when the element type supports the
+/// content glue and [`element_write`] otherwise, by autoref method
+/// resolution: call `(&ElementWritePick::<T>(..)).element_write()` with both
+/// traits in scope.
+pub struct ElementWritePick<T>(pub std::marker::PhantomData<T>);
+
+pub trait ElementWritePickHashed {
+	fn element_write(&self) -> ElementWrite;
+}
+
+impl<T: Clone + Send + Sync + graphene_hash::CacheHash + PartialEq + 'static> ElementWritePickHashed for ElementWritePick<T> {
+	fn element_write(&self) -> ElementWrite {
+		element_write_hashed::<T>()
+	}
+}
+
+pub trait ElementWritePickPlain {
+	fn element_write(&self) -> ElementWrite;
+}
+
+impl<T: Clone + Send + Sync + 'static> ElementWritePickPlain for &ElementWritePick<T> {
+	fn element_write(&self) -> ElementWrite {
+		element_write::<T>()
 	}
 }
 
@@ -1503,9 +1585,15 @@ unsafe impl Sync for GroupItem {}
 
 impl GroupItem {
 	/// Copies the batch's lanes into the arena and clones its layout.
-	/// Returns `None` when the arena is exhausted.
+	/// Returns `None` when the arena is exhausted. Parked regions must carry
+	/// the content glue, so equality and hashing never fall back to pointer
+	/// bytes.
 	pub fn adopt(batch: crate::node::RecordBatch<'_>, arena: &crate::arena::Arena) -> Option<Self> {
 		let layout = batch.layout().clone();
+		assert!(!layout.element.parked || layout.element.content_hash.is_some(), "a parked element adopts only with content glue");
+		for field in &layout.fields {
+			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");
+		}
 		let stride = layout.lane_stride();
 		let scratch = arena.alloc_scratch::<u64>((batch.len() * stride).div_ceil(8))?;
 		let frames = scratch.as_mut_ptr().cast::<u8>();
@@ -1556,6 +1644,114 @@ pub struct Group {
 	pub content: GroupContent,
 }
 
+/// Compares one record region of `layout` by content. Regions without glue
+/// compare as bytes, which is the content for unparked values.
+unsafe fn record_content_eq(layout: &Layout, a: *const u8, b: *const u8) -> bool {
+	let bytes_eq = |offset: usize, size: usize| unsafe { std::slice::from_raw_parts(a.add(offset), size) == std::slice::from_raw_parts(b.add(offset), size) };
+	let element = match layout.element.content_eq {
+		Some(eq) => unsafe { eq(a, b) },
+		None => bytes_eq(0, layout.element.size),
+	};
+	element
+		&& layout.fields.iter().all(|field| match field.content_eq {
+			Some(eq) => unsafe { eq(a.add(field.offset), b.add(field.offset)) },
+			None => bytes_eq(field.offset, field.size),
+		})
+}
+
+/// Hashes one record region of `layout` by content, with the byte fallback
+/// of [`record_content_eq`].
+unsafe fn record_content_hash(layout: &Layout, ptr: *const u8, state: &mut dyn core::hash::Hasher) {
+	match layout.element.content_hash {
+		Some(hash) => unsafe { hash(ptr, state) },
+		None => state.write(unsafe { std::slice::from_raw_parts(ptr, layout.element.size) }),
+	}
+	for field in &layout.fields {
+		match field.content_hash {
+			Some(hash) => unsafe { hash(ptr.add(field.offset), state) },
+			None => state.write(unsafe { std::slice::from_raw_parts(ptr.add(field.offset), field.size) }),
+		}
+	}
+}
+
+fn layout_shape_hash(layout: &Layout, state: &mut dyn core::hash::Hasher) {
+	state.write_u8(layout.depth);
+	state.write_usize(layout.fields.len());
+	for field in &layout.fields {
+		state.write(field.name.as_bytes());
+		state.write_u8(field.level);
+		state.write_usize(field.offset);
+		state.write_usize(field.size);
+	}
+}
+
+impl PartialEq for GroupItem {
+	fn eq(&self, other: &Self) -> bool {
+		if self.layout != other.layout || self.len != other.len {
+			return false;
+		}
+		let stride = self.layout.lane_stride();
+		// SAFETY: both sides hold `len` lanes of the shared layout.
+		(0..self.len).all(|lane| unsafe { record_content_eq(&self.layout, self.frames.add(lane * stride), other.frames.add(lane * stride)) })
+	}
+}
+
+impl graphene_hash::CacheHash for GroupItem {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		layout_shape_hash(&self.layout, state);
+		state.write_usize(self.len);
+		let stride = self.layout.lane_stride();
+		for lane in 0..self.len {
+			// SAFETY: `adopt` filled `len` lanes of `layout`.
+			unsafe { record_content_hash(&self.layout, self.frames.add(lane * stride), state) };
+		}
+	}
+}
+
+impl PartialEq for GroupContent {
+	fn eq(&self, other: &Self) -> bool {
+		match (self, other) {
+			(GroupContent::Run(a), GroupContent::Run(b)) => a == b,
+			(GroupContent::Stack(a), GroupContent::Stack(b)) => a == b,
+			_ => false,
+		}
+	}
+}
+
+impl graphene_hash::CacheHash for GroupContent {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		match self {
+			GroupContent::Run(item) => {
+				state.write_u8(0);
+				item.cache_hash(state);
+			}
+			GroupContent::Stack(children) => {
+				state.write_u8(1);
+				state.write_usize(children.len());
+				for child in children {
+					child.cache_hash(state);
+				}
+			}
+		}
+	}
+}
+
+impl PartialEq for Group {
+	fn eq(&self, other: &Self) -> bool {
+		self.row == other.row && self.content == other.content
+	}
+}
+
+impl graphene_hash::CacheHash for Group {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		state.write_u8(self.row.is_some() as u8);
+		if let Some(row) = &self.row {
+			row.cache_hash(state);
+		}
+		self.content.cache_hash(state);
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1572,6 +1768,8 @@ mod tests {
 			align,
 			read_erased: unread,
 			repark: None,
+			content_hash: None,
+			content_eq: None,
 		}
 	}
 
@@ -1633,6 +1831,53 @@ mod tests {
 			assert_eq!(unsafe { lanes.get(lane).rec().element::<f64>() }, 10. + lane as f64, "lane {lane}");
 			assert_eq!(unsafe { lanes.get(lane).rec().read::<f64>(offset) }, 0.5 + lane as f64, "lane {lane}");
 		}
+	}
+
+	#[test]
+	fn the_element_write_pick_selects_the_content_glue_by_type() {
+		use super::{ElementWritePickHashed as _, ElementWritePickPlain as _};
+
+		#[derive(Clone)]
+		struct Opaque;
+
+		let hashed = (&ElementWritePick::<String>(std::marker::PhantomData)).element_write();
+		assert!(hashed.content_hash.is_some() && hashed.content_eq.is_some());
+		let plain = (&ElementWritePick::<Opaque>(std::marker::PhantomData)).element_write();
+		assert!(plain.content_hash.is_none() && plain.content_eq.is_none());
+	}
+
+	#[test]
+	fn group_content_equality_and_hashing_read_through_the_park() {
+		use graphene_hash::CacheHash;
+
+		let arena = crate::arena::Arena::new(4096).unwrap();
+		let layout = Layout::default().with_writes(1, element_write_hashed::<String>(), &[]);
+		let stride = layout.lane_stride();
+
+		let build = |labels: &[&str]| {
+			let mut buffer = vec![0u64; (labels.len() * stride).div_ceil(8)];
+			let base = buffer.as_mut_ptr().cast::<u8>();
+			for (lane, label) in labels.iter().enumerate() {
+				unsafe { write_element(base.add(lane * stride), label.to_string(), &arena) }.unwrap();
+			}
+			let batch = unsafe { crate::node::RecordBatch::new(base.cast_const(), labels.len(), &layout) };
+			GroupItem::adopt(batch, &arena).unwrap()
+		};
+		let digest = |item: &GroupItem| {
+			let mut state = std::collections::hash_map::DefaultHasher::new();
+			item.cache_hash(&mut state);
+			std::hash::Hasher::finish(&state)
+		};
+
+		// Each build parks its strings at fresh arena addresses, so equality
+		// and hashing must read the parked content, not the pointer bytes.
+		let a = build(&["x", "y"]);
+		let b = build(&["x", "y"]);
+		let c = build(&["x", "z"]);
+		assert_eq!(a, b);
+		assert_eq!(digest(&a), digest(&b));
+		assert_ne!(a, c);
+		assert_ne!(digest(&a), digest(&c));
 	}
 
 	#[test]

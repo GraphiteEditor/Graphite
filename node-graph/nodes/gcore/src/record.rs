@@ -553,6 +553,8 @@ mod tests {
 				align: 8,
 				read_erased: <Opacity as AttributeMarker>::read_erased,
 				repark: None,
+				content_hash: None,
+				content_eq: None,
 			})
 			.collect();
 		Layout::default().with_writes(0, core_types::record::element_write::<f64>(), &writes)
@@ -568,6 +570,8 @@ mod tests {
 				align: 8,
 				read_erased: <Opacity as AttributeMarker>::read_erased,
 				repark: None,
+				content_hash: None,
+				content_eq: None,
 			})
 			.collect();
 		Layout::default().with_writes(1, core_types::record::element_write::<f64>(), &writes)
