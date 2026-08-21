@@ -100,20 +100,26 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.collect();
 
 	// Flipped nodes carry their kernel generics as struct parameters: record
-	// edges no longer bind them through `Output`, so the struct must.
+	// edges no longer bind them through `Output`, so the struct must. A
+	// ranked input's element generic is carried on any node kind for the
+	// same reason: the materialized view monomorphizes the kernel per row.
 	let ctx_ident_for_flip = context_param(parsed).map(|ctx| ctx.ident.clone());
-	let flip_generics: Vec<&syn::GenericParam> = if flip {
-		fn_generics
-			.iter()
-			.filter(|param| match param {
-				syn::GenericParam::Type(tp) => Some(&tp.ident) != ctx_ident_for_flip.as_ref() && !data_field_generic_idents.contains(&tp.ident),
-				_ => false,
-			})
-			.collect()
-	} else {
-		Vec::new()
+	let ranked_carries = |ident: &Ident| {
+		regular_fields.iter().any(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, list_levels, .. }) => *list_levels > 0 && type_contains_ident(ty, ident),
+			_ => false,
+		})
 	};
-	let flip_generic_idents: Vec<Ident> = flip_generics
+	let carried_generics: Vec<&syn::GenericParam> = fn_generics
+		.iter()
+		.filter(|param| match param {
+			syn::GenericParam::Type(tp) => {
+				Some(&tp.ident) != ctx_ident_for_flip.as_ref() && !data_field_generic_idents.contains(&tp.ident) && (flip || ranked_carries(&tp.ident))
+			}
+			_ => false,
+		})
+		.collect();
+	let carried_generic_idents: Vec<Ident> = carried_generics
 		.iter()
 		.filter_map(|param| match param {
 			syn::GenericParam::Type(tp) => Some(tp.ident.clone()),
@@ -127,7 +133,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.iter()
 		.cloned()
 		.chain(node_generics.iter().cloned())
-		.chain(flip_generic_idents.iter().cloned())
+		.chain(carried_generic_idents.iter().cloned())
 		.collect();
 
 	// Combined struct generic parameters with bounds for struct definition
@@ -136,7 +142,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.iter()
 		.map(|gp| quote!(#gp))
 		.chain(node_generics.iter().map(|id| quote!(#id)))
-		.chain(flip_generics.iter().map(|gp| quote!(#gp)))
+		.chain(carried_generics.iter().map(|gp| quote!(#gp)))
 		.collect();
 	let context_features = &input.context_features;
 
@@ -218,13 +224,14 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let arity = field.attribute_reads.len();
 			quote!(pub(super) #slot: [Option<usize>; #arity])
 		}));
-		if !flip_generic_idents.is_empty() {
-			state.push(quote!(pub(super) __marker: ::core::marker::PhantomData<fn() -> (#(#flip_generic_idents,)*)>));
-		}
 		state
 	} else {
 		Vec::new()
 	};
+	let mut record_state_fields = record_state_fields;
+	if !carried_generic_idents.is_empty() {
+		record_state_fields.push(quote!(pub(super) __marker: ::core::marker::PhantomData<fn() -> (#(#carried_generic_idents,)*)>));
+	}
 
 	let async_source = parsed.injects_async_source_fields();
 	let slot_value_type = slot_value_type(output_type);
@@ -430,10 +437,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let flip_output_inits = flip
 		.then(|| {
 			let plan = carrier_flip.then(|| quote!(__plan: ::std::vec::Vec::new(),));
-			let marker = (!flip_generic_idents.is_empty()).then(|| quote!(__marker: ::core::marker::PhantomData,));
-			quote!(__layout: ::core::default::Default::default(), __frame_bytes: 0, #plan #marker)
+			quote!(__layout: ::core::default::Default::default(), __frame_bytes: 0, #plan)
 		})
 		.into_iter();
+	let marker_init = (!carried_generic_idents.is_empty()).then(|| quote!(__marker: ::core::marker::PhantomData,)).into_iter();
 	// `new` carries the bounds the erased glue needs at the output type.
 	let new_where = flip
 		.then(|| {
@@ -456,6 +463,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#(#flip_layout_inits)*
 						#(#flip_read_inits)*
 						#(#flip_output_inits)*
+						#(#marker_init)*
 					}
 				}
 			}
