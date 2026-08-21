@@ -548,7 +548,7 @@ impl RunAttrs {
 	}
 }
 
-fn group_row_transform(group: &core_types::record::Group) -> DAffine2 {
+pub fn group_row_transform(group: &core_types::record::Group) -> DAffine2 {
 	match &group.row {
 		Some(row) if !row.is_empty() => RunAttrs::read_or(row, RunAttrs::of(row).transform, 0, DAffine2::IDENTITY),
 		_ => DAffine2::IDENTITY,

@@ -13,6 +13,42 @@ use graphic_types::Vector;
 use raster_types::{CPU, Raster};
 use vector_types::GradientStops;
 
+/// Whether the walk can descend into a group: every run holds `Graphic`
+/// elements.
+fn group_expands(group: &core_types::record::Group) -> bool {
+	match &group.content {
+		core_types::record::GroupContent::Run(item) => item.typed_lanes::<Graphic>().is_some(),
+		core_types::record::GroupContent::Stack(children) => children.iter().all(group_expands),
+	}
+}
+
+fn group_leaf_count(group: &core_types::record::Group, fully_flatten: bool, depth: usize) -> usize {
+	match &group.content {
+		core_types::record::GroupContent::Run(item) => {
+			let lanes = item.typed_lanes::<Graphic>().expect("guarded by group_expands");
+			(0..lanes.len()).map(|lane| leaf_count(lanes.element_ref(lane), fully_flatten, depth + 1)).sum()
+		}
+		core_types::record::GroupContent::Stack(children) => children.iter().map(|child| group_leaf_count(child, fully_flatten, depth)).sum(),
+	}
+}
+
+fn group_locate(group: &core_types::record::Group, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic, DAffine2)> {
+	match &group.content {
+		core_types::record::GroupContent::Run(item) => {
+			let lanes = item.typed_lanes::<Graphic>().expect("guarded by group_expands");
+			let offset = item.layout().offset_of(ATTR_TRANSFORM, 0);
+			(0..lanes.len()).find_map(|lane| {
+				// SAFETY: the offset comes from the item's own layout.
+				let lane_transform = offset.map(|offset| unsafe { item.lanes().get(lane).rec().read::<DAffine2>(offset) }).unwrap_or(DAffine2::IDENTITY);
+				locate(lanes.element_ref(lane), transform * lane_transform, fully_flatten, depth + 1, remaining)
+			})
+		}
+		core_types::record::GroupContent::Stack(children) => children
+			.iter()
+			.find_map(|child| group_locate(child, transform * graphic_types::graphic::group_row_transform(child), fully_flatten, depth, remaining)),
+	}
+}
+
 /// Leaf rows a graphic expands to: its children's counts when the walk
 /// descends (top rows always, deeper groups only in a full flatten), one for
 /// itself otherwise.
@@ -21,6 +57,7 @@ fn leaf_count(graphic: &Graphic, fully_flatten: bool, depth: usize) -> usize {
 		Graphic::Graphic(children) if fully_flatten || depth == 0 => (0..children.len())
 			.map(|index| children.element(index).map_or(0, |child| leaf_count(child, fully_flatten, depth + 1)))
 			.sum(),
+		Graphic::Group(group) if (fully_flatten || depth == 0) && group_expands(group) => group_leaf_count(group, fully_flatten, depth),
 		_ => 1,
 	}
 }
@@ -34,6 +71,7 @@ fn locate(graphic: &Graphic, transform: DAffine2, fully_flatten: bool, depth: us
 			let child_transform: DAffine2 = children.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			locate(child, transform * child_transform, fully_flatten, depth + 1, remaining)
 		}),
+		Graphic::Group(group) if (fully_flatten || depth == 0) && group_expands(group) => group_locate(group, transform, fully_flatten, depth, remaining),
 		_ if *remaining == 0 => Some((graphic.clone(), transform)),
 		_ => {
 			*remaining -= 1;
@@ -74,17 +112,16 @@ fn flatten_extent(content: ListIn<'_, Graphic>, fully_flatten: ValueIn<'_, bool>
 	}
 }
 
-/// Rank-model Wrap: the content level collected into one group element
-/// riding a one-lane level (the production single-item list), the lanes'
-/// transforms embedded; the inverse of flatten's one-level descent.
+/// Rank-model Wrap: the content level as one group element on a one-lane
+/// level, the inverse of flatten's one-level descent.
 #[node_macro::node(category("Test"), extent(wrap_extent))]
 fn wrap(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>) -> Result<IList<Graphic>, Interrupt> {
-	let mut rows = core_types::list::List::new();
-	for row in 0..content.len() {
-		rows.push(core_types::list::Item::new_from_element(content.element_ref(row).clone()));
-		rows.set_attribute(ATTR_TRANSFORM, row, content.lane(row).attr::<Transform>());
-	}
-	Ok(Graphic::Graphic(rows))
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	Ok(Graphic::Group(core_types::record::Group {
+		row: None,
+		content: core_types::record::GroupContent::Run(item),
+	}))
 }
 
 /// The collected group is the level's single lane.
@@ -244,7 +281,7 @@ mod tests {
 	}
 
 	fn graphic_layout() -> Layout {
-		Layout::default().with_writes(1, record::element_write::<Graphic>(), &[record::FieldWrite::of::<Transform>(0)])
+		Layout::default().with_writes(1, record::element_write_hashed::<Graphic>(), &[record::FieldWrite::of::<Transform>(0)])
 	}
 
 	fn text(label: &str) -> Graphic {
@@ -577,13 +614,20 @@ mod tests {
 		let GPoll::Final(value) = node.eval(&ctx.promoted(&head, 0)) else {
 			panic!("expected a final record");
 		};
-		let Graphic::Graphic(children) = (unsafe { record::borrow_element::<Graphic>(out.rec(&value)) }) else {
+		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(out.rec(&value)) }) else {
 			panic!("expected a group element");
 		};
-		assert_eq!(children.len(), 2);
-		for (index, (label, x)) in [("a", 1.), ("b", 2.)].into_iter().enumerate() {
-			assert_eq!(text_of(children.element(index).unwrap()), label, "child {index}");
-			assert_eq!(children.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index).translation.x, x, "child {index}");
+		assert!(group.row.is_none());
+		let record::GroupContent::Run(item) = &group.content else {
+			panic!("expected a single run");
+		};
+		assert_eq!(item.len(), 2);
+		let lanes = item.typed_lanes::<Graphic>().expect("the run holds the adopted graphic lanes");
+		let offset = item.layout().offset_of(ATTR_TRANSFORM, 0).unwrap();
+		for (lane, (label, x)) in [("a", 1.), ("b", 2.)].into_iter().enumerate() {
+			assert_eq!(text_of(lanes.element_ref(lane)), label, "lane {lane}");
+			let transform: DAffine2 = unsafe { item.lanes().get(lane).rec().read(offset) };
+			assert_eq!(transform.translation.x, x, "lane {lane}");
 		}
 	}
 
