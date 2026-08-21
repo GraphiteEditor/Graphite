@@ -1124,12 +1124,18 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let non_exact = fail(quote!(#core_types::gpoll::GraphError::new("reduce over a non-exact extent")));
 					let batch_error = fail(quote!(__error));
 					let batch_failed = fail(quote!(#core_types::gpoll::GraphError::new("reduce batch failed")));
-					// A reducer's subject on a deeper wire folds the flat span
-					// of the consumer's lane: the flat convention encodes the
-					// outer coordinate in the range, not the chain.
+					// A reducer's subject on a deeper wire folds the flat span of
+					// the consumer's lane: the flat convention encodes the outer
+					// coordinate in the range, not the chain. The span offset
+					// needs the exact inner count, so a lower bound only drains
+					// when the fold covers the whole wire.
+					let deeper = match derived_materialized(index) {
+						true => quote!(#core_types::node::Node::<#ctx_ident>::layout(&self.#name).depth > #levels),
+						false => quote!(false),
+					};
 					let start = match derived_materialized(index) {
 						true => quote! {
-							match #core_types::node::Node::<#ctx_ident>::layout(&self.#name).depth > #levels {
+							match __deeper {
 								true => #core_types::context::ExtractIndex::innermost_index(__input) * __count as u64,
 								false => 0,
 							}
@@ -1138,18 +1144,49 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					};
 					quote! {
 						let __arena = #core_types::context::ExtractArena::arena(__input);
-						let __count = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Below(#levels)) {
-							#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => __count,
+						let __deeper = #deeper;
+						let __sized = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Below(#levels)) {
+							#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => ::core::result::Result::Ok(__count),
+							#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::AtLeast(__bound)) if !__deeper => ::core::result::Result::Err(__bound),
 							#core_types::gpoll::GPoll::Pending => #pending,
 							_ => #non_exact,
 						};
-						let __start: u64 = #start;
-						let __batch = match #core_types::record::materialize_batch(&self.#name, __input, __start..__start + __count as u64, __arena) {
-							#core_types::node::BatchStatus::Lent(__batch, ..) => __batch,
-							#core_types::node::BatchStatus::Filled(__batch, ..) => __batch.into_shared(),
-							#core_types::node::BatchStatus::Pending => #pending,
-							#core_types::node::BatchStatus::Error(__error) => #batch_error,
-							_ => #batch_failed,
+						let __batch = match __sized {
+							::core::result::Result::Ok(__count) => {
+								let __start: u64 = #start;
+								match #core_types::record::materialize_batch(&self.#name, __input, __start..__start + __count as u64, __arena) {
+									#core_types::node::BatchStatus::Lent(__batch, ..) => __batch,
+									#core_types::node::BatchStatus::Filled(__batch, ..) => __batch.into_shared(),
+									#core_types::node::BatchStatus::Pending => #pending,
+									#core_types::node::BatchStatus::Error(__error) => #batch_error,
+									_ => #batch_failed,
+								}
+							}
+							// The count is a lower bound: drain by guess-and-double
+							// until a short fill, each reply's hint seeding the next
+							// guess.
+							::core::result::Result::Err(__bound) => {
+								let mut __guess = __bound.max(16);
+								loop {
+									let (__batch, __hint) = match #core_types::record::materialize_batch(&self.#name, __input, 0..__guess as u64, __arena) {
+										#core_types::node::BatchStatus::Lent(__batch, _, __hint) => (__batch, __hint),
+										#core_types::node::BatchStatus::Filled(__batch, _, __hint) => (__batch.into_shared(), __hint),
+										#core_types::node::BatchStatus::Pending => #pending,
+										#core_types::node::BatchStatus::Error(__error) => #batch_error,
+										_ => #batch_failed,
+									};
+									let __filled = __batch.len();
+									if __filled < __guess {
+										break __batch;
+									}
+									match __hint {
+										#core_types::gpoll::Extent::Exactly(__total) if __total <= __filled => break __batch,
+										#core_types::gpoll::Extent::Exactly(__total) => __guess = __total,
+										#core_types::gpoll::Extent::AtLeast(__more) => __guess = (__guess * 2).max(__more),
+										#core_types::gpoll::Extent::Free => __guess *= 2,
+									}
+								}
+							}
 						};
 						let #name = unsafe { #core_types::node::List::<#ty>::new(__batch) };
 					}

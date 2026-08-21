@@ -481,6 +481,36 @@ mod tests {
 		}
 	}
 
+	/// A leveled source that keeps its count to itself: the extent is a lower
+	/// bound and lanes past the data answer the past-end signal.
+	struct DrainSourceNode {
+		layout: Layout,
+		count: usize,
+	}
+
+	impl<'e> Node<ContextImpl<'e>> for DrainSourceNode {
+		type Output = RecordValue<'e>;
+
+		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+			let lane = input.innermost_index();
+			if lane >= self.count as u64 {
+				return GPoll::past_end();
+			}
+			let dst = stack::push(self.layout.frame_bytes());
+			unsafe { dst.cast::<f64>().write(lane as f64) };
+			stack::pop(dst);
+			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+		}
+
+		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+			GPoll::Final(Extent::AtLeast(0))
+		}
+
+		fn layout(&self) -> &Layout {
+			&self.layout
+		}
+	}
+
 	struct IndexSourceNode {
 		layout: Layout,
 	}
@@ -1486,6 +1516,30 @@ mod tests {
 		};
 		// Two copies of three lanes of 7: the nested fold flattens 2 x 3.
 		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 42.);
+	}
+
+	#[test]
+	fn reducer_drains_a_lower_bound_level() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let leveled = leveled_f64_layout(&[]);
+		let out = f64_layout(&[]);
+		reserve_for(&[&leveled, &out]);
+
+		// 5 lanes end inside the first guess; 20 force a full first fill, a
+		// hint-seeded regrow, and a short second fill.
+		for count in [5usize, 20] {
+			let source = DrainSourceNode { layout: leveled.clone(), count };
+			let node = install_flip(SumNode::new(source, &leveled), &out);
+			let GPoll::Final(value) = node.eval(&ctx) else {
+				panic!("expected a final record at count {count}");
+			};
+			let expected = (count * (count - 1) / 2) as f64;
+			assert_eq!(unsafe { out.rec(&value).element::<f64>() }, expected, "count {count}");
+		}
 	}
 
 	#[test]
