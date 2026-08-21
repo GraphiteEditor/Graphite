@@ -2125,16 +2125,37 @@ impl Fsm for PathToolFsmState {
 				}
 
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
+				let lock_direction = input.keyboard.get(snap_angle as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
+					// While the lock direction modifier is held, constrain the drag to whichever screen axis it has travelled
+					// further along. The axis is stored in `snapping_axis` so the drag overlay draws the same X/Y guide lines
+					// through the grab point as it does when dragging points.
+					let mouse_position = match lock_direction {
+						true => {
+							let delta = input.mouse.position - tool_data.drag_start_pos;
+							let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
+							tool_data.snapping_axis = Some(axis);
+
+							match axis {
+								Axis::Y => DVec2::new(tool_data.drag_start_pos.x, input.mouse.position.y),
+								Axis::X | Axis::Both => DVec2::new(input.mouse.position.x, tool_data.drag_start_pos.y),
+							}
+						}
+						false => {
+							tool_data.snapping_axis = None;
+							input.mouse.position
+						}
+					};
+
 					tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 						document,
 						responses,
 						molding_segment_handles,
-						input.mouse.position,
+						mouse_position,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
@@ -2389,6 +2410,7 @@ impl Fsm for PathToolFsmState {
 				tool_data.molding_segment = false;
 				tool_data.temporary_adjacent_handles_while_molding = None;
 				tool_data.angle_locked = false;
+				tool_data.snapping_axis = None;
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
@@ -2511,6 +2533,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.molding_info = None;
 					tool_data.molding_segment = false;
 					tool_data.temporary_adjacent_handles_while_molding = None;
+					tool_data.snapping_axis = None;
 
 					if segment_dissolved || point_inserted {
 						responses.add(DocumentMessage::EndTransaction);
@@ -3638,6 +3661,8 @@ fn update_dynamic_hints(
 				let molding_disable_possible = has_colinear_anchors || handles_stored;
 
 				let mut molding_hints = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
+
+				molding_hints.push(HintGroup(vec![HintInfo::keys([Key::Shift], "Lock Direction")]));
 
 				if molding_disable_possible {
 					molding_hints.push(HintGroup(vec![HintInfo::keys([Key::Alt], "Break Colinear Handles")]));
