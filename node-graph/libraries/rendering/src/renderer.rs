@@ -553,6 +553,7 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.render_svg(render, render_params),
 			Graphic::Gradient(list) => list.render_svg(render, render_params),
 			Graphic::Text(list) => list.render_svg(render, render_params),
+			Graphic::Group(_) => (),
 		}
 	}
 
@@ -565,12 +566,14 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Text(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::Group(_) => (),
 		}
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			match self {
+				Graphic::Group(_) => {}
 				Graphic::Graphic(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
@@ -637,6 +640,7 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::Group(_) => (),
 		}
 	}
 
@@ -649,6 +653,7 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Text(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::Group(_) => (),
 		}
 	}
 
@@ -661,6 +666,7 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Text(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::Group(_) => (),
 		}
 	}
 
@@ -673,6 +679,7 @@ impl Render for Graphic {
 			Graphic::Color(list) => list.contains_artboard(),
 			Graphic::Gradient(list) => list.contains_artboard(),
 			Graphic::Text(list) => list.contains_artboard(),
+			Graphic::Group(_) => false,
 		}
 	}
 
@@ -685,6 +692,7 @@ impl Render for Graphic {
 			Graphic::Color(_) => (),
 			Graphic::Gradient(_) => (),
 			Graphic::Text(_) => (),
+			Graphic::Group(_) => (),
 		}
 	}
 }
@@ -1367,7 +1375,7 @@ impl Render for List<Vector> {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 						}
-						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
+						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) | Graphic::Group(_) => {
 							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 							paint.render_to_vello(scene, multiplied_transform, context, render_params);
 							scene.pop_layer();
@@ -1449,7 +1457,7 @@ impl Render for List<Vector> {
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 						}
-						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
+						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) | Graphic::Group(_) => {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);

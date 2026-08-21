@@ -22,6 +22,7 @@ pub enum Graphic {
 	Color(List<Color>),
 	Gradient(List<GradientStops>),
 	Text(List<String>),
+	Group(core_types::record::Group),
 }
 
 impl Default for Graphic {
@@ -238,7 +239,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 				Graphic::RasterGPU(list) => bake_list_transform(list, transform),
 				Graphic::Gradient(list) => bake_list_transform(list, transform),
 				Graphic::Text(list) => bake_list_transform(list, transform),
-				Graphic::Color(_) => {}
+				Graphic::Color(_) | Graphic::Group(_) => {}
 			}
 		}
 	}
@@ -430,6 +431,7 @@ impl Graphic {
 			Graphic::Color(list) => all_clipped(list),
 			Graphic::Gradient(list) => all_clipped(list),
 			Graphic::Text(list) => all_clipped(list),
+			Graphic::Group(group) => group_all_clipped(group),
 		}
 	}
 
@@ -469,6 +471,7 @@ impl Graphic {
 			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
 			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			Graphic::Group(group) => group_is_opaque(group),
 		}
 	}
 
@@ -492,6 +495,7 @@ impl Graphic {
 			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			Graphic::Group(group) => group_is_fully_transparent(group),
 		}
 	}
 
@@ -511,7 +515,178 @@ impl Graphic {
 			Graphic::RasterCPU(list) => list.is_empty(),
 			Graphic::RasterGPU(list) => list.is_empty(),
 			Graphic::Text(list) => list.is_empty(),
+			Graphic::Group(group) => group_is_empty(group),
 		}
+	}
+}
+
+/// One run's attribute offsets, resolved once so the lane loops read raw.
+struct RunAttrs {
+	transform: Option<usize>,
+	opacity: Option<usize>,
+	opacity_fill: Option<usize>,
+	clipping_mask: Option<usize>,
+}
+
+impl RunAttrs {
+	fn of(item: &core_types::record::GroupItem) -> Self {
+		let layout = item.layout();
+		Self {
+			transform: layout.offset_of(ATTR_TRANSFORM, 0),
+			opacity: layout.offset_of(ATTR_OPACITY, 0),
+			opacity_fill: layout.offset_of(ATTR_OPACITY_FILL, 0),
+			clipping_mask: layout.offset_of(ATTR_CLIPPING_MASK, 0),
+		}
+	}
+
+	fn read_or<T: Copy>(item: &core_types::record::GroupItem, offset: Option<usize>, lane: usize, default: T) -> T {
+		match offset {
+			// SAFETY: the offset comes from the item's own layout.
+			Some(offset) => unsafe { item.lanes().get(lane).rec().read(offset) },
+			None => default,
+		}
+	}
+}
+
+fn group_row_transform(group: &core_types::record::Group) -> DAffine2 {
+	match &group.row {
+		Some(row) if !row.is_empty() => RunAttrs::read_or(row, RunAttrs::of(row).transform, 0, DAffine2::IDENTITY),
+		_ => DAffine2::IDENTITY,
+	}
+}
+
+pub fn group_is_empty(group: &core_types::record::Group) -> bool {
+	match &group.content {
+		core_types::record::GroupContent::Run(item) => item.is_empty(),
+		core_types::record::GroupContent::Stack(children) => children.iter().all(group_is_empty),
+	}
+}
+
+fn group_all_clipped(group: &core_types::record::Group) -> bool {
+	match &group.content {
+		core_types::record::GroupContent::Run(item) => {
+			let attrs = RunAttrs::of(item);
+			(0..item.len()).all(|lane| RunAttrs::read_or(item, attrs.clipping_mask, lane, false))
+		}
+		core_types::record::GroupContent::Stack(children) => children.iter().all(group_all_clipped),
+	}
+}
+
+fn group_is_opaque(group: &core_types::record::Group) -> bool {
+	match &group.content {
+		core_types::record::GroupContent::Run(item) => {
+			let attrs = RunAttrs::of(item);
+			let lanes = item.typed_lanes::<Graphic>();
+			!item.is_empty()
+				&& (0..item.len()).all(|lane| {
+					RunAttrs::read_or(item, attrs.opacity, lane, 1.) >= 1.
+						&& RunAttrs::read_or(item, attrs.opacity_fill, lane, 1.) >= 1.
+						&& lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_opaque())
+				})
+		}
+		core_types::record::GroupContent::Stack(children) => !children.is_empty() && children.iter().all(group_is_opaque),
+	}
+}
+
+fn group_is_fully_transparent(group: &core_types::record::Group) -> bool {
+	match &group.content {
+		core_types::record::GroupContent::Run(item) => {
+			let attrs = RunAttrs::of(item);
+			let lanes = item.typed_lanes::<Graphic>();
+			(0..item.len()).all(|lane| {
+				RunAttrs::read_or(item, attrs.opacity, lane, 1.) <= 0. || lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_fully_transparent())
+			})
+		}
+		core_types::record::GroupContent::Stack(children) => children.iter().all(group_is_fully_transparent),
+	}
+}
+
+fn group_bounding_box(group: &core_types::record::Group, transform: DAffine2, include_stroke: bool, thumbnail: bool) -> RenderBoundingBox {
+	fn combine(combined: &mut Option<[DVec2; 2]>, any_infinite: &mut bool, bounds: RenderBoundingBox, thumbnail: bool) -> Option<RenderBoundingBox> {
+		match bounds {
+			RenderBoundingBox::None => None,
+			RenderBoundingBox::Infinite if thumbnail => {
+				*any_infinite = true;
+				None
+			}
+			RenderBoundingBox::Infinite => Some(RenderBoundingBox::Infinite),
+			RenderBoundingBox::Rectangle(bounds) => {
+				*combined = Some(match *combined {
+					Some(existing) => core_types::math::quad::Quad::combine_bounds(existing, bounds),
+					None => bounds,
+				});
+				None
+			}
+		}
+	}
+	fn typed_run<T: 'static + BoundingBox>(item: &core_types::record::GroupItem, transform: DAffine2, include_stroke: bool, thumbnail: bool) -> Option<RenderBoundingBox> {
+		let lanes = item.typed_lanes::<T>()?;
+		let transform_offset = RunAttrs::of(item).transform;
+		let mut combined = None;
+		let mut any_infinite = false;
+		for lane in 0..lanes.len() {
+			let lane_transform = transform * RunAttrs::read_or(item, transform_offset, lane, DAffine2::IDENTITY);
+			let element = lanes.element_ref(lane);
+			let bounds = match thumbnail {
+				true => element.thumbnail_bounding_box(lane_transform, include_stroke),
+				false => element.bounding_box(lane_transform, include_stroke),
+			};
+			if let Some(short_circuit) = combine(&mut combined, &mut any_infinite, bounds, thumbnail) {
+				return Some(short_circuit);
+			}
+		}
+		Some(match (combined, any_infinite) {
+			(Some(bounds), _) => RenderBoundingBox::Rectangle(bounds),
+			(None, true) => RenderBoundingBox::Infinite,
+			(None, false) => RenderBoundingBox::None,
+		})
+	}
+	fn run_bounding_box(item: &core_types::record::GroupItem, transform: DAffine2, include_stroke: bool, thumbnail: bool) -> RenderBoundingBox {
+		None.or_else(|| typed_run::<Graphic>(item, transform, include_stroke, thumbnail))
+			.or_else(|| typed_run::<Vector>(item, transform, include_stroke, thumbnail))
+			.or_else(|| typed_run::<Raster<CPU>>(item, transform, include_stroke, thumbnail))
+			.or_else(|| typed_run::<Raster<GPU>>(item, transform, include_stroke, thumbnail))
+			.or_else(|| typed_run::<Color>(item, transform, include_stroke, thumbnail))
+			.or_else(|| typed_run::<GradientStops>(item, transform, include_stroke, thumbnail))
+			.or_else(|| typed_run::<String>(item, transform, include_stroke, thumbnail))
+			.unwrap_or(RenderBoundingBox::Infinite)
+	}
+	match &group.content {
+		core_types::record::GroupContent::Run(item) => run_bounding_box(item, transform, include_stroke, thumbnail),
+		core_types::record::GroupContent::Stack(children) => {
+			let mut combined = None;
+			let mut any_infinite = false;
+			for child in children {
+				let bounds = group_bounding_box(child, transform * group_row_transform(child), include_stroke, thumbnail);
+				if let Some(short_circuit) = combine(&mut combined, &mut any_infinite, bounds, thumbnail) {
+					return short_circuit;
+				}
+			}
+			match (combined, any_infinite) {
+				(Some(bounds), _) => RenderBoundingBox::Rectangle(bounds),
+				(None, true) => RenderBoundingBox::Infinite,
+				(None, false) => RenderBoundingBox::None,
+			}
+		}
+	}
+}
+
+fn group_render_complexity(group: &core_types::record::Group) -> usize {
+	fn typed_run<T: 'static + RenderComplexity>(item: &core_types::record::GroupItem) -> Option<usize> {
+		let lanes = item.typed_lanes::<T>()?;
+		Some((0..lanes.len()).map(|lane| lanes.element_ref(lane).render_complexity()).sum())
+	}
+	match &group.content {
+		core_types::record::GroupContent::Run(item) => None
+			.or_else(|| typed_run::<Graphic>(item))
+			.or_else(|| typed_run::<Vector>(item))
+			.or_else(|| typed_run::<Raster<CPU>>(item))
+			.or_else(|| typed_run::<Raster<GPU>>(item))
+			.or_else(|| typed_run::<Color>(item))
+			.or_else(|| typed_run::<GradientStops>(item))
+			.or_else(|| typed_run::<String>(item))
+			.unwrap_or(item.len()),
+		core_types::record::GroupContent::Stack(children) => children.iter().map(group_render_complexity).sum(),
 	}
 }
 
@@ -525,6 +700,7 @@ impl BoundingBox for Graphic {
 			Graphic::Color(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Gradient(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.bounding_box(transform, include_stroke),
+			Graphic::Group(group) => group_bounding_box(group, transform, include_stroke, false),
 		}
 	}
 
@@ -537,6 +713,7 @@ impl BoundingBox for Graphic {
 			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Group(group) => group_bounding_box(group, transform, include_stroke, true),
 		}
 	}
 }
@@ -567,6 +744,7 @@ impl RenderComplexity for Graphic {
 			Self::Color(list) => list.render_complexity(),
 			Self::Gradient(list) => list.render_complexity(),
 			Self::Text(list) => list.render_complexity(),
+			Self::Group(group) => group_render_complexity(group),
 		}
 	}
 }

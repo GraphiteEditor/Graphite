@@ -336,6 +336,7 @@ impl TableItemLayout for Graphic {
 			Self::Color(list) => list.identifier(),
 			Self::Gradient(list) => list.identifier(),
 			Self::Text(list) => list.identifier(),
+			Self::Group(_) => "Group".to_string(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -351,6 +352,7 @@ impl TableItemLayout for Graphic {
 			Self::Color(list) => list.layout_with_breadcrumb(data),
 			Self::Gradient(list) => list.layout_with_breadcrumb(data),
 			Self::Text(list) => list.layout_with_breadcrumb(data),
+			Self::Group(_) => Vec::new(),
 		}
 	}
 }
