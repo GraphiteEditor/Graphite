@@ -2414,7 +2414,7 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut S
 		height: image.height,
 		alpha_type: peniko::ImageAlphaType::Alpha,
 	})
-	.with_extend(peniko::Extend::Repeat);
+	.with_extend(peniko::Extend::Pad);
 
 	scene.draw_image(&image_brush, kurbo::Affine::new(image_transform.to_cols_array()));
 
@@ -2562,7 +2562,7 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut S
 		height,
 		alpha_type: peniko::ImageAlphaType::Alpha,
 	})
-	.with_extend(peniko::Extend::Repeat);
+	.with_extend(peniko::Extend::Pad);
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
 	scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
 	context.resource_overrides.push((image, raster.texture.clone()));
