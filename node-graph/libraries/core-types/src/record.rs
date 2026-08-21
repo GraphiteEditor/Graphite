@@ -1484,6 +1484,78 @@ where
 	}
 }
 
+/// `len` records stored in the arena at `layout`'s stride. The layout is
+/// owned by the value and identifies the run's element type. The records are
+/// valid for the current evaluation, like every arena payload.
+#[derive(Clone, Debug)]
+pub struct GroupItem {
+	layout: Layout,
+	frames: *const u8,
+	len: usize,
+}
+
+// SAFETY: the same argument as for `RecordValue`. The element bounds and the
+// parking discipline make the record bytes thread-safe, and their validity
+// is tied to the shared arena.
+unsafe impl Send for GroupItem {}
+// SAFETY: as `Send`.
+unsafe impl Sync for GroupItem {}
+
+impl GroupItem {
+	/// Copies the batch's lanes into the arena and clones its layout.
+	/// Returns `None` when the arena is exhausted.
+	pub fn adopt(batch: crate::node::RecordBatch<'_>, arena: &crate::arena::Arena) -> Option<Self> {
+		let layout = batch.layout().clone();
+		let stride = layout.lane_stride();
+		let scratch = arena.alloc_scratch::<u64>((batch.len() * stride).div_ceil(8))?;
+		let frames = scratch.as_mut_ptr().cast::<u8>();
+		for lane in 0..batch.len() {
+			// SAFETY: both sides hold `len` lanes at the shared layout's stride.
+			unsafe { std::ptr::copy_nonoverlapping(batch.get(lane).rec().ptr(), frames.add(lane * stride), stride) };
+		}
+		Some(Self {
+			layout,
+			frames: frames.cast_const(),
+			len: batch.len(),
+		})
+	}
+
+	pub fn len(&self) -> usize {
+		self.len
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len == 0
+	}
+
+	pub fn layout(&self) -> &Layout {
+		&self.layout
+	}
+
+	/// A batch view over the stored records.
+	pub fn lanes(&self) -> crate::node::RecordBatch<'_> {
+		// SAFETY: `adopt` filled `len` lanes of `layout` at the layout's stride.
+		unsafe { crate::node::RecordBatch::new(self.frames, self.len, &self.layout) }
+	}
+}
+
+/// The records a group stores: a single homogeneous run, or a list of
+/// segments.
+#[derive(Clone, Debug)]
+pub enum GroupContent {
+	Run(GroupItem),
+	Stack(Vec<Group>),
+}
+
+/// Records nested inside one element. The `row` holds the group's own
+/// attribute record. A group that sits on a lane leaves it `None`, because
+/// that lane's record carries the attributes.
+#[derive(Clone, Debug)]
+pub struct Group {
+	pub row: Option<GroupItem>,
+	pub content: GroupContent,
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1530,6 +1602,37 @@ mod tests {
 		let b = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("length")]);
 		assert_eq!(Layout::union(&[&a, &b]), Layout::union(&[&b, &a]));
 		assert!(Layout::union(&[&a, &b]).offset_of("length", 0).is_some());
+	}
+
+	#[test]
+	fn adopted_lanes_round_trip_through_the_group_item() {
+		let arena = crate::arena::Arena::new(1024).unwrap();
+		let layout = Layout::default().with_writes(1, element_write::<f64>(), &[f64_field("opacity")]);
+		let stride = layout.lane_stride();
+		let offset = layout.offset_of("opacity", 0).unwrap();
+
+		let mut buffer = vec![0u64; (2 * stride).div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		for lane in 0..2usize {
+			unsafe {
+				base.add(lane * stride).cast::<f64>().write(10. + lane as f64);
+				base.add(lane * stride + offset).cast::<f64>().write(0.5 + lane as f64);
+			}
+		}
+		let batch = unsafe { crate::node::RecordBatch::new(base.cast_const(), 2, &layout) };
+
+		let item = GroupItem::adopt(batch, &arena).unwrap();
+		// The source buffer dies before the reads: the adopted copy must not
+		// alias it.
+		buffer.fill(0);
+
+		assert_eq!(item.len(), 2);
+		assert_eq!(item.layout(), &layout);
+		let lanes = item.lanes();
+		for lane in 0..2usize {
+			assert_eq!(unsafe { lanes.get(lane).rec().element::<f64>() }, 10. + lane as f64, "lane {lane}");
+			assert_eq!(unsafe { lanes.get(lane).rec().read::<f64>(offset) }, 0.5 + lane as f64, "lane {lane}");
+		}
 	}
 
 	#[test]
