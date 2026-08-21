@@ -11,7 +11,7 @@ use glam::DAffine2;
 use graphic_types::graphic::Graphic;
 use graphic_types::Vector;
 use raster_types::{CPU, Raster};
-use vector_types::GradientStops;
+use vector_types::{GradientStop, GradientStops};
 
 /// Whether the walk can descend into a group: every run holds `Graphic`
 /// elements.
@@ -127,6 +127,18 @@ fn wrap(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>
 /// The collected group is the level's single lane.
 fn wrap_extent(_content: ListIn<'_, Graphic>, _level: LevelIn) -> GPoll<Extent> {
 	GPoll::Final(Extent::Exactly(1))
+}
+
+/// Rank-model colors-to-gradient: the color level folds into one gradient
+/// with evenly spaced stops.
+#[node_macro::node(category("Test"))]
+fn to_gradient(_: impl Ctx + ExtractIndex + InjectIndex + Copy, colors: IList<Color>) -> GradientStops {
+	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
+	match colors.len() {
+		0 => GradientStops::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
+		1 => GradientStops::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
+		total => GradientStops::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
+	}
 }
 
 /// One content row as the production vararg shape: a single-item legacy list
@@ -277,6 +289,16 @@ mod tests {
 
 	fn install<N: Node<ContextImpl<'static>>>(mut node: N, meta: record::LayoutMeta, inputs: &[Option<&Layout>]) -> N {
 		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, meta.resolve(inputs));
+		node
+	}
+
+	fn install_flip<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
+		let bundle = record::RecordLayout {
+			frame_bytes: layout.frame_bytes(),
+			plan: Vec::new(),
+			layout: layout.clone(),
+		};
+		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, bundle);
 		node
 	}
 
@@ -629,6 +651,65 @@ mod tests {
 			let transform: DAffine2 = unsafe { item.lanes().get(lane).rec().read(offset) };
 			assert_eq!(transform.translation.x, x, "lane {lane}");
 		}
+	}
+
+	#[test]
+	fn colors_fold_into_evenly_spaced_stops() {
+		struct ColorSource {
+			layout: Layout,
+			colors: Vec<Color>,
+		}
+
+		impl<'e> Node<ContextImpl<'e>> for ColorSource {
+			type Output = RecordValue<'e>;
+
+			fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+				let color = self.colors[input.innermost_index() as usize];
+				let dst = stack::push(self.layout.frame_bytes());
+				unsafe { dst.cast::<Color>().write(color) };
+				stack::pop(dst);
+				GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+			}
+
+			fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+				GPoll::Final(Extent::Exactly(self.colors.len()))
+			}
+
+			fn layout(&self) -> &Layout {
+				&self.layout
+			}
+		}
+
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = Layout::default().with_writes(1, record::element_write_hashed::<Color>(), &[]);
+		let out = Layout::default().with_writes(0, record::element_write_hashed::<GradientStops>(), &[]);
+		let build = |colors: Vec<Color>| {
+			install_flip(
+				ToGradientNode::new(RecordSource::new(ColorSource { layout: layout.clone(), colors }, &layout, &layout), &layout),
+				&out,
+			)
+		};
+		let stops_of = |colors: Vec<Color>| {
+			let node = build(colors);
+			let GPoll::Final(value) = node.eval(&ctx) else {
+				panic!("expected a final record");
+			};
+			unsafe { record::borrow_element::<GradientStops>(out.rec(&value)) }.clone()
+		};
+
+		let three = stops_of(vec![Color::BLACK, Color::WHITE, Color::BLACK]);
+		assert_eq!(three.iter().map(|stop| stop.position).collect::<Vec<_>>(), vec![0., 0.5, 1.]);
+		assert_eq!(three.iter().map(|stop| stop.color).collect::<Vec<_>>(), vec![Color::BLACK, Color::WHITE, Color::BLACK]);
+
+		let single = stops_of(vec![Color::WHITE]);
+		assert_eq!(single.iter().map(|stop| (stop.position, stop.color)).collect::<Vec<_>>(), vec![(0., Color::WHITE), (1., Color::WHITE)]);
+
+		let empty = stops_of(Vec::new());
+		assert_eq!(empty.iter().map(|stop| (stop.position, stop.color)).collect::<Vec<_>>(), vec![(0., Color::BLACK), (1., Color::BLACK)]);
 	}
 
 	#[test]
