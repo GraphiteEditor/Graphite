@@ -1,8 +1,9 @@
-use super::misc::dvec2_to_point;
+use super::algorithms::consts::CLOSE_POINT_TOLERANCE;
+use super::misc::{dvec2_to_point, point_to_dvec2};
 use core_types::list::{ATTR_CURVE_TYPE, ATTR_PATHS, Item, List};
 use glam::DVec2;
 use graphene_hash::CacheHash;
-use kurbo::{CubicBez, Line, PathSeg, QuadBez};
+use kurbo::{BezPath, CubicBez, Line, PathEl, PathSeg, Point, QuadBez};
 
 /// The curve family a path's point references weave in, fixing the stride of its reference pattern.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, CacheHash)]
@@ -93,9 +94,161 @@ pub fn curve_type_at(paths: &List<Path>, index: usize) -> CurveType {
 	paths.attribute_cloned_or_default(ATTR_CURVE_TYPE, index)
 }
 
+/// Weaves bezpath contours into pool points and paths, starting a new path at each verb change so every
+/// path keeps one stride. The runs of a split subpath share the anchor they meet at, welding them.
+struct PathWeaver {
+	positions: Vec<DVec2>,
+	offset: u32,
+	woven: Vec<(CurveType, Vec<u32>)>,
+	references: Vec<u32>,
+	curve_type: Option<CurveType>,
+	subpath_start: Option<u32>,
+}
+
+impl PathWeaver {
+	fn new(offset: u32) -> Self {
+		Self {
+			positions: Vec::new(),
+			offset,
+			woven: Vec::new(),
+			references: Vec::new(),
+			curve_type: None,
+			subpath_start: None,
+		}
+	}
+
+	/// Adds a point to the pool being built and returns the reference naming it.
+	fn push_point(&mut self, point: Point) -> u32 {
+		self.positions.push(point_to_dvec2(point));
+		self.offset + self.positions.len() as u32 - 1
+	}
+
+	fn position(&self, reference: u32) -> Option<DVec2> {
+		self.positions.get(reference.checked_sub(self.offset)? as usize).copied()
+	}
+
+	/// Banks the references woven so far as a finished path, dropping a lone anchor that drew nothing.
+	fn flush(&mut self) {
+		if self.references.len() >= 2 {
+			let curve_type = self.curve_type.unwrap_or_default();
+			self.woven.push((curve_type, std::mem::take(&mut self.references)));
+		}
+
+		self.references.clear();
+		self.curve_type = None;
+	}
+
+	/// Prepares to weave a segment of the given curve type, splitting at the shared anchor when the verb changes.
+	/// Returns whether an anchor exists to draw from.
+	fn begin_segment(&mut self, verb: CurveType) -> bool {
+		// After a close the pen rests on the subpath's first point, so a segment drawn with no new MoveTo departs from there
+		let weld = match self.references.last() {
+			Some(&weld) => weld,
+			None => {
+				let Some(start) = self.subpath_start else { return false };
+				self.references.push(start);
+				start
+			}
+		};
+
+		if let Some(current) = self.curve_type
+			&& current != verb
+		{
+			self.flush();
+			self.references.push(weld);
+		}
+		self.curve_type = Some(verb);
+
+		true
+	}
+
+	fn push_element(&mut self, element: PathEl) {
+		match element {
+			PathEl::MoveTo(point) => {
+				self.flush();
+				let reference = self.push_point(point);
+				self.subpath_start = Some(reference);
+				self.references.push(reference);
+			}
+			PathEl::LineTo(anchor) => self.push_segment(CurveType::Linear, &[anchor]),
+			PathEl::QuadTo(handle, anchor) => self.push_segment(CurveType::Quadratic, &[handle, anchor]),
+			PathEl::CurveTo(start_handle, end_handle, anchor) => self.push_segment(CurveType::Cubic, &[start_handle, end_handle, anchor]),
+			PathEl::ClosePath => self.close(),
+		}
+	}
+
+	fn push_segment(&mut self, verb: CurveType, points: &[Point]) {
+		if !self.begin_segment(verb) {
+			return;
+		}
+
+		for &point in points {
+			let reference = self.push_point(point);
+			self.references.push(reference);
+		}
+	}
+
+	/// Closes the subpath by naming its first point again, drawing a straight line home when the pen sits elsewhere.
+	fn close(&mut self) {
+		let (Some(start), Some(&last)) = (self.subpath_start, self.references.last()) else { return };
+
+		if last == start {
+			self.flush();
+			return;
+		}
+
+		// A final anchor resting on the subpath's first point is that same point, so name it instead of duplicating it
+		let coincident = matches!((self.position(last), self.position(start)), (Some(last), Some(start)) if last.distance_squared(start) <= CLOSE_POINT_TOLERANCE * CLOSE_POINT_TOLERANCE);
+		if coincident {
+			self.references.pop();
+			self.references.push(start);
+			if last as usize + 1 == self.offset as usize + self.positions.len() {
+				self.positions.pop();
+			}
+		} else if self.begin_segment(CurveType::Linear) {
+			self.references.push(start);
+		}
+
+		self.flush();
+	}
+
+	fn finish(mut self, pool: &mut List<DVec2>, paths: &mut List<Path>) {
+		self.flush();
+
+		for position in self.positions {
+			pool.push(Item::new_from_element(position));
+		}
+
+		for (curve_type, references) in self.woven {
+			let path = Path(references.into_iter().map(Item::new_from_element).collect());
+			paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, curve_type));
+		}
+	}
+}
+
+/// Appends a bezpath's contours to a point pool and its paths.
+pub fn append_bezpath(pool: &mut List<DVec2>, paths: &mut List<Path>, bezpath: &BezPath) {
+	let mut weaver = PathWeaver::new(pool.len() as u32);
+
+	for &element in bezpath.elements() {
+		weaver.push_element(element);
+	}
+
+	weaver.finish(pool, paths);
+}
+
+/// Builds a fresh point pool and its paths from a bezpath.
+pub fn pool_and_paths_from_bezpath(bezpath: &BezPath) -> (List<DVec2>, List<Path>) {
+	let (mut pool, mut paths) = (List::new(), List::new());
+	append_bezpath(&mut pool, &mut paths, bezpath);
+
+	(pool, paths)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use kurbo::{Rect, Shape};
 
 	fn pool(positions: &[(f64, f64)]) -> List<DVec2> {
 		positions.iter().map(|&(x, y)| Item::new_from_element(DVec2::new(x, y))).collect()
@@ -199,5 +352,90 @@ mod tests {
 			let paths = paths_from_list_row_attributes(&vectors, index).unwrap();
 			assert_eq!(paths.element(0).unwrap().segment_count(CurveType::Linear), 4);
 		}
+	}
+
+	// A rectangle weaves to four pool points and five references, the fifth naming the first again
+	#[test]
+	fn weave_rectangle() {
+		let (pool, paths) = pool_and_paths_from_bezpath(&Rect::new(-36.25, -17.5, 36.25, 17.5).to_path(0.));
+
+		assert_eq!(pool.len(), 4);
+		assert_eq!(paths.len(), 1);
+		assert_eq!(curve_type_at(&paths, 0), CurveType::Linear);
+
+		let rectangle = paths.element(0).unwrap();
+		assert_eq!(rectangle.0.iter_element_values().copied().collect::<Vec<_>>(), vec![0, 1, 2, 3, 0]);
+		assert!(rectangle.is_closed());
+		assert_eq!(rectangle.segment_count(CurveType::Linear), 4);
+	}
+
+	// A closed contour landing back on its first point names that point rather than duplicating it
+	#[test]
+	fn weave_closed_cubic_contour() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.curve_to((5., 0.), (10., 5.), (10., 10.));
+		bezpath.curve_to((5., 15.), (0., 5.), (0., 0.));
+		bezpath.close_path();
+
+		let (pool, paths) = pool_and_paths_from_bezpath(&bezpath);
+
+		assert_eq!(pool.len(), 6);
+		let contour = paths.element(0).unwrap();
+		assert_eq!(contour.0.iter_element_values().copied().collect::<Vec<_>>(), vec![0, 1, 2, 3, 4, 5, 0]);
+		assert!(contour.is_closed());
+		assert_eq!(contour.segment_count(CurveType::Cubic), 2);
+	}
+
+	// Mixing verbs splits the subpath into one path per stride, welded where they meet
+	#[test]
+	fn weave_splits_at_verb_changes() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((10., 0.));
+		bezpath.curve_to((15., 5.), (15., 10.), (10., 15.));
+		bezpath.close_path();
+
+		let (_, paths) = pool_and_paths_from_bezpath(&bezpath);
+
+		assert_eq!(paths.len(), 3);
+		assert_eq!(curve_type_at(&paths, 0), CurveType::Linear);
+		assert_eq!(curve_type_at(&paths, 1), CurveType::Cubic);
+		assert_eq!(curve_type_at(&paths, 2), CurveType::Linear);
+
+		let references = |index: usize| paths.element(index).unwrap().0.iter_element_values().copied().collect::<Vec<_>>();
+		assert_eq!(references(0), vec![0, 1]);
+		assert_eq!(references(1), vec![1, 2, 3, 4]);
+		assert_eq!(references(2), vec![4, 0]);
+	}
+
+	// A lone move leaves a free point in the pool and draws no path
+	#[test]
+	fn weave_lone_move_is_a_free_point() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((5., 5.));
+
+		let (pool, paths) = pool_and_paths_from_bezpath(&bezpath);
+
+		assert_eq!(pool.len(), 1);
+		assert!(paths.is_empty());
+	}
+
+	// A segment drawn straight after a close departs from the closed subpath's first point
+	#[test]
+	fn weave_continues_from_subpath_start_after_close() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((10., 0.));
+		bezpath.close_path();
+		bezpath.line_to((5., 5.));
+
+		let (pool, paths) = pool_and_paths_from_bezpath(&bezpath);
+
+		assert_eq!(pool.len(), 3);
+		assert_eq!(paths.len(), 2);
+		let references = |index: usize| paths.element(index).unwrap().0.iter_element_values().copied().collect::<Vec<_>>();
+		assert_eq!(references(0), vec![0, 1, 0]);
+		assert_eq!(references(1), vec![0, 2]);
 	}
 }
