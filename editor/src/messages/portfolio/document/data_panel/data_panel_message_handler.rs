@@ -13,6 +13,7 @@ use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{Item, List, NodeIdPath};
+use graphene_std::math::float_noise::{round_away_float_noise, round_away_float_noise_f32};
 use graphene_std::memo::IORecord;
 use graphene_std::raster::{
 	CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice,
@@ -150,7 +151,8 @@ impl DataPanelMessageHandler {
 
 		// Element path breadcrumbs
 		if !layout_data.breadcrumbs.is_empty() {
-			let breadcrumb = BreadcrumbTrailButtons::new(layout_data.breadcrumbs)
+			let labels = layout_data.breadcrumbs.iter().map(|label| truncate_breadcrumb_label(label)).collect();
+			let breadcrumb = BreadcrumbTrailButtons::new(labels)
 				.on_update(|&len| DataPanelMessage::TruncateElementPath { len: len as usize }.into())
 				.widget_instance();
 			widgets.push(breadcrumb);
@@ -796,18 +798,53 @@ impl TableItemLayout for Gradient {
 	}
 }
 
+macro_rules! impl_table_item_layout_for_number {
+	($($ty:ty => $type_name:literal),* $(,)?) => {
+		$(
+			impl TableItemLayout for $ty {
+				fn type_name() -> &'static str {
+					$type_name
+				}
+				fn identifier(&self) -> String {
+					format!("{self}")
+				}
+				fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+					vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
+				}
+			}
+		)*
+	}
+}
+impl_table_item_layout_for_number!(
+	u32 => "Number (u32)",
+	i32 => "Number (i32)",
+	u64 => "Number (u64)",
+	i64 => "Number (i64)",
+);
+
+// Denoised so 0.1 + 0.2 reads as 0.3 rather than 0.30000000000000004
 impl TableItemLayout for f64 {
 	fn type_name() -> &'static str {
-		"Number (f64)"
+		"Number"
 	}
 	fn identifier(&self) -> String {
-		format!("{self}")
+		format!("{}", round_away_float_noise(*self))
 	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
+	}
+}
+
+// Denoised so 1.1 + 2.2 reads as 3.3 rather than 3.3000002
+impl TableItemLayout for f32 {
+	fn type_name() -> &'static str {
+		"Number (f32)"
+	}
+	fn identifier(&self) -> String {
+		format!("{}", round_away_float_noise_f32(*self))
+	}
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
 	}
 }
 
@@ -816,88 +853,10 @@ impl TableItemLayout for u8 {
 		"Byte"
 	}
 	fn identifier(&self) -> String {
-		format!("{self:02X}")
+		format!("0x{self:02X} ({self})")
 	}
-	// Values fall back to the default drill-in button (labeled with the hex string via `identifier`); the value page shows the same hex value as a label.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![TextLabel::new(self.identifier()).widget_instance()])]
-	}
-}
-
-impl TableItemLayout for f32 {
-	fn type_name() -> &'static str {
-		"Number (f32)"
-	}
-	fn identifier(&self) -> String {
-		format!("{self}")
-	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
-	}
-}
-
-impl TableItemLayout for u32 {
-	fn type_name() -> &'static str {
-		"Number (u32)"
-	}
-	fn identifier(&self) -> String {
-		format!("{self}")
-	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
-	}
-}
-
-impl TableItemLayout for i32 {
-	fn type_name() -> &'static str {
-		"Number (i32)"
-	}
-	fn identifier(&self) -> String {
-		format!("{self}")
-	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
-	}
-}
-
-impl TableItemLayout for i64 {
-	fn type_name() -> &'static str {
-		"Number (i64)"
-	}
-	fn identifier(&self) -> String {
-		format!("{self}")
-	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	// TODO: Make this robust for large i64 values that don't fit in f64 (beyond roughly 2^53), as with u64.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
-	}
-}
-
-impl TableItemLayout for u64 {
-	fn type_name() -> &'static str {
-		"Number (u64)"
-	}
-	fn identifier(&self) -> String {
-		format!("{self}")
-	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	// TODO: Make this robust for large u64 values that don't fit in f64 (above roughly 2^53). Perhaps using a bigint kind of approach through the widget's data flow.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
 	}
 }
 
@@ -921,18 +880,48 @@ impl TableItemLayout for String {
 		"String"
 	}
 	fn identifier(&self) -> String {
-		// Show the first line, and if there are more, indicate that with an ellipsis
-		let first_line = self.lines().next().unwrap_or("");
-		if self.lines().count() > 1 {
-			format!("\"{} …\"", first_line)
-		} else {
-			format!("\"{}\"", first_line)
-		}
+		format!("\"{}\"", string_preview(self))
 	}
-	// Values fall back to the default drill-in button (labeled with the truncated quoted preview via `identifier`); the value page shows the full multi-line text in a `TextAreaInput`.
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		data.breadcrumbs.push(character_count_label(self));
+		self.value_page(data)
+	}
+	// The preview truncates for length and line breaks, so a button beside it reaches the full text, labeled by length
+	fn value_widgets(&self, target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![
+			TextLabel::new(string_preview(self)).enquote(true).selectable(true).monospace(true).narrow(true).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextButton::new(character_count_label(self))
+				.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
+				.narrow(true)
+				.widget_instance(),
+		]
+	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![TextAreaInput::new(self.to_string()).monospace(true).disabled(true).widget_instance()])]
 	}
+}
+
+fn character_count_label(value: &str) -> String {
+	let character_count = value.chars().count();
+
+	format!("{character_count} Char{}", if character_count == 1 { "" } else { "s" })
+}
+
+/// Shortens a string to fit a table cell, cutting at the first line break or 40 characters with an ellipsis.
+/// The 40 matches `truncate_breadcrumb_label`, so a preview reaching the trail isn't cut twice.
+fn string_preview(value: &str) -> String {
+	const MAX_CHARACTERS: usize = 40;
+
+	let first_line = value.lines().next().unwrap_or_default();
+	let cut_by_line_break = value.contains('\n');
+	let cut_by_length = first_line.chars().count() > MAX_CHARACTERS;
+
+	if !cut_by_line_break && !cut_by_length {
+		return value.to_string();
+	}
+
+	first_line.chars().take(MAX_CHARACTERS - 1).chain(['…']).collect()
 }
 
 impl TableItemLayout for Option<f64> {
@@ -943,7 +932,12 @@ impl TableItemLayout for Option<f64> {
 		"Option<f64>".to_string()
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![TextLabel::new(format!("{self:?}")).narrow(true).widget_instance()]
+		let text = match self {
+			Some(value) => format!("Some({})", round_away_float_noise(*value)),
+			None => "None".to_string(),
+		};
+
+		vec![TextLabel::new(text).narrow(true).widget_instance()]
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
@@ -988,7 +982,7 @@ impl TableItemLayout for DAffine2 {
 		"Transform".to_string()
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![TextLabel::new(format_transform_matrix(*self)).narrow(true).widget_instance()]
+		transform_widgets(*self)
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
@@ -1003,8 +997,7 @@ impl TableItemLayout for Affine2 {
 		"Transform".to_string()
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		let matrix = DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64));
-		vec![TextLabel::new(format_transform_matrix(matrix)).narrow(true).widget_instance()]
+		transform_widgets(DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64)))
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
@@ -1385,7 +1378,8 @@ fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Ve
 	None
 }
 
-fn format_transform_matrix(transform: DAffine2) -> String {
+/// Decomposes a transform into location, rotation, and scale, each headed by the icon of its Layer menu action.
+fn transform_widgets(transform: DAffine2) -> Vec<WidgetInstance> {
 	let (scale, angle, translation) = if transform.matrix2.determinant().abs() <= f64::EPSILON {
 		let [col_0, col_1] = transform.matrix2.to_cols_array_2d().map(|[x, y]| DVec2::new(x, y));
 
@@ -1403,15 +1397,24 @@ fn format_transform_matrix(transform: DAffine2) -> String {
 	} else {
 		transform.to_scale_angle_translation()
 	};
-	let rotation = format_rounded(angle.to_degrees(), 3);
 
-	format!(
-		"Location: ({} px, {} px) — Rotation: {rotation}° — Scale: ({}x, {}x)",
-		format_rounded(translation.x, 3),
-		format_rounded(translation.y, 3),
-		format_rounded(scale.x, 3),
-		format_rounded(scale.y, 3)
-	)
+	let location_text = format!("({} px, {} px)", format_rounded(translation.x, 3), format_rounded(translation.y, 3));
+	let rotation_text = format!("{}°", format_rounded(angle.to_degrees(), 3));
+	let scale_text = format!("({}x, {}x)", format_rounded(scale.x, 3), format_rounded(scale.y, 3));
+
+	vec![
+		IconLabel::new("TransformationGrab").tooltip_label("Location").widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		TextLabel::new(location_text).narrow(true).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		IconLabel::new("TransformationRotate").tooltip_label("Rotation").widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		TextLabel::new(rotation_text).narrow(true).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		IconLabel::new("TransformationScale").tooltip_label("Scale").widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		TextLabel::new(scale_text).narrow(true).widget_instance(),
+	]
 }
 
 fn format_dvec2(value: DVec2) -> String {
