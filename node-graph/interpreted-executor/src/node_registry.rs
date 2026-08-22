@@ -109,6 +109,22 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		// MEMO NODES
 		// ==========
 	];
+	// The transform's value-typed rows, served by `transform_value` under the
+	// leveled transform's identifier.
+	node_types.extend(
+		graphene_std::transform_nodes::transform_nodes::transform_value_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::transform_nodes::transform_nodes::transform::IDENTIFIER.clone(), entry)),
+	);
+	// The transitional level bridge: a leveled wire materializes into the legacy
+	// list an unconverted consumer expects. The rows are keyed under the legacy
+	// convert identifiers and die with the last legacy consumer.
+	node_types.extend(
+		graphene_std::graphic::level_to_list_entries()
+			.into_iter()
+			.zip(["List<Graphic>", "List<Vector>", "List<Raster<CPU>>", "List<Raster<GPU>>", "List<Color>", "List<GradientStops>", "List<String>"])
+			.map(|(entry, target)| (ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{target}>")), entry)),
+	);
 	// =============
 	// CONVERT NODES
 	// =============

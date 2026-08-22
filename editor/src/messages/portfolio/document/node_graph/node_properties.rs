@@ -2457,13 +2457,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Other,
 	}
 
-	let connector = InputConnector::node(node_id, FillInput::<List<Graphic>>::INDEX);
+	let connector = InputConnector::node(node_id, FillInput::<Graphic>::INDEX);
 	let input_type = context.network_interface.input_type(&connector, context.selection_network_path);
 
 	// Pass blank_assist=false because the assist slot is filled below ("Reverse Stops" button when in gradient mode)
-	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<List<Graphic>>::INDEX, false, context));
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<Graphic>::INDEX, false, context));
 
-	if get_document_node(node_id, context).is_ok_and(|node| node.inputs.get(FillInput::<List<Graphic>>::INDEX).is_some_and(|input| input.is_exposed())) {
+	if get_document_node(node_id, context).is_ok_and(|node| node.inputs.get(FillInput::<Graphic>::INDEX).is_some_and(|input| input.is_exposed())) {
 		return vec![LayoutGroup::row(widgets_first_row)];
 	}
 
@@ -2474,7 +2474,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let fill = match input_type.compiled_nested_type() {
 		Some(ty) if ty == &concrete!(List<Color>) => {
 			if let Ok(document_node) = get_document_node(node_id, context) {
-				let color = match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
+				let color = match document_node.inputs[FillInput::<Graphic>::INDEX].as_value() {
 					Some(&TaggedValue::Color(c)) => c,
 					_ => None,
 				};
@@ -2525,7 +2525,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput::<Graphic>::INDEX))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2549,7 +2549,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		messages: Box::new([
 			NodeGraphMessage::SetInputValue {
 				node_id,
-				input_index: FillInput::<List<Graphic>>::INDEX,
+				input_index: FillInput::<Graphic>::INDEX,
 				value: TaggedValue::Color(color),
 			}
 			.into(),
@@ -2566,7 +2566,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		messages: Box::new([
 			NodeGraphMessage::SetInputValue {
 				node_id,
-				input_index: FillInput::<List<Graphic>>::INDEX,
+				input_index: FillInput::<Graphic>::INDEX,
 				value: TaggedValue::Gradient(gradient.clone()),
 			}
 			.into(),
@@ -2607,11 +2607,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let entries = vec![
 			RadioEntryData::new("solid")
 				.label("Solid")
-				.on_update(update_value(move |_| TaggedValue::Color(backup_color), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Color(backup_color), node_id, FillInput::<Graphic>::INDEX))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput::<Graphic>::INDEX))
 				.on_commit(commit_value),
 		];
 
@@ -2717,14 +2717,14 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		_ => &StrokeJoin::Miter,
 	};
 
-	let has_dash_lengths = match &document_node.inputs[DashLengthsInput::<List<f64>>::INDEX].as_value() {
+	let has_dash_lengths = match &document_node.inputs[DashLengthsInput::INDEX].as_value() {
 		Some(TaggedValue::F64Array(values)) => values.is_empty(),
 		_ => true,
 	};
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
 
 	let color = color_widget(
-		ParameterWidgetsInfo::new(node_id, PaintInput::<List<Graphic>>::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, PaintInput::<Graphic>::INDEX, true, context),
 		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
 	);
 	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput::INDEX, true, context), NumberInput::default().unit(" px").min(0.));
@@ -2745,7 +2745,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
 	let dash_lengths = array_of_number_widget(
-		ParameterWidgetsInfo::new(node_id, DashLengthsInput::<List<f64>>::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, DashLengthsInput::INDEX, true, context),
 		TextInput::default().centered(true),
 	);
 	let number_input = disabled_number_input;

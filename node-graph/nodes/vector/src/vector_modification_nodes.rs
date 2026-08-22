@@ -8,7 +8,7 @@ use vector_types::vector::VectorModification;
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
-fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box<VectorModification>, node_path: List<NodeId>) -> List<Vector> {
+fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box<VectorModification>, node_path: Vec<NodeId>) -> List<Vector> {
 	use core_types::list::Item;
 
 	if vector.is_empty() {
@@ -23,7 +23,7 @@ fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box<Vecto
 	// matching the `path_of_subgraph` proto so editor tools can route data back to the parent layer.
 	let subgraph_path: List<NodeId> = {
 		let len = node_path.len();
-		node_path.into_iter().take(len.saturating_sub(1)).collect()
+		node_path.into_iter().take(len.saturating_sub(1)).map(Item::new_from_element).collect()
 	};
 	let existing: List<NodeId> = vector.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
 	vector.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, if existing.is_empty() { subgraph_path } else { existing });

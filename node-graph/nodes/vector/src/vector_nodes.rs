@@ -8,7 +8,7 @@ use core_types::list::{Item, ItemAttributeValues, List, ListDyn};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx, DeriveCtx};
+use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
@@ -155,8 +155,8 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-fn fill<V: VectorListIterMut + Send, F: IntoGraphicList + Send + 'static>(
-	_: impl Ctx,
+fn fill<V: VectorListIterMut + Send, P: Clone + Send + Sync + CacheHash + 'static>(
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The content with vector paths to apply the fill style to.
 	#[implementations(
 		List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>,
@@ -166,16 +166,20 @@ fn fill<V: VectorListIterMut + Send, F: IntoGraphicList + Send + 'static>(
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
+		Graphic, Vector, Color, GradientStops, Raster<CPU>, Raster<GPU>,
+		Graphic, Vector, Color, GradientStops, Raster<CPU>, Raster<GPU>,
 	)]
-	mut fill: F,
-	_backup_color: List<Color>,
-	_backup_gradient: List<GradientStops>,
+	fill: IList<P>,
+	_backup_color: IList<Color>,
+	_backup_gradient: IList<GradientStops>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
-) -> V {
+) -> V
+where
+	List<P>: IntoGraphicList,
+{
+	let mut fill: List<P> = legacy_list_of(fill);
 	if let Some(gradient) = (&mut fill as &mut dyn std::any::Any).downcast_mut::<List<GradientStops>>() {
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
@@ -250,41 +254,21 @@ impl IntoF64Vec for String {
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + Send + 'static>(
-	_: impl Ctx,
+fn stroke<V, P: Clone + Send + Sync + CacheHash + 'static>(
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The content with vector paths to apply the stroke style to.
 	#[implementations(
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
+		List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>,
+		List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>,
 	)]
 	mut content: List<V>,
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Color>, List<Color>, List<Color>,
-		List<GradientStops>, List<GradientStops>, List<GradientStops>,
-		List<Raster<CPU>>, List<Raster<CPU>>, List<Raster<CPU>>,
-		List<Raster<GPU>>, List<Raster<GPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Color>, List<Color>, List<Color>,
-		List<GradientStops>, List<GradientStops>, List<GradientStops>,
-		List<Raster<CPU>>, List<Raster<CPU>>, List<Raster<CPU>>,
-		List<Raster<GPU>>, List<Raster<GPU>>, List<Raster<GPU>>,
+		Graphic, Vector, Color, GradientStops, Raster<CPU>, Raster<GPU>,
+		Graphic, Vector, Color, GradientStops, Raster<CPU>, Raster<GPU>,
 	)]
-	paint: P,
+	paint: IList<P>,
 	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
@@ -302,29 +286,16 @@ fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + Send + 'static>(
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
 	paint_order: PaintOrder,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	#[implementations(
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-	)]
-	dash_lengths: L,
+	dash_lengths: IList<f64>,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
 ) -> List<V>
 where
 	List<V>: VectorListIterMut + Send,
+	List<P>: IntoGraphicList,
 {
-	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
+	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
 
 	let stroke = Stroke {
 		weight,
@@ -344,7 +315,7 @@ where
 		vector.stroke = Some(stroke);
 	});
 
-	let paint = paint.into_graphic_list();
+	let paint = legacy_list_of(paint).into_graphic_list();
 	content.for_each_vector_list_mut(|vector_list| {
 		// Broadcast the same paint to every item, scanning the attribute column once instead of per index
 		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(ATTR_STROKE) {
@@ -352,6 +323,14 @@ where
 		}
 	});
 	content
+}
+
+/// The transitional value bridge: a materialized level as the legacy list the
+/// unconverted body consumes.
+fn legacy_list_of<T: Clone + Send + Sync + 'static>(level: core_types::node::List<'_, T>) -> List<T> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(level.batch()) };
+	graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type")
 }
 
 #[node_macro::node(name("Copy to Points"), category("Repeat"), path(core_types::vector))]

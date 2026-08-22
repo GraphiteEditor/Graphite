@@ -579,7 +579,10 @@ mod test_artboard {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
-		instrumented.grab_all_input::<graphene_std::graphic::extend::NewInput<Artboard>>(&editor.runtime).flatten().collect()
+		instrumented
+			.grab_all_input::<graphene_std::graphic::extend::NewInput<Artboard>>(&editor.runtime)
+			.map(graphene_std::list::Item::new_from_element)
+			.collect()
 	}
 
 	#[derive(Debug, PartialEq)]

@@ -20,6 +20,29 @@ pub fn load_demo(file_name: &str) -> DocumentMessageHandler {
 	DocumentMessageHandler::deserialize_document(&content).unwrap_or_else(|e| panic!("Failed to deserialize {path}: {e:?}"))
 }
 
+/// Dev tool for the flip: runs each demo through the full open-time migration and writes the
+/// re-saved form into the directory named by `DEMO_OUT`, so the CLI can render migrated copies
+/// while the checked-in originals stay pristine until the flip's re-save.
+#[test]
+#[ignore = "dev tool: set DEMO_OUT and run explicitly"]
+fn migrate_demo_artwork_into_demo_out() {
+	use crate::messages::portfolio::document_migration::{document_migration_reset_node_definition, document_migration_string_preprocessing, document_migration_upgrades};
+	let out_dir = std::env::var("DEMO_OUT").expect("set DEMO_OUT to the output directory");
+	for entry in std::fs::read_dir("../demo-artwork").unwrap() {
+		let path = entry.unwrap().path();
+		if path.extension().and_then(|extension| extension.to_str()) != Some("graphite") {
+			continue;
+		}
+		let content = std::fs::read_to_string(&path).unwrap();
+		let content = document_migration_string_preprocessing(content);
+		let reset = document_migration_reset_node_definition(&content);
+		let mut document = DocumentMessageHandler::deserialize_document(&content).unwrap_or_else(|e| panic!("Failed to deserialize {}: {e:?}", path.display()));
+		document_migration_upgrades(&mut document, reset);
+		let out = format!("{out_dir}/{}", path.file_name().unwrap().to_string_lossy());
+		std::fs::write(out, document.serialize_document()).unwrap();
+	}
+}
+
 /// Walk every node in every nested network and collect `(network_path, local_id)` pairs, so a test can
 /// iterate every node addressable from the metadata side.
 pub fn node_paths(interface: &NodeNetworkInterface) -> Vec<(Vec<NodeId>, NodeId)> {
