@@ -623,6 +623,7 @@ pub fn level_to_list<T: Clone + Send + Sync + CacheHash + 'static>(
 }
 
 pub use _level_to_list_mod::level_to_list_entries;
+pub use _to_graphic_mod::to_graphic_entries;
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"), extent(flatten_graphic_extent))]

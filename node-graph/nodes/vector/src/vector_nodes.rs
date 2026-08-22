@@ -8,7 +8,10 @@ use core_types::list::{Item, ItemAttributeValues, List, ListDyn};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
+use core_types::attribute::Attr;
+use core_types::gpoll::GraphError;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
+use graphic_types::markers::Fill;
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
@@ -233,25 +236,6 @@ where
 	content
 }
 
-trait IntoF64Vec {
-	fn into_vec(self) -> Vec<f64>;
-}
-impl IntoF64Vec for f64 {
-	fn into_vec(self) -> Vec<f64> {
-		vec![self]
-	}
-}
-impl IntoF64Vec for List<f64> {
-	fn into_vec(self) -> Vec<f64> {
-		self.into_iter().map(|row| row.into_element()).collect()
-	}
-}
-impl IntoF64Vec for String {
-	fn into_vec(self) -> Vec<f64> {
-		self.split(&[',', ' ']).filter(|s| !s.is_empty()).filter_map(|s| s.parse::<f64>().ok()).collect()
-	}
-}
-
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
 fn stroke<V, P: Clone + Send + Sync + CacheHash + 'static>(
@@ -332,6 +316,103 @@ fn legacy_list_of<T: Clone + Send + Sync + 'static>(level: core_types::node::Lis
 	let item = unsafe { core_types::record::GroupItem::from_resident(level.batch()) };
 	graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type")
 }
+
+fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic>) -> Result<&'e List<Graphic>, Interrupt> {
+	let (parked, _) = arena.alloc(paint).ok_or(GraphError {
+		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+		trace: Vec::new(),
+	})?;
+	Ok(parked)
+}
+
+/// The gradient defaulting the legacy fill performed, applied to the nested
+/// stops list the paint table wraps.
+fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: Option<DAffine2>) {
+	for index in 0..paint.len() {
+		let Some(Graphic::Gradient(gradient)) = paint.element_mut(index) else { continue };
+		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
+			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
+				*value = gradient_type;
+			}
+		}
+
+		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
+			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
+				*value = spread_method;
+			}
+		}
+
+		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
+			let transform = transform.unwrap_or_else(|| {
+				// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
+				let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+				if max.x - min.x < 1e-10 {
+					max.x = min.x + 1.;
+				}
+				if max.y - min.y < 1e-10 {
+					max.y = min.y + 1.;
+				}
+				initial_gradient_transform_for_bounding_box([min, max])
+			});
+
+			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+				*value = transform;
+			}
+		}
+	}
+}
+
+/// The leveled fill over vector lanes: builds the paint table and writes each
+/// lane's fill attribute. Registered under the legacy fill's identifier; the
+/// gradient transform fallback spans the lane's own bounds rather than the
+/// whole content's.
+#[node_macro::node(category(""))]
+fn fill_vector_leveled<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	(element, _content_fill): (Vector, Attr<'e, Fill>),
+	#[default(Color::BLACK)]
+	fill: IList<Graphic>,
+	_backup_color: IList<Color>,
+	_backup_gradient: IList<GradientStops>,
+	_gradient_type: GradientType,
+	_spread_method: GradientSpreadMethod,
+	_transform: Option<DAffine2>,
+) -> Result<(Vector, Attr<'e, Fill>), Interrupt> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(fill.batch()) };
+	let mut paint = graphic_types::graphic::group_to_legacy_list(&core_types::record::Group { row: None, content: core_types::record::GroupContent::Run(item) });
+	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _spread_method, _transform);
+	let parked = park_paint(ctx.arena(), paint)?;
+	Ok((element, Attr(Some(parked))))
+}
+
+/// The leveled fill over graphic lanes, as [`fill_vector_leveled`].
+#[node_macro::node(category(""))]
+fn fill_graphic_leveled<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	(element, _content_fill): (Graphic, Attr<'e, Fill>),
+	#[default(Color::BLACK)]
+	fill: IList<Graphic>,
+	_backup_color: IList<Color>,
+	_backup_gradient: IList<GradientStops>,
+	_gradient_type: GradientType,
+	_spread_method: GradientSpreadMethod,
+	_transform: Option<DAffine2>,
+) -> Result<(Graphic, Attr<'e, Fill>), Interrupt> {
+	let bounds = match BoundingBox::bounding_box(&element, DAffine2::IDENTITY, false) {
+		RenderBoundingBox::Rectangle(bounds) => Some(bounds),
+		_ => None,
+	};
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(fill.batch()) };
+	let mut paint = graphic_types::graphic::group_to_legacy_list(&core_types::record::Group { row: None, content: core_types::record::GroupContent::Run(item) });
+	default_gradient_paint(&mut paint, bounds, _gradient_type, _spread_method, _transform);
+	let parked = park_paint(ctx.arena(), paint)?;
+	Ok((element, Attr(Some(parked))))
+}
+
+pub use _fill_graphic_leveled_mod::fill_graphic_leveled_entries;
+pub use _fill_vector_leveled_mod::fill_vector_leveled_entries;
 
 #[node_macro::node(name("Copy to Points"), category("Repeat"), path(core_types::vector))]
 fn copy_to_points<I: Send + Clone>(

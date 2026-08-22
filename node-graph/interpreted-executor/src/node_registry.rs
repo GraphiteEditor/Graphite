@@ -116,6 +116,21 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.into_iter()
 			.map(|entry| (graphene_std::transform_nodes::transform_nodes::transform::IDENTIFIER.clone(), entry)),
 	);
+	// The leveled fill rows, served under the legacy fill's identifier beside
+	// its legacy list rows.
+	node_types.extend(
+		graphene_std::vector::fill_vector_leveled_entries()
+			.into_iter()
+			.chain(graphene_std::vector::fill_graphic_leveled_entries())
+			.map(|entry| (graphene_std::vector::fill::IDENTIFIER.clone(), entry)),
+	);
+	// Element-wise coercion into `Graphic` for single-typed leveled inputs,
+	// served by the to_graphic rows.
+	node_types.extend(
+		graphene_std::graphic::to_graphic_entries()
+			.into_iter()
+			.map(|entry| (ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<Graphic>"), entry)),
+	);
 	// The transitional level bridge: a leveled wire materializes into the legacy
 	// list an unconverted consumer expects. The rows are keyed under the legacy
 	// convert identifiers and die with the last legacy consumer.
