@@ -1066,7 +1066,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						(true, Some(storage)) => storage
 							.export_to_bytes(
 								document_format::ExportFormat::Xz,
-								document_format::ExportOptions::default(),
+								document_format::ExportOptions {
+									include_history: false,
+									..Default::default()
+								},
 								export_load_handle.as_ref(),
 								Some(&legacy_document),
 							)
