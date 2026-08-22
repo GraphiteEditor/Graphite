@@ -174,12 +174,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
 							// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
 							DocumentNode {
-								inputs: vec![
-									NodeInput::node(NodeId(1), 0),
-									NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
-									NodeInput::node(NodeId(2), 0),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
+								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::stamp_layer_path::IDENTIFIER),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI
@@ -236,7 +232,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 3: write_attribute
+								// 3: stamp_layer_path
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
@@ -304,12 +300,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
 							// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
 							DocumentNode {
-								inputs: vec![
-									NodeInput::node(NodeId(0), 0),
-									NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
-									NodeInput::node(NodeId(1), 0),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
+								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::stamp_layer_path::IDENTIFIER),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI.
@@ -395,7 +387,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 2: write_attribute
+								// 2: stamp_layer_path
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),

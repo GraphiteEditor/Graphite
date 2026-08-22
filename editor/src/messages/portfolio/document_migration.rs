@@ -1024,11 +1024,10 @@ fn replace_optional_f64_null(input: &str) -> String {
 	result
 }
 
-/// Serialized proto identifiers of the Merge and Artboard layer internals that the
-/// leveled-records flip retires. When the flip lands, `document_migration_reset_node_definition`
-/// starts matching these, so every pre-flip document rebuilds its layer definitions through the
-/// same reset mechanism as the `SourceNodeIdNode` entry there. A test pins each marker to the
-/// live identifier so a pre-flip rename cannot silently invalidate the staged strings.
+/// Serialized proto identifiers of the pre-flip Merge and Artboard layer internals.
+/// A document containing any of them predates the leveled-records flip and rebuilds its
+/// layer definitions through the same reset mechanism as the `SourceNodeIdNode` entry in
+/// `document_migration_reset_node_definition`.
 pub const FLIP_RESET_NODE_MARKERS: &[&str] = &["graphic_nodes::graphic::WriteAttributeNode"];
 
 pub fn document_migration_reset_node_definition(document_serialized_content: &str) -> bool {
@@ -1049,6 +1048,12 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 		|| document_serialized_content.contains("graphene_core::graphic::graphic::SourceNodeIdNode")
 		|| document_serialized_content.contains("graphene_core::graphic::SourceNodeIdNode")
 	{
+		return true;
+	}
+
+	// The leveled-records flip replaced the layer internals; documents from before it rebuild
+	// their layer definitions.
+	if FLIP_RESET_NODE_MARKERS.iter().any(|marker| document_serialized_content.contains(marker)) {
 		return true;
 	}
 

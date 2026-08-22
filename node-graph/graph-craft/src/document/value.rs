@@ -11,7 +11,7 @@ use core_types::node::Node;
 use core_types::registry::{EdgeHandle, edge_type};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
-use core_types::value::record_value_edge;
+use core_types::value::{leveled_record_value_edge, record_value_edge};
 use core_types::{CacheHash, Color, ContextModification, MemoHash, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
@@ -236,11 +236,19 @@ macro_rules! tagged_value {
 					// MANUAL VARIANTS
 					// ===============
 					Self::None => concrete!(()),
-					Self::TypeDefault(td) => Type::Concrete(td.clone()),
-					Self::F64Array(_) => concrete!(List<f64>),
-					Self::Color(_) => concrete!(List<Color>),
-					Self::Gradient(_) => concrete!(List<GradientStops>),
-					Self::BrushStrokes(_) => concrete!(List<BrushStroke>),
+					Self::TypeDefault(td) => {
+						let name = td.name.as_ref();
+						if name == std::any::type_name::<List<Graphic>>() { return core_types::registry::record_type::<Graphic>(); }
+						if name == std::any::type_name::<List<Artboard>>() { return core_types::registry::record_type::<Artboard>(); }
+						if name == std::any::type_name::<List<Raster<CPU>>>() { return core_types::registry::record_type::<Raster<CPU>>(); }
+						if name == std::any::type_name::<List<Vector>>() { return core_types::registry::record_type::<Vector>(); }
+						if name == std::any::type_name::<List<String>>() { return core_types::registry::record_type::<String>(); }
+						Type::Concrete(td.clone())
+					}
+					Self::F64Array(_) => core_types::registry::record_type::<f64>(),
+					Self::Color(_) => core_types::registry::record_type::<Color>(),
+					Self::Gradient(_) => core_types::registry::record_type::<GradientStops>(),
+					Self::BrushStrokes(_) => core_types::registry::record_type::<BrushStroke>(),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -257,32 +265,41 @@ macro_rules! tagged_value {
 				}
 			}
 
-			/// `None` for a [`Self::TypeDefault`] whose named type is outside `for_each_type_default!`.
-			pub fn element_write(&self) -> Option<core_types::record::ElementWrite> {
-				Some(match self {
-					Self::None => core_types::record::element_write::<()>(),
+			/// The record layout of this value's edge: leveled for the list-carrying
+			/// variants, element-only at rank 0 otherwise. `None` for a
+			/// [`Self::TypeDefault`] whose named type is outside `for_each_type_default!`.
+			pub fn value_layout(&self) -> Option<core_types::record::Layout> {
+				fn leveled<T: Clone + Send + Sync + CacheHash + PartialEq + 'static>() -> Option<core_types::record::Layout> {
+					Some(core_types::record::Layout::default().with_writes(1, core_types::record::element_write_hashed::<T>(), &[]))
+				}
+				fn scalar<T: Clone + Send + Sync + 'static>() -> Option<core_types::record::Layout> {
+					Some(core_types::record::Layout::default().with_writes(0, core_types::record::element_write::<T>(), &[]))
+				}
+				match self {
+					Self::None => scalar::<()>(),
 					Self::TypeDefault(td) => {
 						let name = td.name.as_ref();
-						macro_rules! check {
-							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Some(core_types::record::element_write::<$type_default>()); }
-							};
-						}
-						for_each_type_default!(check);
-						return None;
+						if name == std::any::type_name::<List<Graphic>>() { return leveled::<Graphic>(); }
+						if name == std::any::type_name::<List<Artboard>>() { return leveled::<Artboard>(); }
+						if name == std::any::type_name::<List<Raster<CPU>>>() { return leveled::<Raster<CPU>>(); }
+						if name == std::any::type_name::<List<Vector>>() { return leveled::<Vector>(); }
+						if name == std::any::type_name::<List<String>>() { return leveled::<String>(); }
+						if name == std::any::type_name::<DocumentNode>() { return scalar::<DocumentNode>(); }
+						if name == std::any::type_name::<Resource>() { return scalar::<Resource>(); }
+						None
 					}
-					Self::F64Array(_) => core_types::record::element_write::<List<f64>>(),
-					Self::Color(_) => core_types::record::element_write::<List<Color>>(),
-					Self::Gradient(_) => core_types::record::element_write::<List<GradientStops>>(),
-					Self::BrushStrokes(_) => core_types::record::element_write::<List<BrushStroke>>(),
-					$( Self::$identifier(_) => core_types::record::element_write::<$ty>(), )*
-					Self::RenderOutput(_) => core_types::record::element_write::<RenderOutput>(),
-					Self::NodeIdPath(_) => core_types::record::element_write::<Vec<NodeId>>(),
-					Self::DocumentNode(_) => core_types::record::element_write::<DocumentNode>(),
-					Self::ContextModification(_) => core_types::record::element_write::<ContextModification>(),
-					Self::EditorApi(_) => core_types::record::element_write::<Arc<PlatformEditorApi>>(),
-					Self::ResourceHash(_) => core_types::record::element_write::<ResourceHash>(),
-				})
+					Self::F64Array(_) => leveled::<f64>(),
+					Self::Color(_) => leveled::<Color>(),
+					Self::Gradient(_) => leveled::<GradientStops>(),
+					Self::BrushStrokes(_) => leveled::<BrushStroke>(),
+					$( Self::$identifier(_) => scalar::<$ty>(), )*
+					Self::RenderOutput(_) => scalar::<RenderOutput>(),
+					Self::NodeIdPath(_) => scalar::<Vec<NodeId>>(),
+					Self::DocumentNode(_) => scalar::<DocumentNode>(),
+					Self::ContextModification(_) => scalar::<ContextModification>(),
+					Self::EditorApi(_) => scalar::<Arc<PlatformEditorApi>>(),
+					Self::ResourceHash(_) => scalar::<ResourceHash>(),
+				}
 			}
 
 			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a `ClonedNode` edge typed by [`Self::ty`].
@@ -293,29 +310,29 @@ macro_rules! tagged_value {
 					// ===============
 					Self::None => Ok(record_value_edge(())),
 					Self::TypeDefault(td) => {
-						// Same direct-construction path as `to_dynany` for the same reason as in `to_dynany`.
 						let name = td.name.as_ref();
-						macro_rules! check {
-							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Ok(record_value_edge(<$type_default>::default())); }
+						// The list-typed defaults serve an empty level; the rest construct
+						// their default directly, mirroring `to_dynany`'s recursion guard.
+						macro_rules! check_level {
+							($list:ty, $element:ty) => {
+								if name == std::any::type_name::<$list>() {
+									return Ok(leveled_record_value_edge(Vec::<$element>::new()));
+								}
 							};
 						}
-						for_each_type_default!(check);
+						check_level!(List<Graphic>, Graphic);
+						check_level!(List<Artboard>, Artboard);
+						check_level!(List<Raster<CPU>>, Raster<CPU>);
+						check_level!(List<Vector>, Vector);
+						check_level!(List<String>, String);
+						if name == std::any::type_name::<DocumentNode>() { return Ok(record_value_edge(DocumentNode::default())); }
+						if name == std::any::type_name::<Resource>() { return Ok(record_value_edge(Resource::default())); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_edge()
 					}
-					Self::F64Array(values) => {
-						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Ok(record_value_edge(list))
-					}
-					Self::Color(color) => {
-						let list: List<Color> = color.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Ok(record_value_edge(list))
-					}
-					Self::Gradient(stops) => Ok(record_value_edge(List::<GradientStops>::new_from_element(stops))),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Ok(record_value_edge(list))
-					}
+					Self::F64Array(values) => Ok(leveled_record_value_edge(values)),
+					Self::Color(color) => Ok(leveled_record_value_edge(color.into_iter().collect::<Vec<_>>())),
+					Self::Gradient(stops) => Ok(leveled_record_value_edge(vec![stops])),
+					Self::BrushStrokes(strokes) => Ok(leveled_record_value_edge(strokes)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -587,37 +604,6 @@ tagged_value! {
 }
 
 impl TaggedValue {
-	/// The flip form of [`Self::to_edge`]: list-carrying variants serve their
-	/// payload as a level, one lane per item, instead of materializing a
-	/// legacy list value. Every other variant takes the [`Self::to_edge`]
-	/// path unchanged. Dormant until the flip retypes the list-typed inputs.
-	pub fn to_leveled_edge(self) -> Result<EdgeHandle, String> {
-		use core_types::value::leveled_record_value_edge;
-		match self {
-			Self::TypeDefault(td) => {
-				let name = td.name.as_ref();
-				macro_rules! check_level {
-					($list:ty, $element:ty) => {
-						if name == std::any::type_name::<$list>() {
-							return Ok(leveled_record_value_edge(Vec::<$element>::new()));
-						}
-					};
-				}
-				check_level!(List<Graphic>, Graphic);
-				check_level!(List<Artboard>, Artboard);
-				check_level!(List<Raster<CPU>>, Raster<CPU>);
-				check_level!(List<Vector>, Vector);
-				check_level!(List<String>, String);
-				Self::TypeDefault(td).to_edge()
-			}
-			Self::F64Array(values) => Ok(leveled_record_value_edge(values)),
-			Self::Color(color) => Ok(leveled_record_value_edge(color.into_iter().collect::<Vec<_>>())),
-			Self::Gradient(stops) => Ok(leveled_record_value_edge(vec![stops])),
-			Self::BrushStrokes(strokes) => Ok(leveled_record_value_edge(strokes)),
-			other => other.to_edge(),
-		}
-	}
-
 	pub fn to_primitive_string(&self) -> String {
 		match self {
 			TaggedValue::None => "()".to_string(),
@@ -950,23 +936,37 @@ mod leveled_edges {
 
 	#[test]
 	fn list_variants_produce_leveled_edges_typed_by_element() {
-		let edge = TaggedValue::F64Array(vec![1., 2., 3.]).to_leveled_edge().unwrap();
+		let edge = TaggedValue::F64Array(vec![1., 2., 3.]).to_edge().unwrap();
 		assert_eq!(edge.ty(), &record_edge_type::<f64>());
 		assert_eq!(edge.layout().depth, 1);
 
-		let edge = TaggedValue::Color(Some(Color::default())).to_leveled_edge().unwrap();
+		let edge = TaggedValue::Color(Some(Color::default())).to_edge().unwrap();
 		assert_eq!(edge.ty(), &record_edge_type::<Color>());
 		assert_eq!(edge.layout().depth, 1);
 
-		let edge = TaggedValue::TypeDefault(descriptor!(List<Graphic>)).to_leveled_edge().unwrap();
+		let edge = TaggedValue::TypeDefault(descriptor!(List<Graphic>)).to_edge().unwrap();
 		assert_eq!(edge.ty(), &record_edge_type::<Graphic>());
 		assert_eq!(edge.layout().depth, 1);
 	}
 
 	#[test]
 	fn scalar_variants_keep_their_rank_zero_edges() {
-		let edge = TaggedValue::Bool(true).to_leveled_edge().unwrap();
+		let edge = TaggedValue::Bool(true).to_edge().unwrap();
 		assert_eq!(edge.ty(), &record_edge_type::<bool>());
 		assert_eq!(edge.layout().depth, 0);
+	}
+
+	#[test]
+	fn the_value_layout_matches_the_edge_layout() {
+		for value in [
+			TaggedValue::F64Array(vec![1.]),
+			TaggedValue::Bool(true),
+			TaggedValue::TypeDefault(descriptor!(List<Vector>)),
+			TaggedValue::Gradient(Default::default()),
+		] {
+			let layout = value.value_layout().unwrap();
+			let edge = value.to_edge().unwrap();
+			assert_eq!(&layout, edge.layout());
+		}
 	}
 }
