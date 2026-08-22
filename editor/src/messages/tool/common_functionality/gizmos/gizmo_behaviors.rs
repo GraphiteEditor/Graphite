@@ -9,17 +9,23 @@
 //! count and its *other* radius, and no amount of registry data expresses that. Those live here as plain
 //! functions, referenced from the [registry](super::gizmo_registry) table.
 
+use crate::consts::COLOR_OVERLAY_RED;
 use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION, NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{GizmoBehavior, GizmoContext, GizmoState};
+use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{DragInput, GizmoBehavior, GizmoContext, GizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{
-	draw_snapping_ticks, extract_polygon_parameters, extract_star_parameters, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline, star_vertex_position,
+	draw_snapping_ticks, extract_polygon_parameters, extract_spiral_parameters, extract_star_parameters, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline,
+	star_vertex_position,
 };
+use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate_spiral_endpoints;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeParameter;
 use graphene_std::ParameterRef;
+use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::generator_nodes::star;
+use graphene_std::vector::misc::SpiralType;
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2, TAU};
 
 /// The star's sides dial: previews the shape it is about to change.
@@ -28,6 +34,7 @@ pub const STAR_SIDES: GizmoBehavior = GizmoBehavior {
 	overlay: Some(star_sides_overlay),
 	coupled_writes: None,
 	handle_positions: None,
+	drag: None,
 };
 
 /// Either of the star's radius handles: snaps to the radii where the star's points line up, and previews
@@ -37,6 +44,16 @@ pub const STAR_RADIUS: GizmoBehavior = GizmoBehavior {
 	overlay: Some(star_radius_overlay),
 	coupled_writes: None,
 	handle_positions: Some(star_radius_handles),
+	drag: None,
+};
+
+/// The spiral's winding control. Grabbable at either end of the curve; dragging winds or unwinds it.
+pub const SPIRAL_TURNS: GizmoBehavior = GizmoBehavior {
+	snap_targets: None,
+	overlay: Some(spiral_turns_overlay),
+	coupled_writes: None,
+	handle_positions: Some(spiral_turns_handles),
+	drag: Some(spiral_turns_drag),
 };
 
 /// The polygon's sides dial, the counterpart to [`STAR_SIDES`].
@@ -45,6 +62,7 @@ pub const POLYGON_SIDES: GizmoBehavior = GizmoBehavior {
 	overlay: Some(polygon_sides_overlay),
 	coupled_writes: None,
 	handle_positions: None,
+	drag: None,
 };
 
 /// The radii at which dragging one of a star's radius handles makes its points line up: the value where
@@ -241,5 +259,94 @@ fn draw_spokes(viewport: DAffine2, sides: u32, radius: f64, state: GizmoState, o
 		}
 
 		overlay_context.line(center, center + direction * length, None, None);
+	}
+}
+
+/// Read one of the spiral's inputs as it stood when the drag began.
+fn initial_f64(drag: &DragInput, index: usize) -> Option<f64> {
+	match drag.initial_parameters.get(index)? {
+		Some(TaggedValue::F64(value)) => Some(*value),
+		_ => None,
+	}
+}
+
+/// The spiral is grabbable at both ends of the curve: the inner end where it starts winding and the outer
+/// end where it stops.
+fn spiral_turns_handles(context: &GizmoContext, _value: f64) -> Vec<DVec2> {
+	let Some((spiral_type, start_angle, inner_radius, outer_radius, turns, _)) = extract_spiral_parameters(context.layer, context.document) else {
+		return Vec::new();
+	};
+	let growth_factor = calculate_growth_factor(inner_radius, turns, outer_radius, spiral_type);
+	let start_angle = start_angle.to_radians();
+
+	vec![
+		spiral_point(start_angle, inner_radius, growth_factor, spiral_type),
+		spiral_point(turns * TAU + start_angle, inner_radius, growth_factor, spiral_type),
+	]
+}
+
+/// Winding the spiral by dragging either end.
+///
+/// Turns alone would change the spiral's tightness as it grows, so the outer radius moves with it by
+/// whatever keeps the growth factor the drag started with. Taking hold of the inner end winds the other
+/// way and carries the start angle along, so the end the user is *not* holding stays put.
+fn spiral_turns_drag(context: &GizmoContext, drag: &DragInput) -> Vec<(ParameterRef, TaggedValue)> {
+	use graphene_std::vector::generator_nodes::spiral::*;
+
+	let (Some(initial_turns), Some(initial_outer_radius), Some(initial_inner_radius), Some(initial_start_angle)) = (
+		initial_f64(drag, TurnsInput::INDEX),
+		initial_f64(drag, OuterRadiusInput::INDEX),
+		initial_f64(drag, InnerRadiusInput::INDEX),
+		initial_f64(drag, StartAngleInput::INDEX),
+	) else {
+		return Vec::new();
+	};
+	let Some((spiral_type, ..)) = extract_spiral_parameters(context.layer, context.document) else {
+		return Vec::new();
+	};
+
+	let growth_factor = calculate_growth_factor(initial_inner_radius, initial_turns, initial_outer_radius, spiral_type);
+	let turns_delta = drag.total_angle / 360.;
+
+	let outer_radius_change = match spiral_type {
+		SpiralType::Archimedean => turns_delta * growth_factor * TAU,
+		SpiralType::Logarithmic => initial_outer_radius * ((growth_factor * TAU * turns_delta).exp() - 1.),
+	};
+	if !outer_radius_change.is_finite() {
+		return Vec::new();
+	}
+
+	// Handle 0 is the inner end of the curve; dragging it winds the spiral in the opposite direction.
+	let dragging_inner_end = context.handle_index == 0;
+	let sign = if dragging_inner_end { -1. } else { 1. };
+
+	// A spiral needs at least half a turn to read as one, and a non-positive outer radius has no curve.
+	let mut writes = vec![
+		(TurnsInput.into(), TaggedValue::F64((initial_turns + turns_delta * sign).max(0.5))),
+		(OuterRadiusInput.into(), TaggedValue::F64((initial_outer_radius + outer_radius_change * sign).max(0.1))),
+	];
+	if dragging_inner_end {
+		writes.push((StartAngleInput.into(), TaggedValue::F64(initial_start_angle + drag.total_angle)));
+	}
+
+	writes
+}
+
+/// Mark both ends of the spiral at rest, and the end being held once one is grabbed.
+fn spiral_turns_overlay(context: &GizmoContext, overlay_context: &mut OverlayContext) {
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+
+	if context.state == GizmoState::Inactive {
+		for theta in [0., TAU] {
+			if let Some(endpoint) = calculate_spiral_endpoints(context.layer, context.document, viewport, theta) {
+				overlay_context.manipulator_handle(endpoint, false, None);
+			}
+		}
+		return;
+	}
+
+	let theta = if context.handle_index == 0 { 0. } else { TAU };
+	if let Some(endpoint) = calculate_spiral_endpoints(context.layer, context.document, viewport, theta) {
+		overlay_context.manipulator_handle(endpoint, true, Some(COLOR_OVERLAY_RED));
 	}
 }

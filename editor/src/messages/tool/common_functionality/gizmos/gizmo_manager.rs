@@ -9,7 +9,6 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::arc_shape::ArcGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::grid_shape::GridGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
-use crate::messages::tool::common_functionality::shapes::spiral_shape::SpiralGizmoHandler;
 use glam::DVec2;
 use std::collections::VecDeque;
 
@@ -27,7 +26,6 @@ pub enum ShapeGizmoHandlers {
 	None,
 	Arc(ArcGizmoHandler),
 	Grid(GridGizmoHandler),
-	Spiral(SpiralGizmoHandler),
 	/// Registry-driven generic handler. Used for nodes that declare their gizmos in the
 	/// [gizmo registry](super::gizmo_registry) rather than via a hand-written handler.
 	Generic(GenericGizmoManager),
@@ -40,7 +38,6 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Arc(_) => "arc",
 			Self::Grid(_) => "grid",
-			Self::Spiral(_) => "spiral",
 			Self::Generic(_) => "generic",
 			Self::None => "none",
 		}
@@ -51,7 +48,6 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Arc(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Grid(h) => h.handle_state(layer, mouse_position, document, responses),
-			Self::Spiral(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Generic(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::None => {}
 		}
@@ -62,7 +58,6 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Arc(h) => h.is_any_gizmo_hovered(),
 			Self::Grid(h) => h.is_any_gizmo_hovered(),
-			Self::Spiral(h) => h.is_any_gizmo_hovered(),
 			Self::Generic(h) => h.is_any_gizmo_hovered(),
 			Self::None => false,
 		}
@@ -73,7 +68,6 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Arc(h) => h.handle_click(),
 			Self::Grid(h) => h.handle_click(),
-			Self::Spiral(h) => h.handle_click(),
 			Self::Generic(h) => h.handle_click(),
 			Self::None => {}
 		}
@@ -84,7 +78,6 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Arc(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Grid(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Spiral(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Generic(h) => h.handle_update(drag_start, document, input, responses),
 			Self::None => {}
 		}
@@ -95,7 +88,6 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Arc(h) => h.cleanup(),
 			Self::Grid(h) => h.cleanup(),
-			Self::Spiral(h) => h.cleanup(),
 			Self::Generic(h) => h.cleanup(),
 			Self::None => {}
 		}
@@ -114,7 +106,6 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Arc(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Grid(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
-			Self::Spiral(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Generic(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
@@ -132,7 +123,6 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Arc(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Grid(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
-			Self::Spiral(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Generic(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
@@ -142,7 +132,6 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Arc(h) => h.mouse_cursor_icon(),
 			Self::Grid(h) => h.mouse_cursor_icon(),
-			Self::Spiral(h) => h.mouse_cursor_icon(),
 			Self::Generic(h) => h.mouse_cursor_icon(),
 			Self::None => None,
 		}
@@ -193,8 +182,9 @@ impl GizmoManager {
 			return Some(ShapeGizmoHandlers::Grid(GridGizmoHandler::default()));
 		}
 		// Spiral
+		// Spiral — migrated to the generic, registry-driven gizmo system (winding from either endpoint).
 		if graph_modification_utils::get_spiral_id(layer, &document.network_interface).is_some() {
-			return Some(ShapeGizmoHandlers::Spiral(SpiralGizmoHandler::default()));
+			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
 		}
 		// Heart — migrated to the generic, registry-driven gizmo system (radius slider).
 		if graph_modification_utils::get_heart_id(layer, &document.network_interface).is_some() {

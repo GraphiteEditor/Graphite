@@ -82,6 +82,23 @@ pub struct GizmoContext<'a> {
 	pub handle_index: usize,
 }
 
+/// What a drag has done so far, handed to a shape's own drag function.
+pub struct DragInput {
+	/// Where the drag began, in viewport space.
+	pub drag_start: DVec2,
+	/// Where the cursor is now, in viewport space.
+	pub mouse_position: DVec2,
+	/// The dragged parameter's value when the drag began.
+	pub initial_value: f64,
+	/// Every input of the node as it stood when the drag began, indexed the way the node's parameter symbols
+	/// are. A drag that rewrites several parameters at once needs this, because by the second frame the
+	/// values in the document are the ones it already wrote.
+	pub initial_parameters: Vec<Option<TaggedValue>>,
+	/// Total angle swept around the layer's origin since the drag began, in degrees. Accumulated frame by
+	/// frame so it keeps counting past a full turn, which the angle between two points cannot express.
+	pub total_angle: f64,
+}
+
 /// The escape hatch for nodes whose gizmo needs more than the generic mechanics.
 ///
 /// The generic layer always owns hit-testing, the hover/drag state machine, the handle overlay, and the
@@ -107,6 +124,16 @@ pub struct GizmoBehavior {
 	/// a star's outer radius can be taken hold of at any of its outer points — so this returns all of them.
 	/// The drag then runs along the ray through whichever one the user grabbed, not along a fixed axis.
 	pub handle_positions: Option<fn(&GizmoContext, f64) -> Vec<DVec2>>,
+	/// How cursor motion becomes node inputs.
+	///
+	/// The default reads the cursor's distance along the ray through the grabbed handle and writes the one
+	/// parameter, which is what a radius or a length wants. A shape whose control winds or sweeps rather
+	/// than extends supplies its own and returns every input the motion implies -- a spiral's turns cannot
+	/// change without its outer radius following, or the spiral would tighten as it grows.
+	///
+	/// Returning this in place of the default also bypasses clamping and snapping, since a drag that writes
+	/// several parameters is the only thing that knows how they constrain each other.
+	pub drag: Option<fn(&GizmoContext, &DragInput) -> Vec<(ParameterRef, TaggedValue)>>,
 }
 
 impl GizmoBehavior {
@@ -116,6 +143,7 @@ impl GizmoBehavior {
 		overlay: None,
 		coupled_writes: None,
 		handle_positions: None,
+		drag: None,
 	};
 }
 
@@ -223,35 +251,18 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 	},
 ];
 
-const SPIRAL_GIZMOS: &[GizmoInfo] = &[
-	GizmoInfo {
-		parameter_index: spiral::InnerRadiusInput::INDEX,
-		gizmo_type: GizmoType::Slider,
-		name: "Inner Radius",
-		min: Some(0.),
-		max: None,
-		behavior: GizmoBehavior::NONE,
-		position_hint: PositionHint::ParameterDerived,
-	},
-	GizmoInfo {
-		parameter_index: spiral::OuterRadiusInput::INDEX,
-		gizmo_type: GizmoType::Slider,
-		name: "Outer Radius",
-		min: Some(0.),
-		max: None,
-		behavior: GizmoBehavior::NONE,
-		position_hint: PositionHint::ParameterDerived,
-	},
-	GizmoInfo {
-		parameter_index: spiral::TurnsInput::INDEX,
-		gizmo_type: GizmoType::Slider,
-		name: "Turns",
-		min: Some(0.),
-		max: None,
-		behavior: GizmoBehavior::NONE,
-		position_hint: PositionHint::BoundingBoxEdge,
-	},
-];
+// Only the turns control. The inner and outer radii are reachable from the Properties panel, and a handle
+// for either would sit at an arbitrary point on a curve that is nowhere near circular -- whereas winding the
+// spiral from either of its own endpoints reads immediately.
+const SPIRAL_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
+	parameter_index: spiral::TurnsInput::INDEX,
+	gizmo_type: GizmoType::Slider,
+	name: "Turns",
+	min: Some(0.),
+	max: None,
+	behavior: gizmo_behaviors::SPIRAL_TURNS,
+	position_hint: PositionHint::ParameterDerived,
+}];
 
 // Only the radius slider: the heart's many shaping parameters (cleavage, lobes, shoulders, point)
 // are fine-tuned via the Properties panel, while the overall size reads naturally as a canvas handle.
