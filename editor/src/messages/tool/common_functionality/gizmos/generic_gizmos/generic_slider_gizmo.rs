@@ -27,8 +27,6 @@ use std::collections::VecDeque;
 
 /// Pixel radius within which the mouse is considered to be hovering the handle.
 const SLIDER_HANDLE_HOVER_THRESHOLD: f64 = 8.;
-/// Per-frame rotation below which the swept angle is treated as cursor noise rather than intent.
-const ANGLE_ACCUMULATION_DEADZONE: f64 = 0.5;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GenericSliderState {
@@ -62,6 +60,8 @@ pub struct GenericSliderGizmo {
 	previous_mouse_position: DVec2,
 	/// Angle swept around the layer origin since the drag began, in degrees.
 	total_angle: f64,
+	/// This frame's rotation about the layer origin, in degrees.
+	angle_delta: f64,
 }
 
 impl GenericSliderGizmo {
@@ -78,6 +78,7 @@ impl GenericSliderGizmo {
 			initial_parameters: Vec::new(),
 			previous_mouse_position: DVec2::ZERO,
 			total_angle: 0.,
+			angle_delta: 0.,
 		}
 	}
 
@@ -233,15 +234,24 @@ impl GenericSliderGizmo {
 		self.accumulate_angle(document, input.mouse.position);
 
 		if let Some(drag) = self.info.behavior.drag {
-			let drag_input = DragInput {
+			let mut drag_input = DragInput {
 				drag_start,
 				mouse_position: input.mouse.position,
 				initial_value: self.initial_value,
 				initial_parameters: self.initial_parameters.clone(),
 				total_angle: self.total_angle,
+				angle_delta: self.angle_delta,
+				handle_index: self.handle_index,
 			};
 
-			let writes = drag(&self.context(document, input.mouse.position, None), &drag_input);
+			let writes = drag(&self.context(document, input.mouse.position, None), &mut drag_input);
+
+			// The shape may have re-anchored the gesture; carry its baseline forward.
+			self.total_angle = drag_input.total_angle;
+			self.initial_parameters = drag_input.initial_parameters;
+			self.handle_index = drag_input.handle_index;
+			self.initial_value = drag_input.initial_value;
+
 			if writes.is_empty() {
 				return;
 			}
@@ -294,22 +304,20 @@ impl GenericSliderGizmo {
 	/// Add this frame's rotation about the layer's origin to the running total, so a drag that winds several
 	/// times around keeps counting instead of wrapping at half a turn.
 	///
-	/// Rotations smaller than half a degree are dropped: near the origin the angle between successive cursor
-	/// positions is dominated by noise, and feeding that in makes the value jitter while the cursor is still.
+	/// Rotations inside the behavior's deadzone are dropped; see `GizmoBehavior::angle_deadzone`.
 	fn accumulate_angle(&mut self, document: &DocumentMessageHandler, mouse_position: DVec2) {
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
 		let inverse = viewport.inverse();
 
 		let delta = inverse
-			.transform_vector2(mouse_position - center)
-			.angle_to(inverse.transform_vector2(self.previous_mouse_position - center))
+			.transform_vector2(self.previous_mouse_position - center)
+			.angle_to(inverse.transform_vector2(mouse_position - center))
 			.to_degrees();
 
 		self.previous_mouse_position = mouse_position;
-		if delta.is_finite() && delta.abs() >= ANGLE_ACCUMULATION_DEADZONE {
-			self.total_angle += delta;
-		}
+		self.angle_delta = if delta.is_finite() && delta.abs() >= self.info.behavior.angle_deadzone { delta } else { 0. };
+		self.total_angle += self.angle_delta;
 	}
 
 	/// Pull the value onto the nearest snap target within the threshold. Returns the value unchanged when

@@ -157,11 +157,13 @@ impl GenericGizmoManager {
 			let mut gizmos = Vec::new();
 			for info in infos {
 				match info.gizmo_type {
-					GizmoType::Slider => gizmos.push(GenericGizmo::Slider(GenericSliderGizmo::new(layer, node_id, identifier.clone(), *info))),
+					// An angle runs on the same handle machinery as a slider; what differs is the drag, which
+					// its registry entry supplies.
+					GizmoType::Slider | GizmoType::Angle => gizmos.push(GenericGizmo::Slider(GenericSliderGizmo::new(layer, node_id, identifier.clone(), *info))),
 					GizmoType::Dial => gizmos.push(GenericGizmo::Dial(GenericDialGizmo::new(layer, node_id, identifier.clone(), *info))),
-					// Position and Angle gizmos are not yet implemented; they are skipped so a
-					// partially-migrated node still gets its slider/dial controls.
-					GizmoType::Position | GizmoType::Angle => {}
+					// Position gizmos are not yet implemented; they are skipped so a partially-migrated node
+					// still gets its other controls.
+					GizmoType::Position => {}
 				}
 			}
 

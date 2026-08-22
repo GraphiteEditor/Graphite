@@ -34,7 +34,9 @@ pub enum GizmoType {
 	Dial,
 	/// A draggable point that edits a `DVec2` parameter (e.g. a position or 2D spacing).
 	Position,
-	/// A draggable handle constrained to a circle that edits an angle, stored as `f64` degrees.
+	/// A handle that edits an angle, stored as `f64` degrees. Driven by the same handle machinery as
+	/// [`Slider`](Self::Slider), but an angle is never a distance along a ray, so a declaration using this
+	/// is expected to carry a [`GizmoBehavior::drag`] rather than rely on the default.
 	Angle,
 }
 
@@ -97,6 +99,10 @@ pub struct DragInput {
 	/// Total angle swept around the layer's origin since the drag began, in degrees. Accumulated frame by
 	/// frame so it keeps counting past a full turn, which the angle between two points cannot express.
 	pub total_angle: f64,
+	/// This frame's rotation about the layer's origin, in degrees.
+	pub angle_delta: f64,
+	/// Which grab point the drag is running from.
+	pub handle_index: usize,
 }
 
 /// The escape hatch for nodes whose gizmo needs more than the generic mechanics.
@@ -133,7 +139,15 @@ pub struct GizmoBehavior {
 	///
 	/// Returning this in place of the default also bypasses clamping and snapping, since a drag that writes
 	/// several parameters is the only thing that knows how they constrain each other.
-	pub drag: Option<fn(&GizmoContext, &DragInput) -> Vec<(ParameterRef, TaggedValue)>>,
+	///
+	/// The [`DragInput`] is mutable because a drag may have to re-anchor itself: an arc dragged past a full
+	/// sweep hands over to its other endpoint and continues from there, which means rewriting the baseline
+	/// the rest of the gesture is measured against.
+	pub drag: Option<fn(&GizmoContext, &mut DragInput) -> Vec<(ParameterRef, TaggedValue)>>,
+	/// Per-frame rotation, in degrees, below which swept angle is treated as cursor noise rather than
+	/// intent. Near the layer's origin the angle between successive cursor positions is mostly noise, and
+	/// feeding it in makes the value jitter while the cursor is still. Zero accumulates everything.
+	pub angle_deadzone: f64,
 }
 
 impl GizmoBehavior {
@@ -144,6 +158,7 @@ impl GizmoBehavior {
 		coupled_writes: None,
 		handle_positions: None,
 		drag: None,
+		angle_deadzone: 0.,
 	};
 }
 
@@ -231,22 +246,15 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::ParameterDerived,
 	},
-	GizmoInfo {
-		parameter_index: arc::StartAngleInput::INDEX,
-		gizmo_type: GizmoType::Angle,
-		name: "Start Angle",
-		min: None,
-		max: None,
-		behavior: GizmoBehavior::NONE,
-		position_hint: PositionHint::ParameterDerived,
-	},
+	// One entry, not two: dragging either endpoint can move the start angle and the sweep together, so a
+	// separate start-angle gizmo would be a second control over the same gesture.
 	GizmoInfo {
 		parameter_index: arc::SweepAngleInput::INDEX,
 		gizmo_type: GizmoType::Angle,
-		name: "Sweep Angle",
-		min: None,
-		max: None,
-		behavior: GizmoBehavior::NONE,
+		name: "Sweep",
+		min: Some(0.),
+		max: Some(360.),
+		behavior: gizmo_behaviors::ARC_SWEEP,
 		position_hint: PositionHint::ParameterDerived,
 	},
 ];
