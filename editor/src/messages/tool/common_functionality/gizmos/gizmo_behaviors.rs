@@ -13,11 +13,12 @@ use crate::consts::{ARC_SNAP_THRESHOLD, COLOR_OVERLAY_RED};
 use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION, NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD};
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{DragInput, GizmoBehavior, GizmoContext, GizmoState};
+use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{DragInput, DragWrites, GizmoBehavior, GizmoContext, GizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use crate::messages::tool::common_functionality::shapes::grid_shape::RowColumnGizmoType;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{
-	arc_end_points, arc_end_points_ignore_layer, arc_outline, calculate_arc_text_transform, draw_snapping_ticks, extract_arc_parameters, extract_polygon_parameters, extract_spiral_parameters,
-	extract_star_parameters, format_rounded, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline, star_vertex_position,
+	arc_end_points, arc_end_points_ignore_layer, arc_outline, calculate_arc_text_transform, draw_snapping_ticks, extract_arc_parameters, extract_grid_parameters, extract_polygon_parameters,
+	extract_spiral_parameters, extract_star_parameters, format_rounded, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline, star_vertex_position,
 };
 use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate_spiral_endpoints;
 use glam::{DAffine2, DVec2};
@@ -26,7 +27,8 @@ use graphene_std::NodeParameter;
 use graphene_std::ParameterRef;
 use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::generator_nodes::star;
-use graphene_std::vector::misc::SpiralType;
+use graphene_std::vector::misc::{GridType, SpiralType, dvec2_to_point, get_line_endpoints};
+use kurbo::ParamCurveNearest;
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2, TAU};
 
 /// The star's sides dial: previews the shape it is about to change.
@@ -35,6 +37,7 @@ pub const STAR_SIDES: GizmoBehavior = GizmoBehavior {
 	overlay: Some(star_sides_overlay),
 	coupled_writes: None,
 	handle_positions: None,
+	hover_distances: None,
 	drag: None,
 	angle_deadzone: 0.,
 };
@@ -46,7 +49,30 @@ pub const STAR_RADIUS: GizmoBehavior = GizmoBehavior {
 	overlay: Some(star_radius_overlay),
 	coupled_writes: None,
 	handle_positions: Some(star_radius_handles),
+	hover_distances: None,
 	drag: None,
+	angle_deadzone: 0.,
+};
+
+/// The grid's row count, grabbed along its top or bottom edge.
+pub const GRID_ROWS: GizmoBehavior = GizmoBehavior {
+	snap_targets: None,
+	overlay: Some(grid_edge_overlay),
+	coupled_writes: None,
+	handle_positions: None,
+	hover_distances: Some(grid_row_distances),
+	drag: Some(grid_edge_drag),
+	angle_deadzone: 0.,
+};
+
+/// The grid's column count, grabbed along its left or right edge.
+pub const GRID_COLUMNS: GizmoBehavior = GizmoBehavior {
+	snap_targets: None,
+	overlay: Some(grid_edge_overlay),
+	coupled_writes: None,
+	handle_positions: None,
+	hover_distances: Some(grid_column_distances),
+	drag: Some(grid_edge_drag),
 	angle_deadzone: 0.,
 };
 
@@ -57,6 +83,7 @@ pub const ARC_SWEEP: GizmoBehavior = GizmoBehavior {
 	overlay: Some(arc_sweep_overlay),
 	coupled_writes: None,
 	handle_positions: Some(arc_sweep_handles),
+	hover_distances: None,
 	drag: Some(arc_sweep_drag),
 	angle_deadzone: 0.,
 };
@@ -67,6 +94,7 @@ pub const SPIRAL_TURNS: GizmoBehavior = GizmoBehavior {
 	overlay: Some(spiral_turns_overlay),
 	coupled_writes: None,
 	handle_positions: Some(spiral_turns_handles),
+	hover_distances: None,
 	drag: Some(spiral_turns_drag),
 	angle_deadzone: 0.5,
 };
@@ -77,6 +105,7 @@ pub const POLYGON_SIDES: GizmoBehavior = GizmoBehavior {
 	overlay: Some(polygon_sides_overlay),
 	coupled_writes: None,
 	handle_positions: None,
+	hover_distances: None,
 	drag: None,
 	angle_deadzone: 0.,
 };
@@ -311,7 +340,7 @@ fn spiral_turns_handles(context: &GizmoContext, _value: f64) -> Vec<DVec2> {
 /// Turns alone would change the spiral's tightness as it grows, so the outer radius moves with it by
 /// whatever keeps the growth factor the drag started with. Taking hold of the inner end winds the other
 /// way and carries the start angle along, so the end the user is *not* holding stays put.
-fn spiral_turns_drag(context: &GizmoContext, drag: &mut DragInput) -> Vec<(ParameterRef, TaggedValue)> {
+fn spiral_turns_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
 	use graphene_std::vector::generator_nodes::spiral::*;
 
 	let (Some(initial_turns), Some(initial_outer_radius), Some(initial_inner_radius), Some(initial_start_angle)) = (
@@ -320,10 +349,10 @@ fn spiral_turns_drag(context: &GizmoContext, drag: &mut DragInput) -> Vec<(Param
 		initial_f64(drag, InnerRadiusInput::INDEX),
 		initial_f64(drag, StartAngleInput::INDEX),
 	) else {
-		return Vec::new();
+		return DragWrites::default();
 	};
 	let Some((spiral_type, ..)) = extract_spiral_parameters(context.layer, context.document) else {
-		return Vec::new();
+		return DragWrites::default();
 	};
 
 	let growth_factor = calculate_growth_factor(initial_inner_radius, initial_turns, initial_outer_radius, spiral_type);
@@ -334,7 +363,7 @@ fn spiral_turns_drag(context: &GizmoContext, drag: &mut DragInput) -> Vec<(Param
 		SpiralType::Logarithmic => initial_outer_radius * ((growth_factor * TAU * turns_delta).exp() - 1.),
 	};
 	if !outer_radius_change.is_finite() {
-		return Vec::new();
+		return DragWrites::default();
 	}
 
 	// Handle 0 is the inner end of the curve; dragging it winds the spiral in the opposite direction.
@@ -350,7 +379,7 @@ fn spiral_turns_drag(context: &GizmoContext, drag: &mut DragInput) -> Vec<(Param
 		writes.push((StartAngleInput.into(), TaggedValue::F64(initial_start_angle + spiral_swept_angle(drag))));
 	}
 
-	writes
+	DragWrites::inputs(writes)
 }
 
 /// Mark both ends of the spiral at rest, and the end being held once one is grabbed.
@@ -411,21 +440,21 @@ fn arc_snap_delta(sweep_angle: f64, dragging_start: bool) -> Option<f64> {
 /// [-180°, 180°]. Both limits are reached by *continuing* a drag rather than ending it, so rather than
 /// stopping at the limit the gesture re-anchors: dragging the start endpoint past a full sweep hands over
 /// to the end endpoint and carries on from there, which is why the baseline is rewritten as it goes.
-fn arc_sweep_drag(context: &GizmoContext, drag: &mut DragInput) -> Vec<(ParameterRef, TaggedValue)> {
+fn arc_sweep_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
 	use graphene_std::vector::generator_nodes::arc::*;
 
 	let Some((_, current_start_angle, current_sweep_angle, _)) = extract_arc_parameters(Some(context.layer), context.document) else {
-		return Vec::new();
+		return DragWrites::default();
 	};
 	let (Some(initial_start_angle), Some(initial_sweep_angle)) = (initial_f64(drag, StartAngleInput::INDEX), initial_f64(drag, SweepAngleInput::INDEX)) else {
-		return Vec::new();
+		return DragWrites::default();
 	};
 
 	let angle_delta = drag.angle_delta;
 	let angle = drag.total_angle;
 	let dragging_start = drag.handle_index == 0;
 
-	let write = |start: f64, sweep: f64| vec![(StartAngleInput.into(), TaggedValue::F64(start)), (SweepAngleInput.into(), TaggedValue::F64(sweep))];
+	let write = |start: f64, sweep: f64| DragWrites::inputs(vec![(StartAngleInput.into(), TaggedValue::F64(start)), (SweepAngleInput.into(), TaggedValue::F64(sweep))]);
 
 	if dragging_start {
 		// The start endpoint drags the whole arc round, so the sweep closes by as much as the start opens.
@@ -558,4 +587,138 @@ fn arc_sweep_overlay(context: &GizmoContext, overlay_context: &mut OverlayContex
 	let transform = calculate_arc_text_transform(angle, offset_angle, center, text_width(&text, FONT_SIZE) / 2.);
 
 	overlay_context.arc_sweep_angle(offset_angle, angle, point, point.distance(center), center, &text, transform);
+}
+
+/// Squared viewport distance within which an edge counts as grabbed, matching the hand-written gizmo.
+const GRID_EDGE_THRESHOLD_SQUARED: f64 = 32.;
+
+/// The two edges that control a grid's rows, in the order their handle indices refer to.
+const GRID_ROW_EDGES: [RowColumnGizmoType; 2] = [RowColumnGizmoType::Top, RowColumnGizmoType::Bottom];
+/// The two edges that control a grid's columns.
+const GRID_COLUMN_EDGES: [RowColumnGizmoType; 2] = [RowColumnGizmoType::Left, RowColumnGizmoType::Right];
+
+fn grid_row_distances(context: &GizmoContext) -> Vec<Option<f64>> {
+	grid_edge_distances(context, GRID_ROW_EDGES)
+}
+
+fn grid_column_distances(context: &GizmoContext) -> Vec<Option<f64>> {
+	grid_edge_distances(context, GRID_COLUMN_EDGES)
+}
+
+/// A grid's dimensions are grabbed anywhere along an edge, not at a point on it, so proximity is measured to
+/// the edge line -- or to nothing at all, if the cursor is inside the band the edge occupies.
+fn grid_edge_distances(context: &GizmoContext, edges: [RowColumnGizmoType; 2]) -> Vec<Option<f64>> {
+	let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(context.layer, context.document) else {
+		return vec![None, None];
+	};
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+	let mouse_point = dvec2_to_point(context.mouse_position);
+
+	edges
+		.into_iter()
+		.map(|edge| {
+			if edge.rect(grid_type, columns, rows, spacing, angles, viewport).contains(mouse_point) {
+				return Some(0.);
+			}
+			let distance_squared = edge.line(grid_type, columns, rows, spacing, angles, viewport).nearest(mouse_point, 1e-6).distance_sq;
+
+			(distance_squared < GRID_EDGE_THRESHOLD_SQUARED).then(|| distance_squared.sqrt())
+		})
+		.collect()
+}
+
+fn grid_edges(context: &GizmoContext) -> [RowColumnGizmoType; 2] {
+	use graphene_std::vector::generator_nodes::grid;
+
+	if context.parameter == ParameterRef::from(grid::ColumnsInput) {
+		GRID_COLUMN_EDGES
+	} else {
+		GRID_ROW_EDGES
+	}
+}
+
+/// Add or remove rows and columns by dragging an edge.
+///
+/// The grid also has to move as it resizes. Dragging the top edge upward adds rows, but the node builds its
+/// grid downward from the origin, so without a matching translation the new rows would appear at the bottom
+/// and the edge would slide out from under the cursor.
+///
+/// Dragging an edge past the last row or column does not stop at one: the grid turns inside out and the
+/// opposite edge takes over, which is why the gesture re-anchors rather than clamping.
+fn grid_edge_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
+	let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(context.layer, context.document) else {
+		return DragWrites::default();
+	};
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+	let edge = grid_edges(context)[drag.handle_index.min(1)];
+
+	let direction = edge.direction(viewport);
+	let delta_vector = drag.mouse_position - drag.drag_start;
+	let projection = delta_vector.project_onto(direction);
+	let delta = viewport.inverse().transform_vector2(projection).length() * delta_vector.dot(direction).signum();
+
+	if delta.abs() < 1e-6 {
+		return DragWrites::default();
+	}
+
+	let initial_dimension = match initial_u32(drag, edge.parameter().input_index) {
+		Some(dimension) => dimension as i32,
+		None => return DragWrites::default(),
+	};
+	let dimensions_to_add = (delta / edge.spacing(spacing, grid_type, angles)).floor() as i32;
+	let new_dimension = (initial_dimension + dimensions_to_add).max(1) as u32;
+	let dimensions_delta = new_dimension as i32 - edge.initial_dimension(rows, columns) as i32;
+
+	let mut writes = DragWrites {
+		inputs: vec![(edge.parameter(), TaggedValue::U32(new_dimension))],
+		transform: Some(grid_edge_transform(edge, dimensions_delta, spacing, grid_type, angles, viewport)),
+	};
+
+	// Dragged past the last row or column: flip to the opposite edge and start counting again from one.
+	if initial_dimension + dimensions_to_add < 1 {
+		drag.drag_start = drag.mouse_position;
+		drag.handle_index = 1 - drag.handle_index.min(1);
+		set_initial_u32(drag, edge.parameter().input_index, 1);
+		writes.inputs = vec![(edge.parameter(), TaggedValue::U32(1))];
+	}
+
+	writes
+}
+
+/// Only the top and left edges move the layer: the grid is built rightward and downward from its origin, so
+/// growing from the other two edges already puts the new cells where the cursor is.
+fn grid_edge_transform(edge: RowColumnGizmoType, dimensions_delta: i32, spacing: DVec2, grid_type: GridType, angles: DVec2, viewport: DAffine2) -> DAffine2 {
+	match edge {
+		RowColumnGizmoType::Top => DAffine2::from_translation(edge.direction(viewport) * dimensions_delta as f64 * spacing.y),
+		RowColumnGizmoType::Left => DAffine2::from_translation(edge.direction(viewport) * dimensions_delta as f64 * edge.spacing(spacing, grid_type, angles)),
+		_ => DAffine2::IDENTITY,
+	}
+}
+
+/// Mark the edge in play with a dashed line along it.
+fn grid_edge_overlay(context: &GizmoContext, overlay_context: &mut OverlayContext) {
+	if context.state == GizmoState::Inactive {
+		return;
+	}
+	let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(context.layer, context.document) else {
+		return;
+	};
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+	let edge = grid_edges(context)[context.handle_index.min(1)];
+
+	let (p0, p1) = get_line_endpoints(edge.line(grid_type, columns, rows, spacing, angles, viewport));
+	overlay_context.dashed_line(p0, p1, None, None, Some(5.), Some(5.), Some(0.5));
+}
+
+fn initial_u32(drag: &DragInput, index: usize) -> Option<u32> {
+	match drag.initial_parameters.get(index)? {
+		Some(TaggedValue::U32(value)) => Some(*value),
+		_ => None,
+	}
+}
+
+fn set_initial_u32(drag: &mut DragInput, index: usize, value: u32) {
+	if let Some(slot) = drag.initial_parameters.get_mut(index) {
+		*slot = Some(TaggedValue::U32(value));
+	}
 }

@@ -6,7 +6,6 @@ use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageH
 use crate::messages::tool::common_functionality::gizmos::generic_gizmos::GenericGizmoManager;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::grid_shape::GridGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use glam::DVec2;
 use std::collections::VecDeque;
@@ -23,7 +22,6 @@ use std::collections::VecDeque;
 pub enum ShapeGizmoHandlers {
 	#[default]
 	None,
-	Grid(GridGizmoHandler),
 	/// Registry-driven generic handler. Used for nodes that declare their gizmos in the
 	/// [gizmo registry](super::gizmo_registry) rather than via a hand-written handler.
 	Generic(GenericGizmoManager),
@@ -34,7 +32,6 @@ impl ShapeGizmoHandlers {
 	/// Used for grouping logic and distinguishing between handler types at runtime.
 	pub fn kind(&self) -> &'static str {
 		match self {
-			Self::Grid(_) => "grid",
 			Self::Generic(_) => "generic",
 			Self::None => "none",
 		}
@@ -43,7 +40,6 @@ impl ShapeGizmoHandlers {
 	/// Dispatches interaction state updates to the corresponding shape-specific handler.
 	pub fn handle_state(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		match self {
-			Self::Grid(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Generic(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::None => {}
 		}
@@ -52,7 +48,6 @@ impl ShapeGizmoHandlers {
 	/// Checks if any interactive part of the gizmo is currently hovered.
 	pub fn is_any_gizmo_hovered(&self) -> bool {
 		match self {
-			Self::Grid(h) => h.is_any_gizmo_hovered(),
 			Self::Generic(h) => h.is_any_gizmo_hovered(),
 			Self::None => false,
 		}
@@ -61,7 +56,6 @@ impl ShapeGizmoHandlers {
 	/// Passes the click interaction to the appropriate gizmo handler if one is hovered.
 	pub fn handle_click(&mut self) {
 		match self {
-			Self::Grid(h) => h.handle_click(),
 			Self::Generic(h) => h.handle_click(),
 			Self::None => {}
 		}
@@ -70,7 +64,6 @@ impl ShapeGizmoHandlers {
 	/// Updates the gizmo state while the user is dragging a handle (e.g., adjusting radius).
 	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		match self {
-			Self::Grid(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Generic(h) => h.handle_update(drag_start, document, input, responses),
 			Self::None => {}
 		}
@@ -79,7 +72,6 @@ impl ShapeGizmoHandlers {
 	/// Cleans up any state used by the gizmo handler.
 	pub fn cleanup(&mut self) {
 		match self {
-			Self::Grid(h) => h.cleanup(),
 			Self::Generic(h) => h.cleanup(),
 			Self::None => {}
 		}
@@ -96,7 +88,6 @@ impl ShapeGizmoHandlers {
 		overlay_context: &mut OverlayContext,
 	) {
 		match self {
-			Self::Grid(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Generic(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
@@ -112,7 +103,6 @@ impl ShapeGizmoHandlers {
 		overlay_context: &mut OverlayContext,
 	) {
 		match self {
-			Self::Grid(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Generic(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
@@ -120,7 +110,6 @@ impl ShapeGizmoHandlers {
 
 	pub fn gizmo_cursor_icon(&self) -> Option<MouseCursorIcon> {
 		match self {
-			Self::Grid(h) => h.mouse_cursor_icon(),
 			Self::Generic(h) => h.mouse_cursor_icon(),
 			Self::None => None,
 		}
@@ -168,8 +157,9 @@ impl GizmoManager {
 			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
 		}
 		// Grid
+		// Grid — migrated to the generic, registry-driven gizmo system (rows and columns by edge).
 		if graph_modification_utils::get_grid_id(layer, &document.network_interface).is_some() {
-			return Some(ShapeGizmoHandlers::Grid(GridGizmoHandler::default()));
+			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
 		}
 		// Spiral
 		// Spiral — migrated to the generic, registry-driven gizmo system (winding from either endpoint).
