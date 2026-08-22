@@ -81,10 +81,10 @@ impl GenericGizmo {
 		}
 	}
 
-	fn enter_hover(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn enter_hover(&mut self, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
 		match self {
-			Self::Slider(g) => g.enter_hover(document, responses),
-			Self::Dial(g) => g.enter_hover(document, responses),
+			Self::Slider(g) => g.enter_hover(document, mouse_position, responses),
+			Self::Dial(g) => g.enter_hover(document, mouse_position, responses),
 		}
 	}
 
@@ -109,10 +109,10 @@ impl GenericGizmo {
 		}
 	}
 
-	fn overlays(&self, document: &DocumentMessageHandler, mouse_position: DVec2, overlay_context: &mut OverlayContext) {
+	fn overlays(&self, document: &DocumentMessageHandler, mouse_position: DVec2, shape_editor: Option<&ShapeState>, overlay_context: &mut OverlayContext) {
 		match self {
-			Self::Slider(g) => g.overlays(document, overlay_context),
-			Self::Dial(g) => g.overlays(document, mouse_position, overlay_context),
+			Self::Slider(g) => g.overlays(document, mouse_position, shape_editor, overlay_context),
+			Self::Dial(g) => g.overlays(document, mouse_position, shape_editor, overlay_context),
 		}
 	}
 
@@ -202,7 +202,7 @@ impl ShapeGizmoHandler for GenericGizmoManager {
 		let winner = self.closest_hover_candidate(mouse_position, document);
 		for (index, gizmo) in self.gizmos.iter_mut().enumerate() {
 			if Some(index) == winner {
-				gizmo.enter_hover(document, responses);
+				gizmo.enter_hover(document, mouse_position, responses);
 			} else {
 				gizmo.exit_hover(responses);
 			}
@@ -228,12 +228,12 @@ impl ShapeGizmoHandler for GenericGizmoManager {
 		document: &DocumentMessageHandler,
 		_selected_shape_layers: Option<LayerNodeIdentifier>,
 		_input: &InputPreprocessorMessageHandler,
-		_shape_editor: &mut &mut ShapeState,
+		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
 		for gizmo in &self.gizmos {
-			gizmo.overlays(document, mouse_position, overlay_context);
+			gizmo.overlays(document, mouse_position, Some(shape_editor), overlay_context);
 		}
 	}
 
@@ -241,13 +241,13 @@ impl ShapeGizmoHandler for GenericGizmoManager {
 		&self,
 		document: &DocumentMessageHandler,
 		_input: &InputPreprocessorMessageHandler,
-		_shape_editor: &mut &mut ShapeState,
+		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
 		for gizmo in &self.gizmos {
 			if gizmo.is_dragging() {
-				gizmo.overlays(document, mouse_position, overlay_context);
+				gizmo.overlays(document, mouse_position, Some(shape_editor), overlay_context);
 			}
 		}
 	}

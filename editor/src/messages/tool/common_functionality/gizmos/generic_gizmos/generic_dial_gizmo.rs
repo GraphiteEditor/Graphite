@@ -14,7 +14,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage, Responses};
 use crate::messages::tool::common_functionality::gizmos::generic_gizmos::read_u32_input;
-use crate::messages::tool::common_functionality::gizmos::gizmo_registry::GizmoInfo;
+use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{GizmoContext, GizmoInfo, GizmoState};
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::NodeId;
@@ -91,6 +92,21 @@ impl GenericDialGizmo {
 		}
 	}
 
+	fn context<'a>(&self, document: &'a DocumentMessageHandler, mouse_position: DVec2, shape_editor: Option<&'a ShapeState>) -> GizmoContext<'a> {
+		GizmoContext {
+			layer: self.layer,
+			document,
+			parameter: self.parameter(),
+			state: match self.state {
+				GenericDialState::Inactive => GizmoState::Inactive,
+				GenericDialState::Hover => GizmoState::Hover,
+				GenericDialState::Dragging => GizmoState::Dragging,
+			},
+			mouse_position,
+			shape_editor,
+		}
+	}
+
 	fn current_value(&self, document: &DocumentMessageHandler) -> Option<u32> {
 		read_u32_input(self.layer, document, &self.identifier, self.info.parameter_index)
 	}
@@ -117,7 +133,7 @@ impl GenericDialGizmo {
 
 	/// Transition into the hovered state (no-op if already hovered or dragging), capturing the
 	/// reference value because `handle_click` has no document access.
-	pub fn enter_hover(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn enter_hover(&mut self, document: &DocumentMessageHandler, _mouse_position: DVec2, responses: &mut VecDeque<Message>) {
 		if self.state != GenericDialState::Inactive {
 			return;
 		}
@@ -157,7 +173,11 @@ impl GenericDialGizmo {
 
 	/// Draw the dial as a grabbable handle at the layer origin: an outer ring (the hit target) plus
 	/// a filled center dot so it reads as draggable.
-	pub fn overlays(&self, document: &DocumentMessageHandler, _mouse_position: DVec2, overlay_context: &mut OverlayContext) {
+	pub fn overlays(&self, document: &DocumentMessageHandler, mouse_position: DVec2, shape_editor: Option<&ShapeState>, overlay_context: &mut OverlayContext) {
+		if let Some(overlay) = self.info.behavior.overlay {
+			overlay(&self.context(document, mouse_position, shape_editor), overlay_context);
+		}
+
 		if self.state == GenericDialState::Inactive {
 			return;
 		}

@@ -13,7 +13,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage, Responses};
 use crate::messages::tool::common_functionality::gizmos::generic_gizmos::read_f64_input;
-use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{GizmoContext, GizmoInfo, PositionHint};
+use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{GizmoContext, GizmoInfo, GizmoState, PositionHint};
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::NodeId;
@@ -92,11 +93,18 @@ impl GenericSliderGizmo {
 		}
 	}
 
-	fn context<'a>(&self, document: &'a DocumentMessageHandler) -> GizmoContext<'a> {
+	fn context<'a>(&self, document: &'a DocumentMessageHandler, mouse_position: DVec2, shape_editor: Option<&'a ShapeState>) -> GizmoContext<'a> {
 		GizmoContext {
 			layer: self.layer,
 			document,
 			parameter: self.parameter(),
+			state: match self.state {
+				GenericSliderState::Inactive => GizmoState::Inactive,
+				GenericSliderState::Hover => GizmoState::Hover,
+				GenericSliderState::Dragging => GizmoState::Dragging,
+			},
+			mouse_position,
+			shape_editor,
 		}
 	}
 
@@ -138,7 +146,7 @@ impl GenericSliderGizmo {
 	/// Transition into the hovered state (no-op if already hovered or dragging). Capturing the
 	/// reference value here is necessary because `handle_click` (which starts the drag) has no
 	/// access to the document.
-	pub fn enter_hover(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn enter_hover(&mut self, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
 		if self.state != GenericSliderState::Inactive {
 			return;
 		}
@@ -147,7 +155,7 @@ impl GenericSliderGizmo {
 		self.state = GenericSliderState::Hover;
 		self.initial_value = value;
 		self.snap_targets = match self.info.behavior.snap_targets {
-			Some(targets) => targets(&self.context(document)),
+			Some(targets) => targets(&self.context(document, mouse_position, None)),
 			None => Vec::new(),
 		};
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
@@ -185,7 +193,7 @@ impl GenericSliderGizmo {
 		// Parameters that are only meaningful in combination are written in the same batch, so the graph
 		// never evaluates a half-updated shape.
 		if let Some(coupled_writes) = self.info.behavior.coupled_writes {
-			for (parameter, coupled_value) in coupled_writes(&self.context(document), value) {
+			for (parameter, coupled_value) in coupled_writes(&self.context(document, input.mouse.position, None), value) {
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(self.node_id, parameter),
 					input: NodeInput::value(coupled_value, false),
@@ -214,7 +222,7 @@ impl GenericSliderGizmo {
 	}
 
 	/// Draw the handle dot, plus a guide line from the layer origin while hovered or dragging.
-	pub fn overlays(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	pub fn overlays(&self, document: &DocumentMessageHandler, mouse_position: DVec2, shape_editor: Option<&ShapeState>, overlay_context: &mut OverlayContext) {
 		if self.state == GenericSliderState::Inactive {
 			return;
 		}
@@ -232,7 +240,7 @@ impl GenericSliderGizmo {
 		overlay_context.manipulator_handle(handle, self.state == GenericSliderState::Dragging, None);
 
 		if let Some(overlay) = self.info.behavior.overlay {
-			overlay(&self.context(document), overlay_context);
+			overlay(&self.context(document, mouse_position, shape_editor), overlay_context);
 		}
 	}
 
