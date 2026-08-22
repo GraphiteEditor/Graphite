@@ -1,11 +1,11 @@
 use super::*;
-use crate::vector::algorithms::consts::CLOSE_POINT_TOLERANCE;
-use crate::vector::misc::BezierHandles;
-use crate::vector::misc::{HandleId, HandleType, point_to_dvec2, segment_to_handles};
+use crate::vector::flatten::WorkingVector;
+use crate::vector::misc::{BezierHandles, HandleId, HandleType};
+use crate::vector::path::Path;
+use core_types::list::List;
 use core_types::uuid::generate_uuid;
 use dyn_any::DynAny;
 use glam::DVec2;
-use kurbo::{BezPath, ParamCurve, PathEl, Point};
 use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -14,7 +14,7 @@ use std::fmt;
 use std::hash::BuildHasher;
 use std::hash::Hash;
 
-/// Represents a procedural change to the [`PointDomain`] in [`Vector`].
+/// Represents a procedural change to the points of a [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct PointModification {
@@ -26,25 +26,47 @@ pub(crate) struct PointModification {
 }
 
 impl PointModification {
-	/// Apply this modification to the specified [`PointDomain`].
-	pub fn apply(&self, point_domain: &mut PointDomain, segment_domain: &mut SegmentDomain) {
-		point_domain.retain(segment_domain, |id| !self.remove.contains(id));
+	/// Apply this modification to the working form's points.
+	fn apply(&self, working: &mut WorkingVector) {
+		// Remove points, remapping segment endpoints and leaving out-of-range markers on segments
+		// that referenced a removed point, for the segment pass to delete
+		let mut id_map = Vec::with_capacity(working.point_ids.len());
+		let mut new_index = 0;
+		for id in &working.point_ids {
+			if !self.remove.contains(id) {
+				id_map.push(new_index);
+				new_index += 1;
+			} else {
+				id_map.push(usize::MAX);
+			}
+		}
+		let update_index = |index: &mut usize| {
+			if *index < id_map.len() {
+				*index = id_map[*index];
+			}
+		};
+		working.segment_start.iter_mut().for_each(update_index);
+		working.segment_end.iter_mut().for_each(update_index);
 
-		for (index, (id, position)) in point_domain.positions_mut().enumerate() {
-			let Some(&delta) = self.delta.get(&id) else { continue };
+		let mut keep = working.point_ids.iter().map(|id| !self.remove.contains(id));
+		working.point_positions.retain(|_| keep.next().unwrap_or_default());
+		working.point_ids.retain(|id| !self.remove.contains(id));
+
+		for (index, id) in working.point_ids.iter().enumerate() {
+			let Some(&delta) = self.delta.get(id) else { continue };
 			if !delta.is_finite() {
 				warn!("Invalid delta when applying a point modification");
 				continue;
 			}
 
-			*position += delta;
+			working.point_positions[index] += delta;
 
-			for (_, handles, start, end) in segment_domain.handles_mut() {
-				if start == index {
-					handles.move_start(delta);
+			for segment_index in 0..working.segment_ids.len() {
+				if working.segment_start[segment_index] == index {
+					working.segment_handles[segment_index].move_start(delta);
 				}
-				if end == index {
-					handles.move_end(delta);
+				if working.segment_end[segment_index] == index {
+					working.segment_handles[segment_index].move_end(delta);
 				}
 			}
 		}
@@ -56,16 +78,23 @@ impl PointModification {
 				continue;
 			}
 
-			point_domain.push(add_id, position);
+			#[cfg(debug_assertions)]
+			if working.point_ids.contains(&add_id) {
+				warn!("Tried to push a duplicate point to the working form");
+				continue;
+			}
+
+			working.point_ids.push(add_id);
+			working.point_positions.push(position);
 		}
 	}
 
-	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector(vector: &Vector) -> Self {
+	/// Create a new modification that will convert an empty [`Vector`] into the target working form.
+	fn create_from_working(working: &WorkingVector) -> Self {
 		Self {
-			add: vector.point_domain.ids().to_vec(),
+			add: working.point_ids.clone(),
 			remove: HashSet::new(),
-			delta: vector.point_domain.ids().iter().copied().zip(vector.point_domain.positions().iter().cloned()).collect(),
+			delta: working.point_ids.iter().copied().zip(working.point_positions.iter().copied()).collect(),
 		}
 	}
 
@@ -81,7 +110,7 @@ impl PointModification {
 	}
 }
 
-/// Represents a procedural change to the [`SegmentDomain`] in [`Vector`].
+/// Represents a procedural change to the segments of a [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct SegmentModification {
@@ -99,44 +128,52 @@ pub(crate) struct SegmentModification {
 }
 
 impl SegmentModification {
-	/// Apply this modification to the specified [`SegmentDomain`].
-	pub fn apply(&self, segment_domain: &mut SegmentDomain, point_domain: &PointDomain) {
-		segment_domain.retain(|id| !self.remove.contains(id), point_domain.ids().len());
+	/// Apply this modification to the working form's segments.
+	fn apply(&self, working: &mut WorkingVector) {
+		// Remove the deleted segments, plus any segment left referencing a removed point
+		let point_count = working.point_ids.len();
+		let keep: Vec<bool> = (0..working.segment_ids.len())
+			.map(|index| !self.remove.contains(&working.segment_ids[index]) && working.segment_start[index] < point_count && working.segment_end[index] < point_count)
+			.collect();
+		let mut keep_iter = keep.iter();
+		working.segment_start.retain(|_| *keep_iter.next().unwrap_or(&false));
+		let mut keep_iter = keep.iter();
+		working.segment_end.retain(|_| *keep_iter.next().unwrap_or(&false));
+		let mut keep_iter = keep.iter();
+		working.segment_handles.retain(|_| *keep_iter.next().unwrap_or(&false));
+		let mut keep_iter = keep.iter();
+		working.segment_ids.retain(|_| *keep_iter.next().unwrap_or(&false));
 
-		for (id, point) in segment_domain.start_point_mut() {
-			let Some(&new) = self.start_point.get(&id) else { continue };
-			let Some(index) = point_domain.resolve_id(new) else {
-				warn!("Invalid start ID when applying a segment modification");
-				continue;
-			};
-
-			*point = index;
+		for (index, id) in working.segment_ids.iter().enumerate() {
+			if let Some(&new) = self.start_point.get(id) {
+				match working.resolve_id(new) {
+					Some(point) => working.segment_start[index] = point,
+					None => warn!("Invalid start ID when applying a segment modification"),
+				}
+			}
+			if let Some(&new) = self.end_point.get(id) {
+				match working.resolve_id(new) {
+					Some(point) => working.segment_end[index] = point,
+					None => warn!("Invalid end ID when applying a segment modification"),
+				}
+			}
 		}
 
-		for (id, point) in segment_domain.end_point_mut() {
-			let Some(&new) = self.end_point.get(&id) else { continue };
-			let Some(index) = point_domain.resolve_id(new) else {
-				warn!("Invalid end ID when applying a segment modification");
-				continue;
-			};
-
-			*point = index;
-		}
-
-		for (id, handles, start, end) in segment_domain.handles_mut() {
-			let Some(&start) = point_domain.positions().get(start) else { continue };
-			let Some(&end) = point_domain.positions().get(end) else { continue };
+		for (index, id) in working.segment_ids.iter().enumerate() {
+			let Some(&start) = working.point_positions.get(working.segment_start[index]) else { continue };
+			let Some(&end) = working.point_positions.get(working.segment_end[index]) else { continue };
 
 			// Compute the actual start and end position based on the offset from the anchor
-			let start = self.handle_primary.get(&id).copied().map(|handle| handle.map(|handle| handle + start));
-			let end = self.handle_end.get(&id).copied().map(|handle| handle.map(|handle| handle + end));
+			let new_start = self.handle_primary.get(id).copied().map(|handle| handle.map(|handle| handle + start));
+			let new_end = self.handle_end.get(id).copied().map(|handle| handle.map(|handle| handle + end));
 
-			if !start.unwrap_or_default().is_none_or(|start| start.is_finite()) || !end.unwrap_or_default().is_none_or(|end| end.is_finite()) {
+			if !new_start.unwrap_or_default().is_none_or(|start| start.is_finite()) || !new_end.unwrap_or_default().is_none_or(|end| end.is_finite()) {
 				warn!("Invalid handles when applying a segment modification");
 				continue;
 			}
 
-			match (start, end) {
+			let handles = &mut working.segment_handles[index];
+			match (new_start, new_end) {
 				// The new handles are fully specified by the modification
 				(Some(Some(handle_start)), Some(Some(handle_end))) => *handles = BezierHandles::Cubic { handle_start, handle_end },
 				(Some(Some(handle)), Some(None)) | (Some(None), Some(Some(handle))) => *handles = BezierHandles::Quadratic { handle },
@@ -172,17 +209,17 @@ impl SegmentModification {
 			let Some(&handle_start) = self.handle_primary.get(&add_id) else { continue };
 			let Some(&handle_end) = self.handle_end.get(&add_id) else { continue };
 
-			let Some(start_index) = point_domain.resolve_id(start) else {
+			let Some(start_index) = working.resolve_id(start) else {
 				warn!("invalid start id: {start:#?}");
 				continue;
 			};
-			let Some(end_index) = point_domain.resolve_id(end) else {
+			let Some(end_index) = working.resolve_id(end) else {
 				warn!("invalid end id: {end:#?}");
 				continue;
 			};
 
-			let start_position = point_domain.positions()[start_index];
-			let end_position = point_domain.positions()[end_index];
+			let start_position = working.point_positions[start_index];
+			let end_position = working.point_positions[end_index];
 			let handles = match (handle_start, handle_end) {
 				(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic {
 					handle_start: handle_start + start_position,
@@ -197,34 +234,35 @@ impl SegmentModification {
 				continue;
 			}
 
-			segment_domain.push(add_id, start_index, end_index, handles);
+			working.segment_ids.push(add_id);
+			working.segment_start.push(start_index);
+			working.segment_end.push(end_index);
+			working.segment_handles.push(handles);
 		}
 
-		assert!(
-			segment_domain.start_point().iter().all(|&index| index < point_domain.ids().len()),
-			"index should be in range {segment_domain:#?}"
-		);
-		assert!(
-			segment_domain.end_point().iter().all(|&index| index < point_domain.ids().len()),
-			"index should be in range {segment_domain:#?}"
-		);
+		assert!(working.segment_start.iter().all(|&index| index < working.point_ids.len()), "index should be in range");
+		assert!(working.segment_end.iter().all(|&index| index < working.point_ids.len()), "index should be in range");
 	}
 
-	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector(vector: &Vector) -> Self {
-		let point_id = |(&segment, &index)| (segment, vector.point_domain.ids()[index]);
+	/// Create a new modification that will convert an empty [`Vector`] into the target working form.
+	fn create_from_working(working: &WorkingVector) -> Self {
+		let point_id = |(&segment, &index): (&SegmentId, &usize)| (segment, working.point_ids[index]);
 		Self {
-			add: vector.segment_domain.ids().to_vec(),
+			add: working.segment_ids.clone(),
 			remove: HashSet::new(),
-			start_point: vector.segment_domain.ids().iter().zip(vector.segment_domain.start_point()).map(point_id).collect(),
-			end_point: vector.segment_domain.ids().iter().zip(vector.segment_domain.end_point()).map(point_id).collect(),
-			handle_primary: vector
-				.segment_iter()
-				.map(|(id, segment, _, _)| (id, segment_to_handles(&segment).start().map(|handle| handle - point_to_dvec2(segment.start()))))
+			start_point: working.segment_ids.iter().zip(&working.segment_start).map(point_id).collect(),
+			end_point: working.segment_ids.iter().zip(&working.segment_end).map(point_id).collect(),
+			handle_primary: working
+				.segment_ids
+				.iter()
+				.enumerate()
+				.map(|(index, &id)| (id, working.segment_handles[index].start().map(|handle| handle - working.point_positions[working.segment_start[index]])))
 				.collect(),
-			handle_end: vector
-				.segment_iter()
-				.map(|(id, segment, _, _)| (id, segment_to_handles(&segment).end().map(|handle| handle - point_to_dvec2(segment.end()))))
+			handle_end: working
+				.segment_ids
+				.iter()
+				.enumerate()
+				.map(|(index, &id)| (id, working.segment_handles[index].end().map(|handle| handle - working.point_positions[working.segment_end[index]])))
 				.collect(),
 		}
 	}
@@ -390,21 +428,34 @@ impl VectorModification {
 		if lines.is_empty() { "None".to_string() } else { lines.join("\n") }
 	}
 
-	/// Apply this modification to the specified [`Vector`].
-	pub fn apply(&self, vector: &mut Vector) {
-		self.points.apply(&mut vector.point_domain, &mut vector.segment_domain);
-		self.segments.apply(&mut vector.segment_domain, &vector.point_domain);
+	/// Whether this modification changes nothing at all.
+	pub fn is_empty(&self) -> bool {
+		self.points == PointModification::default() && self.segments == SegmentModification::default() && self.add_g1_continuous.is_empty() && self.remove_g1_continuous.is_empty()
+	}
 
-		let valid = |val: &[HandleId; 2]| vector.segment_domain.ids().contains(&val[0].segment) && vector.segment_domain.ids().contains(&val[1].segment);
-		vector
-			.colinear_manipulators
+	/// Apply this modification to the specified [`Vector`] and its paths.
+	pub fn apply(&self, vector: &mut Vector, paths: &mut List<Path>) {
+		// An untouched vector keeps its incoming path structure instead of being flattened and rewoven
+		if self.is_empty() {
+			return;
+		}
+
+		let mut working = WorkingVector::flatten(vector, paths);
+		self.points.apply(&mut working);
+		self.segments.apply(&mut working);
+
+		let valid = |val: &[HandleId; 2]| working.segment_ids.contains(&val[0].segment) && working.segment_ids.contains(&val[1].segment);
+		working
+			.colinear
 			.retain(|val| !self.remove_g1_continuous.contains(val) && !self.remove_g1_continuous.contains(&[val[1], val[0]]) && valid(val));
 
 		for handles in &self.add_g1_continuous {
-			if !vector.colinear_manipulators.iter().any(|test| test == handles || test == &[handles[1], handles[0]]) && valid(handles) {
-				vector.colinear_manipulators.push(*handles);
+			if !working.colinear.iter().any(|test| test == handles || test == &[handles[1], handles[0]]) && valid(handles) {
+				working.colinear.push(*handles);
 			}
 		}
+
+		working.reweave(vector, paths);
 	}
 
 	/// Add a [`VectorModificationType`] to this modification.
@@ -469,11 +520,12 @@ impl VectorModification {
 	}
 
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector(vector: &Vector) -> Self {
+	pub fn create_from_vector(vector: &Vector, paths: &List<Path>) -> Self {
+		let working = WorkingVector::flatten(vector, paths);
 		Self {
-			points: PointModification::create_from_vector(vector),
-			segments: SegmentModification::create_from_vector(vector),
-			add_g1_continuous: vector.colinear_manipulators.iter().copied().collect(),
+			points: PointModification::create_from_working(&working),
+			segments: SegmentModification::create_from_working(&working),
+			add_g1_continuous: working.colinear.iter().copied().collect(),
 			remove_g1_continuous: HashSet::new(),
 		}
 	}
@@ -588,147 +640,6 @@ where
 	deserializer.deserialize_seq(visitor)
 }
 
-pub(crate) struct AppendBezpath<'a> {
-	first_point: Option<Point>,
-	last_point: Option<Point>,
-	first_point_index: Option<usize>,
-	last_point_index: Option<usize>,
-	point_id: PointId,
-	segment_id: SegmentId,
-	vector: &'a mut Vector,
-}
-
-impl<'a> AppendBezpath<'a> {
-	fn new(vector: &'a mut Vector) -> Self {
-		Self {
-			first_point: None,
-			last_point: None,
-			first_point_index: None,
-			last_point_index: None,
-			point_id: vector.point_domain.next_id(),
-			segment_id: vector.segment_domain.next_id(),
-			vector,
-		}
-	}
-
-	fn append_segment_and_close_path(&mut self, point: Point, handle: BezierHandles) {
-		// A path's final point may return to approximately (but not bit-exactly) its start before closing, e.g. a contour
-		// produced by Kurbo's path offsetting. Treat a near-coincident final point as already on the start so we don't
-		// introduce a redundant duplicate anchor and a zero-length closing segment.
-		let endpoints_coincide = (self.first_point.unwrap() - point).hypot2() <= CLOSE_POINT_TOLERANCE * CLOSE_POINT_TOLERANCE;
-		let handle = if !endpoints_coincide {
-			// If the first point is not the same as the last point of the path then we append the segment
-			// with given handle and point and then close the path with linear handle.
-			self.append_segment(point, handle);
-			BezierHandles::Linear
-		} else {
-			// if the endpoints are the same then we close the path with given handle.
-			handle
-		};
-
-		// Create a new segment.
-		let next_segment_id = self.segment_id.next_id();
-		self.vector
-			.segment_domain
-			.push(next_segment_id, self.last_point_index.unwrap(), self.first_point_index.unwrap(), handle);
-	}
-
-	fn append_segment(&mut self, end_point: Point, handle: BezierHandles) {
-		// Append the point.
-		let next_point_index = self.vector.point_domain.ids().len();
-		let next_point_id = self.point_id.next_id();
-
-		self.vector.point_domain.push(next_point_id, point_to_dvec2(end_point));
-
-		// Append the segment.
-		let next_segment_id = self.segment_id.next_id();
-		self.vector.segment_domain.push(next_segment_id, self.last_point_index.unwrap(), next_point_index, handle);
-
-		// Update the states.
-		self.last_point = Some(end_point);
-		self.last_point_index = Some(next_point_index);
-	}
-
-	fn append_first_point(&mut self, point: Point) {
-		self.first_point = Some(point);
-		self.last_point = Some(point);
-
-		// Append the first point.
-		let next_point_index = self.vector.point_domain.ids().len();
-		self.vector.point_domain.push(self.point_id.next_id(), point_to_dvec2(point));
-
-		// Update the state.
-		self.first_point_index = Some(next_point_index);
-		self.last_point_index = Some(next_point_index);
-	}
-
-	fn reset(&mut self) {
-		self.first_point = None;
-		self.last_point = None;
-		self.first_point_index = None;
-		self.last_point_index = None;
-	}
-
-	pub fn append_bezpath(vector: &'a mut Vector, bezpath: BezPath) {
-		let mut this = Self::new(vector);
-		let mut elements = bezpath.elements().iter().peekable();
-
-		while let Some(element) = elements.next() {
-			let close_path = elements.peek().is_some_and(|elm| **elm == PathEl::ClosePath);
-
-			match *element {
-				PathEl::MoveTo(point) => {
-					// Clear any segment state left by a preceding open contour so its segments don't leak into this contour's region
-					this.reset();
-					this.append_first_point(point);
-				}
-				PathEl::LineTo(point) => {
-					let handle = BezierHandles::Linear;
-					if close_path {
-						this.append_segment_and_close_path(point, handle);
-					} else {
-						this.append_segment(point, handle);
-					}
-				}
-				PathEl::QuadTo(point, point1) => {
-					let handle = BezierHandles::Quadratic { handle: point_to_dvec2(point) };
-					if close_path {
-						this.append_segment_and_close_path(point1, handle);
-					} else {
-						this.append_segment(point1, handle);
-					}
-				}
-				PathEl::CurveTo(point, point1, point2) => {
-					let handle = BezierHandles::Cubic {
-						handle_start: point_to_dvec2(point),
-						handle_end: point_to_dvec2(point1),
-					};
-
-					if close_path {
-						this.append_segment_and_close_path(point2, handle);
-					} else {
-						this.append_segment(point2, handle);
-					}
-				}
-				PathEl::ClosePath => {
-					// Already handled using `append_segment_and_close_path()` hence we reset state and continue.
-					this.reset();
-				}
-			}
-		}
-	}
-}
-
-pub trait VectorExt {
-	fn append_bezpath(&mut self, bezpath: BezPath);
-}
-
-impl VectorExt for Vector {
-	fn append_bezpath(&mut self, bezpath: BezPath) {
-		AppendBezpath::append_bezpath(self, bezpath);
-	}
-}
-
 pub trait HandleExt {
 	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.
 	#[must_use]
@@ -750,18 +661,33 @@ mod tests {
 	use super::*;
 
 	use crate::vector::algorithms::shapes::{ellipse_bezpath, rectangle_bezpath};
-	use kurbo::{PathSeg, QuadBez};
+	use kurbo::{BezPath, PathSeg, Point, QuadBez};
+
+	fn anchor_id(vector: &Vector, paths: &List<Path>, anchor_index: usize) -> PointId {
+		vector.anchor_points(paths).nth(anchor_index).expect("anchor exists")
+	}
+
+	fn anchor_position(vector: &Vector, paths: &List<Path>, anchor_index: usize) -> DVec2 {
+		let id = anchor_id(vector, paths, anchor_index);
+		vector.position(vector.index_of_point_id(id).unwrap() as usize).unwrap()
+	}
 
 	#[test]
 	fn modify_new() {
-		let mut vector = Vector::from_bezpath(ellipse_bezpath(DVec2::ZERO, DVec2::ONE));
-		vector.append_bezpath(rectangle_bezpath(DVec2::NEG_ONE, DVec2::ZERO));
+		let (mut vector, mut paths) = Vector::from_bezpath(&ellipse_bezpath(DVec2::ZERO, DVec2::ONE));
+		vector.append_bezpath(&mut paths, &rectangle_bezpath(DVec2::NEG_ONE, DVec2::ZERO));
 
-		let modify = VectorModification::create_from_vector(&vector);
+		let modify = VectorModification::create_from_vector(&vector, &paths);
 
-		let mut new = Vector::default();
-		modify.apply(&mut new);
-		assert_eq!(vector, new);
+		let (mut new, mut new_paths) = (Vector::default(), List::new());
+		modify.apply(&mut new, &mut new_paths);
+
+		assert_eq!(
+			vector.segment_iter(&paths).collect::<Vec<_>>(),
+			new.segment_iter(&new_paths).collect::<Vec<_>>(),
+			"replaying the capture should rebuild every segment"
+		);
+		assert_eq!(vector.anchor_points(&paths).collect::<Vec<_>>(), new.anchor_points(&new_paths).collect::<Vec<_>>());
 	}
 
 	#[test]
@@ -771,34 +697,34 @@ mod tests {
 		open_quads.quad_to(Point::new(5., 10.), Point::new(10., 0.));
 		open_quads.quad_to(Point::new(15., 10.), Point::new(20., 0.));
 
-		let mut vector = Vector::from_bezpath(ellipse_bezpath(DVec2::ZERO, DVec2::ONE));
-		vector.append_bezpath(rectangle_bezpath(DVec2::NEG_ONE, DVec2::ZERO));
-		vector.append_bezpath(open_quads);
+		let (mut vector, mut paths) = Vector::from_bezpath(&ellipse_bezpath(DVec2::ZERO, DVec2::ONE));
+		vector.append_bezpath(&mut paths, &rectangle_bezpath(DVec2::NEG_ONE, DVec2::ZERO));
+		vector.append_bezpath(&mut paths, &open_quads);
 
-		let mut modify_new = VectorModification::create_from_vector(&vector);
+		let mut modify_new = VectorModification::create_from_vector(&vector, &paths);
 		let mut modify_original = VectorModification::default();
 
 		for modification in [&mut modify_new, &mut modify_original] {
-			let point = vector.point_domain.ids()[0];
+			let point = anchor_id(&vector, &paths, 0);
 			modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::X * 0.5 });
-			let point = vector.point_domain.ids()[9];
+			let point = anchor_id(&vector, &paths, 9);
 			modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::X });
 		}
 
-		let mut new = Vector::default();
-		modify_new.apply(&mut new);
+		let (mut new, mut new_paths) = (Vector::default(), List::new());
+		modify_new.apply(&mut new, &mut new_paths);
 
-		modify_original.apply(&mut vector);
+		modify_original.apply(&mut vector, &mut paths);
 
-		assert_eq!(vector, new);
-		assert_eq!(vector.point_domain.positions()[0], DVec2::X);
-		assert_eq!(vector.point_domain.positions()[9], DVec2::new(11., 0.));
+		assert_eq!(vector.segment_iter(&paths).collect::<Vec<_>>(), new.segment_iter(&new_paths).collect::<Vec<_>>());
+		assert_eq!(anchor_position(&vector, &paths, 0), DVec2::X);
+		assert_eq!(anchor_position(&vector, &paths, 9), DVec2::new(11., 0.));
 		assert_eq!(
-			vector.segment_iter().nth(8).unwrap().1,
+			vector.segment_iter(&paths).nth(8).unwrap().1,
 			PathSeg::Quad(QuadBez::new(Point::new(0., 0.), Point::new(5., 10.), Point::new(11., 0.)))
 		);
 		assert_eq!(
-			vector.segment_iter().nth(9).unwrap().1,
+			vector.segment_iter(&paths).nth(9).unwrap().1,
 			PathSeg::Quad(QuadBez::new(Point::new(11., 0.), Point::new(16., 10.), Point::new(20., 0.)))
 		);
 	}

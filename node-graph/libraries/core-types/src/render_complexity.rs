@@ -6,17 +6,34 @@ pub trait RenderComplexity {
 	fn render_complexity(&self) -> usize {
 		0
 	}
+
+	/// The complexity of an item's element. A type with content that partly rides its item's attributes overrides
+	/// this to read them, and the rest defer to the element alone.
+	fn render_complexity_in_item(item: &Item<Self>) -> usize
+	where
+		Self: Sized,
+	{
+		item.element().render_complexity()
+	}
+
+	/// As [`Self::render_complexity_in_item`], for the element at one index of a list.
+	fn render_complexity_in_list(list: &List<Self>, index: usize) -> usize
+	where
+		Self: Sized,
+	{
+		list.element(index).map_or(0, Self::render_complexity)
+	}
 }
 
 impl<T: RenderComplexity> RenderComplexity for Item<T> {
 	fn render_complexity(&self) -> usize {
-		self.element().render_complexity()
+		T::render_complexity_in_item(self)
 	}
 }
 
 impl<T: RenderComplexity> RenderComplexity for List<T> {
 	fn render_complexity(&self) -> usize {
-		self.iter_element_values().map(|element| element.render_complexity()).fold(0, usize::saturating_add)
+		(0..self.len()).map(|index| T::render_complexity_in_list(self, index)).fold(0, usize::saturating_add)
 	}
 }
 

@@ -3,6 +3,7 @@ pub mod algorithms;
 pub mod click_target;
 mod connectivity;
 mod contour;
+mod flatten;
 pub mod misc;
 mod path;
 pub mod reference_point;
