@@ -77,6 +77,39 @@ fn spiral(
 	)))
 }
 
+/// Generates a teardrop shape using the given dimensions
+#[node_macro::node(category("Vector: Shape"))]
+fn teardrop(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(30)]
+	width: Item<f64>,
+	#[unit(" px")]
+	#[default(51)]
+	height: Item<f64>,
+	#[default(1.7)]
+	#[range]
+	#[soft(1.4..3.8)]
+	velocity: Item<f64>,
+) -> Item<Vector> {
+	let radius = DVec2::new(*width.element(), *height.element());
+	let corner1 = -radius;
+	let corner2 = radius;
+	let velocity = *velocity.element();
+
+	let mut teardrop = Vector::from_bezpath(shapes::teardrop_bezpath(corner1, corner2, velocity));
+
+	let len = teardrop.segment_domain.ids().len();
+	for i in 0..len - 1 {
+		teardrop
+			.colinear_manipulators
+			.push([HandleId::end(teardrop.segment_domain.ids()[i]), HandleId::primary(teardrop.segment_domain.ids()[(i + 1) % len])]);
+	}
+
+	Item::new_from_element(teardrop)
+}
+
 /// Generates an ellipse shape (an oval or stretched circle) with the chosen radii.
 #[node_macro::node(category("Vector: Shape"))]
 fn ellipse(
