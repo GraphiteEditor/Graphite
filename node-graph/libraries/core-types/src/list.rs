@@ -1,3 +1,4 @@
+use crate::attribute::Attribute as _;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::math::quad::Quad;
 use crate::transform::ApplyTransform;
@@ -9,22 +10,35 @@ use std::fmt::Debug;
 // =================================================
 // Standard attribute keys used across the data flow
 // =================================================
+// Each name is declared once by its marker in [`crate::attribute`], which
+// documents the attribute and fixes its value type. The constants re-export
+// the markers' names for the string-keyed legacy readers and writers.
 
-/// Item's `DAffine2` transformation, composed multiplicatively through nested groups.
-pub const ATTR_TRANSFORM: &str = "transform";
-/// Item's `BlendMode`, controlling how it composites with content beneath it.
-pub const ATTR_BLEND_MODE: &str = "blend_mode";
-/// Item's opacity multiplier (`f64`, implicit default `1.`).
-/// Composed multiplicatively through nested groups. Affects content clipped to the item.
-pub const ATTR_OPACITY: &str = "opacity";
-/// Item's fill opacity multiplier (`f64`, implicit default `1.`).
-/// Like opacity but does not affect content clipped to the item.
-pub const ATTR_OPACITY_FILL: &str = "opacity_fill";
-/// `bool` for whether an item inherits the alpha of the content beneath it (clipping mask).
-pub const ATTR_CLIPPING_MASK: &str = "clipping_mask";
-/// `List<NodeId>` path from the root network to the layer node owning this item.
-/// Used by editor tools to route clicks/selection back to the originating layer.
-pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
+pub const ATTR_TRANSFORM: &str = crate::attribute::Transform::NAME;
+pub const ATTR_BLEND_MODE: &str = crate::attribute::BlendMode::NAME;
+pub const ATTR_OPACITY: &str = crate::attribute::Opacity::NAME;
+pub const ATTR_OPACITY_FILL: &str = crate::attribute::OpacityFill::NAME;
+pub const ATTR_CLIPPING_MASK: &str = crate::attribute::ClippingMask::NAME;
+pub const ATTR_EDITOR_LAYER_PATH: &str = crate::attribute::EditorLayerPath::NAME;
+pub const ATTR_EDITOR_TEXT_FRAME: &str = crate::attribute::EditorTextFrame::NAME;
+pub const ATTR_START: &str = crate::attribute::Start::NAME;
+pub const ATTR_END: &str = crate::attribute::End::NAME;
+pub const ATTR_NAME: &str = crate::attribute::Name::NAME;
+pub const ATTR_TYPE: &str = crate::attribute::Type::NAME;
+pub const ATTR_LOCATION: &str = crate::attribute::Location::NAME;
+pub const ATTR_DIMENSIONS: &str = crate::attribute::Dimensions::NAME;
+pub const ATTR_BACKGROUND: &str = crate::attribute::Background::NAME;
+pub const ATTR_CLIP: &str = crate::attribute::Clip::NAME;
+pub const ATTR_FONT_SIZE: &str = crate::attribute::FontSize::NAME;
+pub const ATTR_LINE_HEIGHT: &str = crate::attribute::LineHeight::NAME;
+pub const ATTR_LETTER_SPACING: &str = crate::attribute::LetterSpacing::NAME;
+pub const ATTR_MAX_WIDTH: &str = crate::attribute::MaxWidth::NAME;
+pub const ATTR_MAX_HEIGHT: &str = crate::attribute::MaxHeight::NAME;
+pub const ATTR_LETTER_TILT: &str = crate::attribute::LetterTilt::NAME;
+
+// The remaining names' value types live below core-types. Their markers and
+// constants move to the crates that own those types with the marker wave.
+
 /// `List<Graphic>` snapshot of the upstream content that fed into a destructive merge
 /// (Boolean Operation, Rasterize, etc.), so the editor can still surface click targets for
 /// the original child layers after their content has been collapsed.
@@ -33,27 +47,6 @@ pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
 /// Used by the 'Text' node for per-glyph bounding-box rectangles so glyphs are selectable
 /// by clicking anywhere within their bounds, not just the filled letterform.
 pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
-/// `DAffine2` mapping the unit square `[(0, 0), (1, 1)]` (top-left convention) onto the 'Text'
-/// node's text frame in this item's local space. Each item carries the frame relative to its own
-/// glyph origin so it survives `Index Elements` filtering. The Text tool reads this to position
-/// its drag cage. Stored as an affine to allow non-axis-aligned frames in the future.
-pub const ATTR_EDITOR_TEXT_FRAME: &str = "editor:text_frame";
-/// `u64` byte offset where a regex match begins ('Regex Find All', 'Regex Capture' text nodes).
-pub const ATTR_START: &str = "start";
-/// `u64` byte offset where a regex match ends ('Regex Find All', 'Regex Capture' text nodes).
-pub const ATTR_END: &str = "end";
-/// `String` for a regex named-capture-group's name, or empty for unnamed groups ('Regex Capture' text node).
-pub const ATTR_NAME: &str = "name";
-/// `String` for a JSON value's type (`"string"`, `"number"`, `"object"`, etc.) from 'JSON Query All'.
-pub const ATTR_TYPE: &str = "type";
-/// Artboard's `DVec2` top-left corner in document coordinates.
-pub const ATTR_LOCATION: &str = "location";
-/// Artboard's `DVec2` width and height.
-pub const ATTR_DIMENSIONS: &str = "dimensions";
-/// Artboard's `Color` background fill.
-pub const ATTR_BACKGROUND: &str = "background";
-/// `bool` for whether an artboard clips content to its bounds.
-pub const ATTR_CLIP: &str = "clip";
 /// Gradient's `GradientSpreadMethod` (`Pad`, `Reflect`, or `Repeat`).
 pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 /// Gradient's `GradientType` (`Linear` or `Radial`).
@@ -62,20 +55,8 @@ pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 pub const ATTR_FILL: &str = "fill";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
 pub const ATTR_STROKE: &str = "stroke";
-/// Text item's font size in document-space units (`f64`, implicit default `24.`).
-pub const ATTR_FONT_SIZE: &str = "font_size";
 /// Text item's font, as a `Resource` of the loaded font file.
 pub const ATTR_FONT: &str = "font";
-/// Text item's line height as a ratio of the font size (`f64`, implicit default `1.2`).
-pub const ATTR_LINE_HEIGHT: &str = "line_height";
-/// Text item's extra spacing between letters in document-space units (`f64`, implicit default `0.`).
-pub const ATTR_LETTER_SPACING: &str = "letter_spacing";
-/// Text item's maximum line-wrap width in document-space units (`Option<f64>`, implicit default `None`).
-pub const ATTR_MAX_WIDTH: &str = "max_width";
-/// Text item's maximum block height in document-space units, past which lines are not drawn (`Option<f64>`, implicit default `None`).
-pub const ATTR_MAX_HEIGHT: &str = "max_height";
-/// Text item's faux-italic letter tilt angle in degrees (`f64`, implicit default `0.`).
-pub const ATTR_LETTER_TILT: &str = "letter_tilt";
 /// Text item's `TextAlign` horizontal alignment of lines within the block.
 pub const ATTR_TEXT_ALIGN: &str = "text_align";
 

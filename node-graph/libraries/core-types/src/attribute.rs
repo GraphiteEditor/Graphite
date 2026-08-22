@@ -249,12 +249,42 @@ attribute! {
 	pub OpacityFill("opacity_fill"): f64 = 1.;
 	/// Whether an item inherits the alpha of the content beneath it (clipping mask).
 	pub ClippingMask("clipping_mask"): bool;
-	/// Artboard's top-left corner in document coordinates.
-	pub Location("location"): DVec2;
+	/// The document node path of the editor layer owning the item.
+	/// Editor tools read it to route clicks and selection back to the originating layer.
+	pub EditorLayerPath("editor:layer_path"): &[crate::uuid::NodeId];
+	/// Maps the unit square `[(0, 0), (1, 1)]` (top-left convention) onto the 'Text' node's
+	/// text frame in this item's local space. Each item carries the frame relative to its own
+	/// glyph origin so it survives 'Index Elements' filtering. The Text tool reads this to
+	/// position its drag cage. Stored as an affine to allow non-axis-aligned frames in the future.
+	pub EditorTextFrame("editor:text_frame"): DAffine2;
+	/// Byte offset where a regex match begins ('Regex Find All' and 'Regex Capture' text nodes).
+	pub Start("start"): u64;
+	/// Byte offset where a regex match ends ('Regex Find All' and 'Regex Capture' text nodes).
+	pub End("end"): u64;
 	/// A regex named-capture-group's name, or empty for unnamed groups.
 	pub Name("name"): &str;
-	/// The document node path of the editor layer owning the item.
-	pub EditorLayerPath("editor:layer_path"): &[crate::uuid::NodeId];
+	/// A JSON value's type (`"string"`, `"number"`, `"object"`, etc.) from 'JSON Query All'.
+	pub Type("type"): &str;
+	/// Artboard's top-left corner in document coordinates.
+	pub Location("location"): DVec2;
+	/// Artboard's width and height.
+	pub Dimensions("dimensions"): DVec2;
+	/// Artboard's background fill.
+	pub Background("background"): crate::Color;
+	/// Whether an artboard clips content to its bounds.
+	pub Clip("clip"): bool;
+	/// Text item's font size in document-space units.
+	pub FontSize("font_size"): f64 = 24.;
+	/// Text item's line height as a ratio of the font size.
+	pub LineHeight("line_height"): f64 = 1.2;
+	/// Text item's extra spacing between letters in document-space units.
+	pub LetterSpacing("letter_spacing"): f64;
+	/// Text item's maximum line-wrap width in document-space units.
+	pub MaxWidth("max_width"): Option<f64>;
+	/// Text item's maximum block height in document-space units, past which lines are not drawn.
+	pub MaxHeight("max_height"): Option<f64>;
+	/// Text item's faux-italic letter tilt angle in degrees.
+	pub LetterTilt("letter_tilt"): f64;
 }
 
 #[cfg(test)]
@@ -266,6 +296,8 @@ mod tests {
 		let row = info("opacity").unwrap();
 		assert_eq!(row.value_type, TypeId::of::<f64>());
 		assert_eq!(info("transform").unwrap().value_type, TypeId::of::<DAffine2>());
+		assert_eq!(info("max_width").unwrap().value_type, TypeId::of::<Option<f64>>());
+		assert_eq!(info("background").unwrap().value_type, TypeId::of::<crate::Color>());
 		assert!(info("never_declared").is_none());
 	}
 
@@ -273,6 +305,9 @@ mod tests {
 	fn name_specific_default_overrides_the_type_default() {
 		assert_eq!(<Opacity as Attribute>::default(), 1.);
 		assert_eq!(<Name as Attribute>::default(), "");
+		assert_eq!(<FontSize as Attribute>::default(), 24.);
+		assert_eq!(<LineHeight as Attribute>::default(), 1.2);
+		assert_eq!(<MaxWidth as Attribute>::default(), None);
 	}
 
 	#[test]
