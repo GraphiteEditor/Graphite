@@ -23,6 +23,8 @@ use graphene_std::vector::Vector;
 use graphene_std::*;
 use std::collections::{HashMap, VecDeque};
 
+pub const MERGE_NODE_IDENTIFIER: &str = "Merge";
+
 pub struct NodePropertiesContext<'a> {
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
@@ -145,7 +147,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Merge",
+			identifier: MERGE_NODE_IDENTIFIER,
 			category: "General",
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -1543,7 +1545,6 @@ impl DocumentNodeDefinition {
 		template
 	}
 
-	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], completely default.
 	pub fn default_node_template(&self) -> NodeTemplate {
 		self.node_template_input_override(self.node_template.inputs.clone().into_iter().map(Some))
 	}

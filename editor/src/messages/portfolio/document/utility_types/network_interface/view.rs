@@ -192,6 +192,12 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		Ok(self.node_metadata(node_id)?.persistent_metadata.pinned)
 	}
 
+	pub fn is_collapsed(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
+		let node_metadata = self.node_metadata(node_id)?;
+		let collapsed = node_metadata.persistent_metadata.collapsed.unwrap_or_else(|| self.implementation_name(node_id) == "Merge");
+		Ok(collapsed)
+	}
+
 	pub fn is_visible(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
 		Ok(self.node(node_id)?.visible)
 	}
