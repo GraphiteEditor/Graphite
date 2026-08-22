@@ -189,6 +189,10 @@ pub struct GizmoBehavior {
 	/// intent. Near the layer's origin the angle between successive cursor positions is mostly noise, and
 	/// feeding it in makes the value jitter while the cursor is still. Zero accumulates everything.
 	pub angle_deadzone: f64,
+	/// Set when the shape's `overlay` already draws whatever the user grabs, so the generic handle dot and
+	/// its line from the origin are suppressed. A grid marks its edge with a dashed line and a circle draws
+	/// the band around its circumference; neither has a handle sitting at a point.
+	pub draws_own_handle: bool,
 }
 
 impl GizmoBehavior {
@@ -201,6 +205,7 @@ impl GizmoBehavior {
 		hover_distances: None,
 		drag: None,
 		angle_deadzone: 0.,
+		draws_own_handle: false,
 	};
 }
 
@@ -232,7 +237,7 @@ const CIRCLE_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	name: "Radius",
 	min: Some(0.),
 	max: None,
-	behavior: GizmoBehavior::NONE,
+	behavior: gizmo_behaviors::CIRCULAR_RADIUS,
 	position_hint: PositionHint::ParameterDerived,
 }];
 
@@ -285,7 +290,7 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 		name: "Radius",
 		min: Some(0.),
 		max: None,
-		behavior: GizmoBehavior::NONE,
+		behavior: gizmo_behaviors::CIRCULAR_RADIUS,
 		position_hint: PositionHint::ParameterDerived,
 	},
 	// One entry, not two: dragging either endpoint can move the start angle and the sweep together, so a
