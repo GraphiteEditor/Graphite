@@ -2077,7 +2077,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 
 	let record_bounds: Vec<TokenStream2> = {
-		let arena_bound = (record_io && (skips_carrier || lazy_carrier || (element_write.is_some() && !ctx_extracts_arena))) || (!record_io && (derive_routing || flip));
+		let arena_bound = (record_io && !ctx_extracts_arena && (skips_carrier || lazy_carrier || element_write.is_some())) || (!record_io && (derive_routing || flip));
 		let mut bounds = if arena_bound {
 			vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
 		} else {

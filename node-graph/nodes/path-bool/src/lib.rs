@@ -1,6 +1,8 @@
 use core_types::list::{Item, List};
 use core_types::uuid::NodeId;
+use core_types::attribute::{Attr, BlendMode as BlendModeAttr, ClippingMask, EditorLayerPath, Opacity, OpacityFill, Transform as TransformAttr};
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
+use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
 use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
@@ -8,7 +10,7 @@ use graphic_types::vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, Graphic, IntoGraphicList, Vector};
+use graphic_types::{ATTR_FILL, Graphic, IntoGraphicList, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
@@ -19,30 +21,21 @@ pub use vector_types::vector::misc::BooleanOperation;
 // TODO: since before we used a Vec of single-item `List`s and now we use a single `List`
 // TODO: with multiple items while still assuming a single item for the boolean operations.
 
-/// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
-#[node_macro::node(category("Vector: Modifier"), memoize)]
-fn boolean_operation<I: Clone + Send + Sync + core_types::CacheHash + 'static>(
-	_: impl Ctx + core_types::ExtractIndex + core_types::InjectIndex + Copy,
-	/// The `List` of vector paths to perform the boolean operation on. Nested `List`s are automatically flattened.
-	#[implementations(Graphic, Vector)]
-	content: IList<I>,
-	/// Which boolean operation to perform on the paths.
-	///
-	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
-	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
-	/// Intersection cuts away all but the overlapping areas shared by every path.
-	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
-	operation: BooleanOperation,
-) -> List<Vector>
-where
-	List<I>: graphic_types::IntoGraphicList,
-{
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	let content = graphic_types::graphic::run_to_render_list::<I>(&item)
-		.expect("the run holds the row's element type")
-		.into_graphic_list();
-
+fn boolean_core<'e>(arena: &'e core_types::arena::Arena, content: List<Graphic>, operation: BooleanOperation) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, Stroke>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	core_types::gpoll::Interrupt,
+> {
 	// The first index is the bottom of the stack
 	let flattened = flatten_vector(&content);
 	let mut result_vector_list = boolean_operation_on_vector_list(&flattened, operation);
@@ -56,17 +49,114 @@ where
 		Vector::transform(result_vector, transform);
 		result_vector.set_stroke_transform(DAffine2::IDENTITY);
 
-		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
-		// for editor click-target preservation.
-		result_vector_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, content.clone());
-
 		// Clean up the boolean operation result by merging duplicated points
 		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
 	}
 
-	result_vector_list
+	let exhausted = || core_types::gpoll::Interrupt::from(core_types::gpoll::GraphError {
+		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+		trace: Vec::new(),
+	});
+	let park_paint = |paint: Option<List<Graphic>>| -> Result<Option<&'e List<Graphic>>, core_types::gpoll::Interrupt> {
+		match paint {
+			Some(list) => Ok(Some(arena.alloc(list).ok_or_else(exhausted)?.0)),
+			None => Ok(None),
+		}
+	};
+
+	let element = result_vector_list.element(0).cloned().unwrap_or_default();
+	let fill = park_paint(result_vector_list.attribute::<List<Graphic>>(graphic_types::ATTR_FILL, 0).cloned())?;
+	let stroke = park_paint(result_vector_list.attribute::<List<Graphic>>(graphic_types::ATTR_STROKE, 0).cloned())?;
+	let layer_path: Vec<NodeId> = result_vector_list
+		.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH, 0)
+		.map(|path| path.iter_element_values().copied().collect())
+		.unwrap_or_default();
+	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
+	// Snapshot the input layers so the renderer can recurse into them for
+	// editor click-target preservation.
+	let merged_layers = arena.alloc(content).ok_or_else(exhausted)?.0;
+
+	Ok((
+		element,
+		Attr(result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0)),
+		Attr(fill),
+		Attr(stroke),
+		Attr(result_vector_list.attribute_cloned_or_default(ATTR_BLEND_MODE, 0)),
+		Attr(result_vector_list.attribute_cloned_or(ATTR_OPACITY, 0, 1.)),
+		Attr(result_vector_list.attribute_cloned_or(ATTR_OPACITY_FILL, 0, 1.)),
+		Attr(result_vector_list.attribute_cloned_or_default(ATTR_CLIPPING_MASK, 0)),
+		Attr(layer_path.as_slice()),
+		Attr(Some(merged_layers)),
+	))
 }
+
+/// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
+#[node_macro::node(category("Vector: Modifier"), memoize)]
+fn boolean_operation<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + core_types::ExtractIndex + core_types::InjectIndex + Copy,
+	/// The wire of vector paths to perform the boolean operation on. Nested groups are automatically flattened.
+	content: IList<Graphic>,
+	/// Which boolean operation to perform on the paths.
+	///
+	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
+	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
+	/// Intersection cuts away all but the overlapping areas shared by every path.
+	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
+	operation: BooleanOperation,
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, Stroke>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	core_types::gpoll::Interrupt,
+> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let content = graphic_types::graphic::run_to_render_list::<Graphic>(&item)
+		.expect("the run holds the row's element type")
+		.into_graphic_list();
+	boolean_core(ctx.arena(), content, operation)
+}
+
+/// The boolean operation over a plain vector level, as [`boolean_operation`].
+#[node_macro::node(category(""))]
+fn boolean_operation_vector<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + core_types::ExtractIndex + core_types::InjectIndex + Copy,
+	content: IList<Vector>,
+	operation: BooleanOperation,
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, Stroke>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	core_types::gpoll::Interrupt,
+> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let content = graphic_types::graphic::run_to_render_list::<Vector>(&item)
+		.expect("the run holds the row's element type")
+		.into_graphic_list();
+	boolean_core(ctx.arena(), content, operation)
+}
+
+pub use _boolean_operation_vector_mod::boolean_operation_vector_entries;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct WindingNumber {
