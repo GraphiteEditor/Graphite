@@ -1510,7 +1510,30 @@ fn solidify_lane<'e>(
 	),
 	Interrupt,
 > {
-	let output = solidify_stroke_core(graphic_list);
+	emit_legacy_lane(arena, solidify_stroke_core(graphic_list), lane)
+}
+
+/// One lane of a legacy result list as the element and standard-attribute
+/// tuple a fold kernel emits.
+fn emit_legacy_lane<'e>(
+	arena: &'e core_types::arena::Arena,
+	output: List<Vector>,
+	lane: usize,
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	Interrupt,
+> {
 	if lane >= output.len() {
 		return Err(GraphError::past_end().into());
 	}
@@ -2454,23 +2477,7 @@ fn offset_points(
 /// Interpolates the geometry, appearance, and transform between multiple vector layers, producing a single morphed vector shape.
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
-#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn morph<I: IntoGraphicList>(
-	_: impl Ctx,
-	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
-	#[implementations(List<Graphic>, List<Vector>)]
-	content: I,
-	/// The fractional part `[0, 1)` traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
-	progression: Progression,
-	/// Swap the direction of the progression between objects or along the control path.
-	reverse: bool,
-	/// The parameter of change that influences the interpolation speed between each object. Equal slices in this parameter correspond to the rate of progression through the morph. This must be set to a parameter that changes.
-	///
-	/// "Objects" morphs through each group element at an equal rate. "Distances" keeps constant speed with time between objects proportional to their distances. "Angles" keeps constant rotational speed. "Sizes" keeps constant shrink/growth speed. "Slants" keeps constant shearing angle speed.
-	distribution: InterpolationDistribution,
-	/// An optional control path whose anchor points correspond to each object. Curved segments between points will shape the morph trajectory instead of traveling straight. If there is a break between path segments, the separate subpaths are selected by index from the integer part of the progression value. For example, `[1, 2)` morphs along the segments of the second subpath, and so on.
-	path: List<Vector>,
-) -> List<Vector> {
+fn morph_core(content: List<Graphic>, progression: f64, reverse: bool, distribution: InterpolationDistribution, path: List<Vector>) -> List<Vector> {
 	/// Promotes a segment's handle pair to cubic-equivalent Bézier control points.
 	/// For linear segments (both None), handles are placed at their respective anchors (zero-length)
 	/// so that interpolation against another zero-length cubic doesn't introduce unwanted curvature.
@@ -2642,7 +2649,7 @@ fn morph<I: IntoGraphicList>(
 	}
 
 	// Preserve original `List<Graphic>` as upstream data so this group layer's nested layers can be edited by the tools.
-	let mut graphic_list_content = content.clone().into_graphic_list();
+	let mut graphic_list_content = content.clone();
 
 	// If the input isn't a List<Vector>, we convert it into one by flattening any List<Graphic> content.
 	let content = content.into_flattened_list::<Vector>();
@@ -3096,6 +3103,109 @@ fn morph<I: IntoGraphicList>(
 
 	List::new_from_item(item)
 }
+
+/// The morph over its legacy-converted level, one blank lane when there is
+/// nothing to interpolate.
+fn morph_lane<'e>(
+	arena: &'e core_types::arena::Arena,
+	content: List<Graphic>,
+	progression: f64,
+	reverse: bool,
+	distribution: InterpolationDistribution,
+	path: List<Vector>,
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	Interrupt,
+> {
+	let mut output = morph_core(content, progression, reverse, distribution, path);
+	if output.is_empty() {
+		output = List::new_from_element(Vector::default());
+	}
+	emit_legacy_lane(arena, output, 0)
+}
+
+/// Interpolates the geometry, appearance, and transform between multiple vector layers, producing a single morphed vector shape.
+///
+/// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+fn morph<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
+	content: IList<Graphic>,
+	/// The fractional part `[0, 1)` traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
+	progression: Progression,
+	/// Swap the direction of the progression between objects or along the control path.
+	reverse: bool,
+	/// The parameter of change that influences the interpolation speed between each object. Equal slices in this parameter correspond to the rate of progression through the morph. This must be set to a parameter that changes.
+	///
+	/// "Objects" morphs through each group element at an equal rate. "Distances" keeps constant speed with time between objects proportional to their distances. "Angles" keeps constant rotational speed. "Sizes" keeps constant shrink/growth speed. "Slants" keeps constant shearing angle speed.
+	distribution: InterpolationDistribution,
+	/// An optional control path whose anchor points correspond to each object. Curved segments between points will shape the morph trajectory instead of traveling straight. If there is a break between path segments, the separate subpaths are selected by index from the integer part of the progression value. For example, `[1, 2)` morphs along the segments of the second subpath, and so on.
+	path: IList<Vector>,
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	Interrupt,
+> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let path_item = unsafe { core_types::record::GroupItem::from_resident(path.batch()) };
+	let path = graphic_types::graphic::run_to_render_list::<Vector>(&path_item).expect("the run holds the row's element type");
+	morph_lane(ctx.arena(), legacy_graphic_list_of(content), progression, reverse, distribution, path)
+}
+
+/// The morph over a plain vector level, as [`morph`]. Registered under the
+/// morph identifier.
+#[node_macro::node(category(""))]
+fn morph_vector<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Vector>,
+	progression: Progression,
+	reverse: bool,
+	distribution: InterpolationDistribution,
+	path: IList<Vector>,
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	Interrupt,
+> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let path_item = unsafe { core_types::record::GroupItem::from_resident(path.batch()) };
+	let path = graphic_types::graphic::run_to_render_list::<Vector>(&path_item).expect("the run holds the row's element type");
+	morph_lane(ctx.arena(), legacy_graphic_list_of(content), progression, reverse, distribution, path)
+}
+
+pub use _morph_vector_mod::morph_vector_entries;
 
 fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Vector {
 	// Splits a bézier curve based on a distance measurement
@@ -3652,7 +3762,7 @@ mod test {
 		*second_rectangle.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM) *= DAffine2::from_translation((-100., -100.).into());
 		rectangles.push(second_rectangle);
 
-		let morphed = super::morph(&Footprint::default(), rectangles, 0.5, false, InterpolationDistribution::default(), List::default());
+		let morphed = super::morph_core(rectangles.into_graphic_list(), 0.5, false, InterpolationDistribution::default(), List::default());
 		let morphed_element = morphed.element(0).unwrap();
 		// Geometry stays in local space (original rectangle coordinates)
 		assert_eq!(
@@ -3681,7 +3791,7 @@ mod test {
 		let mut content = List::new_from_item(item_a);
 		content.push(item_b);
 
-		let morphed = super::morph(&Footprint::default(), content, 0.5, false, InterpolationDistribution::default(), List::default());
+		let morphed = super::morph_core(content.into_graphic_list(), 0.5, false, InterpolationDistribution::default(), List::default());
 
 		let fill = graphic_list_at(&morphed, 0, ATTR_FILL).expect("Morph should keep the fill paint at the midpoint");
 
