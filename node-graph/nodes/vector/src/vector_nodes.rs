@@ -10,8 +10,9 @@ use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::attribute::Attr;
 use core_types::gpoll::GraphError;
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
-use graphic_types::markers::Fill;
+use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
+use graphic_types::markers::{Fill, Stroke as StrokeAttr};
+use core_types::attribute::Transform as TransformAttr;
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
@@ -40,24 +41,12 @@ use vector_types::{GradientSpreadMethod, GradientType};
 /// Implemented for types that contain vector items reachable via mutable access.
 /// Used for the fill and stroke nodes so they can apply to either `List<Graphic>` or `List<Vector>`.
 trait VectorListIterMut {
-	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut Vector, DAffine2));
-
 	fn for_each_vector_list_mut(&mut self, f: impl FnMut(&mut List<Vector>));
 
 	fn vector_count(&self) -> usize;
 }
 
 impl VectorListIterMut for List<Graphic> {
-	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
-		for graphic in self.iter_element_values_mut() {
-			let Some(vector_list) = graphic.as_vector_mut() else { continue };
-			let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
-			for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
-				f(vector, *transform);
-			}
-		}
-	}
-
 	fn for_each_vector_list_mut(&mut self, mut f: impl FnMut(&mut List<Vector>)) {
 		for graphic in self.iter_element_values_mut() {
 			if let Some(vector_list) = graphic.as_vector_mut() {
@@ -72,13 +61,6 @@ impl VectorListIterMut for List<Graphic> {
 }
 
 impl VectorListIterMut for List<Vector> {
-	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
-		let (elements, transforms) = self.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
-		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
-			f(vector, *transform);
-		}
-	}
-
 	fn for_each_vector_list_mut(&mut self, mut f: impl FnMut(&mut List<Vector>)) {
 		f(self);
 	}
@@ -156,167 +138,6 @@ where
 	content
 }
 
-/// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
-#[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-fn fill<V: VectorListIterMut + Send, P: Clone + Send + Sync + CacheHash + 'static>(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
-	/// The content with vector paths to apply the fill style to.
-	#[implementations(
-		List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>,
-		List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>,
-	)]
-	mut content: V,
-	/// The fill to paint the path with.
-	#[default(Color::BLACK)]
-	#[implementations(
-		Graphic, Vector, Color, GradientStops, Raster<CPU>, Raster<GPU>,
-		Graphic, Vector, Color, GradientStops, Raster<CPU>, Raster<GPU>,
-	)]
-	fill: IList<P>,
-	_backup_color: IList<Color>,
-	_backup_gradient: IList<GradientStops>,
-	_gradient_type: GradientType,
-	_spread_method: GradientSpreadMethod,
-	_transform: Option<DAffine2>,
-) -> V
-where
-	List<P>: IntoGraphicList,
-{
-	let mut fill: List<P> = legacy_list_of(fill);
-	if let Some(gradient) = (&mut fill as &mut dyn std::any::Any).downcast_mut::<List<GradientStops>>() {
-		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
-				*value = _gradient_type;
-			}
-		}
-
-		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-				*value = _spread_method;
-			}
-		}
-
-		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
-			let transform = _transform.unwrap_or_else(|| {
-				// Construct a transform that covers the bounding box of the paint target
-				let mut bounds: Option<[DVec2; 2]> = None;
-				content.for_each_vector_mut(|vector, _| {
-					if let Some([min, max]) = vector.bounding_box() {
-						bounds = Some(match bounds {
-							Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
-							None => [min, max],
-						});
-					}
-				});
-
-				// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
-				let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
-				if max.x - min.x < 1e-10 {
-					max.x = min.x + 1.;
-				}
-				if max.y - min.y < 1e-10 {
-					max.y = min.y + 1.;
-				}
-				initial_gradient_transform_for_bounding_box([min, max])
-			});
-
-			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-				*value = transform;
-			}
-		}
-	}
-
-	let fill = fill.into_graphic_list();
-	content.for_each_vector_list_mut(|vector_list| {
-		// Broadcast the same paint to every item, scanning the attribute column once instead of per index
-		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(ATTR_FILL) {
-			*slot = fill.clone();
-		}
-	});
-	content
-}
-
-/// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
-#[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-fn stroke<V, P: Clone + Send + Sync + CacheHash + 'static>(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
-	/// The content with vector paths to apply the stroke style to.
-	#[implementations(
-		List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>,
-		List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>,
-	)]
-	mut content: List<V>,
-	/// The stroke paint.
-	#[default(Color::BLACK)]
-	#[implementations(
-		Graphic, Vector, Color, GradientStops, Raster<CPU>, Raster<GPU>,
-		Graphic, Vector, Color, GradientStops, Raster<CPU>, Raster<GPU>,
-	)]
-	paint: IList<P>,
-	/// The stroke thickness.
-	#[unit(" px")]
-	#[default(2.)]
-	weight: f64,
-	/// The alignment of stroke to the path's centerline or (for closed shapes) the inside or outside of the shape.
-	align: StrokeAlign,
-	/// The shape of the stroke at open endpoints.
-	cap: StrokeCap,
-	/// The curvature of the bent stroke at sharp corners.
-	join: StrokeJoin,
-	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
-	#[default(4.)]
-	miter_limit: f64,
-	// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
-	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
-	paint_order: PaintOrder,
-	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	dash_lengths: IList<f64>,
-	/// The phase offset distance from the starting point of the dash pattern.
-	#[unit(" px")]
-	dash_offset: f64,
-) -> List<V>
-where
-	List<V>: VectorListIterMut + Send,
-	List<P>: IntoGraphicList,
-{
-	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
-
-	let stroke = Stroke {
-		weight,
-		dash_lengths,
-		dash_offset,
-		cap,
-		join,
-		join_miter_limit: miter_limit,
-		align,
-		transform: DAffine2::IDENTITY,
-		paint_order,
-	};
-
-	content.for_each_vector_mut(|vector, transform| {
-		let mut stroke = stroke.clone();
-		stroke.transform *= transform;
-		vector.stroke = Some(stroke);
-	});
-
-	let paint = legacy_list_of(paint).into_graphic_list();
-	content.for_each_vector_list_mut(|vector_list| {
-		// Broadcast the same paint to every item, scanning the attribute column once instead of per index
-		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(ATTR_STROKE) {
-			*slot = paint.clone();
-		}
-	});
-	content
-}
-
-/// The transitional value bridge: a materialized level as the legacy list the
-/// unconverted body consumes.
-fn legacy_list_of<T: Clone + Send + Sync + 'static>(level: core_types::node::List<'_, T>) -> List<T> {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(level.batch()) };
-	graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type")
-}
-
 fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic>) -> Result<&'e List<Graphic>, Interrupt> {
 	let (parked, _) = arena.alloc(paint).ok_or(GraphError {
 		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
@@ -362,14 +183,24 @@ fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>,
 	}
 }
 
-/// The leveled fill over vector lanes: builds the paint table and writes each
-/// lane's fill attribute. Registered under the legacy fill's identifier; the
-/// gradient transform fallback spans the lane's own bounds rather than the
-/// whole content's.
-#[node_macro::node(category(""))]
-fn fill_vector_leveled<'e>(
+/// The materialized paint level as the canonical paint table.
+fn paint_table(paint: core_types::node::List<'_, Graphic>) -> List<Graphic> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(paint.batch()) };
+	graphic_types::graphic::group_to_legacy_list(&core_types::record::Group {
+		row: None,
+		content: core_types::record::GroupContent::Run(item),
+	})
+}
+
+/// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
+/// The gradient transform fallback spans the lane's own bounds rather than the whole content's.
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
+fn fill<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	/// The content with vector paths to apply the fill style to.
 	(element, _content_fill): (Vector, Attr<'e, Fill>),
+	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	fill: IList<Graphic>,
 	_backup_color: IList<Color>,
@@ -378,15 +209,15 @@ fn fill_vector_leveled<'e>(
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
 ) -> Result<(Vector, Attr<'e, Fill>), Interrupt> {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(fill.batch()) };
-	let mut paint = graphic_types::graphic::group_to_legacy_list(&core_types::record::Group { row: None, content: core_types::record::GroupContent::Run(item) });
+	let mut paint = paint_table(fill);
 	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _spread_method, _transform);
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
 
-/// The leveled fill over graphic lanes, as [`fill_vector_leveled`].
+/// The fill over graphic lanes: the marker parks on the lane and the render
+/// boundary moves it onto the interior vector lists the legacy paint readers
+/// inspect. Registered under the fill's identifier.
 #[node_macro::node(category(""))]
 fn fill_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
@@ -403,16 +234,135 @@ fn fill_graphic_leveled<'e>(
 		RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		_ => None,
 	};
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(fill.batch()) };
-	let mut paint = graphic_types::graphic::group_to_legacy_list(&core_types::record::Group { row: None, content: core_types::record::GroupContent::Run(item) });
+	let mut paint = paint_table(fill);
 	default_gradient_paint(&mut paint, bounds, _gradient_type, _spread_method, _transform);
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
 
+/// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
+fn stroke<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	/// The content with vector paths to apply the stroke style to.
+	(element, content_transform): (Vector, Attr<TransformAttr>),
+	/// The stroke paint.
+	#[default(Color::BLACK)]
+	paint: IList<Graphic>,
+	/// The stroke thickness.
+	#[unit(" px")]
+	#[default(2.)]
+	weight: f64,
+	/// The alignment of stroke to the path's centerline or (for closed shapes) the inside or outside of the shape.
+	align: StrokeAlign,
+	/// The shape of the stroke at open endpoints.
+	cap: StrokeCap,
+	/// The curvature of the bent stroke at sharp corners.
+	join: StrokeJoin,
+	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
+	#[default(4.)]
+	miter_limit: f64,
+	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
+	paint_order: PaintOrder,
+	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
+	dash_lengths: IList<f64>,
+	/// The phase offset distance from the starting point of the dash pattern.
+	#[unit(" px")]
+	dash_offset: f64,
+) -> Result<(Vector, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
+	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
+	let mut stroke = Stroke {
+		weight,
+		dash_lengths,
+		dash_offset,
+		cap,
+		join,
+		join_miter_limit: miter_limit,
+		align,
+		transform: DAffine2::IDENTITY,
+		paint_order,
+	};
+	stroke.transform *= *content_transform;
+
+	let mut element = element;
+	element.stroke = Some(stroke);
+
+	let paint = paint_table(paint);
+	let parked = park_paint(ctx.arena(), paint)?;
+	Ok((element, Attr(*content_transform), Attr(Some(parked))))
+}
+
+/// The vector items of a graphic lane's interior, one wrap level deep, the
+/// reach of the pre-flip broadcast over a legacy list.
+fn for_each_interior_vector_mut(element: &mut Graphic, mut f: impl FnMut(&mut Vector, DAffine2)) {
+	let mut walk_list = |list: &mut List<Vector>| {
+		let (elements, transforms) = list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
+		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
+			f(vector, *transform);
+		}
+	};
+	match element {
+		Graphic::Vector(list) => walk_list(list),
+		Graphic::Graphic(children) => {
+			for child in children.iter_element_values_mut() {
+				if let Some(list) = child.as_vector_mut() {
+					walk_list(list);
+				}
+			}
+		}
+		_ => {}
+	}
+}
+
+/// The stroke over graphic lanes: the style applies to the interior vectors,
+/// the paint marker parks on the lane for the render boundary to place.
+/// Registered under the stroke's identifier.
+#[node_macro::node(category(""))]
+fn stroke_graphic_leveled<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	(element, content_transform): (Graphic, Attr<TransformAttr>),
+	#[default(Color::BLACK)]
+	paint: IList<Graphic>,
+	#[unit(" px")]
+	#[default(2.)]
+	weight: f64,
+	align: StrokeAlign,
+	cap: StrokeCap,
+	join: StrokeJoin,
+	#[default(4.)]
+	miter_limit: f64,
+	paint_order: PaintOrder,
+	dash_lengths: IList<f64>,
+	#[unit(" px")]
+	dash_offset: f64,
+) -> Result<(Graphic, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
+	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
+	let stroke = Stroke {
+		weight,
+		dash_lengths,
+		dash_offset,
+		cap,
+		join,
+		join_miter_limit: miter_limit,
+		align,
+		transform: DAffine2::IDENTITY,
+		paint_order,
+	};
+
+	let mut element = element;
+	for_each_interior_vector_mut(&mut element, |vector, transform| {
+		let mut stroke = stroke.clone();
+		stroke.transform *= transform;
+		vector.stroke = Some(stroke);
+	});
+
+	let paint = paint_table(paint);
+	let parked = park_paint(ctx.arena(), paint)?;
+	Ok((element, Attr(*content_transform), Attr(Some(parked))))
+}
+
 pub use _fill_graphic_leveled_mod::fill_graphic_leveled_entries;
-pub use _fill_vector_leveled_mod::fill_vector_leveled_entries;
+pub use _stroke_graphic_leveled_mod::stroke_graphic_leveled_entries;
 
 #[node_macro::node(name("Copy to Points"), category("Repeat"), path(core_types::vector))]
 fn copy_to_points<I: Send + Clone>(

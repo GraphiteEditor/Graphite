@@ -1769,7 +1769,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let is_text_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER));
 				let is_stroke_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER));
 				let is_fill_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER));
-				let is_fill_input = is_fill_node && input_index == graphene_std::vector::fill::FillInput::<Graphic>::INDEX;
+				let is_fill_input = is_fill_node && input_index == graphene_std::vector::fill::FillInput::INDEX;
 				let is_shape_generator_node = reference.as_ref().is_some_and(|r| {
 					[regular_polygon::IDENTIFIER, star::IDENTIFIER, arc::IDENTIFIER, spiral::IDENTIFIER, grid::IDENTIFIER, arrow::IDENTIFIER]
 						.into_iter()

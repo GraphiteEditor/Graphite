@@ -457,7 +457,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<Graphic>::INDEX);
+		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::INDEX);
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupColorInput::INDEX);
 
 		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Color(color), false), true);
@@ -474,7 +474,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
 		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<Graphic>::INDEX),
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::INDEX),
 			NodeInput::value(TaggedValue::Gradient(gradient), false),
 			true,
 		);
@@ -715,7 +715,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput::<Graphic>::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);

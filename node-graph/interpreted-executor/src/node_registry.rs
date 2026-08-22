@@ -116,13 +116,22 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.into_iter()
 			.map(|entry| (graphene_std::transform_nodes::transform_nodes::transform::IDENTIFIER.clone(), entry)),
 	);
-	// The leveled fill rows, served under the legacy fill's identifier beside
-	// its legacy list rows.
+	// The graphic-lane fill and stroke rows, served under their identifiers.
 	node_types.extend(
-		graphene_std::vector::fill_vector_leveled_entries()
+		graphene_std::vector::fill_graphic_leveled_entries()
 			.into_iter()
-			.chain(graphene_std::vector::fill_graphic_leveled_entries())
 			.map(|entry| (graphene_std::vector::fill::IDENTIFIER.clone(), entry)),
+	);
+	node_types.extend(
+		graphene_std::vector::stroke_graphic_leveled_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::vector::stroke::IDENTIFIER.clone(), entry)),
+	);
+	// The boolean operation's plain vector rows, served under its identifier.
+	node_types.extend(
+		graphene_std::path_bool_nodes::boolean_operation_vector_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER.clone(), entry)),
 	);
 	// Element-wise coercion into `Graphic` for single-typed leveled inputs,
 	// served by the to_graphic rows.
