@@ -325,7 +325,9 @@ macro_rules! tagged_value {
 						check_level!(List<Graphic>, Graphic);
 						check_level!(List<Artboard>, Artboard);
 						check_level!(List<Raster<CPU>>, Raster<CPU>);
-						check_level!(List<Vector>, Vector);
+						// One default lane rather than an empty level: an unwired path input
+						// starts from a blank vector, as the legacy path modify synthesized itself.
+						if name == std::any::type_name::<List<Vector>>() { return Ok(leveled_record_value_edge(vec![Vector::default()])); }
 						check_level!(List<String>, String);
 						if name == std::any::type_name::<DocumentNode>() { return Ok(record_value_edge(DocumentNode::default())); }
 						if name == std::any::type_name::<Resource>() { return Ok(record_value_edge(Resource::default())); }
