@@ -13,7 +13,7 @@ use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{Item, List, NodeIdPath};
-use graphene_std::math::float_noise::{round_away_float_noise, round_away_float_noise_f32};
+use graphene_std::math::float_noise::round_away_float_noise;
 use graphene_std::memo::IORecord;
 use graphene_std::raster::{
 	CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice,
@@ -816,32 +816,20 @@ macro_rules! impl_table_item_layout_for_number {
 	}
 }
 impl_table_item_layout_for_number!(
+	f32 => "Number (f32)",
 	u32 => "Number (u32)",
 	i32 => "Number (i32)",
 	u64 => "Number (u64)",
 	i64 => "Number (i64)",
 );
 
-// Denoised so 0.1 + 0.2 reads as 0.3 rather than 0.30000000000000004
+// Denoised so 0.1 + 0.2 reads as 0.3 rather than 0.30000000000000004. We don't do this for f32 because it lacks precision to reliably distinguish between intentional digits and noise.
 impl TableItemLayout for f64 {
 	fn type_name() -> &'static str {
 		"Number"
 	}
 	fn identifier(&self) -> String {
 		format!("{}", round_away_float_noise(*self))
-	}
-	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
-	}
-}
-
-// Denoised so 1.1 + 2.2 reads as 3.3 rather than 3.3000002
-impl TableItemLayout for f32 {
-	fn type_name() -> &'static str {
-		"Number (f32)"
-	}
-	fn identifier(&self) -> String {
-		format!("{}", round_away_float_noise_f32(*self))
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
 		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]

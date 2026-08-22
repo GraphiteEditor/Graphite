@@ -1,5 +1,5 @@
 use crate::Node;
-use crate::math::float_noise::{round_away_float_noise, round_away_float_noise_f32};
+use crate::math::float_noise::round_away_float_noise;
 use crate::transform::Footprint;
 use glam::{DAffine2, DVec2};
 use std::future::Future;
@@ -59,21 +59,13 @@ macro_rules! impl_convert_to_string {
 		)*
 	};
 }
-impl_convert_to_string!(u32, u64, i32, i64, bool, DVec2, DAffine2);
+impl_convert_to_string!(f32, u32, u64, i32, i64, bool, DVec2, DAffine2);
 
 // Denoised so 0.1 + 0.2 reaches the string as "0.3" rather than "0.30000000000000004"
 impl Convert<String, ()> for f64 {
 	#[inline]
 	async fn convert(self, _: Footprint, _converter: ()) -> String {
 		round_away_float_noise(self).to_string()
-	}
-}
-
-// Denoised so 1.1 + 2.2 reaches the string as "3.3" rather than "3.3000002"
-impl Convert<String, ()> for f32 {
-	#[inline]
-	async fn convert(self, _: Footprint, _converter: ()) -> String {
-		round_away_float_noise_f32(self).to_string()
 	}
 }
 
