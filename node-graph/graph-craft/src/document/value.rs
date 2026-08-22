@@ -453,6 +453,15 @@ macro_rules! tagged_value {
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
 						if name == std::any::type_name::<List<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						// Leveled wires type by their element; each element name maps to the
+						// same tagged default as its legacy list form.
+						if name == std::any::type_name::<Color>() { return Some(TaggedValue::Color(Some(Color::default()))) }
+						if name == std::any::type_name::<GradientStops>() { return Some(TaggedValue::Gradient(GradientStops::default())) }
+						if name == std::any::type_name::<BrushStroke>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == std::any::type_name::<Graphic>() { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Graphic>))) }
+						if name == std::any::type_name::<Artboard>() { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Artboard>))) }
+						if name == std::any::type_name::<Raster<CPU>>() { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Raster<CPU>>))) }
+						if name == std::any::type_name::<Vector>() { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Vector>))) }
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
 						macro_rules! check {
 							($type_default:ty) => {
