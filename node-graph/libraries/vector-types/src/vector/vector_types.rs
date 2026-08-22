@@ -580,6 +580,14 @@ impl Vector {
 		self.set_smooth_at_indices(paths, [index], smooth);
 	}
 
+	/// Sets the smooth flag on many anchors at once, finding them in one pass over the pool's IDs.
+	pub fn set_smooth_points(&mut self, paths: &mut List<Path>, points: impl IntoIterator<Item = PointId>, smooth: bool) {
+		let points: std::collections::HashSet<PointId> = points.into_iter().collect();
+		let indices: Vec<u32> = (0..self.0.len() as u32).filter(|&index| self.point_id_at(index).is_some_and(|id| points.contains(&id))).collect();
+
+		self.set_smooth_at_indices(paths, indices, smooth);
+	}
+
 	/// Sets the smooth flag on many anchors at once, reading one connectivity rather than one per anchor.
 	pub(crate) fn set_smooth_at_indices(&mut self, paths: &mut List<Path>, indices: impl IntoIterator<Item = u32>, smooth: bool) {
 		let mut indices = indices.into_iter().peekable();

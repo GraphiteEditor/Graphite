@@ -72,7 +72,9 @@ impl VectorGeometry {
 	/// The ID and position of every anchor and free point, found in one pass over the paths.
 	pub fn anchors(&self) -> impl Iterator<Item = (PointId, DVec2)> + '_ {
 		let anchor_indices = self.vector.anchor_indices(&self.paths);
-		anchor_indices.into_iter().filter_map(|index| Some((self.vector.point_id_at(index as u32)?, self.vector.position(index)?)))
+		anchor_indices
+			.into_iter()
+			.filter_map(|index| Some((self.vector.point_id_at(index as u32)?, self.vector.position(index)?)))
 	}
 
 	/// The ID and position of each pool point that no path references, found in one pass over the paths.

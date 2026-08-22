@@ -1,11 +1,13 @@
+use core_types::list::List;
 use glam::DVec2;
 use graphic_types::Vector;
 use std::collections::VecDeque;
-use vector_types::vector::VectorExt;
+use vector_types::vector::Path;
 use vector_types::vector::algorithms::shapes;
 
-pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode) -> Vector {
+pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode) -> (Vector, List<Path>) {
 	let mut vector = Vector::default();
+	let mut paths = List::new();
 
 	let size = qr_code.size() as usize;
 
@@ -107,7 +109,7 @@ pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode) -> Vector {
 							}
 
 							if !simplified.is_empty() {
-								vector.append_bezpath(shapes::polyline_bezpath(simplified, true));
+								vector.append_bezpath(&mut paths, &shapes::polyline_bezpath(simplified, true));
 							}
 						}
 					}
@@ -121,5 +123,5 @@ pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode) -> Vector {
 		}
 	}
 
-	vector
+	(vector, paths)
 }
