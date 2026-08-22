@@ -1,51 +1,48 @@
 use crate::gcore::Context;
 use core::f64::consts::TAU;
-use core_types::gpoll::Interrupt;
+use core_types::context::IndexLink;
+use core_types::extent::{ExtentIn, LevelIn, ValueIn};
+use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
 use core_types::list::List;
 use core_types::registry::types::{Angle, PixelSize};
-use core_types::{ATTR_TRANSFORM, Color, Ctx, DeriveCtx, InjectVarArgs};
+use core_types::{ATTR_TRANSFORM, Color, Ctx, DeriveCtx, ExtractIndex, InjectVarArgs};
 use glam::{DAffine2, DVec2};
 use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
 use vector_types::GradientStops;
 
-#[node_macro::node(category("Repeat"))]
-fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
-	ctx: impl Ctx + DeriveCtx,
-	#[implementations(
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Color>,
-		Context -> List<GradientStops>,
-	)]
-	content: impl Node<Context<'_>, Output = List<T>>,
+/// Each copy evaluates the content within the copy's index pushed in,
+/// producing a level of `count` copies.
+// Someday this node can have the option to generate infinitely instead of a fixed count (basically `std::iter::repeat`).
+#[node_macro::node(category("Repeat"), extent(repeat_extent))]
+fn repeat<T>(
+	ctx: impl Ctx + DeriveCtx + ExtractIndex,
+	content: impl Node<Context<'_>, Output = T>,
 	#[default(1)]
 	#[hard(1..)]
 	count: u32,
 	reverse: bool,
-) -> Result<List<T>, Interrupt> {
-	// Someday this node can have the option to generate infinitely instead of a fixed count (basically `std::iter::repeat`).
-
-	let count = count as u64;
-	let spilled = ctx.index_head();
-
-	let mut result_list = List::new();
-
-	for index in 0..count {
-		let index = if reverse { count - index - 1 } else { index };
-
-		let mark = core_types::record::stack::sp();
-		let generated_content = content.eval(&ctx.promoted(&spilled, index))?;
-
-		for generated_row in generated_content.into_iter() {
-			result_list.push(generated_row);
-		}
-		// SAFETY: generated_content is an owned list fully moved into result_list, so no record borrow into this iteration's frames remains.
-		unsafe { core_types::record::stack::rewind(mark) };
+) -> Result<IList<T>, Interrupt> {
+	let inner = content.inner_extent(ctx)?;
+	let (copy, rest) = ctx.split_innermost(inner);
+	if copy >= count as u64 {
+		return Err(GraphError::past_end().into());
 	}
+	let copy = match reverse {
+		true => count as u64 - 1 - copy,
+		false => copy,
+	};
+	let mut frame = IndexLink { index: 0, outer: None };
+	content.eval(&ctx.push_level(&mut frame, copy, rest))
+}
 
-	Ok(result_list)
+/// The pushed level's extent is the copy count; inner levels forward to the
+/// content, whose extent is taken uniform across copies (queried at copy 0).
+fn repeat_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, _reverse: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
+	match level.pushed() {
+		true => count.get().map(|count| Extent::Exactly(count as usize)),
+		false => content.at(level),
+	}
 }
 
 #[node_macro::node(category("Repeat"))]
