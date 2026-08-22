@@ -1,5 +1,6 @@
 pub mod artboard;
 pub mod graphic;
+pub mod markers;
 
 // Re-export all transitive dependencies so downstream crates only need to depend on graphic-types
 pub use core_types;
@@ -9,6 +10,7 @@ pub use vector_types;
 // Re-export commonly used types at the crate root
 pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
+pub use markers::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_STROKE};
 
 pub mod migrations {
 	use crate::Vector;

@@ -1,6 +1,7 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, AttributeValueDyn, Item, ItemAttributeValues, List};
+use crate::markers::{ATTR_FILL, ATTR_STROKE};
+use core_types::list::{AttributeValueDyn, Item, ItemAttributeValues, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;

@@ -10,9 +10,11 @@ use std::fmt::Debug;
 // =================================================
 // Standard attribute keys used across the data flow
 // =================================================
-// Each name is declared once by its marker in [`crate::attribute`], which
-// documents the attribute and fixes its value type. The constants re-export
-// the markers' names for the string-keyed legacy readers and writers.
+// Each name is declared once by its marker, which documents the attribute and
+// fixes its value type. The constants re-export the markers' names for the
+// string-keyed legacy readers and writers. Markers whose value types live
+// below core-types are declared in their types' crates (vector-types, the
+// text nodes, graphic-types), each with its own name constants.
 
 pub const ATTR_TRANSFORM: &str = crate::attribute::Transform::NAME;
 pub const ATTR_BLEND_MODE: &str = crate::attribute::BlendMode::NAME;
@@ -35,18 +37,6 @@ pub const ATTR_LETTER_SPACING: &str = crate::attribute::LetterSpacing::NAME;
 pub const ATTR_MAX_WIDTH: &str = crate::attribute::MaxWidth::NAME;
 pub const ATTR_MAX_HEIGHT: &str = crate::attribute::MaxHeight::NAME;
 pub const ATTR_LETTER_TILT: &str = crate::attribute::LetterTilt::NAME;
-
-// The remaining names' value types live in graphic-types. Their markers and
-// constants move there with the marker wave.
-
-/// `List<Graphic>` snapshot of the upstream content that fed into a destructive merge
-/// (Boolean Operation, Rasterize, etc.), so the editor can still surface click targets for
-/// the original child layers after their content has been collapsed.
-pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
-/// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
-pub const ATTR_FILL: &str = "fill";
-/// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
-pub const ATTR_STROKE: &str = "stroke";
 
 // ===========================
 // Implicit attribute defaults

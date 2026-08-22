@@ -1,6 +1,6 @@
-use core_types::list::{ATTR_FILL, Item, List};
+use core_types::list::{Item, List};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
+use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
 use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
@@ -8,7 +8,7 @@ use graphic_types::vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use graphic_types::{Graphic, Vector};
+use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, Graphic, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;

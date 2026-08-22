@@ -11,8 +11,10 @@ use core_types::runtime::SourceFuture;
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
-use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, WasmNotSend};
+use core_types::{ATTR_TRANSFORM, WasmNotSend};
 use core_types::{Color, Ctx};
+#[cfg(target_family = "wasm")]
+use graphic_types::ATTR_EDITOR_MERGED_LAYERS;
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;

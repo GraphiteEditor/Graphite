@@ -164,10 +164,45 @@ pub fn default_value(name: &str) -> Option<Box<dyn AnyAttributeValue>> {
 ///
 /// The trailing `= expr` is the name-specific default; without it the value
 /// type's `Default` applies. A `&T` value carries the eval lifetime, so its
-/// default must be `'static` data.
+/// default must be `'static` data. An `Option<&T>` value is an optional
+/// parked reference whose default is `None`, for attributes whose absence
+/// means something a present value cannot.
 #[macro_export]
 macro_rules! attribute {
 	() => {};
+	($(#[$meta:meta])* $vis:vis $marker:ident($name:literal): Option<&$value:ty>; $($rest:tt)*) => {
+		$(#[$meta])*
+		$vis struct $marker;
+
+		impl $crate::attribute::Attribute for $marker {
+			const NAME: &'static str = $name;
+			type Value<'e> = ::core::option::Option<&'e $value>;
+
+			unsafe fn read_erased(ptr: *const u8) -> ::std::boxed::Box<dyn $crate::list::AnyAttributeValue> {
+				::std::boxed::Box::new(unsafe { ptr.cast::<::core::option::Option<&$value>>().read() }.map(|value| <$value as ::std::borrow::ToOwned>::to_owned(value)))
+			}
+
+			const REPARK: ::core::option::Option<unsafe fn(&dyn $crate::list::AnyAttributeValue, *mut u8, &$crate::arena::Arena) -> ::core::option::Option<()>> = {
+				unsafe fn repark(value: &dyn $crate::list::AnyAttributeValue, dst: *mut u8, arena: &$crate::arena::Arena) -> ::core::option::Option<()> {
+					let owned: &::core::option::Option<<$value as ::std::borrow::ToOwned>::Owned> =
+						value.as_any().downcast_ref().expect("an optional reference attribute replays its owned clone");
+					let parked = match owned {
+						::core::option::Option::Some(owned) => {
+							let (parked, _) = arena.alloc(<$value as ::std::borrow::ToOwned>::to_owned(::std::borrow::Borrow::borrow(owned)))?;
+							::core::option::Option::Some(::std::borrow::Borrow::borrow(parked))
+						}
+						::core::option::Option::None => ::core::option::Option::None,
+					};
+					unsafe { dst.cast::<::core::option::Option<&$value>>().write(parked) };
+					::core::option::Option::Some(())
+				}
+				::core::option::Option::Some(repark)
+			};
+		}
+
+		$crate::attribute!(@register $marker);
+		$crate::attribute!($($rest)*);
+	};
 	($(#[$meta:meta])* $vis:vis $marker:ident($name:literal): &$value:ty $(= $default:expr)?; $($rest:tt)*) => {
 		$(#[$meta])*
 		$vis struct $marker;

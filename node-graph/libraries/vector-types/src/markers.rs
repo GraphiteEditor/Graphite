@@ -2,44 +2,18 @@
 //! constants for the string-keyed legacy readers and writers.
 
 use core_types::attribute::Attribute;
-use core_types::list::AnyAttributeValue;
 
 core_types::attribute! {
 	/// Gradient's spread behavior past its endpoints (`Pad`, `Reflect`, or `Repeat`).
 	pub SpreadMethod("spread_method"): crate::gradient::GradientSpreadMethod;
 	/// Gradient's shape (`Linear` or `Radial`).
 	pub GradientType("gradient_type"): crate::gradient::GradientType;
+	/// Optional `Vector` that overrides the item's own geometry for click-target generation.
+	/// Used by the 'Text' node for per-glyph bounding-box rectangles so glyphs are selectable
+	/// by clicking anywhere within their bounds, not just the filled letterform. An absent
+	/// value means the item's own geometry is the click target.
+	pub EditorClickTarget("editor:click_target"): Option<&crate::Vector>;
 }
-
-/// Optional `Vector` that overrides the item's own geometry for click-target generation.
-/// Used by the 'Text' node for per-glyph bounding-box rectangles so glyphs are selectable
-/// by clicking anywhere within their bounds, not just the filled letterform. An absent
-/// value means the item's own geometry is the click target.
-pub struct EditorClickTarget;
-
-impl Attribute for EditorClickTarget {
-	const NAME: &'static str = "editor:click_target";
-	type Value<'e> = Option<&'e crate::Vector>;
-
-	unsafe fn read_erased(ptr: *const u8) -> Box<dyn AnyAttributeValue> {
-		Box::new(unsafe { ptr.cast::<Option<&crate::Vector>>().read() }.cloned())
-	}
-
-	const REPARK: Option<unsafe fn(&dyn AnyAttributeValue, *mut u8, &core_types::arena::Arena) -> Option<()>> = {
-		unsafe fn repark(value: &dyn AnyAttributeValue, dst: *mut u8, arena: &core_types::arena::Arena) -> Option<()> {
-			let owned: &Option<crate::Vector> = value.as_any().downcast_ref().expect("an optional vector attribute replays its owned clone");
-			let parked = match owned {
-				Some(vector) => Some(arena.alloc(vector.clone())?.0),
-				None => None,
-			};
-			unsafe { dst.cast::<Option<&crate::Vector>>().write(parked) };
-			Some(())
-		}
-		Some(repark)
-	};
-}
-
-core_types::attribute!(@register EditorClickTarget);
 
 pub const ATTR_SPREAD_METHOD: &str = SpreadMethod::NAME;
 pub const ATTR_GRADIENT_TYPE: &str = GradientType::NAME;
