@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::utility_functions::closest_open
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
 use graphene_std::vector::misc::{BezierHandles, ManipulatorPointId, point_to_dvec2, segment_to_handles};
-use graphene_std::vector::{PointId, SegmentId, Vector};
+use graphene_std::vector::{PointId, SegmentId, VectorGeometry};
 use kurbo::{Affine, ParamCurve, PathSeg};
 use std::collections::HashMap;
 #[cfg(target_family = "wasm")]
@@ -44,7 +44,7 @@ pub fn selected_segments(network_interface: &NodeNetworkInterface, shape_editor:
 	map
 }
 
-pub fn selected_segments_for_layer(vector: &Vector, state: &SelectedLayerState) -> Vec<SegmentId> {
+pub fn selected_segments_for_layer(vector: &VectorGeometry, state: &SelectedLayerState) -> Vec<SegmentId> {
 	let selected_anchors = state
 		.selected_points()
 		.filter_map(|point| if let ManipulatorPointId::Anchor(p) = point { Some(p) } else { None })
@@ -195,7 +195,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 		}
 
 		if display_anchors {
-			for (&id, &position) in vector.point_domain.ids().iter().zip(vector.point_domain.positions()) {
+			for (id, position) in vector.anchors() {
 				overlay_context.manipulator_anchor(transform.transform_point2(position), is_selected(ManipulatorPointId::Anchor(id)), None);
 			}
 		}
@@ -226,7 +226,7 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 			if hovered.is_some_and(|(hovered_layer, hovered_id, _)| hovered_layer == layer && hovered_id == id) {
 				continue;
 			}
-			let Some(position) = vector.point_domain.position_from_id(id) else { continue };
+			let Some(position) = vector.position_from_id(id) else { continue };
 
 			overlay_context.manipulator_anchor(transform.transform_point2(position), is_selected(layer, id), None);
 		}
