@@ -1662,6 +1662,25 @@ mod tests {
 	}
 
 	#[test]
+	fn a_leveled_value_source_serves_its_items_as_lanes() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source = core_types::value::LeveledValueSource::new(vec![1.5, 2.25, 3.75]);
+		let leveled = Node::<ContextImpl>::layout(&source).clone();
+		let out = f64_layout(&[]);
+		reserve_for(&[&leveled, &out]);
+
+		let node = install_flip(SumNode::new(source, &leveled), &out);
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 7.5);
+	}
+
+	#[test]
 	fn reducer_drains_a_lower_bound_level() {
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];

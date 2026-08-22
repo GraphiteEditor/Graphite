@@ -587,6 +587,38 @@ tagged_value! {
 }
 
 impl TaggedValue {
+	/// The flip form of [`Self::to_edge`]: list-carrying variants serve their
+	/// payload as a level, one lane per item, instead of materializing a
+	/// legacy list value. Every other variant takes the [`Self::to_edge`]
+	/// path unchanged. Dormant until the flip retypes the list-typed inputs.
+	pub fn to_leveled_edge(self) -> Result<EdgeHandle, String> {
+		use core_types::value::leveled_record_value_edge;
+		match self {
+			Self::TypeDefault(td) => {
+				let name = td.name.as_ref();
+				macro_rules! check_level {
+					($list:ty, $element:ty) => {
+						if name == std::any::type_name::<$list>() {
+							return Ok(leveled_record_value_edge(Vec::<$element>::new()));
+						}
+					};
+				}
+				check_level!(List<Graphic>, Graphic);
+				check_level!(List<Artboard>, Artboard);
+				check_level!(List<Raster<CPU>>, Raster<CPU>);
+				check_level!(List<Vector>, Vector);
+				check_level!(List<String>, String);
+				Self::TypeDefault(td).to_edge()
+			}
+			Self::F64Array(values) => Ok(leveled_record_value_edge(values)),
+			Self::Color(color) => Ok(leveled_record_value_edge(color.into_iter().collect::<Vec<_>>())),
+			Self::Gradient(stops) => Ok(leveled_record_value_edge(vec![stops])),
+			Self::BrushStrokes(strokes) => Ok(leveled_record_value_edge(strokes)),
+			Self::NodeIdPath(path) => Ok(leveled_record_value_edge(path)),
+			other => other.to_edge(),
+		}
+	}
+
 	pub fn to_primitive_string(&self) -> String {
 		match self {
 			TaggedValue::None => "()".to_string(),
@@ -908,5 +940,34 @@ mod typedefault_dispatch {
 			}};
 		}
 		for_each_type_default!(check);
+	}
+}
+
+#[cfg(test)]
+mod leveled_edges {
+	use super::*;
+	use core_types::descriptor;
+	use core_types::registry::record_edge_type;
+
+	#[test]
+	fn list_variants_produce_leveled_edges_typed_by_element() {
+		let edge = TaggedValue::F64Array(vec![1., 2., 3.]).to_leveled_edge().unwrap();
+		assert_eq!(edge.ty(), &record_edge_type::<f64>());
+		assert_eq!(edge.layout().depth, 1);
+
+		let edge = TaggedValue::Color(Some(Color::default())).to_leveled_edge().unwrap();
+		assert_eq!(edge.ty(), &record_edge_type::<Color>());
+		assert_eq!(edge.layout().depth, 1);
+
+		let edge = TaggedValue::TypeDefault(descriptor!(List<Graphic>)).to_leveled_edge().unwrap();
+		assert_eq!(edge.ty(), &record_edge_type::<Graphic>());
+		assert_eq!(edge.layout().depth, 1);
+	}
+
+	#[test]
+	fn scalar_variants_keep_their_rank_zero_edges() {
+		let edge = TaggedValue::Bool(true).to_leveled_edge().unwrap();
+		assert_eq!(edge.ty(), &record_edge_type::<bool>());
+		assert_eq!(edge.layout().depth, 0);
 	}
 }

@@ -50,6 +50,53 @@ pub fn record_value_edge<T: Clone + Send + Sync + 'static>(value: T) -> crate::r
 	crate::registry::EdgeHandle::new_record::<T>(std::sync::Arc::new(ValueSource::new(value)) as std::sync::Arc<crate::registry::ErasedRecordNode>)
 }
 
+/// The node behind a leveled value edge: a constant list served as one level,
+/// one lane per item, with the list's length as the exact extent.
+pub struct LeveledValueSource<T> {
+	values: Vec<T>,
+	layout: crate::record::Layout,
+}
+
+impl<T: Clone + Send + Sync + 'static> LeveledValueSource<T> {
+	pub fn new(values: Vec<T>) -> Self {
+		Self {
+			values,
+			layout: crate::record::Layout::default().with_writes(1, crate::record::element_write::<T>(), &[]),
+		}
+	}
+}
+
+impl<'e, C, T> crate::node::Node<C> for LeveledValueSource<T>
+where
+	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena> + crate::context::ExtractIndex,
+	T: Clone + Send + Sync + 'static,
+{
+	type Output = crate::record::RecordValue<'e>;
+
+	fn eval(&self, input: &C) -> crate::gpoll::GPoll<crate::record::RecordValue<'e>> {
+		let Some(value) = self.values.get(input.innermost_index() as usize) else {
+			return crate::gpoll::GPoll::error("value level addressed past its items");
+		};
+		crate::record::lift_poll(crate::gpoll::GPoll::Final(value.clone()), &self.layout, input.arena())
+	}
+
+	fn extent_at(&self, _input: &C, level: u8) -> crate::gpoll::GPoll<crate::gpoll::Extent> {
+		match level {
+			0 => crate::gpoll::GPoll::Final(crate::gpoll::Extent::Exactly(self.values.len())),
+			_ => crate::gpoll::GPoll::Final(crate::gpoll::Extent::Exactly(1)),
+		}
+	}
+
+	fn layout(&self) -> &crate::record::Layout {
+		&self.layout
+	}
+}
+
+/// The native record edge of a constant level: the edge type is the element's.
+pub fn leveled_record_value_edge<T: Clone + Send + Sync + 'static>(values: Vec<T>) -> crate::registry::EdgeHandle {
+	crate::registry::EdgeHandle::new_record::<T>(std::sync::Arc::new(LeveledValueSource::new(values)) as std::sync::Arc<crate::registry::ErasedRecordNode>)
+}
+
 impl<T: Clone> ClonedNode<T> {
 	pub const fn new(value: T) -> ClonedNode<T> {
 		ClonedNode(value)
