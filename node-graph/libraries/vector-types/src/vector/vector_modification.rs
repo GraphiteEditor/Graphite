@@ -267,6 +267,22 @@ impl SegmentModification {
 		}
 	}
 
+	/// The handle map for the side of its segment that the given handle sits on.
+	fn handle_side_of(&mut self, handle: HandleId) -> &mut HashMap<SegmentId, Option<DVec2>> {
+		match handle.ty {
+			HandleType::Primary => &mut self.handle_primary,
+			HandleType::End => &mut self.handle_end,
+		}
+	}
+
+	/// The endpoint map for the side of its segment that the given handle sits on.
+	fn endpoint_side_of(&mut self, handle: HandleId) -> &mut HashMap<SegmentId, PointId> {
+		match handle.ty {
+			HandleType::Primary => &mut self.start_point,
+			HandleType::End => &mut self.end_point,
+		}
+	}
+
 	fn push(&mut self, id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2]) {
 		self.remove.remove(&id);
 		self.add.push(id);
@@ -302,22 +318,45 @@ pub struct VectorModification {
 #[derive(PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum VectorModificationType {
-	InsertSegment { id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2] },
-	InsertPoint { id: PointId, position: DVec2 },
+	InsertSegment {
+		id: SegmentId,
+		points: [PointId; 2],
+		handles: [Option<DVec2>; 2],
+	},
+	InsertPoint {
+		id: PointId,
+		position: DVec2,
+	},
 
-	RemoveSegment { id: SegmentId },
-	RemovePoint { id: PointId },
+	RemoveSegment {
+		id: SegmentId,
+	},
+	RemovePoint {
+		id: PointId,
+	},
 
-	SetG1Continuous { handles: [HandleId; 2], enabled: bool },
-	SetHandles { segment: SegmentId, handles: [Option<DVec2>; 2] },
-	SetPrimaryHandle { segment: SegmentId, relative_position: DVec2 },
-	SetEndHandle { segment: SegmentId, relative_position: DVec2 },
-	SetStartPoint { segment: SegmentId, id: PointId },
-	SetEndPoint { segment: SegmentId, id: PointId },
+	SetG1Continuous {
+		handles: [HandleId; 2],
+		enabled: bool,
+	},
+	SetHandles {
+		segment: SegmentId,
+		handles: [Option<DVec2>; 2],
+	},
+	SetHandlePosition {
+		handle: HandleId,
+		relative_position: DVec2,
+	},
+	/// Reconnects one end of the handle's segment to another point: the start for a primary handle, the end for an end handle.
+	SetEndpoint {
+		handle: HandleId,
+		id: PointId,
+	},
 
-	ApplyPointDelta { point: PointId, delta: DVec2 },
-	ApplyPrimaryDelta { segment: SegmentId, delta: DVec2 },
-	ApplyEndDelta { segment: SegmentId, delta: DVec2 },
+	ApplyPointDelta {
+		point: PointId,
+		delta: DVec2,
+	},
 }
 
 impl VectorModificationType {
@@ -325,13 +364,8 @@ impl VectorModificationType {
 	fn is_finite(&self) -> bool {
 		match self {
 			Self::InsertSegment { handles, .. } | Self::SetHandles { handles, .. } => handles.iter().flatten().all(|handle| handle.is_finite()),
-			Self::InsertPoint { position: value, .. }
-			| Self::SetPrimaryHandle { relative_position: value, .. }
-			| Self::SetEndHandle { relative_position: value, .. }
-			| Self::ApplyPointDelta { delta: value, .. }
-			| Self::ApplyPrimaryDelta { delta: value, .. }
-			| Self::ApplyEndDelta { delta: value, .. } => value.is_finite(),
-			Self::RemoveSegment { .. } | Self::RemovePoint { .. } | Self::SetG1Continuous { .. } | Self::SetStartPoint { .. } | Self::SetEndPoint { .. } => true,
+			Self::InsertPoint { position: value, .. } | Self::SetHandlePosition { relative_position: value, .. } | Self::ApplyPointDelta { delta: value, .. } => value.is_finite(),
+			Self::RemoveSegment { .. } | Self::RemovePoint { .. } | Self::SetG1Continuous { .. } | Self::SetEndpoint { .. } => true,
 		}
 	}
 }
@@ -492,29 +526,15 @@ impl VectorModification {
 				self.segments.handle_primary.insert(*segment, handles[0]);
 				self.segments.handle_end.insert(*segment, handles[1]);
 			}
-			VectorModificationType::SetPrimaryHandle { segment, relative_position } => {
-				self.segments.handle_primary.insert(*segment, Some(*relative_position));
+			VectorModificationType::SetHandlePosition { handle, relative_position } => {
+				self.segments.handle_side_of(*handle).insert(handle.segment, Some(*relative_position));
 			}
-			VectorModificationType::SetEndHandle { segment, relative_position } => {
-				self.segments.handle_end.insert(*segment, Some(*relative_position));
-			}
-			VectorModificationType::SetStartPoint { segment, id } => {
-				self.segments.start_point.insert(*segment, *id);
-			}
-			VectorModificationType::SetEndPoint { segment, id } => {
-				self.segments.end_point.insert(*segment, *id);
+			VectorModificationType::SetEndpoint { handle, id } => {
+				self.segments.endpoint_side_of(*handle).insert(handle.segment, *id);
 			}
 
 			VectorModificationType::ApplyPointDelta { point, delta } => {
 				*self.points.delta.entry(*point).or_default() += *delta;
-			}
-			VectorModificationType::ApplyPrimaryDelta { segment, delta } => {
-				let position = self.segments.handle_primary.entry(*segment).or_default();
-				*position = Some(position.unwrap_or_default() + *delta);
-			}
-			VectorModificationType::ApplyEndDelta { segment, delta } => {
-				let position = self.segments.handle_end.entry(*segment).or_default();
-				*position = Some(position.unwrap_or_default() + *delta);
 			}
 		}
 	}
@@ -648,11 +668,7 @@ pub trait HandleExt {
 
 impl HandleExt for HandleId {
 	fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
-		let Self { ty, segment } = self;
-		match ty {
-			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, relative_position },
-			HandleType::End => VectorModificationType::SetEndHandle { segment, relative_position },
-		}
+		VectorModificationType::SetHandlePosition { handle: self, relative_position }
 	}
 }
 
@@ -732,8 +748,8 @@ mod tests {
 	#[test]
 	fn non_finite_modifications_are_ignored() {
 		let mut modification = VectorModification::default();
-		modification.modify(&VectorModificationType::SetPrimaryHandle {
-			segment: SegmentId::generate(),
+		modification.modify(&VectorModificationType::SetHandlePosition {
+			handle: HandleId::primary(SegmentId::generate()),
 			relative_position: DVec2::NAN,
 		});
 		modification.modify(&VectorModificationType::ApplyPointDelta {
