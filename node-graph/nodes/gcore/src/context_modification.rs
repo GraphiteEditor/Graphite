@@ -1,10 +1,9 @@
 use core_types::context::{ContextModification, Ctx, DeriveCtx};
-use core_types::extent::{ExtentIn, LevelIn, ValueIn};
-use core_types::gpoll::{Extent, GPoll, Interrupt};
+use core_types::gpoll::Interrupt;
 
 /// Filters out what should be unused components of the context based on the specified requirements.
 /// This node is inserted by the compiler to "zero out" unused context components.
-#[node_macro::node(category(""), extent(context_modification_extent))]
+#[node_macro::node(category(""))]
 fn context_modification<T>(
 	ctx: impl Ctx + DeriveCtx,
 	/// The data to pass through, evaluated with the stripped down context.
@@ -14,8 +13,4 @@ fn context_modification<T>(
 ) -> Result<T, Interrupt> {
 	let scope = ctx.scope().nullified(modification.features, Some(modification.sources()));
 	value.eval(&ctx.nullified(modification.features, &scope))
-}
-
-fn context_modification_extent(value: ExtentIn<'_>, _modification: ValueIn<'_, ContextModification>, level: LevelIn) -> GPoll<Extent> {
-	value.at(level)
 }

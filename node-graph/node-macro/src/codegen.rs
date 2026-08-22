@@ -1442,11 +1442,32 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		}
 	} else if let Some(subject_index) = ir::forwarded_subject(&node).filter(|_| node.output.shape.depth == 0) {
-		// A level-preserving passthrough forwards its subject's extents.
-		let name = &regular_fields[subject_index].pat_ident.ident;
+		// A level-preserving passthrough forwards its subject's extents,
+		// through the same per-binding query forms the explicit surface uses.
+		let field = &regular_fields[subject_index];
+		let name = &field.pat_ident.ident;
+		let query = match &field.ty {
+			ParsedFieldType::Node(_) => match ir::lazy_binding(&node, subject_index) {
+				ir::LazyBinding::DeriveRouting | ir::LazyBinding::DeriveCarrier => quote! {
+					let __query = |__copy: u64, __lvl: u8| {
+						let __head = #core_types::context::DeriveCtx::index_head(__input);
+						#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &#core_types::context::DeriveCtx::promoted(__input, &__head, __copy), __lvl)
+					};
+				},
+				_ => quote! {
+					let __query = |_: u64, __lvl: u8| #core_types::node::Node::extent_at(&self.#name, __input, __lvl);
+				},
+			},
+			ParsedFieldType::Regular(_) => quote! {
+				let __query = |_: u64, __lvl: u8| #core_types::node::Node::extent_at(&self.#name, __input, __lvl);
+			},
+		};
 		quote! {
 			fn extent_at(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
-				#core_types::node::Node::extent_at(&self.#name, __input, __level)
+				#query
+				let __arg = #core_types::extent::ExtentIn::new(&__query);
+				let __level_in = #core_types::extent::LevelIn::new(__level, <Self as #core_types::node::Node<#ctx_ident>>::layout(self).depth);
+				__arg.at(__level_in)
 			}
 		}
 	} else if node.output.shape.depth > 0 {

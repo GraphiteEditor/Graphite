@@ -4,13 +4,9 @@ use core_types::{Ctx, ops::Convert, ops::ConvertAsync, transform::Footprint};
 use std::marker::PhantomData;
 
 /// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.
-#[node_macro::node(category("General"), skip_impl, extent(passthrough_extent))]
+#[node_macro::node(category("General"), skip_impl)]
 fn passthrough<T: Send>(_: impl Ctx, content: T) -> T {
 	content
-}
-
-fn passthrough_extent(content: core_types::extent::ExtentIn<'_>, level: core_types::extent::LevelIn) -> core_types::gpoll::GPoll<core_types::gpoll::Extent> {
-	content.at(level)
 }
 
 #[node_macro::node(category(""), skip_impl)]

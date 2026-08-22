@@ -1,5 +1,4 @@
 use core_types::Ctx;
-use core_types::list::List;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, Raster};
 

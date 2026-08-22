@@ -1,8 +1,7 @@
 use core_types::arena::ArenaCell;
 use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, InjectIndex};
-use core_types::extent::{ExtentIn, LevelIn};
 use core_types::frame_table::{FrameTable, Lookup};
-use core_types::gpoll::{Extent, Finality, GPoll};
+use core_types::gpoll::{Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::IORecord;
 use core_types::record::{LevelStatus, OwnedRecord, RecordCapture, RecordValue, copy_record_bytes, record_from_bytes};
@@ -13,7 +12,7 @@ use std::sync::Mutex;
 /// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
 /// Stores a deep copy of the last record that flowed through this node and replays it on subsequent renders if the context has not changed.
-#[node_macro::node(category("General"), path(graphene_core::memo), extent(memoize_extent))]
+#[node_macro::node(category("General"), path(graphene_core::memo))]
 fn memoize<'e>(
 	ctx: impl Ctx + CacheHash + ExtractArena<'e>,
 	#[data] cache: Arc<Mutex<Option<(u64, OwnedRecord, Finality)>>>,
@@ -45,11 +44,7 @@ fn memoize<'e>(
 	result
 }
 
-fn memoize_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
-	content.at(level)
-}
-
-#[node_macro::node(category(""), path(graphene_core::memo), extent(frame_memo_extent))]
+#[node_macro::node(category(""), path(graphene_core::memo))]
 fn frame_memo<'e>(
 	ctx: impl Ctx + CacheHash + ExtractArena<'e>,
 	#[data] cell: ArenaCell<FrameTable<Box<[u8]>, 32>>,
@@ -92,14 +87,10 @@ fn frame_memo<'e>(
 	}
 }
 
-fn frame_memo_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
-	content.at(level)
-}
-
 type MonitorValue = Arc<Mutex<Option<IORecord<CtxSnapshot, RecordCapture>>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
-#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), extent(monitor_extent))]
+#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
 fn monitor<'e>(
 	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + InjectIndex + Copy,
 	#[data] io: MonitorValue,
@@ -124,10 +115,6 @@ fn monitor<'e>(
 		});
 	}
 	result
-}
-
-fn monitor_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
-	content.at(level)
 }
 
 fn serialize_monitor(io: &MonitorValue) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
