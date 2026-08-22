@@ -15,6 +15,7 @@ mod vector_types;
 pub use addressing::*;
 pub use connectivity::*;
 pub use contour::*;
+pub use flatten::vector_from_legacy_parts;
 pub use path::*;
 pub use reference_point::*;
 pub use vector_attributes::*;

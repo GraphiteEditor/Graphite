@@ -130,6 +130,34 @@ impl WorkingVector {
 	}
 }
 
+// TODO: Eventually remove this document upgrade code
+/// Builds storage from the legacy flat arrays: anchors with IDs and positions, segments with IDs,
+/// endpoint indices, and absolute handles, plus G1 pairs. Used by document migration.
+pub fn vector_from_legacy_parts(
+	point_ids: Vec<PointId>,
+	point_positions: Vec<DVec2>,
+	segment_ids: Vec<SegmentId>,
+	segment_start: Vec<usize>,
+	segment_end: Vec<usize>,
+	segment_handles: Vec<BezierHandles>,
+	colinear: Vec<[HandleId; 2]>,
+) -> (Vector, List<Path>) {
+	let working = WorkingVector {
+		point_ids,
+		point_positions,
+		segment_ids,
+		segment_start,
+		segment_end,
+		segment_handles,
+		colinear,
+	};
+
+	let (mut vector, mut paths) = (Vector::default(), List::new());
+	working.reweave(&mut vector, &mut paths);
+
+	(vector, paths)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
