@@ -320,7 +320,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							// The monitor node is used to display a thumbnail in the UI.
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(2), 0)],
+								inputs: vec![NodeInput::node(NodeId(7), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								call_argument: generic!(T),
 								skip_deduplication: true,
@@ -343,6 +343,16 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(5), 0), NodeInput::import(concrete!(TaggedValue), 2)],
 								implementation: DocumentNodeImplementation::ProtoNode(artboard::translate_footprint::IDENTIFIER),
+								..Default::default()
+							},
+							// Lifts the artboard element onto a one-lane level so it concatenates with the base stack
+							DocumentNode {
+								inputs: vec![
+									NodeInput::node(NodeId(2), 0),
+									NodeInput::value(TaggedValue::U32(1), false),
+									NodeInput::value(TaggedValue::Bool(false), false),
+								],
+								implementation: DocumentNodeImplementation::ProtoNode(repeat_nodes::repeat::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -448,6 +458,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-28, -3)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								// 7: repeat (the one-lane lift)
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-10, -3)),
 										..Default::default()
 									},
 									..Default::default()
