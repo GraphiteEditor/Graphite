@@ -2013,10 +2013,9 @@ mod test_gradient {
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
 	use graphene_std::color::SRGBA8;
-	use graphene_std::list::List;
 	use graphene_std::vector::style::{GradientSpreadMethod, build_transform_with_y_preservation};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
-	use graphene_std::{Graphic, NodeInputDecleration};
+	use graphene_std::NodeInputDecleration;
 
 	use super::gradient_space_transform;
 

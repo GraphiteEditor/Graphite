@@ -145,6 +145,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.into_iter()
 			.map(|entry| (graphene_std::vector::solidify_stroke::IDENTIFIER.clone(), entry)),
 	);
+	// The color assignment's graphic-lane rows, served under its identifier.
+	node_types.extend(
+		graphene_std::vector::assign_colors_graphic_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::vector::assign_colors::IDENTIFIER.clone(), entry)),
+	);
 	// Element-wise coercion into `Graphic` for single-typed leveled inputs,
 	// served by the to_graphic rows.
 	node_types.extend(
