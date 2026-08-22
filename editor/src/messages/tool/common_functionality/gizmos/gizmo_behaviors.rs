@@ -9,14 +9,15 @@
 //! count and its *other* radius, and no amount of registry data expresses that. Those live here as plain
 //! functions, referenced from the [registry](super::gizmo_registry) table.
 
-use crate::consts::COLOR_OVERLAY_RED;
+use crate::consts::{ARC_SNAP_THRESHOLD, COLOR_OVERLAY_RED};
 use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION, NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD};
+use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{DragInput, GizmoBehavior, GizmoContext, GizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{
-	draw_snapping_ticks, extract_polygon_parameters, extract_spiral_parameters, extract_star_parameters, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline,
-	star_vertex_position,
+	arc_end_points, arc_end_points_ignore_layer, arc_outline, calculate_arc_text_transform, draw_snapping_ticks, extract_arc_parameters, extract_polygon_parameters, extract_spiral_parameters,
+	extract_star_parameters, format_rounded, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline, star_vertex_position,
 };
 use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate_spiral_endpoints;
 use glam::{DAffine2, DVec2};
@@ -35,6 +36,7 @@ pub const STAR_SIDES: GizmoBehavior = GizmoBehavior {
 	coupled_writes: None,
 	handle_positions: None,
 	drag: None,
+	angle_deadzone: 0.,
 };
 
 /// Either of the star's radius handles: snaps to the radii where the star's points line up, and previews
@@ -45,6 +47,18 @@ pub const STAR_RADIUS: GizmoBehavior = GizmoBehavior {
 	coupled_writes: None,
 	handle_positions: Some(star_radius_handles),
 	drag: None,
+	angle_deadzone: 0.,
+};
+
+/// The arc's sweep, grabbable at either end of the curve. Dragging either endpoint reshapes the arc; the
+/// start endpoint carries the whole arc round with it, the end endpoint only opens or closes the sweep.
+pub const ARC_SWEEP: GizmoBehavior = GizmoBehavior {
+	snap_targets: None,
+	overlay: Some(arc_sweep_overlay),
+	coupled_writes: None,
+	handle_positions: Some(arc_sweep_handles),
+	drag: Some(arc_sweep_drag),
+	angle_deadzone: 0.,
 };
 
 /// The spiral's winding control. Grabbable at either end of the curve; dragging winds or unwinds it.
@@ -54,6 +68,7 @@ pub const SPIRAL_TURNS: GizmoBehavior = GizmoBehavior {
 	coupled_writes: None,
 	handle_positions: Some(spiral_turns_handles),
 	drag: Some(spiral_turns_drag),
+	angle_deadzone: 0.5,
 };
 
 /// The polygon's sides dial, the counterpart to [`STAR_SIDES`].
@@ -63,6 +78,7 @@ pub const POLYGON_SIDES: GizmoBehavior = GizmoBehavior {
 	coupled_writes: None,
 	handle_positions: None,
 	drag: None,
+	angle_deadzone: 0.,
 };
 
 /// The radii at which dragging one of a star's radius handles makes its points line up: the value where
@@ -262,7 +278,12 @@ fn draw_spokes(viewport: DAffine2, sides: u32, radius: f64, state: GizmoState, o
 	}
 }
 
-/// Read one of the spiral's inputs as it stood when the drag began.
+/// The spiral winds the opposite way round from the shared accumulator's sense of positive rotation.
+fn spiral_swept_angle(drag: &DragInput) -> f64 {
+	-drag.total_angle
+}
+
+/// Read one of the node's inputs as it stood when the drag began.
 fn initial_f64(drag: &DragInput, index: usize) -> Option<f64> {
 	match drag.initial_parameters.get(index)? {
 		Some(TaggedValue::F64(value)) => Some(*value),
@@ -290,7 +311,7 @@ fn spiral_turns_handles(context: &GizmoContext, _value: f64) -> Vec<DVec2> {
 /// Turns alone would change the spiral's tightness as it grows, so the outer radius moves with it by
 /// whatever keeps the growth factor the drag started with. Taking hold of the inner end winds the other
 /// way and carries the start angle along, so the end the user is *not* holding stays put.
-fn spiral_turns_drag(context: &GizmoContext, drag: &DragInput) -> Vec<(ParameterRef, TaggedValue)> {
+fn spiral_turns_drag(context: &GizmoContext, drag: &mut DragInput) -> Vec<(ParameterRef, TaggedValue)> {
 	use graphene_std::vector::generator_nodes::spiral::*;
 
 	let (Some(initial_turns), Some(initial_outer_radius), Some(initial_inner_radius), Some(initial_start_angle)) = (
@@ -306,7 +327,7 @@ fn spiral_turns_drag(context: &GizmoContext, drag: &DragInput) -> Vec<(Parameter
 	};
 
 	let growth_factor = calculate_growth_factor(initial_inner_radius, initial_turns, initial_outer_radius, spiral_type);
-	let turns_delta = drag.total_angle / 360.;
+	let turns_delta = spiral_swept_angle(drag) / 360.;
 
 	let outer_radius_change = match spiral_type {
 		SpiralType::Archimedean => turns_delta * growth_factor * TAU,
@@ -326,7 +347,7 @@ fn spiral_turns_drag(context: &GizmoContext, drag: &DragInput) -> Vec<(Parameter
 		(OuterRadiusInput.into(), TaggedValue::F64((initial_outer_radius + outer_radius_change * sign).max(0.1))),
 	];
 	if dragging_inner_end {
-		writes.push((StartAngleInput.into(), TaggedValue::F64(initial_start_angle + drag.total_angle)));
+		writes.push((StartAngleInput.into(), TaggedValue::F64(initial_start_angle + spiral_swept_angle(drag))));
 	}
 
 	writes
@@ -349,4 +370,192 @@ fn spiral_turns_overlay(context: &GizmoContext, overlay_context: &mut OverlayCon
 	if let Some(endpoint) = calculate_spiral_endpoints(context.layer, context.document, viewport, theta) {
 		overlay_context.manipulator_handle(endpoint, true, Some(COLOR_OVERLAY_RED));
 	}
+}
+
+/// Overwrite one of the drag's remembered starting values, for a gesture that has to re-anchor itself.
+fn set_initial(drag: &mut DragInput, index: usize, value: f64) {
+	if let Some(slot) = drag.initial_parameters.get_mut(index) {
+		*slot = Some(TaggedValue::F64(value));
+	}
+}
+
+/// The sweep is grabbable at both ends of the arc.
+fn arc_sweep_handles(context: &GizmoContext, _value: f64) -> Vec<DVec2> {
+	let Some((radius, start_angle, sweep_angle, _)) = extract_arc_parameters(Some(context.layer), context.document) else {
+		return Vec::new();
+	};
+	let Some((start, end)) = arc_end_points_ignore_layer(radius, start_angle, sweep_angle, None) else {
+		return Vec::new();
+	};
+
+	vec![start, end]
+}
+
+/// The angles a sweep settles onto: every eighth of a turn, from closed to fully round.
+fn arc_snap_angles() -> Vec<f64> {
+	(0..=8).map(|i| (i as f64 * FRAC_PI_4).to_degrees()).collect()
+}
+
+/// How far the sweep must move to land on the nearest snap angle, or `None` if none is close enough.
+fn arc_snap_delta(sweep_angle: f64, dragging_start: bool) -> Option<f64> {
+	arc_snap_angles().into_iter().find(|angle| (angle - sweep_angle).abs() <= ARC_SNAP_THRESHOLD).map(|angle| {
+		let delta = angle - sweep_angle;
+		// Dragging the start endpoint moves the sweep the opposite way from the cursor.
+		if dragging_start { -delta } else { delta }
+	})
+}
+
+/// Reshape the arc by dragging one of its endpoints.
+///
+/// The sweep is held to a single turn and never runs backwards, and the start angle is kept inside
+/// [-180°, 180°]. Both limits are reached by *continuing* a drag rather than ending it, so rather than
+/// stopping at the limit the gesture re-anchors: dragging the start endpoint past a full sweep hands over
+/// to the end endpoint and carries on from there, which is why the baseline is rewritten as it goes.
+fn arc_sweep_drag(context: &GizmoContext, drag: &mut DragInput) -> Vec<(ParameterRef, TaggedValue)> {
+	use graphene_std::vector::generator_nodes::arc::*;
+
+	let Some((_, current_start_angle, current_sweep_angle, _)) = extract_arc_parameters(Some(context.layer), context.document) else {
+		return Vec::new();
+	};
+	let (Some(initial_start_angle), Some(initial_sweep_angle)) = (initial_f64(drag, StartAngleInput::INDEX), initial_f64(drag, SweepAngleInput::INDEX)) else {
+		return Vec::new();
+	};
+
+	let angle_delta = drag.angle_delta;
+	let angle = drag.total_angle;
+	let dragging_start = drag.handle_index == 0;
+
+	let write = |start: f64, sweep: f64| vec![(StartAngleInput.into(), TaggedValue::F64(start)), (SweepAngleInput.into(), TaggedValue::F64(sweep))];
+
+	if dragging_start {
+		// The start endpoint drags the whole arc round, so the sweep closes by as much as the start opens.
+		let sign = -angle.signum();
+		let new_start_angle = initial_start_angle + angle;
+		let new_sweep_angle = initial_sweep_angle + angle.abs() * sign;
+
+		if new_sweep_angle > 360. {
+			// Sweep closed all the way round: hand over to the end endpoint and continue from a full turn.
+			let wrapped = new_sweep_angle % 360.;
+			drag.total_angle = -wrapped;
+			drag.handle_index = 1;
+			set_initial(drag, SweepAngleInput::INDEX, 360.);
+			set_initial(drag, StartAngleInput::INDEX, current_start_angle);
+
+			return write(current_start_angle, 360. - wrapped);
+		}
+		if new_sweep_angle < 0. {
+			// Sweep closed to nothing: hand over to the end endpoint and reopen from there.
+			let rest_angle = angle_delta + new_sweep_angle;
+			drag.total_angle = new_sweep_angle.abs();
+			drag.handle_index = 1;
+			set_initial(drag, SweepAngleInput::INDEX, 0.);
+			set_initial(drag, StartAngleInput::INDEX, current_start_angle + rest_angle);
+
+			return write(current_start_angle + rest_angle, new_sweep_angle.abs());
+		}
+		if new_start_angle > 180. {
+			// Start angle ran off the top of its range: jump it to the bottom and shrink the sweep to match.
+			let overflow = new_start_angle % 180.;
+			let rest_angle = angle_delta - overflow;
+			drag.total_angle = rest_angle;
+			set_initial(drag, StartAngleInput::INDEX, -180.);
+			set_initial(drag, SweepAngleInput::INDEX, current_sweep_angle - rest_angle);
+
+			return write(-180. + overflow, current_sweep_angle - rest_angle - overflow);
+		}
+		if new_start_angle < -180. {
+			// Same in the other direction: the start wraps to the top and the sweep grows to match.
+			let underflow = new_start_angle % 180.;
+			let rest_angle = angle_delta - underflow;
+			drag.total_angle = underflow;
+			set_initial(drag, StartAngleInput::INDEX, 180.);
+			set_initial(drag, SweepAngleInput::INDEX, current_sweep_angle + rest_angle.abs());
+
+			return write(180. + underflow, current_sweep_angle + rest_angle.abs() + underflow.abs());
+		}
+
+		let mut total = angle;
+		if let Some(snapped) = arc_snap_delta(initial_sweep_angle + angle.abs() * sign, true) {
+			total += snapped;
+		}
+
+		return write(initial_start_angle + total, initial_sweep_angle + total.abs() * sign);
+	}
+
+	// The end endpoint only opens or closes the sweep; the start stays put.
+	let new_sweep_angle = initial_sweep_angle + angle;
+
+	if new_sweep_angle < 0. {
+		// Closed past nothing: hand back to the start endpoint, which reopens it the other way.
+		let delta = angle_delta - current_sweep_angle;
+		let sign = -delta.signum();
+		drag.total_angle = delta;
+		drag.handle_index = 0;
+		set_initial(drag, SweepAngleInput::INDEX, 0.);
+
+		return write(initial_start_angle + delta, delta.abs() * sign);
+	}
+	if new_sweep_angle > 360. {
+		// Opened past a full turn: hand back to the start endpoint from a full sweep.
+		let delta = angle_delta - (360. - new_sweep_angle);
+		let sign = -delta.signum();
+		drag.total_angle = delta;
+		drag.handle_index = 0;
+		set_initial(drag, SweepAngleInput::INDEX, 360.);
+
+		return write(initial_start_angle + angle_delta, 360. + angle_delta.abs() * sign);
+	}
+
+	let mut total = angle;
+	if let Some(snapped) = arc_snap_delta(initial_sweep_angle + angle, false) {
+		total += snapped;
+	}
+
+	write(initial_start_angle, initial_sweep_angle + total)
+}
+
+/// Mark both endpoints at rest, highlight the one under the cursor, and while dragging show the sweep being
+/// described: the arc between where the endpoint started and where it is now, labelled with its angle.
+fn arc_sweep_overlay(context: &GizmoContext, overlay_context: &mut OverlayContext) {
+	let Some((current_start, current_end)) = arc_end_points(Some(context.layer), context.document) else {
+		return;
+	};
+
+	if context.state == GizmoState::Inactive {
+		overlay_context.manipulator_handle(current_start, false, None);
+		overlay_context.manipulator_handle(current_end, false, None);
+		return;
+	}
+
+	let dragging_start = context.handle_index == 0;
+	let (point, other_point) = if dragging_start { (current_start, current_end) } else { (current_end, current_start) };
+
+	// The outline shows the whole arc responding, not just the endpoint being held.
+	arc_outline(Some(context.layer), context.document, overlay_context);
+
+	if context.state == GizmoState::Hover {
+		overlay_context.manipulator_handle(point, true, None);
+		overlay_context.manipulator_handle(other_point, false, None);
+		return;
+	}
+
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+	let center = viewport.transform_point2(DVec2::ZERO);
+
+	overlay_context.manipulator_handle(other_point, false, None);
+	overlay_context.dashed_line(other_point, center, None, None, Some(5.), Some(5.), Some(0.5));
+
+	// The sweep readout runs from the endpoint the user is not holding to the one they are.
+	let tilt_offset = context.document.document_ptz.unmodified_tilt();
+	let initial_vector = other_point - center;
+	let final_vector = point - center;
+	let offset_angle = initial_vector.to_angle() + tilt_offset;
+	let angle = initial_vector.angle_to(final_vector).to_degrees();
+	let display_angle = viewport.inverse().transform_point2(point).angle_to(viewport.inverse().transform_point2(other_point)).to_degrees();
+
+	let text = format!("{}°", format_rounded(display_angle, 2));
+	const FONT_SIZE: f64 = 12.;
+	let transform = calculate_arc_text_transform(angle, offset_angle, center, text_width(&text, FONT_SIZE) / 2.);
+
+	overlay_context.arc_sweep_angle(offset_angle, angle, point, point.distance(center), center, &text, transform);
 }
