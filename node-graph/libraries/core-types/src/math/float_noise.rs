@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 /// Recovers the intended number from floating point imprecision noise when that can be done reliably, e.g. 0.30000000000000004 -> 0.3.
 /// Rounding to each significant digit count from 1 to 12, the first candidate within a relative 1e-13 of the original is accepted.
 /// Actual high-precision values (like 0.3333333333333333) never pass the tolerance and are returned unchanged.
@@ -7,21 +9,27 @@ pub fn round_away_float_noise(value: f64) -> f64 {
 
 /// The [`round_away_float_noise`] counterpart for f32, whose roughly 7 significant digits of precision leave noise
 /// that survives shortest round-trip formatting, e.g. 1.1 + 2.2 printing as 3.3000002.
+/// The tolerance sits just above f32's epsilon, close enough to noise that a deliberate 7th digit is kept.
 pub fn round_away_float_noise_f32(value: f32) -> f32 {
-	snap_to_shortest_decimal(value as f64, 6, 1e-6) as f32
+	snap_to_shortest_decimal(value as f64, 6, 5e-7) as f32
 }
 
 /// Rounding to each significant digit count up to `max_significant_digits`, returns the first candidate within
 /// `tolerance` of the original, relatively, or the original if none is close enough to be an honest simplification.
-fn snap_to_shortest_decimal(value: f64, max_significant_digits: i32, tolerance: f64) -> f64 {
+fn snap_to_shortest_decimal(value: f64, max_significant_digits: usize, tolerance: f64) -> f64 {
 	if value == 0. || !value.is_finite() {
 		return if value == 0. { 0. } else { value };
 	}
 
-	let exponent = value.abs().log10().floor() as i32;
+	// Candidates come from decimal formatting rather than scaling by a power of ten, which is inexact enough to invent
+	// noise of its own: it turns 1e300 into 9.999999999999999e299 and 999999.9999999 into 999999.9999999999.
+	// One buffer serves every candidate, since the digit counts are tried in turn.
+	let mut buffer = String::with_capacity(32);
 	for significant_digits in 1..=max_significant_digits {
-		let scale = 10_f64.powi(significant_digits - 1 - exponent);
-		let rounded = (value * scale).round() / scale;
+		buffer.clear();
+		let _ = write!(buffer, "{value:.*e}", significant_digits - 1);
+
+		let Ok(rounded) = buffer.parse::<f64>() else { continue };
 		if ((rounded - value) / value).abs() < tolerance {
 			return rounded;
 		}
@@ -75,7 +83,16 @@ mod tests {
 	#[test]
 	fn round_away_float_noise_f32_keeps_honest_values() {
 		assert_eq!(round_away_float_noise_f32(0.1234567), 0.1234567);
+		assert_eq!(round_away_float_noise_f32(0.1234561), 0.1234561);
 		assert_eq!(round_away_float_noise_f32(1. / 3.), 1. / 3.);
 		assert_eq!(round_away_float_noise_f32(-17.5), -17.5);
+	}
+
+	#[test]
+	fn round_away_float_noise_keeps_extreme_magnitudes_exact() {
+		assert_eq!(round_away_float_noise(1e300), 1e300);
+		assert_eq!(round_away_float_noise(1.5e300), 1.5e300);
+		assert_eq!(round_away_float_noise(1e-300), 1e-300);
+		assert_eq!(round_away_float_noise(f64::MIN_POSITIVE), f64::MIN_POSITIVE);
 	}
 }

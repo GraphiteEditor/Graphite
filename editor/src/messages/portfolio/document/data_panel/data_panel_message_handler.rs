@@ -937,7 +937,7 @@ impl TableItemLayout for Option<f64> {
 			None => "None".to_string(),
 		};
 
-		vec![TextLabel::new(text).narrow(true).widget_instance()]
+		vec![TextLabel::new(text).selectable(true).narrow(true).widget_instance()]
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
