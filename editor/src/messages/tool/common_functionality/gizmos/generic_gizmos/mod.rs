@@ -102,9 +102,9 @@ impl GenericGizmo {
 		}
 	}
 
-	fn handle_update(&self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		match self {
-			Self::Slider(g) => g.handle_update(document, input, responses),
+			Self::Slider(g) => g.handle_update(drag_start, document, input, responses),
 			Self::Dial(g) => g.handle_update(drag_start, document, input, responses),
 		}
 	}
@@ -216,7 +216,7 @@ impl ShapeGizmoHandler for GenericGizmoManager {
 	}
 
 	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		for gizmo in &self.gizmos {
+		for gizmo in &mut self.gizmos {
 			if gizmo.is_dragging() {
 				gizmo.handle_update(drag_start, document, input, responses);
 			}

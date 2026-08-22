@@ -8,12 +8,14 @@
 use crate::consts::{GIZMO_HIDE_THRESHOLD, POINT_RADIUS_HANDLE_SNAP_THRESHOLD};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage, Responses};
 use crate::messages::tool::common_functionality::gizmos::generic_gizmos::read_f64_input;
-use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{GizmoContext, GizmoInfo, GizmoState, PositionHint};
+use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{DragInput, GizmoContext, GizmoInfo, GizmoState, PositionHint};
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
@@ -25,6 +27,8 @@ use std::collections::VecDeque;
 
 /// Pixel radius within which the mouse is considered to be hovering the handle.
 const SLIDER_HANDLE_HOVER_THRESHOLD: f64 = 8.;
+/// Per-frame rotation below which the swept angle is treated as cursor noise rather than intent.
+const ANGLE_ACCUMULATION_DEADZONE: f64 = 0.5;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GenericSliderState {
@@ -51,6 +55,13 @@ pub struct GenericSliderGizmo {
 	/// Which grab point the user took hold of, indexing `handle_positions`. Zero for the common case of a
 	/// parameter with a single handle.
 	handle_index: usize,
+	/// The node's inputs as they stood when the drag began. A drag that writes several parameters needs
+	/// them, since the live values are the ones it already wrote.
+	initial_parameters: Vec<Option<TaggedValue>>,
+	/// Cursor position last frame, for accumulating swept angle.
+	previous_mouse_position: DVec2,
+	/// Angle swept around the layer origin since the drag began, in degrees.
+	total_angle: f64,
 }
 
 impl GenericSliderGizmo {
@@ -64,6 +75,9 @@ impl GenericSliderGizmo {
 			initial_value: 0.,
 			snap_targets: Vec::new(),
 			handle_index: 0,
+			initial_parameters: Vec::new(),
+			previous_mouse_position: DVec2::ZERO,
+			total_angle: 0.,
 		}
 	}
 
@@ -78,6 +92,8 @@ impl GenericSliderGizmo {
 	pub fn cleanup(&mut self) {
 		self.state = GenericSliderState::Inactive;
 		self.snap_targets.clear();
+		self.initial_parameters.clear();
+		self.total_angle = 0.;
 	}
 
 	/// Begin a drag if currently hovered.
@@ -95,6 +111,14 @@ impl GenericSliderGizmo {
 			node_identifier: self.identifier.clone(),
 			input_index: self.info.parameter_index,
 		}
+	}
+
+	/// Snapshot every input of this gizmo's node, indexed the way its parameter symbols are.
+	fn read_all_parameters(&self, document: &DocumentMessageHandler) -> Vec<Option<TaggedValue>> {
+		NodeGraphLayer::new(self.layer, &document.network_interface)
+			.find_node_inputs(&DefinitionIdentifier::ProtoNode(self.identifier.clone()))
+			.map(|inputs| inputs.iter().map(|input| input.as_value().cloned()).collect())
+			.unwrap_or_default()
 	}
 
 	fn context<'a>(&self, document: &'a DocumentMessageHandler, mouse_position: DVec2, shape_editor: Option<&'a ShapeState>) -> GizmoContext<'a> {
@@ -184,6 +208,9 @@ impl GenericSliderGizmo {
 		self.state = GenericSliderState::Hover;
 		self.initial_value = value;
 		self.handle_index = self.nearest_handle_index(document, value, mouse_position);
+		self.initial_parameters = self.read_all_parameters(document);
+		self.previous_mouse_position = mouse_position;
+		self.total_angle = 0.;
 		self.snap_targets = match self.info.behavior.snap_targets {
 			Some(targets) => targets(&self.context(document, mouse_position, None)),
 			None => Vec::new(),
@@ -202,7 +229,32 @@ impl GenericSliderGizmo {
 
 	/// Update the parameter live while dragging. The new value is the mouse's position projected
 	/// onto the local +X axis, clamped to the registry's min/max bounds.
-	pub fn handle_update(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		self.accumulate_angle(document, input.mouse.position);
+
+		if let Some(drag) = self.info.behavior.drag {
+			let drag_input = DragInput {
+				drag_start,
+				mouse_position: input.mouse.position,
+				initial_value: self.initial_value,
+				initial_parameters: self.initial_parameters.clone(),
+				total_angle: self.total_angle,
+			};
+
+			let writes = drag(&self.context(document, input.mouse.position, None), &drag_input);
+			if writes.is_empty() {
+				return;
+			}
+			for (parameter, value) in writes {
+				responses.add(NodeGraphMessage::SetInput {
+					input_connector: InputConnector::node(self.node_id, parameter),
+					input: NodeInput::value(value, false),
+				});
+			}
+			responses.add(NodeGraphMessage::RunDocumentGraph);
+			return;
+		}
+
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let local_mouse = viewport.inverse().transform_point2(input.mouse.position);
 
@@ -237,6 +289,27 @@ impl GenericSliderGizmo {
 		}
 
 		responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	/// Add this frame's rotation about the layer's origin to the running total, so a drag that winds several
+	/// times around keeps counting instead of wrapping at half a turn.
+	///
+	/// Rotations smaller than half a degree are dropped: near the origin the angle between successive cursor
+	/// positions is dominated by noise, and feeding that in makes the value jitter while the cursor is still.
+	fn accumulate_angle(&mut self, document: &DocumentMessageHandler, mouse_position: DVec2) {
+		let viewport = document.metadata().transform_to_viewport(self.layer);
+		let center = viewport.transform_point2(DVec2::ZERO);
+		let inverse = viewport.inverse();
+
+		let delta = inverse
+			.transform_vector2(mouse_position - center)
+			.angle_to(inverse.transform_vector2(self.previous_mouse_position - center))
+			.to_degrees();
+
+		self.previous_mouse_position = mouse_position;
+		if delta.is_finite() && delta.abs() >= ANGLE_ACCUMULATION_DEADZONE {
+			self.total_angle += delta;
+		}
 	}
 
 	/// Pull the value onto the nearest snap target within the threshold. Returns the value unchanged when
