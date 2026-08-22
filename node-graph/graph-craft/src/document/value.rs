@@ -236,19 +236,21 @@ macro_rules! tagged_value {
 					// MANUAL VARIANTS
 					// ===============
 					Self::None => concrete!(()),
+					// The list-typed defaults type by their element: depth is not a
+					// `Type` axis, it rides the layout proven at wiring.
 					Self::TypeDefault(td) => {
 						let name = td.name.as_ref();
-						if name == std::any::type_name::<List<Graphic>>() { return core_types::registry::record_type::<Graphic>(); }
-						if name == std::any::type_name::<List<Artboard>>() { return core_types::registry::record_type::<Artboard>(); }
-						if name == std::any::type_name::<List<Raster<CPU>>>() { return core_types::registry::record_type::<Raster<CPU>>(); }
-						if name == std::any::type_name::<List<Vector>>() { return core_types::registry::record_type::<Vector>(); }
-						if name == std::any::type_name::<List<String>>() { return core_types::registry::record_type::<String>(); }
+						if name == std::any::type_name::<List<Graphic>>() { return concrete!(Graphic); }
+						if name == std::any::type_name::<List<Artboard>>() { return concrete!(Artboard); }
+						if name == std::any::type_name::<List<Raster<CPU>>>() { return concrete!(Raster<CPU>); }
+						if name == std::any::type_name::<List<Vector>>() { return concrete!(Vector); }
+						if name == std::any::type_name::<List<String>>() { return concrete!(String); }
 						Type::Concrete(td.clone())
 					}
-					Self::F64Array(_) => core_types::registry::record_type::<f64>(),
-					Self::Color(_) => core_types::registry::record_type::<Color>(),
-					Self::Gradient(_) => core_types::registry::record_type::<GradientStops>(),
-					Self::BrushStrokes(_) => core_types::registry::record_type::<BrushStroke>(),
+					Self::F64Array(_) => concrete!(f64),
+					Self::Color(_) => concrete!(Color),
+					Self::Gradient(_) => concrete!(GradientStops),
+					Self::BrushStrokes(_) => concrete!(BrushStroke),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
