@@ -48,6 +48,9 @@ pub struct GenericSliderGizmo {
 	/// layer's *other* parameters, so they are captured alongside `initial_value` rather than recomputed
 	/// per frame while the value being dragged is already in flux.
 	snap_targets: Vec<f64>,
+	/// Which grab point the user took hold of, indexing `handle_positions`. Zero for the common case of a
+	/// parameter with a single handle.
+	handle_index: usize,
 }
 
 impl GenericSliderGizmo {
@@ -60,6 +63,7 @@ impl GenericSliderGizmo {
 			state: GenericSliderState::Inactive,
 			initial_value: 0.,
 			snap_targets: Vec::new(),
+			handle_index: 0,
 		}
 	}
 
@@ -105,6 +109,7 @@ impl GenericSliderGizmo {
 			},
 			mouse_position,
 			shape_editor,
+			handle_index: self.handle_index,
 		}
 	}
 
@@ -112,16 +117,27 @@ impl GenericSliderGizmo {
 		read_f64_input(self.layer, document, &self.identifier, self.info.parameter_index)
 	}
 
-	/// The handle's anchor point, in the layer's local coordinate space, derived from the current
-	/// parameter value and the registry's position hint.
-	fn handle_position_local(&self, value: f64) -> DVec2 {
-		match self.info.position_hint {
-			// A length-like parameter: place the handle that far out along the local +X axis.
-			PositionHint::ParameterDerived => DVec2::new(value.abs(), 0.),
-			// Generic fall-backs map the value onto the local +X axis as well; bounding-box-aware
-			// hints are refined as more node types adopt the slider.
-			_ => DVec2::new(value.abs(), 0.),
+	/// Every point in the layer's local space where this parameter can be grabbed.
+	///
+	/// Shapes that place their handles on their own geometry supply them; everything else gets the single
+	/// default handle, sitting `value` out along the local +X axis.
+	fn handle_positions(&self, document: &DocumentMessageHandler, value: f64) -> Vec<DVec2> {
+		match self.info.behavior.handle_positions {
+			Some(positions) => positions(&self.context(document, DVec2::ZERO, None), value),
+			None => vec![match self.info.position_hint {
+				// A length-like parameter: place the handle that far out along the local +X axis.
+				PositionHint::ParameterDerived => DVec2::new(value.abs(), 0.),
+				// Generic fall-backs map the value onto the local +X axis as well; bounding-box-aware
+				// hints are refined as more node types adopt the slider.
+				_ => DVec2::new(value.abs(), 0.),
+			}],
 		}
+	}
+
+	/// The grab point currently in play, in local space.
+	fn active_handle_local(&self, document: &DocumentMessageHandler, value: f64) -> Option<DVec2> {
+		let handles = self.handle_positions(document, value);
+		handles.get(self.handle_index).copied().or_else(|| handles.first().copied())
 	}
 
 	/// Pure hover test: returns the mouse's distance to the handle when it is a hover candidate, or
@@ -132,15 +148,28 @@ impl GenericSliderGizmo {
 
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
-		let handle = viewport.transform_point2(self.handle_position_local(value));
 
-		// Hide the gizmo when the shape is too small on screen to interact with reliably.
-		if handle.distance(center) < GIZMO_HIDE_THRESHOLD {
-			return None;
-		}
+		self.handle_positions(document, value)
+			.into_iter()
+			.map(|local| viewport.transform_point2(local))
+			// Hide the gizmo when the shape is too small on screen to interact with reliably.
+			.filter(|handle| handle.distance(center) >= GIZMO_HIDE_THRESHOLD)
+			.map(|handle| mouse_position.distance(handle))
+			.filter(|distance| *distance <= SLIDER_HANDLE_HOVER_THRESHOLD)
+			.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+	}
 
-		let distance = mouse_position.distance(handle);
-		(distance <= SLIDER_HANDLE_HOVER_THRESHOLD).then_some(distance)
+	/// Index of the grab point nearest the cursor, so a drag knows which ray it runs along.
+	fn nearest_handle_index(&self, document: &DocumentMessageHandler, value: f64, mouse_position: DVec2) -> usize {
+		let viewport = document.metadata().transform_to_viewport(self.layer);
+
+		self.handle_positions(document, value)
+			.into_iter()
+			.map(|local| mouse_position.distance(viewport.transform_point2(local)))
+			.enumerate()
+			.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+			.map(|(index, _)| index)
+			.unwrap_or(0)
 	}
 
 	/// Transition into the hovered state (no-op if already hovered or dragging). Capturing the
@@ -154,6 +183,7 @@ impl GenericSliderGizmo {
 
 		self.state = GenericSliderState::Hover;
 		self.initial_value = value;
+		self.handle_index = self.nearest_handle_index(document, value, mouse_position);
 		self.snap_targets = match self.info.behavior.snap_targets {
 			Some(targets) => targets(&self.context(document, mouse_position, None)),
 			None => Vec::new(),
@@ -176,7 +206,12 @@ impl GenericSliderGizmo {
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let local_mouse = viewport.inverse().transform_point2(input.mouse.position);
 
-		let mut value = local_mouse.x;
+		// Project the cursor onto the ray through the grabbed handle. For the default single handle that ray
+		// is the +X axis and this is just `local_mouse.x`; for a handle sitting on the shape's own geometry
+		// it is the ray the user is visibly pulling along.
+		let Some(anchor) = self.active_handle_local(document, self.initial_value) else { return };
+		let ray = anchor.try_normalize().unwrap_or(DVec2::X);
+		let mut value = local_mouse.dot(ray);
 
 		// Preserve the sign of the original value for parameters (like radius) that can be negative.
 		if self.initial_value.is_sign_negative() {
@@ -223,6 +258,12 @@ impl GenericSliderGizmo {
 
 	/// Draw the handle dot, plus a guide line from the layer origin while hovered or dragging.
 	pub fn overlays(&self, document: &DocumentMessageHandler, mouse_position: DVec2, shape_editor: Option<&ShapeState>, overlay_context: &mut OverlayContext) {
+		// The shape's own overlay runs in every state: a resting affordance is exactly the case it wants to
+		// draw for, and the generic handle below only appears once the gizmo is engaged.
+		if let Some(overlay) = self.info.behavior.overlay {
+			overlay(&self.context(document, mouse_position, shape_editor), overlay_context);
+		}
+
 		if self.state == GenericSliderState::Inactive {
 			return;
 		}
@@ -230,7 +271,8 @@ impl GenericSliderGizmo {
 		let Some(value) = self.current_value(document) else { return };
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
-		let handle = viewport.transform_point2(self.handle_position_local(value));
+		let Some(local) = self.active_handle_local(document, value) else { return };
+		let handle = viewport.transform_point2(local);
 
 		if handle.distance(center) < GIZMO_HIDE_THRESHOLD {
 			return;
@@ -238,10 +280,6 @@ impl GenericSliderGizmo {
 
 		overlay_context.line(center, handle, None, None);
 		overlay_context.manipulator_handle(handle, self.state == GenericSliderState::Dragging, None);
-
-		if let Some(overlay) = self.info.behavior.overlay {
-			overlay(&self.context(document, mouse_position, shape_editor), overlay_context);
-		}
 	}
 
 	pub fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {

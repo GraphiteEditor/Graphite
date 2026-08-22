@@ -10,23 +10,21 @@ use crate::messages::tool::common_functionality::shapes::arc_shape::ArcGizmoHand
 use crate::messages::tool::common_functionality::shapes::grid_shape::GridGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::spiral_shape::SpiralGizmoHandler;
-use crate::messages::tool::common_functionality::shapes::star_shape::StarGizmoHandler;
 use glam::DVec2;
 use std::collections::VecDeque;
 
 /// A unified enum wrapper around all available shape-specific gizmo handlers.
 ///
-/// This abstraction allows `GizmoManager` to interact with different shape gizmos (like Star or Arc)
+/// This abstraction allows `GizmoManager` to interact with different shape gizmos (like Arc or Grid)
 /// using a common interface without needing to know the specific shape type at compile time.
 ///
-/// Each variant stores a concrete handler (e.g., `StarGizmoHandler`) that implements the shape-specific
+/// Each variant stores a concrete handler (e.g., `ArcGizmoHandler`) that implements the shape-specific
 /// logic for rendering overlays, responding to input, and modifying shape parameters. Shapes whose
-/// gizmos have been migrated to the registry-driven system (polygon, circle, heart) use the `Generic` variant.
+/// gizmos have been migrated to the registry-driven system (polygon, circle, heart, star) use the `Generic` variant.
 #[derive(Clone, Debug, Default)]
 pub enum ShapeGizmoHandlers {
 	#[default]
 	None,
-	Star(StarGizmoHandler),
 	Arc(ArcGizmoHandler),
 	Grid(GridGizmoHandler),
 	Spiral(SpiralGizmoHandler),
@@ -40,7 +38,6 @@ impl ShapeGizmoHandlers {
 	/// Used for grouping logic and distinguishing between handler types at runtime.
 	pub fn kind(&self) -> &'static str {
 		match self {
-			Self::Star(_) => "star",
 			Self::Arc(_) => "arc",
 			Self::Grid(_) => "grid",
 			Self::Spiral(_) => "spiral",
@@ -52,7 +49,6 @@ impl ShapeGizmoHandlers {
 	/// Dispatches interaction state updates to the corresponding shape-specific handler.
 	pub fn handle_state(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		match self {
-			Self::Star(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Arc(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Grid(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Spiral(h) => h.handle_state(layer, mouse_position, document, responses),
@@ -64,7 +60,6 @@ impl ShapeGizmoHandlers {
 	/// Checks if any interactive part of the gizmo is currently hovered.
 	pub fn is_any_gizmo_hovered(&self) -> bool {
 		match self {
-			Self::Star(h) => h.is_any_gizmo_hovered(),
 			Self::Arc(h) => h.is_any_gizmo_hovered(),
 			Self::Grid(h) => h.is_any_gizmo_hovered(),
 			Self::Spiral(h) => h.is_any_gizmo_hovered(),
@@ -76,7 +71,6 @@ impl ShapeGizmoHandlers {
 	/// Passes the click interaction to the appropriate gizmo handler if one is hovered.
 	pub fn handle_click(&mut self) {
 		match self {
-			Self::Star(h) => h.handle_click(),
 			Self::Arc(h) => h.handle_click(),
 			Self::Grid(h) => h.handle_click(),
 			Self::Spiral(h) => h.handle_click(),
@@ -88,7 +82,6 @@ impl ShapeGizmoHandlers {
 	/// Updates the gizmo state while the user is dragging a handle (e.g., adjusting radius).
 	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		match self {
-			Self::Star(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Arc(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Grid(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Spiral(h) => h.handle_update(drag_start, document, input, responses),
@@ -100,7 +93,6 @@ impl ShapeGizmoHandlers {
 	/// Cleans up any state used by the gizmo handler.
 	pub fn cleanup(&mut self) {
 		match self {
-			Self::Star(h) => h.cleanup(),
 			Self::Arc(h) => h.cleanup(),
 			Self::Grid(h) => h.cleanup(),
 			Self::Spiral(h) => h.cleanup(),
@@ -120,7 +112,6 @@ impl ShapeGizmoHandlers {
 		overlay_context: &mut OverlayContext,
 	) {
 		match self {
-			Self::Star(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Arc(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Grid(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Spiral(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
@@ -139,7 +130,6 @@ impl ShapeGizmoHandlers {
 		overlay_context: &mut OverlayContext,
 	) {
 		match self {
-			Self::Star(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Arc(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Grid(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Spiral(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
@@ -150,7 +140,6 @@ impl ShapeGizmoHandlers {
 
 	pub fn gizmo_cursor_icon(&self) -> Option<MouseCursorIcon> {
 		match self {
-			Self::Star(h) => h.mouse_cursor_icon(),
 			Self::Arc(h) => h.mouse_cursor_icon(),
 			Self::Grid(h) => h.mouse_cursor_icon(),
 			Self::Spiral(h) => h.mouse_cursor_icon(),
@@ -183,8 +172,9 @@ impl GizmoManager {
 	/// Returns `None` if the given layer does not represent a shape with a registered gizmo.
 	pub fn detect_shape_handler(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<ShapeGizmoHandlers> {
 		// Star
+		// Star — migrated to the generic, registry-driven gizmo system (sides dial, two radius handle sets).
 		if graph_modification_utils::get_star_id(layer, &document.network_interface).is_some() {
-			return Some(ShapeGizmoHandlers::Star(StarGizmoHandler::default()));
+			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
 		}
 		// Polygon — migrated to the generic, registry-driven gizmo system (sides dial).
 		if graph_modification_utils::get_polygon_id(layer, &document.network_interface).is_some() {
