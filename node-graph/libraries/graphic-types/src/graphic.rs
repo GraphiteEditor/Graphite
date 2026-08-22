@@ -708,8 +708,37 @@ pub fn run_to_render_list<T: Clone + Send + Sync + 'static>(item: &core_types::r
 		for element in graphics.iter_element_values_mut() {
 			*element = map_groups_to_legacy(element);
 		}
+		push_lane_paint_into_interiors(graphics);
 	}
 	Some(list)
+}
+
+/// The transitional paint placement: a lane-level fill or stroke paint
+/// attribute moves onto the vector interiors the legacy paint readers
+/// inspect, reaching as far as the pre-flip broadcast did.
+fn push_lane_paint_into_interiors(list: &mut List<Graphic>) {
+	for index in 0..list.len() {
+		for key in [ATTR_FILL, ATTR_STROKE] {
+			let Some(paint) = paint_at(list, index, key).filter(|paint| is_paint_present(paint)).cloned() else { continue };
+			let Some(element) = list.element_mut(index) else { continue };
+			let fill_list = |inner: &mut List<Vector>| {
+				for item in 0..inner.len() {
+					set_paint_attribute_at(inner, item, key, paint.clone());
+				}
+			};
+			match element {
+				Graphic::Vector(inner) => fill_list(inner),
+				Graphic::Graphic(children) => {
+					for child in children.iter_element_values_mut() {
+						if let Some(inner) = child.as_vector_mut() {
+							fill_list(inner);
+						}
+					}
+				}
+				_ => {}
+			}
+		}
+	}
 }
 
 /// The deep clone-out for `Graphic` elements: a plain clone of a group
@@ -763,6 +792,7 @@ pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic> 
 				for element in list.iter_element_values_mut() {
 					*element = map_groups_to_legacy(element);
 				}
+				push_lane_paint_into_interiors(&mut list);
 				return list;
 			}
 			let element = None
@@ -792,6 +822,7 @@ pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic> 
 					}
 				}
 			}
+			push_lane_paint_into_interiors(&mut list);
 			list
 		}
 	}
