@@ -1349,14 +1349,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					_ => extent_edge(&query, &arg),
 				},
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match ir::value_binding(&node, index) {
-					// A ranked input materializes whole, so a data-dependent
-					// extent can walk its lanes.
+					// A ranked input materializes whole (the wire's total flat
+					// span, as in eval), so a data-dependent extent can walk
+					// its lanes.
 					ValueBinding::Materialized => {
-						let levels = ir::materialized_levels(&node, index);
 						quote! {
 							let #query = || {
 								let __arena = #core_types::context::ExtractArena::arena(__input);
-								let __count = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Below(#levels)) {
+								let __count = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total) {
 									#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => __count,
 									#core_types::gpoll::GPoll::Pending => return #core_types::gpoll::GPoll::Pending,
 									_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("extent over a non-exact ranked input"))),
