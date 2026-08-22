@@ -2,7 +2,7 @@ use core_types::attribute::{Attr, Background, Clip, Dimensions, Location};
 use core_types::extent::{ExtentIn, LevelIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, Interrupt};
 use core_types::transform::TransformMut;
-use core_types::{Color, Context, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyFootprint};
+use core_types::{Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyFootprint};
 use glam::DVec2;
 use graphic_types::Artboard;
 use graphic_types::graphic::Graphic;
