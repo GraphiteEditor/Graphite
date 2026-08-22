@@ -459,7 +459,7 @@ async fn mirror<T: BoundingBox + 'n + Send + Clone>(
 
 	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
 	let item_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let RenderBoundingBox::Rectangle(bounding_box) = content.element().bounding_box(item_transform, false) else {
+	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
 		return List::new_from_item(content);
 	};
 

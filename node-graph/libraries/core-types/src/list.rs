@@ -30,7 +30,7 @@ pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
 /// (Boolean Operation, Rasterize, etc.), so the editor can still surface click targets for
 /// the original child layers after their content has been collapsed.
 pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
-/// Optional `Vector` that overrides the item's own geometry for click-target generation.
+/// Optional `BezPath` that overrides the item's own geometry for click-target generation.
 /// Used by the 'Text' node for per-glyph bounding-box rectangles so glyphs are selectable
 /// by clicking anywhere within their bounds, not just the filled letterform.
 pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
