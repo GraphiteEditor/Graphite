@@ -6,7 +6,7 @@
 //!
 //! [gizmo registry]: crate::messages::tool::common_functionality::gizmos::gizmo_registry
 
-use crate::consts::NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH;
+use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -25,7 +25,7 @@ use graphene_std::ParameterRef;
 use std::collections::VecDeque;
 
 /// Horizontal drag distance (viewport px) that corresponds to one integer step.
-const DIAL_PIXELS_PER_STEP: f64 = 20.;
+const DIAL_PIXELS_PER_STEP: f64 = 25.;
 /// Viewport radius of the drawn dial indicator.
 const DIAL_INDICATOR_RADIUS: f64 = NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH;
 /// Viewport radius of the clickable hit area. Deliberately larger than the drawn indicator so the
@@ -122,9 +122,10 @@ impl GenericDialGizmo {
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
 
-		// Hide the dial when the shape is degenerate on screen.
-		let extent = viewport.transform_point2(DVec2::new(1., 0.)).distance(center);
-		if extent < f64::EPSILON {
+		// Hide the dial once the shape is too small on screen to sit around: the hit disc would cover the
+		// whole thing, and a press meant for the layer would be swallowed by the gizmo.
+		let bounds = document.metadata().bounding_box_viewport(self.layer)?;
+		if (bounds[1] - bounds[0]).max_element() / 2. < GIZMO_HIDE_THRESHOLD {
 			return None;
 		}
 
