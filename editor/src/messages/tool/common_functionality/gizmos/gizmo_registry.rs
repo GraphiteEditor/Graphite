@@ -15,6 +15,9 @@
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::DocumentMessageHandler;
+use crate::messages::tool::common_functionality::gizmos::gizmo_behaviors;
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::vector::generator_nodes;
@@ -51,12 +54,30 @@ pub enum PositionHint {
 	ParameterDerived,
 }
 
+/// How the user is currently engaging a gizmo. Hooks receive it so a shape can draw one thing as a
+/// resting affordance and another mid-drag, the way the hand-written handlers do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GizmoState {
+	/// Not hovered: the gizmo is idle, but a shape may still want a subtle hint on screen.
+	Inactive,
+	/// The cursor is on the handle.
+	Hover,
+	/// A drag is in progress.
+	Dragging,
+}
+
 /// What a shape-specific hook is given to work with: the layer being edited, the document to read the
 /// node's other parameters from, and which parameter the gizmo in question drives.
 pub struct GizmoContext<'a> {
 	pub layer: LayerNodeIdentifier,
 	pub document: &'a DocumentMessageHandler,
 	pub parameter: ParameterRef,
+	pub state: GizmoState,
+	/// Where the cursor is, for hints that track the pointer rather than the handle.
+	pub mouse_position: DVec2,
+	/// The path editor's state, available while overlays are being drawn. A shape uses it to stand down
+	/// when the cursor is over an editable segment, so a resting hint never competes with path editing.
+	pub shape_editor: Option<&'a ShapeState>,
 }
 
 /// The escape hatch for nodes whose gizmo needs more than the generic mechanics.
@@ -128,7 +149,7 @@ const POLYGON_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	name: "Sides",
 	min: Some(3.),
 	max: None,
-	behavior: GizmoBehavior::NONE,
+	behavior: gizmo_behaviors::POLYGON_SIDES,
 	position_hint: PositionHint::BoundingBoxCenter,
 }];
 
@@ -139,7 +160,7 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		name: "Points",
 		min: Some(3.),
 		max: None,
-		behavior: GizmoBehavior::NONE,
+		behavior: gizmo_behaviors::STAR_SIDES,
 		position_hint: PositionHint::BoundingBoxCenter,
 	},
 	GizmoInfo {
@@ -148,7 +169,7 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		name: "Outer Radius",
 		min: Some(0.),
 		max: None,
-		behavior: GizmoBehavior::NONE,
+		behavior: gizmo_behaviors::STAR_RADIUS,
 		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
@@ -157,7 +178,7 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		name: "Inner Radius",
 		min: Some(0.),
 		max: None,
-		behavior: GizmoBehavior::NONE,
+		behavior: gizmo_behaviors::STAR_RADIUS,
 		position_hint: PositionHint::ParameterDerived,
 	},
 ];
