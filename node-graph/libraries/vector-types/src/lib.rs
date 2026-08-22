@@ -2,6 +2,7 @@
 extern crate log;
 
 pub mod gradient;
+pub mod markers;
 pub mod math;
 pub mod subpath;
 pub mod vector;
@@ -9,6 +10,7 @@ pub mod vector;
 // Re-export commonly used types at the crate root
 pub use core_types as gcore;
 pub use gradient::{GradientSpreadMethod, GradientStop, GradientStops, GradientType};
+pub use markers::{ATTR_EDITOR_CLICK_TARGET, ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 pub use math::{QuadExt, RectExt};
 pub use subpath::Subpath;
 pub use vector::Vector;

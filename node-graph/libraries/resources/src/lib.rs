@@ -38,6 +38,13 @@ impl Default for Resource {
 	}
 }
 
+impl Default for &Resource {
+	fn default() -> Self {
+		static EMPTY: std::sync::LazyLock<Resource> = std::sync::LazyLock::new(Resource::empty);
+		std::sync::LazyLock::force(&EMPTY)
+	}
+}
+
 impl From<&Resource> for Arc<dyn AsRef<[u8]> + Send + Sync> {
 	fn from(val: &Resource) -> Self {
 		val.inner.clone()

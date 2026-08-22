@@ -1,6 +1,7 @@
 pub mod fallback;
 mod font;
 pub mod json;
+pub mod markers;
 mod path_builder;
 pub mod regex;
 mod text_context;
@@ -20,6 +21,7 @@ use unicode_segmentation::UnicodeSegmentation;
 pub use core_types as gcore;
 pub use fallback::FALLBACK_FONT_RESOURCE;
 pub use font::*;
+pub use markers::{ATTR_FONT, ATTR_TEXT_ALIGN};
 pub use text_context::{TextContext, for_each_styled_glyph_run};
 pub use to_path::*;
 pub use vector_types;

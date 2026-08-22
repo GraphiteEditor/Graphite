@@ -36,29 +36,17 @@ pub const ATTR_MAX_WIDTH: &str = crate::attribute::MaxWidth::NAME;
 pub const ATTR_MAX_HEIGHT: &str = crate::attribute::MaxHeight::NAME;
 pub const ATTR_LETTER_TILT: &str = crate::attribute::LetterTilt::NAME;
 
-// The remaining names' value types live below core-types. Their markers and
-// constants move to the crates that own those types with the marker wave.
+// The remaining names' value types live in graphic-types. Their markers and
+// constants move there with the marker wave.
 
 /// `List<Graphic>` snapshot of the upstream content that fed into a destructive merge
 /// (Boolean Operation, Rasterize, etc.), so the editor can still surface click targets for
 /// the original child layers after their content has been collapsed.
 pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
-/// Optional `Vector` that overrides the item's own geometry for click-target generation.
-/// Used by the 'Text' node for per-glyph bounding-box rectangles so glyphs are selectable
-/// by clicking anywhere within their bounds, not just the filled letterform.
-pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
-/// Gradient's `GradientSpreadMethod` (`Pad`, `Reflect`, or `Repeat`).
-pub const ATTR_SPREAD_METHOD: &str = "spread_method";
-/// Gradient's `GradientType` (`Linear` or `Radial`).
-pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 /// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
 pub const ATTR_FILL: &str = "fill";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
 pub const ATTR_STROKE: &str = "stroke";
-/// Text item's font, as a `Resource` of the loaded font file.
-pub const ATTR_FONT: &str = "font";
-/// Text item's `TextAlign` horizontal alignment of lines within the block.
-pub const ATTR_TEXT_ALIGN: &str = "text_align";
 
 // ===========================
 // Implicit attribute defaults

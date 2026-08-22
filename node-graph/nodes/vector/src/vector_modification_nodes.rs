@@ -1,8 +1,9 @@
 use core_types::list::List;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Ctx};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Ctx};
 use glam::DAffine2;
 use graphic_types::Vector;
+use vector_types::ATTR_EDITOR_CLICK_TARGET;
 use vector_types::vector::VectorModification;
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.

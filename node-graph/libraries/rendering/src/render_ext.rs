@@ -3,14 +3,14 @@ use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientType;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
-use vector_types::GradientStops;
 use vector_types::gradient::GradientSpreadMethod;
+use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, GradientStops};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {

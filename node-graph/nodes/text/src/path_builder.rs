@@ -1,5 +1,5 @@
 use core_types::list::{Item, List};
-use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
+use core_types::{ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
 use skrifa::GlyphId;
@@ -7,6 +7,7 @@ use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as ReadFontsRef;
 use skrifa::{MetadataProvider, OutlineGlyph};
+use vector_types::ATTR_EDITOR_CLICK_TARGET;
 use vector_types::subpath::{ManipulatorGroup, Subpath};
 use vector_types::vector::{PointId, Vector};
 

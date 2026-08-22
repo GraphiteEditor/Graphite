@@ -933,8 +933,7 @@ mod tests {
 
 #[cfg(test)]
 mod graphic_is_opaque_tests {
-	use core_types::ATTR_SPREAD_METHOD;
-	use vector_types::{GradientSpreadMethod, GradientStop};
+	use vector_types::{ATTR_SPREAD_METHOD, GradientSpreadMethod, GradientStop};
 
 	use super::*;
 
