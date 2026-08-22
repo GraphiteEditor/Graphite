@@ -252,10 +252,12 @@ impl Layout {
 	/// The union of several layouts over the same element and depth.
 	pub fn union(layouts: &[&Layout]) -> Layout {
 		let first = layouts.first().expect("a union needs at least one layout");
-		let mut union = Layout::default().with_writes(first.depth, first.element, &[]);
+		// A shallower source joins the union lifted: a scalar concatenates as
+		// one lane, its fields sitting at the innermost level like any lane's.
+		let depth = layouts.iter().map(|layout| layout.depth).max().unwrap_or(first.depth);
+		let mut union = Layout::default().with_writes(depth, first.element, &[]);
 		for layout in layouts {
 			assert_eq!(union.element, layout.element, "union layouts must share the element");
-			assert_eq!(union.depth, layout.depth, "union layouts must share the depth");
 			let writes: Vec<FieldWrite> = layout
 				.fields
 				.iter()
