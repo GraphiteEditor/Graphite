@@ -104,6 +104,7 @@ impl GenericDialGizmo {
 			},
 			mouse_position,
 			shape_editor,
+			handle_index: 0,
 		}
 	}
 

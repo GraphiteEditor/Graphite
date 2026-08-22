@@ -78,6 +78,8 @@ pub struct GizmoContext<'a> {
 	/// The path editor's state, available while overlays are being drawn. A shape uses it to stand down
 	/// when the cursor is over an editable segment, so a resting hint never competes with path editing.
 	pub shape_editor: Option<&'a ShapeState>,
+	/// Which of the parameter's grab points is in play, indexing the list from `handle_positions`.
+	pub handle_index: usize,
 }
 
 /// The escape hatch for nodes whose gizmo needs more than the generic mechanics.
@@ -98,6 +100,13 @@ pub struct GizmoBehavior {
 	/// Additional inputs to write alongside the dragged one, given the value the drag produced. Used by
 	/// parameters that are only meaningful in combination.
 	pub coupled_writes: Option<fn(&GizmoContext, f64) -> Vec<(ParameterRef, TaggedValue)>>,
+	/// Where this parameter can be grabbed, in the layer's local space, given its current value.
+	///
+	/// A length parameter is usually grabbable in exactly one place, which is the default: a handle sitting
+	/// `value` out along the local +X axis. Some shapes offer the same parameter in several places at once —
+	/// a star's outer radius can be taken hold of at any of its outer points — so this returns all of them.
+	/// The drag then runs along the ray through whichever one the user grabbed, not along a fixed axis.
+	pub handle_positions: Option<fn(&GizmoContext, f64) -> Vec<DVec2>>,
 }
 
 impl GizmoBehavior {
@@ -106,6 +115,7 @@ impl GizmoBehavior {
 		snap_targets: None,
 		overlay: None,
 		coupled_writes: None,
+		handle_positions: None,
 	};
 }
 

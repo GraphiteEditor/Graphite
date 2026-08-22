@@ -14,7 +14,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{GizmoBehavior, GizmoContext, GizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{
-	extract_polygon_parameters, extract_star_parameters, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline, star_vertex_position,
+	draw_snapping_ticks, extract_polygon_parameters, extract_star_parameters, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline, star_vertex_position,
 };
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
@@ -27,6 +27,7 @@ pub const STAR_SIDES: GizmoBehavior = GizmoBehavior {
 	snap_targets: None,
 	overlay: Some(star_sides_overlay),
 	coupled_writes: None,
+	handle_positions: None,
 };
 
 /// Either of the star's radius handles: snaps to the radii where the star's points line up, and previews
@@ -35,6 +36,7 @@ pub const STAR_RADIUS: GizmoBehavior = GizmoBehavior {
 	snap_targets: Some(star_snap_radii),
 	overlay: Some(star_radius_overlay),
 	coupled_writes: None,
+	handle_positions: Some(star_radius_handles),
 };
 
 /// The polygon's sides dial, the counterpart to [`STAR_SIDES`].
@@ -42,6 +44,7 @@ pub const POLYGON_SIDES: GizmoBehavior = GizmoBehavior {
 	snap_targets: None,
 	overlay: Some(polygon_sides_overlay),
 	coupled_writes: None,
+	handle_positions: None,
 };
 
 /// The radii at which dragging one of a star's radius handles makes its points line up: the value where
@@ -98,13 +101,65 @@ fn star_snap_radii(context: &GizmoContext) -> Vec<f64> {
 	snap_radii
 }
 
-/// Show the star's outline whenever one of its radius handles is in play, so the user can see the whole
-/// shape responding rather than just the handle they are holding.
+/// A star's radius is grabbable at every vertex that radius controls: `radius_1` at the outer points,
+/// `radius_2` at the inner ones. Whichever the user takes hold of, the drag runs out along that point.
+fn star_radius_handles(context: &GizmoContext, value: f64) -> Vec<DVec2> {
+	let Some((sides, _, _)) = extract_star_parameters(Some(context.layer), context.document) else {
+		return Vec::new();
+	};
+
+	(star_first_vertex(context)..2 * sides)
+		.step_by(2)
+		.map(|vertex| {
+			let angle = ((vertex as f64) * PI) / (sides as f64);
+			DVec2::new(value * angle.sin(), -value * angle.cos())
+		})
+		.collect()
+}
+
+/// The vertex a star's radius parameter starts at: outer points are even, inner points odd.
+fn star_first_vertex(context: &GizmoContext) -> u32 {
+	if context.parameter == ParameterRef::from(star::Radius2Input) { 1 } else { 0 }
+}
+
+/// At rest, mark every vertex this radius controls so the handles are discoverable. Once one is engaged,
+/// swap to the ray it is being pulled along, the outline of the shape being reshaped, and ticks at each
+/// radius the drag will snap to.
 fn star_radius_overlay(context: &GizmoContext, overlay_context: &mut OverlayContext) {
+	let Some((sides, radius_1, radius_2)) = extract_star_parameters(Some(context.layer), context.document) else {
+		return;
+	};
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+	let center = viewport.transform_point2(DVec2::ZERO);
+	let first_vertex = star_first_vertex(context);
+
 	if context.state == GizmoState::Inactive {
+		for vertex in (first_vertex..2 * sides).step_by(2) {
+			let point = star_vertex_position(viewport, vertex as i32, sides, radius_1, radius_2);
+
+			// Once the star is this small on screen the handles crowd its center and cannot be told apart.
+			if point.distance(center) < GIZMO_HIDE_THRESHOLD {
+				return;
+			}
+			overlay_context.manipulator_handle(point, false, None);
+		}
 		return;
 	}
+
+	let vertex = first_vertex as i32 + 2 * context.handle_index as i32;
+	let point = star_vertex_position(viewport, vertex, sides, radius_1, radius_2);
+	let Some(direction) = (point - center).try_normalize() else { return };
+
+	// Extend the ray across the viewport: the radius keeps growing past the edge of the shape, and the line
+	// is what makes the direction of the drag readable.
+	overlay_context.line(center, center + direction * overlay_context.viewport.size().into_dvec2().length(), None, None);
 	star_outline(Some(context.layer), context.document, overlay_context);
+
+	// The snap radii are only meaningful while both radii share a sign; see `star_snap_radii`.
+	if (radius_1.signum() * radius_2.signum()).is_sign_positive() {
+		let angle = ((vertex as f64) * PI) / (sides as f64);
+		draw_snapping_ticks(&star_snap_radii(context), direction, viewport, angle, overlay_context);
+	}
 }
 
 fn star_sides_overlay(context: &GizmoContext, overlay_context: &mut OverlayContext) {
