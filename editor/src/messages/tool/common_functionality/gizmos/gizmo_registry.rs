@@ -12,10 +12,14 @@
 //!
 //! See `GENERIC_GIZMOS.md` (next to this file) for a full walkthrough.
 
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::prelude::DocumentMessageHandler;
 use graph_craft::ProtoNodeIdentifier;
-use graphene_std::NodeParameter;
+use graph_craft::document::value::TaggedValue;
 use graphene_std::vector::generator_nodes;
 use graphene_std::vector::generator_nodes::{arc, circle, grid, heart, regular_polygon, spiral, star};
+use graphene_std::{NodeParameter, ParameterRef};
 
 /// The kind of interactive control a gizmo presents, which also determines the underlying
 /// [`TaggedValue`](graph_craft::document::value::TaggedValue) type of the parameter it edits.
@@ -47,9 +51,46 @@ pub enum PositionHint {
 	ParameterDerived,
 }
 
+/// What a shape-specific hook is given to work with: the layer being edited, the document to read the
+/// node's other parameters from, and which parameter the gizmo in question drives.
+pub struct GizmoContext<'a> {
+	pub layer: LayerNodeIdentifier,
+	pub document: &'a DocumentMessageHandler,
+	pub parameter: ParameterRef,
+}
+
+/// The escape hatch for nodes whose gizmo needs more than the generic mechanics.
+///
+/// The generic layer always owns hit-testing, the hover/drag state machine, the handle overlay, and the
+/// input write. A few behaviors genuinely depend on a node's geometry and cannot be expressed as data —
+/// a star's snap radii fall out of its side count and its *other* radius; a spiral's turns and outer
+/// radius have to move together or the spiral changes tightness as you drag. Those arrive here as
+/// functions supplied by the shape, so the registry stays a table and the shape-specific math stays
+/// with the shape.
+#[derive(Clone, Copy, Debug)]
+pub struct GizmoBehavior {
+	/// Values the drag should snap to, recomputed from the layer's current parameters at drag start.
+	pub snap_targets: Option<fn(&GizmoContext) -> Vec<f64>>,
+	/// Extra overlay drawn while this gizmo is hovered or dragged, for nodes that show more than the
+	/// bare handle (a star previews its outline and spokes, for instance).
+	pub overlay: Option<fn(&GizmoContext, &mut OverlayContext)>,
+	/// Additional inputs to write alongside the dragged one, given the value the drag produced. Used by
+	/// parameters that are only meaningful in combination.
+	pub coupled_writes: Option<fn(&GizmoContext, f64) -> Vec<(ParameterRef, TaggedValue)>>,
+}
+
+impl GizmoBehavior {
+	/// A behavior with no hooks set, for `const` declarations that only need one of them.
+	pub const NONE: Self = Self {
+		snap_targets: None,
+		overlay: None,
+		coupled_writes: None,
+	};
+}
+
 /// Describes a single gizmo-enabled parameter of a node: which input it edits, how it should be
 /// presented, and the constraints/positioning that apply.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct GizmoInfo {
 	/// The index of the node input this gizmo edits.
 	pub parameter_index: usize,
@@ -63,6 +104,8 @@ pub struct GizmoInfo {
 	pub max: Option<f64>,
 	/// Where the gizmo's handle should be anchored.
 	pub position_hint: PositionHint,
+	/// Shape-specific behavior, for the few nodes whose gizmo needs more than the generic mechanics.
+	pub behavior: GizmoBehavior,
 }
 
 // --- Per-node gizmo declarations ------------------------------------------------------------
@@ -73,6 +116,7 @@ const CIRCLE_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	name: "Radius",
 	min: Some(0.),
 	max: None,
+	behavior: GizmoBehavior::NONE,
 	position_hint: PositionHint::ParameterDerived,
 }];
 
@@ -84,6 +128,7 @@ const POLYGON_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	name: "Sides",
 	min: Some(3.),
 	max: None,
+	behavior: GizmoBehavior::NONE,
 	position_hint: PositionHint::BoundingBoxCenter,
 }];
 
@@ -94,6 +139,7 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		name: "Points",
 		min: Some(3.),
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::BoundingBoxCenter,
 	},
 	GizmoInfo {
@@ -102,6 +148,7 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		name: "Outer Radius",
 		min: Some(0.),
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
@@ -110,6 +157,7 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		name: "Inner Radius",
 		min: Some(0.),
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::ParameterDerived,
 	},
 ];
@@ -121,6 +169,7 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 		name: "Radius",
 		min: Some(0.),
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
@@ -129,6 +178,7 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 		name: "Start Angle",
 		min: None,
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
@@ -137,6 +187,7 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 		name: "Sweep Angle",
 		min: None,
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::ParameterDerived,
 	},
 ];
@@ -148,6 +199,7 @@ const SPIRAL_GIZMOS: &[GizmoInfo] = &[
 		name: "Inner Radius",
 		min: Some(0.),
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
@@ -156,6 +208,7 @@ const SPIRAL_GIZMOS: &[GizmoInfo] = &[
 		name: "Outer Radius",
 		min: Some(0.),
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
@@ -164,6 +217,7 @@ const SPIRAL_GIZMOS: &[GizmoInfo] = &[
 		name: "Turns",
 		min: Some(0.),
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::BoundingBoxEdge,
 	},
 ];
@@ -176,6 +230,7 @@ const HEART_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	name: "Radius",
 	min: Some(0.),
 	max: None,
+	behavior: GizmoBehavior::NONE,
 	position_hint: PositionHint::ParameterDerived,
 }];
 
@@ -186,6 +241,7 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 		name: "Columns",
 		min: Some(1.),
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::BoundingBoxCorner,
 	},
 	GizmoInfo {
@@ -194,6 +250,7 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 		name: "Rows",
 		min: Some(1.),
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::BoundingBoxCorner,
 	},
 	GizmoInfo {
@@ -202,6 +259,7 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 		name: "Spacing",
 		min: Some(0.),
 		max: None,
+		behavior: GizmoBehavior::NONE,
 		position_hint: PositionHint::BoundingBoxCorner,
 	},
 ];
