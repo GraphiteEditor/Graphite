@@ -8,7 +8,7 @@ use graphic_types::vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, Graphic, Vector};
+use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, Graphic, IntoGraphicList, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
@@ -21,11 +21,11 @@ pub use vector_types::vector::misc::BooleanOperation;
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category("Vector: Modifier"), memoize)]
-fn boolean_operation<I: graphic_types::IntoGraphicList>(
-	_: impl Ctx,
+fn boolean_operation<I: Clone + Send + Sync + core_types::CacheHash + 'static>(
+	_: impl Ctx + core_types::ExtractIndex + core_types::InjectIndex + Copy,
 	/// The `List` of vector paths to perform the boolean operation on. Nested `List`s are automatically flattened.
-	#[implementations(List<Graphic>, List<Vector>)]
-	content: I,
+	#[implementations(Graphic, Vector)]
+	content: IList<I>,
 	/// Which boolean operation to perform on the paths.
 	///
 	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
@@ -33,8 +33,15 @@ fn boolean_operation<I: graphic_types::IntoGraphicList>(
 	/// Intersection cuts away all but the overlapping areas shared by every path.
 	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
 	operation: BooleanOperation,
-) -> List<Vector> {
-	let content = content.into_graphic_list();
+) -> List<Vector>
+where
+	List<I>: graphic_types::IntoGraphicList,
+{
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let content = graphic_types::graphic::run_to_render_list::<I>(&item)
+		.expect("the run holds the row's element type")
+		.into_graphic_list();
 
 	// The first index is the bottom of the stack
 	let flattened = flatten_vector(&content);
