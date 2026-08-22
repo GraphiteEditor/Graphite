@@ -1,11 +1,11 @@
 use core_types::arena::ArenaCell;
-use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll};
+use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, InjectIndex};
 use core_types::extent::{ExtentIn, LevelIn};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Extent, Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::IORecord;
-use core_types::record::{OwnedRecord, RecordCapture, RecordValue, copy_record_bytes, record_from_bytes};
+use core_types::record::{LevelStatus, OwnedRecord, RecordCapture, RecordValue, copy_record_bytes, record_from_bytes};
 use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -100,11 +100,24 @@ type MonitorValue = Arc<Mutex<Option<IORecord<CtxSnapshot, RecordCapture>>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
 #[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
-fn monitor<'e>(ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e>, #[data] io: MonitorValue, content: impl Node<Context<'_>, Output = RecordValue<'e>>) -> GPoll<RecordValue<'e>> {
+fn monitor<'e>(
+	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + InjectIndex + Copy,
+	#[data] io: MonitorValue,
+	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
+) -> GPoll<RecordValue<'e>> {
 	let result = content.eval(&ctx);
 	if let GPoll::Final(value) | GPoll::Partial(value) = &result {
-		// SAFETY: the value came from this edge, so it carries the edge's layout.
-		let captured = unsafe { RecordCapture::capture(content.layout(), content.layout().rec(value), ctx.arena()) };
+		let captured = match content.layout().depth {
+			// SAFETY: the value came from this edge, so it carries the edge's layout.
+			0 => unsafe { RecordCapture::capture(content.layout(), content.layout().rec(value), ctx.arena()) },
+			// A leveled wire captures its whole extent, not the one lane this
+			// context addresses.
+			_ => match content.materialize_level(ctx, ctx.arena()) {
+				// SAFETY: the batch came from this edge, so it carries the edge's layout.
+				LevelStatus::Batch(batch, _) => unsafe { RecordCapture::capture_level(content.layout(), batch, ctx.arena()) },
+				LevelStatus::Pending | LevelStatus::Error(_) => None,
+			},
+		};
 		*io.lock().unwrap() = captured.map(|output| IORecord {
 			input: CtxSnapshot::capture(ctx),
 			output,
@@ -192,6 +205,55 @@ mod tests {
 		);
 		let element = io.output.materialize_element(&arena).expect("the capture materializes inside the window");
 		assert_eq!(*element.downcast_ref::<u32>().unwrap(), 11);
+	}
+
+	#[test]
+	fn a_leveled_monitor_captures_the_whole_extent() {
+		let arena = Arena::new(1 << 12).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source = core_types::value::LeveledValueSource::new(vec![10u32, 20, 30]);
+		let layout = Node::<ContextImpl>::layout(&source).clone();
+		let monitor = MonitorNode::new(source, &layout);
+		let handle = EdgeHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
+
+		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
+		let GPoll::Final(_) = edge.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+
+		let io = handle.serialize().expect("the eval landed a capture");
+		let io = io.downcast_ref::<IORecord<CtxSnapshot, RecordCapture>>().expect("the capture is the monitor io");
+		assert_eq!(io.output.lanes(), 3, "the capture holds the whole extent, not the addressed lane");
+		let batch = io.output.batch(&arena).expect("the capture lives in this generation");
+		let lanes = unsafe { core_types::node::List::<u32>::new(batch) };
+		let values: Vec<u32> = (0..lanes.len()).map(|lane| *lanes.element_ref(lane)).collect();
+		assert_eq!(values, vec![10, 20, 30]);
+	}
+
+	#[test]
+	fn memo_copy_out_consults_the_deep_element_clone() {
+		#[derive(Clone, Debug, PartialEq)]
+		struct Payload(String, u32);
+		unsafe fn deep(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
+			let value = unsafe { core_types::record::borrow_element::<Payload>(core_types::record::Rec::new(ptr)) };
+			Box::new(Payload(value.0.clone(), value.1 + 1))
+		}
+		core_types::record::register_deep_element_clone::<Payload>(deep);
+
+		let arena = Arena::new(4096).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = element_layout::<Payload>();
+		let memoized = MemoizeNode::new(core_types::record::RecordLift::<Payload, _>::new(ValueNode(Payload("deep".to_string(), 0))), &layout);
+		let memoized = core_types::record::RecordExtract::<Payload, _>::new(memoized, &layout);
+
+		assert_eq!(memoized.eval(&ctx), GPoll::Final(Payload("deep".to_string(), 0)), "the miss serves the live value");
+		assert_eq!(memoized.eval(&ctx), GPoll::Final(Payload("deep".to_string(), 1)), "the hit replays the deep copy");
 	}
 
 	#[test]

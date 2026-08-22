@@ -606,6 +606,63 @@ where
 	}
 }
 
+/// The outcome of materializing a leveled edge's whole flat span.
+pub enum LevelStatus<'a> {
+	Batch(crate::node::RecordBatch<'a>, crate::gpoll::Finality),
+	Pending,
+	Error(crate::gpoll::GraphError),
+}
+
+/// Evaluates a leveled edge's whole flat span into one batch: an exact total
+/// fills once, a lower bound drains by guess-and-double until a short fill,
+/// each reply's hint seeding the next guess. The boundary consumers' driver;
+/// reducers inline the same protocol with their span offsets.
+pub fn materialize_level<'a, 'e, C, N>(node: &'a N, input: &'a C, arena: &'a crate::arena::Arena) -> LevelStatus<'a>
+where
+	C: crate::context::InjectIndex + Copy,
+	N: Node<C, Output = RecordValue<'e>>,
+{
+	use crate::gpoll::{Extent, GraphError, Level};
+	use crate::node::BatchStatus;
+	let sized = match node.extent(input, Level::Total) {
+		GPoll::Final(Extent::Exactly(count)) => Ok(count),
+		GPoll::Final(Extent::AtLeast(bound)) => Err(bound),
+		GPoll::Pending => return LevelStatus::Pending,
+		_ => return LevelStatus::Error(GraphError::new("materialize over a non-exact extent")),
+	};
+	match sized {
+		Ok(count) => match materialize_batch(node, input, 0..count as u64, arena) {
+			BatchStatus::Lent(batch, finality, _) => LevelStatus::Batch(batch, finality),
+			BatchStatus::Filled(batch, finality, _) => LevelStatus::Batch(batch.into_shared(), finality),
+			BatchStatus::Pending => LevelStatus::Pending,
+			BatchStatus::Error(error) => LevelStatus::Error(error),
+			_ => LevelStatus::Error(GraphError::new("materialize batch failed")),
+		},
+		Err(bound) => {
+			let mut guess = bound.max(16);
+			loop {
+				let (batch, finality, hint) = match materialize_batch(node, input, 0..guess as u64, arena) {
+					BatchStatus::Lent(batch, finality, hint) => (batch, finality, hint),
+					BatchStatus::Filled(batch, finality, hint) => (batch.into_shared(), finality, hint),
+					BatchStatus::Pending => return LevelStatus::Pending,
+					BatchStatus::Error(error) => return LevelStatus::Error(error),
+					_ => return LevelStatus::Error(GraphError::new("materialize batch failed")),
+				};
+				let filled = batch.len();
+				if filled < guess {
+					break LevelStatus::Batch(batch, finality);
+				}
+				match hint {
+					Extent::Exactly(total) if total <= filled => break LevelStatus::Batch(batch, finality),
+					Extent::Exactly(total) => guess = total,
+					Extent::AtLeast(more) => guess = (guess * 2).max(more),
+					Extent::Free => guess *= 2,
+				}
+			}
+		}
+	}
+}
+
 /// A record edge at a caller-chosen lifetime; the lifetime is a trait
 /// parameter for the same constrained-position reason as
 /// [`DerivedRecordEdge`].
@@ -670,6 +727,16 @@ impl<'a, N> RecordEdgeInput<'a, N> {
 		N: Node<C, Output = RecordValue<'e>>,
 	{
 		self.node.eval(ctx)
+	}
+
+	/// [`materialize_level`] over the edge: the wire's whole flat span as one
+	/// batch.
+	pub fn materialize_level<'e, 'b, C>(&'b self, ctx: &'b C, arena: &'b crate::arena::Arena) -> LevelStatus<'b>
+	where
+		N: Node<C, Output = RecordValue<'e>>,
+		C: crate::context::InjectIndex + Copy,
+	{
+		materialize_level(self.node, ctx, arena)
 	}
 }
 
@@ -1178,10 +1245,33 @@ pub fn element_dims<T>() -> (usize, usize) {
 	}
 }
 
+/// Deep clone-out overrides for element types whose plain clone borrows the
+/// evaluation's arena (a `Graphic` holding a group interior). The generic
+/// element glue consults this registry, so every layout carrying such an
+/// element deep-copies at memo and capture seams regardless of which
+/// constructor built the glue. The override must produce a value of the
+/// element's own type that owns all of its content, so the generic re-park
+/// replays it unchanged.
+static DEEP_ELEMENT_CLONES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>>>> =
+	std::sync::LazyLock::new(Default::default);
+
+/// Registers `clone_out` as the deep clone-out for elements of `T`. Called at
+/// startup from the crate that owns the type.
+pub fn register_deep_element_clone<T: 'static>(clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>) {
+	DEEP_ELEMENT_CLONES.lock().unwrap().insert(std::any::TypeId::of::<T>(), clone_out);
+}
+
+fn deep_element_clone(type_id: std::any::TypeId) -> Option<unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>> {
+	DEEP_ELEMENT_CLONES.lock().unwrap().get(&type_id).copied()
+}
+
 /// The element slot a record wire of `T` carries, its erased glue bound at
 /// the statically-known type.
 pub fn element_write<T: Clone + Send + Sync + 'static>() -> ElementWrite {
 	unsafe fn clone_out<T: Clone + Send + Sync + 'static>(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
+		if let Some(deep) = deep_element_clone(std::any::TypeId::of::<T>()) {
+			return unsafe { deep(ptr) };
+		}
 		Box::new(unsafe { read_element::<T>(Rec::new(ptr)) })
 	}
 	unsafe fn repark<T: Clone + Send + Sync + 'static>(value: &(dyn std::any::Any + Send + Sync), dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
@@ -1398,6 +1488,7 @@ pub unsafe fn record_from_bytes<'e>(layout: &Layout, bytes: &'e [u8]) -> RecordV
 #[derive(Clone)]
 pub struct RecordCapture {
 	layout: Layout,
+	lanes: usize,
 	bytes: crate::arena::ArenaWeak<Box<[u8]>>,
 }
 
@@ -1412,17 +1503,65 @@ impl RecordCapture {
 	/// `rec` must be a live record of `layout`.
 	pub unsafe fn capture(layout: &Layout, rec: Rec, arena: &crate::arena::Arena) -> Option<RecordCapture> {
 		let bytes = unsafe { copy_record_bytes(layout, rec) };
-		arena.alloc(bytes).map(|(_, weak)| RecordCapture { layout: layout.clone(), bytes: weak })
+		arena.alloc(bytes).map(|(_, weak)| RecordCapture {
+			layout: layout.clone(),
+			lanes: 1,
+			bytes: weak,
+		})
 	}
 
-	/// The captured element, cloned out through the layout's erased glue.
+	/// Captures every lane of a leveled wire's batch.
+	///
+	/// # Safety
+	/// `batch` must hold live records of `layout`.
+	pub unsafe fn capture_level(layout: &Layout, batch: crate::node::RecordBatch<'_>, arena: &crate::arena::Arena) -> Option<RecordCapture> {
+		let stride = layout.lane_stride();
+		let mut bytes = vec![0u8; batch.len() * stride].into_boxed_slice();
+		for lane in 0..batch.len() {
+			// SAFETY: both sides hold `len` lanes at the shared layout's stride.
+			unsafe { std::ptr::copy_nonoverlapping(batch.get(lane).rec().ptr(), bytes.as_mut_ptr().add(lane * stride), stride) };
+		}
+		arena.alloc(bytes).map(|(_, weak)| RecordCapture {
+			layout: layout.clone(),
+			lanes: batch.len(),
+			bytes: weak,
+		})
+	}
+
+	pub fn layout(&self) -> &Layout {
+		&self.layout
+	}
+
+	/// The captured lane count: one for a rank-0 capture, the whole extent
+	/// for a level capture.
+	pub fn lanes(&self) -> usize {
+		self.lanes
+	}
+
+	/// A batch view over the captured records, alive while the arena holds
+	/// the capture's generation.
+	pub fn batch<'a>(&'a self, arena: &'a crate::arena::Arena) -> Option<crate::node::RecordBatch<'a>> {
+		let bytes = self.bytes.upgrade(arena)?;
+		// SAFETY: the constructors store `lanes` records of `layout`.
+		Some(unsafe { crate::node::RecordBatch::new(bytes.as_ptr(), self.lanes, &self.layout) })
+	}
+
+	/// The captured element of the first lane, cloned out through the
+	/// layout's erased glue.
 	pub fn materialize_element(&self, arena: &crate::arena::Arena) -> Option<Box<dyn std::any::Any + Send + Sync>> {
 		let bytes = self.bytes.upgrade(arena)?;
-		Some(unsafe { (self.layout.element.clone_out)(bytes.as_ptr()) })
+		match self.lanes {
+			0 => None,
+			_ => Some(unsafe { (self.layout.element.clone_out)(bytes.as_ptr()) }),
+		}
 	}
 
+	/// The first lane's attributes, read out through the layout's erased glue.
 	pub fn materialize(&self, arena: &crate::arena::Arena) -> Option<Vec<(&'static str, Box<dyn crate::list::AnyAttributeValue>)>> {
 		let bytes = self.bytes.upgrade(arena)?;
+		if self.lanes == 0 {
+			return Some(Vec::new());
+		}
 		Some(
 			self.layout
 				.fields

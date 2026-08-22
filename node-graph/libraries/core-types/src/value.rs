@@ -57,11 +57,11 @@ pub struct LeveledValueSource<T> {
 	layout: crate::record::Layout,
 }
 
-impl<T: Clone + Send + Sync + 'static> LeveledValueSource<T> {
+impl<T: Clone + Send + Sync + crate::CacheHash + PartialEq + 'static> LeveledValueSource<T> {
 	pub fn new(values: Vec<T>) -> Self {
 		Self {
 			values,
-			layout: crate::record::Layout::default().with_writes(1, crate::record::element_write::<T>(), &[]),
+			layout: crate::record::Layout::default().with_writes(1, crate::record::element_write_hashed::<T>(), &[]),
 		}
 	}
 }
@@ -93,7 +93,7 @@ where
 }
 
 /// The native record edge of a constant level: the edge type is the element's.
-pub fn leveled_record_value_edge<T: Clone + Send + Sync + 'static>(values: Vec<T>) -> crate::registry::EdgeHandle {
+pub fn leveled_record_value_edge<T: Clone + Send + Sync + crate::CacheHash + PartialEq + 'static>(values: Vec<T>) -> crate::registry::EdgeHandle {
 	crate::registry::EdgeHandle::new_record::<T>(std::sync::Arc::new(LeveledValueSource::new(values)) as std::sync::Arc<crate::registry::ErasedRecordNode>)
 }
 

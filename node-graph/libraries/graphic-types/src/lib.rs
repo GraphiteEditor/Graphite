@@ -1,4 +1,5 @@
 pub mod artboard;
+pub mod boundary;
 pub mod graphic;
 pub mod markers;
 

@@ -615,6 +615,43 @@ mod tests {
 	}
 
 	#[test]
+	fn a_wire_materializes_into_a_group_for_the_renderer() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source = core_types::value::LeveledValueSource::new(vec![text("a"), text("b")]);
+		match graphic_types::boundary::materialize_group(&source, &ctx, &arena) {
+			graphic_types::boundary::LevelGroup::Group(group, _) => {
+				let list = graphic_types::graphic::group_to_legacy_list(&group);
+				assert_eq!(list.len(), 2);
+			}
+			_ => panic!("expected a materialized group"),
+		}
+	}
+
+	#[test]
+	fn a_level_capture_converts_to_its_legacy_list() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source = core_types::value::LeveledValueSource::new(vec![1.5f64, 2.5]);
+		let layout = Node::<ContextImpl>::layout(&source).clone();
+		let record::LevelStatus::Batch(batch, _) = record::materialize_level(&source, &ctx, &arena) else {
+			panic!("expected a batch");
+		};
+		let capture = unsafe { record::RecordCapture::capture_level(&layout, batch, &arena) }.expect("the capture parks in the arena");
+		let legacy = graphic_types::boundary::capture_to_legacy(&capture, &arena).expect("f64 is in the legacy vocabulary");
+		let list = legacy.downcast_ref::<List<f64>>().unwrap();
+		assert_eq!(list.len(), 2);
+		assert_eq!(list.element(0).copied(), Some(1.5));
+		assert_eq!(list.element(1).copied(), Some(2.5));
+	}
+
+	#[test]
 	fn wrap_collects_the_level_into_a_group() {
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
@@ -651,6 +688,35 @@ mod tests {
 			let transform: DAffine2 = unsafe { item.lanes().get(lane).rec().read(offset) };
 			assert_eq!(transform.translation.x, x, "lane {lane}");
 		}
+	}
+
+	#[test]
+	fn a_group_element_deep_copies_to_its_legacy_form() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = graphic_layout();
+		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
+		let node = install(
+			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
+			wrap_layout_meta(),
+			&[Some(&layout)],
+		);
+		let out = Node::<ContextImpl>::layout(&node).clone();
+
+		let head = ctx.index_head();
+		let GPoll::Final(value) = node.eval(&ctx.promoted(&head, 0)) else {
+			panic!("expected a final record");
+		};
+		let copy = unsafe { (out.element.clone_out)(out.rec(&value).ptr()) };
+		let Graphic::Graphic(list) = *copy.downcast::<Graphic>().expect("the deep copy replays at the element's own type") else {
+			panic!("expected the legacy-converted form");
+		};
+		assert_eq!(list.len(), 2);
+		assert_eq!(text_of(list.element(0).unwrap()), "a");
+		assert_eq!(text_of(list.element(1).unwrap()), "b");
 	}
 
 	#[test]

@@ -2937,6 +2937,7 @@ dependencies = [
  "graph-craft",
  "graphene-core",
  "graphene-std",
+ "graphic-types",
  "gungraun",
  "log",
  "once_cell",

@@ -674,7 +674,7 @@ fn group_bounding_box(group: &core_types::record::Group, transform: DAffine2, in
 
 /// One typed run as a legacy list, elements cloned and every attribute
 /// copied through its erased read.
-fn run_to_legacy_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::GroupItem) -> Option<List<T>> {
+pub(crate) fn run_to_legacy_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::GroupItem) -> Option<List<T>> {
 	let lanes = item.typed_lanes::<T>()?;
 	let mut list = List::new();
 	for lane in 0..lanes.len() {
@@ -689,6 +689,32 @@ fn run_to_legacy_list<T: Clone + Send + Sync + 'static>(item: &core_types::recor
 	}
 	Some(list)
 }
+
+/// The deep clone-out for `Graphic` elements: a plain clone of a group
+/// interior would carry frame pointers into the evaluation's arena, so memo
+/// and capture seams copy out the legacy-converted form, which owns all of
+/// its content. The generic re-park replays it as an ordinary `Graphic`.
+///
+/// # Safety
+/// `ptr` must point at a live parked `Graphic` element field.
+unsafe fn deep_clone_graphic(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
+	let graphic = unsafe { core_types::record::borrow_element::<Graphic>(core_types::record::Rec::new(ptr)) };
+	Box::new(map_groups_to_legacy(graphic))
+}
+
+const _: () = {
+	#[cfg(not(target_family = "wasm"))]
+	#[core_types::ctor::ctor]
+	fn register() {
+		core_types::record::register_deep_element_clone::<Graphic>(deep_clone_graphic);
+	}
+
+	#[cfg(target_family = "wasm")]
+	#[unsafe(export_name = "__node_registry_deep_element_graphic")]
+	extern "C" fn register() {
+		core_types::record::register_deep_element_clone::<Graphic>(deep_clone_graphic);
+	}
+};
 
 /// The graphic with every `Group` converted to its legacy list form.
 pub fn map_groups_to_legacy(graphic: &Graphic) -> Graphic {
