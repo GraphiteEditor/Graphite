@@ -1,6 +1,5 @@
-use core_types::list::List;
 use core_types::registry::types::{Angle, PixelLength, PixelSize};
-use core_types::{CacheHash, Ctx};
+use core_types::{CacheHash, Ctx, ExtractIndex, InjectIndex};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
@@ -9,49 +8,38 @@ use vector_types::vector::misc::{ArcType, AsU64, GridType};
 use vector_types::vector::misc::{HandleId, SpiralType};
 use vector_types::vector::{PointId, SegmentId, StrokeId};
 
-trait CornerRadius {
-	fn generate(self, size: DVec2, clamped: bool) -> List<Vector>;
-}
-impl CornerRadius for f64 {
-	fn generate(self, size: DVec2, clamped: bool) -> List<Vector> {
-		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
-		List::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., [clamped_radius; 4])))
-	}
-}
-impl CornerRadius for List<f64> {
-	fn generate(self, size: DVec2, clamped: bool) -> List<Vector> {
-		// Expand to four corners using the CSS `border-radius` shorthand rules.
-		// - `[a]` → `[a, a, a, a]`
-		// - `[a, b]` → `[a, b, a, b]`
-		// - `[a, b, c]` → `[a, b, c, b]`
-		// - `[a, b, c, d, …]` → `[a, b, c, d]`
-		// - `[]` → `[0, 0, 0, 0]`
-		let values: Vec<f64> = self.iter_element_values().copied().collect();
-		let radii: [f64; 4] = match values.as_slice() {
-			[] => [0., 0., 0., 0.],
-			&[a] => [a, a, a, a],
-			&[a, b] => [a, b, a, b],
-			&[a, b, c] => [a, b, c, b],
-			&[a, b, c, d, ..] => [a, b, c, d],
-		};
+/// Expands the corner-radius lanes to four corners using the CSS
+/// `border-radius` shorthand rules, then builds the rounded rectangle.
+/// - `[a]` (also a plain scalar radius) expands to `[a, a, a, a]`
+/// - `[a, b]` expands to `[a, b, a, b]`
+/// - `[a, b, c]` expands to `[a, b, c, b]`
+/// - `[a, b, c, d, …]` truncates to `[a, b, c, d]`
+/// - `[]` expands to `[0, 0, 0, 0]`
+fn rounded_rectangle(values: &[f64], size: DVec2, clamped: bool) -> Vector {
+	let radii: [f64; 4] = match values {
+		[] => [0., 0., 0., 0.],
+		&[a] => [a, a, a, a],
+		&[a, b] => [a, b, a, b],
+		&[a, b, c] => [a, b, c, b],
+		&[a, b, c, d, ..] => [a, b, c, d],
+	};
 
-		let clamped_radius = if clamped {
-			// Algorithm follows the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
+	let clamped_radius = if clamped {
+		// Algorithm follows the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
 
-			let mut scale_factor: f64 = 1.;
-			for i in 0..4 {
-				let side_length = if i % 2 == 0 { size.x } else { size.y };
-				let adjacent_corner_radius_sum = radii[i] + radii[(i + 1) % 4];
-				if side_length < adjacent_corner_radius_sum {
-					scale_factor = scale_factor.min(side_length / adjacent_corner_radius_sum);
-				}
+		let mut scale_factor: f64 = 1.;
+		for i in 0..4 {
+			let side_length = if i % 2 == 0 { size.x } else { size.y };
+			let adjacent_corner_radius_sum = radii[i] + radii[(i + 1) % 4];
+			if side_length < adjacent_corner_radius_sum {
+				scale_factor = scale_factor.min(side_length / adjacent_corner_radius_sum);
 			}
-			radii.map(|x| x * scale_factor)
-		} else {
-			radii
-		};
-		List::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., clamped_radius)))
-	}
+		}
+		radii.map(|x| x * scale_factor)
+	} else {
+		radii
+	};
+	Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., clamped_radius))
 }
 
 /// Generates a circle shape with a chosen radius.
@@ -62,9 +50,9 @@ fn circle(
 	#[unit(" px")]
 	#[default(50.)]
 	radius: f64,
-) -> List<Vector> {
+) -> Vector {
 	let radius = radius.abs();
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
+	Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)))
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
@@ -81,8 +69,8 @@ fn arc(
 	#[soft(0..360)]
 	sweep_angle: Angle,
 	arc_type: ArcType,
-) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
+) -> Vector {
+	Vector::from_subpath(subpath::Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
@@ -91,7 +79,7 @@ fn arc(
 			ArcType::Closed => subpath::ArcType::Closed,
 			ArcType::PieSlice => subpath::ArcType::PieSlice,
 		},
-	)))
+	))
 }
 
 /// Generates a spiral shape that winds from an inner to an outer radius.
@@ -105,15 +93,15 @@ fn spiral(
 	#[default(0.)] inner_radius: f64,
 	#[default(25)] outer_radius: f64,
 	#[default(90.)] angular_resolution: f64,
-) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
+) -> Vector {
+	Vector::from_subpath(subpath::Subpath::new_spiral(
 		inner_radius,
 		outer_radius,
 		turns,
 		start_angle.to_radians(),
 		angular_resolution.to_radians(),
 		spiral_type,
-	)))
+	))
 }
 
 /// Generates an ellipse shape (an oval or stretched circle) with the chosen radii.
@@ -127,7 +115,7 @@ fn ellipse(
 	#[unit(" px")]
 	#[default(25)]
 	radius_y: f64,
-) -> List<Vector> {
+) -> Vector {
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
@@ -141,13 +129,13 @@ fn ellipse(
 			.push([HandleId::end(ellipse.segment_domain.ids()[i]), HandleId::primary(ellipse.segment_domain.ids()[(i + 1) % len])]);
 	}
 
-	List::new_from_element(ellipse)
+	ellipse
 }
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
 #[node_macro::node(category("Vector: Shape"), properties("rectangle_properties"))]
-fn rectangle<T: CornerRadius>(
-	_: impl Ctx,
+fn rectangle(
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	_primary: (),
 	#[unit(" px")]
 	#[default(100)]
@@ -156,10 +144,11 @@ fn rectangle<T: CornerRadius>(
 	#[default(100)]
 	height: f64,
 	_individual_corner_radii: bool, // TODO: Move this to the bottom once we have a migration capability
-	#[implementations(f64, List<f64>)] corner_radius: T,
+	corner_radius: IList<f64>,
 	#[default(true)] clamped: bool,
-) -> List<Vector> {
-	corner_radius.generate(DVec2::new(width, height), clamped)
+) -> Vector {
+	let values: Vec<f64> = (0..corner_radius.len()).map(|index| corner_radius.get(index)).collect();
+	rounded_rectangle(&values, DVec2::new(width, height), clamped)
 }
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
@@ -174,10 +163,10 @@ fn regular_polygon<T: AsU64>(
 	#[unit(" px")]
 	#[default(50)]
 	radius: f64,
-) -> List<Vector> {
+) -> Vector {
 	let points = sides.as_u64();
 	let radius: f64 = radius * 2.;
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
+	Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
@@ -195,12 +184,12 @@ fn star<T: AsU64>(
 	#[unit(" px")]
 	#[default(25)]
 	radius_2: f64,
-) -> List<Vector> {
+) -> Vector {
 	let points = sides.as_u64();
 	let diameter: f64 = radius_1 * 2.;
 	let inner_diameter = radius_2 * 2.;
 
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
+	Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -234,7 +223,7 @@ fn qr_code(
 	size: f64,
 	error_correction: QRCodeErrorCorrectionLevel,
 	#[default(false)] individual_squares: bool,
-) -> List<Vector> {
+) -> Vector {
 	let ecc = match error_correction {
 		QRCodeErrorCorrectionLevel::Low => qrcodegen::QrCodeEcc::Low,
 		QRCodeErrorCorrectionLevel::Medium => qrcodegen::QrCodeEcc::Medium,
@@ -242,7 +231,7 @@ fn qr_code(
 		QRCodeErrorCorrectionLevel::High => qrcodegen::QrCodeEcc::High,
 	};
 
-	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else { return List::default() };
+	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else { return Vector::default() };
 
 	let mut vector = match individual_squares {
 		true => {
@@ -271,7 +260,7 @@ fn qr_code(
 		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size / qr_code.size() as f64)));
 	}
 
-	List::new_from_element(vector)
+	vector
 }
 
 /// Generates an arrow from the origin to the chosen coordinate.
@@ -283,13 +272,13 @@ fn arrow(
 	#[default(10)] shaft_width: PixelLength,
 	#[default(30)] head_width: PixelLength,
 	#[default(20)] head_length: PixelLength,
-) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
+) -> Vector {
+	Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: PixelSize) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to)))
+fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: PixelSize) -> Vector {
+	Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to))
 }
 
 trait GridSpacing {
@@ -320,7 +309,7 @@ fn grid<T: GridSpacing>(
 	#[default(10)] columns: u32,
 	#[default(10)] rows: u32,
 	#[default(30., 30.)] angles: DVec2,
-) -> List<Vector> {
+) -> Vector {
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
 
@@ -402,7 +391,7 @@ fn grid<T: GridSpacing>(
 		}
 	}
 
-	List::new_from_element(vector)
+	vector
 }
 
 #[cfg(test)]
