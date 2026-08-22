@@ -389,6 +389,12 @@ impl ProtoNetwork {
 					ConstructionArgs::Inline(_) => None,
 				}
 			};
+			// Set GRAPHENE_LAYOUT_DEBUG to dump each node's resolved record depth.
+			if let Some(resolved) = &layout
+				&& std::env::var("GRAPHENE_LAYOUT_DEBUG").is_ok()
+			{
+				eprintln!("layout {} depth {}", self.nodes[index].1.identifier, resolved.layout.depth);
+			}
 			self.nodes[index].1.resolved.layout = layout;
 		}
 		self.stack_need = self.fold_stack_peak();
