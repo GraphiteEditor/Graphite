@@ -15,14 +15,14 @@ use vector_types::{GradientStop, GradientStops};
 
 /// Whether the walk can descend into a group: every run holds `Graphic`
 /// elements.
-fn group_expands(group: &core_types::record::Group) -> bool {
+pub(crate) fn group_expands(group: &core_types::record::Group) -> bool {
 	match &group.content {
 		core_types::record::GroupContent::Run(item) => item.typed_lanes::<Graphic>().is_some(),
 		core_types::record::GroupContent::Stack(children) => children.iter().all(group_expands),
 	}
 }
 
-fn group_leaf_count(group: &core_types::record::Group, fully_flatten: bool, depth: usize) -> usize {
+pub(crate) fn group_leaf_count(group: &core_types::record::Group, fully_flatten: bool, depth: usize) -> usize {
 	match &group.content {
 		core_types::record::GroupContent::Run(item) => {
 			let lanes = item.typed_lanes::<Graphic>().expect("guarded by group_expands");
@@ -32,7 +32,7 @@ fn group_leaf_count(group: &core_types::record::Group, fully_flatten: bool, dept
 	}
 }
 
-fn group_locate(group: &core_types::record::Group, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic, DAffine2)> {
+pub(crate) fn group_locate(group: &core_types::record::Group, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic, DAffine2)> {
 	match &group.content {
 		core_types::record::GroupContent::Run(item) => {
 			let lanes = item.typed_lanes::<Graphic>().expect("guarded by group_expands");
@@ -52,7 +52,7 @@ fn group_locate(group: &core_types::record::Group, transform: DAffine2, fully_fl
 /// Leaf rows a graphic expands to: its children's counts when the walk
 /// descends (top rows always, deeper groups only in a full flatten), one for
 /// itself otherwise.
-fn leaf_count(graphic: &Graphic, fully_flatten: bool, depth: usize) -> usize {
+pub(crate) fn leaf_count(graphic: &Graphic, fully_flatten: bool, depth: usize) -> usize {
 	match graphic {
 		Graphic::Graphic(children) if fully_flatten || depth == 0 => (0..children.len())
 			.map(|index| children.element(index).map_or(0, |child| leaf_count(child, fully_flatten, depth + 1)))
@@ -64,7 +64,7 @@ fn leaf_count(graphic: &Graphic, fully_flatten: bool, depth: usize) -> usize {
 
 /// The `remaining`-th leaf of `graphic` in walk order, with the transforms
 /// along its path composed onto `transform`.
-fn locate(graphic: &Graphic, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic, DAffine2)> {
+pub(crate) fn locate(graphic: &Graphic, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic, DAffine2)> {
 	match graphic {
 		Graphic::Graphic(children) if fully_flatten || depth == 0 => (0..children.len()).find_map(|index| {
 			let child = children.element(index)?;

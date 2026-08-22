@@ -1,9 +1,11 @@
+use core_types::attribute::{Attr, Transform as TransformAttr};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::gpoll::Interrupt;
+use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
+use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt, Level};
 use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, Color, Context, Ctx, DeriveCtx};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, Color, Context, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, Artboard, Vector};
@@ -499,22 +501,45 @@ fn read_attribute_raster(
 	result
 }
 
-/// Joins two `List`s of the same type, extending the base `List` with the items from the new `List`.
-#[node_macro::node(category("General"))]
-pub fn extend<T: Send + Clone>(
-	_: impl Ctx,
-	/// The `List` whose items will appear at the start of the extended `List`.
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
-	base: List<T>,
-	/// The `List` whose items will appear at the end of the extended `List`.
+/// Joins two levels of the same type, the base's lanes followed by the new's.
+#[node_macro::node(category("General"), extent(extend_extent))]
+pub fn extend<T>(
+	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	/// The wire whose lanes appear at the start of the extended level.
+	base: impl Node<Context<'_>, Output = T>,
+	/// The wire whose lanes appear at the end of the extended level.
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
-	new: List<T>,
-) -> List<T> {
-	let mut base = base;
-	base.extend(new);
+	new: impl Node<Context<'_>, Output = T>,
+) -> Result<T, Interrupt> {
+	let split = match base.extent(ctx, Level::Total) {
+		GPoll::Final(Extent::Exactly(count)) => count as u64,
+		// A scalar side joins the concat as a single lane, per `Extent::sum`.
+		GPoll::Final(Extent::Free) => 1,
+		GPoll::Pending => return Err(Interrupt::Pending),
+		_ => return Err(GraphError::new("extend over a non-exact base extent").into()),
+	};
+	let lane = ctx.innermost_index();
+	match lane < split {
+		true => base.eval(ctx),
+		false => {
+			let mut shifted = *ctx;
+			shifted.set_index(lane - split);
+			new.eval(&shifted)
+		}
+	}
+}
 
-	base
+/// The top level sums both sides; inner levels must agree (rectangular), a
+/// free side defers to the other.
+fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => Extent::sum(base.at(level), new.at(level)),
+		false => base.at(level).zip(new.at(level)).and_then(|extents| match extents {
+			(Extent::Free, other) | (other, Extent::Free) => GPoll::Final(other),
+			(base, new) if base == new => GPoll::Final(base),
+			_ => GPoll::error("extend inner extents differ"),
+		}),
+	}
 }
 
 // TODO: Eventually remove this document upgrade code
@@ -547,79 +572,58 @@ pub fn legacy_layer_extend<T: Send + Clone>(
 
 /// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.
 /// The inverse of this node is 'Flatten Graphic'.
-#[node_macro::node(category("General"))]
-pub fn wrap_graphic<T: Into<Graphic>>(
-	_: impl Ctx,
-	#[implementations(
-		List<Graphic>,
-	 	List<Vector>,
-		List<Raster<CPU>>,
-	 	List<Raster<GPU>>,
-	 	List<Color>,
-		List<GradientStops>,
-		List<String>,
-		DAffine2,
-		DVec2,
-	)]
-	content: T,
-) -> List<Graphic> {
-	List::new_from_element(content.into())
+#[node_macro::node(category("General"), extent(wrap_graphic_extent))]
+pub fn wrap_graphic(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>) -> Result<IList<Graphic>, Interrupt> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	Ok(Graphic::Group(core_types::record::Group {
+		row: None,
+		content: core_types::record::GroupContent::Run(item),
+	}))
 }
 
-/// Converts a list of graphical content into a `Graphic[]` by placing it into an element of a new wrapper `Graphic[]`.
-/// If it is already a `Graphic[]`, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
+/// The collected group is the level's single lane.
+fn wrap_graphic_extent(_content: ListIn<'_, Graphic>, _level: LevelIn) -> GPoll<Extent> {
+	GPoll::Final(Extent::Exactly(1))
+}
+
+/// Converts the level's elements into `Graphic` elements. A `Graphic` level passes through unchanged.
 #[node_macro::node(category("General"))]
-pub fn to_graphic<T: IntoGraphicList>(
+pub fn to_graphic<T: Into<Graphic> + Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
-	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<GradientStops>,
-		List<String>,
-	)]
-	content: T,
-) -> List<Graphic> {
-	content.into_graphic_list()
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: T,
+) -> Graphic {
+	content.into()
 }
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
-#[node_macro::node(category("General"))]
-pub fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: bool) -> List<Graphic> {
-	// TODO: Avoid mutable reference, instead return a new List<Graphic>?
-	fn flatten_list(output_graphic_list: &mut List<Graphic>, current_graphic_list: List<Graphic>, fully_flatten: bool, recursion_depth: usize) {
-		for index in 0..current_graphic_list.len() {
-			let Some(current_element) = current_graphic_list.element(index) else { continue };
-			let current_element = current_element.clone();
-			let current_transform: DAffine2 = current_graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-
-			let recurse = fully_flatten || recursion_depth == 0;
-
-			match current_element {
-				// If we're allowed to recurse, flatten any graphics we encounter
-				Graphic::Graphic(mut current_element) if recurse => {
-					// Apply the parent graphic's transform to all child elements
-					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-						*graphic_transform = current_transform * *graphic_transform;
-					}
-
-					flatten_list(output_graphic_list, current_element, fully_flatten, recursion_depth + 1);
-				}
-				// Push any leaf elements we encounter: either `Graphic::Graphic(...)` values beyond the recursion depth, or non-`Graphic::Graphic` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`, `Graphic::Text`)
-				_ => {
-					let attributes = current_graphic_list.clone_item_attributes(index);
-					output_graphic_list.push(Item::from_parts(current_element, attributes));
-				}
-			}
+#[node_macro::node(category("General"), extent(flatten_graphic_extent))]
+pub fn flatten_graphic(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>, fully_flatten: bool) -> Result<IList<(Graphic, Attr<TransformAttr>)>, Interrupt> {
+	let mut remaining = ctx.innermost_index() as usize;
+	for row in 0..content.len() {
+		let graphic = content.element_ref(row);
+		let count = crate::record::leaf_count(graphic, fully_flatten, 0);
+		if remaining >= count {
+			remaining -= count;
+			continue;
+		}
+		let transform: DAffine2 = content.lane(row).attr::<TransformAttr>();
+		if let Some((leaf, composed)) = crate::record::locate(graphic, transform, fully_flatten, 0, &mut remaining) {
+			return Ok((leaf, Attr(composed)));
 		}
 	}
+	Err(GraphError::new("flatten addressed past its leaf count").into())
+}
 
-	let mut output = List::new();
-	flatten_list(&mut output, content, fully_flatten, 0);
-
-	output
+/// The level holds one row per leaf of the walk.
+fn flatten_graphic_extent(content: ListIn<'_, Graphic>, fully_flatten: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => fully_flatten
+			.get()
+			.zip(content.get())
+			.map(|(fully_flatten, content)| Extent::Exactly((0..content.len()).map(|row| crate::record::leaf_count(content.element_ref(row), fully_flatten, 0)).sum())),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
 }
 
 /// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
@@ -675,44 +679,11 @@ pub fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<
 
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"))]
-fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> List<GradientStops> {
-	let colors = colors.into_flattened_list::<Color>();
-	let total_colors = colors.len();
-
-	if total_colors == 0 {
-		return List::new_from_element(GradientStops::new(vec![
-			GradientStop {
-				position: 0.,
-				midpoint: 0.5,
-				color: Color::BLACK,
-			},
-			GradientStop {
-				position: 1.,
-				midpoint: 0.5,
-				color: Color::BLACK,
-			},
-		]));
+fn colors_to_gradient(_: impl Ctx + ExtractIndex + InjectIndex + Copy, colors: IList<Color>) -> GradientStops {
+	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
+	match colors.len() {
+		0 => GradientStops::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
+		1 => GradientStops::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
+		total => GradientStops::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
 	}
-
-	if let (1, Some(&single_color)) = (total_colors, colors.element(0)) {
-		return List::new_from_element(GradientStops::new(vec![
-			GradientStop {
-				position: 0.,
-				midpoint: 0.5,
-				color: single_color,
-			},
-			GradientStop {
-				position: 1.,
-				midpoint: 0.5,
-				color: single_color,
-			},
-		]));
-	}
-
-	let colors = colors.into_iter().enumerate().map(|(index, row)| GradientStop {
-		position: index as f64 / (total_colors - 1) as f64,
-		midpoint: 0.5,
-		color: row.into_element(),
-	});
-	List::new_from_element(GradientStops::new(colors))
 }
