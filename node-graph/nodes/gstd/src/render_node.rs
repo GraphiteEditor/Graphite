@@ -1,7 +1,7 @@
 use core_types::gpoll::Interrupt;
 use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
-use core_types::{Color, Context, Ctx, DeriveCtx, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots, WasmNotSend};
+use core_types::{Color, Context, Ctx, DeriveCtx, ExtractFootprint, ExtractIndex, ExtractVarArgs, InjectIndex, VarArgLink, VarArgSlots, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
@@ -20,6 +20,35 @@ pub enum RenderIntermediateType {
 pub struct RenderIntermediate {
 	pub(crate) ty: RenderIntermediateType,
 	pub(crate) metadata: RenderMetadata,
+}
+
+fn intermediate_of<R: Render>(data: &R, render_params: &RenderParams) -> RenderIntermediate {
+	let footprint = Footprint::default();
+	let mut metadata = RenderMetadata::default();
+	data.collect_metadata(&mut metadata, footprint, None);
+	match &render_params.render_output_type {
+		RenderOutputTypeRequest::Vello => {
+			let mut scene = vello::Scene::new();
+
+			let mut context = wgpu_executor::RenderContext::default();
+			data.render_to_vello(&mut scene, Default::default(), &mut context, render_params);
+
+			RenderIntermediate {
+				ty: RenderIntermediateType::Vello(Arc::new((scene, context))),
+				metadata,
+			}
+		}
+		RenderOutputTypeRequest::Svg => {
+			let mut render = SvgRender::new();
+
+			data.render_svg(&mut render, render_params);
+
+			RenderIntermediate {
+				ty: RenderIntermediateType::Svg(Arc::new(render.into())),
+				metadata,
+			}
+		}
+	}
 }
 
 #[node_macro::node(category(""))]
@@ -43,32 +72,29 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
 
-	let footprint = Footprint::default();
-	let mut metadata = RenderMetadata::default();
-	data.collect_metadata(&mut metadata, footprint, None);
-	Ok(match &render_params.render_output_type {
-		RenderOutputTypeRequest::Vello => {
-			let mut scene = vello::Scene::new();
+	Ok(intermediate_of(&data, render_params))
+}
 
-			let mut context = wgpu_executor::RenderContext::default();
-			data.render_to_vello(&mut scene, Default::default(), &mut context, render_params);
+/// The leveled form of `render_intermediate`: the wire's records materialize
+/// into a run and render through the legacy conversion.
+#[node_macro::node(category(""))]
+fn render_intermediate_leveled<T: Clone + Send + Sync + core_types::CacheHash + 'static>(
+	ctx: impl Ctx + ExtractVarArgs + ExtractIndex + InjectIndex + Copy,
+	#[implementations(Artboard, Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] data: IList<T>,
+) -> Result<RenderIntermediate, Interrupt>
+where
+	List<T>: Render,
+{
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(data.batch()) };
+	let data = graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type");
+	let render_params = ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderParams>()
+		.expect("Downcasting render params yielded invalid type");
 
-			RenderIntermediate {
-				ty: RenderIntermediateType::Vello(Arc::new((scene, context))),
-				metadata,
-			}
-		}
-		RenderOutputTypeRequest::Svg => {
-			let mut render = SvgRender::new();
-
-			data.render_svg(&mut render, render_params);
-
-			RenderIntermediate {
-				ty: RenderIntermediateType::Svg(Arc::new(render.into())),
-				metadata,
-			}
-		}
-	})
+	Ok(intermediate_of(&data, render_params))
 }
 
 #[node_macro::node(category(""))]

@@ -690,6 +690,18 @@ pub(crate) fn run_to_legacy_list<T: Clone + Send + Sync + 'static>(item: &core_t
 	Some(list)
 }
 
+/// One typed run as the legacy list its `Render` impl consumes, nested
+/// groups converted to their legacy form.
+pub fn run_to_render_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::GroupItem) -> Option<List<T>> {
+	let mut list = run_to_legacy_list::<T>(item)?;
+	if let Some(graphics) = (&mut list as &mut dyn std::any::Any).downcast_mut::<List<Graphic>>() {
+		for element in graphics.iter_element_values_mut() {
+			*element = map_groups_to_legacy(element);
+		}
+	}
+	Some(list)
+}
+
 /// The deep clone-out for `Graphic` elements: a plain clone of a group
 /// interior would carry frame pointers into the evaluation's arena, so memo
 /// and capture seams copy out the legacy-converted form, which owns all of
