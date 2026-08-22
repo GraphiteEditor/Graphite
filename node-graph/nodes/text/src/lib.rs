@@ -9,6 +9,7 @@ mod to_path;
 use convert_case::{Boundary, Converter, pattern};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
+use core_types::math::float_noise::round_away_float_noise;
 use core_types::registry::types::{SignedInteger, TextArea};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
@@ -299,6 +300,7 @@ fn format_number(
 	start_at_10000: Item<bool>,
 ) -> Item<String> {
 	let (number, attributes) = number.into_parts();
+	let number = round_away_float_noise(number);
 	let (decimal_places, fixed_decimals, use_thousands_separator, start_at_10000) =
 		(*decimal_places.element(), *fixed_decimals.element(), *use_thousands_separator.element(), *start_at_10000.element());
 	let decimal_separator = decimal_separator.element().clone();
