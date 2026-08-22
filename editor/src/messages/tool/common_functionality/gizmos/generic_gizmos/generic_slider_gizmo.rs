@@ -8,16 +8,18 @@
 use crate::consts::{GIZMO_HIDE_THRESHOLD, POINT_RADIUS_HANDLE_SNAP_THRESHOLD};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::prelude::GraphOperationMessage;
 use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage, Responses};
-use crate::messages::tool::common_functionality::gizmos::generic_gizmos::read_f64_input;
+use crate::messages::tool::common_functionality::gizmos::generic_gizmos::read_number_input;
 use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{DragInput, GizmoContext, GizmoInfo, GizmoState, PositionHint};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::NodeId;
 use graph_craft::document::NodeInput;
@@ -62,6 +64,9 @@ pub struct GenericSliderGizmo {
 	total_angle: f64,
 	/// This frame's rotation about the layer origin, in degrees.
 	angle_delta: f64,
+	/// Where the gesture is currently measured from. Normally where the drag began, but a shape that
+	/// re-anchors mid-drag moves it.
+	drag_origin: Option<DVec2>,
 }
 
 impl GenericSliderGizmo {
@@ -79,6 +84,7 @@ impl GenericSliderGizmo {
 			previous_mouse_position: DVec2::ZERO,
 			total_angle: 0.,
 			angle_delta: 0.,
+			drag_origin: None,
 		}
 	}
 
@@ -95,6 +101,7 @@ impl GenericSliderGizmo {
 		self.snap_targets.clear();
 		self.initial_parameters.clear();
 		self.total_angle = 0.;
+		self.drag_origin = None;
 	}
 
 	/// Begin a drag if currently hovered.
@@ -139,7 +146,7 @@ impl GenericSliderGizmo {
 	}
 
 	fn current_value(&self, document: &DocumentMessageHandler) -> Option<f64> {
-		read_f64_input(self.layer, document, &self.identifier, self.info.parameter_index)
+		read_number_input(self.layer, document, &self.identifier, self.info.parameter_index)
 	}
 
 	/// Every point in the layer's local space where this parameter can be grabbed.
@@ -174,24 +181,38 @@ impl GenericSliderGizmo {
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
 
+		self.hover_distances(document, value, mouse_position, viewport, center)
+			.into_iter()
+			.flatten()
+			.filter(|distance| *distance <= SLIDER_HANDLE_HOVER_THRESHOLD)
+			.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+	}
+
+	/// Distance from the cursor to each grab point, or `None` for grab points that are unavailable or too
+	/// small on screen to aim at.
+	fn hover_distances(&self, document: &DocumentMessageHandler, value: f64, mouse_position: DVec2, viewport: DAffine2, center: DVec2) -> Vec<Option<f64>> {
+		if let Some(distances) = self.info.behavior.hover_distances {
+			return distances(&self.context(document, mouse_position, None));
+		}
+
 		self.handle_positions(document, value)
 			.into_iter()
 			.map(|local| viewport.transform_point2(local))
 			// Hide the gizmo when the shape is too small on screen to interact with reliably.
-			.filter(|handle| handle.distance(center) >= GIZMO_HIDE_THRESHOLD)
-			.map(|handle| mouse_position.distance(handle))
-			.filter(|distance| *distance <= SLIDER_HANDLE_HOVER_THRESHOLD)
-			.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+			.map(|handle| (handle.distance(center) >= GIZMO_HIDE_THRESHOLD).then(|| mouse_position.distance(handle)))
+			.collect()
 	}
 
 	/// Index of the grab point nearest the cursor, so a drag knows which ray it runs along.
 	fn nearest_handle_index(&self, document: &DocumentMessageHandler, value: f64, mouse_position: DVec2) -> usize {
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 
-		self.handle_positions(document, value)
+		let center = viewport.transform_point2(DVec2::ZERO);
+
+		self.hover_distances(document, value, mouse_position, viewport, center)
 			.into_iter()
-			.map(|local| mouse_position.distance(viewport.transform_point2(local)))
 			.enumerate()
+			.filter_map(|(index, distance)| distance.map(|distance| (index, distance)))
 			.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
 			.map(|(index, _)| index)
 			.unwrap_or(0)
@@ -235,7 +256,7 @@ impl GenericSliderGizmo {
 
 		if let Some(drag) = self.info.behavior.drag {
 			let mut drag_input = DragInput {
-				drag_start,
+				drag_start: self.drag_origin.unwrap_or(drag_start),
 				mouse_position: input.mouse.position,
 				initial_value: self.initial_value,
 				initial_parameters: self.initial_parameters.clone(),
@@ -251,14 +272,23 @@ impl GenericSliderGizmo {
 			self.initial_parameters = drag_input.initial_parameters;
 			self.handle_index = drag_input.handle_index;
 			self.initial_value = drag_input.initial_value;
+			self.drag_origin = Some(drag_input.drag_start);
 
 			if writes.is_empty() {
 				return;
 			}
-			for (parameter, value) in writes {
+			for (parameter, value) in writes.inputs {
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(self.node_id, parameter),
 					input: NodeInput::value(value, false),
+				});
+			}
+			if let Some(transform) = writes.transform {
+				responses.add(GraphOperationMessage::TransformChange {
+					layer: self.layer,
+					transform,
+					transform_in: TransformIn::Viewport,
+					skip_rerender: false,
 				});
 			}
 			responses.add(NodeGraphMessage::RunDocumentGraph);

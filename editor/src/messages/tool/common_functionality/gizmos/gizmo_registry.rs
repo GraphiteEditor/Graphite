@@ -17,7 +17,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::DocumentMessageHandler;
 use crate::messages::tool::common_functionality::gizmos::gizmo_behaviors;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::vector::generator_nodes;
@@ -105,6 +105,28 @@ pub struct DragInput {
 	pub handle_index: usize,
 }
 
+/// What a drag wants done, once it has worked out what the cursor meant.
+#[derive(Default)]
+pub struct DragWrites {
+	/// Node inputs to set.
+	pub inputs: Vec<(ParameterRef, TaggedValue)>,
+	/// A transform to apply to the layer, for a control that repositions the shape as it resizes it. A grid
+	/// grown from its top edge has to move up as it gains a row, or it would grow downward instead and the
+	/// edge would run away from the cursor holding it.
+	pub transform: Option<DAffine2>,
+}
+
+impl DragWrites {
+	/// The common case: a drag that only writes node inputs.
+	pub fn inputs(inputs: Vec<(ParameterRef, TaggedValue)>) -> Self {
+		Self { inputs, transform: None }
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.inputs.is_empty() && self.transform.is_none()
+	}
+}
+
 /// The escape hatch for nodes whose gizmo needs more than the generic mechanics.
 ///
 /// The generic layer always owns hit-testing, the hover/drag state machine, the handle overlay, and the
@@ -130,6 +152,12 @@ pub struct GizmoBehavior {
 	/// a star's outer radius can be taken hold of at any of its outer points — so this returns all of them.
 	/// The drag then runs along the ray through whichever one the user grabbed, not along a fixed axis.
 	pub handle_positions: Option<fn(&GizmoContext, f64) -> Vec<DVec2>>,
+	/// How far the cursor is from each of this parameter's grab points, when they are not points.
+	///
+	/// The default measures to the handle positions above, which suits a control you take hold of at a
+	/// spot. A grid's rows are grabbed anywhere along an edge, so it measures to a line instead. `None` in
+	/// a slot means that grab point is not available right now.
+	pub hover_distances: Option<fn(&GizmoContext) -> Vec<Option<f64>>>,
 	/// How cursor motion becomes node inputs.
 	///
 	/// The default reads the cursor's distance along the ray through the grabbed handle and writes the one
@@ -143,7 +171,7 @@ pub struct GizmoBehavior {
 	/// The [`DragInput`] is mutable because a drag may have to re-anchor itself: an arc dragged past a full
 	/// sweep hands over to its other endpoint and continues from there, which means rewriting the baseline
 	/// the rest of the gesture is measured against.
-	pub drag: Option<fn(&GizmoContext, &mut DragInput) -> Vec<(ParameterRef, TaggedValue)>>,
+	pub drag: Option<fn(&GizmoContext, &mut DragInput) -> DragWrites>,
 	/// Per-frame rotation, in degrees, below which swept angle is treated as cursor noise rather than
 	/// intent. Near the layer's origin the angle between successive cursor positions is mostly noise, and
 	/// feeding it in makes the value jitter while the cursor is still. Zero accumulates everything.
@@ -157,6 +185,7 @@ impl GizmoBehavior {
 		overlay: None,
 		coupled_writes: None,
 		handle_positions: None,
+		hover_distances: None,
 		drag: None,
 		angle_deadzone: 0.,
 	};
@@ -284,6 +313,8 @@ const HEART_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	position_hint: PositionHint::ParameterDerived,
 }];
 
+// Rows and columns only. The spacing was declared as a position gizmo that was never built, and a grid's
+// spacing is a two-axis value with no obvious handle on the shape -- it stays in the Properties panel.
 const GRID_GIZMOS: &[GizmoInfo] = &[
 	GizmoInfo {
 		parameter_index: grid::ColumnsInput::INDEX,
@@ -291,7 +322,7 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 		name: "Columns",
 		min: Some(1.),
 		max: None,
-		behavior: GizmoBehavior::NONE,
+		behavior: gizmo_behaviors::GRID_COLUMNS,
 		position_hint: PositionHint::BoundingBoxCorner,
 	},
 	GizmoInfo {
@@ -300,16 +331,7 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 		name: "Rows",
 		min: Some(1.),
 		max: None,
-		behavior: GizmoBehavior::NONE,
-		position_hint: PositionHint::BoundingBoxCorner,
-	},
-	GizmoInfo {
-		parameter_index: grid::SpacingInput::INDEX,
-		gizmo_type: GizmoType::Position,
-		name: "Spacing",
-		min: Some(0.),
-		max: None,
-		behavior: GizmoBehavior::NONE,
+		behavior: gizmo_behaviors::GRID_ROWS,
 		position_hint: PositionHint::BoundingBoxCorner,
 	},
 ];

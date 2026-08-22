@@ -42,6 +42,19 @@ pub fn read_f64_input(layer: LayerNodeIdentifier, document: &DocumentMessageHand
 	}
 }
 
+/// Read a node input as a number, whichever numeric type it is stored as.
+///
+/// The generic gizmos use this for hit-testing and overlays, where all that matters is how large the value
+/// is. Writing still goes through the parameter's own type, so a count stays a count.
+pub fn read_number_input(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, identifier: &ProtoNodeIdentifier, index: usize) -> Option<f64> {
+	let inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(identifier.clone()))?;
+	match inputs.get(index)?.as_value()? {
+		TaggedValue::F64(value) => Some(*value),
+		TaggedValue::U32(value) => Some(*value as f64),
+		_ => None,
+	}
+}
+
 /// Read a `u32` node input value by node identifier and parameter index.
 pub fn read_u32_input(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, identifier: &ProtoNodeIdentifier, index: usize) -> Option<u32> {
 	let inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(identifier.clone()))?;
@@ -156,11 +169,17 @@ impl GenericGizmoManager {
 
 			let mut gizmos = Vec::new();
 			for info in infos {
+				// `GenericSliderGizmo` is the general hook-driven handle: it carries the grab points, the
+				// hover test, and the drag, any of which a shape can replace. `GenericDialGizmo` is the
+				// narrower one, a count stepped by horizontal drag with no hooks of its own. So a
+				// declaration that brings its own drag is hosted by the general one whatever it declares,
+				// and only a dial relying on the default gets the dial.
+				let brings_own_drag = info.behavior.drag.is_some();
+
 				match info.gizmo_type {
-					// An angle runs on the same handle machinery as a slider; what differs is the drag, which
-					// its registry entry supplies.
-					GizmoType::Slider | GizmoType::Angle => gizmos.push(GenericGizmo::Slider(GenericSliderGizmo::new(layer, node_id, identifier.clone(), *info))),
-					GizmoType::Dial => gizmos.push(GenericGizmo::Dial(GenericDialGizmo::new(layer, node_id, identifier.clone(), *info))),
+					GizmoType::Dial if !brings_own_drag => gizmos.push(GenericGizmo::Dial(GenericDialGizmo::new(layer, node_id, identifier.clone(), *info))),
+					// An angle runs on the same handle machinery as a length; what differs is the drag.
+					GizmoType::Slider | GizmoType::Angle | GizmoType::Dial => gizmos.push(GenericGizmo::Slider(GenericSliderGizmo::new(layer, node_id, identifier.clone(), *info))),
 					// Position gizmos are not yet implemented; they are skipped so a partially-migrated node
 					// still gets its other controls.
 					GizmoType::Position => {}
