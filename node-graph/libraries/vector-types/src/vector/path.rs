@@ -1,5 +1,5 @@
 use super::misc::dvec2_to_point;
-use core_types::list::List;
+use core_types::list::{ATTR_CURVE_TYPE, ATTR_PATHS, Item, List};
 use glam::DVec2;
 use graphene_hash::CacheHash;
 use kurbo::{CubicBez, Line, PathSeg, QuadBez};
@@ -78,10 +78,24 @@ impl Path {
 	}
 }
 
+/// The paths an item carries beside a vector element, absent when the pool is a bare point cloud.
+pub fn paths_from_item_attributes<T>(item: &Item<T>) -> Option<&List<Path>> {
+	item.attribute(ATTR_PATHS)
+}
+
+/// The paths a list carries at `index` beside a vector element, absent when the pool is a bare point cloud.
+pub fn paths_from_list_row_attributes<T>(list: &List<T>, index: usize) -> Option<&List<Path>> {
+	list.attribute(ATTR_PATHS, index)
+}
+
+/// The curve type the path at `index` weaves in.
+pub fn curve_type_at(paths: &List<Path>, index: usize) -> CurveType {
+	paths.attribute_cloned_or_default(ATTR_CURVE_TYPE, index)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::list::Item;
 
 	fn pool(positions: &[(f64, f64)]) -> List<DVec2> {
 		positions.iter().map(|&(x, y)| Item::new_from_element(DVec2::new(x, y))).collect()
@@ -138,5 +152,52 @@ mod tests {
 		assert_eq!(path.segment_count(CurveType::Linear), 2);
 		assert!(path.segment(&pool, CurveType::Linear, 0).is_some());
 		assert_eq!(path.segment(&pool, CurveType::Linear, 1), None);
+	}
+
+	// Four corners draw four sides from five references, the last repeating the first to close the shape
+	#[test]
+	fn closed_rectangle() {
+		let pool = pool(&[(-36.25, -17.5), (36.25, -17.5), (36.25, 17.5), (-36.25, 17.5)]);
+		let mut paths = List::new();
+		paths.push(Item::new_from_element(path(&[0, 1, 2, 3, 0])));
+		paths.set_attribute(ATTR_CURVE_TYPE, 0, CurveType::Linear);
+
+		let rectangle = paths.element(0).unwrap();
+		assert!(rectangle.is_closed());
+		assert_eq!(rectangle.segment_count(CurveType::Linear), 4);
+
+		let closing_side = rectangle.segment(&pool, curve_type_at(&paths, 0), 3);
+		assert_eq!(closing_side, Some(PathSeg::Line(Line::new((-36.25, 17.5), (-36.25, -17.5)))));
+	}
+
+	// Connectivity rides the holder, so a pool with a holder that declares no paths is a point cloud
+	#[test]
+	fn paths_ride_the_holder() {
+		let mut item = Item::new_from_element(pool(&[(0., 0.), (10., 0.)]));
+		assert!(paths_from_item_attributes(&item).is_none());
+
+		let mut paths = List::new();
+		paths.push(Item::new_from_element(path(&[0, 1])));
+		item.set_attribute(ATTR_PATHS, paths);
+
+		assert_eq!(paths_from_item_attributes(&item).map(List::len), Some(1));
+		assert_eq!(curve_type_at(paths_from_item_attributes(&item).unwrap(), 0), CurveType::Linear);
+	}
+
+	// Two merged rectangles keep their own paths on their own items
+	#[test]
+	fn each_list_item_carries_its_own_paths() {
+		let mut vectors = List::new();
+		for _ in 0..2 {
+			let mut paths = List::new();
+			paths.push(Item::new_from_element(path(&[0, 1, 2, 3, 0])));
+			vectors.push(Item::new_from_element(pool(&[(0., 0.), (1., 0.), (1., 1.), (0., 1.)])).with_attribute(ATTR_PATHS, paths));
+		}
+
+		assert_eq!(vectors.len(), 2);
+		for index in 0..vectors.len() {
+			let paths = paths_from_list_row_attributes(&vectors, index).unwrap();
+			assert_eq!(paths.element(0).unwrap().segment_count(CurveType::Linear), 4);
+		}
 	}
 }
