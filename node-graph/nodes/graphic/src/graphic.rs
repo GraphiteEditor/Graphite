@@ -129,25 +129,9 @@ fn map<Row: Clone + Send + Sync + CacheHash + 'static, T>(
 	Err(GraphError::past_end().into())
 }
 
-#[node_macro::node(category("General"))]
-fn mirror<T: Send + Clone>(
-	_: impl Ctx,
-	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<String>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
-	)]
-	content: List<T>,
-	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
-	#[unit(" px")] offset: f64,
-	#[range]
-	#[soft(-90..90)]
-	angle: Angle,
-	#[default(true)] keep_original: bool,
-) -> List<T>
+/// The reflection transform the mirror applies, or nothing when the content
+/// has no rectangular bounds (the legacy passthrough case).
+fn mirror_reflection<T>(legacy: &List<T>, relative_to_bounds: ReferencePoint, offset: f64, angle: f64) -> Option<DAffine2>
 where
 	List<T>: BoundingBox,
 {
@@ -155,8 +139,8 @@ where
 	let normal = DVec2::from_angle(angle.to_radians());
 
 	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
-	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
-		return content;
+	let RenderBoundingBox::Rectangle(bounding_box) = legacy.bounding_box(DAffine2::IDENTITY, false) else {
+		return None;
 	};
 
 	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
@@ -172,30 +156,211 @@ where
 	);
 
 	// Apply reflection around the reference point
-	let reflected_transform = if let Some(mirror_reference_point) = mirror_reference_point {
+	Some(if let Some(mirror_reference_point) = mirror_reference_point {
 		DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point)
 	} else {
 		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
+	})
+}
+
+/// One output lane of the mirror over its legacy-converted level: the source
+/// row's element and standard attributes, the reflection composed onto the
+/// mirrored half's transforms.
+fn mirror_lane<'e, T: Clone + Default + Send + Sync + 'static>(
+	arena: &'e core_types::arena::Arena,
+	legacy: List<T>,
+	lane: usize,
+	relative_to_bounds: ReferencePoint,
+	offset: f64,
+	angle: f64,
+	keep_original: bool,
+) -> Result<
+	(
+		T,
+		Attr<'e, TransformAttr>,
+		Attr<'e, graphic_types::markers::Fill>,
+		Attr<'e, graphic_types::markers::Stroke>,
+		Attr<'e, core_types::attribute::BlendMode>,
+		Attr<'e, core_types::attribute::Opacity>,
+		Attr<'e, core_types::attribute::OpacityFill>,
+		Attr<'e, core_types::attribute::ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+	),
+	Interrupt,
+>
+where
+	List<T>: BoundingBox,
+{
+	let count = legacy.len();
+	let reflected_transform = mirror_reflection(&legacy, relative_to_bounds, offset, angle);
+	let (source, mirrored) = match (reflected_transform.is_some() && keep_original, lane < count) {
+		(true, true) => (lane, false),
+		(true, false) => (lane - count, true),
+		(false, _) => (lane, reflected_transform.is_some()),
+	};
+	if source >= count {
+		return Err(GraphError::past_end().into());
+	}
+
+	let exhausted = || {
+		Interrupt::from(GraphError {
+			kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		})
+	};
+	let park_paint = |paint: Option<List<Graphic>>| -> Result<Option<&'e List<Graphic>>, Interrupt> {
+		match paint {
+			Some(paint) => Ok(Some(arena.alloc(paint).ok_or_else(exhausted)?.0)),
+			None => Ok(None),
+		}
 	};
 
-	let mut result_list = List::new();
-
-	// Add original items depending on the keep_original flag
-	if keep_original {
-		for item in content.clone().into_iter() {
-			result_list.push(item);
-		}
+	let element = legacy.element(source).cloned().unwrap_or_default();
+	let mut transform: DAffine2 = legacy.attribute_cloned_or_default(ATTR_TRANSFORM, source);
+	if mirrored {
+		transform = reflected_transform.expect("a mirrored lane exists only under a reflection") * transform;
 	}
+	let fill = park_paint(legacy.attribute::<List<Graphic>>(graphic_types::ATTR_FILL, source).cloned())?;
+	let stroke = park_paint(legacy.attribute::<List<Graphic>>(graphic_types::ATTR_STROKE, source).cloned())?;
+	let layer_path: Vec<NodeId> = legacy
+		.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH, source)
+		.map(|path| path.iter_element_values().copied().collect())
+		.unwrap_or_default();
+	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 
-	// Create and add mirrored items
-	for mut row in content.into_iter() {
-		let current_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-		row.set_attribute(ATTR_TRANSFORM, reflected_transform * current_transform);
-		result_list.push(row);
-	}
-
-	result_list
+	Ok((
+		element,
+		Attr(transform),
+		Attr(fill),
+		Attr(stroke),
+		Attr(legacy.attribute_cloned_or_default(core_types::ATTR_BLEND_MODE, source)),
+		Attr(legacy.attribute_cloned_or(core_types::ATTR_OPACITY, source, 1.)),
+		Attr(legacy.attribute_cloned_or(core_types::ATTR_OPACITY_FILL, source, 1.)),
+		Attr(legacy.attribute_cloned_or_default(core_types::ATTR_CLIPPING_MASK, source)),
+		Attr(layer_path.as_slice()),
+	))
 }
+
+/// The mirrored level: the original lanes (when kept) followed by the
+/// reflected lanes.
+fn mirror_extent_of<T>(legacy: &List<T>, relative_to_bounds: ReferencePoint, offset: f64, angle: f64, keep_original: bool) -> Extent
+where
+	List<T>: BoundingBox,
+{
+	match mirror_reflection(legacy, relative_to_bounds, offset, angle) {
+		Some(_) if keep_original => Extent::Exactly(legacy.len() * 2),
+		_ => Extent::Exactly(legacy.len()),
+	}
+}
+
+/// The materialized level as its legacy render list.
+fn legacy_render_list_of<T: Clone + Send + Sync + 'static>(content: core_types::node::List<'_, T>) -> List<T> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type")
+}
+
+#[node_macro::node(category("General"), extent(mirror_extent))]
+fn mirror<'e>(
+	ctx: impl Ctx + core_types::context::ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Graphic>,
+	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
+	#[unit(" px")] offset: f64,
+	#[range]
+	#[soft(-90..90)]
+	angle: Angle,
+	#[default(true)] keep_original: bool,
+) -> Result<
+	IList<(
+		Graphic,
+		Attr<'e, TransformAttr>,
+		Attr<'e, graphic_types::markers::Fill>,
+		Attr<'e, graphic_types::markers::Stroke>,
+		Attr<'e, core_types::attribute::BlendMode>,
+		Attr<'e, core_types::attribute::Opacity>,
+		Attr<'e, core_types::attribute::OpacityFill>,
+		Attr<'e, core_types::attribute::ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+	)>,
+	Interrupt,
+> {
+	mirror_lane(ctx.arena(), legacy_render_list_of(content), ctx.innermost_index() as usize, relative_to_bounds, offset, angle, keep_original)
+}
+
+fn mirror_extent(
+	content: ListIn<'_, Graphic>,
+	relative_to_bounds: ValueIn<'_, ReferencePoint>,
+	offset: ValueIn<'_, f64>,
+	angle: ValueIn<'_, f64>,
+	keep_original: ValueIn<'_, bool>,
+	level: LevelIn,
+) -> GPoll<Extent> {
+	match level.top() {
+		true => content
+			.get()
+			.zip(relative_to_bounds.get())
+			.zip(offset.get())
+			.zip(angle.get())
+			.zip(keep_original.get())
+			.map(|((((content, relative_to_bounds), offset), angle), keep_original)| {
+				mirror_extent_of(&legacy_render_list_of(content), relative_to_bounds, offset, angle, keep_original)
+			}),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
+}
+
+/// The mirror over a plain vector level, as [`mirror`]. Registered under the
+/// mirror identifier.
+#[node_macro::node(category(""), extent(mirror_vector_extent))]
+fn mirror_vector<'e>(
+	ctx: impl Ctx + core_types::context::ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Vector>,
+	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
+	#[unit(" px")] offset: f64,
+	#[range]
+	#[soft(-90..90)]
+	angle: Angle,
+	#[default(true)] keep_original: bool,
+) -> Result<
+	IList<(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, graphic_types::markers::Fill>,
+		Attr<'e, graphic_types::markers::Stroke>,
+		Attr<'e, core_types::attribute::BlendMode>,
+		Attr<'e, core_types::attribute::Opacity>,
+		Attr<'e, core_types::attribute::OpacityFill>,
+		Attr<'e, core_types::attribute::ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+	)>,
+	Interrupt,
+> {
+	mirror_lane(ctx.arena(), legacy_render_list_of(content), ctx.innermost_index() as usize, relative_to_bounds, offset, angle, keep_original)
+}
+
+fn mirror_vector_extent(
+	content: ListIn<'_, Vector>,
+	relative_to_bounds: ValueIn<'_, ReferencePoint>,
+	offset: ValueIn<'_, f64>,
+	angle: ValueIn<'_, f64>,
+	keep_original: ValueIn<'_, bool>,
+	level: LevelIn,
+) -> GPoll<Extent> {
+	match level.top() {
+		true => content
+			.get()
+			.zip(relative_to_bounds.get())
+			.zip(offset.get())
+			.zip(angle.get())
+			.zip(keep_original.get())
+			.map(|((((content, relative_to_bounds), offset), angle), keep_original)| {
+				mirror_extent_of(&legacy_render_list_of(content), relative_to_bounds, offset, angle, keep_original)
+			}),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
+}
+
+pub use _mirror_vector_mod::mirror_vector_entries;
 
 /// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
 /// with its own trailing entry dropped. The terminating element of the returned path is the document node whose
@@ -632,6 +797,20 @@ pub fn level_to_list<T: Clone + Send + Sync + CacheHash + 'static>(
 	graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type")
 }
 
+/// The transitional level bridge into the type-erased list the attribute
+/// family consumes, as [`level_to_list`].
+#[node_macro::node(category(""))]
+pub fn level_to_list_dyn<T: Clone + Send + Sync + CacheHash + 'static>(
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] value: IList<T>,
+	_converter: (),
+) -> ListDyn {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(value.batch()) };
+	graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type").into()
+}
+
+pub use _level_to_list_dyn_mod::level_to_list_dyn_entries;
 pub use _level_to_list_mod::level_to_list_entries;
 pub use _to_graphic_mod::to_graphic_entries;
 

@@ -151,6 +151,18 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.into_iter()
 			.map(|entry| (graphene_std::vector::assign_colors::IDENTIFIER.clone(), entry)),
 	);
+	// The mirror's plain vector rows, served under its identifier.
+	node_types.extend(
+		graphene_std::graphic::mirror_vector_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::graphic::mirror::IDENTIFIER.clone(), entry)),
+	);
+	// The morph's plain vector rows, served under its identifier.
+	node_types.extend(
+		graphene_std::vector::morph_vector_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::vector::morph::IDENTIFIER.clone(), entry)),
+	);
 	// Element-wise coercion into `Graphic` for single-typed leveled inputs,
 	// served by the to_graphic rows.
 	node_types.extend(
@@ -166,6 +178,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.into_iter()
 			.zip(["List<Graphic>", "List<Vector>", "List<Raster<CPU>>", "List<Raster<GPU>>", "List<Color>", "List<GradientStops>", "List<String>"])
 			.map(|(entry, target)| (ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{target}>")), entry)),
+	);
+	// The same bridge into the attribute family's type-erased list.
+	node_types.extend(
+		graphene_std::graphic::level_to_list_dyn_entries()
+			.into_iter()
+			.map(|entry| (ProtoNodeIdentifier::new("graphene_core::ops::ConvertNode<ListDyn>"), entry)),
 	);
 	// =============
 	// CONVERT NODES
