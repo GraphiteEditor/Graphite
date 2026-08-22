@@ -524,14 +524,24 @@ pub fn extend<T>(
 }
 
 /// The top level sums both sides; inner levels must agree (rectangular), a
-/// free side defers to the other.
+/// free side or a side with no top-level lanes defers to the other.
 fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
 	match level.top() {
 		true => Extent::sum(base.at(level), new.at(level)),
 		false => base.at(level).zip(new.at(level)).and_then(|extents| match extents {
 			(Extent::Free, other) | (other, Extent::Free) => GPoll::Final(other),
-			(base, new) if base == new => GPoll::Final(base),
-			_ => GPoll::error("extend inner extents differ"),
+			(base_inner, new_inner) if base_inner == new_inner => GPoll::Final(base_inner),
+			(base_inner, new_inner) => {
+				let top = LevelIn {
+					level: level.depth - 1,
+					depth: level.depth,
+				};
+				match (base.at(top), new.at(top)) {
+					(GPoll::Final(Extent::Exactly(0)), _) => GPoll::Final(new_inner),
+					(_, GPoll::Final(Extent::Exactly(0))) => GPoll::Final(base_inner),
+					_ => GPoll::error("extend inner extents differ"),
+				}
+			}
 		}),
 	}
 }
