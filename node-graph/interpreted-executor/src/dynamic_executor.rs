@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::{Arc, Mutex, PoisonError};
 
-const ARENA_CAPACITY: usize = 1 << 20;
+const ARENA_CAPACITY: usize = 1 << 23;
 
 fn new_arena() -> Arena {
 	Arena::new(ARENA_CAPACITY).unwrap_or_else(|| {
