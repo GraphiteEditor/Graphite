@@ -174,10 +174,7 @@ macro_rules! tagged_value {
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::RenderOutput(x) => Box::new(x),
-					Self::NodeIdPath(path) => {
-						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
-					}
+					Self::NodeIdPath(path) => Box::new(path),
 					Self::DocumentNode(node) => Box::new(node),
 					Self::ContextModification(modification) => Box::new(modification),
 					Self::EditorApi(x) => Box::new(x),
@@ -224,10 +221,7 @@ macro_rules! tagged_value {
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::RenderOutput(x) => Arc::new(x),
-					Self::NodeIdPath(path) => {
-						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
-					}
+					Self::NodeIdPath(path) => Arc::new(path),
 					Self::DocumentNode(node) => Arc::new(node),
 					Self::ContextModification(modification) => Arc::new(modification),
 					Self::EditorApi(x) => Arc::new(x),
@@ -255,7 +249,7 @@ macro_rules! tagged_value {
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::RenderOutput(_) => concrete!(RenderOutput),
-					Self::NodeIdPath(_) => concrete!(List<NodeId>),
+					Self::NodeIdPath(_) => concrete!(Vec<NodeId>),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
 					Self::ContextModification(_) => concrete!(ContextModification),
 					Self::EditorApi(_) => concrete!(Arc<PlatformEditorApi>),
@@ -283,7 +277,7 @@ macro_rules! tagged_value {
 					Self::BrushStrokes(_) => core_types::record::element_write::<List<BrushStroke>>(),
 					$( Self::$identifier(_) => core_types::record::element_write::<$ty>(), )*
 					Self::RenderOutput(_) => core_types::record::element_write::<RenderOutput>(),
-					Self::NodeIdPath(_) => core_types::record::element_write::<List<NodeId>>(),
+					Self::NodeIdPath(_) => core_types::record::element_write::<Vec<NodeId>>(),
 					Self::DocumentNode(_) => core_types::record::element_write::<DocumentNode>(),
 					Self::ContextModification(_) => core_types::record::element_write::<ContextModification>(),
 					Self::EditorApi(_) => core_types::record::element_write::<Arc<PlatformEditorApi>>(),
@@ -330,10 +324,7 @@ macro_rules! tagged_value {
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::RenderOutput(x) => Ok(record_value_edge(x)),
-					Self::NodeIdPath(path) => {
-						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Ok(record_value_edge(list))
-					}
+					Self::NodeIdPath(path) => Ok(record_value_edge(path)),
 					Self::DocumentNode(node) => Ok(record_value_edge(node)),
 					Self::ContextModification(modification) => Ok(record_value_edge(modification)),
 					Self::EditorApi(x) => Ok(record_value_edge(x)),
@@ -623,7 +614,6 @@ impl TaggedValue {
 			Self::Color(color) => Ok(leveled_record_value_edge(color.into_iter().collect::<Vec<_>>())),
 			Self::Gradient(stops) => Ok(leveled_record_value_edge(vec![stops])),
 			Self::BrushStrokes(strokes) => Ok(leveled_record_value_edge(strokes)),
-			Self::NodeIdPath(path) => Ok(leveled_record_value_edge(path)),
 			other => other.to_edge(),
 		}
 	}

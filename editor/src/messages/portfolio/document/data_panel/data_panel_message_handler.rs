@@ -180,6 +180,11 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 	if let Some(list) = introspected_data.downcast_ref::<List<NodeId>>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(list, data));
 	}
+	// The path's plain value form, produced by `path_of_subgraph` on leveled wires.
+	if let Some(path) = introspected_data.downcast_ref::<Vec<NodeId>>() {
+		let list: List<NodeId> = path.iter().copied().map(graphene_std::list::Item::new_from_element).collect();
+		return Some(table_node_id_path_layout_with_breadcrumb(&list, data));
+	}
 	generate_layout_downcast!(introspected_data, data, [
 		List<Artboard>,
 		List<Graphic>,
@@ -1010,6 +1015,11 @@ fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Ve
 	// resolves against the prefix made up of preceding items. Handled before the generic `List<T>` blanket impl.
 	if let Some(path) = any.downcast_ref::<List<NodeId>>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(path, data));
+	}
+	// The path's plain value form, the layer-path marker's owned shape.
+	if let Some(path) = any.downcast_ref::<Vec<NodeId>>() {
+		let list: List<NodeId> = path.iter().copied().map(graphene_std::list::Item::new_from_element).collect();
+		return Some(table_node_id_path_layout_with_breadcrumb(&list, data));
 	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {

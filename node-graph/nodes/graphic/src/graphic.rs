@@ -1,4 +1,4 @@
-use core_types::attribute::{Attr, Transform as TransformAttr};
+use core_types::attribute::{Attr, EditorLayerPath, Transform as TransformAttr};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt, Level};
@@ -204,9 +204,20 @@ where
 /// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
 /// the layer is at the root document network or nested inside a custom subgraph.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
-pub fn path_of_subgraph(_: impl Ctx, node_path: List<NodeId>) -> List<NodeId> {
+pub fn path_of_subgraph(_: impl Ctx, node_path: Vec<NodeId>) -> Vec<NodeId> {
 	let len = node_path.len();
 	node_path.into_iter().take(len.saturating_sub(1)).collect()
+}
+
+/// The layer-path stamp: writes the owning layer's document node path on
+/// each lane, which lets editor tools trace data back to its layer.
+#[node_macro::node(category(""))]
+pub fn stamp_layer_path<'e, T>(ctx: impl Ctx + ExtractArena<'e>, element: T, path: Vec<NodeId>) -> Result<(T, Attr<'e, EditorLayerPath>), Interrupt> {
+	let (parked, _) = ctx.arena().alloc(path).ok_or(GraphError {
+		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+		trace: Vec::new(),
+	})?;
+	Ok((element, Attr(parked.as_slice())))
 }
 
 /// Sets a named attribute on the input `List`, computing one value per item via the value-producing input. That input
