@@ -861,7 +861,7 @@ fn hex_to_color(_: impl Ctx, hex_code: String) -> List<Color> {
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: List<GradientStops>) -> List<GradientStops> {
+fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
 	gradient
 }
 

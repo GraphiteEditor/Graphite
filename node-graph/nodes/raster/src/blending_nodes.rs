@@ -27,6 +27,18 @@ mod blend_std {
 	use raster_types::Image;
 	use raster_types::Raster;
 
+	impl Blend<Color> for Raster<CPU> {
+		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+			let data = self.data.iter().zip(under.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+			Raster::new_cpu(Image {
+				data,
+				width: self.width,
+				height: self.height,
+				base64_string: None,
+			})
+		}
+	}
+
 	impl Blend<Color> for List<Raster<CPU>> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_list = self.clone();
@@ -141,21 +153,22 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 	}
 }
 
+#[cfg(feature = "std")]
 #[node_macro::node(category("Raster"), cfg(feature = "std"))]
-fn mix<T: Blend<Color> + Send>(
+fn mix<T: Blend<Color> + Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
 	over: T,
 	#[expose]
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
 	under: T,
