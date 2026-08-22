@@ -2429,7 +2429,7 @@ impl NodeGraphMessageHandler {
 		if subgraph_path_names_length >= 2 {
 			widgets.extend([
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				BreadcrumbTrailButtons::new(subgraph_path_names)
+				BreadcrumbTrailButtons::new(subgraph_path_names.iter().map(|name| truncate_breadcrumb_label(name)).collect())
 					.on_update(move |index| {
 						DocumentMessage::ExitNestedNetwork {
 							steps_back: subgraph_path_names_length - (*index as usize) - 1,
