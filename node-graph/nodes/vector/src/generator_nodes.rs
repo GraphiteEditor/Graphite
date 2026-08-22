@@ -405,9 +405,9 @@ mod tests {
 
 		// Works properly
 		let grid = grid(&(), (), GridType::Isometric, 10., 5, 5, (30., 30.).into());
-		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
+		assert_eq!(grid.point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.segment_bezier_iter() {
 			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
 			assert!(
 				((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
@@ -420,20 +420,20 @@ mod tests {
 	#[test]
 	fn skew_isometric_grid_test() {
 		let grid = grid(&(), (), GridType::Isometric, 10., 5, 5, (40., 30.).into());
-		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
+		assert_eq!(grid.point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.segment_bezier_iter() {
 			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
 			let vector = bezier.start - bezier.end;
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
-			assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {angle}")
+			assert!([90f64, 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {angle}")
 		}
 	}
 
 	#[test]
 	fn qr_code_test() {
 		let qr = qr_code(&(), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
-		assert!(qr.element(0).unwrap().point_domain.ids().len() > 0);
-		assert!(qr.element(0).unwrap().segment_domain.ids().len() > 0);
+		assert!(qr.point_domain.ids().len() > 0);
+		assert!(qr.segment_domain.ids().len() > 0);
 	}
 }

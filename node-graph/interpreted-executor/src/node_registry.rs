@@ -133,6 +133,18 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.into_iter()
 			.map(|entry| (graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER.clone(), entry)),
 	);
+	// The path flattening's plain vector rows, served under its identifier.
+	node_types.extend(
+		graphene_std::vector::flatten_path_vector_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::vector::flatten_path::IDENTIFIER.clone(), entry)),
+	);
+	// The solidify's plain vector rows, served under its identifier.
+	node_types.extend(
+		graphene_std::vector::solidify_stroke_vector_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::vector::solidify_stroke::IDENTIFIER.clone(), entry)),
+	);
 	// Element-wise coercion into `Graphic` for single-typed leveled inputs,
 	// served by the to_graphic rows.
 	node_types.extend(

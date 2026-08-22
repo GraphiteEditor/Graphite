@@ -8,10 +8,12 @@ use core_types::list::{Item, ItemAttributeValues, List, ListDyn};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
-use core_types::attribute::Attr;
+use core_types::attribute::{Attr, BlendMode as BlendModeAttr, ClippingMask, EditorLayerPath, Opacity, OpacityFill};
+use core_types::extent::{ListIn, LevelIn};
+use core_types::gpoll::{Extent, GPoll};
 use core_types::gpoll::GraphError;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
-use graphic_types::markers::{Fill, Stroke as StrokeAttr};
+use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use core_types::attribute::Transform as TransformAttr;
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -1266,11 +1268,9 @@ fn offset_path(_: impl Ctx, content: List<Vector>, distance: f64, join: StrokeJo
 		.collect()
 }
 
-#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
+fn solidify_stroke_core(graphic_list: List<Graphic>) -> List<Vector> {
 	// TODO: Make this node support stroke align, which it currently ignores
 
-	let graphic_list = content.into_graphic_list();
 	let flattened: List<Vector> = graphic_list.clone().into_flattened_list();
 
 	// A fill exists when the canonical attribute carries paint
@@ -1374,6 +1374,143 @@ fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graph
 	output
 }
 
+fn solidify_lane<'e>(
+	arena: &'e core_types::arena::Arena,
+	graphic_list: List<Graphic>,
+	lane: usize,
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	Interrupt,
+> {
+	let output = solidify_stroke_core(graphic_list);
+	if lane >= output.len() {
+		return Err(GraphError::past_end().into());
+	}
+	let exhausted = || {
+		Interrupt::from(GraphError {
+			kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		})
+	};
+
+	let element = output.element(lane).cloned().unwrap_or_default();
+	let fill = output.attribute::<List<Graphic>>(ATTR_FILL, lane).map(|paint| park_paint(arena, paint.clone())).transpose()?;
+	let stroke = output.attribute::<List<Graphic>>(ATTR_STROKE, lane).map(|paint| park_paint(arena, paint.clone())).transpose()?;
+	let layer_path: Vec<NodeId> = output
+		.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH, lane)
+		.map(|path| path.iter_element_values().copied().collect())
+		.unwrap_or_default();
+	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
+	let merged_layers = output
+		.attribute::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, lane)
+		.map(|layers| arena.alloc(layers.clone()).ok_or_else(exhausted).map(|(parked, _)| parked))
+		.transpose()?;
+
+	Ok((
+		element,
+		Attr(output.attribute_cloned_or_default(ATTR_TRANSFORM, lane)),
+		Attr(fill),
+		Attr(stroke),
+		Attr(output.attribute_cloned_or_default(ATTR_BLEND_MODE, lane)),
+		Attr(output.attribute_cloned_or(ATTR_OPACITY, lane, 1.)),
+		Attr(output.attribute_cloned_or(ATTR_OPACITY_FILL, lane, 1.)),
+		Attr(output.attribute_cloned_or_default(ATTR_CLIPPING_MASK, lane)),
+		Attr(layer_path.as_slice()),
+		Attr(merged_layers),
+	))
+}
+
+/// The materialized level as the legacy graphic list the solidify body walks.
+fn legacy_graphic_list_of<T: Clone + Send + Sync + 'static>(content: core_types::node::List<'_, T>) -> List<Graphic>
+where
+	List<T>: IntoGraphicList,
+{
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	graphic_types::graphic::run_to_render_list::<T>(&item)
+		.expect("the run holds the row's element type")
+		.into_graphic_list()
+}
+
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector), extent(solidify_stroke_extent))]
+fn solidify_stroke<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Graphic>,
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	Interrupt,
+> {
+	solidify_lane(ctx.arena(), legacy_graphic_list_of(content), ctx.innermost_index() as usize)
+}
+
+/// A fill-bearing row splits into a fill lane and a solidified stroke lane.
+fn solidify_extent_of(graphic_list: List<Graphic>) -> Extent {
+	let flattened: List<Vector> = graphic_list.into_flattened_list();
+	Extent::Exactly((0..flattened.len()).map(|index| 1 + usize::from(has_paint_at(&flattened, index, ATTR_FILL))).sum())
+}
+
+fn solidify_stroke_extent(content: ListIn<'_, Graphic>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => content.get().map(|content| solidify_extent_of(legacy_graphic_list_of(content))),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
+}
+
+/// The solidify over a plain vector level, as [`solidify_stroke`].
+/// Registered under the solidify identifier.
+#[node_macro::node(category(""), extent(solidify_stroke_vector_extent))]
+fn solidify_stroke_vector<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Vector>,
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	Interrupt,
+> {
+	solidify_lane(ctx.arena(), legacy_graphic_list_of(content), ctx.innermost_index() as usize)
+}
+
+fn solidify_stroke_vector_extent(content: ListIn<'_, Vector>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => content.get().map(|content| solidify_extent_of(legacy_graphic_list_of(content))),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
+}
+
+pub use _solidify_stroke_vector_mod::solidify_stroke_vector_entries;
+
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 	content
@@ -1437,17 +1574,14 @@ fn map_points(ctx: impl Ctx + DeriveCtx, content: List<Vector>, mapped: impl Nod
 	Ok(content)
 }
 
-// TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
-	let graphic_list = content.into_graphic_list();
+fn flatten_path_core<'e>(
+	arena: &'e core_types::arena::Arena,
+	graphic_list: List<Graphic>,
+) -> Result<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, StrokeAttr>, Attr<'e, EditorLayerPath>, Attr<'e, EditorMergedLayers>), Interrupt> {
 	let flattened = graphic_list.clone().into_flattened_list::<Vector>();
 
-	// Create a `List` with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
-	let mut output_list = List::new_from_element(Vector::default());
+	let mut output = Vector::default();
 	let mut primary_source = None;
-
-	let output = output_list.element_mut(0).unwrap();
 
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
@@ -1469,6 +1603,9 @@ pub fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Grap
 		primary_source = Some((index, source_transform));
 	}
 
+	let mut fill = None;
+	let mut stroke = None;
+	let mut layer_path = Vec::new();
 	if let Some((primary, source_transform)) = primary_source {
 		let source_attributes = flattened.clone_item_attributes(primary);
 		let mut attributes = ItemAttributeValues::new();
@@ -1477,21 +1614,59 @@ pub fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Grap
 		attributes.insert_cloned_from(&source_attributes, ATTR_STROKE);
 		bake_paint_transforms(&mut attributes, source_transform);
 
-		let output = std::mem::take(output_list.element_mut(0).unwrap());
-		output_list = List::new_from_item(Item::from_parts(output, attributes));
+		let carrier = List::new_from_item(Item::from_parts(Vector::default(), attributes));
+		fill = carrier.attribute::<List<Graphic>>(ATTR_FILL, 0).map(|paint| park_paint(arena, paint.clone())).transpose()?;
+		stroke = carrier.attribute::<List<Graphic>>(ATTR_STROKE, 0).map(|paint| park_paint(arena, paint.clone())).transpose()?;
 
 		// Adopt the last input item's layer so the editor can also bucket clicks under a contributing child layer
-		let layer_path: List<NodeId> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary);
-		output_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+		layer_path = flattened
+			.attribute_cloned_or_default::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH, primary)
+			.iter_element_values()
+			.copied()
+			.collect();
 	}
+	let exhausted = || {
+		Interrupt::from(GraphError {
+			kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		})
+	};
+	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
+	// Snapshot the input layers so the renderer can recurse into them for
+	// editor click-target preservation, as the boolean operation does.
+	let merged_layers = arena.alloc(graphic_list).ok_or_else(exhausted)?.0;
 
-	// Preserve a reference to the original upstream `List<Graphic>` so the renderer can recurse into it
-	// when collecting metadata, exposing the original child layers' click targets to editor tools.
-	// This is the same mechanism Boolean Operation uses to keep its inputs editable after the merge.
-	output_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
-
-	output_list
+	Ok((output, Attr(DAffine2::IDENTITY), Attr(fill), Attr(stroke), Attr(layer_path.as_slice()), Attr(Some(merged_layers))))
 }
+
+// TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+pub fn flatten_path<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Graphic>,
+) -> Result<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, StrokeAttr>, Attr<'e, EditorLayerPath>, Attr<'e, EditorMergedLayers>), Interrupt> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let content = graphic_types::graphic::run_to_render_list::<Graphic>(&item).expect("the run holds the row's element type");
+	flatten_path_core(ctx.arena(), content)
+}
+
+/// The path flattening over a plain vector level, as [`flatten_path`].
+/// Registered under the flatten path identifier.
+#[node_macro::node(category(""))]
+pub fn flatten_path_vector<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Vector>,
+) -> Result<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, StrokeAttr>, Attr<'e, EditorLayerPath>, Attr<'e, EditorMergedLayers>), Interrupt> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let content = graphic_types::graphic::run_to_render_list::<Vector>(&item)
+		.expect("the run holds the row's element type")
+		.into_graphic_list();
+	flatten_path_core(ctx.arena(), content)
+}
+
+pub use _flatten_path_vector_mod::flatten_path_vector_entries;
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("sample_polyline_properties"), memoize)]
@@ -3328,8 +3503,8 @@ mod test {
 		let expected_points = Vector::from_bezpath(points.clone()).point_domain.positions().to_vec();
 
 		let copy_to_points = super::copy_to_points(&Footprint::default(), vector_node_from_bezpath(points), vector_node_from_bezpath(element), 1., 1., 0., 0, 0., 0);
-		let flatten_path = super::flatten_path(&Footprint::default(), copy_to_points);
-		let flattened_copy_to_points = flatten_path.element(0).unwrap();
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let (flattened_copy_to_points, ..) = super::flatten_path_core(&arena, copy_to_points.into_graphic_list()).unwrap();
 
 		assert_eq!(flattened_copy_to_points.region_manipulator_groups().count(), expected_points.len());
 
