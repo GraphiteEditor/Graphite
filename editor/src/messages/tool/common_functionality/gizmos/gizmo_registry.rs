@@ -127,6 +127,19 @@ impl DragWrites {
 	}
 }
 
+/// Values a drag should settle onto, computed from the layer's other parameters.
+pub type SnapTargetsFn = fn(&GizmoContext) -> Vec<f64>;
+/// Extra overlay a shape draws around its gizmo.
+pub type OverlayFn = fn(&GizmoContext, &mut OverlayContext);
+/// Inputs to write alongside the dragged one.
+pub type CoupledWritesFn = fn(&GizmoContext, f64) -> Vec<(ParameterRef, TaggedValue)>;
+/// Where a parameter can be grabbed, in the layer's local space.
+pub type HandlePositionsFn = fn(&GizmoContext, f64) -> Vec<DVec2>;
+/// How far the cursor is from each grab point.
+pub type HoverDistancesFn = fn(&GizmoContext) -> Vec<Option<f64>>;
+/// How cursor motion becomes node inputs.
+pub type DragFn = fn(&GizmoContext, &mut DragInput) -> DragWrites;
+
 /// The escape hatch for nodes whose gizmo needs more than the generic mechanics.
 ///
 /// The generic layer always owns hit-testing, the hover/drag state machine, the handle overlay, and the
@@ -138,26 +151,26 @@ impl DragWrites {
 #[derive(Clone, Copy, Debug)]
 pub struct GizmoBehavior {
 	/// Values the drag should snap to, recomputed from the layer's current parameters at drag start.
-	pub snap_targets: Option<fn(&GizmoContext) -> Vec<f64>>,
+	pub snap_targets: Option<SnapTargetsFn>,
 	/// Extra overlay drawn while this gizmo is hovered or dragged, for nodes that show more than the
 	/// bare handle (a star previews its outline and spokes, for instance).
-	pub overlay: Option<fn(&GizmoContext, &mut OverlayContext)>,
+	pub overlay: Option<OverlayFn>,
 	/// Additional inputs to write alongside the dragged one, given the value the drag produced. Used by
 	/// parameters that are only meaningful in combination.
-	pub coupled_writes: Option<fn(&GizmoContext, f64) -> Vec<(ParameterRef, TaggedValue)>>,
+	pub coupled_writes: Option<CoupledWritesFn>,
 	/// Where this parameter can be grabbed, in the layer's local space, given its current value.
 	///
 	/// A length parameter is usually grabbable in exactly one place, which is the default: a handle sitting
 	/// `value` out along the local +X axis. Some shapes offer the same parameter in several places at once —
 	/// a star's outer radius can be taken hold of at any of its outer points — so this returns all of them.
 	/// The drag then runs along the ray through whichever one the user grabbed, not along a fixed axis.
-	pub handle_positions: Option<fn(&GizmoContext, f64) -> Vec<DVec2>>,
+	pub handle_positions: Option<HandlePositionsFn>,
 	/// How far the cursor is from each of this parameter's grab points, when they are not points.
 	///
 	/// The default measures to the handle positions above, which suits a control you take hold of at a
 	/// spot. A grid's rows are grabbed anywhere along an edge, so it measures to a line instead. `None` in
 	/// a slot means that grab point is not available right now.
-	pub hover_distances: Option<fn(&GizmoContext) -> Vec<Option<f64>>>,
+	pub hover_distances: Option<HoverDistancesFn>,
 	/// How cursor motion becomes node inputs.
 	///
 	/// The default reads the cursor's distance along the ray through the grabbed handle and writes the one
@@ -171,7 +184,7 @@ pub struct GizmoBehavior {
 	/// The [`DragInput`] is mutable because a drag may have to re-anchor itself: an arc dragged past a full
 	/// sweep hands over to its other endpoint and continues from there, which means rewriting the baseline
 	/// the rest of the gesture is measured against.
-	pub drag: Option<fn(&GizmoContext, &mut DragInput) -> DragWrites>,
+	pub drag: Option<DragFn>,
 	/// Per-frame rotation, in degrees, below which swept angle is treated as cursor noise rather than
 	/// intent. Near the layer's origin the angle between successive cursor positions is mostly noise, and
 	/// feeding it in makes the value jitter while the cursor is still. Zero accumulates everything.
