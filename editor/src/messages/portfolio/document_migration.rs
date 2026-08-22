@@ -1024,6 +1024,13 @@ fn replace_optional_f64_null(input: &str) -> String {
 	result
 }
 
+/// Serialized proto identifiers of the Merge and Artboard layer internals that the
+/// leveled-records flip retires. When the flip lands, `document_migration_reset_node_definition`
+/// starts matching these, so every pre-flip document rebuilds its layer definitions through the
+/// same reset mechanism as the `SourceNodeIdNode` entry there. A test pins each marker to the
+/// live identifier so a pre-flip rename cannot silently invalidate the staged strings.
+pub const FLIP_RESET_NODE_MARKERS: &[&str] = &["graphic_nodes::graphic::WriteAttributeNode"];
+
 pub fn document_migration_reset_node_definition(document_serialized_content: &str) -> bool {
 	// Upgrade a document being opened to use fresh copies of all nodes
 	if document_serialized_content.contains("node_output_index") {
@@ -2571,6 +2578,11 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn the_flip_reset_markers_track_the_live_merge_internals() {
+		assert_eq!(FLIP_RESET_NODE_MARKERS, &[graphene_std::graphic::write_attribute::IDENTIFIER.as_str()]);
+	}
 
 	#[test]
 	fn test_no_duplicate_node_replacements() {
