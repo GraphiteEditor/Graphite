@@ -525,8 +525,27 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::MergingEndpoints
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
-				SplineToolFsmState::Ready
+				if tool_data.points.len() >= 2 {
+					responses.add_front(DocumentMessage::CommitTransaction);
+					if let Some(layer) = tool_data.current_layer {
+						if let Some(id) = tool_data.preview_segment.take() {
+							responses.add_front(GraphOperationMessage::Vector {
+								layer,
+								modification_type: VectorModificationType::RemoveSegment { id },
+							});
+						}
+						if let Some(id) = tool_data.preview_point.take() {
+							responses.add_front(GraphOperationMessage::Vector {
+								layer,
+								modification_type: VectorModificationType::RemovePoint { id },
+							});
+						}
+					}
+					SplineToolFsmState::Ready
+				} else {
+					responses.add(DocumentMessage::AbortTransaction);
+					SplineToolFsmState::Ready
+				}
 			}
 			(_, SplineToolMessage::WorkingColorChanged) => {
 				responses.add(SplineToolMessage::UpdateOptions {
