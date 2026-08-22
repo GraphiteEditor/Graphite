@@ -14,11 +14,12 @@ use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION,
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{DragInput, DragWrites, GizmoBehavior, GizmoContext, GizmoState};
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_width};
 use crate::messages::tool::common_functionality::shapes::grid_shape::RowColumnGizmoType;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{
-	arc_end_points, arc_end_points_ignore_layer, arc_outline, calculate_arc_text_transform, draw_snapping_ticks, extract_arc_parameters, extract_grid_parameters, extract_polygon_parameters,
-	extract_spiral_parameters, extract_star_parameters, format_rounded, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline, star_vertex_position,
+	arc_end_points, arc_end_points_ignore_layer, arc_outline, calculate_arc_text_transform, draw_snapping_ticks, extract_arc_parameters, extract_circle_radius, extract_grid_parameters,
+	extract_polygon_parameters, extract_spiral_parameters, extract_star_parameters, format_rounded, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline,
+	star_vertex_position,
 };
 use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate_spiral_endpoints;
 use glam::{DAffine2, DVec2};
@@ -29,7 +30,7 @@ use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, spiral_p
 use graphene_std::vector::generator_nodes::star;
 use graphene_std::vector::misc::{GridType, SpiralType, dvec2_to_point, get_line_endpoints};
 use kurbo::ParamCurveNearest;
-use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2, TAU};
+use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_2, FRAC_PI_4, PI, SQRT_2, TAU};
 
 /// The star's sides dial: previews the shape it is about to change.
 pub const STAR_SIDES: GizmoBehavior = GizmoBehavior {
@@ -40,6 +41,7 @@ pub const STAR_SIDES: GizmoBehavior = GizmoBehavior {
 	hover_distances: None,
 	drag: None,
 	angle_deadzone: 0.,
+	draws_own_handle: false,
 };
 
 /// Either of the star's radius handles: snaps to the radii where the star's points line up, and previews
@@ -52,6 +54,20 @@ pub const STAR_RADIUS: GizmoBehavior = GizmoBehavior {
 	hover_distances: None,
 	drag: None,
 	angle_deadzone: 0.,
+	draws_own_handle: false,
+};
+
+/// A circular radius, for the circle and the arc. Grabbed anywhere on the circumference rather than at one
+/// point on it, which is how the hand-written handler worked and what the shape invites.
+pub const CIRCULAR_RADIUS: GizmoBehavior = GizmoBehavior {
+	snap_targets: None,
+	overlay: Some(circular_radius_overlay),
+	coupled_writes: None,
+	handle_positions: None,
+	hover_distances: Some(circular_radius_distances),
+	drag: None,
+	angle_deadzone: 0.,
+	draws_own_handle: true,
 };
 
 /// The grid's row count, grabbed along its top or bottom edge.
@@ -63,6 +79,7 @@ pub const GRID_ROWS: GizmoBehavior = GizmoBehavior {
 	hover_distances: Some(grid_row_distances),
 	drag: Some(grid_edge_drag),
 	angle_deadzone: 0.,
+	draws_own_handle: true,
 };
 
 /// The grid's column count, grabbed along its left or right edge.
@@ -74,6 +91,7 @@ pub const GRID_COLUMNS: GizmoBehavior = GizmoBehavior {
 	hover_distances: Some(grid_column_distances),
 	drag: Some(grid_edge_drag),
 	angle_deadzone: 0.,
+	draws_own_handle: true,
 };
 
 /// The arc's sweep, grabbable at either end of the curve. Dragging either endpoint reshapes the arc; the
@@ -86,6 +104,7 @@ pub const ARC_SWEEP: GizmoBehavior = GizmoBehavior {
 	hover_distances: None,
 	drag: Some(arc_sweep_drag),
 	angle_deadzone: 0.,
+	draws_own_handle: false,
 };
 
 /// The spiral's winding control. Grabbable at either end of the curve; dragging winds or unwinds it.
@@ -97,6 +116,7 @@ pub const SPIRAL_TURNS: GizmoBehavior = GizmoBehavior {
 	hover_distances: None,
 	drag: Some(spiral_turns_drag),
 	angle_deadzone: 0.5,
+	draws_own_handle: false,
 };
 
 /// The polygon's sides dial, the counterpart to [`STAR_SIDES`].
@@ -108,6 +128,7 @@ pub const POLYGON_SIDES: GizmoBehavior = GizmoBehavior {
 	hover_distances: None,
 	drag: None,
 	angle_deadzone: 0.,
+	draws_own_handle: false,
 };
 
 /// The radii at which dragging one of a star's radius handles makes its points line up: the value where
@@ -720,5 +741,92 @@ fn initial_u32(drag: &DragInput, index: usize) -> Option<u32> {
 fn set_initial_u32(drag: &mut DragInput, index: usize, value: u32) {
 	if let Some(slot) = drag.initial_parameters.get_mut(index) {
 		*slot = Some(TaggedValue::U32(value));
+	}
+}
+
+/// A point on a circle of the given radius, at `theta` measured counterclockwise from +X.
+fn circle_point(theta: f64, radius: f64) -> DVec2 {
+	DVec2::new(radius * theta.cos(), -radius * theta.sin())
+}
+
+/// Half the width of the band around the circumference that counts as grabbing it. It widens with the
+/// stroke, so a thick outline is still grabbable at its edge, and narrows for a circle that is small on
+/// screen so the band cannot swallow the whole shape.
+fn circular_grab_spacing(viewport: DAffine2, radius: f64, center: DVec2, stroke_width: f64) -> f64 {
+	const SMALL_ON_SCREEN: f64 = 15.;
+
+	let x_extent = viewport.transform_point2(circle_point(0., radius)).distance(center);
+	let y_extent = viewport.transform_point2(circle_point(FRAC_PI_2, radius)).distance(center);
+	let smallest = x_extent.min(y_extent);
+
+	stroke_width + if smallest < SMALL_ON_SCREEN { 10. * (smallest / SMALL_ON_SCREEN) } else { 10. }
+}
+
+/// The radius this gizmo edits, whichever of the two shapes owns it.
+fn circular_radius(context: &GizmoContext) -> Option<f64> {
+	extract_circle_radius(context.layer, context.document).or_else(|| extract_arc_parameters(Some(context.layer), context.document).map(|(radius, ..)| radius))
+}
+
+/// How far the cursor is from the circumference, or `None` when it is not on it. Reporting the radial
+/// distance rather than a flat "yes" lets an arc's endpoints still win the cursor where they overlap.
+fn circular_radius_distances(context: &GizmoContext) -> Vec<Option<f64>> {
+	let Some(radius) = circular_radius(context) else { return vec![None] };
+	let radius = radius.abs();
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+	let center = viewport.transform_point2(DVec2::ZERO);
+
+	let angle = viewport.inverse().transform_point2(context.mouse_position).angle_to(DVec2::X);
+	let on_circumference = viewport.transform_point2(circle_point(angle, radius));
+
+	// Too small on screen to aim at.
+	if on_circumference.distance(center) < GIZMO_HIDE_THRESHOLD {
+		return vec![None];
+	}
+
+	let stroke_width = get_stroke_width(context.layer, &context.document.network_interface).unwrap_or(0.);
+	let spacing = circular_grab_spacing(viewport, radius, center, stroke_width);
+	let deviation = (context.mouse_position.distance(center) - on_circumference.distance(center)).abs();
+
+	vec![(deviation <= spacing).then_some(deviation)]
+}
+
+/// The band itself, drawn as a pair of dashed ellipses once the radius is in play.
+fn circular_radius_overlay(context: &GizmoContext, overlay_context: &mut OverlayContext) {
+	if context.state == GizmoState::Inactive {
+		return;
+	}
+	let Some(radius) = circular_radius(context) else { return };
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+	let center = viewport.transform_point2(DVec2::ZERO);
+
+	let x_point = viewport.transform_point2(circle_point(0., radius));
+	let y_point = viewport.transform_point2(circle_point(FRAC_PI_2, radius));
+
+	let Some(stroke_width) = get_stroke_width(context.layer, &context.document.network_interface) else {
+		overlay_context.dashed_ellipse(
+			center,
+			x_point.distance(center),
+			y_point.distance(center),
+			None,
+			None,
+			None,
+			None,
+			None,
+			None,
+			Some(4.),
+			Some(4.),
+			Some(0.5),
+		);
+		return;
+	};
+
+	let spacing = circular_grab_spacing(viewport, radius, center, stroke_width);
+	let direction_x = viewport.transform_vector2(DVec2::X);
+	let direction_y = viewport.transform_vector2(-DVec2::Y);
+
+	for sign in [-1., 1.] {
+		let x_radius = (x_point + direction_x * spacing * sign).distance(center);
+		let y_radius = (y_point + direction_y * spacing * sign).distance(center);
+		overlay_context.dashed_ellipse(center, x_radius, y_radius, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
 	}
 }

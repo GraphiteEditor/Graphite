@@ -184,7 +184,6 @@ impl GenericSliderGizmo {
 		self.hover_distances(document, value, mouse_position, viewport, center)
 			.into_iter()
 			.flatten()
-			.filter(|distance| *distance <= SLIDER_HANDLE_HOVER_THRESHOLD)
 			.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
 	}
 
@@ -198,8 +197,13 @@ impl GenericSliderGizmo {
 		self.handle_positions(document, value)
 			.into_iter()
 			.map(|local| viewport.transform_point2(local))
-			// Hide the gizmo when the shape is too small on screen to interact with reliably.
-			.map(|handle| (handle.distance(center) >= GIZMO_HIDE_THRESHOLD).then(|| mouse_position.distance(handle)))
+			.map(|handle| {
+				// Hide the gizmo when the shape is too small on screen to interact with reliably.
+				let reachable = handle.distance(center) >= GIZMO_HIDE_THRESHOLD;
+				let distance = mouse_position.distance(handle);
+
+				(reachable && distance <= SLIDER_HANDLE_HOVER_THRESHOLD).then_some(distance)
+			})
 			.collect()
 	}
 
@@ -376,6 +380,11 @@ impl GenericSliderGizmo {
 		}
 
 		if self.state == GenericSliderState::Inactive {
+			return;
+		}
+
+		// A shape that draws the thing being grabbed does not want a second handle on top of it.
+		if self.info.behavior.draws_own_handle {
 			return;
 		}
 
