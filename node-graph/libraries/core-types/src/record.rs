@@ -325,9 +325,8 @@ pub struct LayoutMeta {
 	/// The depth change the node applies: `0` for elementwise and flip nodes,
 	/// `+1` for a creator, `-1` for a reducer.
 	pub level_delta: i8,
-	/// The materialized subject a reducer folds, as `(input, levels)`: the
-	/// output keeps the subject's levels above the folded ones, so the depth
-	/// derives from its layout even though it contributes no fields.
+	/// The materialized subject a reducer folds, as `(input, levels)`. The fold
+	/// consumes the whole subject wire, so only the node's own levels remain.
 	pub folded: Option<(u8, u8)>,
 }
 
@@ -375,10 +374,9 @@ impl LayoutMeta {
 		}
 		.without(&self.removes);
 		let depth = match self.folded {
-			Some((input, levels)) => {
-				let subject = inputs[input as usize].expect("layout fold folded input has no layout");
-				(subject.depth.saturating_sub(levels) as i8 + self.level_delta).max(0) as u8
-			}
+			// A fold consumes the whole subject wire (a deeper wire folds its
+			// total flat span), so only the node's own levels remain.
+			Some(_) => self.level_delta.max(0) as u8,
 			None => (base.depth as i8 + self.level_delta).max(0) as u8,
 		};
 		let element = match &self.element {

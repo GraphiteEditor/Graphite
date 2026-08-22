@@ -1445,7 +1445,7 @@ mod tests {
 	}
 
 	#[test]
-	fn partial_fold_keeps_the_outer_level() {
+	fn fold_collapses_a_deeper_wire() {
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -1457,7 +1457,7 @@ mod tests {
 		let (reverse_edge, reverse_layout) = lifted_value(false);
 		reserve_for(&[&base, &leveled_content, &count_layout, &reverse_layout]);
 
-		// Element = the outer copy, so each outer row folds to a distinct sum.
+		// Element = the outer copy, so the total fold sums across both copies.
 		let content = install(
 			RepeatOpacityNode::new(IndexSourceNode { layout: base.clone() }, ValueNode(3u32), &base),
 			repeat_opacity_layout_meta(),
@@ -1482,18 +1482,12 @@ mod tests {
 
 		let node = install(SumNode::new(nested, &two_level), sum_layout_meta(), &[Some(&two_level)]);
 		let out = Node::<ContextImpl>::layout(&node).clone();
-		assert_eq!(out.depth, 1, "the fold keeps the subject's outer level");
-		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(2)), "the outer extent shifts down");
-
-		let head = ctx.index_head();
-		for (lane, expected) in [(0u64, 0.), (1, 3.)] {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane)) else {
-				panic!("expected a final record");
-			};
-			assert_eq!(unsafe { out.rec(&value).element::<f64>() }, expected, "row {lane}");
-			unsafe { stack::rewind(mark) };
-		}
+		assert_eq!(out.depth, 0, "the fold consumes the whole wire");
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		// Two copies of three lanes, each lane the copy index: 0 * 3 + 1 * 3.
+		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 3.);
 	}
 
 	#[test]

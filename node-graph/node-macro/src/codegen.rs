@@ -779,13 +779,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.iter()
 			.any(|bound| matches!(bound, TypeParamBound::Trait(trait_bound) if trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "ExtractArena")))
 	});
-	let ctx_extracts_index = ctx_param.is_some_and(|ctx_param| {
-		ctx_param
-			.bounds
-			.iter()
-			.any(|bound| matches!(bound, TypeParamBound::Trait(trait_bound) if trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "ExtractIndex")))
-	});
-
 	let derives = ctx_param.is_some_and(|ctx_param| {
 		ctx_param.bounds.iter().any(|bound| match bound {
 			TypeParamBound::Trait(trait_bound) => trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "DeriveCtx"),
@@ -793,9 +786,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 	});
 	let derive_routing = derives && routing_generic.is_some();
-	// A reducer's materialized subject folds the flat span of the consumer's
-	// lane when the wire is deeper than the fold; the ctx supplies the lane.
-	let derived_materialized = |index: usize| ctx_extracts_index && node.inputs[index].subject && ir::materialized_levels(&node, index) > 0 && node.output.shape.depth == 0;
 
 	let ctx_generic = match ctx_bounds.is_empty() {
 		true => quote!(#ctx_ident),
@@ -1128,40 +1118,24 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				// record/flip tail), so it does not bind here.
 				ValueBinding::Carrier => quote!(),
 				ValueBinding::Materialized => {
-					let levels = ir::materialized_levels(&node, index);
-					let non_exact = fail(quote!(#core_types::gpoll::GraphError::new("reduce over a non-exact extent")));
+					let fn_name = &parsed.fn_name;
+					let non_exact = fail(quote!(#core_types::gpoll::GraphError::new(::std::concat!("reduce over a non-exact extent in ", ::std::stringify!(#fn_name)))));
 					let batch_error = fail(quote!(__error));
 					let batch_failed = fail(quote!(#core_types::gpoll::GraphError::new("reduce batch failed")));
-					// A reducer's subject on a deeper wire folds the flat span of
-					// the consumer's lane: the flat convention encodes the outer
-					// coordinate in the range, not the chain. The span offset
-					// needs the exact inner count, so a lower bound only drains
-					// when the fold covers the whole wire.
-					let deeper = match derived_materialized(index) {
-						true => quote!(#core_types::node::Node::<#ctx_ident>::layout(&self.#name).depth > #levels),
-						false => quote!(false),
-					};
-					let start = match derived_materialized(index) {
-						true => quote! {
-							match __deeper {
-								true => #core_types::context::ExtractIndex::innermost_index(__input) * __count as u64,
-								false => 0,
-							}
-						},
-						false => quote!(0),
-					};
+					// A fold consumes the whole subject wire: a deeper wire's
+					// total flat span, sized under the evaluation context, so a
+					// fold inside a pushed level covers that copy's span.
 					quote! {
 						let __arena = #core_types::context::ExtractArena::arena(__input);
-						let __deeper = #deeper;
-						let __sized = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Below(#levels)) {
+						let __sized = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total) {
 							#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => ::core::result::Result::Ok(__count),
-							#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::AtLeast(__bound)) if !__deeper => ::core::result::Result::Err(__bound),
+							#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::AtLeast(__bound)) => ::core::result::Result::Err(__bound),
 							#core_types::gpoll::GPoll::Pending => #pending,
 							_ => #non_exact,
 						};
 						let __batch = match __sized {
 							::core::result::Result::Ok(__count) => {
-								let __start: u64 = #start;
+								let __start: u64 = 0;
 								match #core_types::record::materialize_batch(&self.#name, __input, __start..__start + __count as u64, __arena) {
 									#core_types::node::BatchStatus::Lent(__batch, ..) => __batch,
 									#core_types::node::BatchStatus::Filled(__batch, ..) => __batch.into_shared(),
@@ -1431,14 +1405,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! {
 			fn extent_at(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
 				#path(self, __input, __level)
-			}
-		}
-	} else if let Some((subject_index, folded_levels)) = ir::folded_subject(&node).filter(|_| node.output.shape.depth == 0) {
-		// A reducer's output keeps the subject's levels above the folded ones.
-		let name = &regular_fields[subject_index as usize].pat_ident.ident;
-		quote! {
-			fn extent_at(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
-				#core_types::node::Node::extent_at(&self.#name, __input, __level + #folded_levels)
 			}
 		}
 	} else if let Some(subject_index) = ir::forwarded_subject(&node).filter(|_| node.output.shape.depth == 0) {
