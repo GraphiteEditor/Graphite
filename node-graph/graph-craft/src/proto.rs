@@ -847,6 +847,9 @@ impl TypingContext {
 		// Get the node input type from the proto node declaration
 		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
 		let (node_io, entry) = resolve_entry(node, &inputs, impls)?;
+		if std::env::var("GRAPHENE_TYPE_DEBUG").is_ok() {
+			eprintln!("type {} {} -> {}", node_id, node.identifier, node_io.ty());
+		}
 		self.inferred.insert(node_id, node_io.clone());
 		self.constructor.insert(node_id, entry.constructor);
 		Ok(node_io)
