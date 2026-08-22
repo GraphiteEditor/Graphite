@@ -99,7 +99,7 @@ fn frame_memo_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
 type MonitorValue = Arc<Mutex<Option<IORecord<CtxSnapshot, RecordCapture>>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
-#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
+#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), extent(monitor_extent))]
 fn monitor<'e>(
 	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + InjectIndex + Copy,
 	#[data] io: MonitorValue,
@@ -124,6 +124,10 @@ fn monitor<'e>(
 		});
 	}
 	result
+}
+
+fn monitor_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
+	content.at(level)
 }
 
 fn serialize_monitor(io: &MonitorValue) -> Option<Arc<dyn std::any::Any + Send + Sync>> {

@@ -597,13 +597,12 @@ mod test {
 
 	#[test]
 	fn the_clone_node_clones_the_element_out_of_its_record_wire() {
-		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
 		let network = ProtoNetwork {
 			stack_need: 0,
 			inputs: vec![],
 			output: NodeId(1),
 			nodes: vec![
-				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(raster_list.into()), vec![])),
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![7.]).into()), vec![])),
 				(NodeId(1), proto_node("graphene_core::debug::CloneNode", vec![NodeId(0)])),
 			],
 		};
@@ -613,28 +612,31 @@ mod test {
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
-		let edge = executor
-			.tree()
-			.get(NodeId(1))
-			.unwrap()
-			.downcast_record::<graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>>()
-			.unwrap();
+		let handle = executor.tree().get(NodeId(1)).unwrap();
+		let layout = handle.layout().clone();
+		let edge = handle.duplicate().downcast_record::<f64>().unwrap();
 		core_types::record::stack::reserve(executor.tree().stack_need());
-		let result = edge.eval(&ctx);
-		assert!(matches!(result, GPoll::Final(_)), "the flipped clone must evaluate over record wires, got a non-final poll");
+		let GPoll::Final(value) = edge.eval(&ctx) else {
+			panic!("the flipped clone must evaluate over record wires, got a non-final poll");
+		};
+		assert_eq!(unsafe { core_types::record::read_element::<f64>(layout.rec(&value)) }, 7.);
 	}
 
 	#[test]
 	fn a_flipped_ref_parameter_reads_the_borrow_from_its_record_wire() {
+		// The palette is an unconverted legacy consumer, so its content routes
+		// through the transitional level bridge like a document wire would.
 		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
 		let network = ProtoNetwork {
 			stack_need: 0,
 			inputs: vec![],
-			output: NodeId(2),
+			output: NodeId(4),
 			nodes: vec![
 				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(raster_list.into()), vec![])),
-				(NodeId(1), ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(4).into()), vec![])),
-				(NodeId(2), proto_node("raster_nodes::image_color_palette::ImageColorPaletteNode", vec![NodeId(0), NodeId(1)])),
+				(NodeId(1), ProtoNode::value(ConstructionArgs::Value(TaggedValue::None.into()), vec![])),
+				(NodeId(2), proto_node("graphene_core::ops::ConvertNode<List<Raster<CPU>>>", vec![NodeId(0), NodeId(1)])),
+				(NodeId(3), ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(4).into()), vec![])),
+				(NodeId(4), proto_node("raster_nodes::image_color_palette::ImageColorPaletteNode", vec![NodeId(2), NodeId(3)])),
 			],
 		};
 
@@ -645,7 +647,7 @@ mod test {
 		let ctx = ContextImpl::root(&scope);
 		let edge = executor
 			.tree()
-			.get(NodeId(2))
+			.get(NodeId(4))
 			.unwrap()
 			.downcast_record::<graphene_std::list::List<graphene_std::raster::color::Color>>()
 			.unwrap();

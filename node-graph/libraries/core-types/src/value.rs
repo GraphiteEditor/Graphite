@@ -75,6 +75,13 @@ where
 
 	fn eval(&self, input: &C) -> crate::gpoll::GPoll<crate::record::RecordValue<'e>> {
 		let Some(value) = self.values.get(input.innermost_index() as usize) else {
+			eprintln!(
+				"DEBUG level value past end: {} lane {} of {}\n{}",
+				std::any::type_name::<T>(),
+				input.innermost_index(),
+				self.values.len(),
+				std::backtrace::Backtrace::force_capture()
+			);
 			return crate::gpoll::GPoll::error("value level addressed past its items");
 		};
 		crate::record::lift_poll(crate::gpoll::GPoll::Final(value.clone()), &self.layout, input.arena())

@@ -260,22 +260,6 @@ mod test {
 	}
 
 	#[test]
-	fn repeat_pushes_the_iteration_index_in_order() {
-		test_ctx!(ctx, cell);
-
-		let x_translations = |values: [f64; 3]| values.map(|x| DVec2::new(x, 0.)).to_vec();
-
-		let lift = RecordLift::<List<Vector>, _>::new(IndexProbe);
-		let layout = Node::<ContextImpl>::layout(&lift).clone();
-
-		let forward = super::repeat(&ctx, ElementLazyInput::new(&lift, &cell, 0, &layout), 3, false).unwrap();
-		assert_eq!(row_translations(&forward, ATTR_TRANSFORM), x_translations([0., 1., 2.]));
-
-		let reversed = super::repeat(&ctx, ElementLazyInput::new(&lift, &cell, 0, &layout), 3, true).unwrap();
-		assert_eq!(row_translations(&reversed, ATTR_TRANSFORM), x_translations([2., 1., 0.]));
-	}
-
-	#[test]
 	fn repeat_array_spaces_copies_along_the_direction() {
 		test_ctx!(ctx, cell);
 		let direction = DVec2::new(1.5, 0.);

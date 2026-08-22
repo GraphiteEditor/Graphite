@@ -31,6 +31,6 @@ fn unwrap_option<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<
 
 /// Clones the element out of its record wire.
 #[node_macro::node(category("Debug"))]
-fn clone<T: Clone>(_: impl Ctx, #[implementations(List<Raster<CPU>>)] value: &T) -> T {
+fn clone<T: Clone>(_: impl Ctx, #[implementations(Raster<CPU>, f64)] value: &T) -> T {
 	value.clone()
 }

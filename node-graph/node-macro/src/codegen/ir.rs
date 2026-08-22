@@ -253,6 +253,24 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 	}
 }
 
+/// The single carried subject a level-preserving node forwards its extents
+/// to: exactly one un-materialized subject, no level shift, and no fold.
+pub(crate) fn forwarded_subject(node: &Node) -> Option<usize> {
+	if level_delta(node) != 0 || folded_subject(node).is_some() {
+		return None;
+	}
+	let mut sources = node
+		.inputs
+		.iter()
+		.enumerate()
+		.filter(|(index, input)| input.subject && materialized_levels(node, *index) == 0)
+		.map(|(index, _)| index);
+	match (sources.next(), sources.next()) {
+		(Some(index), None) => Some(index),
+		_ => None,
+	}
+}
+
 /// The materialized subject a node folds, as `(input, levels)`.
 pub(crate) fn folded_subject(node: &Node) -> Option<(u8, u8)> {
 	node.inputs
