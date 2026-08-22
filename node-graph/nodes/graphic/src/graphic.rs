@@ -13,63 +13,81 @@ use raster_types::{CPU, GPU, Raster};
 use vector_types::gradient::{GradientSpreadMethod, GradientType};
 use vector_types::{GradientStop, GradientStops, ReferencePoint};
 
-/// Returns the value at the specified index in the list.
-/// If no value exists at that index, the type's default value is returned.
-#[node_macro::node(category("General"))]
-pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
-	_: impl Ctx,
+/// Resolves a signed index over `total` lanes: negatives count from the end,
+/// out of range resolves to nothing.
+fn resolve_index(index: f64, total: u64) -> Option<u64> {
+	let index = index as i64;
+	match index < 0 {
+		true => total.checked_sub(index.unsigned_abs()),
+		false => ((index as u64) < total).then_some(index as u64),
+	}
+}
+
+/// Returns a one-lane level holding the item at the specified index with its
+/// attributes, or an empty level when the index is out of range.
+#[node_macro::node(category("General"), extent(index_elements_extent))]
+pub fn index_elements<T>(
+	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The list of data.
-	#[implementations(
-		List<Artboard>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<GradientStops>,
-		List<String>,
-		List<f64>,
-		List<u8>,
-		List<NodeId>,
-	)]
-	list: T,
+	list: impl Node<Context<'_>, Output = T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,
-) -> T::Output
-where
-	T::Output: Clone + Default,
-{
-	let index = index as i32;
+) -> Result<T, Interrupt> {
+	let total = match list.extent(ctx, Level::Total) {
+		GPoll::Final(Extent::Exactly(count)) => count as u64,
+		GPoll::Pending => return Err(Interrupt::Pending),
+		_ => return Err(GraphError::new("index elements over a non-exact extent").into()),
+	};
+	let Some(source) = resolve_index(index, total) else {
+		return Err(GraphError::new("index elements addressed its empty selection").into());
+	};
+	let mut shifted = *ctx;
+	shifted.set_index(source);
+	list.eval(&shifted)
+}
 
-	if index < 0 { list.at_index_from_end(-index as usize) } else { list.at_index(index as usize) }.unwrap_or_default()
+fn index_elements_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => index.get().zip(list.at(level)).map(|(index, extent)| match extent {
+			Extent::Exactly(count) => Extent::Exactly(resolve_index(index, count as u64).is_some() as usize),
+			_ => Extent::Exactly(1),
+		}),
+		false => list.at(level),
+	}
 }
 
 /// Returns the list with the element at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
-#[node_macro::node(category("General"))]
-pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
-	_: impl Ctx,
+#[node_macro::node(category("General"), extent(omit_element_extent))]
+pub fn omit_element<T>(
+	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The list of data.
-	#[implementations(
-		List<String>,
-		List<Artboard>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<GradientStops>,
-	)]
-	list: T,
+	list: impl Node<Context<'_>, Output = T>,
 	/// The index of the item to remove, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,
-) -> T {
-	let index = index as i32;
+) -> Result<T, Interrupt> {
+	let total = match list.extent(ctx, Level::Total) {
+		GPoll::Final(Extent::Exactly(count)) => count as u64,
+		GPoll::Pending => return Err(Interrupt::Pending),
+		_ => return Err(GraphError::new("omit over a non-exact extent").into()),
+	};
+	let lane = ctx.innermost_index();
+	let source = match resolve_index(index, total) {
+		Some(omitted) if lane >= omitted => lane + 1,
+		_ => lane,
+	};
+	let mut shifted = *ctx;
+	shifted.set_index(source);
+	list.eval(&shifted)
+}
 
-	if index < 0 {
-		list.omit_index_from_end(index.unsigned_abs() as usize)
-	} else {
-		list.omit_index(index as usize)
+fn omit_element_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => index.get().zip(list.at(level)).map(|(index, extent)| match extent {
+			Extent::Exactly(count) if resolve_index(index, count as u64).is_some() => Extent::Exactly(count - 1),
+			extent => extent,
+		}),
+		false => list.at(level),
 	}
 }
 
@@ -77,73 +95,38 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 /// Use this when downstream nodes want just the inner value rather than a `List` containing a single item.
 /// If no value exists at that index, the element type's default is returned.
 #[node_macro::node(category("General"))]
-pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
-	_: impl Ctx,
+pub fn extract_element<T: Clone + Default + Send + Sync + CacheHash + 'static>(
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The `List` of data to extract from.
-	#[implementations(
-		List<String>,
-		List<f64>,
-		List<u8>,
-		List<NodeId>,
-		List<Color>,
-		List<GradientStops>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Graphic>,
-		List<Artboard>,
-	)]
-	list: List<T>,
+	#[implementations(String, f64, NodeId, Color, GradientStops, Vector, Raster<CPU>, Graphic, Artboard)] list: IList<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,
 ) -> T {
-	let len = list.len();
-	let index = index as i32;
-	let resolved = if index < 0 {
-		let from_end = index.unsigned_abs() as usize;
-		if from_end > len {
-			return T::default();
-		}
-		len - from_end
-	} else {
-		index as usize
-	};
-	list.element(resolved).cloned().unwrap_or_default()
+	resolve_index(index, list.len() as u64).map(|resolved| list.element_ref(resolved as usize).clone()).unwrap_or_default()
 }
 
+/// One subgraph invocation per content row, the row riding as a vararg, with
+/// the subgraph's lanes concatenated into one flat level. The level reports a
+/// lower bound; consumers drain to the past-end signal.
 #[node_macro::node(category("General"))]
-fn map<Item: AnyHash + Clone + Send + Sync + CacheHash>(
-	ctx: impl Ctx + DeriveCtx,
-	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
-		List<String>,
-	)]
-	content: List<Item>,
-	#[implementations(
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Color>,
-		Context -> List<GradientStops>,
-		Context -> List<String>,
-	)]
-	mapped: impl Node<Context<'_>, Output = List<Item>>,
-) -> Result<List<Item>, Interrupt> {
-	let spilled = ctx.index_head();
-	let mut rows = List::new();
-
-	for (i, row) in content.into_iter().enumerate() {
-		let item = List::new_from_item(row);
+fn map<Row: Clone + Send + Sync + CacheHash + 'static, T>(
+	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
+	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
+	mapped: impl Node<Context<'_>, Output = IList<T>>,
+) -> Result<IList<T>, Interrupt> {
+	let mut remaining = ctx.innermost_index();
+	for row in 0..content.len() {
+		let item = crate::record::vararg_row(content, row);
 		let scoped = ctx.push_vararg(&item);
-		let list = mapped.eval(&scoped.ctx().promoted(&spilled, i as u64))?;
-
-		rows.extend(list);
+		let lanes = mapped.inner_extent_at(&scoped.ctx(), row as u64)?;
+		if remaining >= lanes {
+			remaining -= lanes;
+			continue;
+		}
+		let mut frame = core_types::context::IndexLink { index: 0, outer: None };
+		return mapped.eval(&scoped.ctx().push_level(&mut frame, row as u64, remaining));
 	}
-
-	Ok(rows)
+	Err(GraphError::past_end().into())
 }
 
 #[node_macro::node(category("General"))]

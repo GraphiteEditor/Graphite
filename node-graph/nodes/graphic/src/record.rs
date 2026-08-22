@@ -144,7 +144,7 @@ fn to_gradient(_: impl Ctx + ExtractIndex + InjectIndex + Copy, colors: IList<Co
 /// One content row as the production vararg shape: a single-item legacy list
 /// carrying the row's element only, so the list's dyn-hash is a complete
 /// cache key over the observables.
-fn vararg_row<Row: Clone + Send + Sync + 'static>(content: core_types::node::List<'_, Row>, row: usize) -> core_types::list::List<Row> {
+pub(crate) fn vararg_row<Row: Clone + Send + Sync + 'static>(content: core_types::node::List<'_, Row>, row: usize) -> core_types::list::List<Row> {
 	core_types::list::List::new_from_element(content.element_ref(row).clone())
 }
 
