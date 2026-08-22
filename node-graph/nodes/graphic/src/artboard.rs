@@ -1,41 +1,46 @@
-use core_types::gpoll::Interrupt;
-use core_types::list::{Item, List};
+use core_types::attribute::{Attr, Background, Clip, Dimensions, Location};
+use core_types::extent::{ExtentIn, LevelIn, ValueIn};
+use core_types::gpoll::{Extent, GPoll, Interrupt};
 use core_types::transform::TransformMut;
-use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, Color, Context, Ctx, DeriveCtx, ModifyFootprint};
-use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{Graphic, IntoGraphicList};
-use graphic_types::{Artboard, Vector};
-use raster_types::{CPU, GPU, Raster};
-use vector_types::GradientStops;
+use core_types::{Color, Context, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyFootprint};
+use glam::DVec2;
+use graphic_types::Artboard;
+use graphic_types::graphic::Graphic;
 
-/// Constructs a single-element `Artboard[]` with the given content and metadata stored as row attributes.
+/// Evaluates the content within a footprint translated by `offset`, so the
+/// content culls and resolves against its position inside the artboard.
+#[node_macro::node(category(""), extent(translate_footprint_extent))]
+pub fn translate_footprint<T>(ctx: impl Ctx + DeriveCtx + ModifyFootprint, content: impl Node<Context<'_>, Output = T>, offset: DVec2) -> Result<T, Interrupt> {
+	let translated = ctx.modify_footprint(|footprint| footprint.translate(offset));
+	content.eval(&translated.ctx())
+}
+
+fn translate_footprint_extent(content: ExtentIn<'_>, _offset: ValueIn<'_, DVec2>, level: LevelIn) -> GPoll<Extent> {
+	content.at(level)
+}
+
+/// Constructs an artboard element with the given content and metadata stored as attributes.
 #[node_macro::node(category(""))]
-pub fn create_artboard<T: IntoGraphicList>(
-	ctx: impl Ctx + DeriveCtx + ModifyFootprint,
+pub fn create_artboard(
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// Graphics to include within the artboard.
-	#[implementations(
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<String>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<GradientStops>,
-		Context -> DAffine2,
-	)]
-	content: impl Node<Context<'_>, Output = T>,
+	content: IList<Graphic>,
 	/// Coordinate of the top-left corner of the artboard within the document.
 	location: DVec2,
 	/// Width and height of the artboard within the document.
 	dimensions: DVec2,
 	/// Color of the artboard background.
-	background: List<Color>,
+	background: IList<Color>,
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
 	clip: bool,
-) -> Result<List<Artboard>, Interrupt> {
-	let translated = ctx.modify_footprint(|footprint| footprint.translate(location));
-	let content = content.eval(&translated.ctx())?.into_graphic_list();
+) -> (Artboard, Attr<Location>, Attr<Dimensions>, Attr<Background>, Attr<Clip>) {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let content = graphic_types::graphic::group_to_legacy_list(&core_types::record::Group {
+		row: None,
+		content: core_types::record::GroupContent::Run(item),
+	});
 
 	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input
 	// dimensions to represent dragging from the opposite corner). Compute the corner using the raw signed
@@ -43,14 +48,11 @@ pub fn create_artboard<T: IntoGraphicList>(
 	let normalized_location = location.min(location + dimensions);
 	let normalized_dimensions = dimensions.abs().max(DVec2::ONE);
 
-	let background = background.element(0).copied().unwrap_or(Color::WHITE);
+	let background = match background.len() {
+		0 => Color::WHITE,
+		_ => background.get(0),
+	};
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
-	Ok(List::new_from_item(
-		Item::new_from_element(Artboard::new(content))
-			.with_attribute(ATTR_LOCATION, normalized_location)
-			.with_attribute(ATTR_DIMENSIONS, normalized_dimensions)
-			.with_attribute(ATTR_BACKGROUND, background)
-			.with_attribute(ATTR_CLIP, clip),
-	))
+	(Artboard::new(content), Attr(normalized_location), Attr(normalized_dimensions), Attr(background), Attr(clip))
 }

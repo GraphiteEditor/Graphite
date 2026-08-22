@@ -297,7 +297,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(artboard::create_artboard::IDENTIFIER),
 								inputs: vec![
-									NodeInput::import(concrete!(TaggedValue), 1),
+									NodeInput::node(NodeId(6), 0),
 									NodeInput::import(concrete!(TaggedValue), 2),
 									NodeInput::import(concrete!(TaggedValue), 3),
 									NodeInput::import(concrete!(TaggedValue), 4),
@@ -332,6 +332,17 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									NodeInput::node(NodeId(3), 0),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
+								..Default::default()
+							},
+							// Content coercion into a graphic level, evaluated within the artboard's footprint
+							DocumentNode {
+								inputs: vec![NodeInput::import(generic!(T), 1)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::to_graphic::IDENTIFIER),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(5), 0), NodeInput::import(concrete!(TaggedValue), 2)],
+								implementation: DocumentNodeImplementation::ProtoNode(artboard::translate_footprint::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -421,6 +432,22 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								// 5: to_graphic
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-35, -3)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								// 6: translate_footprint
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-28, -3)),
 										..Default::default()
 									},
 									..Default::default()
