@@ -4,7 +4,9 @@ use base64::Engine;
 use canvas_utils::{Canvas, CanvasHandle};
 use core_types::color::SRGBA8;
 use core_types::gpoll::GPoll;
+#[cfg(target_family = "wasm")]
 use core_types::list::{Item, List};
+
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
 use core_types::runtime::SourceFuture;
@@ -12,7 +14,7 @@ use core_types::runtime::SourceFuture;
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
 use core_types::{ATTR_TRANSFORM, WasmNotSend};
-use core_types::{Color, Ctx};
+use core_types::{Color, Ctx, ExtractIndex, InjectIndex};
 #[cfg(target_family = "wasm")]
 use graphic_types::ATTR_EDITOR_MERGED_LAYERS;
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
@@ -90,14 +92,14 @@ async fn post_request(
 	#[name("URL")]
 	url: String,
 	/// The binary data to include in the body of the POST request.
-	body: List<u8>,
+	body: Arc<[u8]>,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: bool,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
 ) -> String {
 	let mut header_map = parse_headers(&headers);
 	header_map.insert("Content-Type", "application/octet-stream".parse().unwrap());
-	let body_bytes: Vec<u8> = body.iter_element_values().copied().collect();
+	let body_bytes: Vec<u8> = body.to_vec();
 	let request = reqwest::Client::new().post(url).body(body_bytes).headers(header_map);
 
 	if discard_result {
@@ -120,23 +122,26 @@ async fn post_request(
 
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("String to Bytes"))]
-fn string_to_bytes(_: impl Ctx, string: String) -> List<u8> {
-	string.into_bytes().into_iter().map(Item::new_from_element).collect()
+fn string_to_bytes(_: impl Ctx, string: String) -> Arc<[u8]> {
+	Arc::from(string.into_bytes())
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx, image: List<Raster<CPU>>) -> List<u8> {
-	let Some(image) = image.element(0) else { return List::new() };
-	image
+fn image_to_bytes(_: impl Ctx + ExtractIndex + InjectIndex + Copy, image: IList<Raster<CPU>>) -> Arc<[u8]> {
+	if image.is_empty() {
+		return Arc::from(Vec::new());
+	}
+	let bytes: Vec<u8> = image
+		.element_ref(0)
 		.data
 		.iter()
 		.flat_map(|color| {
 			let SRGBA8 { red, green, blue, alpha } = (*color).into();
 			[red, green, blue, alpha]
 		})
-		.map(Item::new_from_element)
-		.collect()
+		.collect();
+	Arc::from(bytes)
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
@@ -165,9 +170,10 @@ async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: String) ->
 ///
 /// Works with standard image format (PNG, JPEG, WebP, etc.). Automatically converts the color space to linear sRGB for accurate compositing.
 #[node_macro::node(category("Web Request"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Raster<CPU> {
+	// A zero-size raster renders as nothing, matching the legacy empty list
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return List::new();
+		return Raster::new_cpu(Image::default());
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -184,7 +190,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
 		..Default::default()
 	};
 
-	List::new_from_element(Raster::new_cpu(image))
+	Raster::new_cpu(image)
 }
 
 #[cfg(target_family = "wasm")]
