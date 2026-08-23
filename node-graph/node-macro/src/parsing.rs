@@ -892,10 +892,13 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 						| "InjectAnimationTime"
 						| "InjectPointerPosition"
 						| "InjectPosition"
-						| "InjectIndex"
 						| "InjectVarArgs" => {
 							features.push(segment.ident.clone());
 						}
+						// InjectIndex stays undeclared: a record node's injection
+						// re-addresses lanes derived from the incoming index, so it
+						// must not cancel the cone's index requirement in the
+						// nullification pass.
 						// Skip Modify* traits as they don't affect usage tracking
 						// Also ignore other traits like Ctx, ExtractAll, etc.
 						_ => {}
