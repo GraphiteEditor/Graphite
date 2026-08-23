@@ -151,15 +151,43 @@ where
 		// over-released frame.
 		#[cfg(debug_assertions)]
 		let sp_before = crate::record::stack::sp();
+		#[cfg(debug_assertions)]
+		let trace = {
+			static TRACE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+			*TRACE.get_or_init(|| std::env::var_os("GRAPHENE_SP_DEBUG").is_some())
+		};
+		#[cfg(debug_assertions)]
+		if trace {
+			eprintln!(
+				"sp> enter frame_bytes {} fields [{}] sp {}",
+				self.layout().frame_bytes(),
+				self.layout().fields.iter().map(|field| field.name.to_string()).collect::<Vec<_>>().join(", "),
+				sp_before,
+			);
+		}
 		// SAFETY: `own` keeps the payload alive for `self`'s lifetime and Arc
 		// payloads are address stable.
 		let result = unsafe { self.ptr.as_ref() }.eval(input);
 		#[cfg(debug_assertions)]
+		if trace {
+			eprintln!("sp> exit frame_bytes {} sp {} -> {}", self.layout().frame_bytes(), sp_before, crate::record::stack::sp());
+		}
+		#[cfg(debug_assertions)]
 		debug_assert_eq!(
 			crate::record::stack::sp(),
 			sp_before + self.layout().frame_bytes(),
-			"{} left the record stack misaligned",
+			"{} left the record stack misaligned (frame_bytes {}, depth {}, fields [{}], poll {})",
 			std::any::type_name::<N>(),
+			self.layout().frame_bytes(),
+			self.layout().depth,
+			self.layout().fields.iter().map(|field| field.name.to_string()).collect::<Vec<_>>().join(", "),
+			match &result {
+				crate::gpoll::GPoll::Final(_) => "Final",
+				crate::gpoll::GPoll::Partial(_) => "Partial",
+				crate::gpoll::GPoll::Fallback(_) => "Fallback",
+				crate::gpoll::GPoll::Pending => "Pending",
+				crate::gpoll::GPoll::Error(_) => "Error",
+			},
 		);
 		result
 	}
