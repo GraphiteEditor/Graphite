@@ -10,17 +10,17 @@ use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::GraphError;
 use core_types::gpoll::Interrupt;
 use core_types::gpoll::{Extent, GPoll};
-use core_types::list::{Item, ItemAttributeValues, List, ListDyn};
+use core_types::list::{Item, ItemAttributeValues, List};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
+use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_STROKE, Graphic, IntoGraphicList};
+use graphic_types::{Artboard, Vector};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
@@ -3540,7 +3540,10 @@ fn point_inside(_: impl Ctx + ExtractIndex + InjectIndex + Copy, source: IList<V
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-fn count_elements(_: impl Ctx, content: ListDyn) -> f64 {
+fn count_elements<T: Clone + Send + Sync + CacheHash + 'static>(
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	#[implementations(Graphic, Artboard, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<T>,
+) -> f64 {
 	content.len() as f64
 }
 

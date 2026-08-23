@@ -2,15 +2,15 @@ use core_types::attribute::{Attr, EditorLayerPath, Transform as TransformAttr};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt, Level};
-use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
+use core_types::list::List;
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, Color, Context, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::gradient::{GradientSpreadMethod, GradientType};
+
 use vector_types::{GradientStop, GradientStops, ReferencePoint};
 
 /// Resolves a signed index over `total` lanes: negatives count from the end,
@@ -98,7 +98,8 @@ fn omit_element_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: Level
 pub fn extract_element<T: Clone + Default + Send + Sync + CacheHash + 'static>(
 	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The `List` of data to extract from.
-	#[implementations(String, f64, NodeId, Color, GradientStops, Vector, Raster<CPU>, Graphic, Artboard)] list: IList<T>,
+	#[implementations(String, f64, NodeId, Color, GradientStops, Vector, Raster<CPU>, Graphic, Artboard)]
+	list: IList<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,
 ) -> T {
@@ -274,7 +275,15 @@ fn mirror<'e>(
 	)>,
 	Interrupt,
 > {
-	mirror_lane(ctx.arena(), legacy_render_list_of(content), ctx.innermost_index() as usize, relative_to_bounds, offset, angle, keep_original)
+	mirror_lane(
+		ctx.arena(),
+		legacy_render_list_of(content),
+		ctx.innermost_index() as usize,
+		relative_to_bounds,
+		offset,
+		angle,
+		keep_original,
+	)
 }
 
 /// The kept originals double the level, counted from the subject's extent
@@ -324,7 +333,15 @@ fn mirror_vector<'e>(
 	)>,
 	Interrupt,
 > {
-	mirror_lane(ctx.arena(), legacy_render_list_of(content), ctx.innermost_index() as usize, relative_to_bounds, offset, angle, keep_original)
+	mirror_lane(
+		ctx.arena(),
+		legacy_render_list_of(content),
+		ctx.innermost_index() as usize,
+		relative_to_bounds,
+		offset,
+		angle,
+		keep_original,
+	)
 }
 
 fn mirror_vector_extent(
@@ -369,281 +386,6 @@ pub fn stamp_layer_path<'e, T>(ctx: impl Ctx + ExtractArena<'e>, element: T, pat
 		trace: Vec::new(),
 	})?;
 	Ok((element, Attr(parked.as_slice())))
-}
-
-/// Sets a named attribute on the input `List`, computing one value per item via the value-producing input. That input
-/// is evaluated once per item, with the item's index and the item itself (as a `List` containing only that item,
-/// passed as a vararg) provided via context, so the upstream pipeline can return a different value per item that may
-/// be derived from the item's own data. If the attribute already exists, its values are replaced; if not, it's added.
-/// The value is type-erased into an `AttributeValueDyn` by an auto-inserted convert node, so this node only
-/// monomorphizes over `T` instead of the cartesian product `(T, U)`.
-#[node_macro::node(category("Attributes: Write"))]
-fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
-	ctx: impl Ctx + DeriveCtx,
-	/// The `List` to set the named attribute on (one value per item).
-	#[implementations(
-		List<Artboard>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
-		List<f64>,
-		List<bool>,
-		List<String>,
-		List<DAffine2>,
-		List<BlendMode>,
-		List<GradientType>,
-		List<GradientSpreadMethod>,
-	)]
-	mut content: List<T>,
-	/// The attribute name (key) to write or replace.
-	name: String,
-	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
-	#[implementations(Context -> AttributeValueDyn)]
-	value: impl Node<Context<'_>, Output = AttributeValueDyn>,
-) -> Result<List<T>, Interrupt> {
-	let spilled = ctx.index_head();
-	for index in 0..content.len() {
-		let row = content.clone_item(index).expect("index is within bounds");
-		let item = List::new_from_item(row);
-		let scoped = ctx.push_vararg(&item);
-		let v = value.eval(&scoped.ctx().promoted(&spilled, index as u64))?;
-		content.set_attribute_value_dyn(&name, index, v);
-	}
-	Ok(content)
-}
-
-/// Sets a named attribute on the primary list, with each value taken from the corresponding item's element in the source list (paired by index, wrapping if the source has fewer items).
-/// The source is type-erased into an `AttributeDyn` by an auto-inserted convert node, so this node only monomorphizes over `T` instead of the cartesian product `(T, U)`.
-#[node_macro::node(category("Attributes: Write"))]
-fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
-	_: impl Ctx,
-	/// The `List` to attach the new attribute to.
-	#[implementations(
-		List<Artboard>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
-		List<f64>,
-		List<bool>,
-		List<String>,
-		List<DAffine2>,
-		List<BlendMode>,
-		List<GradientType>,
-		List<GradientSpreadMethod>,
-	)]
-	mut content: List<T>,
-	/// The source values to attach.
-	#[expose]
-	source: AttributeDyn,
-	/// The name to assign to the new destination attribute.
-	name: String,
-) -> List<T> {
-	if source.is_empty() {
-		return content;
-	}
-	content.set_attribute_dyn(name, source);
-	content
-}
-
-/// Reads a named `Vector` attribute from the input list, outputting each value as an element of a new `Vector[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_vector(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<Vector> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
-}
-
-/// Reads a named numeric attribute (`f64`, `u64`, or `u32`) from the input list, outputting each value as an element of a new `f64[]`. Integer values are converted to `f64`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_number(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<f64> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let value = content
-			.attribute::<f64>(&name, index)
-			.copied()
-			.or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64))
-			.or_else(|| content.attribute::<u32>(&name, index).map(|v| *v as f64));
-		let Some(value) = value else { continue };
-		result.push(Item::new_from_element(value));
-	}
-	result
-}
-
-/// Reads a named `bool` attribute from the input list, outputting each value as an element of a new `bool[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_bool(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<bool> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<bool>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
-}
-
-/// Reads a named `String` attribute from the input list, outputting each value as an element of a new `String[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_string(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<String> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<String>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
-}
-
-/// Reads a named `DAffine2` transform attribute from the input list, outputting each value as an element of a new `DAffine2[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_transform(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<DAffine2> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<DAffine2>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
-}
-
-/// Reads a named `Color` attribute from the input list, outputting each value as an element of a new `Color[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_color(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<Color> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Color>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
-}
-
-/// Reads a named `BlendMode` attribute from the input list, outputting each value as an element of a new `BlendMode[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_blend_mode(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<BlendMode> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<BlendMode>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
-}
-
-/// Reads a named `GradientType` attribute from the input list, outputting each value as an element of a new `GradientType[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_type(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<GradientType> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
-}
-
-/// Reads a named `GradientSpreadMethod` attribute from the input list, outputting each value as an element of a new `GradientSpreadMethod[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_spread_method(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<GradientSpreadMethod> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
-}
-
-/// Reads a named `GradientStops` attribute from the input list, outputting each value as an element of a new `GradientStops[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_stops(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<GradientStops> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientStops>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
-}
-
-/// Reads a named `Artboard` attribute from the input list, outputting each value as an element of a new `Artboard[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_artboard(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<Artboard> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Artboard>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
-}
-
-/// Reads a named `Raster` attribute from the input list, outputting each value as an element of a new `Raster[]`.
-#[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_raster(
-	_: impl Ctx,
-	content: ListDyn,
-	/// The attribute name (key) to read.
-	name: String,
-) -> List<Raster<CPU>> {
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
 }
 
 /// Joins two levels of the same type, the base's lanes followed by the new's.
@@ -783,20 +525,6 @@ pub fn level_to_list<T: Clone + Send + Sync + CacheHash + 'static>(
 	graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type")
 }
 
-/// The transitional level bridge into the type-erased list the attribute
-/// family consumes, as [`level_to_list`].
-#[node_macro::node(category(""))]
-pub fn level_to_list_dyn<T: Clone + Send + Sync + CacheHash + 'static>(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] value: IList<T>,
-	_converter: (),
-) -> ListDyn {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(value.batch()) };
-	graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type").into()
-}
-
-pub use _level_to_list_dyn_mod::level_to_list_dyn_entries;
 pub use _level_to_list_mod::level_to_list_entries;
 pub use _to_graphic_mod::to_graphic_entries;
 

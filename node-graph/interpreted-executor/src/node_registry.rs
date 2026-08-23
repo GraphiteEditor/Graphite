@@ -1,19 +1,18 @@
 use glam::{DAffine2, DVec2, IVec2};
-use graphene_std::gradient::GradientStops;
-use graphene_std::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
+
+use graphene_std::list::List;
 #[cfg(feature = "gpu")]
 use graphene_std::raster::GPU;
-use graphene_std::raster::color::Color;
-use graphene_std::raster::*;
+
+#[cfg(feature = "gpu")]
+use graphene_std::SourceId;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::registry::{ConstructionError, EdgeHandle, NodeIOTypes, RegistryEntry};
 #[cfg(feature = "gpu")]
-use graphene_std::SourceId;
-#[cfg(feature = "gpu")]
 use graphene_std::runtime::RuntimeHandle;
-use graphene_std::uuid::NodeId;
+
 use graphene_std::vector::Vector;
-use graphene_std::{Artboard, Context, Graphic, ProtoNodeIdentifier, concrete};
+use graphene_std::{Context, Graphic, ProtoNodeIdentifier, concrete};
 use node_registry_macros::{convert_node, into_node};
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
@@ -32,57 +31,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		convert_node!(from: List<Raster<CPU>>, to: List<Graphic>),
 		#[cfg(feature = "gpu")]
 		convert_node!(from: List<Raster<GPU>>, to: List<Graphic>),
-		// Type-erased attribute conversions for the `Attach Attribute` node, so it monomorphizes only over the destination `List` type.
-		convert_node!(from: List<Artboard>, to: AttributeDyn),
-		convert_node!(from: List<Graphic>, to: AttributeDyn),
-		convert_node!(from: List<Vector>, to: AttributeDyn),
-		convert_node!(from: List<Raster<CPU>>, to: AttributeDyn),
-		convert_node!(from: List<Color>, to: AttributeDyn),
-		convert_node!(from: List<GradientStops>, to: AttributeDyn),
-		convert_node!(from: List<f64>, to: AttributeDyn),
-		convert_node!(from: List<bool>, to: AttributeDyn),
-		convert_node!(from: List<String>, to: AttributeDyn),
-		convert_node!(from: List<DAffine2>, to: AttributeDyn),
-		convert_node!(from: List<BlendMode>, to: AttributeDyn),
-		convert_node!(from: List<graphene_std::vector::style::GradientType>, to: AttributeDyn),
-		convert_node!(from: List<graphene_std::vector::style::GradientSpreadMethod>, to: AttributeDyn),
-		convert_node!(from: List<Artboard>, to: ListDyn),
-		convert_node!(from: List<Graphic>, to: ListDyn),
-		convert_node!(from: List<Vector>, to: ListDyn),
-		convert_node!(from: List<Raster<CPU>>, to: ListDyn),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<GPU>>, to: ListDyn),
-		convert_node!(from: List<Color>, to: ListDyn),
-		convert_node!(from: List<GradientStops>, to: ListDyn),
-		convert_node!(from: List<f64>, to: ListDyn),
-		convert_node!(from: List<bool>, to: ListDyn),
-		convert_node!(from: List<String>, to: ListDyn),
-		convert_node!(from: List<u8>, to: ListDyn),
-		convert_node!(from: List<NodeId>, to: ListDyn),
-		convert_node!(from: List<DAffine2>, to: ListDyn),
-		convert_node!(from: List<BlendMode>, to: ListDyn),
-		convert_node!(from: List<graphene_std::vector::style::GradientType>, to: ListDyn),
-		convert_node!(from: List<graphene_std::vector::style::GradientSpreadMethod>, to: ListDyn),
-		// Type-erased attribute value conversions for the `Write Attribute` node, so it monomorphizes only over the destination `List` type.
-		convert_node!(from: f64, to: AttributeValueDyn),
-		convert_node!(from: u32, to: AttributeValueDyn),
-		convert_node!(from: u64, to: AttributeValueDyn),
-		convert_node!(from: bool, to: AttributeValueDyn),
-		convert_node!(from: String, to: AttributeValueDyn),
-		convert_node!(from: DVec2, to: AttributeValueDyn),
-		convert_node!(from: DAffine2, to: AttributeValueDyn),
-		convert_node!(from: Color, to: AttributeValueDyn),
-		convert_node!(from: BlendMode, to: AttributeValueDyn),
-		convert_node!(from: graphene_std::vector::style::GradientType, to: AttributeValueDyn),
-		convert_node!(from: graphene_std::vector::style::GradientSpreadMethod, to: AttributeValueDyn),
-		convert_node!(from: List<String>, to: AttributeValueDyn),
-		convert_node!(from: List<NodeId>, to: AttributeValueDyn),
-		convert_node!(from: List<Color>, to: AttributeValueDyn),
-		convert_node!(from: List<GradientStops>, to: AttributeValueDyn),
-		convert_node!(from: List<Vector>, to: AttributeValueDyn),
-		convert_node!(from: List<Raster<CPU>>, to: AttributeValueDyn),
-		convert_node!(from: List<Raster<GPU>>, to: AttributeValueDyn),
-		convert_node!(from: List<Graphic>, to: AttributeValueDyn),
 		// into_node!(from: List<Raster<CPU>>, to: List<Raster<SRGBA8>>),
 		convert_node!(from: DVec2, to: DVec2),
 		convert_node!(from: List<Vector>, to: List<Vector>),
@@ -174,14 +122,16 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 	node_types.extend(
 		graphene_std::graphic::level_to_list_entries()
 			.into_iter()
-			.zip(["List<Graphic>", "List<Vector>", "List<Raster<CPU>>", "List<Raster<GPU>>", "List<Color>", "List<GradientStops>", "List<String>"])
+			.zip([
+				"List<Graphic>",
+				"List<Vector>",
+				"List<Raster<CPU>>",
+				"List<Raster<GPU>>",
+				"List<Color>",
+				"List<GradientStops>",
+				"List<String>",
+			])
 			.map(|(entry, target)| (ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{target}>")), entry)),
-	);
-	// The same bridge into the attribute family's type-erased list.
-	node_types.extend(
-		graphene_std::graphic::level_to_list_dyn_entries()
-			.into_iter()
-			.map(|entry| (ProtoNodeIdentifier::new("graphene_core::ops::ConvertNode<ListDyn>"), entry)),
 	);
 	// =============
 	// CONVERT NODES
@@ -208,7 +158,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		.into_iter()
 		.flatten(),
 	);
-
 
 	let mut map: HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> = HashMap::new();
 	let insert = |map: &mut HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>, id: ProtoNodeIdentifier, entry: RegistryEntry| {
@@ -389,7 +338,6 @@ mod node_registry_macros {
 			)
 		};
 	}
-
 
 	pub(crate) use convert_node;
 	pub(crate) use into_node;

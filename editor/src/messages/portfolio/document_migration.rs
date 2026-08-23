@@ -2602,8 +2602,10 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn the_flip_reset_markers_track_the_live_merge_internals() {
-		assert_eq!(FLIP_RESET_NODE_MARKERS, &[graphene_std::graphic::write_attribute::IDENTIFIER.as_str()]);
+	fn the_flip_reset_markers_keep_the_historical_merge_internals_spelling() {
+		// The node itself is removed; the marker matches its spelling in
+		// documents saved before the flip, which must stay stable.
+		assert_eq!(FLIP_RESET_NODE_MARKERS, &["graphic_nodes::graphic::WriteAttributeNode"]);
 	}
 
 	#[test]

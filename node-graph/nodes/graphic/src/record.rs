@@ -8,8 +8,8 @@ use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
 use core_types::{ATTR_TRANSFORM, Color, Ctx};
 use glam::DAffine2;
-use graphic_types::graphic::Graphic;
 use graphic_types::Vector;
+use graphic_types::graphic::Graphic;
 use raster_types::{CPU, Raster};
 use vector_types::{GradientStop, GradientStops};
 
@@ -335,14 +335,27 @@ mod tests {
 	fn fixture_rows() -> Vec<(Graphic, DAffine2)> {
 		vec![
 			(text("a"), translation(1.)),
-			(group(vec![(text("b"), translation(20.)), (group(vec![(text("c"), translation(300.))]), translation(4000.))]), translation(0.5)),
+			(
+				group(vec![(text("b"), translation(20.)), (group(vec![(text("c"), translation(300.))]), translation(4000.))]),
+				translation(0.5),
+			),
 		]
 	}
 
 	macro_rules! build {
 		($layout:ident, $rows:expr, $fully:expr) => {
 			install(
-				FlattenNode::new(RecordSource::new(GraphicSource { layout: $layout.clone(), rows: $rows }, &$layout, &$layout), ValueNode($fully)),
+				FlattenNode::new(
+					RecordSource::new(
+						GraphicSource {
+							layout: $layout.clone(),
+							rows: $rows,
+						},
+						&$layout,
+						&$layout,
+					),
+					ValueNode($fully),
+				),
 				flatten_layout_meta(),
 				&[Some(&$layout)],
 			)
@@ -425,7 +438,14 @@ mod tests {
 		let layout = graphic_layout();
 		let node = install(
 			MapNode::<_, _, Graphic>::new(
-				RecordSource::new(GraphicSource { layout: layout.clone(), rows: ragged_rows() }, &layout, &layout),
+				RecordSource::new(
+					GraphicSource {
+						layout: layout.clone(),
+						rows: ragged_rows(),
+					},
+					&layout,
+					&layout,
+				),
 				PerRowSource { layout: layout.clone() },
 				&layout,
 			),
@@ -464,7 +484,14 @@ mod tests {
 		let layout = graphic_layout();
 		let flat = install(
 			FlatMapNode::<_, _, Graphic>::new(
-				RecordSource::new(GraphicSource { layout: layout.clone(), rows: ragged_rows() }, &layout, &layout),
+				RecordSource::new(
+					GraphicSource {
+						layout: layout.clone(),
+						rows: ragged_rows(),
+					},
+					&layout,
+					&layout,
+				),
 				PerRowSource { layout: layout.clone() },
 				&layout,
 			),
@@ -473,7 +500,14 @@ mod tests {
 		);
 		let mapped = install(
 			MapNode::<_, _, Graphic>::new(
-				RecordSource::new(GraphicSource { layout: layout.clone(), rows: ragged_rows() }, &layout, &layout),
+				RecordSource::new(
+					GraphicSource {
+						layout: layout.clone(),
+						rows: ragged_rows(),
+					},
+					&layout,
+					&layout,
+				),
 				PerRowSource { layout: layout.clone() },
 				&layout,
 			),
@@ -536,7 +570,14 @@ mod tests {
 		let layout = graphic_layout();
 		let node = install(
 			FlatMapNode::<_, _, Graphic>::new(
-				RecordSource::new(GraphicSource { layout: layout.clone(), rows: ragged_rows() }, &layout, &layout),
+				RecordSource::new(
+					GraphicSource {
+						layout: layout.clone(),
+						rows: ragged_rows(),
+					},
+					&layout,
+					&layout,
+				),
 				PerRowSource { layout: layout.clone() },
 				&layout,
 			),
@@ -608,7 +649,11 @@ mod tests {
 		};
 		assert_eq!(children.len(), 1);
 		assert_eq!(text_of(children.element(0).unwrap()), "c");
-		assert_eq!(children.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0).translation.x, 300., "embedded transforms ride untouched");
+		assert_eq!(
+			children.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0).translation.x,
+			300.,
+			"embedded transforms ride untouched"
+		);
 		let transform: DAffine2 = unsafe { rec.read(offset) };
 		assert_eq!(transform.translation.x, 4000.5);
 		unsafe { stack::rewind(mark) };
@@ -661,7 +706,7 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let node = install(
-			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows, }, &layout, &layout), &layout),
+			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
 			wrap_layout_meta(),
 			&[Some(&layout)],
 		);
@@ -753,12 +798,7 @@ mod tests {
 
 		let layout = Layout::default().with_writes(1, record::element_write_hashed::<Color>(), &[]);
 		let out = Layout::default().with_writes(0, record::element_write_hashed::<GradientStops>(), &[]);
-		let build = |colors: Vec<Color>| {
-			install_flip(
-				ToGradientNode::new(RecordSource::new(ColorSource { layout: layout.clone(), colors }, &layout, &layout), &layout),
-				&out,
-			)
-		};
+		let build = |colors: Vec<Color>| install_flip(ToGradientNode::new(RecordSource::new(ColorSource { layout: layout.clone(), colors }, &layout, &layout), &layout), &out);
 		let stops_of = |colors: Vec<Color>| {
 			let node = build(colors);
 			let GPoll::Final(value) = node.eval(&ctx) else {
@@ -788,7 +828,7 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let node = install(
-			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows, }, &layout, &layout), &layout),
+			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
 			wrap_layout_meta(),
 			&[Some(&layout)],
 		);
@@ -819,7 +859,7 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let wrapped = install(
-			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows, }, &layout, &layout), &layout),
+			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
 			wrap_layout_meta(),
 			&[Some(&layout)],
 		);
