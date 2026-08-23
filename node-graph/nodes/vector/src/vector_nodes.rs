@@ -1,24 +1,24 @@
 use core::cmp::Ordering;
 use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
+use core_types::attribute::Transform as TransformAttr;
+use core_types::attribute::{Attr, BlendMode as BlendModeAttr, ClippingMask, EditorLayerPath, Opacity, OpacityFill};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::gpoll::Interrupt;
-use core_types::list::{Item, ItemAttributeValues, List, ListDyn};
-use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
-use core_types::transform::{Footprint, Transform};
-use core_types::uuid::NodeId;
-use core_types::attribute::{Attr, BlendMode as BlendModeAttr, ClippingMask, EditorLayerPath, Opacity, OpacityFill};
 use core_types::context::IndexLink;
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
-use core_types::gpoll::{Extent, GPoll};
 use core_types::gpoll::GraphError;
+use core_types::gpoll::Interrupt;
+use core_types::gpoll::{Extent, GPoll};
+use core_types::list::{Item, ItemAttributeValues, List, ListDyn};
+use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
+use core_types::transform::Transform;
+use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
-use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
-use core_types::attribute::Transform as TransformAttr;
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
+use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_STROKE, Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
@@ -27,7 +27,6 @@ use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
-use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
@@ -39,6 +38,7 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use vector_types::{GradientSpreadMethod, GradientType};
 
 /// The standard row attributes a per-lane re-emission carries from its
@@ -101,9 +101,7 @@ fn assign_colors<'e>(
 		return Err(GraphError::past_end().into());
 	}
 	let element = content.element_ref(lane).clone();
-	let park_existing = |paint: Option<&List<Graphic>>| -> Result<Option<&'e List<Graphic>>, Interrupt> {
-		paint.map(|paint| park_paint(ctx.arena(), paint.clone())).transpose()
-	};
+	let park_existing = |paint: Option<&List<Graphic>>| -> Result<Option<&'e List<Graphic>>, Interrupt> { paint.map(|paint| park_paint(ctx.arena(), paint.clone())).transpose() };
 	let existing_fill = park_existing(content.lane(lane).attr::<Fill>())?;
 	let existing_stroke = park_existing(content.lane(lane).attr::<StrokeAttr>())?;
 	let carried = carried_lane_attrs(ctx.arena(), content.lane(lane))?;
@@ -161,8 +159,7 @@ fn assign_colors_extent(
 fn assign_colors_graphic<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Graphic>,
-	#[default(true)]
-	fill: bool,
+	#[default(true)] fill: bool,
 	stroke: bool,
 	gradient: IList<GradientStops>,
 	reverse: bool,
@@ -316,8 +313,7 @@ fn fill<'e>(
 fn fill_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	(element, _content_fill): (Graphic, Attr<'e, Fill>),
-	#[default(Color::BLACK)]
-	fill: IList<Graphic>,
+	#[default(Color::BLACK)] fill: IList<Graphic>,
 	_backup_color: IList<Color>,
 	_backup_gradient: IList<GradientStops>,
 	_gradient_type: GradientType,
@@ -415,20 +411,17 @@ fn for_each_interior_vector_mut(element: &mut Graphic, mut f: impl FnMut(&mut Ve
 fn stroke_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	(element, content_transform): (Graphic, Attr<TransformAttr>),
-	#[default(Color::BLACK)]
-	paint: IList<Graphic>,
+	#[default(Color::BLACK)] paint: IList<Graphic>,
 	#[unit(" px")]
 	#[default(2.)]
 	weight: f64,
 	align: StrokeAlign,
 	cap: StrokeCap,
 	join: StrokeJoin,
-	#[default(4.)]
-	miter_limit: f64,
+	#[default(4.)] miter_limit: f64,
 	paint_order: PaintOrder,
 	dash_lengths: IList<f64>,
-	#[unit(" px")]
-	dash_offset: f64,
+	#[unit(" px")] dash_offset: f64,
 ) -> Result<(Graphic, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
 	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
 	let stroke = Stroke {
@@ -570,7 +563,7 @@ fn copy_to_points_extent(
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 fn round_corners(
 	_: impl Ctx,
-	source: List<Vector>,
+	(source, transform): (Vector, Attr<TransformAttr>),
 	#[hard(0..)]
 	#[default(10.)]
 	radius: PixelLength,
@@ -583,128 +576,110 @@ fn round_corners(
 	#[hard(0..180)]
 	#[default(5.)]
 	min_angle_threshold: Angle,
-) -> List<Vector> {
-	(0..source.len())
-		.map(|index| {
-			let source_transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let source_transform_inverse = source_transform.inverse();
-			let attributes = source.clone_item_attributes(index);
-			let source = source.element(index).unwrap();
+) -> (Vector, Attr<TransformAttr>) {
+	let source_transform: DAffine2 = *transform;
+	let source_transform_inverse = source_transform.inverse();
 
-			// Flip the roundness to help with user intuition
-			let roundness = 1. - roundness;
-			// Convert 0-100 to 0-0.5
-			let edge_length_limit = edge_length_limit * 0.005;
+	// Flip the roundness to help with user intuition
+	let roundness = 1. - roundness;
+	// Convert 0-100 to 0-0.5
+	let edge_length_limit = edge_length_limit * 0.005;
 
-			let mut result = Vector {
-				stroke: source.stroke.clone(),
-				..Default::default()
-			};
+	let mut result = Vector {
+		stroke: source.stroke.clone(),
+		..Default::default()
+	};
 
-			// Grab the initial point ID as a stable starting point
-			let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
+	// Grab the initial point ID as a stable starting point
+	let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
 
-			for mut bezpath in source.stroke_bezpath_iter() {
-				bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
-				let (manipulator_groups, is_closed) = bezpath_to_manipulator_groups(&bezpath);
+	for mut bezpath in source.stroke_bezpath_iter() {
+		bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
+		let (manipulator_groups, is_closed) = bezpath_to_manipulator_groups(&bezpath);
 
-				// End if not enough points for corner rounding
-				if manipulator_groups.len() < 3 {
-					result.append_bezpath(bezpath);
-					continue;
-				}
+		// End if not enough points for corner rounding
+		if manipulator_groups.len() < 3 {
+			result.append_bezpath(bezpath);
+			continue;
+		}
 
-				let mut new_manipulator_groups = Vec::new();
+		let mut new_manipulator_groups = Vec::new();
 
-				for i in 0..manipulator_groups.len() {
-					// Skip first and last points for open paths
-					if !is_closed && (i == 0 || i == manipulator_groups.len() - 1) {
-						new_manipulator_groups.push(manipulator_groups[i]);
-						continue;
-					}
-
-					// Not the prettiest, but it makes the rest of the logic more readable
-					let prev_index = if i == 0 { if is_closed { manipulator_groups.len() - 1 } else { 0 } } else { i - 1 };
-					let curr_index = i;
-					let next_index = if i == manipulator_groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
-
-					let prev = manipulator_groups[prev_index].anchor;
-					let curr = manipulator_groups[curr_index].anchor;
-					let next = manipulator_groups[next_index].anchor;
-
-					let dir1 = (curr - prev).normalize_or(DVec2::X);
-					let dir2 = (next - curr).normalize_or(DVec2::X);
-
-					let theta = PI - dir1.angle_to(dir2).abs();
-
-					// Skip near-straight corners
-					if theta > PI - min_angle_threshold.to_radians() {
-						new_manipulator_groups.push(manipulator_groups[curr_index]);
-						continue;
-					}
-
-					// Calculate L, with limits to avoid extreme values
-					let distance_along_edge = radius / (theta / 2.).sin();
-					let distance_along_edge = distance_along_edge.min(edge_length_limit * (curr - prev).length().min((next - curr).length())).max(0.01);
-
-					// Find points on each edge at distance L from corner
-					let p1 = curr - dir1 * distance_along_edge;
-					let p2 = curr + dir2 * distance_along_edge;
-
-					// Add first point (coming into the rounded corner)
-					new_manipulator_groups.push(ManipulatorGroup {
-						anchor: p1,
-						in_handle: None,
-						out_handle: Some(curr - dir1 * distance_along_edge * roundness),
-						id: initial_point_id.next_id(),
-					});
-
-					// Add second point (coming out of the rounded corner)
-					new_manipulator_groups.push(ManipulatorGroup {
-						anchor: p2,
-						in_handle: Some(curr + dir2 * distance_along_edge * roundness),
-						out_handle: None,
-						id: initial_point_id.next_id(),
-					});
-				}
-
-				// One subpath for each shape
-				let mut rounded_subpath = bezpath_from_manipulator_groups(&new_manipulator_groups, is_closed);
-				rounded_subpath.apply_affine(Affine::new(source_transform_inverse.to_cols_array()));
-				result.append_bezpath(rounded_subpath);
+		for i in 0..manipulator_groups.len() {
+			// Skip first and last points for open paths
+			if !is_closed && (i == 0 || i == manipulator_groups.len() - 1) {
+				new_manipulator_groups.push(manipulator_groups[i]);
+				continue;
 			}
 
-			Item::from_parts(result, attributes)
-		})
-		.collect()
+			// Not the prettiest, but it makes the rest of the logic more readable
+			let prev_index = if i == 0 { if is_closed { manipulator_groups.len() - 1 } else { 0 } } else { i - 1 };
+			let curr_index = i;
+			let next_index = if i == manipulator_groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
+
+			let prev = manipulator_groups[prev_index].anchor;
+			let curr = manipulator_groups[curr_index].anchor;
+			let next = manipulator_groups[next_index].anchor;
+
+			let dir1 = (curr - prev).normalize_or(DVec2::X);
+			let dir2 = (next - curr).normalize_or(DVec2::X);
+
+			let theta = PI - dir1.angle_to(dir2).abs();
+
+			// Skip near-straight corners
+			if theta > PI - min_angle_threshold.to_radians() {
+				new_manipulator_groups.push(manipulator_groups[curr_index]);
+				continue;
+			}
+
+			// Calculate L, with limits to avoid extreme values
+			let distance_along_edge = radius / (theta / 2.).sin();
+			let distance_along_edge = distance_along_edge.min(edge_length_limit * (curr - prev).length().min((next - curr).length())).max(0.01);
+
+			// Find points on each edge at distance L from corner
+			let p1 = curr - dir1 * distance_along_edge;
+			let p2 = curr + dir2 * distance_along_edge;
+
+			// Add first point (coming into the rounded corner)
+			new_manipulator_groups.push(ManipulatorGroup {
+				anchor: p1,
+				in_handle: None,
+				out_handle: Some(curr - dir1 * distance_along_edge * roundness),
+				id: initial_point_id.next_id(),
+			});
+
+			// Add second point (coming out of the rounded corner)
+			new_manipulator_groups.push(ManipulatorGroup {
+				anchor: p2,
+				in_handle: Some(curr + dir2 * distance_along_edge * roundness),
+				out_handle: None,
+				id: initial_point_id.next_id(),
+			});
+		}
+
+		// One subpath for each shape
+		let mut rounded_subpath = bezpath_from_manipulator_groups(&new_manipulator_groups, is_closed);
+		rounded_subpath.apply_affine(Affine::new(source_transform_inverse.to_cols_array()));
+		result.append_bezpath(rounded_subpath);
+	}
+
+	(result, Attr(source_transform))
 }
 
 #[node_macro::node(name("Merge by Distance"), category("Vector: Modifier"), path(core_types::vector))]
 pub fn merge_by_distance(
 	_: impl Ctx,
-	content: List<Vector>,
+	(mut content, transform): (Vector, Attr<TransformAttr>),
 	#[default(0.1)]
 	#[hard(0.0001..)]
 	distance: PixelLength,
 	algorithm: MergeByDistanceAlgorithm,
-) -> List<Vector> {
+) -> (Vector, Attr<TransformAttr>) {
 	match algorithm {
-		MergeByDistanceAlgorithm::Spatial => content
-			.into_iter()
-			.map(|mut row| {
-				let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-				row.element_mut().merge_by_distance_spatial(transform, distance);
-				row
-			})
-			.collect(),
-		MergeByDistanceAlgorithm::Topological => content
-			.into_iter()
-			.map(|mut row| {
-				row.element_mut().merge_by_distance_topological(distance);
-				row
-			})
-			.collect(),
+		MergeByDistanceAlgorithm::Spatial => content.merge_by_distance_spatial(*transform, distance),
+		MergeByDistanceAlgorithm::Topological => content.merge_by_distance_topological(distance),
 	}
+	(content, Attr(*transform))
 }
 
 pub mod extrude_algorithms {
@@ -905,85 +880,77 @@ pub mod extrude_algorithms {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn extrude(_: impl Ctx, mut source: List<Vector>, direction: DVec2, joining_algorithm: ExtrudeJoiningAlgorithm) -> List<Vector> {
-	for vector in source.iter_element_values_mut() {
-		extrude_algorithms::extrude(vector, direction, joining_algorithm);
-	}
+fn extrude(_: impl Ctx, mut source: Vector, direction: DVec2, joining_algorithm: ExtrudeJoiningAlgorithm) -> Vector {
+	extrude_algorithms::extrude(&mut source, direction, joining_algorithm);
 	source
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn box_warp(_: impl Ctx, content: List<Vector>, #[expose] rectangle: List<Vector>) -> List<Vector> {
-	let Some(target) = rectangle.element(0).cloned() else { return content };
-	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+fn box_warp(_: impl Ctx + ExtractIndex + InjectIndex + Copy, (vector, transform): (Vector, Attr<TransformAttr>), #[expose] rectangle: IList<Vector>) -> (Vector, Attr<TransformAttr>) {
+	if rectangle.is_empty() {
+		return (vector, Attr(*transform));
+	}
+	let target = rectangle.element_ref(0);
+	let target_transform: DAffine2 = rectangle.lane(0).attr::<TransformAttr>();
+	let transform: DAffine2 = *transform;
 
-	content
-		.into_iter()
-		.map(|mut row| {
-			let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let vector = std::mem::take(row.element_mut());
+	// Get the bounding box of the source vector geometry
+	let source_bbox = vector.bounding_box_with_transform(transform).unwrap_or([DVec2::ZERO, DVec2::ONE]);
 
-			// Get the bounding box of the source vector geometry
-			let source_bbox = vector.bounding_box_with_transform(transform).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+	// Extract first 4 points from target shape to form the quadrilateral
+	// Apply the target's transform to get points in world space
+	let target_points: Vec<DVec2> = target.point_domain.positions().iter().map(|&p| target_transform.transform_point2(p)).take(4).collect();
 
-			// Extract first 4 points from target shape to form the quadrilateral
-			// Apply the target's transform to get points in world space
-			let target_points: Vec<DVec2> = target.point_domain.positions().iter().map(|&p| target_transform.transform_point2(p)).take(4).collect();
+	// If we have fewer than 4 points, use the corners of the source bounding box
+	// This handles the degenerative case
+	let dst_corners = if target_points.len() >= 4 {
+		[target_points[0], target_points[1], target_points[2], target_points[3]]
+	} else {
+		warn!("Target shape has fewer than 4 points. Using source bounding box instead.");
+		[
+			source_bbox[0],
+			DVec2::new(source_bbox[1].x, source_bbox[0].y),
+			source_bbox[1],
+			DVec2::new(source_bbox[0].x, source_bbox[1].y),
+		]
+	};
 
-			// If we have fewer than 4 points, use the corners of the source bounding box
-			// This handles the degenerative case
-			let dst_corners = if target_points.len() >= 4 {
-				[target_points[0], target_points[1], target_points[2], target_points[3]]
-			} else {
-				warn!("Target shape has fewer than 4 points. Using source bounding box instead.");
-				[
-					source_bbox[0],
-					DVec2::new(source_bbox[1].x, source_bbox[0].y),
-					source_bbox[1],
-					DVec2::new(source_bbox[0].x, source_bbox[1].y),
-				]
-			};
+	// Apply the warp
+	let mut result = vector.clone();
 
-			// Apply the warp
-			let mut result = vector.clone();
+	// Precompute source bounding box size for normalization
+	let source_size = source_bbox[1] - source_bbox[0];
 
-			// Precompute source bounding box size for normalization
-			let source_size = source_bbox[1] - source_bbox[0];
+	// Transform points
+	for (_, position) in result.point_domain.positions_mut() {
+		// Get the point in world space
+		let world_pos = transform.transform_point2(*position);
 
-			// Transform points
-			for (_, position) in result.point_domain.positions_mut() {
-				// Get the point in world space
-				let world_pos = transform.transform_point2(*position);
+		// Normalize coordinates within the source bounding box
+		let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
 
-				// Normalize coordinates within the source bounding box
-				let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+		// Apply bilinear interpolation
+		*position = bilinear_interpolate(t, &dst_corners);
+	}
 
-				// Apply bilinear interpolation
-				*position = bilinear_interpolate(t, &dst_corners);
-			}
+	// Transform handles in bezier curves
+	for (_, handles, _, _) in result.handles_mut() {
+		*handles = handles.apply_transformation(|pos| {
+			// Get the handle in world space
+			let world_pos = transform.transform_point2(pos);
 
-			// Transform handles in bezier curves
-			for (_, handles, _, _) in result.handles_mut() {
-				*handles = handles.apply_transformation(|pos| {
-					// Get the handle in world space
-					let world_pos = transform.transform_point2(pos);
+			// Normalize coordinates within the source bounding box
+			let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
 
-					// Normalize coordinates within the source bounding box
-					let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+			// Apply bilinear interpolation
+			bilinear_interpolate(t, &dst_corners)
+		});
+	}
 
-					// Apply bilinear interpolation
-					bilinear_interpolate(t, &dst_corners)
-				});
-			}
+	result.set_stroke_transform(DAffine2::IDENTITY);
 
-			result.set_stroke_transform(DAffine2::IDENTITY);
-
-			// Add this to the `List` and reset the transform since we've applied it directly to the points
-			*row.element_mut() = result;
-			row.set_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY);
-			row
-		})
-		.collect()
+	// Reset the transform since we've applied it directly to the points
+	(result, Attr(DAffine2::IDENTITY))
 }
 
 // Interpolate within a quadrilateral using normalized coordinates (0-1)
@@ -1121,7 +1088,7 @@ where
 #[node_macro::node(category("Vector: Modifier"), name("Auto-Tangents"), path(core_types::vector))]
 fn auto_tangents(
 	_: impl Ctx,
-	source: List<Vector>,
+	(source, lane_transform): (Vector, Attr<TransformAttr>),
 	/// The amount of spread for the auto-tangents, from 0 (sharp corner) to 1 (full spread).
 	#[default(0.5)]
 	#[range]
@@ -1130,177 +1097,163 @@ fn auto_tangents(
 	/// If active, existing non-zero handles won't be affected.
 	#[default(true)]
 	preserve_existing: bool,
-) -> List<Vector> {
-	(0..source.len())
-		.map(|index| {
-			let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let attributes = source.clone_item_attributes(index);
-			let source = source.element(index).unwrap();
+) -> (Vector, Attr<TransformAttr>) {
+	let transform: DAffine2 = *lane_transform;
 
-			let mut result = Vector {
-				stroke: source.stroke.clone(),
-				..Default::default()
-			};
+	let mut result = Vector {
+		stroke: source.stroke.clone(),
+		..Default::default()
+	};
 
-			for mut subpath in source.stroke_bezier_paths() {
-				subpath.apply_transform(transform);
+	for mut subpath in source.stroke_bezier_paths() {
+		subpath.apply_transform(transform);
 
-				let manipulators_list = subpath.manipulator_groups();
-				if manipulators_list.len() < 2 {
-					// Not enough points for softening or handle removal
-					result.append_subpath(subpath, true);
+		let manipulators_list = subpath.manipulator_groups();
+		if manipulators_list.len() < 2 {
+			// Not enough points for softening or handle removal
+			result.append_subpath(subpath, true);
+			continue;
+		}
+
+		let mut new_manipulators_list = Vec::with_capacity(manipulators_list.len());
+		// Track which manipulator indices were given auto-tangent (colinear) handles
+		let mut auto_tangented = vec![false; manipulators_list.len()];
+		let is_closed = subpath.closed();
+
+		for i in 0..manipulators_list.len() {
+			let current = &manipulators_list[i];
+			let is_endpoint = !is_closed && (i == 0 || i == manipulators_list.len() - 1);
+
+			if preserve_existing {
+				// Check if this point has handles that are meaningfully different from the anchor
+				let has_handles = (current.in_handle.is_some() && !current.in_handle.unwrap().abs_diff_eq(current.anchor, 1e-5))
+					|| (current.out_handle.is_some() && !current.out_handle.unwrap().abs_diff_eq(current.anchor, 1e-5));
+
+				// If the point already has handles, keep it as is
+				if has_handles {
+					new_manipulators_list.push(*current);
 					continue;
-				}
-
-				let mut new_manipulators_list = Vec::with_capacity(manipulators_list.len());
-				// Track which manipulator indices were given auto-tangent (colinear) handles
-				let mut auto_tangented = vec![false; manipulators_list.len()];
-				let is_closed = subpath.closed();
-
-				for i in 0..manipulators_list.len() {
-					let current = &manipulators_list[i];
-					let is_endpoint = !is_closed && (i == 0 || i == manipulators_list.len() - 1);
-
-					if preserve_existing {
-						// Check if this point has handles that are meaningfully different from the anchor
-						let has_handles = (current.in_handle.is_some() && !current.in_handle.unwrap().abs_diff_eq(current.anchor, 1e-5))
-							|| (current.out_handle.is_some() && !current.out_handle.unwrap().abs_diff_eq(current.anchor, 1e-5));
-
-						// If the point already has handles, keep it as is
-						if has_handles {
-							new_manipulators_list.push(*current);
-							continue;
-						}
-					}
-
-					// If spread is 0, remove handles for this point, making it a sharp corner
-					if spread == 0. {
-						new_manipulators_list.push(ManipulatorGroup {
-							anchor: current.anchor,
-							in_handle: None,
-							out_handle: None,
-							id: current.id,
-						});
-						continue;
-					}
-
-					// Endpoints of open paths get zero-length cubic handles so adjacent segments remain cubic (not quadratic)
-					if is_endpoint {
-						new_manipulators_list.push(ManipulatorGroup {
-							anchor: current.anchor,
-							in_handle: Some(current.anchor),
-							out_handle: Some(current.anchor),
-							id: current.id,
-						});
-						continue;
-					}
-
-					// Get previous and next points for auto-tangent calculation
-					let prev_index = if i == 0 { manipulators_list.len() - 1 } else { i - 1 };
-					let next_index = if i == manipulators_list.len() - 1 { 0 } else { i + 1 };
-
-					let current_position = current.anchor;
-					let delta_prev = manipulators_list[prev_index].anchor - current_position;
-					let delta_next = manipulators_list[next_index].anchor - current_position;
-
-					// Calculate normalized directions and distances to adjacent points
-					let distance_prev = delta_prev.length();
-					let distance_next = delta_next.length();
-
-					// Check if we have valid directions (e.g., points are not coincident)
-					if distance_prev < 1e-5 || distance_next < 1e-5 {
-						// Fallback: keep the original manipulator group (which has no active handles here)
-						new_manipulators_list.push(*current);
-						continue;
-					}
-
-					let direction_prev = delta_prev / distance_prev;
-					let direction_next = delta_next / distance_next;
-
-					// Calculate handle direction as the bisector of the two normalized directions.
-					// This ensures the in and out handles are colinear (180° apart) through the anchor.
-					let mut handle_direction = (direction_prev - direction_next).try_normalize().unwrap_or_else(|| direction_prev.perp());
-
-					// Ensure consistent orientation of the handle direction.
-					// This makes the `+ handle_direction` for in_handle and `- handle_direction` for out_handle consistent.
-					if direction_prev.dot(handle_direction) < 0. {
-						handle_direction = -handle_direction;
-					}
-
-					// Calculate handle lengths: 1/3 of distance to adjacent points, scaled by spread
-					let in_length = distance_prev / 3. * spread;
-					let out_length = distance_next / 3. * spread;
-
-					// Create new manipulator group with calculated auto-tangents
-					new_manipulators_list.push(ManipulatorGroup {
-						anchor: current_position,
-						in_handle: Some(current_position + handle_direction * in_length),
-						out_handle: Some(current_position - handle_direction * out_length),
-						id: current.id,
-					});
-					auto_tangented[i] = true;
-				}
-
-				// Record segment count before appending so we can find the new segment IDs
-				let segment_offset = result.segment_domain.ids().len();
-
-				let mut softened_bezpath = bezpath_from_manipulator_groups(&new_manipulators_list, is_closed);
-				softened_bezpath.apply_affine(Affine::new(transform.inverse().to_cols_array()));
-				result.append_bezpath(softened_bezpath);
-
-				// Mark auto-tangented points as having colinear handles
-				let segment_ids = result.segment_domain.ids();
-				let num_manipulators = new_manipulators_list.len();
-				for (i, _) in auto_tangented.iter().enumerate().filter(|&(_, &tangented)| tangented) {
-					// For interior point i, the incoming segment is segment_offset + (i - 1) and outgoing is segment_offset + i.
-					// For closed paths, point 0's incoming segment is the last one (segment_offset + num_manipulators - 1).
-					// For open paths, endpoints are never auto-tangented (the `is_endpoint` check above ensures that),
-					// so `i == 0` and `i == num_manipulators - 1` only occur here when the path is closed
-					let in_segment_index = if i == 0 { segment_offset + num_manipulators - 1 } else { segment_offset + i - 1 };
-					let out_segment_index = if i == num_manipulators - 1 { segment_offset } else { segment_offset + i };
-
-					if in_segment_index < segment_ids.len() && out_segment_index < segment_ids.len() {
-						result
-							.colinear_manipulators
-							.push([HandleId::end(segment_ids[in_segment_index]), HandleId::primary(segment_ids[out_segment_index])]);
-					}
 				}
 			}
 
-			Item::from_parts(result, attributes)
-		})
-		.collect()
+			// If spread is 0, remove handles for this point, making it a sharp corner
+			if spread == 0. {
+				new_manipulators_list.push(ManipulatorGroup {
+					anchor: current.anchor,
+					in_handle: None,
+					out_handle: None,
+					id: current.id,
+				});
+				continue;
+			}
+
+			// Endpoints of open paths get zero-length cubic handles so adjacent segments remain cubic (not quadratic)
+			if is_endpoint {
+				new_manipulators_list.push(ManipulatorGroup {
+					anchor: current.anchor,
+					in_handle: Some(current.anchor),
+					out_handle: Some(current.anchor),
+					id: current.id,
+				});
+				continue;
+			}
+
+			// Get previous and next points for auto-tangent calculation
+			let prev_index = if i == 0 { manipulators_list.len() - 1 } else { i - 1 };
+			let next_index = if i == manipulators_list.len() - 1 { 0 } else { i + 1 };
+
+			let current_position = current.anchor;
+			let delta_prev = manipulators_list[prev_index].anchor - current_position;
+			let delta_next = manipulators_list[next_index].anchor - current_position;
+
+			// Calculate normalized directions and distances to adjacent points
+			let distance_prev = delta_prev.length();
+			let distance_next = delta_next.length();
+
+			// Check if we have valid directions (e.g., points are not coincident)
+			if distance_prev < 1e-5 || distance_next < 1e-5 {
+				// Fallback: keep the original manipulator group (which has no active handles here)
+				new_manipulators_list.push(*current);
+				continue;
+			}
+
+			let direction_prev = delta_prev / distance_prev;
+			let direction_next = delta_next / distance_next;
+
+			// Calculate handle direction as the bisector of the two normalized directions.
+			// This ensures the in and out handles are colinear (180° apart) through the anchor.
+			let mut handle_direction = (direction_prev - direction_next).try_normalize().unwrap_or_else(|| direction_prev.perp());
+
+			// Ensure consistent orientation of the handle direction.
+			// This makes the `+ handle_direction` for in_handle and `- handle_direction` for out_handle consistent.
+			if direction_prev.dot(handle_direction) < 0. {
+				handle_direction = -handle_direction;
+			}
+
+			// Calculate handle lengths: 1/3 of distance to adjacent points, scaled by spread
+			let in_length = distance_prev / 3. * spread;
+			let out_length = distance_next / 3. * spread;
+
+			// Create new manipulator group with calculated auto-tangents
+			new_manipulators_list.push(ManipulatorGroup {
+				anchor: current_position,
+				in_handle: Some(current_position + handle_direction * in_length),
+				out_handle: Some(current_position - handle_direction * out_length),
+				id: current.id,
+			});
+			auto_tangented[i] = true;
+		}
+
+		// Record segment count before appending so we can find the new segment IDs
+		let segment_offset = result.segment_domain.ids().len();
+
+		let mut softened_bezpath = bezpath_from_manipulator_groups(&new_manipulators_list, is_closed);
+		softened_bezpath.apply_affine(Affine::new(transform.inverse().to_cols_array()));
+		result.append_bezpath(softened_bezpath);
+
+		// Mark auto-tangented points as having colinear handles
+		let segment_ids = result.segment_domain.ids();
+		let num_manipulators = new_manipulators_list.len();
+		for (i, _) in auto_tangented.iter().enumerate().filter(|&(_, &tangented)| tangented) {
+			// For interior point i, the incoming segment is segment_offset + (i - 1) and outgoing is segment_offset + i.
+			// For closed paths, point 0's incoming segment is the last one (segment_offset + num_manipulators - 1).
+			// For open paths, endpoints are never auto-tangented (the `is_endpoint` check above ensures that),
+			// so `i == 0` and `i == num_manipulators - 1` only occur here when the path is closed
+			let in_segment_index = if i == 0 { segment_offset + num_manipulators - 1 } else { segment_offset + i - 1 };
+			let out_segment_index = if i == num_manipulators - 1 { segment_offset } else { segment_offset + i };
+
+			if in_segment_index < segment_ids.len() && out_segment_index < segment_ids.len() {
+				result
+					.colinear_manipulators
+					.push([HandleId::end(segment_ids[in_segment_index]), HandleId::primary(segment_ids[out_segment_index])]);
+			}
+		}
+	}
+
+	(result, Attr(transform))
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn bounding_box(_: impl Ctx, content: List<Vector>) -> List<Vector> {
-	content
-		.into_iter()
-		.map(|mut row| {
-			let vector = std::mem::take(row.element_mut());
-
-			let mut result = vector
-				.bounding_box_rect()
-				.map(|bbox| {
-					let mut vector = Vector::default();
-					vector.append_bezpath(bbox.to_path(DEFAULT_ACCURACY));
-					vector
-				})
-				.unwrap_or_default();
-
-			result.stroke = vector.stroke.clone();
-			result.set_stroke_transform(DAffine2::IDENTITY);
-
-			*row.element_mut() = result;
-			row
+fn bounding_box(_: impl Ctx, vector: Vector) -> Vector {
+	let mut result = vector
+		.bounding_box_rect()
+		.map(|bbox| {
+			let mut vector = Vector::default();
+			vector.append_bezpath(bbox.to_path(DEFAULT_ACCURACY));
+			vector
 		})
-		.collect()
+		.unwrap_or_default();
+
+	result.stroke = vector.stroke.clone();
+	result.set_stroke_transform(DAffine2::IDENTITY);
+
+	result
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-fn dimensions(_: impl Ctx, content: List<Vector>) -> DVec2 {
+fn dimensions(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Vector>) -> DVec2 {
 	(0..content.len())
-		.filter_map(|index| content.element(index).unwrap().bounding_box_with_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM, index)))
+		.filter_map(|index| content.element_ref(index).bounding_box_with_transform(content.lane(index).attr::<TransformAttr>()))
 		.reduce(|[acc_top_left, acc_bottom_right], [top_left, bottom_right]| [acc_top_left.min(top_left), acc_bottom_right.max(bottom_right)])
 		.map(|[top_left, bottom_right]| bottom_right - top_left)
 		.unwrap_or_default()
@@ -1308,81 +1261,72 @@ fn dimensions(_: impl Ctx, content: List<Vector>) -> DVec2 {
 
 /// Type-asserts a value to be vector data.
 #[node_macro::node(category("Vector"), name("As Vector"), path(core_types::vector))]
-fn as_vector(_: impl Ctx, value: List<Vector>) -> List<Vector> {
+fn as_vector(_: impl Ctx, value: Vector) -> Vector {
 	value
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
-fn points_to_polyline(_: impl Ctx, mut points: List<Vector>, #[default(true)] closed: bool) -> List<Vector> {
-	for vector in points.iter_element_values_mut() {
-		let mut segment_domain = SegmentDomain::new();
-		let mut next_id = SegmentId::ZERO;
+fn points_to_polyline(_: impl Ctx, mut points: Vector, #[default(true)] closed: bool) -> Vector {
+	let mut segment_domain = SegmentDomain::new();
+	let mut next_id = SegmentId::ZERO;
 
-		let points_count = vector.point_domain.ids().len();
+	let points_count = points.point_domain.ids().len();
 
-		if points_count >= 2 {
-			(0..points_count - 1).for_each(|i| {
-				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
-			});
+	if points_count >= 2 {
+		(0..points_count - 1).for_each(|i| {
+			segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
+		});
 
-			if closed && points_count != 2 {
-				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
+		if closed && points_count != 2 {
+			segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
-				vector
-					.region_domain
-					.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap(), FillId::generate());
-			}
+			points
+				.region_domain
+				.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap(), FillId::generate());
 		}
-
-		vector.segment_domain = segment_domain;
 	}
+
+	points.segment_domain = segment_domain;
 
 	points
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("offset_path_properties"))]
-fn offset_path(_: impl Ctx, content: List<Vector>, distance: f64, join: StrokeJoin, #[default(4.)] miter_limit: f64) -> List<Vector> {
-	content
-		.into_iter()
-		.map(|mut row| {
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let transform = Affine::new(transform_attribute.to_cols_array());
-			let vector = std::mem::take(row.element_mut());
+fn offset_path(_: impl Ctx, (vector, lane_transform): (Vector, Attr<TransformAttr>), distance: f64, join: StrokeJoin, #[default(4.)] miter_limit: f64) -> (Vector, Attr<TransformAttr>) {
+	let transform_attribute: DAffine2 = *lane_transform;
+	let transform = Affine::new(transform_attribute.to_cols_array());
 
-			let bezpaths = vector.stroke_bezpath_iter();
-			let mut result = Vector {
-				stroke: vector.stroke.clone(),
-				..Default::default()
-			};
-			result.set_stroke_transform(DAffine2::IDENTITY);
+	let bezpaths = vector.stroke_bezpath_iter();
+	let mut result = Vector {
+		stroke: vector.stroke.clone(),
+		..Default::default()
+	};
+	result.set_stroke_transform(DAffine2::IDENTITY);
 
-			// Perform operation on all subpaths in this shape.
-			for mut bezpath in bezpaths {
-				bezpath.apply_affine(transform);
+	// Perform operation on all subpaths in this shape.
+	for mut bezpath in bezpaths {
+		bezpath.apply_affine(transform);
 
-				// Taking the existing stroke data and passing it to Kurbo to generate new paths.
-				let mut bezpath_out = offset_bezpath(
-					&bezpath,
-					-distance,
-					match join {
-						StrokeJoin::Miter => kurbo::Join::Miter,
-						StrokeJoin::Bevel => kurbo::Join::Bevel,
-						StrokeJoin::Round => kurbo::Join::Round,
-					},
-					Some(miter_limit),
-				);
+		// Taking the existing stroke data and passing it to Kurbo to generate new paths.
+		let mut bezpath_out = offset_bezpath(
+			&bezpath,
+			-distance,
+			match join {
+				StrokeJoin::Miter => kurbo::Join::Miter,
+				StrokeJoin::Bevel => kurbo::Join::Bevel,
+				StrokeJoin::Round => kurbo::Join::Round,
+			},
+			Some(miter_limit),
+		);
 
-				bezpath_out.apply_affine(transform.inverse());
+		bezpath_out.apply_affine(transform.inverse());
 
-				// One closed subpath, open path.
-				result.append_bezpath(bezpath_out);
-			}
+		// One closed subpath, open path.
+		result.append_bezpath(bezpath_out);
+	}
 
-			*row.element_mut() = result;
-			row
-		})
-		.collect()
+	(result, Attr(transform_attribute))
 }
 
 fn solidify_stroke_core(graphic_list: List<Graphic>) -> List<Vector> {
@@ -1610,10 +1554,12 @@ fn solidify_stroke<'e>(
 /// count as a lower bound and consumers drain to the past-end signal.
 fn solidify_stroke_extent(content: ListIn<'_, Graphic>, level: LevelIn) -> GPoll<Extent> {
 	match level.top() {
-		true => content.total().map(|total| Extent::AtLeast(match total {
-			Extent::Exactly(count) | Extent::AtLeast(count) => count,
-			Extent::Free => 0,
-		})),
+		true => content.total().map(|total| {
+			Extent::AtLeast(match total {
+				Extent::Exactly(count) | Extent::AtLeast(count) => count,
+				Extent::Free => 0,
+			})
+		}),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
 }
@@ -1644,10 +1590,12 @@ fn solidify_stroke_vector<'e>(
 
 fn solidify_stroke_vector_extent(content: ListIn<'_, Vector>, level: LevelIn) -> GPoll<Extent> {
 	match level.top() {
-		true => content.total().map(|total| Extent::AtLeast(match total {
-			Extent::Exactly(count) | Extent::AtLeast(count) => count,
-			Extent::Free => 0,
-		})),
+		true => content.total().map(|total| {
+			Extent::AtLeast(match total {
+				Extent::Exactly(count) | Extent::AtLeast(count) => count,
+				Extent::Free => 0,
+			})
+		}),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
 }
@@ -1720,7 +1668,17 @@ fn map_points(ctx: impl Ctx + DeriveCtx, content: List<Vector>, mapped: impl Nod
 fn flatten_path_core<'e>(
 	arena: &'e core_types::arena::Arena,
 	graphic_list: List<Graphic>,
-) -> Result<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, StrokeAttr>, Attr<'e, EditorLayerPath>, Attr<'e, EditorMergedLayers>), Interrupt> {
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	Interrupt,
+> {
 	let flattened = graphic_list.clone().into_flattened_list::<Vector>();
 
 	let mut output = Vector::default();
@@ -1787,7 +1745,17 @@ fn flatten_path_core<'e>(
 pub fn flatten_path<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Graphic>,
-) -> Result<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, StrokeAttr>, Attr<'e, EditorLayerPath>, Attr<'e, EditorMergedLayers>), Interrupt> {
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	Interrupt,
+> {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	let content = graphic_types::graphic::run_to_render_list::<Graphic>(&item).expect("the run holds the row's element type");
@@ -1800,7 +1768,17 @@ pub fn flatten_path<'e>(
 pub fn flatten_path_vector<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Vector>,
-) -> Result<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, StrokeAttr>, Attr<'e, EditorLayerPath>, Attr<'e, EditorMergedLayers>), Interrupt> {
+) -> Result<
+	(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	),
+	Interrupt,
+> {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	let content = graphic_types::graphic::run_to_render_list::<Vector>(&item)
@@ -1896,43 +1874,37 @@ fn sample_polyline(
 fn simplify(
 	_: impl Ctx,
 	/// The vector paths to simplify.
-	content: List<Vector>,
+	(content, lane_transform): (Vector, Attr<TransformAttr>),
 	/// The maximum distance the simplified path may deviate from the original.
 	#[default(5.)]
 	#[unit(" px")]
 	tolerance: Length,
-) -> List<Vector> {
+) -> (Vector, Attr<TransformAttr>) {
 	if tolerance <= 0. {
-		return content;
+		return (content, Attr(*lane_transform));
 	}
 
 	let options = SimplifyOptions::default();
 
-	content
-		.into_iter()
-		.map(|mut row| {
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let transform = Affine::new(transform_attribute.to_cols_array());
-			let inverse_transform = transform.inverse();
+	let transform_attribute: DAffine2 = *lane_transform;
+	let transform = Affine::new(transform_attribute.to_cols_array());
+	let inverse_transform = transform.inverse();
 
-			let mut result = Vector {
-				stroke: std::mem::take(&mut row.element_mut().stroke),
-				..Default::default()
-			};
+	let mut result = Vector {
+		stroke: content.stroke.clone(),
+		..Default::default()
+	};
 
-			for mut bezpath in row.element().stroke_bezpath_iter() {
-				bezpath.apply_affine(transform);
+	for mut bezpath in content.stroke_bezpath_iter() {
+		bezpath.apply_affine(transform);
 
-				let mut simplified = simplify_bezpath(bezpath, tolerance, &options);
+		let mut simplified = simplify_bezpath(bezpath, tolerance, &options);
 
-				simplified.apply_affine(inverse_transform);
-				result.append_bezpath(simplified);
-			}
+		simplified.apply_affine(inverse_transform);
+		result.append_bezpath(simplified);
+	}
 
-			*row.element_mut() = result;
-			row
-		})
-		.collect()
+	(result, Attr(transform_attribute))
 }
 
 /// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
@@ -1940,15 +1912,15 @@ fn simplify(
 fn decimate(
 	_: impl Ctx,
 	/// The vector paths to decimate.
-	content: List<Vector>,
+	(content, lane_transform): (Vector, Attr<TransformAttr>),
 	/// The maximum distance a point can deviate from the simplified path before it is kept.
 	#[default(5.)]
 	#[unit(" px")]
 	tolerance: Length,
-) -> List<Vector> {
+) -> (Vector, Attr<TransformAttr>) {
 	// Tolerance of 0 means no simplification is possible, so return immediately
 	if tolerance <= 0. {
-		return content;
+		return (content, Attr(*lane_transform));
 	}
 
 	// Below this squared length, a line segment is treated as a degenerate point and the distance
@@ -2004,61 +1976,55 @@ fn decimate(
 		points.iter().enumerate().filter(|(i, _)| keep[*i]).map(|(_, p)| *p).collect()
 	}
 
-	content
-		.into_iter()
-		.map(|mut row| {
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let transform = Affine::new(transform_attribute.to_cols_array());
-			let inverse_transform = transform.inverse();
+	let transform_attribute: DAffine2 = *lane_transform;
+	let transform = Affine::new(transform_attribute.to_cols_array());
+	let inverse_transform = transform.inverse();
 
-			let mut result = Vector {
-				stroke: std::mem::take(&mut row.element_mut().stroke),
-				..Default::default()
-			};
+	let mut result = Vector {
+		stroke: content.stroke.clone(),
+		..Default::default()
+	};
 
-			for mut bezpath in row.element().stroke_bezpath_iter() {
-				bezpath.apply_affine(transform);
+	for mut bezpath in content.stroke_bezpath_iter() {
+		bezpath.apply_affine(transform);
 
-				let is_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
+		let is_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
 
-				// Flatten the bezpath into line segments, then collect the points
-				let mut points = Vec::new();
-				kurbo::flatten(bezpath, tolerance * 0.5, |el| match el {
-					PathEl::MoveTo(p) | PathEl::LineTo(p) => {
-						points.push(DVec2::new(p.x, p.y));
-					}
-					_ => {}
-				});
-
-				// For closed paths, the last point duplicates the first, so remove it
-				if is_closed && points.len() > 1 && points.last() == points.first() {
-					points.pop();
-				}
-
-				// Apply RDP simplification
-				let simplified = rdp_simplify(&points, tolerance);
-				if simplified.is_empty() {
-					continue;
-				}
-
-				// Reconstruct as a polyline
-				let mut new_bezpath = BezPath::new();
-				new_bezpath.move_to((simplified[0].x, simplified[0].y));
-				for &point in &simplified[1..] {
-					new_bezpath.line_to((point.x, point.y));
-				}
-				if is_closed {
-					new_bezpath.close_path();
-				}
-
-				new_bezpath.apply_affine(inverse_transform);
-				result.append_bezpath(new_bezpath);
+		// Flatten the bezpath into line segments, then collect the points
+		let mut points = Vec::new();
+		kurbo::flatten(bezpath, tolerance * 0.5, |el| match el {
+			PathEl::MoveTo(p) | PathEl::LineTo(p) => {
+				points.push(DVec2::new(p.x, p.y));
 			}
+			_ => {}
+		});
 
-			*row.element_mut() = result;
-			row
-		})
-		.collect()
+		// For closed paths, the last point duplicates the first, so remove it
+		if is_closed && points.len() > 1 && points.last() == points.first() {
+			points.pop();
+		}
+
+		// Apply RDP simplification
+		let simplified = rdp_simplify(&points, tolerance);
+		if simplified.is_empty() {
+			continue;
+		}
+
+		// Reconstruct as a polyline
+		let mut new_bezpath = BezPath::new();
+		new_bezpath.move_to((simplified[0].x, simplified[0].y));
+		for &point in &simplified[1..] {
+			new_bezpath.line_to((point.x, point.y));
+		}
+		if is_closed {
+			new_bezpath.close_path();
+		}
+
+		new_bezpath.apply_affine(inverse_transform);
+		result.append_bezpath(new_bezpath);
+	}
+
+	(result, Attr(transform_attribute))
 }
 
 /// Cuts a path at a given progression from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
@@ -2116,9 +2082,10 @@ fn cut_path(
 
 /// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn cut_segments(_: impl Ctx, mut content: List<Vector>) -> List<Vector> {
-	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
-	for vector in content.iter_element_values_mut() {
+fn cut_segments(_: impl Ctx, mut content: Vector) -> Vector {
+	// Make a copy of each segment's endpoints, then reassign each segment's endpoints to its own unique point copy
+	{
+		let vector = &mut content;
 		let points_count = vector.point_domain.ids().len();
 		let segments_count = vector.segment_domain.ids().len();
 
@@ -2176,9 +2143,9 @@ fn cut_segments(_: impl Ctx, mut content: List<Vector>) -> List<Vector> {
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Position on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 fn position_on_path(
-	_: impl Ctx,
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The path to traverse.
-	content: List<Vector>,
+	content: IList<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
 	progression: Progression,
 	/// Swap the direction of the path.
@@ -2190,8 +2157,8 @@ fn position_on_path(
 
 	let mut bezpaths: Vec<_> = (0..content.len())
 		.flat_map(|index| {
-			let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			content.element(index).unwrap().stroke_bezpath_iter().map(move |bezpath| (bezpath, transform)).collect::<Vec<_>>()
+			let transform: DAffine2 = content.lane(index).attr::<TransformAttr>();
+			content.element_ref(index).stroke_bezpath_iter().map(move |bezpath| (bezpath, transform)).collect::<Vec<_>>()
 		})
 		.collect();
 	let bezpath_count = bezpaths.len() as f64;
@@ -2214,9 +2181,9 @@ fn position_on_path(
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Tangent on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 fn tangent_on_path(
-	_: impl Ctx,
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The path to traverse.
-	content: List<Vector>,
+	content: IList<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
 	progression: Progression,
 	/// Swap the direction of the path.
@@ -2230,8 +2197,8 @@ fn tangent_on_path(
 
 	let mut bezpaths: Vec<_> = (0..content.len())
 		.flat_map(|index| {
-			let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			content.element(index).unwrap().stroke_bezpath_iter().map(move |bezpath| (bezpath, transform)).collect::<Vec<_>>()
+			let transform: DAffine2 = content.lane(index).attr::<TransformAttr>();
+			content.element_ref(index).stroke_bezpath_iter().map(move |bezpath| (bezpath, transform)).collect::<Vec<_>>()
 		})
 		.collect();
 	let bezpath_count = bezpaths.len() as f64;
@@ -2447,34 +2414,27 @@ fn jitter_points(
 fn offset_points(
 	_: impl Ctx,
 	/// The vector geometry with points to be offset.
-	content: List<Vector>,
+	(mut element, transform): (Vector, Attr<TransformAttr>),
 	/// The distance to offset each anchor point along its normal. Positive values move outward, negative values move inward.
 	#[default(10.)]
 	#[unit(" px")]
 	distance: f64,
-) -> List<Vector> {
-	content
-		.into_iter()
-		.map(|mut row| {
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
+) -> (Vector, Attr<TransformAttr>) {
+	let inverse_linear = inverse_linear_or_repair(transform.matrix2);
 
-			let deltas: Vec<_> = (0..row.element().point_domain.positions().len())
-				.map(|point_index| {
-					let Some(normal) = row.element().segment_domain.point_tangent(point_index, row.element().point_domain.positions()).map(|t| -t.perp()) else {
-						return DVec2::ZERO;
-					};
+	let deltas: Vec<_> = (0..element.point_domain.positions().len())
+		.map(|point_index| {
+			let Some(normal) = element.segment_domain.point_tangent(point_index, element.point_domain.positions()).map(|t| -t.perp()) else {
+				return DVec2::ZERO;
+			};
 
-					inverse_linear * normal * distance
-				})
-				.collect();
-
-			let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			apply_point_deltas(row.element_mut(), &deltas, transform);
-
-			row
+			inverse_linear * normal * distance
 		})
-		.collect()
+		.collect();
+
+	apply_point_deltas(&mut element, &deltas, *transform);
+
+	(element, Attr(*transform))
 }
 
 /// Interpolates the geometry, appearance, and transform between multiple vector layers, producing a single morphed vector shape.
@@ -3481,34 +3441,21 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn bevel(_: impl Ctx, source: List<Vector>, #[default(10.)] distance: Length) -> List<Vector> {
-	source
-		.into_iter()
-		.map(|row| {
-			let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let (element, attributes) = row.into_parts();
-
-			Item::from_parts(bevel_algorithm(element, transform, distance), attributes)
-		})
-		.collect()
+fn bevel(_: impl Ctx, (element, transform): (Vector, Attr<TransformAttr>), #[default(10.)] distance: Length) -> (Vector, Attr<TransformAttr>) {
+	(bevel_algorithm(element, *transform, distance), Attr(*transform))
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn close_path(_: impl Ctx, source: List<Vector>) -> List<Vector> {
+fn close_path(_: impl Ctx, mut source: Vector) -> Vector {
+	source.close_subpaths();
 	source
-		.into_iter()
-		.map(|mut row| {
-			row.element_mut().close_subpaths();
-			row
-		})
-		.collect()
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-fn point_inside(_: impl Ctx, source: List<Vector>, point: DVec2) -> bool {
-	source.into_iter().any(|row| {
-		let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-		row.element().check_point_inside_shape(transform, point)
+fn point_inside(_: impl Ctx + ExtractIndex + InjectIndex + Copy, source: IList<Vector>, point: DVec2) -> bool {
+	(0..source.len()).any(|index| {
+		let transform: DAffine2 = source.lane(index).attr::<TransformAttr>();
+		source.element_ref(index).check_point_inside_shape(transform, point)
 	})
 }
 
@@ -3520,21 +3467,21 @@ fn count_elements(_: impl Ctx, content: ListDyn) -> f64 {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-fn count_points(_: impl Ctx, content: List<Vector>) -> f64 {
-	content.iter_element_values().map(|vector| vector.point_domain.positions().len() as f64).sum()
+fn count_points(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Vector>) -> f64 {
+	(0..content.len()).map(|index| content.element_ref(index).point_domain.positions().len() as f64).sum()
 }
 
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index in a `List` of vector elements.
 /// If no value exists at that index, the position (0, 0) is returned.
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 fn index_points(
-	_: impl Ctx,
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The vector element or elements containing the anchor points to be retrieved.
-	content: List<Vector>,
+	content: IList<Vector>,
 	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last item.
 	index: f64,
 ) -> DVec2 {
-	let points_count = content.iter_element_values().map(|vector| vector.point_domain.positions().len()).sum::<usize>();
+	let points_count = (0..content.len()).map(|row| content.element_ref(row).point_domain.positions().len()).sum::<usize>();
 
 	if points_count == 0 {
 		return DVec2::ZERO;
@@ -3549,7 +3496,8 @@ fn index_points(
 
 	// Find the point at the given index across all vector elements
 	let mut accumulated = 0;
-	for vector in content.iter_element_values() {
+	for row in 0..content.len() {
+		let vector = content.element_ref(row);
 		let row_point_count = vector.point_domain.positions().len();
 		if index - accumulated < row_point_count {
 			return vector.point_domain.positions()[index - accumulated];
@@ -3561,14 +3509,13 @@ fn index_points(
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-fn path_length(_: impl Ctx, source: List<Vector>) -> f64 {
+fn path_length(_: impl Ctx + ExtractIndex + InjectIndex + Copy, source: IList<Vector>) -> f64 {
 	(0..source.len())
 		.map(|index| {
-			let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform: DAffine2 = source.lane(index).attr::<TransformAttr>();
 
 			source
-				.element(index)
-				.unwrap()
+				.element_ref(index)
 				.stroke_bezpath_iter()
 				.map(|mut bezpath| {
 					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
@@ -3580,22 +3527,21 @@ fn path_length(_: impl Ctx, source: List<Vector>) -> f64 {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-fn area(ctx: impl Ctx + DeriveCtx, content: impl Node<Context<'_>, Output = List<Vector>>) -> Result<f64, Interrupt> {
-	let vector = content.eval(&ctx.with_footprint(&Footprint::DEFAULT))?;
-
+// The legacy form reset the footprint before evaluating; the nullification
+// pass now strips it upstream since this node declares no footprint feature.
+fn area(_: impl Ctx + ExtractIndex + InjectIndex + Copy, vector: IList<Vector>) -> Result<f64, Interrupt> {
 	Ok((0..vector.len())
 		.map(|index| {
-			let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform: DAffine2 = vector.lane(index).attr::<TransformAttr>();
 			let area_scale = transform.matrix2.determinant().abs();
-			vector.element(index).unwrap().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>()
+			vector.element_ref(index).stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>()
 		})
 		.sum())
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-fn centroid(ctx: impl Ctx + DeriveCtx, content: impl Node<Context<'_>, Output = List<Vector>>, centroid_type: CentroidType) -> Result<DVec2, Interrupt> {
-	let vector = content.eval(&ctx.with_footprint(&Footprint::DEFAULT))?;
-
+// The footprint reset moved to the nullification pass, as in `area`.
+fn centroid(_: impl Ctx + ExtractIndex + InjectIndex + Copy, vector: IList<Vector>, centroid_type: CentroidType) -> Result<DVec2, Interrupt> {
 	if vector.is_empty() {
 		return Ok(DVec2::ZERO);
 	}
@@ -3606,14 +3552,14 @@ fn centroid(ctx: impl Ctx + DeriveCtx, content: impl Node<Context<'_>, Output = 
 	let mut sum = 0.;
 
 	for index in 0..vector.len() {
-		let Some(element) = vector.element(index) else { continue };
+		let element = vector.element_ref(index);
 		for subpath in element.stroke_bezier_paths() {
 			let partial = match centroid_type {
 				CentroidType::Area => subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
 				CentroidType::Length => subpath.length_centroid_and_length(None, true),
 			};
 			if let Some((subpath_centroid, area_or_length)) = partial {
-				let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+				let transform: DAffine2 = vector.lane(index).attr::<TransformAttr>();
 				let subpath_centroid = transform.transform_point2(subpath_centroid);
 
 				sum += area_or_length;
@@ -3631,10 +3577,9 @@ fn centroid(ctx: impl Ctx + DeriveCtx, content: impl Node<Context<'_>, Output = 
 
 		let summed_positions = (0..vector.len())
 			.flat_map(|index| {
-				let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+				let transform: DAffine2 = vector.lane(index).attr::<TransformAttr>();
 				vector
-					.element(index)
-					.unwrap()
+					.element_ref(index)
 					.point_domain
 					.positions()
 					.iter()
@@ -3651,6 +3596,7 @@ fn centroid(ctx: impl Ctx + DeriveCtx, content: impl Node<Context<'_>, Output = 
 #[cfg(test)]
 mod test {
 	use super::*;
+	use core_types::transform::Footprint;
 	use kurbo::{CubicBez, Ellipse, Point, Rect};
 	use vector_types::vector::algorithms::bezpath_algorithms::{TValue, trim_pathseg};
 	use vector_types::vector::misc::pathseg_abs_diff_eq;
@@ -3659,16 +3605,9 @@ mod test {
 		List::new_from_element(Vector::from_bezpath(bezpath))
 	}
 
-	fn create_vector_item(bezpath: BezPath, transform: DAffine2) -> Item<Vector> {
-		let mut row = Vector::default();
-		row.append_bezpath(bezpath);
-		Item::new_from_element(row).with_attribute(ATTR_TRANSFORM, transform)
-	}
-
 	#[test]
 	fn bounding_box() {
-		let bounding_box = super::bounding_box(&(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)));
-		let bounding_box = bounding_box.element(0).unwrap();
+		let bounding_box = super::bounding_box(&(), Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)));
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
 			.region_manipulator_groups()
@@ -3681,12 +3620,9 @@ mod test {
 
 		assert_eq!(&manipulator_groups_anchors[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
 
-		// Test a rectangular path with non-zero rotation
+		// The box spans local space, so a lane rotation leaves it unchanged
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
-		let mut square = List::new_from_element(square);
-		square.with_attribute_mut_or_default(ATTR_TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
 		let bounding_box = super::bounding_box(&(), square);
-		let bounding_box = bounding_box.element(0).unwrap();
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
 			.region_manipulator_groups()
@@ -3705,7 +3641,16 @@ mod test {
 	#[test]
 	fn sample_polyline() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
-		let (sample_polyline, _) = super::sample_polyline(&Footprint::default(), (Vector::from_bezpath(path), Attr(DAffine2::IDENTITY)), PointSpacingType::Separation, 30., 0, 0., 0., false);
+		let (sample_polyline, _) = super::sample_polyline(
+			&Footprint::default(),
+			(Vector::from_bezpath(path), Attr(DAffine2::IDENTITY)),
+			PointSpacingType::Separation,
+			30.,
+			0,
+			0.,
+			0.,
+			false,
+		);
 		let sample_polyline = &sample_polyline;
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
@@ -3715,7 +3660,16 @@ mod test {
 	#[test]
 	fn sample_polyline_adaptive_spacing() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
-		let (sample_polyline, _) = super::sample_polyline(&Footprint::default(), (Vector::from_bezpath(path), Attr(DAffine2::IDENTITY)), PointSpacingType::Separation, 18., 0, 45., 10., true);
+		let (sample_polyline, _) = super::sample_polyline(
+			&Footprint::default(),
+			(Vector::from_bezpath(path), Attr(DAffine2::IDENTITY)),
+			PointSpacingType::Separation,
+			18.,
+			0,
+			45.,
+			10.,
+			true,
+		);
 		let sample_polyline = &sample_polyline;
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
@@ -3742,15 +3696,27 @@ mod test {
 	}
 	#[test]
 	fn path_length() {
+		core_types::record::stack::reserve(1 << 16);
+		let arena = core_types::arena::Arena::new(1 << 20).unwrap();
+		let generations = [];
+		let scope = core_types::context::EvalScope::new(None, None, None, &generations, &arena);
+		let ctx = core_types::context::ContextImpl::root(&scope);
+
 		let bezpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
-		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
-		let row = create_vector_item(bezpath, transform);
-		let list = (0..5).map(|_| row.clone()).collect::<List<Vector>>();
+		let mut row = Vector::default();
+		row.append_bezpath(bezpath);
+		// Element-only lanes read identity lane transforms; the transform term
+		// rides the demo gate.
+		let source = core_types::value::LeveledValueSource::new(vec![row; 5]);
+		let core_types::record::LevelStatus::Batch(batch, _) = core_types::record::materialize_level(&source, &ctx, &arena) else {
+			panic!("materialize failed")
+		};
+		let list = unsafe { core_types::node::List::<Vector>::new(batch) };
 
-		let length = super::path_length(&Footprint::default(), list);
+		let length = super::path_length(&ctx, list);
 
-		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
-		assert_eq!(length, 101. * 4. * 2. * 5.);
+		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 5 (number of rows)
+		assert_eq!(length, 101. * 4. * 5.);
 	}
 	#[test]
 	fn spline() {
@@ -3825,8 +3791,8 @@ mod test {
 	#[test]
 	fn bevel_rect() {
 		let source = Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY);
-		let beveled = super::bevel(&Footprint::default(), vector_node_from_bezpath(source), 2_f64.sqrt() * 10.);
-		let beveled = beveled.element(0).unwrap();
+		let (beveled, _) = super::bevel(&Footprint::default(), (Vector::from_bezpath(source), Attr(DAffine2::IDENTITY)), 2_f64.sqrt() * 10.);
+		let beveled = &beveled;
 
 		assert_eq!(beveled.point_domain.positions().len(), 8);
 		assert_eq!(beveled.segment_domain.ids().len(), 8);
@@ -3853,8 +3819,8 @@ mod test {
 		source.line_to(Point::ZERO);
 		source.push(curve.as_path_el());
 
-		let beveled = super::bevel(&(), vector_node_from_bezpath(source), 2_f64.sqrt() * 10.);
-		let beveled = beveled.element(0).unwrap();
+		let (beveled, _) = super::bevel(&(), (Vector::from_bezpath(source), Attr(DAffine2::IDENTITY)), 2_f64.sqrt() * 10.);
+		let beveled = &beveled;
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
 		assert_eq!(beveled.segment_domain.ids().len(), 3);
@@ -3877,13 +3843,11 @@ mod test {
 		source.line_to(Point::ZERO);
 		source.push(curve.as_path_el());
 
+		// The legacy test set the transform on a list it never passed, so the
+		// evaluated lane used the identity; keep that behavior explicit.
 		let vector = Vector::from_bezpath(source);
-		let mut vector_list = List::new_from_element(vector.clone());
-
-		vector_list.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.)));
-
-		let beveled = super::bevel(&(), List::new_from_element(vector), 2_f64.sqrt() * 10.);
-		let beveled = beveled.element(0).unwrap();
+		let (beveled, _) = super::bevel(&(), (vector, Attr(DAffine2::IDENTITY)), 2_f64.sqrt() * 10.);
+		let beveled = &beveled;
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
 		assert_eq!(beveled.segment_domain.ids().len(), 3);
@@ -3905,8 +3869,8 @@ mod test {
 		source.line_to(Point::new(100., 100.));
 		source.line_to(Point::new(0., 100.));
 
-		let beveled = super::bevel(&Footprint::default(), vector_node_from_bezpath(source), 999.);
-		let beveled = beveled.element(0).unwrap();
+		let (beveled, _) = super::bevel(&Footprint::default(), (Vector::from_bezpath(source), Attr(DAffine2::IDENTITY)), 999.);
+		let beveled = &beveled;
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
 		assert_eq!(beveled.segment_domain.ids().len(), 5);
@@ -3929,8 +3893,8 @@ mod test {
 
 		let subpath = BezPath::from_path_segments([line, point, curve].into_iter());
 
-		let beveled_list = super::bevel(&Footprint::default(), vector_node_from_bezpath(subpath), 5.);
-		let beveled = beveled_list.element(0).unwrap();
+		let (beveled, _) = super::bevel(&Footprint::default(), (Vector::from_bezpath(subpath), Attr(DAffine2::IDENTITY)), 5.);
+		let beveled = &beveled;
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
 		assert_eq!(beveled.segment_domain.ids().len(), 5);

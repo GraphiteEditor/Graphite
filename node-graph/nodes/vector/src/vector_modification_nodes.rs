@@ -1,8 +1,7 @@
-use core_types::attribute::{Attr, EditorLayerPath, RemoveAttr};
+use core_types::attribute::{Attr, EditorLayerPath, RemoveAttr, Transform as TransformAttr};
 use core_types::gpoll::{GraphError, Interrupt};
-use core_types::list::List;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_TRANSFORM, Ctx, ExtractIndex, InjectIndex};
+use core_types::{Ctx, ExtractIndex, InjectIndex};
 use glam::DAffine2;
 use graphic_types::Vector;
 use vector_types::markers::EditorClickTarget;
@@ -41,16 +40,12 @@ fn path_modify<'e>(
 
 /// Applies the vector path's local transformation to its geometry and resets the transform to the identity.
 #[node_macro::node(category("Vector"))]
-fn apply_transform(_ctx: impl Ctx, mut vector: List<Vector>) -> List<Vector> {
-	let (elements, transforms) = vector.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
-	for (element, transform) in elements.iter_mut().zip(transforms.iter_mut()) {
-		for (_, point) in element.point_domain.positions_mut() {
-			*point = transform.transform_point2(*point);
-		}
-		element.segment_domain.transform(*transform);
-
-		*transform = DAffine2::IDENTITY;
+fn apply_transform(_ctx: impl Ctx, (mut vector, transform): (Vector, Attr<TransformAttr>)) -> (Vector, Attr<TransformAttr>) {
+	let transform: DAffine2 = *transform;
+	for (_, point) in vector.point_domain.positions_mut() {
+		*point = transform.transform_point2(*point);
 	}
+	vector.segment_domain.transform(transform);
 
-	vector
+	(vector, Attr(DAffine2::IDENTITY))
 }
