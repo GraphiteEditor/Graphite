@@ -1403,6 +1403,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			}
 		}
 
+		// The leveled-records flip moved the Repeat on Points content wire ahead of the points wire.
+		if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) {
+			let mut node_template = node_definition.default_node_template();
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[0].clone(), network_path);
+			for (index, input) in old_inputs.into_iter().enumerate().skip(2) {
+				document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
+			}
+		}
+
 		// The leveled-records flip gave Mandelbrot a unit primary input.
 		if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER) {
 			let mut node_template = node_definition.default_node_template();

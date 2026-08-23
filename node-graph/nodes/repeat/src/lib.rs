@@ -1,4 +1,3 @@
-pub mod leveled;
 pub mod repeat_nodes;
 
 // Re-export for convenience
