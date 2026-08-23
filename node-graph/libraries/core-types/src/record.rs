@@ -1465,21 +1465,45 @@ pub unsafe fn copy_record_bytes(layout: &Layout, rec: Rec) -> Box<[u8]> {
 	unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into()
 }
 
-/// Builds a record value over `bytes`, a record of `layout` copied out
-/// earlier: inline layouts copy into the value, spilled ones alias the
-/// bytes.
+/// Serves a record whose frame lives in storage the current evaluation does
+/// not own (a cached batch, published bytes): claims the node's frame over a
+/// copy of the source frame, so the contract that every node advances the
+/// record stack by exactly its own frame holds for cache hits too.
 ///
 /// # Safety
-/// `bytes` must hold a record of `layout` whose parked references are still
-/// live; both hold for a copy taken in the same evaluation frame.
-pub unsafe fn record_from_bytes<'e>(layout: &Layout, bytes: &'e [u8]) -> RecordValue<'e> {
+/// `src` must point at a live record of `layout` whose parked references
+/// outlive the serving evaluation.
+pub unsafe fn serve_frame<'e>(layout: &Layout, src: *const u8) -> RecordValue<'e> {
 	if layout.frame_bytes() == 0 {
 		let mut value = RecordValue::zeroed();
-		unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), value.as_mut_ptr(), bytes.len()) };
+		unsafe { std::ptr::copy_nonoverlapping(src, value.as_mut_ptr(), layout.size) };
 		value
 	} else {
-		RecordValue::spilled(unsafe { Rec::new(bytes.as_ptr()) })
+		let dst = stack::push(layout.frame_bytes());
+		unsafe { std::ptr::copy_nonoverlapping(src, dst, layout.size) };
+		RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) })
 	}
+}
+
+/// Claims a node's frame with nothing to serve, for exits that yield no
+/// record (past-end, pending): the frame contract holds on every exit,
+/// error included.
+pub fn claim_frame(layout: &Layout) {
+	if layout.frame_bytes() != 0 {
+		stack::push(layout.frame_bytes());
+	}
+}
+
+/// Closes an interrupted eval: rewinds to the eval's entry pointer (interrupt
+/// exits carry no value, so frames claimed above it are dead) and claims the
+/// node's own frame, keeping the frame contract on interrupt exits.
+///
+/// # Safety
+/// `entry` must be the stack pointer at the eval's entry, and no record
+/// above it may be referenced after the close.
+pub unsafe fn interrupt_frame(entry: usize, layout: &Layout) {
+	unsafe { stack::rewind(entry) };
+	claim_frame(layout);
 }
 
 /// A captured record: the layout plus a generation-checked handle to the
@@ -1700,7 +1724,12 @@ where
 	type Output = El;
 
 	fn eval(&self, input: &C) -> GPoll<El> {
-		self.edge.eval(input).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
+		let mark = stack::sp();
+		let result = self.edge.eval(input).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) });
+		// SAFETY: the element copied out by value, so no record above the mark
+		// (the edge's frame) is live; a plain output claims no frame itself.
+		unsafe { stack::rewind(mark) };
+		result
 	}
 }
 
@@ -1713,15 +1742,26 @@ where
 	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
 		match &self.plan {
 			None => self.edge.eval(input),
-			Some(plan) if plan.union.frame_bytes() == 0 => self.edge.eval(input).map(|value| {
-				let mut out = RecordValue::zeroed();
-				unsafe { plan.translate(plan.source.rec(&value), out.as_mut_ptr()) };
-				out
-			}),
+			Some(plan) if plan.union.frame_bytes() == 0 => {
+				let mark = stack::sp();
+				let result = self.edge.eval(input).map(|value| {
+					let mut out = RecordValue::zeroed();
+					unsafe { plan.translate(plan.source.rec(&value), out.as_mut_ptr()) };
+					out
+				});
+				// SAFETY: the translation copied the record into the inline
+				// value, so no record above the mark is live.
+				unsafe { stack::rewind(mark) };
+				result
+			}
 			Some(plan) => {
 				let dst = stack::push(plan.union.frame_bytes());
 				let value = self.edge.eval(input);
-				value.map(|value| RecordValue::spilled(unsafe { plan.translate(plan.source.rec(&value), dst) }))
+				let result = value.map(|value| RecordValue::spilled(unsafe { plan.translate(plan.source.rec(&value), dst) }));
+				// The source's frame dies with the translation; the claimed
+				// frame above stays as this node's output.
+				stack::truncate_above(dst, plan.union.frame_bytes());
+				result
 			}
 		}
 	}

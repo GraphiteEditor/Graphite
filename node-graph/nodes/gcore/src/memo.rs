@@ -4,7 +4,7 @@ use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::IORecord;
-use core_types::record::{LevelStatus, OwnedRecord, RecordCapture, RecordValue, copy_record_bytes, record_from_bytes};
+use core_types::record::{LevelStatus, OwnedRecord, RecordCapture, RecordValue, claim_frame, copy_record_bytes, serve_frame};
 use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -58,13 +58,15 @@ fn memoize<'e>(
 	let serve = |entry: &MemoLevel| {
 		if lane >= entry.lanes.len() {
 			// The cached level ends here; the past-end signal serves drains.
+			// The frame stays claimed on every exit, valueless ones included.
+			claim_frame(content.layout());
 			return GPoll::Error(Box::new(core_types::gpoll::GraphError::past_end()));
 		}
 		if entry.generation == ctx.arena().generation() {
 			// SAFETY: within the generation the materialized batch stays live,
 			// immutable, and laid out at the recorded stride.
-			let rec = unsafe { core_types::record::Rec::new((entry.frames + lane * entry.stride) as *const u8) };
-			return finalized(RecordValue::spilled(rec), &entry.finality);
+			let value = unsafe { serve_frame(content.layout(), (entry.frames + lane * entry.stride) as *const u8) };
+			return finalized(value, &entry.finality);
 		}
 		match entry.lanes[lane].replay(content.layout(), ctx.arena()) {
 			Some(value) => finalized(value, &entry.finality),
@@ -97,8 +99,14 @@ fn memoize<'e>(
 				*cache.lock().unwrap() = Some(entry);
 				result
 			}
-			LevelStatus::Pending => GPoll::Pending,
-			LevelStatus::Error(error) => GPoll::Error(Box::new(error)),
+			LevelStatus::Pending => {
+				claim_frame(content.layout());
+				GPoll::Pending
+			}
+			LevelStatus::Error(error) => {
+				claim_frame(content.layout());
+				GPoll::Error(Box::new(error))
+			}
 		};
 	}
 	let result = content.eval(&ctx);
@@ -143,20 +151,23 @@ fn frame_memo<'e>(
 	};
 	// SAFETY: published bytes are same-frame copies of this edge's records,
 	// so they carry the edge's layout with live parked references.
-	let revive = |bytes: &'e Box<[u8]>| unsafe { record_from_bytes(content.layout(), bytes) };
+	let revive = |bytes: &'e Box<[u8]>| unsafe { serve_frame(content.layout(), bytes.as_ptr()) };
 	match table.lookup(cache_key(ctx)) {
 		Lookup::Hit(Finality::AllFinal, bytes) => GPoll::Final(revive(bytes)),
 		Lookup::Hit(Finality::Partial, bytes) => GPoll::Partial(revive(bytes)),
 		Lookup::Vacant(slot) => match content.eval(&ctx) {
 			GPoll::Final(value) => {
 				// SAFETY: the value came from this edge, so it carries the edge's layout.
+				// The eval's own frame serves this pull; the publish feeds later ones.
 				let bytes = unsafe { copy_record_bytes(content.layout(), content.layout().rec(&value)) };
-				GPoll::Final(revive(slot.publish(bytes, Finality::AllFinal)))
+				slot.publish(bytes, Finality::AllFinal);
+				GPoll::Final(value)
 			}
 			GPoll::Partial(value) => {
 				// SAFETY: as above.
 				let bytes = unsafe { copy_record_bytes(content.layout(), content.layout().rec(&value)) };
-				GPoll::Partial(revive(slot.publish(bytes, Finality::Partial)))
+				slot.publish(bytes, Finality::Partial);
+				GPoll::Partial(value)
 			}
 			unpublishable => {
 				slot.release();
