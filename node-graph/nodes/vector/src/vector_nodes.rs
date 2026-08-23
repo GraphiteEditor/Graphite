@@ -1687,11 +1687,32 @@ fn path_is_closed(
 
 // Converts with the write-attribute family: the record form needs a lazy
 // value input on a record node, which the macro does not accept yet, and it
-// shares that family's per-item index convention.
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-fn map_points(ctx: impl Ctx + DeriveCtx, content: List<Vector>, mapped: impl Node<Context<'_>, Output = DVec2>) -> Result<List<Vector>, Interrupt> {
+/// Sets each anchor point's position to the value the mapped input produces, with the point's
+/// index and current position provided via context.
+#[node_macro::node(category("Vector"), path(graphene_core::vector), extent(map_points_extent))]
+fn map_points<'e>(
+	ctx: impl Ctx + DeriveCtx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Vector>,
+	mapped: impl Node<Context<'_>, Output = DVec2>,
+) -> Result<
+	IList<(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	)>,
+	Interrupt,
+> {
+	// The pushed copy keeps the legacy convention: the running point index
+	// across all rows rides as a promotion for the mapped input.
 	let spilled = ctx.index_head();
-	let mut content = content;
+	let mut content = legacy_vector_list_of(content);
 	let mut index = 0;
 
 	for vector in content.iter_element_values_mut() {
@@ -1702,7 +1723,11 @@ fn map_points(ctx: impl Ctx + DeriveCtx, content: List<Vector>, mapped: impl Nod
 		}
 	}
 
-	Ok(content)
+	emit_legacy_lane(ctx.arena(), content, ctx.innermost_index() as usize)
+}
+
+fn map_points_extent(content: ListIn<'_, Vector>, _mapped: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
+	subject_counts_extent(content, level)
 }
 
 fn flatten_path_core<'e>(

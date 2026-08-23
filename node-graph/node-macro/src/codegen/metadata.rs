@@ -91,7 +91,6 @@ pub(crate) fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a cr
 	(fn_generic_params, phantom_data_declerations)
 }
 
-
 /// Get only the necessary generics.
 struct FilterUsedGenerics {
 	all: Vec<crate::GenericParam>,

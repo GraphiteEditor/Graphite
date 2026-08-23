@@ -96,18 +96,12 @@ pub(crate) enum EvalStep<'a> {
 /// or return-tuple writes. Reads on lazy inputs belong to the record lowering
 /// of the flip class instead.
 pub(crate) fn has_record_io(parsed: &ParsedNodeFn) -> bool {
-	let value_reads = parsed
-		.fields
-		.iter()
-		.any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
+	let value_reads = parsed.fields.iter().any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
 	value_reads || record_writes(&slot_value_type(&parsed.output_type)).is_some()
 }
 
 pub(crate) fn has_lazy_reads(parsed: &ParsedNodeFn) -> bool {
-	parsed
-		.fields
-		.iter()
-		.any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Node(_)))
+	parsed.fields.iter().any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Node(_)))
 }
 
 /// The value inputs of a routing node (every regular field that is neither a
@@ -266,10 +260,7 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 		_ => return None,
 	};
 	let writes = record_writes(&value);
-	let has_reads = parsed
-		.fields
-		.iter()
-		.any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
+	let has_reads = parsed.fields.iter().any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
 	if !has_reads && writes.is_none() {
 		return None;
 	}
@@ -283,13 +274,17 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 	// A first-field lazy carrier: the kernel evaluates the derived content
 	// itself and returns its opaque row token beside the write set.
 	let lazy_carrier = matches!(&carrier_field.ty, ParsedFieldType::Node(_));
-	if parsed.fields.iter().skip(lazy_carrier as usize).any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+	// Lazy secondaries are consumed as plain elements; raw record edges and
+	// ranked outputs have no element binding here.
+	let unsupported_lazy_secondary = |field: &ParsedField| match &field.ty {
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => is_record_value(output_type) || crate::codegen::ir::strip_ilist(output_type).1 > 0 || !field.attribute_reads.is_empty(),
+		ParsedFieldType::Regular(_) => false,
+	};
+	if parsed.fields.iter().skip(lazy_carrier as usize).any(|field| unsupported_lazy_secondary(field)) {
 		return None;
 	}
 	let reads_well_placed = parsed.fields.iter().enumerate().all(|(index, field)| {
-		field.attribute_reads.is_empty()
-			|| (lazy_carrier && index == 0)
-			|| (!field.is_data_field && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: None, .. })))
+		field.attribute_reads.is_empty() || (lazy_carrier && index == 0) || (!field.is_data_field && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: None, .. })))
 	});
 	if !reads_well_placed {
 		return None;

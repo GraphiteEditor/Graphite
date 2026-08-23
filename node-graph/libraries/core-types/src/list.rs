@@ -42,12 +42,10 @@ pub const ATTR_LETTER_TILT: &str = crate::attribute::LetterTilt::NAME;
 // Implicit attribute defaults
 // ===========================
 
-/// Overrides the type's default value for certain attributes.
+/// The census-declared default for `key`; a mismatched value type degrades
+/// to the column type's own default in `push_repeated`.
 fn implicit_default_value(key: &str) -> Option<Box<dyn AnyAttributeValue>> {
-	match key {
-		ATTR_OPACITY | ATTR_OPACITY_FILL => Some(Box::new(1_f64)),
-		_ => None,
-	}
+	crate::attribute::ATTRIBUTE_REGISTRY.lock().unwrap().get(key).map(|info| (info.default)())
 }
 
 /// Appends `count` copies of `key`'s implicit default to `attribute` (see [`implicit_default_value`]).

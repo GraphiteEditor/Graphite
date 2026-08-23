@@ -7,8 +7,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, PathArguments, ReturnType,
-	TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, Visibility, WhereClause, parse_quote,
+	AttrStyle, Attribute, Error, Expr, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, PathArguments, ReturnType, TraitBound,
+	Type, TypeImplTrait, TypeParam, TypeParamBound, Visibility, WhereClause, parse_quote,
 };
 
 use crate::codegen::generate_node_code;
@@ -585,7 +585,9 @@ impl Parse for NodeFnAttributes {
 					if extent_raw.is_some() {
 						return Err(Error::new_spanned(meta, "Multiple 'extent_raw' attributes are not allowed"));
 					}
-					let parsed_path: Path = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'extent_raw', e.g., extent_raw(my_extent)"))?;
+					let parsed_path: Path = meta
+						.parse_args()
+						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'extent_raw', e.g., extent_raw(my_extent)"))?;
 					extent_raw = Some(parsed_path);
 				}
 				// Function overriding the generated `eval_batch` method, replacing the trait's per-lane spec loop.
@@ -858,10 +860,7 @@ fn parse_read_tuple(pat_tuple: &syn::PatTuple, ty: &Type, attrs: &[Attribute], i
 			let Pat::Ident(pat_ident) = pat else {
 				return Err(Error::new_spanned(pat, "Expected a simple identifier for the attribute read"));
 			};
-			Ok(AttributeRead {
-				pat_ident: pat_ident.clone(),
-				marker,
-			})
+			Ok(AttributeRead { pat_ident: pat_ident.clone(), marker })
 		})
 		.collect::<syn::Result<_>>()?;
 	let mut field = parse_field(value_ident.clone(), value_ty.clone(), attrs).map_err(|e| Error::new_spanned(&value_ident, format!("Failed to parse argument '{}': {}", value_ident.ident, e)))?;
@@ -1539,7 +1538,7 @@ mod tests {
 					description: String::new(),
 					widget_override: ParsedWidgetOverride::None,
 					ty: ParsedFieldType::Regular(RegularParsedField {
-					lend: None,
+						lend: None,
 						list_levels: 0,
 						ty: parse_quote!(DVec2),
 						exposed: false,

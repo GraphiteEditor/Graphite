@@ -40,10 +40,7 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	}
 
 	let writes = record_writes(&value);
-	let has_reads = parsed
-		.fields
-		.iter()
-		.any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
+	let has_reads = parsed.fields.iter().any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
 	if !has_reads && writes.is_none() {
 		return;
 	}
@@ -56,8 +53,14 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	}
 
 	for field in parsed.fields.iter().skip(1) {
-		if matches!(field.ty, ParsedFieldType::Node(_)) {
-			emit_error!(field.pat_ident.span(), "record nodes take no lazy inputs yet");
+		if let ParsedFieldType::Node(NodeParsedField { output_type, .. }) = &field.ty {
+			// Lazy secondaries are consumed as plain elements through the wire.
+			if crate::codegen::classify::is_record_value(output_type) || crate::codegen::ir::strip_ilist(output_type).1 > 0 {
+				emit_error!(field.pat_ident.span(), "a record node's lazy inputs consume plain elements, not record or ranked wires");
+			}
+			if !field.attribute_reads.is_empty() {
+				emit_error!(field.pat_ident.span(), "attribute reads on a record node's lazy inputs are not supported yet");
+			}
 		}
 	}
 	for (index, field) in parsed.fields.iter().enumerate() {
@@ -91,10 +94,7 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	}
 
 	let Some(carrier) = parsed.fields.first() else {
-		emit_error!(
-			parsed.fn_name.span(),
-			"attribute io needs a primary input as the first parameter after the context (`_: ()` for none)"
-		);
+		emit_error!(parsed.fn_name.span(), "attribute io needs a primary input as the first parameter after the context (`_: ()` for none)");
 		return;
 	};
 	let lazy_carrier = matches!(&crate::codegen::record_shape(parsed), Some(shape) if matches!(shape.carrier, crate::codegen::RecordCarrier::LazyToken));
@@ -111,10 +111,7 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		return;
 	};
 	if lazy_carrier && !crate::codegen::ir::build(parsed).derives {
-		emit_error!(
-			parsed.input.pat_ident.span(),
-			"a lazy record carrier evaluates at derived contexts; spell `impl Ctx + DeriveCtx`"
-		);
+		emit_error!(parsed.input.pat_ident.span(), "a lazy record carrier evaluates at derived contexts; spell `impl Ctx + DeriveCtx`");
 		return;
 	}
 
@@ -128,11 +125,7 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	match &token {
 		Some(token) => {
 			if !matches!(crate::codegen::bare_ident(element), Some(ident) if ident == token) {
-				emit_error!(
-					parsed.output_type.span(),
-					"a generic element passes through unchanged: return `{}` in the first tuple position",
-					token
-				);
+				emit_error!(parsed.output_type.span(), "a generic element passes through unchanged: return `{}` in the first tuple position", token);
 			}
 		}
 		None => {

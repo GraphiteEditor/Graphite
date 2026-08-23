@@ -109,7 +109,12 @@ fn monomorphizations(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &
 	};
 	let positions: Option<Vec<(Ident, usize)>> = generics
 		.iter()
-		.map(|generic| fields.iter().position(|&field| generic_extractable(field_element_type(field), generic)).map(|index| (generic.clone(), index)))
+		.map(|generic| {
+			fields
+				.iter()
+				.position(|&field| generic_extractable(field_element_type(field), generic))
+				.map(|index| (generic.clone(), index))
+		})
 		.collect();
 	let Some(positions) = positions else {
 		return Vec::new();
@@ -145,7 +150,13 @@ fn item_shape(element: &Type, depth: u8, reads: &[AttributeRead], generics: &[Id
 	ItemShape {
 		element: element_of(element, generics),
 		depth,
-		attrs: reads.iter().map(|read| LevelAttr { marker: read.marker.clone(), level: 0 }).collect(),
+		attrs: reads
+			.iter()
+			.map(|read| LevelAttr {
+				marker: read.marker.clone(),
+				level: 0,
+			})
+			.collect(),
 	}
 }
 
@@ -330,6 +341,20 @@ impl ValueBinding {
 	}
 }
 
+/// A record node's lazy inputs consumed as plain elements: their record edges
+/// need a layout slot at wiring, like the reading secondaries.
+pub(crate) fn element_lazy_indices(regular_fields: &[&ParsedField], node: &Node) -> Vec<usize> {
+	if !matches!(node_kind(node), NodeKind::RecordIo) {
+		return Vec::new();
+	}
+	regular_fields
+		.iter()
+		.enumerate()
+		.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Node(_)) && matches!(lazy_binding(node, *index), LazyBinding::Element))
+		.map(|(index, _)| index)
+		.collect()
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum NodeKind {
 	Flip,
@@ -356,7 +381,10 @@ fn is_routing(node: &Node) -> bool {
 	let Element::Generic(output) = &node.output.shape.element else { return false };
 	node.monomorphizations.is_empty()
 		&& node.generics.iter().any(|generic| &generic.ident == output && generic.bounds.is_empty())
-		&& node.inputs.iter().any(|input| input.subject && matches!(&input.shape.element, Element::Generic(generic) if generic == output))
+		&& node
+			.inputs
+			.iter()
+			.any(|input| input.subject && matches!(&input.shape.element, Element::Generic(generic) if generic == output))
 }
 
 fn has_attr_io(node: &Node) -> bool {
@@ -401,7 +429,7 @@ pub(crate) fn lazy_binding(node: &Node, index: usize) -> LazyBinding {
 		LazyBinding::DeriveRouting
 	} else if node.derives && matches!(kind, NodeKind::RecordIo) && input.subject {
 		LazyBinding::DeriveCarrier
-	} else if matches!(kind, NodeKind::Flip) {
+	} else if matches!(kind, NodeKind::Flip) || (matches!(kind, NodeKind::RecordIo) && !input.subject) {
 		LazyBinding::Element
 	} else if matches!(input.shape.element, Element::Opaque) {
 		LazyBinding::OpaqueRecord
@@ -577,7 +605,9 @@ mod tests {
 				delta: 0,
 			}
 		} else if kinds.opaque {
-			let record = fields.iter().position(|field| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_record_value(output_type)));
+			let record = fields
+				.iter()
+				.position(|field| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_record_value(output_type)));
 			Facts {
 				sources: record.into_iter().collect(),
 				carried: true,
@@ -588,7 +618,12 @@ mod tests {
 		} else if kinds.routing {
 			let generic = routing_generic(parsed).expect("routing has a generic");
 			Facts {
-				sources: fields.iter().enumerate().filter(|(_, field)| bare_ident(&source_ty(field)) == Some(&generic)).map(|(index, _)| index).collect(),
+				sources: fields
+					.iter()
+					.enumerate()
+					.filter(|(_, field)| bare_ident(&source_ty(field)) == Some(&generic))
+					.map(|(index, _)| index)
+					.collect(),
 				carried: true,
 				writes: vec![],
 				removes: vec![],
@@ -617,7 +652,14 @@ mod tests {
 
 	#[test]
 	fn bridge_flip_concrete() {
-		assert_bridge(quote!(category("")), quote!(fn negate(_: impl Ctx, x: f64) -> f64 { -x }));
+		assert_bridge(
+			quote!(category("")),
+			quote!(
+				fn negate(_: impl Ctx, x: f64) -> f64 {
+					-x
+				}
+			),
+		);
 	}
 
 	#[test]
@@ -632,17 +674,38 @@ mod tests {
 
 	#[test]
 	fn bridge_record_write() {
-		assert_bridge(quote!(category("")), quote!(fn set_opacity(_: impl Ctx, val: f64) -> (f64, Attr<Opacity>) { (val, Attr(1.)) }));
+		assert_bridge(
+			quote!(category("")),
+			quote!(
+				fn set_opacity(_: impl Ctx, val: f64) -> (f64, Attr<Opacity>) {
+					(val, Attr(1.))
+				}
+			),
+		);
 	}
 
 	#[test]
 	fn bridge_record_remove() {
-		assert_bridge(quote!(category("")), quote!(fn strip(_: impl Ctx, val: f64) -> (f64, RemoveAttr<Opacity>) { (val, RemoveAttr) }));
+		assert_bridge(
+			quote!(category("")),
+			quote!(
+				fn strip(_: impl Ctx, val: f64) -> (f64, RemoveAttr<Opacity>) {
+					(val, RemoveAttr)
+				}
+			),
+		);
 	}
 
 	#[test]
 	fn bridge_record_fresh() {
-		assert_bridge(quote!(category("")), quote!(fn make(_: impl Ctx, _: (), fill: f64) -> (f64, Attr<Opacity>) { (fill, Attr(1.)) }));
+		assert_bridge(
+			quote!(category("")),
+			quote!(
+				fn make(_: impl Ctx, _: (), fill: f64) -> (f64, Attr<Opacity>) {
+					(fill, Attr(1.))
+				}
+			),
+		);
 	}
 
 	#[test]
@@ -724,7 +787,7 @@ mod tests {
 		match &field.ty {
 			ParsedFieldType::Regular(_) => match value_binding(node, index) {
 				ValueBinding::Carrier => "carrier",
-			ValueBinding::Materialized => "materialized",
+				ValueBinding::Materialized => "materialized",
 				ValueBinding::Lend => "lend",
 				ValueBinding::ReadingSecondary => "reading",
 				ValueBinding::RecordElement => "record",
@@ -767,57 +830,109 @@ mod tests {
 		assert_eq!(actual_kind, expected_kind, "node_kind of {}", parsed.fn_name);
 		let fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
 		for (index, field) in fields.iter().enumerate() {
-			assert_eq!(
-				ir_label(&node, index, field, raw),
-				reference_label(&parsed, raw, index, field),
-				"field {index} of {}",
-				parsed.fn_name
-			);
+			assert_eq!(ir_label(&node, index, field, raw), reference_label(&parsed, raw, index, field), "field {index} of {}", parsed.fn_name);
 		}
 	}
 
 	#[test]
 	fn bindings_flip() {
-		assert_bindings(quote!(category("")), quote!(fn negate(_: impl Ctx, x: f64) -> f64 { -x }));
-		assert_bindings(quote!(category("")), quote!(fn add2(_: impl Ctx, a: f64, b: f64) -> f64 { a + b }));
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn negate(_: impl Ctx, x: f64) -> f64 {
+					-x
+				}
+			),
+		);
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn add2(_: impl Ctx, a: f64, b: f64) -> f64 {
+					a + b
+				}
+			),
+		);
 	}
 
 	#[test]
 	fn bindings_lend() {
-		assert_bindings(quote!(category("")), quote!(fn borrow(_: impl Ctx, prim: f64, other: &f64) -> f64 { prim + *other }));
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn borrow(_: impl Ctx, prim: f64, other: &f64) -> f64 {
+					prim + *other
+				}
+			),
+		);
 	}
 
 	#[test]
 	fn bindings_reading_secondary() {
-		assert_bindings(quote!(category("")), quote!(fn read_op(_: impl Ctx, carrier: f64, (other, op): (f64, Attr<Opacity>)) -> f64 { carrier + other }));
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn read_op(_: impl Ctx, carrier: f64, (other, op): (f64, Attr<Opacity>)) -> f64 {
+					carrier + other
+				}
+			),
+		);
 	}
 
 	#[test]
 	fn bindings_flip_lazy() {
-		assert_bindings(quote!(category("")), quote!(fn apply(_: impl Ctx, inner: impl Node<(), Output = f64>) -> f64 { inner.eval(()) }));
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn apply(_: impl Ctx, inner: impl Node<(), Output = f64>) -> f64 {
+					inner.eval(())
+				}
+			),
+		);
 	}
 
 	#[test]
 	fn bindings_flip_lazy_reads() {
 		assert_bindings(
 			quote!(category("")),
-			quote!(fn apply_reads(_: impl Ctx, carrier: f64, inner: impl Node<(), Output = (f64, Attr<Opacity>)>) -> f64 { carrier + inner.eval(()).0 }),
+			quote!(
+				fn apply_reads(_: impl Ctx, carrier: f64, inner: impl Node<(), Output = (f64, Attr<Opacity>)>) -> f64 {
+					carrier + inner.eval(()).0
+				}
+			),
 		);
 	}
 
 	#[test]
 	fn bindings_flip_raw() {
-		assert_bindings(quote!(category("")), quote!(fn poll_apply(_: impl Ctx, inner: impl Node<(), Output = f64>) -> GPoll<f64> { inner.eval(()) }));
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn poll_apply(_: impl Ctx, inner: impl Node<(), Output = f64>) -> GPoll<f64> {
+					inner.eval(())
+				}
+			),
+		);
 	}
 
 	#[test]
 	fn bindings_skip_impl_generic() {
 		// A bounded generic forwarded whole (passthrough) flips, not routes.
-		assert_bindings(quote!(category(""), skip_impl), quote!(fn passthrough<T: Send>(_: impl Ctx, content: T) -> T { content }));
+		assert_bindings(
+			quote!(category(""), skip_impl),
+			quote!(
+				fn passthrough<T: Send>(_: impl Ctx, content: T) -> T {
+					content
+				}
+			),
+		);
 		// A generic transformed into a different output type flips.
 		assert_bindings(
 			quote!(category(""), skip_impl),
-			quote!(fn into_ty<T: Send + Into<O>, O: Send>(_: impl Ctx, value: T, #[data] _out: PhantomData<O>) -> O { value.into() }),
+			quote!(
+				fn into_ty<T: Send + Into<O>, O: Send>(_: impl Ctx, value: T, #[data] _out: PhantomData<O>) -> O {
+					value.into()
+				}
+			),
 		);
 	}
 
@@ -825,20 +940,35 @@ mod tests {
 	fn bindings_routing() {
 		assert_bindings(
 			quote!(category("")),
-			quote!(fn switch<T>(_: impl Ctx, condition: bool, off: impl Node<(), Output = T>, on: impl Node<(), Output = T>) -> T { if condition { on.eval(()) } else { off.eval(()) } }),
+			quote!(
+				fn switch<T>(_: impl Ctx, condition: bool, off: impl Node<(), Output = T>, on: impl Node<(), Output = T>) -> T {
+					if condition { on.eval(()) } else { off.eval(()) }
+				}
+			),
 		);
 	}
 
 	#[test]
 	fn bindings_derive_routing() {
-		assert_bindings(quote!(category("")), quote!(fn ctx_mod<T>(_: impl Ctx + DeriveCtx, inner: impl Node<(), Output = T>) -> T { inner.eval(()) }));
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn ctx_mod<T>(_: impl Ctx + DeriveCtx, inner: impl Node<(), Output = T>) -> T {
+					inner.eval(())
+				}
+			),
+		);
 	}
 
 	#[test]
 	fn bindings_opaque() {
 		assert_bindings(
 			quote!(category("")),
-			quote!(fn memo<'e>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>, Output = RecordValue<'e>>) -> GPoll<RecordValue<'e>> { content.eval(()) }),
+			quote!(
+				fn memo<'e>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>, Output = RecordValue<'e>>) -> GPoll<RecordValue<'e>> {
+					content.eval(())
+				}
+			),
 		);
 	}
 
@@ -846,7 +976,11 @@ mod tests {
 	fn creator_ilist_return_pushes_a_level() {
 		let mut parsed = parse_node_fn(
 			quote!(category(""), extent(repeat_extent)),
-			quote!(fn repeat<T>(_: impl Ctx, (element, transform): (T, Attr<Transform>), count: u32) -> IList<(T, Attr<Transform>)> { emit(element, Attr(count as f64)) }),
+			quote!(
+				fn repeat<T>(_: impl Ctx, (element, transform): (T, Attr<Transform>), count: u32) -> IList<(T, Attr<Transform>)> {
+					emit(element, Attr(count as f64))
+				}
+			),
 		)
 		.unwrap();
 		parsed.replace_impl_trait_in_input();
@@ -862,7 +996,15 @@ mod tests {
 
 	#[test]
 	fn reducer_ilist_input_collapses_a_level() {
-		let mut parsed = parse_node_fn(quote!(category("")), quote!(fn sum(_: impl Ctx, items: IList<f64>) -> f64 { items.into_iter().sum() })).unwrap();
+		let mut parsed = parse_node_fn(
+			quote!(category("")),
+			quote!(
+				fn sum(_: impl Ctx, items: IList<f64>) -> f64 {
+					items.into_iter().sum()
+				}
+			),
+		)
+		.unwrap();
 		parsed.replace_impl_trait_in_input();
 		let node = build(&parsed);
 		// The `IList` input is a depth-1 subject; the scalar output collapses it.
