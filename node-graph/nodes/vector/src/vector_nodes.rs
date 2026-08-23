@@ -1602,8 +1602,7 @@ fn solidify_stroke_vector_extent(content: ListIn<'_, Vector>, level: LevelIn) ->
 
 pub use _solidify_stroke_vector_mod::solidify_stroke_vector_entries;
 
-#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
+fn separate_subpaths_core(content: List<Vector>) -> List<Vector> {
 	content
 		.into_iter()
 		.flat_map(|row| {
@@ -1632,22 +1631,63 @@ fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 		.collect()
 }
 
+/// Splits each vector element into one element per subpath, keeping the source element's attributes on every split-off lane.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector), extent(separate_subpaths_extent))]
+fn separate_subpaths<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Vector>,
+) -> Result<
+	IList<(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	)>,
+	Interrupt,
+> {
+	let output = separate_subpaths_core(legacy_vector_list_of(content));
+	emit_legacy_lane(ctx.arena(), output, ctx.innermost_index() as usize)
+}
+
+/// A row splits into one lane per subpath, so the count depends on the
+/// content: the level reports the subject's count as a lower bound and
+/// consumers drain to the past-end signal.
+fn separate_subpaths_extent(content: ListIn<'_, Vector>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => content.total().map(|total| {
+			Extent::AtLeast(match total {
+				Extent::Exactly(count) | Extent::AtLeast(count) => count,
+				Extent::Free => 0,
+			})
+		}),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
+}
+
 /// Determines if the subpath at the given index (across all vector element subpaths) is closed, meaning its ends are connected together forming a loop.
 #[node_macro::node(name("Path is Closed"), category("Vector: Measure"), path(core_types::vector))]
 fn path_is_closed(
-	_: impl Ctx,
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The vector content whose subpaths are inspected.
-	content: List<Vector>,
+	content: IList<Vector>,
 	/// The index of the subpath to check, counting across subpaths in all vector elements.
 	index: f64,
 ) -> bool {
-	content
-		.iter_element_values()
-		.flat_map(|vector| vector.build_stroke_path_iter().map(|(_, closed)| closed))
+	(0..content.len())
+		.flat_map(|row| content.element_ref(row).build_stroke_path_iter().map(|(_, closed)| closed))
 		.nth(index.max(0.) as usize)
 		.unwrap_or(false)
 }
 
+// Converts with the write-attribute family: the record form needs a lazy
+// value input on a record node, which the macro does not accept yet, and it
+// shares that family's per-item index convention.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn map_points(ctx: impl Ctx + DeriveCtx, content: List<Vector>, mapped: impl Node<Context<'_>, Output = DVec2>) -> Result<List<Vector>, Interrupt> {
 	let spilled = ctx.index_head();
@@ -2027,21 +2067,22 @@ fn decimate(
 	(result, Attr(transform_attribute))
 }
 
-/// Cuts a path at a given progression from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
-///
-/// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
-#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-fn cut_path(
-	_: impl Ctx,
-	/// The path to insert a cut into.
-	mut content: List<Vector>,
-	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Progression,
-	/// Swap the direction of the path.
-	reverse: bool,
-	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
-	parameterized_distance: bool,
-) -> List<Vector> {
+/// The materialized vector level as the legacy list the cross-lane cores walk.
+fn legacy_vector_list_of(content: core_types::node::List<'_, Vector>) -> List<Vector> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	graphic_types::graphic::run_to_render_list::<Vector>(&item).expect("the run holds the row's element type")
+}
+
+/// A count-preserving cross-lane node's extent: the subject's own counts.
+fn subject_counts_extent(content: ListIn<'_, Vector>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => content.total(),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
+}
+
+fn cut_path_core(mut content: List<Vector>, progression: f64, reverse: bool, parameterized_distance: bool) -> List<Vector> {
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = content
@@ -2078,6 +2119,43 @@ fn cut_path(
 	}
 
 	content
+}
+
+/// Cuts a path at a given progression from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
+///
+/// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector), extent(cut_path_extent))]
+fn cut_path<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	/// The path to insert a cut into.
+	content: IList<Vector>,
+	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
+	progression: Progression,
+	/// Swap the direction of the path.
+	reverse: bool,
+	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
+	parameterized_distance: bool,
+) -> Result<
+	IList<(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	)>,
+	Interrupt,
+> {
+	let output = cut_path_core(legacy_vector_list_of(content), progression, reverse, parameterized_distance);
+	emit_legacy_lane(ctx.arena(), output, ctx.innermost_index() as usize)
+}
+
+fn cut_path_extent(content: ListIn<'_, Vector>, _progression: ValueIn<'_, f64>, _reverse: ValueIn<'_, bool>, _parameterized_distance: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
+	subject_counts_extent(content, level)
 }
 
 /// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
