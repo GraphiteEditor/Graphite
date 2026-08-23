@@ -1126,17 +1126,29 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.collect::<Vec<(usize, &AttributeRead)>>()
 	};
 
+	// Interrupt exits close the frame like every other exit: rewind to the
+	// scope's entry pointer (claimed frames above it are dead once the exit
+	// carries no value) and claim the node's own frame. `_entry_sp` is bound
+	// at the top of `eval` and per lane in the generated batch body.
+	let interrupt_close = quote! {
+		unsafe { #core_types::record::interrupt_frame(_entry_sp, <Self as #core_types::node::Node<#ctx_ident>>::layout(self)) };
+	};
 	let bind_body = |index: usize, field: &ParsedField, batch_mode: bool| {
 		let name = &field.pat_ident.ident;
 		// The bind's failure exits return through the enclosing fn: `GPoll` in
 		// `eval`, `BatchStatus` in the generated `eval_batch`.
+		let close = interrupt_close.clone();
 		let pending = match batch_mode {
-			false => quote!(return #core_types::gpoll::GPoll::Pending),
+			false => quote!({ #close return #core_types::gpoll::GPoll::Pending; }),
 			true => quote!(return #core_types::node::BatchStatus::Pending),
 		};
 		let fail = |error: TokenStream2| match batch_mode {
-			false => quote!(return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#error))),
+			false => quote!({ #close return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#error)); }),
 			true => quote!(return #core_types::node::BatchStatus::Error(#error)),
+		};
+		let interrupt_return = match batch_mode {
+			false => quote!({ #close return interrupt.into(); }),
+			true => quote!(return interrupt.into()),
 		};
 		match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match ir::value_binding(&node, index) {
@@ -1239,7 +1251,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					quote! {
 						let #name = match __cell.eval_input(#index, &self.#name, __input) {
 							Ok(value) => value,
-							Err(interrupt) => return interrupt.into(),
+							Err(interrupt) => #interrupt_return,
 						};
 						let #rec_local = self.#slot.rec(&#name);
 						#(#bindings)*
@@ -1254,7 +1266,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					quote! {
 						let #record_local = match __cell.eval_input(#index, &self.#name, __input) {
 							Ok(value) => value,
-							Err(interrupt) => return interrupt.into(),
+							Err(interrupt) => #interrupt_return,
 						};
 						let #name = unsafe { #core_types::record::borrow_element::<#ty>(self.#slot.rec(&#record_local)) };
 					}
@@ -1267,7 +1279,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					quote! {
 						let #name = match __cell.eval_input(#index, &self.#name, __input) {
 							Ok(value) => value,
-							Err(interrupt) => return interrupt.into(),
+							Err(interrupt) => #interrupt_return,
 						};
 						let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
 					}
@@ -1275,7 +1287,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ValueBinding::Plain => quote! {
 					let #name = match __cell.eval_input(#index, &self.#name, __input) {
 						Ok(value) => value,
-						Err(interrupt) => return interrupt.into(),
+						Err(interrupt) => #interrupt_return,
 					};
 				},
 			},
@@ -1433,8 +1445,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let slot = format_ident!("__in_{index}");
 						quote! {
 							let #query = || {
-								#core_types::node::Node::eval(&self.#name, __input)
-									.map(|__value| unsafe { #core_types::record::read_element::<#ty>(self.#slot.rec(&__value)) })
+								let __mark = #core_types::record::stack::sp();
+								let __result = #core_types::node::Node::eval(&self.#name, __input)
+									.map(|__value| unsafe { #core_types::record::read_element::<#ty>(self.#slot.rec(&__value)) });
+								// SAFETY: the element copied out by value; extent
+								// queries leave the record stack untouched.
+								unsafe { #core_types::record::stack::rewind(__mark) };
+								__result
 							};
 							let #arg = #core_types::extent::ValueIn::new(&#query);
 						}
@@ -1588,7 +1605,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Dialect::Interrupt => quote! {
 			match #kernel_call {
 				Ok(value) => __cell.finish(value),
-				Err(interrupt) => interrupt.into(),
+				Err(interrupt) => { #interrupt_close interrupt.into() }
 			}
 		},
 		Dialect::Poll => quote!(__cell.merge(#kernel_call)),
@@ -1622,7 +1639,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			};
 			let __src = match __cell.eval_input(0, &self.#name, __input) {
 				Ok(value) => value,
-				Err(interrupt) => return interrupt.into(),
+				Err(interrupt) => { #interrupt_close return interrupt.into(); }
 			};
 			let __src_rec = self.__in_0.rec(&__src);
 			unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
@@ -1644,7 +1661,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		true => quote! {
 			unsafe { #core_types::record::lift_poll_into::<#slot_ty>(#core_types::gpoll::GPoll::Pending, __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) }
 		},
-		false => quote!(#core_types::gpoll::GPoll::Pending),
+		false => quote!({ #interrupt_close #core_types::gpoll::GPoll::Pending }),
 	};
 	let inflight = match &parsed.attributes.placeholder {
 		Some(path) => merge_lifted(quote!(#core_types::gpoll::GPoll::Partial(#path(#(&#placeholder_value_names),*)))),
@@ -1727,7 +1744,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote! {
 				let __src = match __cell.eval_input(0, &self.#name, __input) {
 					Ok(value) => value,
-					Err(interrupt) => return interrupt.into(),
+					Err(interrupt) => { #interrupt_close return interrupt.into(); }
 				};
 				let __src_rec = self.__carrier.rec(&__src);
 			}
@@ -1751,7 +1768,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			Dialect::Interrupt => quote! {
 				match #record_kernel_call {
 					Ok(__value) => __value,
-					Err(__interrupt) => return __interrupt.into(),
+					Err(__interrupt) => { #interrupt_close return __interrupt.into(); }
 				}
 			},
 			_ => quote!(#record_kernel_call),
@@ -1848,7 +1865,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			Dialect::Interrupt => quote! {
 				match #kernel_call {
 					Ok(value) => value,
-					Err(interrupt) => return interrupt.into(),
+					Err(interrupt) => { #interrupt_close return interrupt.into(); }
 				}
 			},
 			_ => quote!(#kernel_call),
@@ -1919,7 +1936,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				Dialect::FutureInterrupt => quote! {
 					let __future = match #kernel_call {
 						Ok(future) => future,
-						Err(interrupt) => return interrupt.into(),
+						Err(interrupt) => { #interrupt_close return interrupt.into(); }
 					};
 				},
 				_ => quote!(let __future = #kernel_call;),
@@ -2032,6 +2049,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						return #core_types::node::BatchStatus::InvalidRange;
 					}
 					let __entry_mark = #core_types::record::stack::sp();
+					let _entry_sp = __entry_mark;
 					let __cell = #cell_constructor;
 					let __base_ctx = {
 						let mut __ctx = *__input;
@@ -2050,6 +2068,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#core_types::context::InjectIndex::set_index(&mut __lane_ctx, __range.start + __lane as u64);
 						let __input = &__lane_ctx;
 						let __lane_mark = #core_types::record::stack::sp();
+						let _entry_sp = __lane_mark;
 						let __cell = __cell.snapshot();
 						#(#lane_rebinds)*
 						#(#lane_binds)*
@@ -2404,6 +2423,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			type Output = #trait_output;
 
 			fn eval(&self, __input: &#ctx_ident) -> #core_types::gpoll::GPoll<Self::Output> {
+				#[cfg(debug_assertions)]
+				{
+					static __SP_TRACE: ::std::sync::OnceLock<bool> = ::std::sync::OnceLock::new();
+					if *__SP_TRACE.get_or_init(|| ::std::env::var_os("GRAPHENE_SP_DEBUG").is_some()) {
+						::std::eprintln!("node> {} enter sp {}", ::std::stringify!(#fn_name), #core_types::record::stack::sp());
+					}
+				}
+				let _entry_sp = #core_types::record::stack::sp();
 				let __cell = #cell_constructor;
 				#reclaim_guard
 				#(#eval_body)*
