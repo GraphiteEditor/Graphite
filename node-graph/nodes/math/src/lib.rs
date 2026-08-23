@@ -1,9 +1,10 @@
 use core_types::Context;
-use core_types::gpoll::GPoll;
+use core_types::attribute::Attr;
+use core_types::gpoll::{GPoll, GraphError, Interrupt};
 use core_types::list::List;
 use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
-use core_types::{Color, Ctx, num_traits};
+use core_types::{Color, Ctx, ExtractIndex, InjectIndex, num_traits};
 use glam::{DAffine2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
@@ -15,6 +16,7 @@ use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Div, Mul, Rem, Sub};
 use vector_types::GradientStops;
+use vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod as SpreadMethodAttr};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -812,50 +814,51 @@ fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 
 /// Constructs a color value which may be set to any color, or no color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: List<Color>) -> List<Color> {
+fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Color) -> Color {
 	color
 }
 
 /// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("RGBA to Color"))]
-fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue: Fraction, #[default(1.)] alpha: Fraction) -> List<Color> {
+fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue: Fraction, #[default(1.)] alpha: Fraction) -> Color {
 	let red = (red as f32).clamp(0., 1.);
 	let green = (green as f32).clamp(0., 1.);
 	let blue = (blue as f32).clamp(0., 1.);
 	let alpha = (alpha as f32).clamp(0., 1.);
 
 	// RGB user inputs are interpreted as sRGB display values; lift to linear-light for the internal `Color`
-	List::new_from_element(Color::from_gamma_srgb_channels(red, green, blue, alpha))
+	Color::from_gamma_srgb_channels(red, green, blue, alpha)
 }
 
 /// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSVA to Color"))]
-fn hsva_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(1.)] value: Fraction, #[default(1.)] alpha: Fraction) -> List<Color> {
+fn hsva_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(1.)] value: Fraction, #[default(1.)] alpha: Fraction) -> Color {
 	let hue = (hue as f32) - (hue as f32).floor();
 	let saturation = (saturation as f32).clamp(0., 1.);
 	let value = (value as f32).clamp(0., 1.);
 	let alpha = (alpha as f32).clamp(0., 1.);
 
-	List::new_from_element(Color::from_hsva(hue, saturation, value, alpha))
+	Color::from_hsva(hue, saturation, value, alpha)
 }
 
 /// Constructs a color value from hue, saturation, lightness, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSLA to Color"))]
-fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(0.5)] lightness: Fraction, #[default(1.)] alpha: Fraction) -> List<Color> {
+fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(0.5)] lightness: Fraction, #[default(1.)] alpha: Fraction) -> Color {
 	let hue = (hue as f32) - (hue as f32).floor();
 	let saturation = (saturation as f32).clamp(0., 1.);
 	let lightness = (lightness as f32).clamp(0., 1.);
 	let alpha = (alpha as f32).clamp(0., 1.);
 
-	List::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
+	Color::from_hsla(hue, saturation, lightness, alpha)
 }
 
 /// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce no color.
 #[node_macro::node(category("Color"), name("Hex to Color"))]
-fn hex_to_color(_: impl Ctx, hex_code: String) -> List<Color> {
-	match core_types::misc::parse_css_color(&hex_code) {
-		Some(color) => List::new_from_element(color),
-		None => List::new(),
+fn hex_to_color(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, hex_code: String) -> Result<IList<Color>, Interrupt> {
+	// An invalid input serves an empty level: no color
+	match (core_types::misc::parse_css_color(&hex_code), ctx.innermost_index()) {
+		(Some(color), 0) => Ok(color),
+		_ => Err(GraphError::past_end().into()),
 	}
 }
 
@@ -867,30 +870,26 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Gradien
 
 /// Sets the type (linear or radial) of each gradient in the input list.
 #[node_macro::node(category("Color"))]
-fn gradient_type(_: impl Ctx, mut gradient: List<GradientStops>, gradient_type: vector_types::GradientType) -> List<GradientStops> {
-	for value in gradient.iter_attribute_values_mut_or_default::<vector_types::GradientType>(vector_types::ATTR_GRADIENT_TYPE) {
-		*value = gradient_type;
-	}
-	gradient
+fn gradient_type(_: impl Ctx, gradient: GradientStops, gradient_type: vector_types::GradientType) -> (GradientStops, Attr<GradientTypeAttr>) {
+	(gradient, Attr(gradient_type))
 }
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
 #[node_macro::node(category("Color"))]
-fn spread_method(_: impl Ctx, mut gradient: List<GradientStops>, spread_method: vector_types::GradientSpreadMethod) -> List<GradientStops> {
-	for value in gradient.iter_attribute_values_mut_or_default::<vector_types::GradientSpreadMethod>(vector_types::ATTR_SPREAD_METHOD) {
-		*value = spread_method;
-	}
-	gradient
+fn spread_method(_: impl Ctx, gradient: GradientStops, spread_method: vector_types::GradientSpreadMethod) -> (GradientStops, Attr<SpreadMethodAttr>) {
+	(gradient, Attr(spread_method))
 }
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: List<GradientStops>, position: Fraction) -> List<Color> {
-	let Some(gradient) = gradient.element(0) else { return List::new() };
+fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), gradient: IList<GradientStops>, position: Fraction) -> Result<IList<Color>, Interrupt> {
+	// An unwired gradient serves an empty level: no color
+	if gradient.is_empty() || ctx.innermost_index() != 0 {
+		return Err(GraphError::past_end().into());
+	}
 
 	let position = position.clamp(0., 1.);
-	let color = gradient.evaluate(position);
-	List::new_from_element(color)
+	Ok(gradient.element_ref(0).evaluate(position))
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
@@ -1188,9 +1187,15 @@ mod graphene_test {
 
 		let entries = super::_add_mod::add_entries();
 		assert_eq!(entries.len(), 6);
-		assert_eq!(entries[0].io.inputs, vec![core_types::registry::record_edge_type::<f64>(), core_types::registry::record_edge_type::<f64>()]);
+		assert_eq!(
+			entries[0].io.inputs,
+			vec![core_types::registry::record_edge_type::<f64>(), core_types::registry::record_edge_type::<f64>()]
+		);
 		assert_eq!(entries[0].io.return_value, core_types::registry::record_type::<f64>());
-		assert_eq!(entries[3].io.inputs, vec![core_types::registry::record_edge_type::<DVec2>(), core_types::registry::record_edge_type::<DVec2>()]);
+		assert_eq!(
+			entries[3].io.inputs,
+			vec![core_types::registry::record_edge_type::<DVec2>(), core_types::registry::record_edge_type::<DVec2>()]
+		);
 		assert_eq!(entries[3].io.return_value, core_types::registry::record_type::<DVec2>());
 
 		let wired = construct(&entries[0], vec![record_value_edge(1.5f64), record_value_edge(2.5f64)]).unwrap();
