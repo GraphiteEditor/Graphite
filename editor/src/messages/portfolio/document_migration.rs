@@ -1402,6 +1402,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
 			}
 		}
+
+		// The leveled-records flip gave Mandelbrot a unit primary input.
+		if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER) {
+			let mut node_template = node_definition.default_node_template();
+			document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		}
 	}
 
 	// Rebuild stale Merge/Artboard subgraphs that still use the removed LegacyLayerExtendNode internally

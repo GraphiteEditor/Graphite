@@ -1,10 +1,10 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
-use core_types::ATTR_TRANSFORM;
-use core_types::attribute::{Attr, Transform as TransformAttr};
+use core_types::attribute::{Attr, Attribute, BlendMode as BlendModeAttr, ClippingMask, EditorLayerPath, Opacity, OpacityFill, Transform as TransformAttr};
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint, ExtractIndex, InjectIndex};
-use core_types::list::{Item, List};
+use core_types::extent::{LevelIn, ListIn, ValueIn};
+use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
 use core_types::math::bbox::Bbox;
 use core_types::transform::Transform;
 use dyn_any::DynAny;
@@ -31,199 +31,249 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug"))]
-pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: List<Raster<CPU>>) -> List<Raster<CPU>> {
-	image_frame
-		.into_iter()
-		.filter_map(|row| {
-			let image_frame_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let (image, mut attributes) = row.into_parts();
+pub fn sample_image(ctx: impl Ctx + ExtractFootprint, (image, lane_transform): (Raster<CPU>, Attr<TransformAttr>)) -> (Raster<CPU>, Attr<TransformAttr>) {
+	let image_frame_transform: DAffine2 = *lane_transform;
 
-			// Resize the image using the image crate
-			let data = bytemuck::cast_vec(image.data.clone());
+	// Resize the image using the image crate
+	let data = bytemuck::cast_vec(image.data.clone());
 
-			let footprint = ctx.footprint();
-			let viewport_bounds = footprint.viewport_bounds_in_local_space();
-			let image_bounds = Bbox::from_transform(image_frame_transform).to_axis_aligned_bbox();
-			let intersection = viewport_bounds.intersect(&image_bounds);
-			let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
-			let size = intersection.size();
-			let size_px = image_size.transform_vector2(size).as_uvec2();
+	let footprint = ctx.footprint();
+	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+	let image_bounds = Bbox::from_transform(image_frame_transform).to_axis_aligned_bbox();
+	let intersection = viewport_bounds.intersect(&image_bounds);
+	let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
+	let size = intersection.size();
+	let size_px = image_size.transform_vector2(size).as_uvec2();
 
-			// If the image would not be visible, add nothing.
-			if size.x <= 0. || size.y <= 0. {
-				return None;
-			}
+	// A culled lane serves a zero-size raster, which renders as nothing.
+	if size.x <= 0. || size.y <= 0. {
+		return (Raster::new_cpu(Image::default()), Attr(image_frame_transform));
+	}
 
-			let image_buffer = ::image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal image format into image-rs data type.");
+	let image_buffer = ::image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal image format into image-rs data type.");
 
-			let dynamic_image: ::image::DynamicImage = image_buffer.into();
-			let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
-			let offset_px = image_size.transform_vector2(offset).as_uvec2();
-			let cropped = dynamic_image.crop_imm(offset_px.x, offset_px.y, size_px.x, size_px.y);
+	let dynamic_image: ::image::DynamicImage = image_buffer.into();
+	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
+	let offset_px = image_size.transform_vector2(offset).as_uvec2();
+	let cropped = dynamic_image.crop_imm(offset_px.x, offset_px.y, size_px.x, size_px.y);
 
-			let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
-			let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
-			let mut new_width = size_px.x;
-			let mut new_height = size_px.y;
+	let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
+	let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
+	let mut new_width = size_px.x;
+	let mut new_height = size_px.y;
 
-			// Only downscale the image for now
-			let resized = if new_width < image.width || new_height < image.height {
-				new_width = viewport_resolution_x as u32;
-				new_height = viewport_resolution_y as u32;
-				// TODO: choose filter based on quality requirements
-				cropped.resize_exact(new_width, new_height, ::image::imageops::Triangle)
-			} else {
-				cropped
-			};
-			let buffer = resized.to_rgba32f();
-			let buffer = buffer.into_raw();
-			let vec = bytemuck::cast_vec(buffer);
-			let image = Image {
-				width: new_width,
-				height: new_height,
-				data: vec,
-				base64_string: None,
-			};
-			// we need to adjust the offset if we truncate the offset calculation
+	// Only downscale the image for now
+	let resized = if new_width < image.width || new_height < image.height {
+		new_width = viewport_resolution_x as u32;
+		new_height = viewport_resolution_y as u32;
+		// TODO: choose filter based on quality requirements
+		cropped.resize_exact(new_width, new_height, ::image::imageops::Triangle)
+	} else {
+		cropped
+	};
+	let buffer = resized.to_rgba32f();
+	let buffer = buffer.into_raw();
+	let vec = bytemuck::cast_vec(buffer);
+	let image = Image {
+		width: new_width,
+		height: new_height,
+		data: vec,
+		base64_string: None,
+	};
+	// we need to adjust the offset if we truncate the offset calculation
 
-			let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-			attributes.insert(ATTR_TRANSFORM, new_transform);
+	let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 
-			Some(Item::from_parts(Raster::new_cpu(image), attributes))
-		})
-		.collect()
+	(Raster::new_cpu(image), Attr(new_transform))
 }
 
-#[node_macro::node(category("Raster: Channels"))]
-pub fn combine_channels(
-	_: impl Ctx,
+#[node_macro::node(category("Raster: Channels"), extent(combine_channels_extent))]
+pub fn combine_channels<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	_primary: (),
-	#[expose] red: List<Raster<CPU>>,
-	#[expose] green: List<Raster<CPU>>,
-	#[expose] blue: List<Raster<CPU>>,
-	#[expose] alpha: List<Raster<CPU>>,
-) -> List<Raster<CPU>> {
+	#[expose] red: IList<Raster<CPU>>,
+	#[expose] green: IList<Raster<CPU>>,
+	#[expose] blue: IList<Raster<CPU>>,
+	#[expose] alpha: IList<Raster<CPU>>,
+) -> Result<
+	IList<(
+		Raster<CPU>,
+		Attr<'e, TransformAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+	)>,
+	Interrupt,
+> {
+	let lane = ctx.innermost_index() as usize;
 	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
-	let red = red.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let green = green.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let blue = blue.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let alpha = alpha.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	if lane >= max_len {
+		return Err(GraphError::past_end().into());
+	}
 
-	red.zip(green)
-		.zip(blue)
-		.zip(alpha)
-		.filter_map(|(((red, green), blue), alpha)| {
-			// Turn any default zero-sized image items into None
-			let red = red.filter(|i| i.element().width > 0 && i.element().height > 0);
-			let green = green.filter(|i| i.element().width > 0 && i.element().height > 0);
-			let blue = blue.filter(|i| i.element().width > 0 && i.element().height > 0);
-			let alpha = alpha.filter(|i| i.element().width > 0 && i.element().height > 0);
+	// Zero-size lanes and lanes past a shorter channel's end contribute nothing
+	fn pick<'l>(list: &'l core_types::node::List<'_, Raster<CPU>>, lane: usize) -> Option<&'l Raster<CPU>> {
+		(lane < list.len()).then(|| list.element_ref(lane)).filter(|i| i.width > 0 && i.height > 0)
+	}
+	let (red_el, green_el, blue_el, alpha_el) = (pick(&red, lane), pick(&green, lane), pick(&blue, lane), pick(&alpha, lane));
 
-			// Get this item's transform and alpha blending mode from the first non-empty channel
-			let attributes = [&red, &green, &blue, &alpha].iter().find_map(|i| i.as_ref()).map(|i| i.attributes().clone())?;
+	// This lane's transform and blending come from the first non-empty channel
+	let attr_source = [(red_el.is_some(), &red), (green_el.is_some(), &green), (blue_el.is_some(), &blue), (alpha_el.is_some(), &alpha)]
+		.into_iter()
+		.find_map(|(present, list)| present.then_some(list.lane(lane)));
 
-			// Get the common width and height of the channels, which must have equal dimensions
-			let channel_dimensions = [
-				red.as_ref().map(|r| (r.element().width, r.element().height)),
-				green.as_ref().map(|g| (g.element().width, g.element().height)),
-				blue.as_ref().map(|b| (b.element().width, b.element().height)),
-				alpha.as_ref().map(|a| (a.element().width, a.element().height)),
-			];
-			if channel_dimensions.iter().all(Option::is_none)
-				|| channel_dimensions
-					.iter()
-					.flatten()
-					.any(|&(x, y)| channel_dimensions.iter().flatten().any(|&(other_x, other_y)| x != other_x || y != other_y))
-			{
-				return None;
+	// The channels must have equal dimensions; an unusable lane serves a
+	// zero-size raster, which renders as nothing (the legacy form dropped it)
+	let channel_dimensions = [
+		red_el.map(|r| (r.width, r.height)),
+		green_el.map(|g| (g.width, g.height)),
+		blue_el.map(|b| (b.width, b.height)),
+		alpha_el.map(|a| (a.width, a.height)),
+	];
+	let mismatched = channel_dimensions
+		.iter()
+		.flatten()
+		.any(|&(x, y)| channel_dimensions.iter().flatten().any(|&(other_x, other_y)| x != other_x || y != other_y));
+	let (Some(source), Some(&(width, height)), false) = (attr_source, channel_dimensions.iter().flatten().next(), mismatched) else {
+		return Ok((
+			Raster::new_cpu(Image::default()),
+			Attr(DAffine2::IDENTITY),
+			Attr(<BlendModeAttr as Attribute>::default()),
+			Attr(1.),
+			Attr(1.),
+			Attr(false),
+			Attr(<EditorLayerPath as Attribute>::default()),
+		));
+	};
+
+	// Create a new image for the output element
+	let mut image = Image::new(width, height, Color::TRANSPARENT);
+
+	// Iterate over all pixels in the image and set the color channels
+	for y in 0..image.height() {
+		for x in 0..image.width() {
+			let image_pixel = image.get_pixel_mut(x, y).unwrap();
+
+			if let Some(r) = red_el.and_then(|r| r.get_pixel(x, y)) {
+				image_pixel.set_red(r.l().cast_linear_channel());
+			} else {
+				image_pixel.set_red(Channel::from_linear(0.));
 			}
-			let &(width, height) = channel_dimensions.iter().flatten().next()?;
-
-			// Create a new image for the output element
-			let mut image = Image::new(width, height, Color::TRANSPARENT);
-
-			// Iterate over all pixels in the image and set the color channels
-			for y in 0..image.height() {
-				for x in 0..image.width() {
-					let image_pixel = image.get_pixel_mut(x, y).unwrap();
-
-					if let Some(r) = red.as_ref().and_then(|r| r.element().get_pixel(x, y)) {
-						image_pixel.set_red(r.l().cast_linear_channel());
-					} else {
-						image_pixel.set_red(Channel::from_linear(0.));
-					}
-					if let Some(g) = green.as_ref().and_then(|g| g.element().get_pixel(x, y)) {
-						image_pixel.set_green(g.l().cast_linear_channel());
-					} else {
-						image_pixel.set_green(Channel::from_linear(0.));
-					}
-					if let Some(b) = blue.as_ref().and_then(|b| b.element().get_pixel(x, y)) {
-						image_pixel.set_blue(b.l().cast_linear_channel());
-					} else {
-						image_pixel.set_blue(Channel::from_linear(0.));
-					}
-					if let Some(a) = alpha.as_ref().and_then(|a| a.element().get_pixel(x, y)) {
-						image_pixel.set_alpha(a.l().cast_linear_channel());
-					} else {
-						image_pixel.set_alpha(Channel::from_linear(1.));
-					}
-				}
+			if let Some(g) = green_el.and_then(|g| g.get_pixel(x, y)) {
+				image_pixel.set_green(g.l().cast_linear_channel());
+			} else {
+				image_pixel.set_green(Channel::from_linear(0.));
 			}
+			if let Some(b) = blue_el.and_then(|b| b.get_pixel(x, y)) {
+				image_pixel.set_blue(b.l().cast_linear_channel());
+			} else {
+				image_pixel.set_blue(Channel::from_linear(0.));
+			}
+			if let Some(a) = alpha_el.and_then(|a| a.get_pixel(x, y)) {
+				image_pixel.set_alpha(a.l().cast_linear_channel());
+			} else {
+				image_pixel.set_alpha(Channel::from_linear(1.));
+			}
+		}
+	}
 
-			Some(Item::from_parts(Raster::new_cpu(image), attributes))
-		})
-		.collect()
+	// The layer path re-parks into the arena so the borrow outlives the batch
+	let layer_path: Vec<core_types::uuid::NodeId> = source.attr::<EditorLayerPath>().to_vec();
+	let (layer_path, _) = ctx.arena().alloc(layer_path).ok_or(GraphError {
+		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+		trace: Vec::new(),
+	})?;
+
+	Ok((
+		Raster::new_cpu(image),
+		Attr(source.attr::<TransformAttr>()),
+		Attr(source.attr::<BlendModeAttr>()),
+		Attr(source.attr::<Opacity>()),
+		Attr(source.attr::<OpacityFill>()),
+		Attr(source.attr::<ClippingMask>()),
+		Attr(layer_path.as_slice()),
+	))
+}
+
+/// The combined level's count is the longest channel's; a lower-bound channel
+/// keeps the result a lower bound too, and consumers drain to past-end.
+fn combine_channels_extent(
+	_primary: ValueIn<'_, ()>,
+	red: ListIn<'_, Raster<CPU>>,
+	green: ListIn<'_, Raster<CPU>>,
+	blue: ListIn<'_, Raster<CPU>>,
+	alpha: ListIn<'_, Raster<CPU>>,
+	level: LevelIn,
+) -> GPoll<Extent> {
+	match level.top() {
+		true => red.total().zip(green.total()).zip(blue.total()).zip(alpha.total()).map(|(((red, green), blue), alpha)| {
+			let totals = [red, green, blue, alpha];
+			let bound = totals
+				.iter()
+				.map(|extent| match extent {
+					Extent::Exactly(count) | Extent::AtLeast(count) => *count,
+					Extent::Free => 0,
+				})
+				.max()
+				.unwrap_or(0);
+			match totals.iter().all(|extent| matches!(extent, Extent::Exactly(_))) {
+				true => Extent::Exactly(bound),
+				false => Extent::AtLeast(bound),
+			}
+		}),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
 }
 
 #[node_macro::node(category("Raster"))]
 pub fn mask(
-	_: impl Ctx,
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The image to be masked.
-	image: List<Raster<CPU>>,
+	(mut image, lane_transform): (Raster<CPU>, Attr<TransformAttr>),
 	/// The stencil to be used for masking.
 	#[expose]
-	stencil: List<Raster<CPU>>,
-) -> List<Raster<CPU>> {
+	stencil: IList<Raster<CPU>>,
+) -> (Raster<CPU>, Attr<TransformAttr>) {
 	// TODO: Figure out what it means to support multiple stencil items?
-	let Some(stencil) = stencil.into_iter().next() else {
+	if stencil.is_empty() {
 		// No stencil provided so we return the original image
-		return image;
-	};
-	let stencil_size = DVec2::new(stencil.element().width as f64, stencil.element().height as f64);
+		return (image, Attr(*lane_transform));
+	}
+	let stencil_element = stencil.element_ref(0);
+	let stencil_transform: DAffine2 = stencil.lane(0).attr::<TransformAttr>();
+	let stencil_size = DVec2::new(stencil_element.width as f64, stencil_element.height as f64);
 
-	image
-		.into_iter()
-		.filter_map(|mut row| {
-			let image_size = DVec2::new(row.element().width as f64, row.element().height as f64);
-			let stencil_transform: DAffine2 = stencil.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let mask_size = stencil_transform.scale_magnitudes();
+	let image_size = DVec2::new(image.width as f64, image.height as f64);
+	let mask_size = stencil_transform.scale_magnitudes();
 
-			if mask_size == DVec2::ZERO {
-				return None;
-			}
+	// A degenerate stencil serves a zero-size raster, which renders as
+	// nothing (the legacy form dropped the lane)
+	if mask_size == DVec2::ZERO {
+		return (Raster::new_cpu(Image::default()), Attr(*lane_transform));
+	}
 
-			// Transforms a point from the background image to the foreground image
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let bg_to_fg = transform_attribute * DAffine2::from_scale(1. / image_size);
-			let stencil_transform_inverse = stencil_transform.inverse();
+	// Transforms a point from the background image to the foreground image
+	let transform_attribute: DAffine2 = *lane_transform;
+	let bg_to_fg = transform_attribute * DAffine2::from_scale(1. / image_size);
+	let stencil_transform_inverse = stencil_transform.inverse();
 
-			for y in 0..row.element().height {
-				for x in 0..row.element().width {
-					let image_point = DVec2::new(x as f64, y as f64);
-					let mask_point = bg_to_fg.transform_point2(image_point);
-					let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
-					let mask_point = stencil_transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
-					let mask_point = (DAffine2::from_scale(stencil_size) * stencil_transform.inverse()).transform_point2(mask_point);
+	for y in 0..image.height {
+		for x in 0..image.width {
+			let image_point = DVec2::new(x as f64, y as f64);
+			let mask_point = bg_to_fg.transform_point2(image_point);
+			let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
+			let mask_point = stencil_transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
+			let mask_point = (DAffine2::from_scale(stencil_size) * stencil_transform.inverse()).transform_point2(mask_point);
 
-					let image_pixel = row.element_mut().data_mut().get_pixel_mut(x, y).unwrap();
-					let mask_pixel = stencil.element().sample(mask_point);
-					*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
-				}
-			}
+			let image_pixel = image.data_mut().get_pixel_mut(x, y).unwrap();
+			let mask_pixel = stencil_element.sample(mask_point);
+			*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
+		}
+	}
 
-			Some(row)
-		})
-		.collect()
+	(image, Attr(transform_attribute))
 }
 
 /// The per-lane extend, shared with the brush's plain callers.
@@ -348,7 +398,7 @@ pub fn noise_pattern(
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_jitter")]
 	#[default(1.)]
 	cellular_jitter: f64,
-) -> List<Raster<CPU>> {
+) -> (Raster<CPU>, Attr<TransformAttr>) {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -364,9 +414,9 @@ pub fn noise_pattern(
 		size = intersection.size();
 	}
 
-	// If the image would not be visible, return an empty image
+	// A culled pattern serves a zero-size raster, which renders as nothing
 	if size.x <= 0. || size.y <= 0. {
-		return List::new();
+		return (Raster::new_cpu(Image::default()), Attr(DAffine2::IDENTITY));
 	}
 
 	let transform = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
@@ -412,7 +462,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return List::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
+			return (Raster::new_cpu(image), Attr(transform));
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -470,11 +520,11 @@ pub fn noise_pattern(
 		}
 	}
 
-	List::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
+	(Raster::new_cpu(image), Attr(transform))
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
-pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> List<Raster<CPU>> {
+pub fn mandelbrot(ctx: impl Ctx + ExtractFootprint, _primary: ()) -> (Raster<CPU>, Attr<TransformAttr>) {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -484,9 +534,9 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> List<Raster<CPU>> {
 
 	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
 
-	// If the image would not be visible, return an empty image
+	// A culled pattern serves a zero-size raster, which renders as nothing
 	if size.x <= 0. || size.y <= 0. {
-		return List::new();
+		return (Raster::new_cpu(Image::default()), Attr(DAffine2::IDENTITY));
 	}
 
 	let scale = footprint.scale();
@@ -508,14 +558,14 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> List<Raster<CPU>> {
 		}
 	}
 
-	List::new_from_item(
-		Item::new_from_element(Raster::new_cpu(Image {
+	(
+		Raster::new_cpu(Image {
 			width,
 			height,
 			data,
 			..Default::default()
-		}))
-		.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size)),
+		}),
+		Attr(DAffine2::from_translation(offset) * DAffine2::from_scale(size)),
 	)
 }
 

@@ -1938,7 +1938,7 @@ mod tests {
 		let layout = source_opacity_layout();
 		reserve_for(&[&layout]);
 
-		let node = install(SourceOpacityNode::new(ValueNode(3.), ValueNode(0.25)), source_opacity_layout_meta(), &[]);
+		let node = install(SourceOpacityNode::new(ValueNode(()), ValueNode(3.), ValueNode(0.25)), source_opacity_layout_meta(), &[]);
 		assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
 		let GPoll::Final(value) = node.eval(&ctx) else {
 			panic!("expected a final record");

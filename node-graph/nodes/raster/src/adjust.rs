@@ -19,9 +19,14 @@ mod adjust_std {
 	impl Adjust<Color> for List<Raster<CPU>> {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
 			for element in self.iter_element_values_mut() {
-				for color in element.data_mut().data.iter_mut() {
-					*color = map_fn(color);
-				}
+				element.adjust(&map_fn);
+			}
+		}
+	}
+	impl Adjust<Color> for Raster<CPU> {
+		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
+			for color in self.data_mut().data.iter_mut() {
+				*color = map_fn(color);
 			}
 		}
 	}

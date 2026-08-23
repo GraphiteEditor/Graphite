@@ -74,10 +74,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(Some(crate::codegen::ir::NodeKind::Routing), crate::codegen::ir::Element::Generic(ident)) => Some(ident.clone()),
 		_ => None,
 	};
-	// A `_: ()` primary stays visible in the metadata but claims no struct field.
-	let record_unit_carrier = record_io && crate::codegen::classify::record_shape(parsed).is_some_and(|shape| shape.skips_carrier());
+	// A `_: ()` primary keeps its slot: dropping it would shift every
+	// per-index classification against the IR and the document's arity.
 	let record_skips_carrier = record_io && !carrier_present;
-	let struct_regular_fields: Vec<_> = regular_fields.iter().skip(record_unit_carrier as usize).copied().collect();
+	let struct_regular_fields: Vec<_> = regular_fields.to_vec();
 	let struct_regular_field_names: Vec<_> = struct_regular_fields.iter().map(|f| &f.pat_ident.ident).collect();
 
 	// Extract function generics used by data fields
