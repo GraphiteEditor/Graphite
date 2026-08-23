@@ -1,5 +1,5 @@
 use core_types::arena::ArenaCell;
-use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, InjectIndex};
+use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ExtractIndex, InjectIndex};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
@@ -9,25 +9,96 @@ use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+/// The memo entry: the deep copies replay across frames, while the frame that
+/// materialized the level also serves lanes straight out of its arena batch
+/// (generation-guarded), so a within-frame pull allocates nothing.
+#[derive(Debug)]
+pub struct MemoLevel {
+	key: u64,
+	generation: u64,
+	frames: usize,
+	stride: usize,
+	lanes: Vec<OwnedRecord>,
+	finality: Finality,
+}
+
 /// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
-/// Stores a deep copy of the last record that flowed through this node and replays it on subsequent renders if the context has not changed.
+/// Stores a deep copy of the last record (a scalar wire) or the last whole
+/// level (a leveled wire) that flowed through this node and replays it on
+/// subsequent renders if the context has not changed. A leveled wire's cache
+/// key normalizes the addressed lane away, so per-lane pulls share one
+/// materialization of the content instead of re-evaluating it per lane.
 #[node_macro::node(category("General"), path(graphene_core::memo))]
 fn memoize<'e>(
-	ctx: impl Ctx + CacheHash + ExtractArena<'e>,
-	#[data] cache: Arc<Mutex<Option<(u64, OwnedRecord, Finality)>>>,
+	ctx: impl Ctx + CacheHash + DeriveCtx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	#[data] cache: Arc<Mutex<Option<MemoLevel>>>,
 	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
 ) -> GPoll<RecordValue<'e>> {
-	let key = cache_key(&ctx);
-	if let Some((hash, copy, finality)) = cache.lock().unwrap().as_ref()
-		&& *hash == key
-	{
-		return match copy.replay(content.layout(), ctx.arena()) {
-			Some(value) => match finality {
-				Finality::AllFinal => GPoll::Final(value),
-				Finality::Partial => GPoll::Partial(value),
-			},
+	// A scalar wire's value may depend on the consuming lane (index readers),
+	// so only a leveled wire, whose level covers every lane by construction,
+	// keys with the lane normalized away.
+	let leveled = content.layout().depth > 0;
+	let lane = match leveled {
+		true => ctx.innermost_index() as usize,
+		false => 0,
+	};
+	let key = match leveled {
+		true => {
+			let mut keyed = *ctx;
+			keyed.set_index(0);
+			cache_key(&keyed)
+		}
+		false => cache_key(&ctx),
+	};
+	let finalized = |value: RecordValue<'e>, finality: &Finality| match finality {
+		Finality::AllFinal => GPoll::Final(value),
+		Finality::Partial => GPoll::Partial(value),
+	};
+	let serve = |entry: &MemoLevel| {
+		if lane >= entry.lanes.len() {
+			// The cached level ends here; the past-end signal serves drains.
+			return GPoll::Error(Box::new(core_types::gpoll::GraphError::past_end()));
+		}
+		if entry.generation == ctx.arena().generation() {
+			// SAFETY: within the generation the materialized batch stays live,
+			// immutable, and laid out at the recorded stride.
+			let rec = unsafe { core_types::record::Rec::new((entry.frames + lane * entry.stride) as *const u8) };
+			return finalized(RecordValue::spilled(rec), &entry.finality);
+		}
+		match entry.lanes[lane].replay(content.layout(), ctx.arena()) {
+			Some(value) => finalized(value, &entry.finality),
 			None => GPoll::arena_exhausted(),
+		}
+	};
+	if let Some(entry) = cache.lock().unwrap().as_ref()
+		&& entry.key == key
+	{
+		return serve(entry);
+	}
+	if leveled {
+		return match content.materialize_level(&ctx, ctx.arena()) {
+			LevelStatus::Batch(batch, finality) => {
+				let layout = content.layout();
+				// SAFETY: the batch came from this edge, so it carries the edge's layout.
+				let lanes: Vec<OwnedRecord> = (0..batch.len()).map(|index| unsafe { OwnedRecord::copy_out(layout, batch.get(index).rec()) }).collect();
+				let entry = MemoLevel {
+					key,
+					generation: ctx.arena().generation(),
+					frames: match batch.len() {
+						0 => 0,
+						_ => batch.get(0).rec().ptr() as usize,
+					},
+					stride: layout.lane_stride(),
+					lanes,
+					finality,
+				};
+				let result = serve(&entry);
+				*cache.lock().unwrap() = Some(entry);
+				result
+			}
+			LevelStatus::Pending => GPoll::Pending,
+			LevelStatus::Error(error) => GPoll::Error(Box::new(error)),
 		};
 	}
 	let result = content.eval(&ctx);
@@ -39,7 +110,16 @@ fn memoize<'e>(
 	if let Some((value, finality)) = publishable {
 		// SAFETY: the value came from this edge, so it carries the edge's layout.
 		let copy = unsafe { OwnedRecord::copy_out(content.layout(), content.layout().rec(value)) };
-		*cache.lock().unwrap() = Some((key, copy, finality));
+		*cache.lock().unwrap() = Some(MemoLevel {
+			key,
+			// A scalar record replays from the deep copy; the value the eval
+			// returned already lives in this frame.
+			generation: u64::MAX,
+			frames: 0,
+			stride: 0,
+			lanes: vec![copy],
+			finality,
+		});
 	}
 	result
 }
@@ -92,12 +172,17 @@ type MonitorValue = Arc<Mutex<Option<IORecord<CtxSnapshot, RecordCapture>>>>;
 /// The Monitor node is used by the editor to access the data flowing through it.
 #[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
 fn monitor<'e>(
-	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + InjectIndex + Copy,
+	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	#[data] io: MonitorValue,
 	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
 ) -> GPoll<RecordValue<'e>> {
 	let result = content.eval(&ctx);
-	if let GPoll::Final(value) | GPoll::Partial(value) = &result {
+	// The capture covers the whole extent, so it runs on the first lane only:
+	// running it per lane would re-materialize the level per lane and compound
+	// through nested monitors.
+	if ctx.innermost_index() == 0
+		&& let GPoll::Final(value) | GPoll::Partial(value) = &result
+	{
 		let captured = match content.layout().depth {
 			// SAFETY: the value came from this edge, so it carries the edge's layout.
 			0 => unsafe { RecordCapture::capture(content.layout(), content.layout().rec(value), ctx.arena()) },
