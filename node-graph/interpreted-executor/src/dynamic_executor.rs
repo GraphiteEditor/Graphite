@@ -623,20 +623,16 @@ mod test {
 	}
 
 	#[test]
-	fn a_flipped_ref_parameter_reads_the_borrow_from_its_record_wire() {
-		// The palette is an unconverted legacy consumer, so its content routes
-		// through the transitional level bridge like a document wire would.
+	fn the_palette_folds_its_record_wire_to_a_color_level() {
 		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
 		let network = ProtoNetwork {
 			stack_need: 0,
 			inputs: vec![],
-			output: NodeId(4),
+			output: NodeId(2),
 			nodes: vec![
 				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(raster_list.into()), vec![])),
-				(NodeId(1), ProtoNode::value(ConstructionArgs::Value(TaggedValue::None.into()), vec![])),
-				(NodeId(2), proto_node("graphene_core::ops::ConvertNode<List<Raster<CPU>>>", vec![NodeId(0), NodeId(1)])),
-				(NodeId(3), ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(4).into()), vec![])),
-				(NodeId(4), proto_node("raster_nodes::image_color_palette::ImageColorPaletteNode", vec![NodeId(2), NodeId(3)])),
+				(NodeId(1), ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(4).into()), vec![])),
+				(NodeId(2), proto_node("raster_nodes::image_color_palette::ImageColorPaletteNode", vec![NodeId(0), NodeId(1)])),
 			],
 		};
 
@@ -645,15 +641,14 @@ mod test {
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
-		let edge = executor
-			.tree()
-			.get(NodeId(4))
-			.unwrap()
-			.downcast_record::<graphene_std::list::List<graphene_std::raster::color::Color>>()
-			.unwrap();
+		let edge = executor.tree().get(NodeId(2)).unwrap().downcast_record::<graphene_std::raster::color::Color>().unwrap();
 		core_types::record::stack::reserve(executor.tree().stack_need());
 		let result = edge.eval(&ctx);
-		assert!(matches!(result, GPoll::Final(_)), "the palette must evaluate through its record wires, got a non-final poll");
+		// The empty raster level folds to an empty palette: past-end at lane 0.
+		assert!(
+			matches!(&result, GPoll::Error(error) if error.kind == core_types::gpoll::ErrorKind::PastEnd),
+			"the empty palette level must serve the past-end signal at lane 0"
+		);
 	}
 
 	#[test]
