@@ -1,8 +1,9 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
 use core_types::ATTR_TRANSFORM;
+use core_types::attribute::{Attr, Transform as TransformAttr};
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
-use core_types::context::{Ctx, ExtractFootprint};
+use core_types::context::{Ctx, ExtractFootprint, ExtractIndex, InjectIndex};
 use core_types::list::{Item, List};
 use core_types::math::bbox::Bbox;
 use core_types::transform::Transform;
@@ -225,75 +226,76 @@ pub fn mask(
 		.collect()
 }
 
-#[node_macro::node(category(""))]
-pub fn extend_image_to_bounds(_: impl Ctx, image: List<Raster<CPU>>, bounds: DAffine2) -> List<Raster<CPU>> {
-	image
-		.into_iter()
-		.map(|mut row| {
-			let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let image_aabb = Bbox::unit().affine_transform(row_transform).to_axis_aligned_bbox();
-			let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
-			if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
-				return row;
-			}
+/// The per-lane extend, shared with the brush's plain callers.
+pub fn extend_image_to_bounds_core(image: Raster<CPU>, row_transform: DAffine2, bounds: DAffine2) -> (Raster<CPU>, DAffine2) {
+	let image_aabb = Bbox::unit().affine_transform(row_transform).to_axis_aligned_bbox();
+	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
+	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
+		return (image, row_transform);
+	}
 
-			let image_data = &row.element().data;
-			let (image_width, image_height) = (row.element().width, row.element().height);
-			if image_width == 0 || image_height == 0 {
-				return empty_image(&(), bounds, List::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap();
-			}
+	let (image_width, image_height) = (image.width, image.height);
+	if image_width == 0 || image_height == 0 {
+		return (empty_image_core(bounds, Color::TRANSPARENT), bounds);
+	}
+	let image_data = &image.data;
 
-			let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
-			let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * row_transform.inverse();
-			let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
+	let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
+	let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * row_transform.inverse();
+	let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
 
-			let new_start = bounds_in_image_space.start.floor().min(DVec2::ZERO);
-			let new_end = bounds_in_image_space.end.ceil().max(orig_image_scale);
-			let new_scale = new_end - new_start;
+	let new_start = bounds_in_image_space.start.floor().min(DVec2::ZERO);
+	let new_end = bounds_in_image_space.end.ceil().max(orig_image_scale);
+	let new_scale = new_end - new_start;
 
-			// Copy over original image into enlarged image.
-			let mut new_image = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
-			let offset_in_new_image = (-new_start).as_uvec2();
-			for y in 0..image_height {
-				let old_start = y * image_width;
-				let new_start = (y + offset_in_new_image.y) * new_image.width + offset_in_new_image.x;
-				let old_row = &image_data[old_start as usize..(old_start + image_width) as usize];
-				let new_row = &mut new_image.data[new_start as usize..(new_start + image_width) as usize];
-				new_row.copy_from_slice(old_row);
-			}
+	// Copy over original image into enlarged image.
+	let mut new_image = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
+	let offset_in_new_image = (-new_start).as_uvec2();
+	for y in 0..image_height {
+		let old_start = y * image_width;
+		let new_start = (y + offset_in_new_image.y) * new_image.width + offset_in_new_image.x;
+		let old_row = &image_data[old_start as usize..(old_start + image_width) as usize];
+		let new_row = &mut new_image.data[new_start as usize..(new_start + image_width) as usize];
+		new_row.copy_from_slice(old_row);
+	}
 
-			// Compute new transform.
-			// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
-			let new_texture_to_layer_space = row_transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
+	// Compute new transform.
+	// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
+	let new_texture_to_layer_space = row_transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 
-			*row.element_mut() = Raster::new_cpu(new_image);
-			row.set_attribute(ATTR_TRANSFORM, new_texture_to_layer_space);
-			row
-		})
-		.collect()
+	(Raster::new_cpu(new_image), new_texture_to_layer_space)
 }
 
-#[node_macro::node(category("Debug"))]
-pub fn empty_image(_: impl Ctx, transform: DAffine2, color: List<Color>) -> List<Raster<CPU>> {
+#[node_macro::node(category(""))]
+pub fn extend_image_to_bounds(_: impl Ctx, (image, transform): (Raster<CPU>, Attr<TransformAttr>), bounds: DAffine2) -> (Raster<CPU>, Attr<TransformAttr>) {
+	let (image, transform) = extend_image_to_bounds_core(image, *transform, bounds);
+	(image, Attr(transform))
+}
+
+/// The blank texture a transform spans, shared with the brush's plain callers.
+pub fn empty_image_core(transform: DAffine2, color: Color) -> Raster<CPU> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
-	let color = color.element(0).copied().unwrap_or(Color::WHITE);
-	let image = Image::new(width, height, color);
+	Raster::new_cpu(Image::new(width, height, color))
+}
 
-	let mut result_list = List::new_from_element(Raster::new_cpu(image));
-	result_list.set_attribute(ATTR_TRANSFORM, 0, transform);
-
-	// Callers of empty_image can safely unwrap on returned `List`
-	result_list
+#[node_macro::node(category("Debug"))]
+pub fn empty_image(_: impl Ctx + ExtractIndex + InjectIndex + Copy, transform: DAffine2, color: IList<Color>) -> (Raster<CPU>, Attr<TransformAttr>) {
+	let color = match color.len() {
+		0 => Color::WHITE,
+		_ => color.get(0),
+	};
+	(empty_image_core(transform, color), Attr(transform))
 }
 
 #[node_macro::node(category(""))]
-pub fn image(_: impl Ctx, resource: Resource) -> List<Raster<CPU>> {
+pub fn image(_: impl Ctx, resource: Resource) -> Raster<CPU> {
 	let image_data = resource.as_ref();
 
+	// A zero-size raster renders as nothing, matching the legacy empty list.
 	let Some(image) = ::image::load_from_memory(image_data).ok() else {
-		return List::new();
+		return Raster::new_cpu(Image::default());
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -308,7 +310,7 @@ pub fn image(_: impl Ctx, resource: Resource) -> List<Raster<CPU>> {
 		height: image.height(),
 		..Default::default()
 	};
-	List::new_from_element(Raster::new_cpu(image))
+	Raster::new_cpu(image)
 }
 
 /// Generates customizable procedural noise patterns.

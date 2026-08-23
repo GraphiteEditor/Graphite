@@ -11,7 +11,7 @@ use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
 use raster_nodes::blending_nodes::blend_colors;
-use raster_nodes::std_nodes::{empty_image, extend_image_to_bounds};
+use raster_nodes::std_nodes::{empty_image_core, extend_image_to_bounds_core};
 use raster_types::BitmapMut;
 use raster_types::Image;
 use raster_types::{CPU, Raster};
@@ -134,7 +134,11 @@ where
 pub fn create_brush_texture(brush_style: &BrushStyle) -> Raster<CPU> {
 	let stamp = brush_stamp_generator(&(), brush_style.diameter, brush_style.color, brush_style.hardness, brush_style.flow);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
-	let blank_texture = empty_image(&(), transform, List::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap_or_default();
+	let blank_texture = {
+		let mut item = Item::new_from_element(empty_image_core(transform, Color::TRANSPARENT));
+		item.set_attribute(ATTR_TRANSFORM, transform);
+		item
+	};
 	let image = blend_stamp_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 
 	image.into_element()
@@ -221,8 +225,14 @@ fn brush(
 	let mut brush_plan = cache.compute_brush_plan(list_item, &draw_strokes);
 
 	// TODO: Find a way to handle more than one item
-	let Some(mut actual_image) = extend_image_to_bounds(&(), List::new_from_item(brush_plan.background), background_bounds).into_iter().next() else {
-		return List::new();
+	let mut actual_image = {
+		let background = brush_plan.background;
+		let transform: DAffine2 = background.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let (element, attributes) = background.into_parts();
+		let (element, transform) = extend_image_to_bounds_core(element, transform, background_bounds);
+		let mut item = Item::from_parts(element, attributes);
+		item.set_attribute(ATTR_TRANSFORM, transform);
+		item
 	};
 
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
@@ -254,9 +264,16 @@ fn brush(
 
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
-				extend_image_to_bounds(&(), List::new_from_item(target), stroke_to_layer)
+				let transform: DAffine2 = target.attribute_cloned_or_default(ATTR_TRANSFORM);
+				let (element, attributes) = target.into_parts();
+				let (element, transform) = extend_image_to_bounds_core(element, transform, stroke_to_layer);
+				let mut item = Item::from_parts(element, attributes);
+				item.set_attribute(ATTR_TRANSFORM, transform);
+				List::new_from_item(item)
 			} else {
-				empty_image(&(), stroke_to_layer, List::new_from_element(Color::TRANSPARENT))
+				let mut item = Item::new_from_element(empty_image_core(stroke_to_layer, Color::TRANSPARENT));
+				item.set_attribute(ATTR_TRANSFORM, stroke_to_layer);
+				List::new_from_item(item)
 			};
 
 			let list = blit(&(), blit_target, brush_texture, positions, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
