@@ -723,7 +723,8 @@ impl TaggedValue {
 
 		match ty {
 			Type::Generic(_) => None,
-			Type::Record(_) => None,
+			// A leveled wire's default is its element's default, as in `from_type`.
+			Type::Record(inner) => TaggedValue::from_primitive_string(string, inner),
 			Type::Concrete(concrete_type) => {
 				let ty = concrete_type.id?;
 				use std::any::TypeId;
@@ -972,5 +973,21 @@ mod leveled_edges {
 			let edge = value.to_edge().unwrap();
 			assert_eq!(&layout, edge.layout());
 		}
+	}
+}
+
+#[cfg(test)]
+mod record_defaults {
+	use super::*;
+	use core_types::registry::record_edge_type;
+
+	// The registry can present a record row first (wasm registration order),
+	// so primitive defaults must parse through the record wrapping.
+	#[test]
+	fn primitive_defaults_parse_through_record_wires() {
+		let leveled = core_types::registry::record_type::<f64>();
+		assert_eq!(TaggedValue::from_primitive_string("2.", &leveled), Some(TaggedValue::F64(2.)));
+		assert_eq!(TaggedValue::from_primitive_string("5", &record_edge_type::<u32>()), Some(TaggedValue::U32(5)));
+		assert_eq!(TaggedValue::from_primitive_string("true", &record_edge_type::<bool>()), Some(TaggedValue::Bool(true)));
 	}
 }
