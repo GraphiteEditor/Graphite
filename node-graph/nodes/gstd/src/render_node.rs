@@ -269,7 +269,17 @@ mod tests {
 		let probe = core_types::record::RecordLift::<RenderOutput, _>::new(ProbeNode);
 		let layout = Node::<ContextImpl>::layout(&probe).clone();
 		core_types::record::stack::reserve(layout.frame_bytes().max(1 << 12));
-		let graph = CreateContextNode::new(probe, &layout);
+		let mut graph = CreateContextNode::new(probe, &layout);
+		// The executor resolves and installs the node's own layout at wiring;
+		// without it the flip tail writes through the default empty layout.
+		Node::<ContextImpl>::set_layout(
+			&mut graph,
+			core_types::record::RecordLayout {
+				frame_bytes: layout.frame_bytes(),
+				plan: Vec::new(),
+				layout: layout.clone(),
+			},
+		);
 		let GPoll::Final(result) = Node::<ContextImpl>::eval(&graph, &ctx) else {
 			panic!("create_context must complete synchronously");
 		};
