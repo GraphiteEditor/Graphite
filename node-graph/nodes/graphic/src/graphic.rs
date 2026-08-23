@@ -193,9 +193,11 @@ where
 {
 	let count = legacy.len();
 	let reflected_transform = mirror_reflection(&legacy, relative_to_bounds, offset, angle);
-	let (source, mirrored) = match (reflected_transform.is_some() && keep_original, lane < count) {
+	// Kept originals always double the level so the count stays structural;
+	// without a reflection (no rectangular bounds) the second half duplicates.
+	let (source, mirrored) = match (keep_original, lane < count) {
 		(true, true) => (lane, false),
-		(true, false) => (lane - count, true),
+		(true, false) => (lane - count, reflected_transform.is_some()),
 		(false, _) => (lane, reflected_transform.is_some()),
 	};
 	if source >= count {
@@ -241,18 +243,6 @@ where
 	))
 }
 
-/// The mirrored level: the original lanes (when kept) followed by the
-/// reflected lanes.
-fn mirror_extent_of<T>(legacy: &List<T>, relative_to_bounds: ReferencePoint, offset: f64, angle: f64, keep_original: bool) -> Extent
-where
-	List<T>: BoundingBox,
-{
-	match mirror_reflection(legacy, relative_to_bounds, offset, angle) {
-		Some(_) if keep_original => Extent::Exactly(legacy.len() * 2),
-		_ => Extent::Exactly(legacy.len()),
-	}
-}
-
 /// The materialized level as its legacy render list.
 fn legacy_render_list_of<T: Clone + Send + Sync + 'static>(content: core_types::node::List<'_, T>) -> List<T> {
 	// SAFETY: a materialized input's frames are arena-resident.
@@ -287,24 +277,23 @@ fn mirror<'e>(
 	mirror_lane(ctx.arena(), legacy_render_list_of(content), ctx.innermost_index() as usize, relative_to_bounds, offset, angle, keep_original)
 }
 
+/// The kept originals double the level, counted from the subject's extent
+/// query alone so nested extents stay materialization-free.
 fn mirror_extent(
 	content: ListIn<'_, Graphic>,
-	relative_to_bounds: ValueIn<'_, ReferencePoint>,
-	offset: ValueIn<'_, f64>,
-	angle: ValueIn<'_, f64>,
+	_relative_to_bounds: ValueIn<'_, ReferencePoint>,
+	_offset: ValueIn<'_, f64>,
+	_angle: ValueIn<'_, f64>,
 	keep_original: ValueIn<'_, bool>,
 	level: LevelIn,
 ) -> GPoll<Extent> {
 	match level.top() {
-		true => content
-			.get()
-			.zip(relative_to_bounds.get())
-			.zip(offset.get())
-			.zip(angle.get())
-			.zip(keep_original.get())
-			.map(|((((content, relative_to_bounds), offset), angle), keep_original)| {
-				mirror_extent_of(&legacy_render_list_of(content), relative_to_bounds, offset, angle, keep_original)
-			}),
+		true => content.total().zip(keep_original.get()).map(|(total, keep_original)| match (total, keep_original) {
+			(total, false) => total,
+			(Extent::Exactly(count), true) => Extent::Exactly(count * 2),
+			(Extent::AtLeast(bound), true) => Extent::AtLeast(bound * 2),
+			(Extent::Free, true) => Extent::Free,
+		}),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
 }
@@ -340,22 +329,19 @@ fn mirror_vector<'e>(
 
 fn mirror_vector_extent(
 	content: ListIn<'_, Vector>,
-	relative_to_bounds: ValueIn<'_, ReferencePoint>,
-	offset: ValueIn<'_, f64>,
-	angle: ValueIn<'_, f64>,
+	_relative_to_bounds: ValueIn<'_, ReferencePoint>,
+	_offset: ValueIn<'_, f64>,
+	_angle: ValueIn<'_, f64>,
 	keep_original: ValueIn<'_, bool>,
 	level: LevelIn,
 ) -> GPoll<Extent> {
 	match level.top() {
-		true => content
-			.get()
-			.zip(relative_to_bounds.get())
-			.zip(offset.get())
-			.zip(angle.get())
-			.zip(keep_original.get())
-			.map(|((((content, relative_to_bounds), offset), angle), keep_original)| {
-				mirror_extent_of(&legacy_render_list_of(content), relative_to_bounds, offset, angle, keep_original)
-			}),
+		true => content.total().zip(keep_original.get()).map(|(total, keep_original)| match (total, keep_original) {
+			(total, false) => total,
+			(Extent::Exactly(count), true) => Extent::Exactly(count * 2),
+			(Extent::AtLeast(bound), true) => Extent::AtLeast(bound * 2),
+			(Extent::Free, true) => Extent::Free,
+		}),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
 }

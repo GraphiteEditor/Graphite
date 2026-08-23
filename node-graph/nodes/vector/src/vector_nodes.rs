@@ -149,7 +149,7 @@ fn assign_colors_extent(
 	level: LevelIn,
 ) -> GPoll<Extent> {
 	match level.top() {
-		true => content.get().map(|content| Extent::Exactly(content.len())),
+		true => content.total(),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
 }
@@ -215,7 +215,6 @@ fn assign_colors_graphic<'e>(
 
 fn assign_colors_graphic_extent(
 	content: ListIn<'_, Graphic>,
-
 	_fill: ValueIn<'_, bool>,
 	_stroke: ValueIn<'_, bool>,
 	_gradient: ListIn<'_, GradientStops>,
@@ -226,7 +225,7 @@ fn assign_colors_graphic_extent(
 	level: LevelIn,
 ) -> GPoll<Extent> {
 	match level.top() {
-		true => content.get().map(|content| Extent::Exactly(content.len())),
+		true => content.total(),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
 }
@@ -546,8 +545,9 @@ fn copy_to_points<T>(
 	Err(GraphError::past_end().into())
 }
 
-/// The pushed level holds one copy per point; inner levels forward to the
-/// content, taken uniform across copies.
+/// The pushed level holds one copy per point (a data-dependent count, so the
+/// points level materializes here; its cone stays small); inner levels
+/// forward to the content, taken uniform across copies.
 fn copy_to_points_extent(
 	content: ExtentIn<'_>,
 	points: ListIn<'_, Vector>,
@@ -1605,15 +1605,15 @@ fn solidify_stroke<'e>(
 	solidify_lane(ctx.arena(), legacy_graphic_list_of(content), ctx.innermost_index() as usize)
 }
 
-/// A fill-bearing row splits into a fill lane and a solidified stroke lane.
-fn solidify_extent_of(graphic_list: List<Graphic>) -> Extent {
-	let flattened: List<Vector> = graphic_list.into_flattened_list();
-	Extent::Exactly((0..flattened.len()).map(|index| 1 + usize::from(has_paint_at(&flattened, index, ATTR_FILL))).sum())
-}
-
+/// A fill-bearing row splits into a fill lane and a solidified stroke lane,
+/// so the count depends on the content: the level reports the subject's
+/// count as a lower bound and consumers drain to the past-end signal.
 fn solidify_stroke_extent(content: ListIn<'_, Graphic>, level: LevelIn) -> GPoll<Extent> {
 	match level.top() {
-		true => content.get().map(|content| solidify_extent_of(legacy_graphic_list_of(content))),
+		true => content.total().map(|total| Extent::AtLeast(match total {
+			Extent::Exactly(count) | Extent::AtLeast(count) => count,
+			Extent::Free => 0,
+		})),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
 }
@@ -1644,7 +1644,10 @@ fn solidify_stroke_vector<'e>(
 
 fn solidify_stroke_vector_extent(content: ListIn<'_, Vector>, level: LevelIn) -> GPoll<Extent> {
 	match level.top() {
-		true => content.get().map(|content| solidify_extent_of(legacy_graphic_list_of(content))),
+		true => content.total().map(|total| Extent::AtLeast(match total {
+			Extent::Exactly(count) | Extent::AtLeast(count) => count,
+			Extent::Free => 0,
+		})),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
 }

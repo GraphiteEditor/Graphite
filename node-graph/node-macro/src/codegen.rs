@@ -21,6 +21,17 @@ use metadata::generate_node_input_references;
 
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
+/// The regular inputs that materialize whole in the eval prologue, which is
+/// where the per-node batch cache slots attach.
+fn materialized_indices(regular_fields: &[&ParsedField], node: &ir::Node) -> Vec<usize> {
+	regular_fields
+		.iter()
+		.enumerate()
+		.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && matches!(ir::value_binding(node, *index), ValueBinding::Materialized))
+		.map(|(index, _)| index)
+		.collect()
+}
+
 pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
 	let ParsedNodeFn {
 		attributes,
@@ -232,6 +243,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	if !carried_generic_idents.is_empty() {
 		record_state_fields.push(quote!(pub(super) __marker: ::core::marker::PhantomData<fn() -> (#(#carried_generic_idents,)*)>));
 	}
+	// One slot per materialized input: the batch of the frame that
+	// materialized it, keyed by (lane-normalized context, generation), so
+	// per-lane evals share one materialization.
+	record_state_fields.extend(materialized_indices(&struct_regular_fields, &node).into_iter().map(|index| {
+		let slot = format_ident!("__mat_cache_{index}");
+		quote!(pub(super) #slot: ::std::sync::Arc<::std::sync::Mutex<::core::option::Option<(u64, u64, usize, usize)>>>)
+	}));
 
 	let async_source = parsed.injects_async_source_fields();
 	let slot_value_type = slot_value_type(output_type);
@@ -441,6 +459,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.into_iter();
 	let marker_init = (!carried_generic_idents.is_empty()).then(|| quote!(__marker: ::core::marker::PhantomData,)).into_iter();
+	let plain_mat_cache_inits: Vec<TokenStream2> = materialized_indices(&struct_regular_fields, &node)
+		.into_iter()
+		.map(|index| {
+			let slot = format_ident!("__mat_cache_{index}");
+			quote!(#slot: ::core::default::Default::default(),)
+		})
+		.collect();
 	// `new` carries the bounds the erased glue needs at the output type.
 	let new_where = flip
 		.then(|| {
@@ -464,6 +489,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#(#flip_read_inits)*
 						#(#flip_output_inits)*
 						#(#marker_init)*
+						#(#plain_mat_cache_inits)*
 					}
 				}
 			}
@@ -1119,55 +1145,85 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ValueBinding::Carrier => quote!(),
 				ValueBinding::Materialized => {
 					let fn_name = &parsed.fn_name;
+					let cache_slot = format_ident!("__mat_cache_{index}");
 					let non_exact = fail(quote!(#core_types::gpoll::GraphError::new(::std::concat!("reduce over a non-exact extent in ", ::std::stringify!(#fn_name)))));
 					let batch_error = fail(quote!(__error));
 					let batch_failed = fail(quote!(#core_types::gpoll::GraphError::new("reduce batch failed")));
 					// A fold consumes the whole subject wire: a deeper wire's
 					// total flat span, sized under the evaluation context, so a
-					// fold inside a pushed level covers that copy's span.
+					// fold inside a pushed level covers that copy's span. The
+					// span caches per (lane-normalized context, generation):
+					// every lane of a per-lane emitter re-enters this bind, and
+					// without the cache each lane would re-materialize the
+					// whole subject.
 					quote! {
 						let __arena = #core_types::context::ExtractArena::arena(__input);
-						let __sized = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total) {
-							#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => ::core::result::Result::Ok(__count),
-							#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::AtLeast(__bound)) => ::core::result::Result::Err(__bound),
-							#core_types::gpoll::GPoll::Pending => #pending,
-							_ => #non_exact,
+						let __mat_key = {
+							let mut __keyed = *__input;
+							#core_types::context::InjectIndex::set_index(&mut __keyed, 0);
+							#core_types::registry::cache_key(&__keyed)
 						};
-						let __batch = match __sized {
-							::core::result::Result::Ok(__count) => {
-								let __start: u64 = 0;
-								match #core_types::record::materialize_batch(&self.#name, __input, __start..__start + __count as u64, __arena) {
-									#core_types::node::BatchStatus::Lent(__batch, ..) => __batch,
-									#core_types::node::BatchStatus::Filled(__batch, ..) => __batch.into_shared(),
-									#core_types::node::BatchStatus::Pending => #pending,
-									#core_types::node::BatchStatus::Error(__error) => #batch_error,
-									_ => #batch_failed,
-								}
+						let __mat_generation = __arena.generation();
+						let __mat_hit = match *self.#cache_slot.lock().unwrap() {
+							::core::option::Option::Some((__key, __generation, __base, __len)) if __key == __mat_key && __generation == __mat_generation => {
+								::core::option::Option::Some((__base, __len))
 							}
-							// The count is a lower bound: drain by guess-and-double
-							// until a short fill, each reply's hint seeding the next
-							// guess.
-							::core::result::Result::Err(__bound) => {
-								let mut __guess = __bound.max(16);
-								loop {
-									let (__batch, __hint) = match #core_types::record::materialize_batch(&self.#name, __input, 0..__guess as u64, __arena) {
-										#core_types::node::BatchStatus::Lent(__batch, _, __hint) => (__batch, __hint),
-										#core_types::node::BatchStatus::Filled(__batch, _, __hint) => (__batch.into_shared(), __hint),
-										#core_types::node::BatchStatus::Pending => #pending,
-										#core_types::node::BatchStatus::Error(__error) => #batch_error,
-										_ => #batch_failed,
-									};
-									let __filled = __batch.len();
-									if __filled < __guess {
-										break __batch;
+							_ => ::core::option::Option::None,
+						};
+						let __batch = match __mat_hit {
+							// SAFETY: within the generation the cached batch stays
+							// live, immutable, and of this edge's layout.
+							::core::option::Option::Some((__base, __len)) => unsafe { #core_types::node::RecordBatch::new(__base as *const u8, __len, #core_types::node::Node::<#ctx_ident>::layout(&self.#name)) },
+							::core::option::Option::None => {
+								let __sized = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total) {
+									#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => ::core::result::Result::Ok(__count),
+									#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::AtLeast(__bound)) => ::core::result::Result::Err(__bound),
+									#core_types::gpoll::GPoll::Pending => #pending,
+									_ => #non_exact,
+								};
+								let __fresh = match __sized {
+									::core::result::Result::Ok(__count) => {
+										let __start: u64 = 0;
+										match #core_types::record::materialize_batch(&self.#name, __input, __start..__start + __count as u64, __arena) {
+											#core_types::node::BatchStatus::Lent(__batch, ..) => __batch,
+											#core_types::node::BatchStatus::Filled(__batch, ..) => __batch.into_shared(),
+											#core_types::node::BatchStatus::Pending => #pending,
+											#core_types::node::BatchStatus::Error(__error) => #batch_error,
+											_ => #batch_failed,
+										}
 									}
-									match __hint {
-										#core_types::gpoll::Extent::Exactly(__total) if __total <= __filled => break __batch,
-										#core_types::gpoll::Extent::Exactly(__total) => __guess = __total,
-										#core_types::gpoll::Extent::AtLeast(__more) => __guess = (__guess * 2).max(__more),
-										#core_types::gpoll::Extent::Free => __guess *= 2,
+									// The count is a lower bound: drain by guess-and-double
+									// until a short fill, each reply's hint seeding the next
+									// guess.
+									::core::result::Result::Err(__bound) => {
+										let mut __guess = __bound.max(16);
+										loop {
+											let (__batch, __hint) = match #core_types::record::materialize_batch(&self.#name, __input, 0..__guess as u64, __arena) {
+												#core_types::node::BatchStatus::Lent(__batch, _, __hint) => (__batch, __hint),
+												#core_types::node::BatchStatus::Filled(__batch, _, __hint) => (__batch.into_shared(), __hint),
+												#core_types::node::BatchStatus::Pending => #pending,
+												#core_types::node::BatchStatus::Error(__error) => #batch_error,
+												_ => #batch_failed,
+											};
+											let __filled = __batch.len();
+											if __filled < __guess {
+												break __batch;
+											}
+											match __hint {
+												#core_types::gpoll::Extent::Exactly(__total) if __total <= __filled => break __batch,
+												#core_types::gpoll::Extent::Exactly(__total) => __guess = __total,
+												#core_types::gpoll::Extent::AtLeast(__more) => __guess = (__guess * 2).max(__more),
+												#core_types::gpoll::Extent::Free => __guess *= 2,
+											}
+										}
 									}
-								}
+								};
+								let __base = match __fresh.len() {
+									0 => 0usize,
+									_ => __fresh.get(0).rec().ptr() as usize,
+								};
+								*self.#cache_slot.lock().unwrap() = ::core::option::Option::Some((__mat_key, __mat_generation, __base, __fresh.len()));
+								__fresh
 							}
 						};
 						let #name = unsafe { #core_types::node::List::<#ty>::new(__batch) };
@@ -1369,7 +1425,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 									_ => #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("extent could not materialize a ranked input"))),
 								}
 							};
-							let #arg = #core_types::extent::ListIn::new(&#query);
+							let __total = || #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total);
+							let #arg = #core_types::extent::ListIn::new(&#query, &__total);
 						}
 					}
 					ValueBinding::RecordElement | ValueBinding::ReadingSecondary => {
@@ -2082,6 +2139,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				_ => None,
 			}));
 		}
+		// The materialized-span cache keys on the lane-normalized context.
+		if !materialized_indices(&regular_fields, &node).is_empty() {
+			bounds.push(quote!(#ctx_ident: #core_types::graphene_hash::CacheHash + #core_types::context::InjectIndex + ::core::marker::Copy));
+		}
 		bounds
 	};
 
@@ -2240,6 +2301,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let plan_default = (!skips_carrier).then(|| quote!(__plan: ::std::vec::Vec::new(),)).into_iter();
 		let read_names = (0..flat_reads.len()).map(|index| format_ident!("__read_{index}")).map(|slot| quote!(#slot,));
 		let write_defaults = (0..write_markers.len()).map(|index| format_ident!("__write_{index}")).map(|slot| quote!(#slot: 0,));
+		let mat_cache_defaults = materialized_indices(&regular_fields, &node).into_iter().map(|index| {
+			let slot = format_ident!("__mat_cache_{index}");
+			quote!(#slot: ::core::default::Default::default(),)
+		});
 		quote! {
 			#layout_def
 			#layout_meta_def
@@ -2259,6 +2324,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						__frame_bytes: 0,
 						#(#read_names)*
 						#(#write_defaults)*
+						#(#mat_cache_defaults)*
 					}
 				}
 			}

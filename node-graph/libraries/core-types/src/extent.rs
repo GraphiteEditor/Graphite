@@ -44,18 +44,27 @@ impl<'a> ExtentIn<'a> {
 
 /// A ranked (`IList`) input materialized whole: `get` drives the batch and
 /// yields the level as a [`List`](crate::node::List), for extents that depend
-/// on the input's data rather than its counts alone.
+/// on the input's data rather than its counts alone. `total` answers the
+/// subject's flat count without materializing, so count-shaped extents stay
+/// cheap: a materializing extent inside another's subject multiplies, and
+/// nested emitters turn that into a blowup.
 pub struct ListIn<'a, T> {
 	get: &'a dyn Fn() -> GPoll<crate::node::List<'a, T>>,
+	total: &'a dyn Fn() -> GPoll<crate::gpoll::Extent>,
 }
 
 impl<'a, T> ListIn<'a, T> {
-	pub fn new(get: &'a dyn Fn() -> GPoll<crate::node::List<'a, T>>) -> Self {
-		Self { get }
+	pub fn new(get: &'a dyn Fn() -> GPoll<crate::node::List<'a, T>>, total: &'a dyn Fn() -> GPoll<crate::gpoll::Extent>) -> Self {
+		Self { get, total }
 	}
 
 	pub fn get(&self) -> GPoll<crate::node::List<'a, T>> {
 		(self.get)()
+	}
+
+	/// The subject wire's total flat extent as a plain query.
+	pub fn total(&self) -> GPoll<crate::gpoll::Extent> {
+		(self.total)()
 	}
 }
 
