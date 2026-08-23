@@ -1,6 +1,4 @@
 use crate::adjust::Adjust;
-#[cfg(feature = "std")]
-use core_types::list::List;
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::{Color, Pixel};
@@ -179,12 +177,12 @@ fn mix<T: Blend<Color> + Clone + Send + Sync + core_types::CacheHash + 'static>(
 }
 
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-fn color_overlay<T: Adjust<Color>>(
+fn color_overlay<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,

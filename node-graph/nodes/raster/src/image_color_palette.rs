@@ -1,16 +1,16 @@
 use core_types::color::Color;
-use core_types::context::Ctx;
-use core_types::list::{Item, List};
+use core_types::context::{Ctx, ExtractIndex, InjectIndex};
+use core_types::gpoll::{GraphError, Interrupt};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Color"))]
 fn image_color_palette(
-	_: impl Ctx,
-	image: &List<Raster<CPU>>,
+	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	image: IList<Raster<CPU>>,
 	#[default(4)]
 	#[hard(1..)]
 	count: u32,
-) -> List<Color> {
+) -> Result<IList<Color>, Interrupt> {
 	const GRID: f32 = 3.;
 
 	let bins = GRID * GRID * GRID;
@@ -19,7 +19,8 @@ fn image_color_palette(
 	// Each bin stores `(red, green, blue, alpha)` tuples in sRGB gamma space; averaging in gamma space gives perceptually-uniform binning.
 	let mut color_bins: Vec<Vec<[f32; 4]>> = vec![Vec::new(); (bins + 1.) as usize];
 
-	for element in image.iter_element_values() {
+	for row in 0..image.len() {
+		let element = image.element_ref(row);
 		for pixel in element.data.iter() {
 			let r = pixel.r() * GRID;
 			let g = pixel.g() * GRID;
@@ -34,7 +35,7 @@ fn image_color_palette(
 
 	let shorted = histogram.iter().enumerate().filter(|&(_, &count)| count > 0).map(|(i, _)| i).collect::<Vec<usize>>();
 
-	shorted
+	let palette: Vec<Color> = shorted
 		.iter()
 		.take(count as usize)
 		.flat_map(|&i| {
@@ -54,9 +55,11 @@ fn image_color_palette(
 
 			// Reject NaN/out-of-range averages, then lift the gamma-space bin centroid to linear-light
 			let in_gamut = a <= 1. && ![r, g, b, a].iter().any(|c| c.is_sign_negative() || !c.is_finite());
-			in_gamut.then(|| Color::from_gamma_srgb_channels(r, g, b, a)).map(Item::new_from_element).into_iter()
+			in_gamut.then(|| Color::from_gamma_srgb_channels(r, g, b, a)).into_iter()
 		})
-		.collect()
+		.collect();
+
+	palette.get(ctx.innermost_index() as usize).copied().ok_or_else(|| GraphError::past_end().into())
 }
 
 #[cfg(test)]
@@ -67,16 +70,26 @@ mod test {
 
 	#[test]
 	fn test_image_color_palette() {
-		let result = image_color_palette(
-			&(),
-			&List::new_from_element(Raster::new_cpu(Image {
-				width: 100,
-				height: 100,
-				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
-				base64_string: None,
-			})),
-			1,
-		);
-		assert_eq!(result, List::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
+		core_types::record::stack::reserve(1 << 16);
+		let arena = core_types::arena::Arena::new(1 << 22).unwrap();
+		let generations = [];
+		let scope = core_types::context::EvalScope::new(None, None, None, &generations, &arena);
+		let ctx = core_types::context::ContextImpl::root(&scope);
+
+		let raster = Raster::new_cpu(Image {
+			width: 100,
+			height: 100,
+			data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
+			base64_string: None,
+		});
+		let source = core_types::value::LeveledValueSource::new(vec![raster]);
+		let core_types::record::LevelStatus::Batch(batch, _) = core_types::record::materialize_level(&source, &ctx, &arena) else {
+			panic!("materialize failed")
+		};
+		let image = unsafe { core_types::node::List::<Raster<CPU>>::new(batch) };
+
+		// The root context addresses lane 0, the palette's first color
+		let color = image_color_palette(&ctx, image, 1).unwrap();
+		assert_eq!(color, Color::from_rgbaf32(0., 0., 0., 1.).unwrap());
 	}
 }
