@@ -1,8 +1,6 @@
 use glam::{DAffine2, DVec2, IVec2};
 use graphene_std::gradient::GradientStops;
 use graphene_std::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
-#[cfg(target_family = "wasm")]
-use graphene_std::platform_application_io::canvas_utils::CanvasHandle;
 #[cfg(feature = "gpu")]
 use graphene_std::raster::GPU;
 use graphene_std::raster::color::Color;

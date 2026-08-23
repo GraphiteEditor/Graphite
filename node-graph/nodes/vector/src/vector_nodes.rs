@@ -3702,6 +3702,7 @@ mod test {
 			assert_eq!(manipulator_groups_anchors[i], expected_bounding_box[i]);
 		}
 	}
+	#[test]
 	fn sample_polyline() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
 		let (sample_polyline, _) = super::sample_polyline(&Footprint::default(), (Vector::from_bezpath(path), Attr(DAffine2::IDENTITY)), PointSpacingType::Separation, 30., 0, 0., 0., false);

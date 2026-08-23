@@ -187,7 +187,7 @@ fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 mod test {
 	use super::*;
 	use core_types::arena::Arena;
-	use core_types::context::{ContextImpl, EvalScope, ExtractIndex, ExtractPosition};
+	use core_types::context::{ContextImpl, EvalScope, ExtractPosition};
 	use core_types::gpoll::GPoll;
 	use core_types::list::Item;
 	use core_types::node::{Node, StatusCell};
@@ -203,20 +203,6 @@ mod test {
 
 		fn eval(&self, _input: &Input) -> GPoll<T> {
 			GPoll::Final(self.0.clone())
-		}
-	}
-
-	/// Returns one default `Vector` whose transform records the innermost context index in its x translation.
-	struct IndexProbe;
-
-	impl<Input: ExtractIndex> Node<Input> for IndexProbe {
-		type Output = List<Vector>;
-
-		fn eval(&self, input: &Input) -> GPoll<List<Vector>> {
-			let index = input.try_index().and_then(|mut levels| levels.next()).expect("repeat must push an index level");
-			let mut list = List::new();
-			list.push(Item::new_from_element(Vector::default()).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(index as f64, 0.))));
-			GPoll::Final(list)
 		}
 	}
 
