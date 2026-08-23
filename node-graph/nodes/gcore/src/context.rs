@@ -145,5 +145,7 @@ fn read_index(
 	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
 	loop_level: u32,
 ) -> f64 {
-	ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(0) as f64
+	// The chain's innermost entry is the consuming wire's own lane from the
+	// decompose-and-promote split; the loops the reader counts sit above it.
+	ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize + 1).or_else(|| iter.last())).unwrap_or(0) as f64
 }
