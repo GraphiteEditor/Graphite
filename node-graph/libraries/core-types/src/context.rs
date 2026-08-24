@@ -57,10 +57,9 @@ pub trait ExtractIndices {
 	}
 }
 
-/// `LEVEL` is the level of the index chain a node reads, counted outwards from
-/// the innermost. Declaring it narrows the cache key to that level, and reading
-/// through `index` keeps the declaration and the read from drifting apart.
-/// Repeat the bound to declare several, then spell the level at each read.
+/// `LEVEL` is the index-chain level a node reads, counted outwards from the
+/// innermost; only declared levels survive in the cache key. Repeat the bound
+/// to declare several, spelling the level at each `index` call.
 pub trait ExtractIndex<const LEVEL: u8 = 0>: ExtractIndices {
 	fn index(&self) -> u64 {
 		self.try_index().and_then(|mut levels| levels.nth(LEVEL as usize)).unwrap_or(0) as u64
@@ -245,6 +244,17 @@ impl IndexLevels {
 		self.0 == u32::MAX
 	}
 
+	/// The same requirement seen from outside `levels` pushed levels. An
+	/// all-levels mask stays saturated, since its reader's level is not known at
+	/// compile time.
+	pub const fn popped(self, levels: u8) -> Self {
+		match self.0 {
+			u32::MAX => self,
+			_ if levels as u32 >= u32::BITS => Self(0),
+			mask => Self(mask >> levels),
+		}
+	}
+
 	/// Levels at or past `u32::BITS` are only readable through the all-levels
 	/// sentinel, so they count as declared whenever the mask is saturated.
 	pub const fn contains_level(self, level: usize) -> bool {
@@ -319,6 +329,9 @@ pub struct ContextDependencies {
 	/// written before the field existed default to the whole chain.
 	#[cfg_attr(feature = "serde", serde(default = "IndexLevels::innermost"))]
 	pub index_levels: IndexLevels,
+	/// Index levels pushed per input, in input order; a missing entry is 0.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub pushed_levels: Vec<u8>,
 	#[cfg_attr(feature = "serde", serde(default, deserialize_with = "deserialize_sorted_sources"))]
 	sources: Vec<SourceId>,
 }
@@ -333,12 +346,18 @@ impl ContextDependencies {
 			extract,
 			inject,
 			index_levels,
+			pushed_levels: Vec::new(),
 			sources: Vec::new(),
 		}
 	}
 
 	pub fn with_index_levels(mut self, index_levels: IndexLevels) -> Self {
 		self.index_levels = index_levels;
+		self
+	}
+
+	pub fn with_pushed_levels(mut self, pushed_levels: Vec<u8>) -> Self {
+		self.pushed_levels = pushed_levels;
 		self
 	}
 
@@ -496,6 +515,7 @@ impl From<&[ContextFeature]> for ContextDependencies {
 			extract,
 			inject,
 			index_levels,
+			pushed_levels: Vec::new(),
 			sources: Vec::new(),
 		}
 	}

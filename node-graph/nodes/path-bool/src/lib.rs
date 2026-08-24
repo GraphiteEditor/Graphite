@@ -98,7 +98,7 @@ fn boolean_core<'e>(
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category("Vector: Modifier"), memoize)]
 fn boolean_operation<'e>(
-	ctx: impl Ctx + ExtractArena<'e> + core_types::ExtractIndex + core_types::InjectIndex + Copy,
+	ctx: impl Ctx + ExtractArena<'e> + core_types::InjectIndex + Copy,
 	/// The wire of vector paths to perform the boolean operation on. Nested groups are automatically flattened.
 	content: IList<Graphic>,
 	/// Which boolean operation to perform on the paths.
@@ -134,7 +134,7 @@ fn boolean_operation<'e>(
 /// The boolean operation over a plain vector level, as [`boolean_operation`].
 #[node_macro::node(category(""))]
 fn boolean_operation_vector<'e>(
-	ctx: impl Ctx + ExtractArena<'e> + core_types::ExtractIndex + core_types::InjectIndex + Copy,
+	ctx: impl Ctx + ExtractArena<'e> + core_types::InjectIndex + Copy,
 	content: IList<Vector>,
 	operation: BooleanOperation,
 ) -> Result<

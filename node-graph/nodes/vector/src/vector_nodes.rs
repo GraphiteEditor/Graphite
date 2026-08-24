@@ -237,9 +237,8 @@ fn assign_colors_graphic<'e>(
 	Ok((element, transform, layer_path))
 }
 
-/// Where each lane's colors start in the level's flattened vector run, so the
-/// level is counted once per evaluation rather than once per lane. `offsets`
-/// holds one entry per lane plus the total.
+/// Where each lane's colors start in the level's flattened vector run, valid
+/// for one key and generation. `offsets` holds one entry per lane plus the total.
 #[derive(Debug)]
 pub struct LaneOffsets {
 	key: u64,

@@ -178,6 +178,17 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let input_descriptions: Vec<_> = regular_fields.iter().map(|f| &f.description).collect();
 
+	let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth);
+	let pushed_levels = (node.output.shape.depth as i8 - subject_depth as i8).max(0) as u8;
+	let field_pushed_levels: Vec<u8> = regular_fields
+		.iter()
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) if *list_levels > 0 => *list_levels as u8,
+			ParsedFieldType::Node(_) => pushed_levels,
+			_ => 0,
+		})
+		.collect();
+
 	// Generate struct fields: data fields (concrete types) + regular fields (generic types)
 	let data_field_defs = data_fields.iter().map(|field| {
 		let name = &field.pat_ident.ident;
@@ -633,6 +644,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								name: #input_names,
 								widget_override: #widget_override,
 								description: #input_descriptions,
+								pushed_levels: #field_pushed_levels,
 								hidden: #input_hidden,
 								exposed: #exposed,
 								value_source: #value_sources,

@@ -523,10 +523,13 @@ impl ProtoNetwork {
 		};
 
 		// Compute the dependencies for each branch and combine all of them
-		for &node in &inputs {
+		let pushed_levels = self.nodes[node_index].1.context_features.pushed_levels.clone();
+		for (input, &node) in inputs.iter().enumerate() {
 			let branch = self.find_context_dependencies(node);
 
-			combined_deps |= &branch.0;
+			let mut lifted = branch.0.clone();
+			lifted.index_levels = lifted.index_levels.popped(pushed_levels.get(input).copied().unwrap_or(0));
+			combined_deps |= &lifted;
 			branch_dependencies.push(branch);
 		}
 		let mut new_deps = combined_deps.clone();

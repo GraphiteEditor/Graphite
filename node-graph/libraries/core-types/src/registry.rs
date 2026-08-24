@@ -29,6 +29,8 @@ pub struct NodeMetadata {
 pub struct FieldMetadata {
 	pub name: &'static str,
 	pub description: &'static str,
+	/// Index levels the node pushes when evaluating this input.
+	pub pushed_levels: u8,
 	pub hidden: bool,
 	pub exposed: bool,
 	pub widget_override: RegistryWidgetOverride,
