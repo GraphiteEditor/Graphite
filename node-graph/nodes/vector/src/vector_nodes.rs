@@ -163,8 +163,9 @@ fn assign_colors_extent(
 /// under the assign colors identifier.
 #[node_macro::node(category(""), extent(assign_colors_graphic_extent))]
 fn assign_colors_graphic<'e>(
-	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	ctx: impl Ctx + CacheHash + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Graphic>,
+	#[data] lane_offsets: std::sync::Arc<std::sync::Mutex<Option<LaneOffsets>>>,
 	#[default(true)] fill: bool,
 	stroke: bool,
 	gradient: IList<GradientStops>,
@@ -195,9 +196,27 @@ fn assign_colors_graphic<'e>(
 
 	// The interiors the pre-flip node reached: only a lane's DIRECT vector
 	// list, so wrapped groups keep their own styling and consume no position.
-	let count_lane = |row: usize| graphic_types::graphic::map_groups_to_legacy(content.element_ref(row)).as_vector().map_or(0, |list| list.len());
-	let length: usize = (0..content.len()).map(count_lane).sum();
-	let mut position: usize = (0..lane).map(count_lane).sum();
+	let key = {
+		let mut keyed = *ctx;
+		core_types::context::InjectIndex::set_index(&mut keyed, 0);
+		core_types::registry::cache_key(&keyed)
+	};
+	let generation = ctx.arena().generation();
+	let (length, mut position) = {
+		let mut cached = lane_offsets.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+		if !matches!(cached.as_ref(), Some(entry) if entry.key == key && entry.generation == generation) {
+			let mut offsets = Vec::with_capacity(content.len() + 1);
+			let mut running = 0;
+			offsets.push(running);
+			for row in 0..content.len() {
+				running += graphic_types::graphic::direct_vector_len(content.element_ref(row));
+				offsets.push(running);
+			}
+			*cached = Some(LaneOffsets { key, generation, offsets });
+		}
+		let entry = cached.as_ref().expect("populated above");
+		(entry.offsets[content.len()], entry.offsets[lane])
+	};
 
 	if let Some(vector_list) = element.as_vector_mut() {
 		for index in 0..vector_list.len() {
@@ -216,6 +235,16 @@ fn assign_colors_graphic<'e>(
 	}
 
 	Ok((element, transform, layer_path))
+}
+
+/// Where each lane's colors start in the level's flattened vector run, so the
+/// level is counted once per evaluation rather than once per lane. `offsets`
+/// holds one entry per lane plus the total.
+#[derive(Debug)]
+pub struct LaneOffsets {
+	key: u64,
+	generation: u64,
+	offsets: Vec<usize>,
 }
 
 #[allow(clippy::too_many_arguments)]

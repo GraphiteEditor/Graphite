@@ -770,6 +770,20 @@ const _: () = {
 };
 
 /// The graphic with every `Group` converted to its legacy form.
+/// The count [`map_groups_to_legacy`] would expose through [`Graphic::as_vector`],
+/// read from the run's lanes instead of materializing the legacy list. Mirrors
+/// [`group_to_legacy_graphic`]'s typed-run path, where `Vector` is tried first.
+pub fn direct_vector_len(graphic: &Graphic) -> usize {
+	match graphic {
+		Graphic::Vector(list) => list.len(),
+		Graphic::Group(group) => match (&group.row, &group.content) {
+			(None, core_types::record::GroupContent::Run(item)) => item.typed_lanes::<Vector>().map_or(0, |lanes| lanes.len()),
+			_ => 0,
+		},
+		_ => 0,
+	}
+}
+
 pub fn map_groups_to_legacy(graphic: &Graphic) -> Graphic {
 	match graphic {
 		Graphic::Group(group) => group_to_legacy_graphic(group),
