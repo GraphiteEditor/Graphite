@@ -194,6 +194,9 @@ fn monitor<'e>(
 	if ctx.innermost_index() == 0
 		&& let GPoll::Final(value) | GPoll::Partial(value) = &result
 	{
+		// The materialization below evaluates the level again; its frames sit
+		// above the one this eval already claimed and must not survive.
+		let mark = core_types::record::stack::sp();
 		let captured = match content.layout().depth {
 			// SAFETY: the value came from this edge, so it carries the edge's layout.
 			0 => unsafe { RecordCapture::capture(content.layout(), content.layout().rec(value), ctx.arena()) },
@@ -205,6 +208,9 @@ fn monitor<'e>(
 				LevelStatus::Pending | LevelStatus::Error(_) => None,
 			},
 		};
+		// SAFETY: the capture copies into the arena, so nothing borrows the
+		// frames left above the mark.
+		unsafe { core_types::record::stack::rewind(mark) };
 		*io.lock().unwrap() = captured.map(|output| IORecord {
 			input: CtxSnapshot::capture(ctx),
 			output,

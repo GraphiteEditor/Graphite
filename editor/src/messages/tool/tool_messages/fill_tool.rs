@@ -205,7 +205,6 @@ impl Fsm for FillToolFsmState {
 #[cfg(test)]
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
-	use graphene_std::Graphic;
 	use graphene_std::color::SRGBA8;
 	use graphene_std::vector::fill;
 
