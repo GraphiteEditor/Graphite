@@ -552,6 +552,17 @@ pub fn to_graphic_typed<T: Clone + Send + Sync + core_types::CacheHash + 'static
 	}))
 }
 
+/// An unconnected content input carries the unit, which renders as nothing like
+/// the pre-flip empty list. Registered under the to graphic identifier.
+#[node_macro::node(category(""), extent(to_graphic_unit_extent))]
+pub fn to_graphic_unit(_: impl Ctx + ExtractIndex + InjectIndex + Copy, _content: ()) -> Result<IList<Graphic>, Interrupt> {
+	Err(core_types::gpoll::GraphError::past_end().into())
+}
+
+fn to_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level: LevelIn) -> GPoll<Extent> {
+	GPoll::Final(Extent::Exactly(0))
+}
+
 /// The transitional level bridge: the wire's records as the legacy list an
 /// unconverted consumer expects, attributes copied through their erased
 /// reads. Registered under the legacy convert identifiers; the rows die with
@@ -570,6 +581,7 @@ pub fn level_to_list<T: Clone + Send + Sync + CacheHash + 'static>(
 pub use _level_to_list_mod::level_to_list_entries;
 pub use _to_graphic_element_mod::to_graphic_element_entries;
 pub use _to_graphic_typed_mod::to_graphic_typed_entries;
+pub use _to_graphic_unit_mod::to_graphic_unit_entries;
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"), extent(flatten_graphic_extent))]

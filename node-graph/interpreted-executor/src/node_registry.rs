@@ -122,6 +122,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.into_iter()
 			.map(|entry| (graphene_std::graphic::to_graphic::IDENTIFIER.clone(), entry)),
 	);
+	// The unit row of To Graphic: an unconnected content input renders as nothing.
+	node_types.extend(
+		graphene_std::graphic::to_graphic_unit_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::graphic::to_graphic::IDENTIFIER.clone(), entry)),
+	);
 	// The transitional level bridge: a leveled wire materializes into the legacy
 	// list an unconverted consumer expects. The rows are keyed under the legacy
 	// convert identifiers and die with the last legacy consumer.
