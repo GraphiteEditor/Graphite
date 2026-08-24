@@ -478,10 +478,12 @@ impl StatusCell {
 		}
 	}
 
+	#[inline(always)]
 	pub fn no_partial() -> Self {
 		Self { no_partial: true, ..Self::new() }
 	}
 
+	#[inline(always)]
 	pub fn eval_input<Input, N: Node<Input>>(&self, input_index: usize, node: &N, input: &Input) -> Result<N::Output, Interrupt> {
 		match node.eval(input) {
 			GPoll::Final(value) => Ok(value),
@@ -506,6 +508,7 @@ impl StatusCell {
 
 	/// A new cell holding a copy of the accumulated status; the error stays in
 	/// place, cloned rather than taken.
+	#[inline(always)]
 	pub fn snapshot(&self) -> StatusCell {
 		let error = self.error.take();
 		self.error.set(error.clone());
@@ -516,6 +519,7 @@ impl StatusCell {
 		}
 	}
 
+	#[inline(always)]
 	pub fn finish<T>(self, value: T) -> GPoll<T> {
 		match (self.error.take(), self.finality.get()) {
 			(Some(error), _) => GPoll::Fallback(Box::new((value, error))),
@@ -524,6 +528,7 @@ impl StatusCell {
 		}
 	}
 
+	#[inline(always)]
 	pub fn merge<T>(self, poll: GPoll<T>) -> GPoll<T> {
 		match poll {
 			GPoll::Final(value) => self.finish(value),
@@ -554,6 +559,7 @@ impl<'a, N> LazyInput<'a, N> {
 		Self { node, cell, input_index }
 	}
 
+	#[inline(always)]
 	pub fn eval<Input>(&self, ctx: &Input) -> Result<N::Output, Interrupt>
 	where
 		N: Node<Input>,
@@ -563,6 +569,7 @@ impl<'a, N> LazyInput<'a, N> {
 
 	/// The edge's composite extent, for kernels that split or shift indices
 	/// over their sources.
+	#[inline(always)]
 	pub fn extent<Input>(&self, ctx: &Input, at: Level) -> GPoll<Extent>
 	where
 		N: Node<Input>,
