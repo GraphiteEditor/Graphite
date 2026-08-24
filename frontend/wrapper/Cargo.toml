@@ -11,33 +11,38 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [features]
-default = ["gpu", "shader-nodes"]
-gpu = ["editor/gpu"]
-shader-nodes = ["graphene-std/shader-nodes", "gpu"]
-native = ["node-macro/disable-registration"]
+default = ["gpu", "shader-nodes", "web"]
+web = ["editor", "editor?/wasm"]
+editor = ["dep:editor", "dep:graphene-std", "dep:graph-craft", "dep:node-macro", "dep:wgpu"]
+gpu = ["editor?/gpu"]
+shader-nodes = ["graphene-std?/shader-nodes", "gpu"]
+native = ["node-macro?/disable-registration"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Local dependencies
-editor = { path = "../../editor", package = "graphite-editor", features = ["gpu", "wasm"] }
-graphene-std = { workspace = true }
+editor = { path = "../../editor", package = "graphite-editor", optional = true }
+graphite-proc-macros = { workspace = true }
+graphene-std = { workspace = true, optional = true }
 
 # Workspace dependencies
-bytemuck = { workspace = true }
-graph-craft = { workspace = true }
+graph-craft = { workspace = true, optional = true }
 log = { workspace = true }
 serde = { workspace = true }
 wasm-bindgen = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-wgpu = { workspace = true }
+wgpu = { workspace = true, optional = true }
 web-sys = { workspace = true }
-ron = { workspace = true }
 serde_json = { workspace = true }
-node-macro = { workspace = true }
+tsify = { workspace = true }
+node-macro = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_bytes = { workspace = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

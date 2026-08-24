@@ -14,13 +14,12 @@ use winit::event::{ButtonSource, ElementState, MouseButton, StartCause, WindowEv
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
-use graphite_desktop_ui::{UiCommand, UiInstance};
-
 use crate::dirs;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
+use crate::ui::{UiCommand, UiInstance};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Preferences};
 use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};

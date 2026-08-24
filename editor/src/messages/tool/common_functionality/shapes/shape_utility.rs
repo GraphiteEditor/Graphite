@@ -16,8 +16,8 @@ use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::NodeInputDecleration;
-use graphene_std::subpath::{self, Subpath};
+use graphene_std::math::float_noise::round_away_float_noise;
+use graphene_std::vector::algorithms::shapes::{arc_bezpath, regular_polygon_bezpath, star_polygon_bezpath};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
@@ -214,7 +214,7 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 	let new_layer = NodeGraphLayer::new(layer, &document.network_interface);
 
 	if new_layer
-		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER), 1)
+		.parameter_value(graphene_std::vector::generator_nodes::regular_polygon::SidesInput)
 		.unwrap_or(&TaggedValue::U32(0))
 		.to_u32()
 		% 2 == 1
@@ -224,14 +224,14 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(polygon_node_id, 2),
+			input_connector: InputConnector::node(polygon_node_id, graphene_std::vector::generator_nodes::regular_polygon::RadiusInput),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
 		});
 		return;
 	}
 
 	if new_layer
-		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER), 1)
+		.parameter_value(graphene_std::vector::generator_nodes::star::SidesInput)
 		.unwrap_or(&TaggedValue::U32(0))
 		.to_u32()
 		% 2 == 1
@@ -241,11 +241,11 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, 2),
+			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius1Input),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, 3),
+			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius2Input),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.25), false),
 		});
 	}
@@ -353,7 +353,7 @@ pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &Doc
 pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(SpiralType, f64, f64, f64, f64, f64)> {
 	use graphene_std::vector::generator_nodes::spiral::*;
 
-	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::spiral::IDENTIFIER))?;
+	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
 	let (
 		Some(&TaggedValue::SpiralType(spiral_type)),
@@ -363,12 +363,12 @@ pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &Document
 		Some(&TaggedValue::F64(turns)),
 		Some(&TaggedValue::F64(angle_resolution)),
 	) = (
-		node_inputs.get(SpiralTypeInput::INDEX)?.as_value(),
-		node_inputs.get(StartAngleInput::INDEX)?.as_value(),
-		node_inputs.get(InnerRadiusInput::INDEX)?.as_value(),
-		node_inputs.get(OuterRadiusInput::INDEX)?.as_value(),
-		node_inputs.get(TurnsInput::INDEX)?.as_value(),
-		node_inputs.get(AngularResolutionInput::INDEX)?.as_value(),
+		parameters.value(SpiralTypeInput),
+		parameters.value(StartAngleInput),
+		parameters.value(InnerRadiusInput),
+		parameters.value(OuterRadiusInput),
+		parameters.value(TurnsInput),
+		parameters.value(AngularResolutionInput),
 	)
 	else {
 		return None;
@@ -443,12 +443,9 @@ pub fn star_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessa
 	let viewport = document.metadata().transform_to_viewport(layer);
 
 	let points = sides as u64;
-	let diameter: f64 = radius1 * 2.;
-	let inner_diameter = radius2 * 2.;
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(star_polygon_bezpath(DVec2::ZERO, points, radius1, radius2))];
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))];
-
-	overlay_context.outline(subpath.iter(), viewport, None);
+	overlay_context.outline(targets.iter(), viewport, None);
 }
 
 /// Outlines the geometric shape made by polygon-node
@@ -461,11 +458,9 @@ pub fn polygon_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMe
 	let viewport = document.metadata().transform_to_viewport(layer);
 
 	let points = sides as u64;
-	let radius: f64 = radius * 2.;
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(regular_polygon_bezpath(DVec2::ZERO, points, radius))];
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))];
-
-	overlay_context.outline(subpath.iter(), viewport, None);
+	overlay_context.outline(targets.iter(), viewport, None);
 }
 
 /// Outlines the geometric shape made by an Arc node
@@ -476,19 +471,11 @@ pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessag
 		return;
 	};
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_arc(
-		radius,
-		start_angle / 360. * std::f64::consts::TAU,
-		sweep_angle / 360. * std::f64::consts::TAU,
-		match arc_type {
-			ArcType::Open => subpath::ArcType::Open,
-			ArcType::Closed => subpath::ArcType::Closed,
-			ArcType::PieSlice => subpath::ArcType::PieSlice,
-		},
-	))];
+	let arc = arc_bezpath(radius, start_angle / 360. * std::f64::consts::TAU, sweep_angle / 360. * std::f64::consts::TAU, arc_type);
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(arc)];
 	let viewport = document.metadata().transform_to_viewport(layer);
 
-	overlay_context.outline(subpath.iter(), viewport, None);
+	overlay_context.outline(targets.iter(), viewport, None);
 }
 
 /// Check if the the cursor is inside the geometric star shape made by the Star node without any upstream node modifications
@@ -571,7 +558,17 @@ pub fn wrap_to_tau(angle: f64) -> f64 {
 }
 
 pub fn format_rounded(value: f64, precision: usize) -> String {
-	format!("{value:.precision$}").trim_end_matches('0').trim_end_matches('.').to_string()
+	// Denoised values within floating point noise of zero (including -0) display as unsigned zero, unless the precision is fine enough to display them
+	let value = round_away_float_noise(value);
+	let value = if value.abs() < f64::min(1e-12, 0.5 * 10_f64.powi(-(precision as i32))) { 0. } else { value };
+	let formatted = format!("{value:.precision$}");
+
+	// Trailing zeros are trimmed only when the display is exact, so a truncated value keeps its decimal places (like "0.00" or "3.10") to indicate the truncation
+	if formatted.parse::<f64>() == Ok(value) {
+		formatted.trim_end_matches('0').trim_end_matches('.').to_string()
+	} else {
+		formatted
+	}
 }
 
 /// Gives the approximated angle to display in degrees, given an angle in degrees.
@@ -599,17 +596,61 @@ pub fn calculate_arc_text_transform(angle: f64, offset_angle: f64, center: DVec2
 pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(GridType, DVec2, u32, u32, DVec2)> {
 	use graphene_std::vector::generator_nodes::grid::*;
 
-	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER))?;
+	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
 	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::U32(columns)), Some(&TaggedValue::U32(rows)), Some(&TaggedValue::DVec2(angles))) = (
-		node_inputs.get(GridTypeInput::INDEX)?.as_value(),
-		node_inputs.get(SpacingInput::<f64>::INDEX)?.as_value(),
-		node_inputs.get(ColumnsInput::INDEX)?.as_value(),
-		node_inputs.get(RowsInput::INDEX)?.as_value(),
-		node_inputs.get(AnglesInput::INDEX)?.as_value(),
+		parameters.value(GridTypeInput),
+		parameters.value(SpacingInput),
+		parameters.value(ColumnsInput),
+		parameters.value(RowsInput),
+		parameters.value(AnglesInput),
 	) else {
 		return None;
 	};
 
 	Some((grid_type, spacing, columns, rows, angles))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn format_rounded_trims_trailing_zeros_when_exact() {
+		assert_eq!(format_rounded(0.25, 2), "0.25");
+		assert_eq!(format_rounded(3.1, 2), "3.1");
+		assert_eq!(format_rounded(45., 2), "45");
+	}
+
+	#[test]
+	fn format_rounded_keeps_decimal_places_when_truncated() {
+		assert_eq!(format_rounded(0.0003, 2), "0.00");
+		assert_eq!(format_rounded(-0.0003, 2), "-0.00");
+		assert_eq!(format_rounded(0.0003, 3), "0.000");
+		assert_eq!(format_rounded(3.10001, 2), "3.10");
+		assert_eq!(format_rounded(45.001, 2), "45.00");
+		assert_eq!(format_rounded(std::f64::consts::PI, 2), "3.14");
+	}
+
+	#[test]
+	fn format_rounded_denoises_before_judging_exactness() {
+		assert_eq!(format_rounded(29.999999999999996, 2), "30");
+		assert_eq!(format_rounded(45.00000000000001, 2), "45");
+	}
+
+	#[test]
+	fn format_rounded_shows_true_and_noise_zeros_plainly() {
+		assert_eq!(format_rounded(0., 2), "0");
+		assert_eq!(format_rounded(-0., 2), "0");
+		assert_eq!(format_rounded(1e-15, 2), "0");
+		assert_eq!(format_rounded(-1e-15, 2), "0");
+	}
+
+	#[test]
+	fn format_rounded_keeps_tiny_values_at_displayable_precision() {
+		assert_eq!(format_rounded(5e-13, 20), "0.0000000000005");
+		assert_eq!(format_rounded(-5e-13, 20), "-0.0000000000005");
+		assert_eq!(format_rounded(0., 20), "0");
+		assert_eq!(format_rounded(-0., 20), "0");
+	}
 }

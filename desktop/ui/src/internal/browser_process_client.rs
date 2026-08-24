@@ -8,6 +8,8 @@ use crate::ipc::{MessageType, UnpackMessage, UnpackedMessage};
 
 use super::context_menu_handler::ContextMenuHandlerImpl;
 use super::display_handler::DisplayHandlerImpl;
+#[cfg(target_os = "macos")]
+use super::keyboard_handler::KeyboardHandlerImpl;
 use super::life_span_handler::LifeSpanHandlerImpl;
 use super::load_handler::LoadHandlerImpl;
 use super::render_handler::RenderHandlerImpl;
@@ -83,6 +85,11 @@ impl ImplClient for BrowserProcessClientImpl {
 
 	fn context_menu_handler(&self) -> Option<cef::ContextMenuHandler> {
 		Some(ContextMenuHandler::new(ContextMenuHandlerImpl::new()))
+	}
+
+	#[cfg(target_os = "macos")]
+	fn keyboard_handler(&self) -> Option<cef::KeyboardHandler> {
+		Some(cef::KeyboardHandler::new(KeyboardHandlerImpl::new()))
 	}
 
 	fn get_raw(&self) -> *mut _cef_client_t {

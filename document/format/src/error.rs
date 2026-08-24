@@ -5,8 +5,8 @@
 
 use document_container::ContainerError;
 #[cfg(feature = "conversion")]
-use graph_storage::CommitError;
-use graph_storage::CrdtError;
+use document_graph_storage::CommitError;
+use document_graph_storage::CrdtError;
 use graphene_resource::ResourceHash;
 
 use crate::codec::CodecError;

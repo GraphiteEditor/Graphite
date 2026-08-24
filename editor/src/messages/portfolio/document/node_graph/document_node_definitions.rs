@@ -5,8 +5,7 @@ use super::node_properties::{self, ParameterWidgetsInfo};
 use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
-	Vec2InputSettings, WidgetOverride,
+	InputMetadata, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, Vec2InputSettings, WidgetOverride,
 };
 use crate::messages::prelude::{FontsMessage, FontsMessageHandler, Message, ResourceMessageHandler, Responses};
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -14,16 +13,14 @@ use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graph_craft::{concrete, descriptor};
+use graph_craft::{concrete, list};
 use graphene_std::extract_xy::XY;
-use graphene_std::list::List;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, Raster};
 #[allow(unused_imports)]
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::*;
-use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
@@ -54,6 +51,13 @@ impl NodePropertiesContext<'_> {
 		}
 	}
 }
+
+/// Input position of the location parameter on the "Artboard" layer template, which follows the two layer-shaped inputs (stack and content) and maps through to the inner Create Artboard proto node.
+pub const ARTBOARD_LOCATION_INPUT_INDEX: usize = 2;
+/// Input position of the dimensions parameter on the "Artboard" layer template, which follows the two layer-shaped inputs (stack and content) and maps through to the inner Create Artboard proto node.
+pub const ARTBOARD_DIMENSIONS_INPUT_INDEX: usize = 3;
+/// Input position of the control path parameter on the "Blend" network node template.
+pub const BLEND_PATH_INPUT_INDEX: usize = 4;
 
 /// The key used to access definitions for a network node or proto node.
 /// For proto nodes, this is their [`ProtoNodeIdentifier`].
@@ -89,12 +93,8 @@ impl DefinitionIdentifier {
 			DefinitionIdentifier::Network(data) => format!("NETWORK:{}", data),
 		}
 	}
-}
 
-impl From<Value> for DefinitionIdentifier {
-	fn from(value: Value) -> Self {
-		let s = value.as_str().expect("DefinitionIdentifier value must be a string");
-
+	pub fn from_serialized(s: &str) -> Self {
 		match s.split_once(':') {
 			Some(("PROTONODE", data)) => DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::with_owned_string(data.to_string())),
 			Some(("NETWORK", data)) => DefinitionIdentifier::Network(data.to_string()),
@@ -109,7 +109,7 @@ pub struct DocumentNodeDefinition {
 	/// Used to create the [`DefinitionIdentifier::Network`] identifier.
 	pub identifier: &'static str,
 
-	/// All data required to construct a [`DocumentNode`] and [`DocumentNodeMetadata`]
+	/// The default [`NodeTemplate`] this definition instantiates.
 	pub node_template: NodeTemplate,
 
 	/// Definition specific data. In order for the editor to access this data, the reference will be used.
@@ -138,14 +138,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Custom Node",
 			category: "General",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork::default()),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata::default()),
-					..Default::default()
-				},
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate::default()),
+				..Default::default()
 			},
 			description: Cow::Borrowed("An empty node network you can use to create your own custom nodes."),
 			properties: None,
@@ -154,128 +148,69 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Merge",
 			category: "General",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(5), 0)],
-						nodes: [
-							// Primary (bottom) input type coercion
-							DocumentNode {
-								inputs: vec![NodeInput::import(generic!(T), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::to_graphic::IDENTIFIER),
-								..Default::default()
-							},
-							// Secondary (left) input type coercion
-							DocumentNode {
-								inputs: vec![NodeInput::import(generic!(T), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::wrap_graphic::IDENTIFIER),
-								..Default::default()
-							},
-							// Derive the parent layer's NodeId from the document path
-							DocumentNode {
-								inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-								..Default::default()
-							},
-							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
-							// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
-							DocumentNode {
-								inputs: vec![
-									NodeInput::node(NodeId(1), 0),
-									NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
-									NodeInput::node(NodeId(2), 0),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
-								..Default::default()
-							},
-							// The monitor node is used to display a thumbnail in the UI
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(3), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-								skip_deduplication: true,
-								..Default::default()
-							},
-							DocumentNode {
-								call_argument: generic!(T),
-								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Graphic>), true), NodeInput::type_default(descriptor!(List<Graphic>), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Base", "TODO").into(), ("Content", "TODO").into()],
-					output_names: vec!["Out".to_string()],
-					node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								// 0: to_graphic
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 1: wrap_graphic
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 2: path_of_subgraph
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 3: write_attribute
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 4: monitor
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 5: extend
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+					exports: vec![NodeInput::node(NodeId(5), 0)],
+					nodes: [
+						// Primary (bottom) input type coercion
+						NodeTemplate {
+							inputs: vec![NodeInput::import(generic!(T), 0)],
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::as_graphic::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -2)),
 							..Default::default()
 						},
-						..Default::default()
-					}),
+						// Secondary (left) input type coercion
+						NodeTemplate {
+							inputs: vec![NodeInput::import(generic!(T), 1)],
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::into_group::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -1)),
+							..Default::default()
+						},
+						// Derive the parent layer's NodeId from the document path
+						NodeTemplate {
+							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 0)),
+							..Default::default()
+						},
+						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
+						// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
+						NodeTemplate {
+							inputs: vec![
+								NodeInput::node(NodeId(1), 0),
+								NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
+								NodeInput::node(NodeId(2), 0),
+							],
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
+							..Default::default()
+						},
+						// The monitor node is used to display a thumbnail in the UI
+						NodeTemplate {
+							inputs: vec![NodeInput::node(NodeId(3), 0)],
+							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
+							skip_deduplication: true,
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
+							..Default::default()
+						},
+						NodeTemplate {
+							call_argument: generic!(T),
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -2)),
+							..Default::default()
+						},
+					]
+					.into_iter()
+					.enumerate()
+					.map(|(id, node)| (NodeId(id as u64), node))
+					.collect(),
 					..Default::default()
-				},
+				}),
+				inputs: vec![NodeInput::type_default(list!(Graphic), true), NodeInput::type_default(list!(Graphic), true)],
+				input_metadata: vec![("Base", "TODO").into(), ("Content", "TODO").into()],
+				output_names: vec!["Out".to_string()],
+				node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
+				..Default::default()
 			},
 			description: Cow::Borrowed("Merges the provided content as a new item in the layer's compositing stack."),
 			properties: None,
@@ -284,157 +219,105 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Artboard",
 			category: "General",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(4), 0)],
-						nodes: [
-							DocumentNode {
-								call_argument: generic!(T),
-								implementation: DocumentNodeImplementation::ProtoNode(artboard::create_artboard::IDENTIFIER),
-								inputs: vec![
-									NodeInput::import(concrete!(TaggedValue), 1),
-									NodeInput::import(concrete!(TaggedValue), 2),
-									NodeInput::import(concrete!(TaggedValue), 3),
-									NodeInput::import(concrete!(TaggedValue), 4),
-									NodeInput::import(concrete!(TaggedValue), 5),
-								],
-								..Default::default()
-							},
-							// Derive the parent layer's NodeId from the document path
-							DocumentNode {
-								inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-								..Default::default()
-							},
-							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
-							// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
-							DocumentNode {
-								inputs: vec![
-									NodeInput::node(NodeId(0), 0),
-									NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
-									NodeInput::node(NodeId(1), 0),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
-								..Default::default()
-							},
-							// The monitor node is used to display a thumbnail in the UI.
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-								call_argument: generic!(T),
-								skip_deduplication: true,
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(List<Artboard>))), 0),
-									NodeInput::node(NodeId(3), 0),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Artboard>), true),
-						NodeInput::type_default(descriptor!(List<Graphic>), true),
-						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
-						NodeInput::value(TaggedValue::Color(Some(Color::WHITE)), false),
-						NodeInput::value(TaggedValue::Bool(true), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![
-						("Base", "TODO").into(),
-						InputMetadata::with_name_description_override("Content", "TODO", WidgetOverride::Hidden),
-						InputMetadata::with_name_description_override(
-							"Location",
-							"TODO",
-							WidgetOverride::Vec2(Vec2InputSettings {
-								x: "X".to_string(),
-								y: "Y".to_string(),
-								unit: " px".to_string(),
-								is_integer: true,
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Dimensions",
-							"TODO",
-							WidgetOverride::Vec2(Vec2InputSettings {
-								x: "W".to_string(),
-								y: "H".to_string(),
-								unit: " px".to_string(),
-								is_integer: true,
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override("Background", "TODO", WidgetOverride::Custom("artboard_background".to_string())),
-						("Clip", "TODO").into(),
-					],
-					output_names: vec!["Out".to_string()],
-					node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								// 0: create_artboard
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 1: path_of_subgraph
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 2: write_attribute
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 3: monitor
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 4: extend
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+					exports: vec![NodeInput::node(NodeId(4), 0)],
+					nodes: [
+						NodeTemplate {
+							call_argument: generic!(T),
+							implementation: NodeTemplateImplementation::ProtoNode(artboard::create_artboard::IDENTIFIER),
+							inputs: vec![
+								NodeInput::import(Type::Fn(concrete!(Context).into(), generic!(T).into()), 1),
+								NodeInput::import(item!(TaggedValue), 2),
+								NodeInput::import(item!(TaggedValue), 3),
+								NodeInput::import(item!(TaggedValue), 4),
+								NodeInput::import(item!(TaggedValue), 5),
+							],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
 							..Default::default()
 						},
-						..Default::default()
-					}),
+						// Derive the parent layer's NodeId from the document path
+						NodeTemplate {
+							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 3)),
+							..Default::default()
+						},
+						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
+						// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
+						NodeTemplate {
+							inputs: vec![
+								NodeInput::node(NodeId(0), 0),
+								NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
+								NodeInput::node(NodeId(1), 0),
+							],
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
+							..Default::default()
+						},
+						// The monitor node is used to display a thumbnail in the UI.
+						NodeTemplate {
+							inputs: vec![NodeInput::node(NodeId(2), 0)],
+							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
+							call_argument: generic!(T),
+							skip_deduplication: true,
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
+							..Default::default()
+						},
+						NodeTemplate {
+							inputs: vec![
+								NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(list!(Artboard))), 0),
+								NodeInput::node(NodeId(3), 0),
+							],
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
+							..Default::default()
+						},
+					]
+					.into_iter()
+					.enumerate()
+					.map(|(id, node)| (NodeId(id as u64), node))
+					.collect(),
 					..Default::default()
-				},
+				}),
+				inputs: vec![
+					NodeInput::type_default(list!(Artboard), true),
+					NodeInput::type_default(list!(Graphic), true),
+					NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+					NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
+					NodeInput::value(TaggedValue::Color(Color::WHITE), false),
+					NodeInput::value(TaggedValue::Bool(true), false),
+				],
+				input_metadata: vec![
+					("Base", "TODO").into(),
+					InputMetadata::with_name_description_override("Content", "TODO", WidgetOverride::Hidden),
+					InputMetadata::with_name_description_override(
+						"Location",
+						"TODO",
+						WidgetOverride::Vec2(Vec2InputSettings {
+							x: "X".to_string(),
+							y: "Y".to_string(),
+							unit: " px".to_string(),
+							is_integer: true,
+							..Default::default()
+						}),
+					),
+					InputMetadata::with_name_description_override(
+						"Dimensions",
+						"TODO",
+						WidgetOverride::Vec2(Vec2InputSettings {
+							x: "W".to_string(),
+							y: "H".to_string(),
+							unit: " px".to_string(),
+							is_integer: true,
+							..Default::default()
+						}),
+					),
+					InputMetadata::with_name_description_override("Background", "TODO", WidgetOverride::Custom("artboard_background".to_string())),
+					("Clip", "TODO").into(),
+				],
+				output_names: vec!["Out".to_string()],
+				node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
+				..Default::default()
 			},
 			description: Cow::Borrowed("Creates a new Artboard which can be used as a working surface."),
 			properties: None,
@@ -443,322 +326,172 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Blend",
 			category: "Vector",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(16), 0)],
-						nodes: [
-							// 0: Separate Subpaths (split path into individual subpaths)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::separate_subpaths::IDENTIFIER),
-								inputs: vec![NodeInput::import(generic!(T), 4)],
-								..Default::default()
-							},
-							// 1: Count Elements (number of subpaths)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::count_elements::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								..Default::default()
-							},
-							// 2: Max (clamp subpath count to at least 1 for empty path case)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::value(TaggedValue::F64(1.), false)],
-								..Default::default()
-							},
-							// 3: Floor (integer count per subpath)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::floor::IDENTIFIER),
-								inputs: vec![NodeInput::import(concrete!(f64), 1)],
-								..Default::default()
-							},
-							// 4: Multiply (total_instances = count × subpath_count)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::multiply::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(2), 0)],
-								..Default::default()
-							},
-							// 5: Subtract (count - 1, open subpath denominator)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::subtract::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::value(TaggedValue::F64(1.), false)],
-								..Default::default()
-							},
-							// 6: Read Index (current repetition index)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(context::read_index::IDENTIFIER),
-								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::U32(0), false)],
-								..Default::default()
-							},
-							// 7: Divide (index / count)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::divide::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(6), 0), NodeInput::node(NodeId(17), 0)],
-								..Default::default()
-							},
-							// 8: Floor (floor(index / count) = subpath index)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::floor::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(7), 0)],
-								..Default::default()
-							},
-							// 9: Modulo (index % count = local index within subpath)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::modulo::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(6), 0), NodeInput::node(NodeId(17), 0), NodeInput::value(TaggedValue::Bool(true), false)],
-								..Default::default()
-							},
-							// 10: Path Is Closed (check if current subpath is closed)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::path_is_closed::IDENTIFIER),
-								inputs: vec![NodeInput::import(generic!(T), 4), NodeInput::node(NodeId(8), 0)],
-								..Default::default()
-							},
-							// 11: Switch (closed → count, open → max(count - 1, 1) as denominator)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::switch::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(10), 0), NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(18), 0)],
-								..Default::default()
-							},
-							// 12: Divide (local_index / denominator = within-subpath fraction)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::divide::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(9), 0), NodeInput::node(NodeId(11), 0)],
-								..Default::default()
-							},
-							// 13: Multiply (fraction × 0.9999999999 to avoid overflowing to the next subpath)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::multiply::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(12), 0), NodeInput::value(TaggedValue::F64(0.9999999999), false)],
-								..Default::default()
-							},
-							// 14: Add (subpath_index + clamped fraction = progression)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::add::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(8), 0), NodeInput::node(NodeId(13), 0)],
-								..Default::default()
-							},
-							// 15: Morph (content, progression, reverse, distribution, path)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::morph::IDENTIFIER),
-								inputs: vec![
-									NodeInput::import(generic!(T), 0),
-									NodeInput::node(NodeId(14), 0),
-									NodeInput::value(TaggedValue::Bool(false), false),
-									NodeInput::import(concrete!(vector::misc::InterpolationDistribution), 3),
-									NodeInput::import(generic!(T), 4),
-								],
-								..Default::default()
-							},
-							// 16: Repeat
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(repeat_nodes::repeat::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(15), 0), NodeInput::node(NodeId(4), 0), NodeInput::import(generic!(T), 2)],
-								..Default::default()
-							},
-							// 17: Max (clamp count to at least 1)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(3), 0), NodeInput::value(TaggedValue::F64(1.), false)],
-								..Default::default()
-							},
-							// 18: Max (clamp open-path denominator to at least 1 to avoid division by zero when count = 1)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(5), 0), NodeInput::value(TaggedValue::F64(1.), false)],
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Vector>), true),
-						NodeInput::value(TaggedValue::F64(10.), false),
-						NodeInput::value(TaggedValue::Bool(Default::default()), false),
-						NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
-						NodeInput::type_default(descriptor!(List<Vector>), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![
-						("Content", "TODO").into(),
-						("Count", "TODO").into(),
-						("Reverse", "TODO").into(),
-						("Distribution", "TODO").into(),
-						("Path", "TODO").into(),
-					],
-					output_names: vec!["Out".to_string()],
-					node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								// 0: Separate Subpaths
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 1: Count Elements
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 2)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 2: Max (subpath count)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(9, 2)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 3: Floor (count)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 13)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 4: Multiply (total items)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 5: Subtract (count - 1)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 14)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 6: Read Index
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 7)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 7: Divide (index / count)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 10)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 8: Floor (subpath index)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 4)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 9: Modulo (local index)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 7)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 10: Path Is Closed
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 2)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 11: Switch (denominator)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 12)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 12: Divide (within-subpath fraction)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 7)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 13: Multiply (clamp fraction)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 7)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 14: Add (progression)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(37, 4)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 15: Morph
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(44, 3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 16: Repeat
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(51, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 17: Max (clamp count)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(9, 13)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 18: Max (clamp open-path denominator)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 14)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+					exports: vec![NodeInput::node(NodeId(16), 0)],
+					nodes: [
+						// 0: Separate Subpaths (split path into individual subpaths)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(vector::separate_subpaths::IDENTIFIER),
+							inputs: vec![NodeInput::import(generic!(T), 4)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 0)),
 							..Default::default()
 						},
-						..Default::default()
-					}),
+						// 1: List Length (number of subpaths)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(vector::list_length::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 2)),
+							..Default::default()
+						},
+						// 2: Max (clamp subpath count to at least 1 for empty path case)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::value(TaggedValue::F64(1.), false)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(9, 2)),
+							..Default::default()
+						},
+						// 3: Floor (integer count per subpath)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::floor::IDENTIFIER),
+							inputs: vec![NodeInput::import(item!(f64), 1)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 13)),
+							..Default::default()
+						},
+						// 4: Multiply (total_instances = count × subpath_count)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::multiply::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(2), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 1)),
+							..Default::default()
+						},
+						// 5: Subtract (count - 1, open subpath denominator)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::subtract::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::value(TaggedValue::F64(1.), false)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 14)),
+							..Default::default()
+						},
+						// 6: Read Index (current repetition index)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(context::read_index::IDENTIFIER),
+							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::U32(0), false)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 7)),
+							..Default::default()
+						},
+						// 7: Divide (index / count)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::divide::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(6), 0), NodeInput::node(NodeId(17), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 10)),
+							..Default::default()
+						},
+						// 8: Floor (floor(index / count) = subpath index)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::floor::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(7), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 4)),
+							..Default::default()
+						},
+						// 9: Modulo (index % count = local index within subpath)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::modulo::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(6), 0), NodeInput::node(NodeId(17), 0), NodeInput::value(TaggedValue::Bool(true), false)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 7)),
+							..Default::default()
+						},
+						// 10: Path Is Closed (check if current subpath is closed)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(vector::path_is_closed::IDENTIFIER),
+							inputs: vec![NodeInput::import(generic!(T), 4), NodeInput::node(NodeId(8), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 2)),
+							..Default::default()
+						},
+						// 11: Switch (closed → count, open → max(count - 1, 1) as denominator)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::switch::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(10), 0), NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(18), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 12)),
+							..Default::default()
+						},
+						// 12: Divide (local_index / denominator = within-subpath fraction)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::divide::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(9), 0), NodeInput::node(NodeId(11), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 7)),
+							..Default::default()
+						},
+						// 13: Multiply (fraction × 0.9999999999 to avoid overflowing to the next subpath)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::multiply::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(12), 0), NodeInput::value(TaggedValue::F64(0.9999999999), false)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 7)),
+							..Default::default()
+						},
+						// 14: Add (subpath_index + clamped fraction = progression)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::add::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(8), 0), NodeInput::node(NodeId(13), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(37, 4)),
+							..Default::default()
+						},
+						// 15: Morph (content, progression, reverse, distribution, path)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(vector::morph::IDENTIFIER),
+							inputs: vec![
+								NodeInput::import(generic!(T), 0),
+								NodeInput::node(NodeId(14), 0),
+								NodeInput::value(TaggedValue::Bool(false), false),
+								NodeInput::import(item!(vector::misc::InterpolationDistribution), 3),
+								NodeInput::import(item!(Vector), 4),
+							],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(44, 3)),
+							..Default::default()
+						},
+						// 16: Repeat
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(repeat_nodes::repeat::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(15), 0), NodeInput::node(NodeId(4), 0), NodeInput::import(generic!(T), 2)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(51, 0)),
+							..Default::default()
+						},
+						// 17: Max (clamp count to at least 1)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(3), 0), NodeInput::value(TaggedValue::F64(1.), false)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(9, 13)),
+							..Default::default()
+						},
+						// 18: Max (clamp open-path denominator to at least 1 to avoid division by zero when count = 1)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(5), 0), NodeInput::value(TaggedValue::F64(1.), false)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 14)),
+							..Default::default()
+						},
+					]
+					.into_iter()
+					.enumerate()
+					.map(|(id, node)| (NodeId(id as u64), node))
+					.collect(),
 					..Default::default()
-				},
+				}),
+				inputs: vec![
+					NodeInput::type_default(list!(Vector), true),
+					NodeInput::value(TaggedValue::F64(10.), false),
+					NodeInput::value(TaggedValue::Bool(Default::default()), false),
+					NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
+					NodeInput::type_default(list!(Vector), false),
+				],
+				input_metadata: vec![
+					("Content", "TODO").into(),
+					("Count", "TODO").into(),
+					("Reverse", "TODO").into(),
+					("Distribution", "TODO").into(),
+					("Path", "TODO").into(),
+				],
+				output_names: vec!["Out".to_string()],
+				node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+				..Default::default()
 			},
 			description: Cow::Borrowed("TODO"),
 			properties: None,
@@ -767,150 +500,77 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Origins to Polyline",
 			category: "Vector",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(7), 0)],
-						nodes: [
-							// 0: Read Vector
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(context::read_vector::IDENTIFIER),
-								inputs: vec![NodeInput::value(TaggedValue::None, false)],
-								..Default::default()
-							},
-							// 1: Extract Transform
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::extract_transform::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								..Default::default()
-							},
-							// 2: Decompose Translation
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::decompose_translation::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								..Default::default()
-							},
-							// 3: As Vector (auto-converts the decomposed translation into a single-anchor List<Vector>)
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::as_vector::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(2), 0)],
-								..Default::default()
-							},
-							// 4: Flatten Vector
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(graphic_nodes::graphic::flatten_vector::IDENTIFIER),
-								inputs: vec![NodeInput::import(generic!(T), 0)],
-								..Default::default()
-							},
-							// 5: Map
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::map::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
-								..Default::default()
-							},
-							// 6: Flatten Path
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::flatten_path::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(5), 0)],
-								..Default::default()
-							},
-							// 7: Points to Polyline
-							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::points_to_polyline::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(6), 0), NodeInput::value(TaggedValue::Bool(false), false)],
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Vector>), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Vector", "TODO").into()],
-					output_names: vec!["Vector".to_string()],
-					node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								// 0: Read Vector
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 1: Extract Transform
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 2: Decompose Transform
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 3: As Vector
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 4: Flatten Vector
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 5: Map
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(28, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 6: Flatten Path
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(35, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 7: Points to Polyline
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(42, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+					exports: vec![NodeInput::node(NodeId(7), 0)],
+					nodes: [
+						// 0: Read Vector
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(context::read_vector::IDENTIFIER),
+							inputs: vec![NodeInput::value(TaggedValue::None, false)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 1)),
 							..Default::default()
 						},
-						..Default::default()
-					}),
+						// 1: Extract Transform
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(transform_nodes::extract_transform::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 1)),
+							..Default::default()
+						},
+						// 2: Decompose Translation
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(transform_nodes::decompose_translation::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(1), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 1)),
+							..Default::default()
+						},
+						// 3: As Vector (auto-converts the decomposed translation into a single-anchor List<Vector>)
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(vector::as_vector::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(2), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 1)),
+							..Default::default()
+						},
+						// 4: Flatten Vector
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(graphic_nodes::graphic::flatten_vector::IDENTIFIER),
+							inputs: vec![NodeInput::import(generic!(T), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 0)),
+							..Default::default()
+						},
+						// 5: Map
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::map::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(28, 0)),
+							..Default::default()
+						},
+						// 6: Combine Paths
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(vector::combine_paths::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(5), 0)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(35, 0)),
+							..Default::default()
+						},
+						// 7: Points to Polyline
+						NodeTemplate {
+							implementation: NodeTemplateImplementation::ProtoNode(vector::points_to_polyline::IDENTIFIER),
+							inputs: vec![NodeInput::node(NodeId(6), 0), NodeInput::value(TaggedValue::Bool(false), false)],
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(42, 0)),
+							..Default::default()
+						},
+					]
+					.into_iter()
+					.enumerate()
+					.map(|(id, node)| (NodeId(id as u64), node))
+					.collect(),
 					..Default::default()
-				},
+				}),
+				inputs: vec![NodeInput::type_default(list!(Vector), true)],
+				input_metadata: vec![("Vector", "TODO").into()],
+				output_names: vec!["Vector".to_string()],
+				node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+				..Default::default()
 			},
 			description: Cow::Borrowed("TODO"),
 			properties: None,
@@ -919,61 +579,32 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Load Image",
 			category: "Web Request",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::import(concrete!(String), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::load_resource::IDENTIFIER),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::decode_image::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String("graphite:null".to_string()), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Empty", "TODO").into(), ("URL", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+					exports: vec![NodeInput::node(NodeId(1), 0)],
+					nodes: [
+						NodeTemplate {
+							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::import(item!(String), 1)],
+							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::load_resource::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 							..Default::default()
 						},
-						..Default::default()
-					}),
+						NodeTemplate {
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
+							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::decode_image::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+							..Default::default()
+						},
+					]
+					.into_iter()
+					.enumerate()
+					.map(|(id, node)| (NodeId(id as u64), node))
+					.collect(),
 					..Default::default()
-				},
+				}),
+				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String("graphite:null".to_string()), false)],
+				input_metadata: vec![("Empty", "TODO").into(), ("URL", "TODO").into()],
+				output_names: vec!["Image".to_string()],
+				..Default::default()
 			},
 			description: Cow::Borrowed("Loads an image from a given URL."),
 			properties: None,
@@ -983,84 +614,49 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Rasterize",
 			category: "Raster",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![],
-								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::create_canvas::IDENTIFIER),
-								skip_deduplication: true,
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memoize::IDENTIFIER),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Vector>), true),
-						NodeInput::value(
-							TaggedValue::Footprint(Footprint {
-								transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
-								resolution: UVec2::new(1000, 1000),
-								..Default::default()
-							}),
-							false,
-						),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Artwork", "TODO").into(), ("Footprint", "TODO").into()],
-					output_names: vec!["Canvas".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 2)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+					exports: vec![NodeInput::node(NodeId(2), 0)],
+					nodes: [
+						NodeTemplate {
+							inputs: vec![],
+							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::create_canvas::IDENTIFIER),
+							skip_deduplication: true,
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
 							..Default::default()
 						},
-						..Default::default()
-					}),
+						NodeTemplate {
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
+							implementation: NodeTemplateImplementation::ProtoNode(memo::memoize::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 2)),
+							..Default::default()
+						},
+						NodeTemplate {
+							inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(item!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
+							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
+							..Default::default()
+						},
+					]
+					.into_iter()
+					.enumerate()
+					.map(|(id, node)| (NodeId(id as u64), node))
+					.collect(),
 					..Default::default()
-				},
+				}),
+				inputs: vec![
+					NodeInput::type_default(list!(Vector), true),
+					NodeInput::value(
+						TaggedValue::Footprint(Footprint {
+							transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
+							resolution: UVec2::new(1000, 1000),
+							..Default::default()
+						}),
+						false,
+					),
+				],
+				input_metadata: vec![("Artwork", "TODO").into(), ("Footprint", "TODO").into()],
+				output_names: vec!["Canvas".to_string()],
+				..Default::default()
 			},
 			description: Cow::Borrowed("TODO"),
 			properties: None,
@@ -1069,267 +665,119 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Split Channels",
 			category: "Raster: Channels",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![
-							NodeInput::value(TaggedValue::None, false),
-							NodeInput::node(NodeId(0), 0),
-							NodeInput::node(NodeId(1), 0),
-							NodeInput::node(NodeId(2), 0),
-							NodeInput::node(NodeId(3), 0),
-						],
-						nodes: [
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
-									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
-									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
-									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
-									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Raster<CPU>>), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Image", "TODO").into()],
-					output_names: vec!["".to_string(), "Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 4)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 6)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+					exports: vec![
+						NodeInput::value(TaggedValue::None, false),
+						NodeInput::node(NodeId(0), 0),
+						NodeInput::node(NodeId(1), 0),
+						NodeInput::node(NodeId(2), 0),
+						NodeInput::node(NodeId(3), 0),
+					],
+					nodes: [
+						NodeTemplate {
+							inputs: vec![
+								NodeInput::import(list!(Raster<CPU>), 0),
+								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
+							],
+							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
+							call_argument: generic!(T),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 							..Default::default()
 						},
-						..Default::default()
-					}),
+						NodeTemplate {
+							inputs: vec![
+								NodeInput::import(list!(Raster<CPU>), 0),
+								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
+							],
+							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
+							call_argument: generic!(T),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
+							..Default::default()
+						},
+						NodeTemplate {
+							inputs: vec![
+								NodeInput::import(list!(Raster<CPU>), 0),
+								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
+							],
+							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
+							call_argument: generic!(T),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 4)),
+							..Default::default()
+						},
+						NodeTemplate {
+							inputs: vec![
+								NodeInput::import(list!(Raster<CPU>), 0),
+								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
+							],
+							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
+							call_argument: generic!(T),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 6)),
+							..Default::default()
+						},
+					]
+					.into_iter()
+					.enumerate()
+					.map(|(id, node)| (NodeId(id as u64), node))
+					.collect(),
 					..Default::default()
-				},
+				}),
+				inputs: vec![NodeInput::type_default(list!(Raster<CPU>), true)],
+				input_metadata: vec![("Image", "TODO").into()],
+				output_names: vec!["".to_string(), "Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
+				..Default::default()
 			},
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
 		DocumentNodeDefinition {
 			identifier: "Split Vec2",
-			category: "Math: Vector",
+			category: "Math: Vec2",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::value(TaggedValue::None, false), NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-
-						..Default::default()
-					}),
-					inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Vec2", "TODO").into()],
-					output_names: vec!["".to_string(), "X".to_string(), "Y".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+					exports: vec![NodeInput::value(TaggedValue::None, false), NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
+					nodes: [
+						NodeTemplate {
+							inputs: vec![NodeInput::import(item!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
+							implementation: NodeTemplateImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
+							call_argument: generic!(T),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 							..Default::default()
 						},
-						..Default::default()
-					}),
+						NodeTemplate {
+							inputs: vec![NodeInput::import(item!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
+							implementation: NodeTemplateImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
+							call_argument: generic!(T),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
+							..Default::default()
+						},
+					]
+					.into_iter()
+					.enumerate()
+					.map(|(id, node)| (NodeId(id as u64), node))
+					.collect(),
 					..Default::default()
-				},
+				}),
+				inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), true)],
+				input_metadata: vec![("Vec2", "TODO").into()],
+				output_names: vec!["".to_string(), "X".to_string(), "Y".to_string()],
+				..Default::default()
 			},
 			description: Cow::Borrowed(
 				"Decomposes the X and Y components of a vec2.\n\
 				\n\
-				The inverse of this node is \"Vec2 Value\", which can have either or both its X and Y parameters exposed as graph inputs.",
+				The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.",
 			),
-			properties: None,
-		},
-		#[cfg(feature = "gpu")]
-		DocumentNodeDefinition {
-			identifier: "Upload Texture",
-			category: "Debug",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(List<Raster<CPU>>), 0), NodeInput::scope(platform_application_io::wgpu_executor::IDENTIFIER)],
-								call_argument: generic!(T),
-								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_conversion::upload_texture::IDENTIFIER),
-								..Default::default()
-							},
-							DocumentNode {
-								call_argument: generic!(T),
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memoize::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Raster<CPU>>), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					output_names: vec!["Texture".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract",
 			category: "",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Extract,
-					inputs: vec![NodeInput::type_default(descriptor!(DocumentNode), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Node", "TODO").into()],
-					output_names: vec!["Document Node".to_string()],
-					..Default::default()
-				},
+				implementation: NodeTemplateImplementation::Extract,
+				inputs: vec![NodeInput::type_default(concrete!(DocumentNode), true)],
+				input_metadata: vec![("Node", "TODO").into()],
+				output_names: vec!["Document Node".to_string()],
+				..Default::default()
 			},
 			description: Cow::Borrowed("TODO"),
 			properties: None,
@@ -1338,103 +786,68 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Regex Find",
 			category: "Text: Regex",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![
-							// Primary output: the whole match (String)
-							NodeInput::node(NodeId(1), 0),
-							// Secondary output: capture groups (List<String>), each item carries `start`/`end`/`name` attributes from `regex_find`
-							NodeInput::node(NodeId(2), 0),
-						],
-						nodes: [
-							// Node 0: regex_find proto node — returns List<String> of [whole_match, ...capture_groups]
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(String), 0),
-									NodeInput::import(concrete!(String), 1),
-									NodeInput::import(concrete!(f64), 2),
-									NodeInput::import(concrete!(bool), 3),
-									NodeInput::import(concrete!(bool), 4),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(text_nodes::regex::regex_find::IDENTIFIER),
-								..Default::default()
-							},
-							// Node 1: extract_element at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::extract_element::IDENTIFIER),
-								..Default::default()
-							},
-							// Node 2: omit_element at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::omit_element::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::String(String::new()), true),
-						NodeInput::value(TaggedValue::String(String::new()), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::Bool(false), false),
-						NodeInput::value(TaggedValue::Bool(false), false),
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+					exports: vec![
+						// Primary output: the whole match (String)
+						NodeInput::node(NodeId(1), 0),
+						// Secondary output: capture groups (List<String>), each item carries `start`/`end`/`name` attributes from `regex_find`
+						NodeInput::node(NodeId(2), 0),
 					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![
-						("String", "The string to search within.").into(),
-						("Pattern", "The regular expression pattern to search for.").into(),
-						(
-							"Match Index",
-							"Which non-overlapping occurrence of the pattern to return, starting from 0 for the first match. Negative indices count backwards from the last match.",
-						)
-							.into(),
-						("Case Insensitive", "Match letters regardless of case.").into(),
-						("Multiline", "Make `^` and `$` match the start and end of each line, not just the whole string.").into(),
-					],
-					output_names: vec!["Match".to_string(), "Captures".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 2)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
+					nodes: [
+						// Node 0: regex_find proto node — returns List<String> of [whole_match, ...capture_groups]
+						NodeTemplate {
+							inputs: vec![
+								NodeInput::import(item!(String), 0),
+								NodeInput::import(item!(String), 1),
+								NodeInput::import(item!(f64), 2),
+								NodeInput::import(item!(bool), 3),
+								NodeInput::import(item!(bool), 4),
+							],
+							implementation: NodeTemplateImplementation::ProtoNode(text_nodes::regex::regex_find::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 							..Default::default()
 						},
-						..Default::default()
-					}),
+						// Node 1: item_at_index at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
+						NodeTemplate {
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::item_at_index::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 0)),
+							..Default::default()
+						},
+						// Node 2: remove_at_index at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
+						NodeTemplate {
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::remove_at_index::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 2)),
+							..Default::default()
+						},
+					]
+					.into_iter()
+					.enumerate()
+					.map(|(id, node)| (NodeId(id as u64), node))
+					.collect(),
 					..Default::default()
-				},
+				}),
+				inputs: vec![
+					NodeInput::value(TaggedValue::String(String::new()), true),
+					NodeInput::value(TaggedValue::String(String::new()), false),
+					NodeInput::value(TaggedValue::F64(0.), false),
+					NodeInput::value(TaggedValue::Bool(false), false),
+					NodeInput::value(TaggedValue::Bool(false), false),
+				],
+				input_metadata: vec![
+					("String", "The string to search within.").into(),
+					("Pattern", "The regular expression pattern to search for.").into(),
+					(
+						"Match Index",
+						"Which non-overlapping occurrence of the pattern to return, starting from 0 for the first match. Negative indices count backwards from the last match.",
+					)
+						.into(),
+					("Case Insensitive", "Match letters regardless of case.").into(),
+					("Multiline", "Make `^` and `$` match the start and end of each line, not just the whole string.").into(),
+				],
+				output_names: vec!["Match".to_string(), "Captures".to_string()],
+				..Default::default()
 			},
 			description: Cow::Borrowed(
 				r#"Finds a portion of the string matching a regular expression pattern. With "Match Index" at its default 0, it selects the first non-overlapping occurrence, but others may be selected. Capture groups, if any, are produced as a list in the "Captures" output."#,
@@ -1445,71 +858,42 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Path",
 			category: "Vector",
 			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: vec![
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(List<Vector>), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-								call_argument: generic!(T),
-								skip_deduplication: true,
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![
-									NodeInput::node(NodeId(0), 0),
-									NodeInput::import(concrete!(graphene_std::vector::VectorModification), 1),
-									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
-								],
-								call_argument: generic!(T),
-								implementation: DocumentNodeImplementation::ProtoNode(vector::path_modify::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Vector>), true),
-						NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Content", "TODO").into(), ("Modification", "TODO").into()],
-					output_names: vec!["Modified".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
+				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+					exports: vec![NodeInput::node(NodeId(1), 0)],
+					nodes: [
+						NodeTemplate {
+							inputs: vec![NodeInput::import(generic!(T), 0)],
+							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
+							call_argument: generic!(T),
+							skip_deduplication: true,
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 							..Default::default()
 						},
-						..Default::default()
-					}),
+						NodeTemplate {
+							inputs: vec![
+								NodeInput::node(NodeId(0), 0),
+								NodeInput::import(concrete!(graphene_std::vector::VectorModification), 1),
+								NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
+							],
+							call_argument: generic!(T),
+							implementation: NodeTemplateImplementation::ProtoNode(vector::path_modify::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+							..Default::default()
+						},
+					]
+					.into_iter()
+					.enumerate()
+					.map(|(id, node)| (NodeId(id as u64), node))
+					.collect(),
 					..Default::default()
-				},
+				}),
+				inputs: vec![
+					NodeInput::type_default(item!(Vector), true),
+					NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
+				],
+				input_metadata: vec![("Content", "TODO").into(), ("Modification", "TODO").into()],
+				output_names: vec!["Modified".to_string()],
+				..Default::default()
 			},
 			description: Cow::Borrowed("TODO"),
 			properties: None,
@@ -1643,7 +1027,7 @@ fn static_input_properties() -> InputProperties {
 				});
 
 			Ok(vec![LayoutGroup::row(node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, blank_assist, context),
+				ParameterWidgetsInfo::at_index(node_id, index, blank_assist, context),
 				number_input,
 			))])
 		}),
@@ -1684,7 +1068,7 @@ fn static_input_properties() -> InputProperties {
 			};
 			// NOTE: The bool input MUST be at the input index directly before the f64 input!
 			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
-				ParameterWidgetsInfo::new(node_id, index, false, context),
+				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
 			))])
@@ -1697,7 +1081,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let number_input = NumberInput::default().percentage().min(0.).max(100.);
 			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
-				ParameterWidgetsInfo::new(node_id, index, false, context),
+				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
 			))])
@@ -1744,7 +1128,7 @@ fn static_input_properties() -> InputProperties {
 				.unwrap_or_default();
 
 			Ok(vec![node_properties::vec2_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				&x,
 				&y,
 				&unit,
@@ -1758,7 +1142,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let scale = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active),
 			);
 			Ok(vec![scale.into()])
@@ -1767,7 +1151,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let noise_type_row = enum_choice::<NoiseType>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
+			let noise_type_row = enum_choice::<NoiseType>().for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context)).property_row();
 			Ok(vec![noise_type_row, LayoutGroup::row(Vec::new())])
 		}),
 	);
@@ -1776,7 +1160,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let domain_warp_type = enum_choice::<DomainWarpType>()
-				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
+				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active)
 				.property_row();
 			Ok(vec![domain_warp_type])
@@ -1787,7 +1171,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, _, _, domain_warp_active, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let domain_warp_amplitude = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
 			);
 			Ok(vec![domain_warp_amplitude.into(), LayoutGroup::row(Vec::new())])
@@ -1798,7 +1182,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_type_row = enum_choice::<FractalType>()
-				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
+				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active)
 				.property_row();
 			Ok(vec![fractal_type_row])
@@ -1809,7 +1193,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_octaves = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(1.)
@@ -1826,7 +1210,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_lacunarity = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -1841,7 +1225,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_gain = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -1856,7 +1240,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_weighted_strength = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -1871,7 +1255,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, ping_pong_active, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_ping_pong_strength = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -1886,7 +1270,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_distance_function_row = enum_choice::<CellularDistanceFunction>()
-				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
+				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active || !cellular_noise_active)
 				.property_row();
 			Ok(vec![cellular_distance_function_row])
@@ -1897,7 +1281,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_return_type = enum_choice::<CellularReturnType>()
-				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
+				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active || !cellular_noise_active)
 				.property_row();
 			Ok(vec![cellular_return_type])
@@ -1908,7 +1292,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_jitter = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.range_min(Some(0.))
@@ -1921,7 +1305,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"assign_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
-			let gradient_row = node_properties::color_widget(ParameterWidgetsInfo::new(node_id, index, true, context), ColorInput::default().allow_none(false));
+			let gradient_row = node_properties::color_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), ColorInput::default().allow_none(false));
 			Ok(vec![gradient_row])
 		}),
 	);
@@ -1930,7 +1314,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
 			let seed_row = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default().min(0.).int().disabled(!randomize_enabled),
 			);
 			Ok(vec![seed_row.into()])
@@ -1941,7 +1325,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
 			let repeat_every_row = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default().min(0.).int().disabled(randomize_enabled),
 			);
 			Ok(vec![repeat_every_row.into()])
@@ -1950,7 +1334,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"transform_rotation".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::new(node_id, index, true, context));
+			let mut widgets = node_properties::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
 
 			let document_node = node_properties::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
@@ -1964,7 +1348,7 @@ fn static_input_properties() -> InputProperties {
 						.mode(NumberInputMode::Range)
 						.range_min(Some(-180.))
 						.range_max(Some(180.))
-						.on_update(node_properties::update_value(
+						.on_update(node_properties::update_value_at_index(
 							|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap()),
 							node_id,
 							index,
@@ -1982,7 +1366,7 @@ fn static_input_properties() -> InputProperties {
 		"transform_translation".to_string(),
 		Box::new(|node_id, index, context| {
 			Ok(vec![node_properties::vec2_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				"X",
 				"Y",
 				" px",
@@ -1994,13 +1378,22 @@ fn static_input_properties() -> InputProperties {
 	// Scale uses a Vec2 widget with W/H labels and an "x" unit suffix
 	map.insert(
 		"transform_scale".to_string(),
-		Box::new(|node_id, index, context| Ok(vec![node_properties::vec2_widget(ParameterWidgetsInfo::new(node_id, index, true, context), "W", "H", "x", None, false)])),
+		Box::new(|node_id, index, context| {
+			Ok(vec![node_properties::vec2_widget(
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
+				"W",
+				"H",
+				"x",
+				None,
+				false,
+			)])
+		}),
 	);
 	// Skew has a custom override that maps to degrees
 	map.insert(
 		"transform_skew".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::new(node_id, index, true, context));
+			let mut widgets = node_properties::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
 
 			let document_node = node_properties::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
@@ -2014,7 +1407,7 @@ fn static_input_properties() -> InputProperties {
 						.unit("°")
 						.min(-89.9)
 						.max(89.9)
-						.on_update(node_properties::update_value(
+						.on_update(node_properties::update_value_at_index(
 							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), val.y)),
 							node_id,
 							index,
@@ -2027,7 +1420,7 @@ fn static_input_properties() -> InputProperties {
 						.unit("°")
 						.min(-89.9)
 						.max(89.9)
-						.on_update(node_properties::update_value(
+						.on_update(node_properties::update_value_at_index(
 							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, input.value.unwrap())),
 							node_id,
 							index,
@@ -2042,7 +1435,7 @@ fn static_input_properties() -> InputProperties {
 	);
 	map.insert(
 		"text_area".to_string(),
-		Box::new(|node_id, index, context| Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::new(node_id, index, true, context)))])),
+		Box::new(|node_id, index, context| Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context)))])),
 	);
 	map.insert(
 		"text_font".to_string(),
@@ -2051,7 +1444,7 @@ fn static_input_properties() -> InputProperties {
 			if context.fonts.font_catalog.is_empty() {
 				context.responses.add(FontsMessage::LoadCatalog);
 			}
-			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::new(node_id, index, true, context));
+			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::at_index(node_id, index, true, context));
 			let mut result = vec![LayoutGroup::row(font)];
 			if let Some(style) = style {
 				result.push(LayoutGroup::row(style));
@@ -2063,7 +1456,7 @@ fn static_input_properties() -> InputProperties {
 		"artboard_background".to_string(),
 		Box::new(|node_id, index, context| {
 			Ok(vec![node_properties::color_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				ColorInput::default().allow_none(false),
 			)])
 		}),
@@ -2071,7 +1464,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"text_align".to_string(),
 		Box::new(|node_id, index, context| {
-			let choices = enum_choice::<text::TextAlign>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
+			let choices = enum_choice::<text::TextAlign>()
+				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
+				.property_row();
 			Ok(vec![choices])
 		}),
 	);
@@ -2097,12 +1492,11 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 		.map(|(identifier, definition)| {
 			let input_types = definition
 				.node_template
-				.document_node
 				.inputs
 				.iter()
 				.map(|node_input| node_input.as_value().map(|node_value| node_value.ty().nested_type().to_string()).unwrap_or_default())
 				.collect::<Vec<String>>();
-			let mut name = definition.node_template.persistent_node_metadata.display_name.clone();
+			let mut name = definition.node_template.display_name.clone();
 			if name.is_empty() {
 				name = identifier.implementation_name_from_identifier()
 			}
@@ -2139,71 +1533,48 @@ impl DocumentNodeDefinition {
 				// Only value inputs should be overridden, since node inputs change graph structure and must be handled by the network interface.
 				// However, this would require changing some tooling which creates multiple nodes at once, before they are inserted into the network.
 				// debug_assert!(input_override.as_node().is_none(), "Node inputs are not supported in input overrides");
-				template.document_node.inputs[index] = input_override;
+				template.inputs[index] = input_override;
 			}
 		});
 
-		// Ensure that the input properties are initialized for every Document Node input for every node
-		fn populate_input_properties(node_template: &mut NodeTemplate, mut path: Vec<NodeId>) {
-			if let Some(current_node) = path.pop() {
-				let DocumentNodeImplementation::Network(template_network) = &node_template.document_node.implementation else {
-					log::error!("Template network should always exist");
-					return;
-				};
-				let Some(nested_network) = template_network.nested_network(&path) else {
-					log::error!("Nested network should exist for path");
-					return;
-				};
-				let Some(input_length) = nested_network.nodes.get(&current_node).map(|node| node.inputs.len()) else {
-					log::error!("Could not get current node in nested network");
-					return;
-				};
-				let Some(template_network_metadata) = &mut node_template.persistent_node_metadata.network_metadata else {
-					log::error!("Template should have metadata if it has network implementation");
-					return;
-				};
-				let Some(nested_network_metadata) = template_network_metadata.nested_metadata_mut(&path) else {
-					log::error!("Path is not valid for network");
-					return;
-				};
-				let Some(nested_node_metadata) = nested_network_metadata.persistent_metadata.node_metadata.get_mut(&current_node) else {
-					log::error!("Path is not valid for network");
-					return;
-				};
-				nested_node_metadata.persistent_metadata.input_metadata.resize_with(input_length, InputMetadata::default);
-
-				// Recurse over all sub-nodes if the current node is a network implementation
-				let mut current_path = path.clone();
-				current_path.push(current_node);
-				let DocumentNodeImplementation::Network(template_network) = &node_template.document_node.implementation else {
-					log::error!("Template network should always exist");
-					return;
-				};
-				if let Some(current_nested_network) = template_network.nested_network(&current_path) {
-					for sub_node_id in current_nested_network.nodes.keys().cloned().collect::<Vec<_>>() {
-						let mut sub_path = current_path.clone();
-						sub_path.push(sub_node_id);
-						populate_input_properties(node_template, sub_path);
-					}
-				};
-			} else {
-				// Base case
-				let input_len = node_template.document_node.inputs.len();
-				node_template.persistent_node_metadata.input_metadata.resize_with(input_len, InputMetadata::default);
-				if let DocumentNodeImplementation::Network(node_template_network) = &node_template.document_node.implementation {
-					for sub_node_id in node_template_network.nodes.keys().cloned().collect::<Vec<_>>() {
-						populate_input_properties(node_template, vec![sub_node_id]);
-					}
-				}
-			}
-		}
-		populate_input_properties(&mut template, Vec::new());
+		// Ensure that the input properties are initialized for every input of every node
+		template.normalize_input_metadata();
 
 		template
 	}
 
 	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], completely default.
 	pub fn default_node_template(&self) -> NodeTemplate {
-		self.node_template_input_override(self.node_template.document_node.inputs.clone().into_iter().map(Some))
+		self.node_template_input_override(self.node_template.inputs.clone().into_iter().map(Some))
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::resolve_network_node_type;
+	use crate::test_utils::test_prelude::*;
+	use graph_craft::document::NodeId;
+
+	// Guards the embedded Map body chain (Read Vector -> Extract Transform -> Decompose Translation -> As Vector) against registry drift
+	#[tokio::test]
+	async fn origins_to_polyline_resolves_and_evaluates() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 10., 10.).await;
+
+		let layer = editor.active_document().metadata().all_layers().next().expect("drawing a rectangle should create a layer");
+		let node_id = NodeId::new();
+		let node_template = resolve_network_node_type("Origins to Polyline")
+			.expect("the Origins to Polyline definition should exist")
+			.default_node_template();
+		editor
+			.handle_message(NodeGraphMessage::InsertNode {
+				node_id,
+				node_template: Box::new(node_template),
+			})
+			.await;
+		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
+
+		editor.eval_graph().await.expect("the Origins to Polyline chain should type-resolve and evaluate");
 	}
 }

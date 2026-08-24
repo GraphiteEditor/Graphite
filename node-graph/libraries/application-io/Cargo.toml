@@ -16,6 +16,7 @@ wgpu = ["dep:raster-types", "raster-types/wgpu"]
 # Local dependencies
 dyn-any = { workspace = true }
 core-types = { workspace = true }
+graphene-hash = { workspace = true, features = ["derive"] }
 vector-types = { workspace = true }
 text-nodes = { workspace = true }
 graphene-resource = { workspace = true }

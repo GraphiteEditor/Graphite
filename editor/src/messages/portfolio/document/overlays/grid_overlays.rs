@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use glam::DVec2;
 use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
-use graphene_std::vector::style::FillChoiceUI;
+use graphene_std::vector::style::FillChoice;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
@@ -274,7 +274,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		Separator::new(SeparatorStyle::Related).widget_instance(),
 	]);
 	color_widgets.push(
-		ColorInput::new(FillChoiceUI::Solid(SRGBA8::from_hex_str(&grid.color).unwrap_or(SRGBA8::BLACK)))
+		ColorInput::new(FillChoice::<SRGBA8>::Solid(SRGBA8::from_hex_str(&grid.color).unwrap_or(SRGBA8::BLACK)))
 			.tooltip_label("Grid Display Color")
 			.allow_none(false)
 			.on_update(update_val::<ColorInput, _>(grid, |grid, color| {

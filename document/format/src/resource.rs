@@ -23,7 +23,7 @@ impl<L: Layout> Gdd<L> {
 	/// `DataSource::Embedded` source resolved to the content hash) through the session so the registry
 	/// records the resource and the entry replicates, then writes the bytes into the working copy's
 	/// content-addressed store. The caller owns `id` allocation.
-	pub fn add_resource(&mut self, id: graph_storage::ResourceId, bytes: &[u8]) -> Result<(), Error> {
+	pub fn add_resource(&mut self, id: document_graph_storage::ResourceId, bytes: &[u8]) -> Result<(), Error> {
 		let hash = ResourceHash::from(bytes);
 
 		self.working.write_non_blocking(&self.layout.resource_path(&hash), bytes)?;
@@ -37,7 +37,7 @@ impl<L: Layout> Gdd<L> {
 	/// than buffering them. Folder backends use `fs::copy` (CoW on supported filesystems); other
 	/// backends fall back to read-then-write. Native-only: there is no filesystem source path on wasm.
 	#[cfg(not(target_family = "wasm"))]
-	pub fn add_resource_from_path(&mut self, id: graph_storage::ResourceId, hash: ResourceHash, src: &Path) -> Result<(), Error> {
+	pub fn add_resource_from_path(&mut self, id: document_graph_storage::ResourceId, hash: ResourceHash, src: &Path) -> Result<(), Error> {
 		let dest_path = self.layout.resource_path(&hash);
 		if let AnyContainer::Folder(folder) = self.working.as_ref() {
 			let full = folder.root().join(&dest_path);

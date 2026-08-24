@@ -93,7 +93,7 @@ impl OriginalTransforms {
 
 					let mut selected_points = selected_points.clone();
 
-					for (segment_id, _, start, end) in vector.segment_bezier_iter() {
+					for (segment_id, _, start, end) in vector.segment_iter() {
 						if selected_segments.contains(&segment_id) {
 							selected_points.insert(ManipulatorPointId::Anchor(start));
 							selected_points.insert(ManipulatorPointId::Anchor(end));

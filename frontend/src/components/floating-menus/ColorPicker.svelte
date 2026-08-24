@@ -5,14 +5,14 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { ColorPickerCallbacks, ColorPickerStore } from "/src/stores/color-picker";
-	import type { EditorWrapper, FillChoiceUI, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, FillChoice, MenuDirection, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoiceUI; startHistoryTransaction: undefined; commitHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice<SRGBA8>; startHistoryTransaction: undefined; commitHistoryTransaction: undefined }>();
 
 	const editor = getContext<EditorWrapper>("editor");
 	const colorPickerStore = getContext<ColorPickerStore>("colorPicker");
 
-	export let colorOrGradient: FillChoiceUI;
+	export let colorOrGradient: FillChoice<SRGBA8>;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let disabled = false;
@@ -98,13 +98,16 @@
 		.details {
 			margin-left: 16px;
 			width: 200px;
-			gap: 8px;
 
 			> .widget-span {
 				--row-height: 24px;
 
 				&:last-child {
 					margin-top: auto;
+				}
+
+				&:not(:last-child) {
+					margin-bottom: 8px;
 				}
 
 				> .text-label {

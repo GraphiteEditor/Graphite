@@ -912,7 +912,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let Some((downstream_node, input_index)) = document
 						.network_interface
 						.outward_wires(&[])
-						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), 0)))
+						.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(layer.to_node())))
 						.and_then(|outward_wires| outward_wires.first())
 						.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))
 					else {
@@ -1896,7 +1896,7 @@ impl PortfolioMessageHandler {
 	) -> Message {
 		let path = working_copy_root.map(|root| root.join(format!("{:016x}", document_id.0)));
 		let editor_version = crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string();
-		let peer = graph_storage::PeerId(generate_uuid());
+		let peer = document_graph_storage::PeerId(generate_uuid());
 
 		let future = async move {
 			let (gdd, reopened) = match build_or_open_working_copy(path.as_deref(), peer, document_id.0, editor_version).await {

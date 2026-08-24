@@ -14,37 +14,44 @@ fn format_json(
 	_: impl Ctx,
 	/// The JSON string to reformat.
 	#[name("JSON")]
-	json: String,
+	json: Item<String>,
 	/// Removes optional spaces within curly brackets and after colons and commas.
-	compact: bool,
+	compact: Item<bool>,
 	/// Break arrays and objects across multiple lines when they exceed the line break length.
 	#[default(true)]
 	#[name("Multi-Line")]
-	multi_line: bool,
+	multi_line: Item<bool>,
 	/// The indentation string used for each nesting level. Escape sequences like `\t` (the tab character) are supported. Two or four spaces are also common choices.
 	#[default("\\t")]
-	indent: String,
+	indent: Item<String>,
 	/// The maximum line length before a container (array or object) is broken across lines. Set this to 0 to always break containers. (Requires *Multi-Line* to take effect.)
 	///
 	/// This is not a maximum line length guarantee. Deep nesting and long keys or values may exceed this length.
 	#[default(120)]
-	break_length: u32,
+	break_length: Item<u32>,
 	/// Always break a container (array or object) across lines if it holds another container, even if it would fit within the break length. (Requires *Multi-Line* to take effect.)
 	#[default(true)]
-	break_nested: bool,
-) -> String {
-	let cleaned = strip_trailing_commas(&json);
+	break_nested: Item<bool>,
+) -> Item<String> {
+	let mut json = json;
+	let (compact, multi_line, break_length, break_nested) = (*compact.element(), *multi_line.element(), *break_length.element(), *break_nested.element());
+	let indent = indent.element().clone();
+
+	let cleaned = strip_trailing_commas(json.element());
 	let Ok(value) = serde_json::from_str::<serde_json::Value>(&cleaned) else { return json };
 	let indent = unescape_string(indent);
 	let colon = if compact { ":" } else { ": " };
 	let comma_space = if compact { "," } else { ", " };
 	let line_width = break_length as usize;
 
-	if multi_line {
+	let result = if multi_line {
 		format_value(&value, 0, &indent, colon, comma_space, compact, break_nested, line_width)
 	} else {
 		format_inline(&value, colon, comma_space, compact)
-	}
+	};
+
+	*json.element_mut() = result;
+	json
 }
 
 /// Strips trailing commas before `]` and `}` to accept JSON-with-trailing-commas input.
@@ -188,7 +195,7 @@ fn query_json(
 	_: impl Ctx,
 	/// The JSON string to extract a value from.
 	#[name("JSON")]
-	json: String,
+	json: Item<String>,
 	/// Determines which contained value to extract from within the JSON.
 	///
 	/// The path syntax is like JavaScript's accessor syntax that follows an array/object value. It also supports negative indexing to count backwards from the end. Additionally, `[]` accesses all array and object values instead of just one.
@@ -198,19 +205,29 @@ fn query_json(
 	/// Use `.size` or `["size"]` to get the `size` property of `{ "size": 10 }`. The latter form is required if the key contains spaces or special characters like `["this key with spaces!"]`.
 	/// Use chained accessors like `.fonts[0].name` to query deeper.
 	/// Use the `[]` accessor to query all elements, like `.fonts[].weights[]` to get every weight of every font.
-	path: String,
+	path: Item<String>,
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
-	unquote_strings: bool,
-) -> String {
-	let cleaned = strip_trailing_commas(&json);
-	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return String::new() };
-	let Some(segments) = parse_json_path(path.trim()) else { return String::new() };
+	unquote_strings: Item<bool>,
+) -> Item<String> {
+	let mut json = json;
+	let path = path.element().clone();
+	let unquote_strings = *unquote_strings.element();
 
-	let mut results = Vec::new();
-	resolve_all(&value, &segments, !unquote_strings, &mut results);
+	let cleaned = strip_trailing_commas(json.element());
 
-	results.into_iter().next().map(|(text, _ty)| text).unwrap_or_default()
+	let result = match (serde_json::from_str::<Value>(&cleaned), parse_json_path(path.trim())) {
+		(Ok(value), Some(segments)) => {
+			let mut results = Vec::new();
+			resolve_all(&value, &segments, !unquote_strings, &mut results);
+
+			results.into_iter().next().map(|(text, _ty)| text).unwrap_or_default()
+		}
+		_ => String::new(),
+	};
+
+	*json.element_mut() = result;
+	json
 }
 
 /// Extracts every matched value from a JSON string using a path expression (see that parameter's description for its syntax). A list of zero or more resultant strings is produced. The `[]` path accessor is used to read more than one value.
@@ -226,7 +243,7 @@ fn query_json_all(
 	_: impl Ctx,
 	/// The JSON string to extract values from.
 	#[name("JSON")]
-	json: String,
+	json: Item<String>,
 	/// Determines which contained values to extract from within the JSON.
 	///
 	/// The path syntax is like JavaScript's accessor syntax that follows an array/object value. It also supports negative indexing to count backwards from the end. Additionally, `[]` accesses all array and object values instead of just one.
@@ -236,17 +253,17 @@ fn query_json_all(
 	/// Use `.size` or `["size"]` to get the `size` property of `{ "size": 10 }`. The latter form is required if the key contains spaces or special characters like `["this key with spaces!"]`.
 	/// Use chained accessors like `.fonts[0].name` to query deeper.
 	/// Use the `[]` accessor to query all elements, like `.fonts[].weights[]` to get every weight of every font.
-	path: String,
+	path: Item<String>,
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
-	unquote_strings: bool,
+	unquote_strings: Item<bool>,
 ) -> List<String> {
-	let cleaned = strip_trailing_commas(&json);
+	let cleaned = strip_trailing_commas(json.element());
 	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return List::new() };
-	let Some(segments) = parse_json_path(path.trim()) else { return List::new() };
+	let Some(segments) = parse_json_path(path.element().trim()) else { return List::new() };
 
 	let mut results = Vec::new();
-	resolve_all(&value, &segments, !unquote_strings, &mut results);
+	resolve_all(&value, &segments, !*unquote_strings.element(), &mut results);
 
 	results.into_iter().map(|(text, ty)| Item::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string())).collect()
 }

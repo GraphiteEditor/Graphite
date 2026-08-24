@@ -34,19 +34,19 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
-use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
-use graphene_std::graphic::is_paint_present;
+use graph_craft::list;
+use graphene_std::Cover;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::subpath::Subpath;
+use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::graphic_types;
 use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::vector::{PointId, graphic_types};
-use kurbo::{Affine, BezPath, Line, PathSeg};
+use kurbo::{Affine, BezPath, Line, PathSeg, Shape};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -103,6 +103,7 @@ pub struct DocumentMessageHandler {
 	pub properties_panel_collapsed_sections: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
+	#[serde(skip_deserializing, default)]
 	pub commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
 	pub document_ptz: PTZ,
@@ -125,7 +126,7 @@ pub struct DocumentMessageHandler {
 	/// network path, the node itself, and its original relative gradient. The deferred migration removes each entry as its bake lands.
 	/// Transient migration state, but persisted in the saved document so unfinished bakes retry on the next open instead of losing placement.
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
+	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)>,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -1502,9 +1503,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_vector_data(layer_vector_data);
 			}
-			DocumentMessage::UpdateFillAttributes { fill_attributes } => {
+			DocumentMessage::UpdateAppearanceAttributes { appearance_attributes } => {
 				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
-				let layer_fill_attributes = fill_attributes
+				let layer_appearance_attributes = appearance_attributes
 					.into_iter()
 					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
 					.filter_map(|(node_id, attrs)| {
@@ -1514,21 +1515,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						})
 					})
 					.collect();
-				self.network_interface.update_fill_attributes(layer_fill_attributes);
-			}
-			DocumentMessage::UpdateStrokeAttributes { stroke_attributes } => {
-				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
-				let layer_stroke_attributes = stroke_attributes
-					.into_iter()
-					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
-					.filter_map(|(node_id, attrs)| {
-						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
-							(layer, attrs)
-						})
-					})
-					.collect();
-				self.network_interface.update_stroke_attributes(layer_stroke_attributes);
+				self.network_interface.update_appearance_attributes(layer_appearance_attributes);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -1712,7 +1699,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					self.network_interface.all_nodes_bounding_box(&self.breadcrumb_network_path).cloned()
+					self.network_interface.all_nodes_bounding_box(&self.breadcrumb_network_path)
 				} else {
 					self.network_interface.document_bounds_document_space(true)
 				};
@@ -1844,16 +1831,16 @@ impl DocumentMessageHandler {
 		self.intersect_quad(viewport_quad, viewport).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
-	/// Runs an intersection test with all layers and a viewport space subpath
-	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	/// Runs an intersection test with all layers and a viewport space polygon path
+	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: BezPath, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		viewport_polygon.apply_transform(document_to_viewport.inverse());
+		viewport_polygon.apply_affine(Affine::new(document_to_viewport.inverse().to_cols_array()));
 
-		ClickXRayIter::new(&self.network_interface, XRayTarget::Polygon(viewport_polygon))
+		ClickXRayIter::new(&self.network_interface, XRayTarget::Path(viewport_polygon))
 	}
 
-	/// Runs an intersection test with all layers and a viewport space subpath; ignoring artboards
-	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	/// Runs an intersection test with all layers and a viewport space polygon path; ignoring artboards
+	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: BezPath, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.intersect_polygon(viewport_polygon, viewport)
 			.filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
@@ -1881,29 +1868,24 @@ impl DocumentMessageHandler {
 		layer_left >= quad_left && layer_right <= quad_right && layer_top <= quad_top && layer_bottom >= quad_bottom
 	}
 
-	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, viewport: &ViewportMessageHandler, mut viewport_polygon: Subpath<PointId>) -> bool {
+	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, viewport: &ViewportMessageHandler, mut viewport_polygon: BezPath) -> bool {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		viewport_polygon.apply_transform(document_to_viewport.inverse());
+		viewport_polygon.apply_affine(Affine::new(document_to_viewport.inverse().to_cols_array()));
 
 		let layer_click_targets = self.network_interface.document_metadata().click_targets(*layer);
 		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
 
 		layer_click_targets.is_some_and(|targets| {
 			targets.iter().all(|target| match target.target_type() {
-				ClickTargetType::Subpath(subpath) => {
-					let mut subpath = subpath.clone();
-					subpath.apply_transform(layer_transform);
-					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				ClickTargetType::Path(path) => {
+					let mut path = path.clone();
+					path.apply_affine(Affine::new(layer_transform.to_cols_array()));
+					bezpath_is_inside_bezpath(&path, &viewport_polygon, None, None)
 				}
-				ClickTargetType::CompoundPath(subpaths) => subpaths.iter().all(|subpath| {
-					let mut subpath = subpath.clone();
-					subpath.apply_transform(layer_transform);
-					subpath.is_inside_subpath(&viewport_polygon, None, None)
-				}),
 				ClickTargetType::FreePoint(point) => {
 					let mut point = *point;
 					point.apply_transform(layer_transform);
-					viewport_polygon.contains_point(point.position)
+					viewport_polygon.contains(dvec2_to_point(point.position))
 				}
 			})
 		})
@@ -2049,7 +2031,7 @@ impl DocumentMessageHandler {
 
 	/// Restore `view_settings` map into the document.
 	pub fn apply_stored_document_settings(&mut self, view_settings: &std::collections::BTreeMap<String, serde_json::Value>) {
-		use graph_storage::attr::session::doc;
+		use document_graph_storage::attr::session::doc;
 
 		fn decode<T: serde::de::DeserializeOwned>(view_settings: &std::collections::BTreeMap<String, serde_json::Value>, key: &str) -> Option<T> {
 			view_settings.get(key).and_then(|value| serde_json::from_value(value.clone()).ok())
@@ -2414,22 +2396,26 @@ impl DocumentMessageHandler {
 		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, true, responses);
 	}
 
-	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.history.pop_undo()?;
-
+	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
+	fn install_history_snapshot(&mut self, mut network_interface: NodeNetworkInterface, viewport: &ViewportMessageHandler) -> NodeNetworkInterface {
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
 		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
 
-		//Update the metadata transform based on document PTZ
+		// Update the metadata transform based on document PTZ
 		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
 		network_interface.set_document_to_viewport_transform(transform);
 
 		// Ensure document structure is loaded so that updating the selected nodes has the correct metadata
 		network_interface.load_structure();
 
-		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
+		std::mem::replace(&mut self.network_interface, network_interface)
+	}
+
+	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
+		// If there is no history return and don't broadcast SelectionChanged
+		let network_interface = self.history.pop_undo()?;
+		let previous_network = self.install_history_snapshot(network_interface, viewport);
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -2454,17 +2440,9 @@ impl DocumentMessageHandler {
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.history.pop_redo()?;
+		let network_interface = self.history.pop_redo()?;
+		let previous_network = self.install_history_snapshot(network_interface, viewport);
 
-		// Set the previous network navigation metadata to the current navigation metadata
-		network_interface.copy_all_navigation_metadata(&self.network_interface);
-		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
-
-		//Update the metadata transform based on document PTZ
-		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		network_interface.set_document_to_viewport_transform(transform);
-
-		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
@@ -2617,7 +2595,11 @@ impl DocumentMessageHandler {
 
 				// If there's already a boolean operation on the selected layer, update it with the new operation
 				if let (Some(upstream_boolean_op), Some(only_selected_layer)) = (upstream_boolean_op, only_selected_layer) {
-					network_interface.set_input(&InputConnector::node(upstream_boolean_op, 1), NodeInput::value(TaggedValue::BooleanOperation(operation), false), &[]);
+					network_interface.set_input(
+						&InputConnector::node(upstream_boolean_op, graphene_std::path_bool_nodes::boolean_operation::OperationInput),
+						NodeInput::value(TaggedValue::BooleanOperation(operation), false),
+						&[],
+					);
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 
@@ -2748,7 +2730,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// For each selected layer, splits its fill and stroke into two stacked layers connected
-	/// to a shared `Solidify Stroke` node via two `Index Elements` nodes (indices 0 and 1).
+	/// to a shared `Solidify Stroke` node via two `Item at Index` nodes (indices 0 and 1).
 	/// Layers with only a stroke get just a `Solidify Stroke` added.
 	/// Layers with only a fill, or neither, are left untouched.
 	fn handle_expand_fill_stroke_on_selected_layers(&mut self, responses: &mut VecDeque<Message>) {
@@ -2758,25 +2740,24 @@ impl DocumentMessageHandler {
 		}
 
 		let solidify_stroke_definition = document_node_definitions::resolve_proto_node_type(graphene_std::vector::solidify_stroke::IDENTIFIER).expect("Solidify Stroke node should exist");
-		let index_elements_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::index_elements::IDENTIFIER).expect("Index Elements node should exist");
+		let item_at_index_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::item_at_index::IDENTIFIER).expect("Item at Index node should exist");
 
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
 		for layer in selected_layers {
-			let Some(vector_data) = self.network_interface.document_metadata().layer_vector_data.get(&layer) else {
+			if !self.network_interface.document_metadata().layer_vector_data.contains_key(&layer) {
 				resulting_layers.push(layer.to_node());
 				continue;
-			};
-			let stroke = vector_data.stroke.as_ref();
+			}
 
-			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
-			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
+			let appearance = self.network_interface.document_metadata().layer_appearance_attributes.get(&layer);
 
-			let has_fill = fill_graphic_list.is_some_and(|list| is_paint_present(list));
-			// `Vector.stroke` captures stroke geometry, even with weight 0 or transparent paint.
-			// So stroke visibility must be checked from `ATTR_STROKE`, the paint source of truth.
-			let stroke_visible = stroke_graphic_list.is_some_and(|list| list.element(0).is_some_and(|g| !g.is_fully_transparent()));
-			let has_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
+			let has_fill = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
+			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
+			let has_stroke = appearance.is_some_and(|appearance| {
+				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
+					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_guaranteed_fully_transparent())
+			});
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
 			if !has_stroke {
@@ -2791,7 +2772,7 @@ impl DocumentMessageHandler {
 			if has_fill && has_stroke {
 				let (existing_index, new_index) = (0_f64, 1_f64);
 
-				let existing_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(existing_index), false))]);
+				let existing_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(existing_index), false))]);
 				let existing_index_id = NodeId::new();
 				self.network_interface.insert_node(existing_index_id, existing_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&existing_index_id, layer, &[], false);
@@ -2813,12 +2794,13 @@ impl DocumentMessageHandler {
 					self.network_interface.set_display_name(&new_layer_id, original_name, &[]);
 				}
 
-				let new_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(new_index), false))]);
+				let new_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(new_index), false))]);
 				let new_index_id = NodeId::new();
 				self.network_interface.insert_node(new_index_id, new_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);
 
-				self.network_interface.create_wire(&OutputConnector::node(solidify_id, 0), &InputConnector::node(new_index_id, 0), &[]);
+				self.network_interface
+					.create_wire(&OutputConnector::primary_output(solidify_id), &InputConnector::primary_input(new_index_id), &[]);
 
 				resulting_layers.push(layer.to_node());
 				resulting_layers.push(new_layer.to_node());
@@ -3408,6 +3390,11 @@ impl DocumentMessageHandler {
 		let selected_nodes = self.network_interface.selected_nodes();
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
 
+		// A layer whose chain cannot carry blending nodes has nowhere to put the value, so it disqualifies the whole selection
+		let all_layers_support_blending = selected_nodes
+			.selected_layers_except_artboards(&self.network_interface)
+			.all(|layer| self.network_interface.layer_hosts_blending_nodes(&layer.to_node(), &[]));
+
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
 		let mut blending_options = selected_layers_except_artboards.map(|layer| {
 			(
@@ -3419,8 +3406,8 @@ impl DocumentMessageHandler {
 		let first_blending_options = blending_options.next();
 		let result_blending_options = blending_options;
 
-		// If there are no selected layers, disable the opacity and blend mode widgets.
-		let disabled = first_blending_options.is_none();
+		// If there are no selected layers, or any of them cannot host the nodes, disable the opacity and blend mode widgets.
+		let disabled = first_blending_options.is_none() || !all_layers_support_blending;
 
 		// Amongst the selected layers, check if the opacities and blend modes are identical across all layers.
 		// The result is setting `option` and `blend_mode` to Some value if all their values are identical, or None if they are not.
@@ -3583,7 +3570,7 @@ impl DocumentMessageHandler {
 					// Showing only compatible types for the layer based on the output type of the node upstream from its horizontal input
 					let compatible_type = selected_layer.and_then(|layer| {
 						self.network_interface
-							.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[])
+							.upstream_output_connector(&InputConnector::layer_secondary_input(layer.to_node()), &[])
 							.and_then(|upstream_output| self.network_interface.output_type(&upstream_output, &[]).add_node_string())
 					});
 
@@ -3789,7 +3776,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::TypeDefault(descriptor!(graphene_std::list::List<graphene_std::Artboard>)), -1, "", &[]);
+	network_interface.add_export(TaggedValue::TypeDefault(list!(graphene_std::Artboard)), -1, "", &[]);
 	network_interface
 }
 
@@ -3799,7 +3786,6 @@ enum XRayTarget {
 	Point(DVec2),
 	Quad(Quad),
 	Path(BezPath),
-	Polygon(Subpath<PointId>),
 }
 
 /// The result for the [`ClickXRayIter`] on the layer
@@ -3822,13 +3808,7 @@ fn quad_to_kurbo(quad: Quad) -> BezPath {
 
 fn click_targets_to_kurbo<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> BezPath {
 	let segments = click_targets
-		.filter_map(|target| {
-			if let ClickTargetType::Subpath(subpath) = target.target_type() {
-				Some(subpath.iter())
-			} else {
-				None
-			}
-		})
+		.filter_map(|target| if let ClickTargetType::Path(path) = target.target_type() { Some(path.segments()) } else { None })
 		.flatten()
 		.map(|bezier| Affine::new(transform.to_cols_array()) * bezier);
 	BezPath::from_path_segments(segments)
@@ -3899,10 +3879,6 @@ impl<'a> ClickXRayIter<'a> {
 			}
 			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_kurbo(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
-			XRayTarget::Polygon(polygon) => {
-				let polygon = BezPath::from_path_segments(polygon.iter_closed());
-				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
-			}
 		}
 	}
 }
@@ -4007,7 +3983,7 @@ mod document_message_handler_tests {
 	#[test]
 	fn pending_gradient_bakes_round_trip_through_serialization() {
 		let document = DocumentMessageHandler {
-			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), graphic_types::migrations::legacy::Gradient::default())],
+			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), graphic_types::migrations::legacy::LegacyGradient::default())],
 			..Default::default()
 		};
 
@@ -4317,5 +4293,41 @@ mod document_message_handler_tests {
 			After:  {after_center:?}\n\
 			Dist:   {distance} (should be < 1)"
 		);
+	}
+
+	// Grouping choreography transiently disconnects the stack wire, and the stored default for that connector
+	// must stay an empty list rather than any value which materializes as a one-element phantom in the stack
+	#[tokio::test]
+	async fn grouping_adds_no_phantom_element_to_the_stack() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let instrumented = editor.eval_graph().await.unwrap();
+
+		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass without checking anything
+		let base_lengths: Vec<usize> = instrumented
+			.grab_all_input::<graphene_std::graphic::extend::BaseInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
+			.map(|base| base.len())
+			.collect();
+		assert!(!base_lengths.is_empty(), "Instrumentation should have recorded at least one stack base");
+		assert!(base_lengths.iter().all(|&len| len == 0), "Every stack base should be empty, found lengths {base_lengths:?}");
+
+		let news: Vec<graphene_std::list::List<graphene_std::Graphic>> = instrumented
+			.grab_all_input::<graphene_std::graphic::extend::NewInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
+			.collect();
+		assert!(!news.is_empty(), "Instrumentation should have recorded at least one stacked element list");
+		let phantom_count = news
+			.iter()
+			.flat_map(|new| new.iter_element_values())
+			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None(_)))
+			.count();
+		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
 	}
 }

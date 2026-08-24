@@ -1,13 +1,12 @@
 use super::bezpath_algorithms::{clip_simple_bezpaths, miter_line_join, round_line_join};
+use super::consts::MAX_COINCIDENT_POINT_DISTANCE;
 use crate::vector::misc::point_to_dvec2;
 use kurbo::{BezPath, Join, ParamCurve, PathEl, PathSeg};
 
 /// Value to control smoothness and mathematical accuracy to offset a cubic Bezier.
 const CUBIC_REGULARIZATION_ACCURACY: f64 = 0.5;
-/// Constant used to determine if `f64`s are equivalent.
-pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-7;
 /// Squared version to avoid sqrt in distance checks.
-const MAX_ABSOLUTE_DIFFERENCE_SQUARED: f64 = MAX_ABSOLUTE_DIFFERENCE * MAX_ABSOLUTE_DIFFERENCE;
+const MAX_COINCIDENT_POINT_DISTANCE_SQUARED: f64 = MAX_COINCIDENT_POINT_DISTANCE * MAX_COINCIDENT_POINT_DISTANCE;
 const MAX_FITTED_SEGMENTS: usize = 10000;
 
 /// Reduces the segments of the bezpath into simple subcurves, then offset each subcurve a set `distance` away.
@@ -26,9 +25,9 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 			// Skip degenerate curves where all control points are at the same location.
 			// Offsetting a point is undefined and causes infinite recursion in fit_to_bezpath.
 			let start = cubic_bez.p0;
-			let is_degenerate = start.distance_squared(cubic_bez.p1) < MAX_ABSOLUTE_DIFFERENCE_SQUARED
-				&& start.distance_squared(cubic_bez.p2) < MAX_ABSOLUTE_DIFFERENCE_SQUARED
-				&& start.distance_squared(cubic_bez.p3) < MAX_ABSOLUTE_DIFFERENCE_SQUARED;
+			let is_degenerate = start.distance_squared(cubic_bez.p1) < MAX_COINCIDENT_POINT_DISTANCE_SQUARED
+				&& start.distance_squared(cubic_bez.p2) < MAX_COINCIDENT_POINT_DISTANCE_SQUARED
+				&& start.distance_squared(cubic_bez.p3) < MAX_COINCIDENT_POINT_DISTANCE_SQUARED;
 
 			if is_degenerate {
 				return None;
@@ -49,7 +48,7 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 		return BezPath::new();
 	}
 
-	// Clip or join consecutive Subpaths
+	// Clip or join consecutive subpaths
 	for i in 0..bezpaths.len() - 1 {
 		let j = i + 1;
 		let bezpath1 = &bezpaths[i];
@@ -59,11 +58,11 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 		let first_segment_start = point_to_dvec2(bezpath2.segments().next().unwrap().start());
 
 		// If the anchors are approximately equal, there is no need to clip / join the segments
-		if last_segment_end.abs_diff_eq(first_segment_start, MAX_ABSOLUTE_DIFFERENCE) {
+		if last_segment_end.abs_diff_eq(first_segment_start, MAX_COINCIDENT_POINT_DISTANCE) {
 			continue;
 		}
 
-		// The angle is concave. The Subpath overlap and must be clipped
+		// The angle is concave. The subpaths overlap and must be clipped
 		let mut apply_join = true;
 
 		if let Some((clipped_subpath1, clipped_subpath2)) = clip_simple_bezpaths(bezpath1, bezpath2) {
@@ -71,7 +70,7 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 			bezpaths[j] = clipped_subpath2;
 			apply_join = false;
 		}
-		// The angle is convex. The Subpath must be joined using the specified join type
+		// The angle is convex. The subpaths must be joined using the specified join type
 		if apply_join {
 			match join {
 				Join::Bevel => {
