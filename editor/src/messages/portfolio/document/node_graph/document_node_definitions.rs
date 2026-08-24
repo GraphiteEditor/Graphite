@@ -159,9 +159,10 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::to_graphic::IDENTIFIER),
 								..Default::default()
 							},
-							// Collection of the coerced content (node 6) into the layer's group
+							// Collection of the content into the layer's group; the wrap keeps
+							// the content level's element type for the legacy boundary.
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(6), 0)],
+								inputs: vec![NodeInput::import(generic!(T), 1)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::wrap_graphic::IDENTIFIER),
 								..Default::default()
 							},
@@ -189,12 +190,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								call_argument: generic!(T),
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
-								..Default::default()
-							},
-							// Secondary (left) input type coercion
-							DocumentNode {
-								inputs: vec![NodeInput::import(generic!(T), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::to_graphic::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -258,14 +253,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								// 6: to_graphic (secondary)
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-28, -1)),
 										..Default::default()
 									},
 									..Default::default()

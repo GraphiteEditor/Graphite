@@ -1,6 +1,6 @@
+use crate::markers::{ATTR_FILL, ATTR_STROKE};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use crate::markers::{ATTR_FILL, ATTR_STROKE};
 use core_types::list::{AttributeValueDyn, Item, ItemAttributeValues, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
@@ -257,6 +257,8 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 
 	for paint_key in [ATTR_FILL, ATTR_STROKE] {
 		if let Some(graphics) = attributes.get_mut::<List<Graphic>>(paint_key) {
+			bake_graphic_paint_transform(graphics, transform);
+		} else if let Some(Some(graphics)) = attributes.get_mut::<Option<List<Graphic>>>(paint_key) {
 			bake_graphic_paint_transform(graphics, transform);
 		}
 	}
@@ -604,9 +606,7 @@ fn group_is_fully_transparent(group: &core_types::record::Group) -> bool {
 		core_types::record::GroupContent::Run(item) => {
 			let attrs = RunAttrs::of(item);
 			let lanes = item.typed_lanes::<Graphic>();
-			(0..item.len()).all(|lane| {
-				RunAttrs::read_or(item, attrs.opacity, lane, 1.) <= 0. || lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_fully_transparent())
-			})
+			(0..item.len()).all(|lane| RunAttrs::read_or(item, attrs.opacity, lane, 1.) <= 0. || lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_fully_transparent()))
 		}
 		core_types::record::GroupContent::Stack(children) => children.iter().all(group_is_fully_transparent),
 	}
@@ -719,7 +719,9 @@ pub fn run_to_render_list<T: Clone + Send + Sync + 'static>(item: &core_types::r
 fn push_lane_paint_into_interiors(list: &mut List<Graphic>) {
 	for index in 0..list.len() {
 		for key in [ATTR_FILL, ATTR_STROKE] {
-			let Some(paint) = paint_at(list, index, key).filter(|paint| is_paint_present(paint)).cloned() else { continue };
+			let Some(paint) = paint_at(list, index, key).filter(|paint| is_paint_present(paint)).cloned() else {
+				continue;
+			};
 			let Some(element) = list.element_mut(index) else { continue };
 			let fill_list = |inner: &mut List<Vector>| {
 				for item in 0..inner.len() {
@@ -767,10 +769,10 @@ const _: () = {
 	}
 };
 
-/// The graphic with every `Group` converted to its legacy list form.
+/// The graphic with every `Group` converted to its legacy form.
 pub fn map_groups_to_legacy(graphic: &Graphic) -> Graphic {
 	match graphic {
-		Graphic::Group(group) => Graphic::Graphic(group_to_legacy_list(group)),
+		Graphic::Group(group) => group_to_legacy_graphic(group),
 		Graphic::Graphic(children) => {
 			let mut children = children.clone();
 			for child in children.iter_element_values_mut() {
@@ -780,6 +782,27 @@ pub fn map_groups_to_legacy(graphic: &Graphic) -> Graphic {
 		}
 		other => other.clone(),
 	}
+}
+
+/// The group as one legacy graphic. A bare (row-less) wrap of a single typed
+/// run keeps the run's typed variant, matching the `Into<Graphic>` the
+/// pre-flip wrap applied; everything else becomes the legacy group list.
+pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic {
+	if group.row.is_none()
+		&& let core_types::record::GroupContent::Run(item) = &group.content
+	{
+		let typed = None
+			.or_else(|| run_to_legacy_list::<Vector>(item).map(Graphic::Vector))
+			.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(Graphic::RasterCPU))
+			.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(Graphic::RasterGPU))
+			.or_else(|| run_to_legacy_list::<Color>(item).map(Graphic::Color))
+			.or_else(|| run_to_legacy_list::<GradientStops>(item).map(Graphic::Gradient))
+			.or_else(|| run_to_legacy_list::<String>(item).map(Graphic::Text));
+		if let Some(typed) = typed {
+			return typed;
+		}
+	}
+	Graphic::Graphic(group_to_legacy_list(group))
 }
 
 /// The group as a legacy `List<Graphic>`: a `Graphic` run becomes the items,
@@ -810,7 +833,7 @@ pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic> 
 		core_types::record::GroupContent::Stack(children) => {
 			let mut list = List::new();
 			for child in children {
-				list.push(Item::new_from_element(Graphic::Graphic(group_to_legacy_list(child))));
+				list.push(Item::new_from_element(group_to_legacy_graphic(child)));
 				let index = list.len() - 1;
 				if let Some(row) = &child.row {
 					if !row.is_empty() {

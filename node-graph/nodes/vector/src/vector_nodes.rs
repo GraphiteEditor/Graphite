@@ -58,7 +58,11 @@ fn assign_color_at(gradient: &GradientStops, position: usize, length: usize, ran
 	let factor = match randomize {
 		true => {
 			let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
-			(0..=position).map(|_| rng.random::<f64>()).next_back().unwrap_or_default()
+			let mut draw = 0.;
+			for _ in 0..=position {
+				draw = rng.random::<f64>();
+			}
+			draw
 		}
 		false => match repeat_every {
 			0 => position as f64 / (length - 1).max(1) as f64,
@@ -171,7 +175,7 @@ fn assign_colors_graphic<'e>(
 	if lane >= content.len() {
 		return Err(GraphError::past_end().into());
 	}
-	let mut element = content.element_ref(lane).clone();
+	let mut element = graphic_types::graphic::map_groups_to_legacy(content.element_ref(lane));
 	let (transform, layer_path) = carried_lane_attrs(ctx.arena(), content.lane(lane))?;
 
 	if gradient.len() == 0 {
@@ -187,9 +191,11 @@ fn assign_colors_graphic<'e>(
 		false => gradient_element,
 	};
 
-	let interior_count = |graphic: &Graphic| graphic.as_vector().map_or(0, |list| list.len());
-	let length: usize = (0..content.len()).map(|row| interior_count(content.element_ref(row))).sum();
-	let mut position: usize = (0..lane).map(|row| interior_count(content.element_ref(row))).sum();
+	// The interiors the pre-flip node reached: only a lane's DIRECT vector
+	// list, so wrapped groups keep their own styling and consume no position.
+	let count_lane = |row: usize| graphic_types::graphic::map_groups_to_legacy(content.element_ref(row)).as_vector().map_or(0, |list| list.len());
+	let length: usize = (0..content.len()).map(count_lane).sum();
+	let mut position: usize = (0..lane).map(count_lane).sum();
 
 	if let Some(vector_list) = element.as_vector_mut() {
 		for index in 0..vector_list.len() {

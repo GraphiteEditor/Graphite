@@ -468,9 +468,14 @@ pub fn legacy_layer_extend<T: Send + Clone>(
 }
 
 /// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.
+/// The wrapped run keeps the level's element type, so the legacy boundary can
+/// lower a wrapped vector level to the bare typed graphic the pre-flip wrap made.
 /// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"), extent(wrap_graphic_extent))]
-pub fn wrap_graphic(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>) -> Result<IList<Graphic>, Interrupt> {
+pub fn wrap_graphic<T: Clone + Send + Sync + core_types::CacheHash + 'static>(
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
+) -> Result<IList<Graphic>, Interrupt> {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	Ok(Graphic::Group(core_types::record::Group {
@@ -480,7 +485,7 @@ pub fn wrap_graphic(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IL
 }
 
 /// The collected group is the level's single lane.
-fn wrap_graphic_extent(_content: ListIn<'_, Graphic>, _level: LevelIn) -> GPoll<Extent> {
+fn wrap_graphic_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Extent> {
 	GPoll::Final(Extent::Exactly(1))
 }
 

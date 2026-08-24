@@ -1,15 +1,15 @@
+use core_types::attribute::{Attr, BlendMode as BlendModeAttr, ClippingMask, EditorLayerPath, Opacity, OpacityFill, Transform as TransformAttr};
 use core_types::list::{Item, List};
 use core_types::uuid::NodeId;
-use core_types::attribute::{Attr, BlendMode as BlendModeAttr, ClippingMask, EditorLayerPath, Opacity, OpacityFill, Transform as TransformAttr};
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
-use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
+use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
-use graphic_types::vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
+use graphic_types::vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use graphic_types::{ATTR_FILL, Graphic, IntoGraphicList, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
@@ -21,7 +21,11 @@ pub use vector_types::vector::misc::BooleanOperation;
 // TODO: since before we used a Vec of single-item `List`s and now we use a single `List`
 // TODO: with multiple items while still assuming a single item for the boolean operations.
 
-fn boolean_core<'e>(arena: &'e core_types::arena::Arena, content: List<Graphic>, operation: BooleanOperation) -> Result<
+fn boolean_core<'e>(
+	arena: &'e core_types::arena::Arena,
+	content: List<Graphic>,
+	operation: BooleanOperation,
+) -> Result<
 	(
 		Vector,
 		Attr<'e, TransformAttr>,
@@ -54,10 +58,12 @@ fn boolean_core<'e>(arena: &'e core_types::arena::Arena, content: List<Graphic>,
 		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
 	}
 
-	let exhausted = || core_types::gpoll::Interrupt::from(core_types::gpoll::GraphError {
-		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
-		trace: Vec::new(),
-	});
+	let exhausted = || {
+		core_types::gpoll::Interrupt::from(core_types::gpoll::GraphError {
+			kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		})
+	};
 	let park_paint = |paint: Option<List<Graphic>>| -> Result<Option<&'e List<Graphic>>, core_types::gpoll::Interrupt> {
 		match paint {
 			Some(list) => Ok(Some(arena.alloc(list).ok_or_else(exhausted)?.0)),
@@ -66,8 +72,8 @@ fn boolean_core<'e>(arena: &'e core_types::arena::Arena, content: List<Graphic>,
 	};
 
 	let element = result_vector_list.element(0).cloned().unwrap_or_default();
-	let fill = park_paint(result_vector_list.attribute::<List<Graphic>>(graphic_types::ATTR_FILL, 0).cloned())?;
-	let stroke = park_paint(result_vector_list.attribute::<List<Graphic>>(graphic_types::ATTR_STROKE, 0).cloned())?;
+	let fill = park_paint(graphic_types::graphic::graphic_list_at(&result_vector_list, 0, graphic_types::ATTR_FILL).map(|paint| paint.into_owned()))?;
+	let stroke = park_paint(graphic_types::graphic::graphic_list_at(&result_vector_list, 0, graphic_types::ATTR_STROKE).map(|paint| paint.into_owned()))?;
 	let layer_path: Vec<NodeId> = result_vector_list
 		.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH, 0)
 		.map(|path| path.iter_element_values().copied().collect())
