@@ -1,6 +1,6 @@
 //! A generic, draggable handle that edits a continuous `f64` node parameter (e.g. a radius).
 //!
-//! Unlike the hand-written shape gizmos in `shape_gizmos`, this gizmo is fully driven by data
+//! Unlike the hand-written shape gizmos it replaced, this gizmo is fully driven by data
 //! from the [gizmo registry](crate::messages::tool::common_functionality::gizmos::gizmo_registry):
 //! it knows nothing about the specific node it edits beyond the node id, the parameter index, and
 //! the registry's [`GizmoInfo`]. This is what lets any node opt into a slider with zero custom code.

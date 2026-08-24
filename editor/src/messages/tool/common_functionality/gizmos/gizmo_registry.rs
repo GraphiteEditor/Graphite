@@ -2,9 +2,11 @@
 //!
 //! A data-driven lookup that maps node types to the parameters that should be exposed as
 //! interactive canvas gizmos. This is the foundation of the *generic* gizmo system: instead of
-//! writing a bespoke handler for every shape (see the `shape_gizmos` module for the legacy,
-//! hand-written handlers), a node simply declares which of its inputs are gizmo-enabled here and
-//! the generic gizmo manager builds the appropriate interactive handles automatically.
+//! writing a bespoke handler for every shape, a node declares which of its inputs are
+//! gizmo-enabled here and the generic gizmo manager builds the interactive handles from that.
+//!
+//! See `README.md` in this directory for a guide to adding one, including the hooks a node reaches
+//! for when the generic mechanics are not enough.
 //!
 //! To add gizmos to a new node:
 //! 1. Add a `const` slice of [`GizmoInfo`] describing its gizmo-enabled parameters.
