@@ -10,7 +10,9 @@ fn compile_to_proto(c: &mut Criterion) {
 
 	for name in DEMO_ART {
 		let network = load_from_name(name);
-		c.bench_function(name, |b| b.iter_batched(|| network.clone(), |network| compile(black_box(network), registry), criterion::BatchSize::SmallInput));
+		c.bench_function(name, |b| {
+			b.iter_batched(|| network.clone(), |network| compile(black_box(network), registry), criterion::BatchSize::SmallInput)
+		});
 	}
 }
 

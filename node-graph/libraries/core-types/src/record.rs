@@ -268,8 +268,8 @@ impl Layout {
 					align: field.align,
 					read_erased: field.read_erased,
 					repark: field.repark,
-				content_hash: field.content_hash,
-				content_eq: field.content_eq,
+					content_hash: field.content_hash,
+					content_eq: field.content_eq,
 				})
 				.collect();
 			union = union.with_writes(union.depth, union.element, &writes);
@@ -818,14 +818,7 @@ impl<'a, El: Clone, N> ElementLazyInput<'a, El, N> {
 impl<'a, Out, N> ElementLazyInput<'a, Out, N> {
 	/// `read` must be sound against the layout the offsets in `reads` were
 	/// resolved from; the macro proves both at wiring.
-	pub fn with_reads(
-		node: &'a N,
-		cell: &'a crate::node::StatusCell,
-		input_index: usize,
-		layout: &'a Layout,
-		reads: &'a [Option<usize>],
-		read: unsafe fn(Rec, &[Option<usize>]) -> Out,
-	) -> Self {
+	pub fn with_reads(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, layout: &'a Layout, reads: &'a [Option<usize>], read: unsafe fn(Rec, &[Option<usize>]) -> Out) -> Self {
 		Self {
 			node,
 			cell,
@@ -1349,7 +1342,6 @@ pub unsafe fn borrow_element<'e, T>(rec: Rec) -> &'e T {
 pub unsafe fn read_element<T: Clone>(rec: Rec) -> T {
 	unsafe { borrow_element::<T>(rec) }.clone()
 }
-
 
 /// # Safety
 /// `dst` must be fresh element storage of a record whose element is `T`.

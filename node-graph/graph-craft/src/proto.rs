@@ -382,8 +382,10 @@ impl ProtoNetwork {
 						layout,
 					}),
 					ConstructionArgs::Nodes(inputs) => node.resolved.layout_meta.as_ref().and_then(|meta| {
-						let input_layouts: Vec<Option<&core_types::record::Layout>> =
-							inputs.iter().map(|input| self.nodes[input.0 as usize].1.resolved.layout.as_ref().map(|resolved| &resolved.layout)).collect();
+						let input_layouts: Vec<Option<&core_types::record::Layout>> = inputs
+							.iter()
+							.map(|input| self.nodes[input.0 as usize].1.resolved.layout.as_ref().map(|resolved| &resolved.layout))
+							.collect();
 						meta.sources.iter().all(|&source| input_layouts[source as usize].is_some()).then(|| meta.resolve(&input_layouts))
 					}),
 					ConstructionArgs::Inline(_) => None,
@@ -1042,13 +1044,7 @@ fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic
 		.into_iter()
 		.chain(types.inputs.iter().map(|x| x.fn_input()).zip(parameters.iter().map(|x| x.fn_input())))
 		.chain(types.inputs.iter().map(|x| x.fn_output()).zip(parameters.iter().map(|x| x.fn_output())))
-		.chain(
-			types
-				.inputs
-				.iter()
-				.map(|x| record_element(x.fn_output()))
-				.zip(parameters.iter().map(|x| record_element(x.fn_output()))),
-		);
+		.chain(types.inputs.iter().map(|x| record_element(x.fn_output())).zip(parameters.iter().map(|x| record_element(x.fn_output()))));
 	let concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Some(Type::Generic(input)) if generic == input));
 	let mut outputs = concrete_inputs.flat_map(|(_, out)| out);
 	let out_ty = outputs
@@ -1090,10 +1086,7 @@ mod test {
 			ProtoNode {
 				construction_args: args,
 				resolved: Resolved {
-					layout: Some(core_types::record::RecordLayout {
-						frame_bytes: 1,
-						..Default::default()
-					}),
+					layout: Some(core_types::record::RecordLayout { frame_bytes: 1, ..Default::default() }),
 					..Default::default()
 				},
 				..Default::default()

@@ -358,7 +358,6 @@ impl ContextDependencies {
 		self
 	}
 
-
 	pub fn sources(&self) -> &[SourceId] {
 		&self.sources
 	}

@@ -15,13 +15,13 @@ use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
 use core_types::{ATTR_TRANSFORM, WasmNotSend};
 use core_types::{Color, Ctx, ExtractIndex, InjectIndex};
-#[cfg(target_family = "wasm")]
-use graphic_types::ATTR_EDITOR_MERGED_LAYERS;
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
+#[cfg(target_family = "wasm")]
+use graphic_types::ATTR_EDITOR_MERGED_LAYERS;
 #[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
 #[cfg(target_family = "wasm")]

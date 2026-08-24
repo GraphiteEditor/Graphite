@@ -14,7 +14,9 @@ use crate::{NetworkId, NodeMetadataSource, PeerId, Position, Registry};
 /// Test networks with Import inputs will fail compilation (which is expected).
 fn verify_network_compiles(network: &NodeNetwork) -> Result<(), String> {
 	let compiler = Compiler {};
-	compiler.compile_single(network.clone(), &graph_craft::proto::Registry::new()).map_err(|e| format!("Compilation failed: {:?}", e))?;
+	compiler
+		.compile_single(network.clone(), &graph_craft::proto::Registry::new())
+		.map_err(|e| format!("Compilation failed: {:?}", e))?;
 	Ok(())
 }
 

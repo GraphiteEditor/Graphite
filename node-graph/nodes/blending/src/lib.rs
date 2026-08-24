@@ -2,7 +2,6 @@ use core_types::attribute::{Attr, BlendMode as BlendModeAttr, ClippingMask, Opac
 use core_types::registry::types::Percentage;
 use core_types::{BlendMode, Ctx};
 
-
 /// Applies the blend mode to the input graphics. Setting this allows for customizing how overlapping content is composited together.
 #[node_macro::node(category("Blending"))]
 fn blend_mode<T>(

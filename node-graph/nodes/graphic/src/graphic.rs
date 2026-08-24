@@ -273,15 +273,7 @@ fn mirror<'e>(
 	)>,
 	Interrupt,
 > {
-	mirror_lane(
-		ctx.arena(),
-		legacy_render_list_of(content),
-		ctx.index() as usize,
-		relative_to_bounds,
-		offset,
-		angle,
-		keep_original,
-	)
+	mirror_lane(ctx.arena(), legacy_render_list_of(content), ctx.index() as usize, relative_to_bounds, offset, angle, keep_original)
 }
 
 /// The kept originals double the level, counted from the subject's extent
@@ -331,15 +323,7 @@ fn mirror_vector<'e>(
 	)>,
 	Interrupt,
 > {
-	mirror_lane(
-		ctx.arena(),
-		legacy_render_list_of(content),
-		ctx.index() as usize,
-		relative_to_bounds,
-		offset,
-		angle,
-		keep_original,
-	)
+	mirror_lane(ctx.arena(), legacy_render_list_of(content), ctx.index() as usize, relative_to_bounds, offset, angle, keep_original)
 }
 
 fn mirror_vector_extent(

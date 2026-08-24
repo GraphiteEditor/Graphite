@@ -42,8 +42,7 @@ fn transform_extent(content: ExtentIn<'_>, _translation: ValueIn<'_, DVec2>, _ro
 #[node_macro::node(category(""))]
 fn transform_value<T: ApplyTransform + 'static>(
 	ctx: impl Ctx + DeriveCtx + ModifyFootprint,
-	#[implementations(Context -> DAffine2, Context -> DVec2)]
-	content: impl Node<Context<'_>, Output = T>,
+	#[implementations(Context -> DAffine2, Context -> DVec2)] content: impl Node<Context<'_>, Output = T>,
 	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: DVec2,
 	#[widget(ParsedWidgetOverride::Custom = "transform_rotation")] rotation: f64,
 	#[widget(ParsedWidgetOverride::Custom = "transform_scale")]
@@ -68,13 +67,7 @@ pub use _transform_value_mod::transform_value_entries;
 /// Resets the desired components of the input transform to their default values. If all components are reset, the output will be set to the identity transform.
 /// Shear is represented jointly by rotation and scale, so resetting both will also remove any shear.
 #[node_macro::node(category("Math: Transform"))]
-fn reset_transform<T>(
-	_: impl Ctx,
-	(element, transform): (T, Attr<TransformAttr>),
-	#[default(true)] reset_translation: bool,
-	reset_rotation: bool,
-	reset_scale: bool,
-) -> (T, Attr<TransformAttr>) {
+fn reset_transform<T>(_: impl Ctx, (element, transform): (T, Attr<TransformAttr>), #[default(true)] reset_translation: bool, reset_rotation: bool, reset_scale: bool) -> (T, Attr<TransformAttr>) {
 	let mut row_transform = *transform;
 	if reset_translation {
 		row_transform.translation = DVec2::ZERO;

@@ -5,14 +5,14 @@
 //! tests; the node forms are the production authoring surface, and the
 //! wiring is by hand until the compiler pass constructs layouts.
 
+use core_types::Ctx;
 use core_types::attribute::{Attr, EditorLayerPath, Opacity, RemoveAttr, Transform};
-use glam::DAffine2;
 use core_types::context::{DeriveCtx, ExtractIndex, ExtractIndices, IndexLink, InjectIndex};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
 use core_types::node::Lane;
 use core_types::uuid::NodeId;
-use core_types::Ctx;
+use glam::DAffine2;
 
 core_types::attribute! {
 	/// Test-only measured length of an element.
@@ -116,11 +116,7 @@ fn repeat_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, _reverse: Value
 /// Test-only lazy-carrier creator: each copy evaluates the content at its own
 /// index and re-scales the row's opacity by the copy number.
 #[node_macro::node(category("Test"), extent(repeat_faded_extent))]
-fn repeat_faded<T>(
-	ctx: impl Ctx + DeriveCtx + ExtractIndex,
-	content: impl Node<Context<'_>, Output = (T, Attr<Opacity>)>,
-	count: u32,
-) -> Result<IList<(T, Attr<Opacity>)>, Interrupt> {
+fn repeat_faded<T>(ctx: impl Ctx + DeriveCtx + ExtractIndex, content: impl Node<Context<'_>, Output = (T, Attr<Opacity>)>, count: u32) -> Result<IList<(T, Attr<Opacity>)>, Interrupt> {
 	let inner = content.inner_extent(ctx)?;
 	let (copy, rest) = ctx.split_innermost(inner);
 	if copy >= count as u64 {
@@ -143,11 +139,7 @@ fn repeat_faded_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, level: Le
 /// Rank-model Extend: the output's top level is `base`'s lanes followed by
 /// `new`'s, each side evaluated within its own index range.
 #[node_macro::node(category("Test"), extent(extend_extent))]
-fn extend<T>(
-	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
-	base: impl Node<Context<'_>, Output = T>,
-	new: impl Node<Context<'_>, Output = T>,
-) -> Result<T, Interrupt> {
+fn extend<T>(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, base: impl Node<Context<'_>, Output = T>, new: impl Node<Context<'_>, Output = T>) -> Result<T, Interrupt> {
 	let split = match base.extent(ctx, Level::Total) {
 		GPoll::Final(Extent::Exactly(count)) => count as u64,
 		// A scalar side joins the concat as a single lane, per `Extent::sum`.
@@ -375,12 +367,7 @@ async fn double_async(_: impl Ctx, element: f64) -> f64 {
 }
 
 #[node_macro::node(category("Test"))]
-fn fallback(
-	ctx: impl Ctx,
-	_: (),
-	#[expose] content: impl Node<Context<'_>, Output = (f64, Attr<Opacity>)>,
-	#[expose] alternate: impl Node<Context<'_>, Output = f64>,
-) -> Result<f64, Interrupt> {
+fn fallback(ctx: impl Ctx, _: (), #[expose] content: impl Node<Context<'_>, Output = (f64, Attr<Opacity>)>, #[expose] alternate: impl Node<Context<'_>, Output = f64>) -> Result<f64, Interrupt> {
 	let (element, opacity) = content.eval(ctx)?;
 	Ok(if *opacity > 0. { element } else { alternate.eval(ctx)? })
 }
@@ -747,7 +734,14 @@ mod tests {
 			folded: None,
 		};
 		let repeat = install(
-			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
+			RepeatNode::new(
+				RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base),
+				count_edge,
+				reverse_edge,
+				&base,
+				&count_layout,
+				&reverse_layout,
+			),
 			meta,
 			&[Some(&base)],
 		);
@@ -789,7 +783,14 @@ mod tests {
 			folded: None,
 		};
 		let repeat = install(
-			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
+			RepeatNode::new(
+				RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base),
+				count_edge,
+				reverse_edge,
+				&base,
+				&count_layout,
+				&reverse_layout,
+			),
 			meta,
 			&[Some(&base)],
 		);
@@ -833,7 +834,14 @@ mod tests {
 			folded: None,
 		};
 		let repeat = install(
-			RepeatNode::new(RecordSource::new(content, &leveled_content, &leveled_content), count_edge, reverse_edge, &leveled_content, &count_layout, &reverse_layout),
+			RepeatNode::new(
+				RecordSource::new(content, &leveled_content, &leveled_content),
+				count_edge,
+				reverse_edge,
+				&leveled_content,
+				&count_layout,
+				&reverse_layout,
+			),
 			meta,
 			&[Some(&leveled_content)],
 		);
@@ -1157,7 +1165,14 @@ mod tests {
 				field: None,
 			};
 			install(
-				RepeatNode::new(RecordSource::new(content, &content_layout, &content_layout), count_edge, reverse_edge, &content_layout, count_layout, reverse_layout),
+				RepeatNode::new(
+					RecordSource::new(content, &content_layout, &content_layout),
+					count_edge,
+					reverse_edge,
+					&content_layout,
+					count_layout,
+					reverse_layout,
+				),
 				meta(),
 				&[Some(&content_layout)],
 			)
@@ -1536,7 +1551,14 @@ mod tests {
 			folded: None,
 		};
 		let nested = install(
-			RepeatNode::new(RecordSource::new(content, &leveled_content, &leveled_content), count_edge, reverse_edge, &leveled_content, &count_layout, &reverse_layout),
+			RepeatNode::new(
+				RecordSource::new(content, &leveled_content, &leveled_content),
+				count_edge,
+				reverse_edge,
+				&leveled_content,
+				&count_layout,
+				&reverse_layout,
+			),
 			meta,
 			&[Some(&leveled_content)],
 		);
@@ -1578,7 +1600,14 @@ mod tests {
 			folded: None,
 		};
 		let nested = install(
-			RepeatNode::new(RecordSource::new(content, &leveled_content, &leveled_content), count_edge, reverse_edge, &leveled_content, &count_layout, &reverse_layout),
+			RepeatNode::new(
+				RecordSource::new(content, &leveled_content, &leveled_content),
+				count_edge,
+				reverse_edge,
+				&leveled_content,
+				&count_layout,
+				&reverse_layout,
+			),
 			meta,
 			&[Some(&leveled_content)],
 		);
@@ -1807,7 +1836,14 @@ mod tests {
 			folded: None,
 		};
 		let repeat = install(
-			RepeatNode::new(RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
+			RepeatNode::new(
+				RecordSource::new(IndexSourceNode { layout: base.clone() }, &base, &base),
+				count_edge,
+				reverse_edge,
+				&base,
+				&count_layout,
+				&reverse_layout,
+			),
 			meta,
 			&[Some(&base)],
 		);
@@ -1850,7 +1886,11 @@ mod tests {
 
 		let chain = install(
 			MultiplyOpacityNode::new(
-				install(MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout), multiply_opacity_layout_meta(), &[Some(&source_layout)]),
+				install(
+					MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout),
+					multiply_opacity_layout_meta(),
+					&[Some(&source_layout)],
+				),
 				ValueNode(0.5),
 				&modified,
 			),
@@ -1900,7 +1940,11 @@ mod tests {
 
 		let chain = install(
 			MeasureNode::new(
-				install(MultiplyOpacityNode::new(bare_source(&source_layout, -2.), ValueNode(0.5), &source_layout), multiply_opacity_layout_meta(), &[Some(&source_layout)]),
+				install(
+					MultiplyOpacityNode::new(bare_source(&source_layout, -2.), ValueNode(0.5), &source_layout),
+					multiply_opacity_layout_meta(),
+					&[Some(&source_layout)],
+				),
 				&modified,
 			),
 			measure_layout_meta(),
@@ -1934,7 +1978,11 @@ mod tests {
 
 		let chain = install(
 			ShadeNode::new(
-				install(MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout), multiply_opacity_layout_meta(), &[Some(&source_layout)]),
+				install(
+					MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout),
+					multiply_opacity_layout_meta(),
+					&[Some(&source_layout)],
+				),
 				&modified,
 			),
 			shade_layout_meta(),
@@ -2053,13 +2101,21 @@ mod tests {
 		let modified = checked_multiply_opacity_layout(&source_layout);
 		reserve_for(&[&source_layout, &modified]);
 
-		let ok = install(CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(0.5), &source_layout), checked_multiply_opacity_layout_meta(), &[Some(&source_layout)]);
+		let ok = install(
+			CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(0.5), &source_layout),
+			checked_multiply_opacity_layout_meta(),
+			&[Some(&source_layout)],
+		);
 		let GPoll::Final(value) = ok.eval(&ctx) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { modified.rec(&value).read::<f64>(modified.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 
-		let failing = install(CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(-1.), &source_layout), checked_multiply_opacity_layout_meta(), &[Some(&source_layout)]);
+		let failing = install(
+			CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(-1.), &source_layout),
+			checked_multiply_opacity_layout_meta(),
+			&[Some(&source_layout)],
+		);
 		let GPoll::Error(error) = failing.eval(&ctx) else {
 			panic!("expected an error");
 		};
@@ -2080,7 +2136,11 @@ mod tests {
 
 		let chain = install(
 			ScaleNode::new(
-				install(MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout), multiply_opacity_layout_meta(), &[Some(&source_layout)]),
+				install(
+					MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout),
+					multiply_opacity_layout_meta(),
+					&[Some(&source_layout)],
+				),
 				ValueNode(3.),
 				&modified,
 			),
@@ -2139,7 +2199,11 @@ mod tests {
 			panic!("expected a final record");
 		};
 		let rec = transferred.rec(&value);
-		assert_eq!(unsafe { rec.read::<f64>(transferred.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5, "an absent secondary attribute reads its default");
+		assert_eq!(
+			unsafe { rec.read::<f64>(transferred.offset_of(Opacity::NAME, 0).unwrap()) },
+			0.5,
+			"an absent secondary attribute reads its default"
+		);
 	}
 
 	#[test]
@@ -2346,7 +2410,11 @@ mod tests {
 			ShadeNode::new(
 				install(
 					StripOpacityNode::new(
-						install(MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout), multiply_opacity_layout_meta(), &[Some(&source_layout)]),
+						install(
+							MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout),
+							multiply_opacity_layout_meta(),
+							&[Some(&source_layout)],
+						),
 						&modified,
 					),
 					strip_opacity_layout_meta(),
@@ -2409,7 +2477,11 @@ mod tests {
 
 		let chain = install(
 			LabelNode::new(
-				install(LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout), label_layout_meta(), &[Some(&source_layout)]),
+				install(
+					LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout),
+					label_layout_meta(),
+					&[Some(&source_layout)],
+				),
 				ValueNode(String::from("b")),
 				&labeled,
 			),
@@ -2774,7 +2846,11 @@ mod tests {
 		let labeled = label_layout(&source_layout);
 		reserve_for(&[&labeled, &labeled]);
 
-		let chain = install(LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout), label_layout_meta(), &[Some(&source_layout)]);
+		let chain = install(
+			LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout),
+			label_layout_meta(),
+			&[Some(&source_layout)],
+		);
 		let memo = crate::memo::MemoizeNode::new(chain, &labeled);
 
 		let first_arena = Arena::new(1024).unwrap();
