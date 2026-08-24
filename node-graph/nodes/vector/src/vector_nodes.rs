@@ -112,7 +112,7 @@ fn assign_colors<'e>(
 	let carried = carried_lane_attrs(ctx.arena(), *content.lane(lane))?;
 	let (transform, layer_path) = carried;
 
-	if gradient.len() == 0 {
+	if gradient.is_empty() {
 		return Ok((element, transform, Attr(existing_fill), Attr(existing_stroke), layer_path));
 	}
 	let gradient_element = gradient.element_ref(0);
@@ -140,6 +140,7 @@ fn assign_colors<'e>(
 	Ok((element, transform, Attr(fill_attr), Attr(stroke_attr), layer_path))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn assign_colors_extent(
 	content: ListIn<'_, Vector>,
 	_fill: ValueIn<'_, bool>,
@@ -179,7 +180,7 @@ fn assign_colors_graphic<'e>(
 	let mut element = graphic_types::graphic::map_groups_to_legacy(content.element_ref(lane));
 	let (transform, layer_path) = carried_lane_attrs(ctx.arena(), *content.lane(lane))?;
 
-	if gradient.len() == 0 {
+	if gradient.is_empty() {
 		return Ok((element, transform, layer_path));
 	}
 	let gradient_element = gradient.element_ref(0);
@@ -217,6 +218,7 @@ fn assign_colors_graphic<'e>(
 	Ok((element, transform, layer_path))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn assign_colors_graphic_extent(
 	content: ListIn<'_, Graphic>,
 	_fill: ValueIn<'_, bool>,
@@ -236,7 +238,7 @@ fn assign_colors_graphic_extent(
 
 pub use _assign_colors_graphic_mod::assign_colors_graphic_entries;
 
-fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic>) -> Result<&'e List<Graphic>, Interrupt> {
+fn park_paint(arena: &core_types::arena::Arena, paint: List<Graphic>) -> Result<&List<Graphic>, Interrupt> {
 	let (parked, _) = arena.alloc(paint).ok_or(GraphError {
 		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
 		trace: Vec::new(),
@@ -548,6 +550,7 @@ fn copy_to_points<T>(
 /// The pushed level holds one copy per point (a data-dependent count, so the
 /// points level materializes here; its cone stays small); inner levels
 /// forward to the content, taken uniform across copies.
+#[allow(clippy::too_many_arguments)]
 fn copy_to_points_extent(
 	content: ExtentIn<'_>,
 	points: ListIn<'_, Vector>,
@@ -1436,6 +1439,7 @@ fn solidify_stroke_core(graphic_list: List<Graphic>) -> List<Vector> {
 	output
 }
 
+#[allow(clippy::type_complexity)]
 fn solidify_lane<'e>(
 	arena: &'e core_types::arena::Arena,
 	graphic_list: List<Graphic>,
@@ -1460,6 +1464,7 @@ fn solidify_lane<'e>(
 
 /// One lane of a legacy result list as the element and standard-attribute
 /// tuple a fold kernel emits.
+#[allow(clippy::type_complexity)]
 fn emit_legacy_lane<'e>(
 	arena: &'e core_types::arena::Arena,
 	output: List<Vector>,
@@ -1492,7 +1497,7 @@ fn emit_legacy_lane<'e>(
 	let element = output.element(lane).cloned().unwrap_or_default();
 	let fill = output.attribute::<List<Graphic>>(ATTR_FILL, lane).map(|paint| park_paint(arena, paint.clone())).transpose()?;
 	let stroke = output.attribute::<List<Graphic>>(ATTR_STROKE, lane).map(|paint| park_paint(arena, paint.clone())).transpose()?;
-	let layer_path: Vec<NodeId> = output.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, lane).map(|path| path.clone()).unwrap_or_default();
+	let layer_path: Vec<NodeId> = output.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, lane).cloned().unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	let merged_layers = output
 		.attribute::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, lane)
@@ -1728,6 +1733,7 @@ fn map_points_extent(content: ListIn<'_, Vector>, _mapped: ExtentIn<'_>, level: 
 	subject_counts_extent(content, level)
 }
 
+#[allow(clippy::type_complexity)]
 fn flatten_path_core<'e>(
 	arena: &'e core_types::arena::Arena,
 	graphic_list: List<Graphic>,
@@ -3166,6 +3172,7 @@ fn morph_core(content: List<Graphic>, progression: f64, reverse: bool, distribut
 
 /// The morph over its legacy-converted level, one blank lane when there is
 /// nothing to interpolate.
+#[allow(clippy::type_complexity)]
 fn morph_lane<'e>(
 	arena: &'e core_types::arena::Arena,
 	content: List<Graphic>,

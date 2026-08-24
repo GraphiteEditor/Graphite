@@ -167,6 +167,7 @@ where
 /// One output lane of the mirror over its legacy-converted level: the source
 /// row's element and standard attributes, the reflection composed onto the
 /// mirrored half's transforms.
+#[allow(clippy::type_complexity)]
 fn mirror_lane<'e, T: Clone + Default + Send + Sync + 'static>(
 	arena: &'e core_types::arena::Arena,
 	legacy: List<T>,

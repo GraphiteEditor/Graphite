@@ -21,6 +21,7 @@ pub use vector_types::vector::misc::BooleanOperation;
 // TODO: since before we used a Vec of single-item `List`s and now we use a single `List`
 // TODO: with multiple items while still assuming a single item for the boolean operations.
 
+#[allow(clippy::type_complexity)]
 fn boolean_core<'e>(
 	arena: &'e core_types::arena::Arena,
 	content: List<Graphic>,

@@ -1611,7 +1611,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 	let kernel = match async_fn {
 		false => quote! {
-			#[allow(clippy::too_many_arguments)]
+			#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 			#vis fn #fn_name<#attr_lifetime #lane_lifetime #(#generics,)*>(#ctx_pat: &#ctx_ident #(, #data_params)* #(, #kernel_params)*) -> #kernel_output #fn_where #body
 		},
 		true => {
@@ -1636,7 +1636,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			});
 			let params = snapshot_param.chain(data_kernel_params).chain(value_kernel_params);
 			quote! {
-				#[allow(clippy::too_many_arguments)]
+				#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 				#vis async fn #fn_name<#(#kernel_generics,)*>(#(#params),*) -> #output_type #fn_where #body
 			}
 		}
@@ -1797,23 +1797,21 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let carry = (!skips_carrier && !lazy_carrier).then(|| quote!(unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };));
 		// A lazy carrier's source record is the token the kernel returned; its
 		// content frames sit above `__dst` and stay readable until the truncate.
-		let lazy_carry = lazy_carrier
-			.then(|| {
-				quote! {
-					let __src_rec = self.__carrier.rec(&__element);
-					unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
-				}
-			})
-			.unwrap_or_default();
+		let lazy_carry = match lazy_carrier {
+			true => quote! {
+				let __src_rec = self.__carrier.rec(&__element);
+				unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
+			},
+			false => TokenStream2::new(),
+		};
 		// A gathered lane owns its record, so the plan reads straight off it.
-		let gather_carry = gather_carrier
-			.then(|| {
-				quote! {
-					let __src_rec = __element.rec();
-					unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
-				}
-			})
-			.unwrap_or_default();
+		let gather_carry = match gather_carrier {
+			true => quote! {
+				let __src_rec = __element.rec();
+				unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
+			},
+			false => TokenStream2::new(),
+		};
 		let carrier_read_bindings: Vec<TokenStream2> = match skips_carrier || lazy_carrier {
 			true => Vec::new(),
 			false => reads_of(0).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(__src_rec))).collect(),
