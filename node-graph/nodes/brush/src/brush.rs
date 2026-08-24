@@ -1,14 +1,17 @@
 use crate::brush_cache::BrushCache;
 use crate::brush_stroke::{BrushStroke, BrushStyle};
-use core_types::Ctx;
+use core_types::attribute::{Attr, BlendMode as BlendModeAttr, ClippingMask, EditorLayerPath, Opacity, OpacityFill, Transform as TransformAttr};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color, Pixel, Sample};
+use core_types::extent::{LevelIn, ListIn};
+use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
 use core_types::list::{Item, List};
 use core_types::math::bbox::{AxisAlignedBbox, Bbox};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM};
+use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM};
+use core_types::{Ctx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DVec2};
 use raster_nodes::blending_nodes::blend_colors;
 use raster_nodes::std_nodes::{empty_image_core, extend_image_to_bounds_core};
@@ -186,29 +189,97 @@ pub fn blend_with_mode(background: Item<Raster<CPU>>, foreground: Item<Raster<CP
 	}
 }
 
+/// Lane 0 of the materialized background as the legacy item the brush core works
+/// on; an empty level starts from a blank item, as the pre-flip node did.
+fn legacy_background(background: core_types::node::List<'_, Raster<CPU>>) -> Item<Raster<CPU>> {
+	if background.is_empty() {
+		return Item::default();
+	}
+	let lane = background.lane(0);
+	let mut item = Item::new_from_element(background.element_ref(0).clone());
+	item.set_attribute(ATTR_TRANSFORM, lane.attr::<TransformAttr>());
+	item.set_attribute(ATTR_BLEND_MODE, lane.attr::<BlendModeAttr>());
+	item.set_attribute(ATTR_OPACITY, lane.attr::<Opacity>());
+	item.set_attribute(ATTR_OPACITY_FILL, lane.attr::<OpacityFill>());
+	item.set_attribute(ATTR_CLIPPING_MASK, lane.attr::<ClippingMask>());
+	item
+}
+
+/// The brushed image replaces the whole background level with one lane.
+fn brush_extent(_background: ListIn<'_, Raster<CPU>>, _trace: ListIn<'_, BrushStroke>, _level: LevelIn) -> GPoll<Extent> {
+	GPoll::Final(Extent::Exactly(1))
+}
+
 /// Generates the brush strokes painted with the Brush tool as a raster image.
 /// If an input image is supplied, strokes are drawn on top of it, expanding bounds as needed.
-#[node_macro::node(category("Raster"))]
-fn brush(
-	_: impl Ctx,
+#[node_macro::node(category("Raster"), extent(brush_extent))]
+fn brush<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	/// Optional raster content that may be drawn onto.
-	mut background: List<Raster<CPU>>,
+	background: IList<Raster<CPU>>,
 	/// The list of brush stroke paths drawn by the Brush tool, with each including both its coordinates and styles.
-	trace: List<BrushStroke>,
+	trace: IList<BrushStroke>,
 	/// Internal cache data used to accelerate rendering of the brush content.
 	#[data]
 	cache: BrushCache,
-) -> List<Raster<CPU>> {
-	if background.is_empty() {
-		background.push(Item::default());
+) -> Result<
+	IList<(
+		Raster<CPU>,
+		Attr<'e, TransformAttr>,
+		Attr<'e, BlendModeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, ClippingMask>,
+		Attr<'e, EditorLayerPath>,
+	)>,
+	Interrupt,
+> {
+	if ctx.innermost_index() > 0 {
+		return Err(GraphError::past_end().into());
 	}
-	// TODO: Find a way to handle more than one item
-	let list_item = background.clone_item(0).expect("Expected the one item we just pushed");
+	// The layer path only rides through, so it is read off the source lane
+	// rather than round-tripped as a legacy list attribute.
+	let layer_path: Vec<NodeId> = match background.is_empty() {
+		true => Vec::new(),
+		false => background.lane(0).attr::<EditorLayerPath>().to_vec(),
+	};
+	let strokes: Vec<BrushStroke> = (0..trace.len()).map(|row| trace.element_ref(row).clone()).collect();
+	let actual_image = brush_core(legacy_background(background), strokes, cache);
 
+	let transform: DAffine2 = actual_image.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let blend_mode: BlendMode = actual_image.attribute_cloned_or_default(ATTR_BLEND_MODE);
+	let opacity: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY, 1.);
+	let fill: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+	let clip: bool = actual_image.attribute_cloned_or_default(ATTR_CLIPPING_MASK);
+	let layer_path = ctx
+		.arena()
+		.alloc(layer_path)
+		.ok_or_else(|| {
+			Interrupt::from(GraphError {
+				kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+				trace: Vec::new(),
+			})
+		})?
+		.0;
+
+	Ok((
+		actual_image.into_element(),
+		Attr(transform),
+		Attr(blend_mode),
+		Attr(opacity),
+		Attr(fill),
+		Attr(clip),
+		Attr(layer_path.as_slice()),
+	))
+}
+
+/// The pre-flip brush body, on legacy items: one background item plus every
+/// stroke in order, returning the painted image.
+fn brush_core(list_item: Item<Raster<CPU>>, strokes: Vec<BrushStroke>, cache: &BrushCache) -> Item<Raster<CPU>> {
 	let bounds = List::new_from_item(list_item.clone()).bounding_box(DAffine2::IDENTITY, false);
 	let [start, end] = if let RenderBoundingBox::Rectangle(rect) = bounds { rect } else { [DVec2::ZERO, DVec2::ZERO] };
 	let background_bbox = AxisAlignedBbox { start, end };
-	let stroke_bbox = trace.iter_element_values().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
+	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let bbox = if background_bbox.size().length() < 0.1 {
 		stroke_bbox
 	} else {
@@ -216,11 +287,7 @@ fn brush(
 	};
 	let background_bounds = bbox.to_transform();
 
-	let mut draw_strokes: Vec<_> = trace
-		.iter_element_values()
-		.filter(|&s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore))
-		.cloned()
-		.collect();
+	let mut draw_strokes: Vec<_> = strokes.iter().filter(|s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 
 	let mut brush_plan = cache.compute_brush_plan(list_item, &draw_strokes);
 
@@ -290,12 +357,12 @@ fn brush(
 		actual_image = blend_with_mode(actual_image, stroke_texture, stroke.style.blend_mode, (stroke.style.color.a() * 100.) as f64);
 	}
 
-	let has_erase_or_restore_strokes = trace.iter_element_values().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
+	let has_erase_or_restore_strokes = strokes.iter().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
 	if has_erase_or_restore_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
 		let mut erase_restore_mask = Item::new_from_element(Raster::new_cpu(opaque_image)).with_attribute(ATTR_TRANSFORM, background_bounds);
 
-		for stroke in trace.into_iter().map(|row| row.into_element()) {
+		for stroke in strokes {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
 			if brush_texture.is_none() {
 				let tex = create_brush_texture(&stroke.style);
@@ -323,22 +390,7 @@ fn brush(
 		actual_image = blend_image_closure(erase_restore_mask, actual_image, |a, b| blend_colors(a, b, BlendMode::MultiplyAlpha, 1.));
 	}
 
-	let transform: DAffine2 = actual_image.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let blend_mode: BlendMode = actual_image.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let fill: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
-	let clip: bool = actual_image.attribute_cloned_or_default(ATTR_CLIPPING_MASK);
-	let layer: List<NodeId> = actual_image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
-
-	*background.element_mut(0).unwrap() = actual_image.into_element();
-	background.set_attribute(ATTR_TRANSFORM, 0, transform);
-	background.set_attribute(ATTR_BLEND_MODE, 0, blend_mode);
-	background.set_attribute(ATTR_OPACITY, 0, opacity);
-	background.set_attribute(ATTR_OPACITY_FILL, 0, fill);
-	background.set_attribute(ATTR_CLIPPING_MASK, 0, clip);
-	background.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer);
-
-	background
+	actual_image
 }
 
 pub fn blend_image_closure(foreground: Item<Raster<CPU>>, mut background: Item<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> Item<Raster<CPU>> {
@@ -423,11 +475,9 @@ mod test {
 
 	#[test]
 	fn test_brush_output_size() {
-		let image = brush(
-			&(),
-			&BrushCache::default(),
-			List::new_from_element(Raster::new_cpu(Image::<Color>::default())),
-			List::new_from_element(BrushStroke {
+		let image = brush_core(
+			Item::new_from_element(Raster::new_cpu(Image::<Color>::default())),
+			vec![BrushStroke {
 				trace: vec![crate::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {
 					color: Color::BLACK,
@@ -437,8 +487,9 @@ mod test {
 					spacing: 20.,
 					blend_mode: BlendMode::Normal,
 				},
-			}),
+			}],
+			&BrushCache::default(),
 		);
-		assert_eq!(image.element(0).unwrap().width, 20);
+		assert_eq!(image.element().width, 20);
 	}
 }
