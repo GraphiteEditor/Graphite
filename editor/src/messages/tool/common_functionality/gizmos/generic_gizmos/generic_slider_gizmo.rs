@@ -380,6 +380,12 @@ impl GenericSliderGizmo {
 		}
 
 		if self.state == GenericSliderState::Inactive {
+			// A shape that draws its own overlay has already put something on screen to aim at. One that
+			// does not would otherwise be invisible until the cursor happened to land on it, so the generic
+			// layer marks where it can be grabbed.
+			if self.info.behavior.overlay.is_none() && !self.info.behavior.draws_own_handle {
+				self.draw_resting_handles(document, overlay_context);
+			}
 			return;
 		}
 
@@ -400,6 +406,23 @@ impl GenericSliderGizmo {
 
 		overlay_context.line(center, handle, None, None);
 		overlay_context.manipulator_handle(handle, self.state == GenericSliderState::Dragging, None);
+	}
+
+	/// Mark every grab point with an unengaged handle, so a control with no overlay of its own is still
+	/// discoverable before the cursor finds it.
+	fn draw_resting_handles(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+		let Some(value) = self.current_value(document) else { return };
+		let viewport = document.metadata().transform_to_viewport(self.layer);
+		let center = viewport.transform_point2(DVec2::ZERO);
+
+		for local in self.handle_positions(document, value) {
+			let handle = viewport.transform_point2(local);
+			// Too small on screen to aim at, and the handle would sit on top of the shape's own centre.
+			if handle.distance(center) < GIZMO_HIDE_THRESHOLD {
+				continue;
+			}
+			overlay_context.manipulator_handle(handle, false, None);
+		}
 	}
 
 	pub fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
