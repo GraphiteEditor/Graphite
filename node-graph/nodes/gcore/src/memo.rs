@@ -35,6 +35,7 @@ fn memoize<'e>(
 	#[data] cache: Arc<Mutex<Option<MemoLevel>>>,
 	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
 ) -> GPoll<RecordValue<'e>> {
+	let entry_sp = core_types::record::stack::sp();
 	// A scalar wire's value may depend on the consuming lane (index readers),
 	// so only a leveled wire, whose level covers every lane by construction,
 	// keys with the lane normalized away.
@@ -99,12 +100,16 @@ fn memoize<'e>(
 				*cache.lock().unwrap() = Some(entry);
 				result
 			}
+			// A valueless materialization caches nothing, so the frames it left
+			// behind have no reader and must not be counted against this node.
 			LevelStatus::Pending => {
-				claim_frame(content.layout());
+				// SAFETY: nothing borrows the frames above the entry mark.
+				unsafe { core_types::record::interrupt_frame(entry_sp, content.layout()) };
 				GPoll::Pending
 			}
 			LevelStatus::Error(error) => {
-				claim_frame(content.layout());
+				// SAFETY: nothing borrows the frames above the entry mark.
+				unsafe { core_types::record::interrupt_frame(entry_sp, content.layout()) };
 				GPoll::Error(Box::new(error))
 			}
 		};

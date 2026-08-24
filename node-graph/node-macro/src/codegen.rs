@@ -2510,13 +2510,25 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			type Output = #trait_output;
 
 			fn eval(&self, __input: &#ctx_ident) -> #core_types::gpoll::GPoll<Self::Output> {
+				// The exit trace rides a guard so early returns report too, which
+				// is what pins a frame leak to its node.
 				#[cfg(debug_assertions)]
-				{
+				let __sp_trace = {
 					static __SP_TRACE: ::std::sync::OnceLock<bool> = ::std::sync::OnceLock::new();
-					if *__SP_TRACE.get_or_init(|| ::std::env::var_os("GRAPHENE_SP_DEBUG").is_some()) {
-						::std::eprintln!("node> {} enter sp {}", ::std::stringify!(#fn_name), #core_types::record::stack::sp());
+					struct __SpTrace(&'static str, usize);
+					impl ::core::ops::Drop for __SpTrace {
+						fn drop(&mut self) {
+							::std::eprintln!("node> {} exit sp {} -> {}", self.0, self.1, #core_types::record::stack::sp());
+						}
 					}
-				}
+					match *__SP_TRACE.get_or_init(|| ::std::env::var_os("GRAPHENE_SP_DEBUG").is_some()) {
+						true => {
+							::std::eprintln!("node> {} enter sp {}", ::std::stringify!(#fn_name), #core_types::record::stack::sp());
+							Some(__SpTrace(::std::stringify!(#fn_name), #core_types::record::stack::sp()))
+						}
+						false => None,
+					}
+				};
 				let _entry_sp = #core_types::record::stack::sp();
 				let __cell = #cell_constructor;
 				#reclaim_guard
