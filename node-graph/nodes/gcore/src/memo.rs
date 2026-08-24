@@ -192,34 +192,54 @@ fn monitor<'e>(
 	#[data] io: MonitorValue,
 	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
 ) -> GPoll<RecordValue<'e>> {
-	let result = content.eval(&ctx);
-	// The capture covers the whole extent, so it runs on the first lane only:
-	// running it per lane would re-materialize the level per lane and compound
-	// through nested monitors.
-	if ctx.innermost_index() == 0
-		&& let GPoll::Final(value) | GPoll::Partial(value) = &result
-	{
-		// The materialization below evaluates the level again; its frames sit
-		// above the one this eval already claimed and must not survive.
-		let mark = core_types::record::stack::sp();
-		let captured = match content.layout().depth {
-			// SAFETY: the value came from this edge, so it carries the edge's layout.
-			0 => unsafe { RecordCapture::capture(content.layout(), content.layout().rec(value), ctx.arena()) },
-			// A leveled wire captures its whole extent, not the one lane this
-			// context addresses.
-			_ => match content.materialize_level(ctx, ctx.arena()) {
-				// SAFETY: the batch came from this edge, so it carries the edge's layout.
-				LevelStatus::Batch(batch, _) => unsafe { RecordCapture::capture_level(content.layout(), batch, ctx.arena()) },
-				LevelStatus::Pending | LevelStatus::Error(_) => None,
-			},
-		};
-		// SAFETY: the capture copies into the arena, so nothing borrows the
-		// frames left above the mark.
-		unsafe { core_types::record::stack::rewind(mark) };
+	let entry_sp = core_types::record::stack::sp();
+	let publish = |captured: Option<RecordCapture>| {
 		*io.lock().unwrap() = captured.map(|output| IORecord {
 			input: CtxSnapshot::capture(ctx),
 			output,
 		});
+	};
+	// A leveled capture covers the whole extent, which the materialization below
+	// computes lane by lane. Serving THIS lane out of that batch rather than
+	// evaluating the content separately is what keeps the cost linear: the extra
+	// eval would double the work under every enclosing monitor.
+	if content.layout().depth > 0 && ctx.innermost_index() == 0 {
+		return match content.materialize_level(ctx, ctx.arena()) {
+			LevelStatus::Batch(batch, finality) => {
+				// SAFETY: the batch came from this edge, so it carries the edge's layout.
+				publish(unsafe { RecordCapture::capture_level(content.layout(), batch, ctx.arena()) });
+				let Some(lane) = (!batch.is_empty()).then(|| batch.get(0)) else {
+					// An empty level ends here; the past-end signal serves drains.
+					claim_frame(content.layout());
+					return GPoll::Error(Box::new(core_types::gpoll::GraphError::past_end()));
+				};
+				// SAFETY: the lane is a live record of this edge's layout.
+				let value = unsafe { serve_frame(content.layout(), lane.rec().ptr()) };
+				match finality {
+					Finality::AllFinal => GPoll::Final(value),
+					Finality::Partial => GPoll::Partial(value),
+				}
+			}
+			// A valueless materialization leaves frames no one reads, so the
+			// entry mark, not the current top, is what this node's frame sits on.
+			LevelStatus::Pending => {
+				// SAFETY: nothing borrows the frames above the entry mark.
+				unsafe { core_types::record::interrupt_frame(entry_sp, content.layout()) };
+				GPoll::Pending
+			}
+			LevelStatus::Error(error) => {
+				// SAFETY: nothing borrows the frames above the entry mark.
+				unsafe { core_types::record::interrupt_frame(entry_sp, content.layout()) };
+				GPoll::Error(Box::new(error))
+			}
+		};
+	}
+	let result = content.eval(&ctx);
+	if ctx.innermost_index() == 0
+		&& let GPoll::Final(value) | GPoll::Partial(value) = &result
+	{
+		// SAFETY: the value came from this edge, so it carries the edge's layout.
+		publish(unsafe { RecordCapture::capture(content.layout(), content.layout().rec(value), ctx.arena()) });
 	}
 	result
 }
