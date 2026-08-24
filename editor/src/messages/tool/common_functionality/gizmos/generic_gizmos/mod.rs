@@ -1,7 +1,7 @@
 //! # Generic Gizmos
 //!
 //! Data-driven, reusable gizmo components that any node can opt into via the
-//! [gizmo registry](super::gizmo_registry). Where the legacy `shape_gizmos` each hand-code a
+//! [gizmo registry](super::gizmo_registry). Where a hand-written handler used to hand-code a
 //! shape's interaction, the generic gizmos here are parameterized purely by `(node_id,
 //! parameter_index, GizmoInfo)` and therefore work for any node that registers them.
 //!
