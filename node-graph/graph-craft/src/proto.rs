@@ -498,17 +498,34 @@ impl ProtoNetwork {
 		nullification_node_id
 	}
 
+	/// The node's declared index levels and per-input pushed levels, both read
+	/// from the registry since they follow the node's signature. A node with no
+	/// registry entry pushes nothing and names no level.
+	fn registry_index_levels(&self, node_index: usize) -> (core_types::context::IndexLevels, Vec<u8>) {
+		let identifier = &self.nodes[node_index].1.identifier;
+		let metadata = core_types::registry::NODE_METADATA.lock().unwrap();
+		match metadata.get(identifier) {
+			Some(entry) => (
+				ContextDependencies::from(entry.context_features.as_slice()).index_levels,
+				entry.fields.iter().map(|field| field.pushed_levels).collect(),
+			),
+			None => (core_types::context::IndexLevels::empty(), Vec::new()),
+		}
+	}
+
 	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextModification, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
 		let mut combined_deps = ContextModification::default();
 		let node_index = id.0 as usize;
 
+		let (declared_levels, pushed_levels) = self.registry_index_levels(node_index);
 		let (extract, inject, own_deps) = {
 			let dependencies = &self.nodes[node_index].1.context_features;
-			// Documents predating the level mask deserialize as all-levels, so a
-			// node that declares no index read must not contribute one.
 			let index_levels = match dependencies.extract.contains(core_types::context::ContextFeatures::INDEX) {
-				true => dependencies.index_levels,
+				// A wrapper node declaring its dependencies by hand keeps `INDEX`
+				// without the signature naming a level, and addresses the innermost.
+				true if declared_levels.is_empty() => core_types::context::IndexLevels::innermost(),
+				true => declared_levels,
 				false => core_types::context::IndexLevels::empty(),
 			};
 			let own_deps = ContextModification::from_sources(dependencies.extract, dependencies.sources()).with_index_levels(index_levels);
@@ -523,7 +540,6 @@ impl ProtoNetwork {
 		};
 
 		// Compute the dependencies for each branch and combine all of them
-		let pushed_levels = self.nodes[node_index].1.context_features.pushed_levels.clone();
 		for (input, &node) in inputs.iter().enumerate() {
 			let branch = self.find_context_dependencies(node);
 

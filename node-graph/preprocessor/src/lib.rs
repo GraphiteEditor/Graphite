@@ -205,7 +205,7 @@ impl Preprocessor {
 				implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 				visible: true,
 				skip_deduplication: false,
-				context_features: ContextDependencies::from(metadata.context_features.as_slice()).with_pushed_levels(metadata.fields.iter().map(|field| field.pushed_levels).collect()),
+				context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 				..Default::default()
 			};
 
@@ -256,7 +256,7 @@ impl Preprocessor {
 					call_argument: node_io.call_argument.clone(),
 					implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 					visible: true,
-					context_features: ContextDependencies::from(metadata.context_features.as_slice()).with_pushed_levels(metadata.fields.iter().map(|field| field.pushed_levels).collect()),
+					context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 					..Default::default()
 				};
 				inject_scopes.insert(id.clone(), (template, node_io.return_value.clone()));

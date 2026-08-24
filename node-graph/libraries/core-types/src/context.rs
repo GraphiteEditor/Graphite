@@ -219,7 +219,7 @@ impl IndexLevels {
 	}
 
 	/// The innermost level alone, which is what every reader but `read_index`
-	/// addresses, so documents predating the mask migrate to it.
+	/// addresses.
 	pub const fn innermost() -> Self {
 		Self(1)
 	}
@@ -325,12 +325,14 @@ impl ContextFeatures {
 pub struct ContextDependencies {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,
-	/// Which index levels the node reads; empty means it reads none. Documents
-	/// written before the field existed default to the whole chain.
-	#[cfg_attr(feature = "serde", serde(default = "IndexLevels::innermost"))]
+	/// Which index levels the node reads, non-empty exactly when `extract` keeps
+	/// `INDEX`. Follows the node's signature, so it resolves from the registry
+	/// instead of persisting.
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub index_levels: IndexLevels,
 	/// Index levels pushed per input, in input order; a missing entry is 0.
-	#[cfg_attr(feature = "serde", serde(default))]
+	/// Resolves from the registry alongside [`Self::index_levels`].
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub pushed_levels: Vec<u8>,
 	#[cfg_attr(feature = "serde", serde(default, deserialize_with = "deserialize_sorted_sources"))]
 	sources: Vec<SourceId>,
@@ -356,10 +358,6 @@ impl ContextDependencies {
 		self
 	}
 
-	pub fn with_pushed_levels(mut self, pushed_levels: Vec<u8>) -> Self {
-		self.pushed_levels = pushed_levels;
-		self
-	}
 
 	pub fn sources(&self) -> &[SourceId] {
 		&self.sources
