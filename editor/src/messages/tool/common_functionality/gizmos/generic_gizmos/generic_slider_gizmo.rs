@@ -256,11 +256,24 @@ impl GenericSliderGizmo {
 	/// Update the parameter live while dragging. The new value is the mouse's position projected
 	/// onto the local +X axis, clamped to the registry's min/max bounds.
 	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		// The first frame of a drag fixes the reference every later frame is measured against. Take it from
+		// the cursor itself rather than the tool's drag start: the two are in the same space, but the tool's
+		// may have been snapped to nearby geometry, and that offset would otherwise be spent as movement the
+		// instant the handle is grabbed -- a visible nudge on a click that never moved.
+		if self.drag_origin.is_none() {
+			self.drag_origin = Some(input.mouse.position);
+			self.previous_mouse_position = input.mouse.position;
+			if let Some(value) = self.current_value(document) {
+				self.initial_value = value;
+			}
+		}
+		let drag_start = self.drag_origin.unwrap_or(drag_start);
+
 		self.accumulate_angle(document, input.mouse.position);
 
 		if let Some(drag) = self.info.behavior.drag {
 			let mut drag_input = DragInput {
-				drag_start: self.drag_origin.unwrap_or(drag_start),
+				drag_start,
 				mouse_position: input.mouse.position,
 				initial_value: self.initial_value,
 				initial_parameters: self.initial_parameters.clone(),
@@ -303,16 +316,19 @@ impl GenericSliderGizmo {
 		let local_mouse = viewport.inverse().transform_point2(input.mouse.position);
 
 		// Project the cursor onto the ray through the grabbed handle. For the default single handle that ray
-		// is the +X axis and this is just `local_mouse.x`; for a handle sitting on the shape's own geometry
-		// it is the ray the user is visibly pulling along.
+		// is the +X axis; for a handle sitting on the shape's own geometry it is the ray the user is visibly
+		// pulling along.
 		let Some(anchor) = self.active_handle_local(document, self.initial_value) else { return };
 		let ray = anchor.try_normalize().unwrap_or(DVec2::X);
-		let mut value = local_mouse.dot(ray);
+
+		// Measure how far the cursor has travelled along that ray rather than where it now sits, so the value
+		// does not jump the instant the handle is grabbed a pixel off centre. This is what the hand-written
+		// handlers did, all of which added a delta to the value they started from.
+		let travelled = local_mouse.dot(ray) - viewport.inverse().transform_point2(drag_start).dot(ray);
 
 		// Preserve the sign of the original value for parameters (like radius) that can be negative.
-		if self.initial_value.is_sign_negative() {
-			value = -value;
-		}
+		let direction = if self.initial_value.is_sign_negative() { -1. } else { 1. };
+		let mut value = self.initial_value + travelled * direction;
 
 		value = self.snap(self.clamp(value));
 
