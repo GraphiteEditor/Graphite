@@ -108,7 +108,8 @@ impl Arena {
 		debug_assert!(align.is_power_of_two());
 		let base = self.base() as usize;
 		let mut start = 0;
-		self.offset
+		let reserved = self
+			.offset
 			.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
 				// Alignment is computed on the absolute address; the backbone
 				// allocation itself has no alignment guarantee.
@@ -117,7 +118,21 @@ impl Arena {
 				let end = start.checked_add(size)?;
 				(end <= self.buf.len()).then_some(end)
 			})
-			.ok()?;
+			.ok();
+		#[cfg(debug_assertions)]
+		{
+			static ARENA_TRACE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+			if *ARENA_TRACE.get_or_init(|| std::env::var_os("GRAPHENE_ARENA_DEBUG").is_some()) {
+				static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+				let count = COUNT.fetch_add(1, Ordering::Relaxed);
+				if reserved.is_none() {
+					eprintln!("arena> EXHAUSTED after {count} allocations, wanted {size} bytes\n{}", std::backtrace::Backtrace::force_capture());
+				} else if count % 20000 == 0 {
+					eprintln!("arena> {count} allocations, offset {}, this {size} bytes", self.offset.load(Ordering::Relaxed));
+				}
+			}
+		}
+		reserved?;
 		Some(start)
 	}
 
