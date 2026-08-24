@@ -110,8 +110,13 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		);
 		return;
 	};
-	if lazy_carrier && !crate::codegen::ir::build(parsed).derives {
+	let node = crate::codegen::ir::build(parsed);
+	if lazy_carrier && !node.derives {
 		emit_error!(parsed.input.pat_ident.span(), "a lazy record carrier evaluates at derived contexts; spell `impl Ctx + DeriveCtx`");
+		return;
+	}
+	if node.output.gathers && crate::codegen::ir::gathered_subject(&node).is_none() {
+		emit_error!(parsed.output_type.span(), "a `Lane` output gathers a materialized subject; give the primary input an `IList` type");
 		return;
 	}
 
@@ -131,12 +136,12 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		None => {
 			if let Some(ident) = crate::codegen::unbounded_generic(parsed, element) {
 				emit_error!(parsed.output_type.span(), "the returned generic element `{}` has no matching input", ident);
-			} else if !no_carrier && crate::codegen::contains_open_generic(parsed, carrier_ty) {
+			} else if !no_carrier && !node.output.gathers && crate::codegen::contains_open_generic(parsed, carrier_ty) {
 				emit_error!(
 					carrier.pat_ident.span(),
 					"record element reads are monomorphic for now; use a concrete element type or an unbounded passthrough generic"
 				);
-			} else if crate::codegen::contains_open_generic(parsed, element) {
+			} else if !node.output.gathers && crate::codegen::contains_open_generic(parsed, element) {
 				emit_error!(parsed.output_type.span(), "a written element must be a concrete type");
 			}
 		}

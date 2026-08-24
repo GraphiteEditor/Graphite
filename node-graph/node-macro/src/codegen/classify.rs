@@ -230,6 +230,33 @@ pub(crate) fn inject_attr_lifetimes(output: &Type) -> Option<Type> {
 	injector.changed.then_some(ty)
 }
 
+/// Binds a `Lane` output to the kernel's subject lifetime, replacing whatever
+/// the author spelled: the lane borrows the materialized subject, not the arena.
+pub(crate) fn inject_lane_lifetime(output: &Type) -> Option<Type> {
+	struct Injector {
+		changed: bool,
+	}
+
+	impl VisitMut for Injector {
+		fn visit_path_segment_mut(&mut self, segment: &mut syn::PathSegment) {
+			if segment.ident == "Lane"
+				&& let PathArguments::AngleBracketed(args) = &mut segment.arguments
+			{
+				let kept: Vec<GenericArgument> = args.args.iter().filter(|arg| !matches!(arg, GenericArgument::Lifetime(_))).cloned().collect();
+				args.args = kept.into_iter().collect();
+				args.args.insert(0, GenericArgument::Lifetime(Lifetime::new("'__lane", proc_macro2::Span::call_site())));
+				self.changed = true;
+			}
+			syn::visit_mut::visit_path_segment_mut(self, segment);
+		}
+	}
+
+	let mut ty = output.clone();
+	let mut injector = Injector { changed: false };
+	injector.visit_type_mut(&mut ty);
+	injector.changed.then_some(ty)
+}
+
 pub(crate) fn contains_open_generic(parsed: &ParsedNodeFn, ty: &Type) -> bool {
 	let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
 	parsed
@@ -306,12 +333,14 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 	let ParsedFieldType::Regular(RegularParsedField { ty, lend: None, implementations, .. }) = &carrier_field.ty else {
 		return None;
 	};
+	// A gathered subject is never read as an element, so its generic stays open.
+	let gathers = crate::codegen::ir::gathers_lane(parsed);
 	let token = match ty {
 		Type::Tuple(tuple) if tuple.elems.is_empty() => None,
 		ty => match implementations.is_empty().then(|| unbounded_generic(parsed, ty)).flatten() {
 			Some(token) => Some(token),
 			None => {
-				if contains_open_generic(parsed, ty) {
+				if !gathers && contains_open_generic(parsed, ty) {
 					return None;
 				}
 				None
@@ -334,7 +363,7 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 			}
 		}
 		None => {
-			if contains_open_generic(parsed, &element) {
+			if !gathers && contains_open_generic(parsed, &element) {
 				return None;
 			}
 		}

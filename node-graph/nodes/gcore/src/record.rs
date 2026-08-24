@@ -10,6 +10,7 @@ use glam::DAffine2;
 use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
+use core_types::node::Lane;
 use core_types::uuid::NodeId;
 use core_types::Ctx;
 
@@ -300,6 +301,25 @@ fn mirror_extent(content: ListIn<'_, f64>, keep_original: ValueIn<'_, bool>, lev
 			true => Extent::Exactly(2 * content.len()),
 			false => Extent::Exactly(content.len()),
 		}),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
+}
+
+/// Gather-carrier kernel: the level's lanes in reverse. Returning a `Lane`
+/// copies that lane's whole record, so undeclared attributes ride along and
+/// only the declared opacity is rewritten.
+#[node_macro::node(category("Test"), extent(reverse_lanes_extent))]
+fn reverse_lanes(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<f64>, opacity: f64) -> Result<IList<(Lane<f64>, Attr<Opacity>)>, Interrupt> {
+	let lane = ctx.innermost_index() as usize;
+	if lane >= content.len() {
+		return Err(GraphError::past_end().into());
+	}
+	Ok((content.lane(content.len() - 1 - lane), Attr(opacity)))
+}
+
+fn reverse_lanes_extent(content: ListIn<'_, f64>, _opacity: ValueIn<'_, f64>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => content.total(),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
 }
@@ -1353,6 +1373,49 @@ mod tests {
 		};
 		let transform: DAffine2 = unsafe { out.rec(&value).read(out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()) };
 		assert_eq!(transform.translation.x, 30., "without originals every lane reflects");
+	}
+
+	#[test]
+	fn a_gathered_lane_carries_its_whole_record() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		// The subject carries Transform, which the kernel never declares.
+		let layout = Layout::default().with_writes(1, core_types::record::element_write::<f64>(), &[core_types::record::FieldWrite::of::<Transform>(0)]);
+		reserve_for(&[&layout]);
+		let rows = [(1., 10.), (2., 30.), (3., 20.)];
+		let content = LeveledTransformSource {
+			layout: layout.clone(),
+			rows: rows.iter().map(|&(element, x)| (element, DAffine2::from_translation(glam::DVec2::new(x, 0.)))).collect(),
+		};
+		let node = install(
+			ReverseLanesNode::new(RecordSource::new(content, &layout, &layout), ValueNode(0.25)),
+			reverse_lanes_layout_meta(),
+			&[Some(&layout)],
+		);
+
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(out.depth, 1, "gathering preserves the subject's depth");
+		assert!(out.offset_of(<Transform as AttributeMarker>::NAME, 0).is_some(), "the undeclared attribute survives");
+		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(3)));
+
+		let head = ctx.index_head();
+		for (lane, &(element, x)) in rows.iter().rev().enumerate() {
+			let mark = stack::sp();
+			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+				panic!("expected a final record");
+			};
+			let rec = out.rec(&value);
+			assert_eq!(unsafe { rec.element::<f64>() }, element, "lane {lane} takes the gathered element");
+			let transform: DAffine2 = unsafe { rec.read(out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()) };
+			assert_eq!(transform.translation.x, x, "lane {lane} carries the gathered transform");
+			let opacity: f64 = unsafe { rec.read(out.offset_of(<Opacity as AttributeMarker>::NAME, 0).unwrap()) };
+			assert_eq!(opacity, 0.25, "lane {lane} takes the declared write");
+			// SAFETY: every field was read out above, so no borrow into this lane's frames remains.
+			unsafe { stack::rewind(mark) };
+		}
 	}
 
 	#[test]

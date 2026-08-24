@@ -90,6 +90,10 @@ fn output(parsed: &ParsedNodeFn, generics: &[Ident]) -> Output {
 		Some(RecordWrites { element, markers, removes }) => (element, markers, removes),
 		None => (row, Vec::new(), Vec::new()),
 	};
+	let (element, gathers) = match lane_inner(&element) {
+		Some(inner) => (inner, true),
+		None => (element, false),
+	};
 	Output {
 		shape: ItemShape {
 			element: element_of(&element, generics),
@@ -97,6 +101,7 @@ fn output(parsed: &ParsedNodeFn, generics: &[Ident]) -> Output {
 			attrs: writes.into_iter().map(|marker| LevelAttr { marker, level: 0 }).collect(),
 		},
 		removes: removes.into_iter().map(|marker| LevelAttr { marker, level: 0 }).collect(),
+		gathers,
 	}
 }
 
@@ -210,6 +215,31 @@ fn replace_first_type_arg(ty: &Type, replacement: Type) -> Type {
 	ty
 }
 
+/// Whether the output's element position spells `Lane<T>`.
+pub(crate) fn gathers_lane(parsed: &ParsedNodeFn) -> bool {
+	gathered_element(parsed).is_some()
+}
+
+fn gathered_element(parsed: &ParsedNodeFn) -> Option<Type> {
+	let row = slot_value_type(&parsed.output_type);
+	let element = record_writes(&row).map_or(row, |writes| writes.element);
+	lane_inner(&element).is_some().then_some(element)
+}
+
+/// The element type inside a `Lane<T>` position, lifetime argument skipped.
+fn lane_inner(ty: &Type) -> Option<Type> {
+	let Type::Path(path) = ty else { return None };
+	let segment = path.path.segments.last()?;
+	if segment.ident != "Lane" {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
+	args.args.iter().find_map(|arg| match arg {
+		GenericArgument::Type(inner) => Some(inner.clone()),
+		_ => None,
+	})
+}
+
 fn ilist_inner(ty: &Type) -> Option<Type> {
 	let Type::Path(path) = ty else { return None };
 	let segment = path.path.segments.last()?;
@@ -226,13 +256,7 @@ fn ilist_inner(ty: &Type) -> Option<Type> {
 /// Emits the `LayoutMeta` literal from the IR. `element_spec` is supplied by the
 /// caller since it is the one row-dependent facet; the rest folds from the node.
 pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_types: &TokenStream2) -> TokenStream2 {
-	// A materialized subject is folded, not carried: it contributes no layout.
-	let sources = node
-		.inputs
-		.iter()
-		.enumerate()
-		.filter(|(index, input)| input.subject && materialized_levels(node, *index) == 0)
-		.map(|(index, _)| index as u8);
+	let sources = layout_sources(node).into_iter().map(|index| index as u8);
 	let reads = node.inputs.iter().enumerate().filter_map(|(index, input)| {
 		(matches!(input.evaluation, Evaluation::Eager) && !input.shape.attrs.is_empty()).then(|| {
 			let descs = field_writes(&input.shape.attrs, core_types);
@@ -264,6 +288,29 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 	}
 }
 
+/// The subjects whose layouts union into the output's base: un-materialized
+/// ones, plus a gathered subject.
+pub(crate) fn layout_sources(node: &Node) -> Vec<usize> {
+	node.inputs
+		.iter()
+		.enumerate()
+		.filter(|(index, input)| input.subject && (materialized_levels(node, *index) == 0 || gathered_subject(node) == Some(*index)))
+		.map(|(index, _)| index)
+		.collect()
+}
+
+/// The materialized subject a gather-carrier copies its output frames from.
+pub(crate) fn gathered_subject(node: &Node) -> Option<usize> {
+	if !node.output.gathers {
+		return None;
+	}
+	node.inputs
+		.iter()
+		.enumerate()
+		.find(|(index, input)| input.subject && materialized_levels(node, *index) > 0)
+		.map(|(index, _)| index)
+}
+
 /// The single carried subject a level-preserving node forwards its extents
 /// to: exactly one un-materialized subject, no level shift, and no fold.
 pub(crate) fn forwarded_subject(node: &Node) -> Option<usize> {
@@ -282,8 +329,12 @@ pub(crate) fn forwarded_subject(node: &Node) -> Option<usize> {
 	}
 }
 
-/// The materialized subject a node folds, as `(input, levels)`.
+/// The materialized subject a node folds, as `(input, levels)`. A gathered
+/// subject is count-preserving, not folded.
 pub(crate) fn folded_subject(node: &Node) -> Option<(u8, u8)> {
+	if node.output.gathers {
+		return None;
+	}
 	node.inputs
 		.iter()
 		.enumerate()
@@ -303,14 +354,9 @@ fn field_writes(attrs: &[LevelAttr], core_types: &TokenStream2) -> Vec<TokenStre
 }
 
 fn level_delta(node: &Node) -> i8 {
-	// A materialized subject contributes no base layout, so the delta is
-	// relative to the fresh (empty) base.
-	let base_depth = node
-		.inputs
-		.iter()
-		.enumerate()
-		.find(|(index, input)| input.subject && materialized_levels(node, *index) == 0)
-		.map_or(0, |(_, input)| input.shape.depth as i8);
+	// A folded subject contributes no base layout, so the delta is relative to
+	// the fresh (empty) base.
+	let base_depth = layout_sources(node).first().map_or(0, |&index| node.inputs[index].shape.depth as i8);
 	node.output.shape.depth as i8 - base_depth
 }
 
@@ -389,7 +435,11 @@ fn is_routing(node: &Node) -> bool {
 
 fn has_attr_io(node: &Node) -> bool {
 	// Reads on lazy inputs ride the flip; only eager reads make a record-io node.
-	node.inputs.iter().any(|input| matches!(input.evaluation, Evaluation::Eager) && !input.shape.attrs.is_empty()) || !node.output.shape.attrs.is_empty() || !node.output.removes.is_empty()
+	// A gathered output takes the record tail regardless of its write set.
+	node.output.gathers
+		|| node.inputs.iter().any(|input| matches!(input.evaluation, Evaluation::Eager) && !input.shape.attrs.is_empty())
+		|| !node.output.shape.attrs.is_empty()
+		|| !node.output.removes.is_empty()
 }
 
 /// Levels of `input[index]` the output does not carry; `> 0` folds the input
@@ -484,6 +534,9 @@ pub(crate) enum Evaluation {
 pub(crate) struct Output {
 	pub(crate) shape: ItemShape,
 	pub(crate) removes: Vec<LevelAttr>,
+	/// The element position spells `Lane<T>`, so the output frame is a copy of a
+	/// chosen subject lane.
+	pub(crate) gathers: bool,
 }
 
 /// An item's ranked layout; `attrs` are reads on an input, writes on the output.
@@ -545,13 +598,7 @@ mod tests {
 		};
 		let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth as i8);
 		Facts {
-			sources: node
-				.inputs
-				.iter()
-				.enumerate()
-				.filter(|(index, input)| input.subject && materialized_levels(node, *index) == 0)
-				.map(|(index, _)| index)
-				.collect(),
+			sources: layout_sources(node),
 			carried,
 			writes: markers(node.output.shape.attrs.iter().map(|attr| &attr.marker)),
 			removes: markers(node.output.removes.iter().map(|attr| &attr.marker)),

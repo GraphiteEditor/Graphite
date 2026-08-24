@@ -11,6 +11,7 @@ use core_types::gpoll::GraphError;
 use core_types::gpoll::Interrupt;
 use core_types::gpoll::{Extent, GPoll};
 use core_types::list::{Item, ItemAttributeValues, List};
+use core_types::node::Lane;
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
@@ -108,7 +109,7 @@ fn assign_colors<'e>(
 	let park_existing = |paint: Option<&List<Graphic>>| -> Result<Option<&'e List<Graphic>>, Interrupt> { paint.map(|paint| park_paint(ctx.arena(), paint.clone())).transpose() };
 	let existing_fill = park_existing(content.lane(lane).attr::<Fill>())?;
 	let existing_stroke = park_existing(content.lane(lane).attr::<StrokeAttr>())?;
-	let carried = carried_lane_attrs(ctx.arena(), content.lane(lane))?;
+	let carried = carried_lane_attrs(ctx.arena(), *content.lane(lane))?;
 	let (transform, layer_path) = carried;
 
 	if gradient.len() == 0 {
@@ -176,7 +177,7 @@ fn assign_colors_graphic<'e>(
 		return Err(GraphError::past_end().into());
 	}
 	let mut element = graphic_types::graphic::map_groups_to_legacy(content.element_ref(lane));
-	let (transform, layer_path) = carried_lane_attrs(ctx.arena(), content.lane(lane))?;
+	let (transform, layer_path) = carried_lane_attrs(ctx.arena(), *content.lane(lane))?;
 
 	if gradient.len() == 0 {
 		return Ok((element, transform, layer_path));
@@ -970,16 +971,10 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 	tl * (1. - t.x) * (1. - t.y) + tr * t.x * (1. - t.y) + br * t.x * t.y + bl * (1. - t.x) * t.y
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-fn pack_strips<T: Send + Clone>(
-	_: impl Ctx,
-	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-	)]
-	elements: List<T>,
+#[node_macro::node(category("Vector"), path(graphene_core::vector), extent(pack_strips_extent))]
+fn pack_strips<'e, T: BoundingBox + Clone + Send + Sync + CacheHash + 'static>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>)] elements: IList<T>,
 	#[default(0.)]
 	#[unit(" px")]
 	separation: f64,
@@ -987,60 +982,56 @@ fn pack_strips<T: Send + Clone>(
 	#[unit(" px")]
 	strip_max_length: f64,
 	strip_direction: RowsOrColumns,
-) -> List<T>
-where
-	Graphic: From<List<T>>,
-	List<T>: BoundingBox,
-{
-	// Packs shapes using bounds with Best-Fit Decreasing Height (BFDH) algorithm:
-	// - Sort shapes by cross-axis size (tallest first for rows, widest first for columns)
-	// - For each shape, find the existing strip with minimum remaining space that fits
-	// - Create new strip only if no existing strip can accommodate the shape
-
+) -> Result<IList<(Lane<T>, Attr<'e, TransformAttr>)>, Interrupt> {
+	// Best-Fit Decreasing Height: sort by cross-axis size, then place each item on
+	// the strip with the least remaining space that still fits it.
 	struct Strip {
 		along_position: f64,
 		cross_position: f64,
 		cross_extent: f64,
 	}
 
-	// Prepare the items to be sorted
-	let mut items: Vec<(f64, f64, DVec2, Item<T>)> = elements
-		.into_iter()
+	let lane = ctx.innermost_index() as usize;
+	if lane >= elements.len() {
+		return Err(GraphError::past_end().into());
+	}
+
+	let mut items: Vec<(f64, f64, DVec2, usize)> = (0..elements.len())
 		.map(|row| {
-			// Single-item `List` to query its bounding box
-			let single = List::new_from_item(row.clone());
-			let (w, h, top_left) = match single.bounding_box(DAffine2::IDENTITY, false) {
+			// The pre-flip single-item `List` wrap composed the item's own
+			// transform into its bounds.
+			let lane_transform: DAffine2 = elements.lane(row).attr::<TransformAttr>();
+			let (width, height, top_left) = match elements.element_ref(row).bounding_box(lane_transform, false) {
 				RenderBoundingBox::Rectangle([min, max]) => {
 					let size = max - min;
 					(size.x.max(0.), size.y.max(0.), min)
 				}
 				_ => (0., 0., DVec2::ZERO),
 			};
-			let (along, cross) = match strip_direction {
-				RowsOrColumns::Rows => (w, h),
-				RowsOrColumns::Columns => (h, w),
-			};
-			(along, cross, top_left, row)
+			match strip_direction {
+				RowsOrColumns::Rows => (width, height, top_left, row),
+				RowsOrColumns::Columns => (height, width, top_left, row),
+			}
 		})
 		.collect();
-
-	// Sort by cross-axis size, largest first
 	items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
-	let mut result = List::new();
 	let mut strips: Vec<Strip> = Vec::new();
+	let mut gathered = (lane, DAffine2::IDENTITY);
 
-	// This looks n^2 but it is just n*k where k is the number of strips, which is generally much smaller than n
-	for (along, cross, top_left, mut row) in items {
+	for (position, &(along, cross, top_left, source)) in items.iter().enumerate() {
+		let lane_transform: DAffine2 = elements.lane(source).attr::<TransformAttr>();
 		if along <= 0. {
-			result.push(row);
+			if position == lane {
+				gathered = (source, lane_transform);
+				break;
+			}
 			continue;
 		}
 
-		// Find a good strip, minimum remaining space that can fit this item ideally
+		// n*k where k is the strip count, generally much smaller than n
 		let mut best_strip_index = None;
 		let mut min_remaining_space = f64::INFINITY;
-
 		for (index, strip) in strips.iter().enumerate() {
 			let remaining_space = strip_max_length - strip.along_position;
 			if remaining_space >= along && remaining_space < min_remaining_space {
@@ -1049,45 +1040,49 @@ where
 			}
 		}
 
-		if let Some(strip_index) = best_strip_index {
-			// Place on existing strip
-			let strip = &mut strips[strip_index];
-
-			// Update strip cross extent if needed
-			if cross > strip.cross_extent {
-				strip.cross_extent = cross;
+		let target_position = match best_strip_index {
+			Some(strip_index) => {
+				let strip = &mut strips[strip_index];
+				if cross > strip.cross_extent {
+					strip.cross_extent = cross;
+				}
+				let target = match strip_direction {
+					RowsOrColumns::Rows => DVec2::new(strip.along_position, strip.cross_position),
+					RowsOrColumns::Columns => DVec2::new(strip.cross_position, strip.along_position),
+				};
+				strip.along_position += along + separation;
+				target
 			}
+			None => {
+				let new_cross = strips.last().map_or(0., |last| last.cross_position + last.cross_extent + separation);
+				let target = match strip_direction {
+					RowsOrColumns::Rows => DVec2::new(0., new_cross),
+					RowsOrColumns::Columns => DVec2::new(new_cross, 0.),
+				};
+				strips.push(Strip {
+					along_position: along + separation,
+					cross_position: new_cross,
+					cross_extent: cross,
+				});
+				target
+			}
+		};
 
-			let target_position = match strip_direction {
-				RowsOrColumns::Rows => DVec2::new(strip.along_position, strip.cross_position),
-				RowsOrColumns::Columns => DVec2::new(strip.cross_position, strip.along_position),
-			};
-			let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			row.set_attribute(ATTR_TRANSFORM, DAffine2::from_translation(target_position - top_left) * row_transform);
-
-			strip.along_position += along + separation;
-		} else {
-			// Create new strip
-			let new_cross = strips.last().map_or(0., |last| last.cross_position + last.cross_extent + separation);
-
-			let target_position = match strip_direction {
-				RowsOrColumns::Rows => DVec2::new(0., new_cross),
-				RowsOrColumns::Columns => DVec2::new(new_cross, 0.),
-			};
-			let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			row.set_attribute(ATTR_TRANSFORM, DAffine2::from_translation(target_position - top_left) * row_transform);
-
-			strips.push(Strip {
-				along_position: along + separation,
-				cross_position: new_cross,
-				cross_extent: cross,
-			});
+		if position == lane {
+			gathered = (source, DAffine2::from_translation(target_position - top_left) * lane_transform);
+			break;
 		}
-
-		result.push(row);
 	}
 
-	result
+	let (source, placement) = gathered;
+	Ok((elements.lane(source), Attr(placement)))
+}
+
+fn pack_strips_extent<T>(elements: ListIn<'_, T>, _separation: ValueIn<'_, f64>, _strip_max_length: ValueIn<'_, f64>, _strip_direction: ValueIn<'_, RowsOrColumns>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => elements.total(),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
 }
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.

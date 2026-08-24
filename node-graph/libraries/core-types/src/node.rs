@@ -3,7 +3,7 @@ use crate::gpoll::{Extent, Finality, GPoll, GraphError, Interrupt, Level};
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
-use std::ops::Range;
+use std::ops::{Deref, Range};
 
 #[derive(Debug)]
 pub enum BatchStatus<'a> {
@@ -185,6 +185,31 @@ impl<'a> RecordLane<'a> {
 	}
 }
 
+/// One lane of a materialized level, element-typed. In a kernel's element
+/// position the output frame is copied from this lane.
+#[derive(Debug)]
+pub struct Lane<'a, T> {
+	lane: RecordLane<'a>,
+	_element: PhantomData<T>,
+}
+
+// A view regardless of `T`: copying a lane copies no record.
+impl<T> Clone for Lane<'_, T> {
+	fn clone(&self) -> Self {
+		*self
+	}
+}
+
+impl<T> Copy for Lane<'_, T> {}
+
+impl<'a, T> Deref for Lane<'a, T> {
+	type Target = RecordLane<'a>;
+
+	fn deref(&self) -> &RecordLane<'a> {
+		&self.lane
+	}
+}
+
 /// A materialized nesting level handed to a folding kernel: a thin element-typed
 /// view over the [`RecordBatch`] the level was collected into. The eventual
 /// `List` once `IList` is renamed.
@@ -238,8 +263,11 @@ impl<'a, T> List<'a, T> {
 	}
 
 	/// Lane `index`'s record, for attribute reads beside the element.
-	pub fn lane(&self, index: usize) -> RecordLane<'a> {
-		self.batch.get(index)
+	pub fn lane(&self, index: usize) -> Lane<'a, T> {
+		Lane {
+			lane: self.batch.get(index),
+			_element: PhantomData,
+		}
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = T> + '_

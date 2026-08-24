@@ -77,6 +77,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// A `_: ()` primary keeps its slot: dropping it would shift every
 	// per-index classification against the IR and the document's arity.
 	let record_skips_carrier = record_io && !carrier_present;
+	// A gather carrier copies the returned lane's frame, so it needs the plan
+	// without a carrier layout of its own.
+	let gather_carrier = record_io && node.output.gathers;
 	let struct_regular_fields: Vec<_> = regular_fields.to_vec();
 	let struct_regular_field_names: Vec<_> = struct_regular_fields.iter().map(|f| &f.pat_ident.ident).collect();
 
@@ -193,6 +196,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout)];
 		if !record_skips_carrier {
 			state.push(quote!(pub(super) __carrier: gcore::record::Layout));
+		}
+		if !record_skips_carrier || gather_carrier {
 			state.push(quote!(pub(super) __plan: ::std::vec::Vec<(usize, usize, usize)>));
 		}
 		state.push(quote!(pub(super) __frame_bytes: usize));
@@ -752,16 +757,22 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(crate::codegen::ir::NodeKind::Routing, crate::codegen::ir::Element::Generic(ident)) => Some(ident.clone()),
 		_ => None,
 	};
+	let skips_carrier = record_io && !carrier_present;
+	// A gather carrier copies the returned lane's frame, so it needs the plan
+	// without a carrier layout of its own.
+	let gather_carrier = record_io && node.output.gathers;
+	// A gathered element is carried by the copy plan, not as a lazy token, so
+	// its generic stays a struct parameter.
 	let record_token = match (kind, &node.output.shape.element) {
-		(crate::codegen::ir::NodeKind::RecordIo, crate::codegen::ir::Element::Generic(ident)) => Some(ident.clone()),
+		(crate::codegen::ir::NodeKind::RecordIo, crate::codegen::ir::Element::Generic(ident)) if !gather_carrier => Some(ident.clone()),
 		_ => None,
 	};
-	let skips_carrier = record_io && !carrier_present;
 	// The record-io write set, resolved from the output item and carrier input.
 	let write_markers: Vec<&Type> = node.output.shape.attrs.iter().map(|attr| &attr.marker).collect();
 	let removes: Vec<&Type> = node.output.removes.iter().map(|attr| &attr.marker).collect();
+	// A gathered element rides the copy plan, never a write.
 	let element_write: Option<&Type> = match &node.output.shape.element {
-		crate::codegen::ir::Element::Concrete(ty) => Some(ty),
+		crate::codegen::ir::Element::Concrete(ty) if !gather_carrier => Some(ty),
 		_ => None,
 	};
 	let carrier_read_ty: Option<&Type> = node.inputs.first().filter(|input| input.subject).and_then(|input| match &input.shape.element {
@@ -998,7 +1009,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let pat = &field.pat_ident;
 		match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if ir::materialized_levels(&node, index) > 0 => {
-				quote!(#pat: #core_types::node::List<'_, #ty>)
+				// The gathered lane borrows this list, so both take the kernel's
+				// own subject lifetime.
+				match ir::gathered_subject(&node) == Some(index) {
+					true => quote!(#pat: #core_types::node::List<'__lane, #ty>),
+					false => quote!(#pat: #core_types::node::List<'_, #ty>),
+				}
 			}
 			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.attribute_reads.is_empty() => read_tuple_param(field, quote!(#pat), quote!(#ty)),
@@ -1578,8 +1594,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// A bare `Attr<M>` in the return type cannot elide its lifetime, so the
 	// kernel gets a fresh one; reference-valued writes name their real
 	// lifetime explicitly and pass through untouched.
-	let kernel_output = record_io.then(|| inject_attr_lifetimes(&parsed.output_type)).flatten();
-	let attr_lifetime = kernel_output.is_some().then(|| quote!('__attr,));
+	let attr_injected = record_io.then(|| inject_attr_lifetimes(&parsed.output_type)).flatten();
+	let attr_lifetime = attr_injected.is_some().then(|| quote!('__attr,));
+	let lane_injected = gather_carrier
+		.then(|| crate::codegen::classify::inject_lane_lifetime(attr_injected.as_ref().unwrap_or(&parsed.output_type)))
+		.flatten();
+	let lane_lifetime = lane_injected.is_some().then(|| quote!('__lane,));
+	let kernel_output = lane_injected.or(attr_injected);
 	let kernel_output = match derive_routing {
 		true => {
 			let generic = routing_generic.as_ref().expect("derive routing implies routing");
@@ -1591,7 +1612,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let kernel = match async_fn {
 		false => quote! {
 			#[allow(clippy::too_many_arguments)]
-			#vis fn #fn_name<#attr_lifetime #(#generics,)*>(#ctx_pat: &#ctx_ident #(, #data_params)* #(, #kernel_params)*) -> #kernel_output #fn_where #body
+			#vis fn #fn_name<#attr_lifetime #lane_lifetime #(#generics,)*>(#ctx_pat: &#ctx_ident #(, #data_params)* #(, #kernel_params)*) -> #kernel_output #fn_where #body
 		},
 		true => {
 			let kernel_generics = parsed.fn_generics.iter().filter(|param| match param {
@@ -1784,6 +1805,15 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				}
 			})
 			.unwrap_or_default();
+		// A gathered lane owns its record, so the plan reads straight off it.
+		let gather_carry = gather_carrier
+			.then(|| {
+				quote! {
+					let __src_rec = __element.rec();
+					unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
+				}
+			})
+			.unwrap_or_default();
 		let carrier_read_bindings: Vec<TokenStream2> = match skips_carrier || lazy_carrier {
 			true => Vec::new(),
 			false => reads_of(0).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(__src_rec))).collect(),
@@ -1798,9 +1828,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			_ => quote!(#record_kernel_call),
 		};
 		let attr_binders: Vec<Ident> = (0..write_markers.len()).map(|index| format_ident!("__attr_{index}")).collect();
-		let element_binder = match (element_write, lazy_carrier) {
-			(Some(_), _) | (None, true) => quote!(__element),
-			(None, false) => quote!(_),
+		let element_binder = match (element_write.is_some(), lazy_carrier || gather_carrier) {
+			(true, _) | (_, true) => quote!(__element),
+			(false, false) => quote!(_),
 		};
 		// Slot binders in the return tuple's own order: an `Attr` binds the
 		// next write binder, a `RemoveAttr` binds nothing.
@@ -1854,6 +1884,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let __kernel_value = #kernel_value;
 			#destructure
 			#lazy_carry
+			#gather_carry
 			#element_store
 			#(#attr_stores)*
 			if self.__frame_bytes != 0 {
@@ -2226,7 +2257,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				self.#slot = __resolved.layout.offset_of(<#marker as #core_types::attribute::Attribute>::NAME, 0).expect("a written attribute is always part of the wired layout");
 			}
 		});
-		let plan = (!skips_carrier).then(|| quote!(self.__plan = __resolved.plan;));
+		let plan = (!skips_carrier || gather_carrier).then(|| quote!(self.__plan = __resolved.plan;));
 		Some(quote! {
 			#(#write_installs)*
 			self.__frame_bytes = __resolved.frame_bytes;
@@ -2292,7 +2323,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			Some(ty) => quote!({ use #core_types::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&#core_types::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() }),
 			None => quote!(__carrier.element),
 		};
-		let layout_def = match skips_carrier {
+		// A gather carrier's base is the gathered subject's layout, so its free
+		// layout fn takes that layout even though the subject materializes.
+		let layout_def = match skips_carrier && !gather_carrier {
 			true => quote! {
 				#vis fn #layout_fn() -> #core_types::record::Layout {
 					#core_types::record::Layout::default().with_writes(0, #element, &[#(#write_descs),*])
@@ -2352,19 +2385,39 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let slot = format_ident!("__in_{index}");
 			quote!(#slot: #slot.clone(),)
 		});
-		let plan_default = (!skips_carrier).then(|| quote!(__plan: ::std::vec::Vec::new(),)).into_iter();
+		let plan_default = (!skips_carrier || gather_carrier).then(|| quote!(__plan: ::std::vec::Vec::new(),)).into_iter();
 		let read_names = (0..flat_reads.len()).map(|index| format_ident!("__read_{index}")).map(|slot| quote!(#slot,));
 		let write_defaults = (0..write_markers.len()).map(|index| format_ident!("__write_{index}")).map(|slot| quote!(#slot: 0,));
 		let mat_cache_defaults = materialized_indices(&regular_fields, &node).into_iter().map(|index| {
 			let slot = format_ident!("__mat_cache_{index}");
 			quote!(#slot: ::core::default::Default::default(),)
 		});
+		// A ranked input's element generic rides the struct as a phantom
+		// parameter, so the constructor declares and initializes it too.
+		let carried_type_params: Vec<&Ident> = struct_type_params
+			.iter()
+			.filter(|ident| !data_field_generic_idents.contains(ident) && !node_generics.contains(ident))
+			.collect();
+		let carried_generic_params: Vec<TokenStream2> = carried_type_params
+			.iter()
+			.map(|ident| {
+				parsed
+					.fn_generics
+					.iter()
+					.find_map(|param| match param {
+						GenericParam::Type(type_param) if &&type_param.ident == ident => Some(quote!(#type_param)),
+						_ => None,
+					})
+					.unwrap_or_else(|| quote!(#ident))
+			})
+			.collect();
+		let marker_init = (!carried_type_params.is_empty()).then(|| quote!(__marker: ::core::marker::PhantomData,)).into_iter();
 		quote! {
 			#layout_def
 			#layout_meta_def
 
 			#[automatically_derived]
-			impl<#(#data_field_generic_idents,)* #(#node_generics,)*> #mod_name::#struct_name<#(#struct_type_params,)*> {
+			impl<#(#data_field_generic_idents,)* #(#node_generics,)* #(#carried_generic_params,)*> #mod_name::#struct_name<#(#struct_type_params,)*> {
 				#[allow(clippy::too_many_arguments)]
 				#vis fn new(#(#edge_args,)* #(#carrier_layout_param)* #(#input_layout_params)*) -> Self {
 					#(#read_inits)*
@@ -2375,6 +2428,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#(#input_layout_inits)*
 						__layout: ::core::default::Default::default(),
 						#(#plan_default)*
+						#(#marker_init)*
 						__frame_bytes: 0,
 						#(#read_names)*
 						#(#write_defaults)*
