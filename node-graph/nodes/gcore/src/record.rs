@@ -7,7 +7,7 @@
 
 use core_types::attribute::{Attr, EditorLayerPath, Opacity, RemoveAttr, Transform};
 use glam::DAffine2;
-use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex};
+use core_types::context::{DeriveCtx, ExtractIndex, ExtractIndices, IndexLink, InjectIndex};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
 use core_types::node::Lane;
@@ -58,8 +58,8 @@ fn fade<T>(_: impl Ctx, (element, opacity): (T, Attr<Opacity>), factor: f64) -> 
 /// writes a per-copy opacity indexed by the copy's own index.
 #[node_macro::node(category("Test"), extent(repeat_opacity_extent))]
 fn repeat_opacity(ctx: impl Ctx + ExtractIndex, element: f64, count: u32) -> IList<(f64, Attr<Opacity>)> {
-	debug_assert!(ctx.innermost_index() < count as u64, "repeat addressed past its copy count");
-	emit(element, Attr(ctx.innermost_index() as f64))
+	debug_assert!(ctx.index() < count as u64, "repeat addressed past its copy count");
+	emit(element, Attr(ctx.index() as f64))
 }
 
 #[node_macro::node(category("Test"))]
@@ -155,7 +155,7 @@ fn extend<T>(
 		GPoll::Pending => return Err(Interrupt::Pending),
 		_ => return Err(GraphError::new("extend over a non-exact base extent").into()),
 	};
-	let lane = ctx.innermost_index();
+	let lane = ctx.index();
 	match lane < split {
 		true => base.eval(ctx),
 		false => {
@@ -210,7 +210,7 @@ fn omit_element<T>(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: i
 		GPoll::Pending => return Err(Interrupt::Pending),
 		_ => return Err(GraphError::new("omit over a non-exact extent").into()),
 	};
-	let lane = ctx.innermost_index();
+	let lane = ctx.index();
 	let source = match resolve_index(index, total) {
 		Some(omitted) if lane >= omitted => lane + 1,
 		_ => lane,
@@ -270,7 +270,7 @@ fn extract_element(_: impl Ctx + InjectIndex + Copy, list: IList<f64>, index: f6
 #[node_macro::node(category("Test"), extent(mirror_extent))]
 fn mirror(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<f64>, keep_original: bool) -> Result<IList<(f64, Attr<Transform>)>, Interrupt> {
 	let total = content.len() as u64;
-	let lane = ctx.innermost_index();
+	let lane = ctx.index();
 	let (source, mirrored) = match (keep_original, lane < total) {
 		(true, true) => (lane, false),
 		(true, false) => (lane - total, true),

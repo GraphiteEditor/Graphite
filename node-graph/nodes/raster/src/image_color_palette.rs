@@ -59,7 +59,7 @@ fn image_color_palette(
 		})
 		.collect();
 
-	palette.get(ctx.innermost_index() as usize).copied().ok_or_else(|| GraphError::past_end().into())
+	palette.get(ctx.index() as usize).copied().ok_or_else(|| GraphError::past_end().into())
 }
 
 #[cfg(test)]

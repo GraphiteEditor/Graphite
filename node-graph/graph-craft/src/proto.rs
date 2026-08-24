@@ -505,7 +505,13 @@ impl ProtoNetwork {
 
 		let (extract, inject, own_deps) = {
 			let dependencies = &self.nodes[node_index].1.context_features;
-			let own_deps = ContextModification::from_sources(dependencies.extract, dependencies.sources());
+			// Documents predating the level mask deserialize as all-levels, so a
+			// node that declares no index read must not contribute one.
+			let index_levels = match dependencies.extract.contains(core_types::context::ContextFeatures::INDEX) {
+				true => dependencies.index_levels,
+				false => core_types::context::IndexLevels::empty(),
+			};
+			let own_deps = ContextModification::from_sources(dependencies.extract, dependencies.sources()).with_index_levels(index_levels);
 			(dependencies.extract, dependencies.inject, own_deps)
 		};
 

@@ -85,7 +85,7 @@ pub(crate) fn locate(graphic: &Graphic, transform: DAffine2, fully_flatten: bool
 /// rides as a leaf with its embedded transforms untouched.
 #[node_macro::node(category("Test"), extent(flatten_extent))]
 fn flatten(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>, fully_flatten: bool) -> Result<IList<(Graphic, Attr<Transform>)>, Interrupt> {
-	let mut remaining = ctx.innermost_index() as usize;
+	let mut remaining = ctx.index() as usize;
 	for row in 0..content.len() {
 		let graphic = content.element_ref(row);
 		let count = leaf_count(graphic, fully_flatten, 0);
@@ -157,7 +157,7 @@ fn map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<IList<T>>, Interrupt> {
-	let mut remaining = ctx.innermost_index();
+	let mut remaining = ctx.index();
 	for row in 0..content.len() {
 		let item = vararg_row(content, row);
 		let scoped = ctx.push_vararg(&item);
@@ -181,7 +181,7 @@ fn flat_map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<T>, Interrupt> {
-	let mut remaining = ctx.innermost_index();
+	let mut remaining = ctx.index();
 	for row in 0..content.len() {
 		let item = vararg_row(content, row);
 		let scoped = ctx.push_vararg(&item);
@@ -201,7 +201,7 @@ fn flat_map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 #[node_macro::node(category("Test"), extent(flatten_levels_extent))]
 fn flatten_levels<T>(ctx: impl Ctx + DeriveCtx + ExtractIndex, content: impl Node<Context<'_>, Output = IList<IList<T>>>) -> Result<IList<T>, Interrupt> {
 	let head = ctx.index_head();
-	content.eval(&ctx.promoted(&head, ctx.innermost_index()))
+	content.eval(&ctx.promoted(&head, ctx.index()))
 }
 
 /// The collapsed level's extent is the sum of the inner extents across the
@@ -237,7 +237,7 @@ mod tests {
 	use core_types::SourceId;
 	use core_types::arena::Arena;
 	use core_types::attribute::Attribute as AttributeMarker;
-	use core_types::context::{ContextImpl, EvalScope, ExtractArena};
+	use core_types::context::{ContextImpl, EvalScope, ExtractArena, ExtractIndices};
 	use core_types::list::{Item, List};
 	use core_types::node::Node;
 	use core_types::record::{self, Layout, Rec, RecordSource, RecordValue, stack};

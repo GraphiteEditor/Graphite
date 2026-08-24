@@ -34,7 +34,11 @@ pub trait ExtractPointerPosition {
 pub trait ExtractPosition {
 	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>>;
 }
-pub trait ExtractIndex {
+/// The level sentinel for a reader whose level is not known at compile time,
+/// so every level of the index chain must survive nullification.
+pub const ALL_INDEX_LEVELS: u8 = u8::MAX;
+
+pub trait ExtractIndices {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>>;
 	fn innermost_index(&self) -> u64 {
 		self.try_index().and_then(|mut indices| indices.next()).unwrap_or(0) as u64
@@ -52,6 +56,18 @@ pub trait ExtractIndex {
 		}
 	}
 }
+
+/// `LEVEL` is the level of the index chain a node reads, counted outwards from
+/// the innermost. Declaring it narrows the cache key to that level, and reading
+/// through `index` keeps the declaration and the read from drifting apart.
+/// Repeat the bound to declare several, then spell the level at each read.
+pub trait ExtractIndex<const LEVEL: u8 = 0>: ExtractIndices {
+	fn index(&self) -> u64 {
+		self.try_index().and_then(|mut levels| levels.nth(LEVEL as usize)).unwrap_or(0) as u64
+	}
+}
+
+impl<T: ExtractIndices, const LEVEL: u8> ExtractIndex<LEVEL> for T {}
 pub trait ExtractVarArgs {
 	// TODO: Consider returning a slice or something like that
 
@@ -154,7 +170,8 @@ pub enum ContextFeature {
 	ExtractAnimationTime,
 	ExtractPointerPosition,
 	ExtractPosition,
-	ExtractIndex,
+	/// Carries the declared level, counted outwards from the innermost.
+	ExtractIndex(u8),
 	ExtractVarArgs,
 	InjectFootprint,
 	InjectRealTime,
@@ -187,6 +204,93 @@ impl graphene_hash::CacheHash for ContextFeatures {
 	}
 }
 
+/// Which levels of the index chain survive nullification, as a mask over levels
+/// counted outwards from the innermost. Levels past 31 collapse to "all".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, dyn_any::DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct IndexLevels(u32);
+
+impl IndexLevels {
+	pub const fn empty() -> Self {
+		Self(0)
+	}
+
+	pub const fn all() -> Self {
+		Self(u32::MAX)
+	}
+
+	/// The innermost level alone, which is what every reader but `read_index`
+	/// addresses, so documents predating the mask migrate to it.
+	pub const fn innermost() -> Self {
+		Self(1)
+	}
+
+	pub const fn is_empty(self) -> bool {
+		self.0 == 0
+	}
+
+	pub fn with_level(self, level: u8) -> Self {
+		match level {
+			ALL_INDEX_LEVELS => Self::all(),
+			level if (level as u32) < u32::BITS => Self(self.0 | 1 << level),
+			_ => Self::all(),
+		}
+	}
+
+	pub const fn contains(self, other: Self) -> bool {
+		self.0 & other.0 == other.0
+	}
+
+	pub const fn is_all(self) -> bool {
+		self.0 == u32::MAX
+	}
+
+	/// Levels at or past `u32::BITS` are only readable through the all-levels
+	/// sentinel, so they count as declared whenever the mask is saturated.
+	pub const fn contains_level(self, level: usize) -> bool {
+		match level < u32::BITS as usize {
+			true => self.0 & 1 << level != 0,
+			false => self.is_all(),
+		}
+	}
+}
+
+/// Zeroes every index level outside `levels`, preserving the chain's depth so
+/// outer levels keep their positions for readers that do address them. Returns
+/// `None` only when the arena is exhausted.
+pub fn nullify_index_levels<'s>(head: IndexLink<'s>, levels: IndexLevels, arena: &'s crate::arena::Arena) -> Option<IndexLink<'s>> {
+	if levels.is_all() {
+		return Some(head);
+	}
+	let indices: Vec<u64> = core::iter::successors(Some(&head), |link| link.outer).map(|link| link.index).collect();
+	let masked = |level: usize| match levels.contains_level(level) {
+		true => indices[level],
+		false => 0,
+	};
+	if (0..indices.len()).all(|level| levels.contains_level(level) || indices[level] == 0) {
+		return Some(head);
+	}
+	// Built outermost inwards so each link can reference the one already placed.
+	let mut outer: Option<&'s IndexLink<'s>> = None;
+	for level in (1..indices.len()).rev() {
+		let link = IndexLink { index: masked(level), outer };
+		outer = Some(arena.alloc(link)?.0);
+	}
+	Some(IndexLink { index: masked(0), outer })
+}
+
+impl core::ops::BitOrAssign for IndexLevels {
+	fn bitor_assign(&mut self, other: Self) {
+		self.0 |= other.0;
+	}
+}
+
+impl graphene_hash::CacheHash for IndexLevels {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(self, state);
+	}
+}
+
 impl ContextFeatures {
 	pub fn name(&self) -> &'static str {
 		match *self {
@@ -211,13 +315,31 @@ impl ContextFeatures {
 pub struct ContextDependencies {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,
+	/// Which index levels the node reads; empty means it reads none. Documents
+	/// written before the field existed default to the whole chain.
+	#[cfg_attr(feature = "serde", serde(default = "IndexLevels::innermost"))]
+	pub index_levels: IndexLevels,
 	#[cfg_attr(feature = "serde", serde(default, deserialize_with = "deserialize_sorted_sources"))]
 	sources: Vec<SourceId>,
 }
 
 impl ContextDependencies {
 	pub fn new(extract: ContextFeatures, inject: ContextFeatures) -> Self {
-		Self { extract, inject, sources: Vec::new() }
+		let index_levels = match extract.contains(ContextFeatures::INDEX) {
+			true => IndexLevels::innermost(),
+			false => IndexLevels::empty(),
+		};
+		Self {
+			extract,
+			inject,
+			index_levels,
+			sources: Vec::new(),
+		}
+	}
+
+	pub fn with_index_levels(mut self, index_levels: IndexLevels) -> Self {
+		self.index_levels = index_levels;
+		self
 	}
 
 	pub fn sources(&self) -> &[SourceId] {
@@ -239,6 +361,9 @@ impl ContextDependencies {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContextModification {
 	pub features: ContextFeatures,
+	/// Which index levels survive; consulted only when `features` keeps `INDEX`.
+	#[cfg_attr(feature = "serde", serde(default = "IndexLevels::innermost"))]
+	pub index_levels: IndexLevels,
 	#[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_sorted_sources"))]
 	sources: Vec<SourceId>,
 }
@@ -253,9 +378,22 @@ impl ContextModification {
 	}
 
 	pub fn from_sources(features: ContextFeatures, sources: &[SourceId]) -> Self {
-		let mut modification = Self { features, sources: Vec::new() };
+		let index_levels = match features.contains(ContextFeatures::INDEX) {
+			true => IndexLevels::all(),
+			false => IndexLevels::empty(),
+		};
+		let mut modification = Self {
+			features,
+			index_levels,
+			sources: Vec::new(),
+		};
 		modification.add_sources(sources);
 		modification
+	}
+
+	pub fn with_index_levels(mut self, index_levels: IndexLevels) -> Self {
+		self.index_levels = index_levels;
+		self
 	}
 }
 
@@ -273,6 +411,7 @@ fn deserialize_sorted_sources<'de, D: serde::Deserializer<'de>>(deserializer: D)
 impl core::ops::BitOrAssign<&ContextModification> for ContextModification {
 	fn bitor_assign(&mut self, other: &Self) {
 		self.features |= other.features;
+		self.index_levels |= other.index_levels;
 		merge_sorted_sources(&mut self.sources, &other.sources);
 	}
 }
@@ -298,13 +437,14 @@ impl core::ops::BitAndAssign<ContextFeatures> for ContextModification {
 impl ContextModification {
 	pub fn contains(&self, other: &Self) -> bool {
 		debug_assert!(self.sources.is_sorted() && other.sources.is_sorted());
-		self.features.contains(other.features) && other.sources.iter().all(|id| self.sources.binary_search(id).is_ok())
+		self.features.contains(other.features) && self.index_levels.contains(other.index_levels) && other.sources.iter().all(|id| self.sources.binary_search(id).is_ok())
 	}
 
 	pub fn difference(&self, other: &Self) -> Self {
 		debug_assert!(other.sources.is_sorted());
 		Self {
 			features: self.features.difference(other.features),
+			index_levels: self.index_levels,
 			sources: self.sources.iter().copied().filter(|id| other.sources.binary_search(id).is_err()).collect(),
 		}
 	}
@@ -326,14 +466,18 @@ impl From<&[ContextFeature]> for ContextDependencies {
 	fn from(features: &[ContextFeature]) -> Self {
 		let mut extract = ContextFeatures::empty();
 		let mut inject = ContextFeatures::empty();
+		let mut index_levels = IndexLevels::empty();
 		for feature in features {
+			if let ContextFeature::ExtractIndex(level) = feature {
+				index_levels = index_levels.with_level(*level);
+			}
 			extract |= match feature {
 				ContextFeature::ExtractFootprint => ContextFeatures::FOOTPRINT,
 				ContextFeature::ExtractRealTime => ContextFeatures::REAL_TIME,
 				ContextFeature::ExtractAnimationTime => ContextFeatures::ANIMATION_TIME,
 				ContextFeature::ExtractPointerPosition => ContextFeatures::POINTER_POSITION,
 				ContextFeature::ExtractPosition => ContextFeatures::POSITION,
-				ContextFeature::ExtractIndex => ContextFeatures::INDEX,
+				ContextFeature::ExtractIndex(_) => ContextFeatures::INDEX,
 				ContextFeature::ExtractVarArgs => ContextFeatures::VARARGS,
 				_ => ContextFeatures::empty(),
 			};
@@ -348,7 +492,12 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				_ => ContextFeatures::empty(),
 			};
 		}
-		Self { extract, inject, sources: Vec::new() }
+		Self {
+			extract,
+			inject,
+			index_levels,
+			sources: Vec::new(),
+		}
 	}
 }
 
@@ -388,7 +537,7 @@ impl<T: ExtractPosition + Sync> ExtractPosition for Option<T> {
 		self.as_ref().and_then(|x| x.try_position())
 	}
 }
-impl<T: ExtractIndex> ExtractIndex for Option<T> {
+impl<T: ExtractIndices> ExtractIndices for Option<T> {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
 		self.as_ref().and_then(|x| x.try_index())
 	}
@@ -446,7 +595,7 @@ impl<T: ExtractPosition + Sync> ExtractPosition for Arc<T> {
 		(**self).try_position()
 	}
 }
-impl<T: ExtractIndex> ExtractIndex for Arc<T> {
+impl<T: ExtractIndices> ExtractIndices for Arc<T> {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
 		(**self).try_index()
 	}
@@ -739,7 +888,7 @@ pub trait DeriveCtx {
 	fn with_varargs<'s>(&'s self, varargs: &'s VarArgLink<'s>) -> Derived<'s, Self>;
 	fn with_position<'s>(&'s self, position: &'s PositionLink<'s>) -> Derived<'s, Self>;
 	fn with_scope<'s>(&'s self, scope: &'s EvalScope<'s>) -> Derived<'s, Self>;
-	fn nullified<'s>(&'s self, keep: ContextFeatures, scope: &'s EvalScope<'s>) -> Derived<'s, Self>;
+	fn nullified<'s>(&'s self, keep: ContextFeatures, index: IndexLink<'s>, scope: &'s EvalScope<'s>) -> Derived<'s, Self>;
 
 	fn modify_footprint(&self, modify: impl FnOnce(&mut Footprint)) -> ModifiedFootprint<'_, Self>
 	where
@@ -850,7 +999,7 @@ impl ExtractPointerPosition for CtxSnapshot {
 	}
 }
 
-impl ExtractIndex for CtxSnapshot {
+impl ExtractIndices for CtxSnapshot {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
 		self.index.as_ref().map(|levels| levels.iter().copied())
 	}
@@ -975,15 +1124,12 @@ impl<'a> ContextImpl<'a> {
 		ContextImpl { position: Some(position), ..*self }
 	}
 
-	pub fn nullified<'s>(&self, keep: ContextFeatures, scope: &'s EvalScope<'s>) -> ContextImpl<'s>
+	pub fn nullified<'s>(&self, keep: ContextFeatures, index: IndexLink<'s>, scope: &'s EvalScope<'s>) -> ContextImpl<'s>
 	where
 		'a: 's,
 	{
 		ContextImpl {
-			index: match keep.contains(ContextFeatures::INDEX) {
-				true => self.index,
-				false => IndexLink { index: 0, outer: None },
-			},
+			index,
 			position: self.position.filter(|_| keep.contains(ContextFeatures::POSITION)),
 			varargs: self.varargs.filter(|_| keep.contains(ContextFeatures::VARARGS)),
 			footprint: self.footprint.filter(|_| keep.contains(ContextFeatures::FOOTPRINT)),
@@ -1060,7 +1206,7 @@ impl ExtractPointerPosition for ContextImpl<'_> {
 		self.scope.pointer_position
 	}
 }
-impl ExtractIndex for ContextImpl<'_> {
+impl ExtractIndices for ContextImpl<'_> {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
 		Some(std::iter::successors(Some(&self.index), |link| link.outer).map(|link| link.index as usize))
 	}
@@ -1161,8 +1307,8 @@ impl<'a> DeriveCtx for ContextImpl<'a> {
 		ContextImpl::with_scope(self, scope)
 	}
 
-	fn nullified<'s>(&'s self, keep: ContextFeatures, scope: &'s EvalScope<'s>) -> ContextImpl<'s> {
-		ContextImpl::nullified(self, keep, scope)
+	fn nullified<'s>(&'s self, keep: ContextFeatures, index: IndexLink<'s>, scope: &'s EvalScope<'s>) -> ContextImpl<'s> {
+		ContextImpl::nullified(self, keep, index, scope)
 	}
 }
 

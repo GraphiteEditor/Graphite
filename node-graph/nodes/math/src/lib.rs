@@ -811,7 +811,7 @@ fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] satura
 #[node_macro::node(category("Color"), name("Hex to Color"))]
 fn hex_to_color(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, hex_code: String) -> Result<IList<Color>, Interrupt> {
 	// An invalid input serves an empty level: no color
-	match (core_types::misc::parse_css_color(&hex_code), ctx.innermost_index()) {
+	match (core_types::misc::parse_css_color(&hex_code), ctx.index()) {
 		(Some(color), 0) => Ok(color),
 		_ => Err(GraphError::past_end().into()),
 	}
@@ -839,7 +839,7 @@ fn spread_method(_: impl Ctx, gradient: GradientStops, spread_method: vector_typ
 #[node_macro::node(category("Color"))]
 fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), gradient: IList<GradientStops>, position: Fraction) -> Result<IList<Color>, Interrupt> {
 	// An unwired gradient serves an empty level: no color
-	if gradient.is_empty() || ctx.innermost_index() != 0 {
+	if gradient.is_empty() || ctx.index() != 0 {
 		return Err(GraphError::past_end().into());
 	}
 
@@ -1035,7 +1035,7 @@ mod graphene_test {
 		type Output = f64;
 
 		fn eval(&self, input: &Input) -> GPoll<f64> {
-			GPoll::Final(input.innermost_index() as f64)
+			GPoll::Final(input.index() as f64)
 		}
 	}
 

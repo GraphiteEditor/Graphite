@@ -101,7 +101,7 @@ fn assign_colors<'e>(
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
 	repeat_every: u32,
 ) -> Result<IList<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, StrokeAttr>, Attr<'e, EditorLayerPath>)>, Interrupt> {
-	let lane = ctx.innermost_index() as usize;
+	let lane = ctx.index() as usize;
 	if lane >= content.len() {
 		return Err(GraphError::past_end().into());
 	}
@@ -173,7 +173,7 @@ fn assign_colors_graphic<'e>(
 	seed: SeedValue,
 	repeat_every: u32,
 ) -> Result<IList<(Graphic, Attr<'e, TransformAttr>, Attr<'e, EditorLayerPath>)>, Interrupt> {
-	let lane = ctx.innermost_index() as usize;
+	let lane = ctx.index() as usize;
 	if lane >= content.len() {
 		return Err(GraphError::past_end().into());
 	}
@@ -1549,7 +1549,7 @@ fn solidify_stroke<'e>(
 	)>,
 	Interrupt,
 > {
-	solidify_lane(ctx.arena(), legacy_graphic_list_of(content), ctx.innermost_index() as usize)
+	solidify_lane(ctx.arena(), legacy_graphic_list_of(content), ctx.index() as usize)
 }
 
 /// A fill-bearing row splits into a fill lane and a solidified stroke lane,
@@ -1588,7 +1588,7 @@ fn solidify_stroke_vector<'e>(
 	)>,
 	Interrupt,
 > {
-	solidify_lane(ctx.arena(), legacy_graphic_list_of(content), ctx.innermost_index() as usize)
+	solidify_lane(ctx.arena(), legacy_graphic_list_of(content), ctx.index() as usize)
 }
 
 fn solidify_stroke_vector_extent(content: ListIn<'_, Vector>, level: LevelIn) -> GPoll<Extent> {
@@ -1655,7 +1655,7 @@ fn separate_subpaths<'e>(
 	Interrupt,
 > {
 	let output = separate_subpaths_core(legacy_vector_list_of(content));
-	emit_legacy_lane(ctx.arena(), output, ctx.innermost_index() as usize)
+	emit_legacy_lane(ctx.arena(), output, ctx.index() as usize)
 }
 
 /// A row splits into one lane per subpath, so the count depends on the
@@ -1726,7 +1726,7 @@ fn map_points<'e>(
 		}
 	}
 
-	emit_legacy_lane(ctx.arena(), content, ctx.innermost_index() as usize)
+	emit_legacy_lane(ctx.arena(), content, ctx.index() as usize)
 }
 
 fn map_points_extent(content: ListIn<'_, Vector>, _mapped: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
@@ -2176,7 +2176,7 @@ fn cut_path<'e>(
 	Interrupt,
 > {
 	let output = cut_path_core(legacy_vector_list_of(content), progression, reverse, parameterized_distance);
-	emit_legacy_lane(ctx.arena(), output, ctx.innermost_index() as usize)
+	emit_legacy_lane(ctx.arena(), output, ctx.index() as usize)
 }
 
 fn cut_path_extent(content: ListIn<'_, Vector>, _progression: ValueIn<'_, f64>, _reverse: ValueIn<'_, bool>, _parameterized_distance: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {

@@ -71,7 +71,7 @@ pub fn omit_element<T>(
 		GPoll::Pending => return Err(Interrupt::Pending),
 		_ => return Err(GraphError::new("omit over a non-exact extent").into()),
 	};
-	let lane = ctx.innermost_index();
+	let lane = ctx.index();
 	let source = match resolve_index(index, total) {
 		Some(omitted) if lane >= omitted => lane + 1,
 		_ => lane,
@@ -115,7 +115,7 @@ fn map<Row: Clone + Send + Sync + CacheHash + 'static, T>(
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<T>, Interrupt> {
-	let mut remaining = ctx.innermost_index();
+	let mut remaining = ctx.index();
 	for row in 0..content.len() {
 		let item = crate::record::vararg_row(content, row);
 		let scoped = ctx.push_vararg(&item);
@@ -276,7 +276,7 @@ fn mirror<'e>(
 	mirror_lane(
 		ctx.arena(),
 		legacy_render_list_of(content),
-		ctx.innermost_index() as usize,
+		ctx.index() as usize,
 		relative_to_bounds,
 		offset,
 		angle,
@@ -334,7 +334,7 @@ fn mirror_vector<'e>(
 	mirror_lane(
 		ctx.arena(),
 		legacy_render_list_of(content),
-		ctx.innermost_index() as usize,
+		ctx.index() as usize,
 		relative_to_bounds,
 		offset,
 		angle,
@@ -403,7 +403,7 @@ pub fn extend<T>(
 		GPoll::Pending => return Err(Interrupt::Pending),
 		_ => return Err(GraphError::new("extend over a non-exact base extent").into()),
 	};
-	let lane = ctx.innermost_index();
+	let lane = ctx.index();
 	match lane < split {
 		true => base.eval(ctx),
 		false => {
@@ -586,7 +586,7 @@ pub use _to_graphic_unit_mod::to_graphic_unit_entries;
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"), extent(flatten_graphic_extent))]
 pub fn flatten_graphic(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>, fully_flatten: bool) -> Result<IList<(Graphic, Attr<TransformAttr>)>, Interrupt> {
-	let mut remaining = ctx.innermost_index() as usize;
+	let mut remaining = ctx.index() as usize;
 	for row in 0..content.len() {
 		let graphic = content.element_ref(row);
 		let count = crate::record::leaf_count(graphic, fully_flatten, 0);

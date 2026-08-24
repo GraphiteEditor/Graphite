@@ -1,7 +1,7 @@
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
 use core_types::list::List;
 use core_types::{Color, ExtractVarArgs};
-use core_types::{Ctx, ExtractIndex, ExtractPosition};
+use core_types::{Ctx, ExtractIndex, ExtractIndices, ExtractPosition};
 use glam::DVec2;
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Graphic, Vector};
@@ -64,7 +64,7 @@ fn vararg_lanes<T: 'static>(ctx: &impl ExtractVarArgs, level: u8) -> GPoll<Exten
 
 fn vararg_element<T: Clone + 'static>(ctx: &(impl ExtractVarArgs + ExtractIndex)) -> Result<T, Interrupt> {
 	vararg_list::<T>(ctx)
-		.and_then(|list| list.element(ctx.innermost_index() as usize))
+		.and_then(|list| list.element(ctx.index() as usize))
 		.cloned()
 		.ok_or_else(|| GraphError::new("vararg row addressed past its items").into())
 }
@@ -138,7 +138,9 @@ fn read_position(
 /// Nested loops can enable 2D or higher-dimensional iteration by using the *Loop Level* parameter to read the index from outer levels of loops.
 #[node_macro::node(category("Context"), path(core_types::vector))]
 fn read_index(
-	ctx: impl Ctx + ExtractIndex,
+	// `loop_level` is a runtime input, so no level is statically known and the
+	// whole chain has to survive nullification.
+	ctx: impl Ctx + ExtractIndices,
 	_primary: (),
 	/// The number of nested loops to traverse outwards (from the innermost loop) to get the index from. The most upstream loop is level 0, and downstream loops add levels.
 	///

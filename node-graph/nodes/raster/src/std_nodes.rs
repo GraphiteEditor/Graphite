@@ -107,7 +107,7 @@ pub fn combine_channels<'e>(
 	)>,
 	Interrupt,
 > {
-	let lane = ctx.innermost_index() as usize;
+	let lane = ctx.index() as usize;
 	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
 	if lane >= max_len {
 		return Err(GraphError::past_end().into());

@@ -345,7 +345,7 @@ pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
 	pub(crate) ty: Type,
 	pub(crate) implementations: Punctuated<Type, Comma>,
-	pub(crate) context_features: Vec<Ident>,
+	pub(crate) context_features: Vec<ContextFeatureDecl>,
 }
 
 impl Parse for Implementation {
@@ -868,8 +868,46 @@ fn parse_read_tuple(pat_tuple: &syn::PatTuple, ty: &Type, attrs: &[Attribute], i
 	Ok(field)
 }
 
+/// A declared context feature; `ExtractIndex` carries the index level it reads.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ContextFeatureDecl {
+	pub(crate) ident: Ident,
+	pub(crate) level: Option<u8>,
+}
+
+impl ContextFeatureDecl {
+	pub(crate) fn new(ident: Ident) -> Self {
+		Self { ident, level: None }
+	}
+}
+
+impl quote::ToTokens for ContextFeatureDecl {
+	fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+		let ident = &self.ident;
+		match self.level {
+			Some(level) => tokens.extend(quote::quote!(#ident(#level))),
+			None => ident.to_tokens(tokens),
+		}
+	}
+}
+
+/// The level of an `ExtractIndex<N>` bound, defaulting to the innermost.
+fn parse_index_level(segment: &syn::PathSegment) -> u8 {
+	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+		return 0;
+	};
+	for argument in &arguments.args {
+		if let syn::GenericArgument::Const(syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Int(int), .. })) = argument
+			&& let Ok(level) = int.base10_parse::<u8>()
+		{
+			return level;
+		}
+	}
+	0
+}
+
 /// Parse context feature identifiers from the trait bounds of a context parameter.
-fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
+fn parse_context_feature_idents(ty: &Type) -> Vec<ContextFeatureDecl> {
 	let mut features = Vec::new();
 
 	// Check if this is an impl trait (impl Ctx + ...)
@@ -879,12 +917,20 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 				// Extract the last segment of the trait path
 				if let Some(segment) = path.segments.last() {
 					match segment.ident.to_string().as_str() {
+						"ExtractIndex" => features.push(ContextFeatureDecl {
+							ident: segment.ident.clone(),
+							level: Some(parse_index_level(segment)),
+						}),
+						// Reading the chain without a statically known level keeps every level.
+						"ExtractIndices" => features.push(ContextFeatureDecl {
+							ident: format_ident!("ExtractIndex"),
+							level: Some(u8::MAX),
+						}),
 						"ExtractFootprint"
 						| "ExtractRealTime"
 						| "ExtractAnimationTime"
 						| "ExtractPointerPosition"
 						| "ExtractPosition"
-						| "ExtractIndex"
 						| "ExtractVarArgs"
 						| "InjectFootprint"
 						| "InjectRealTime"
@@ -892,7 +938,7 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 						| "InjectPointerPosition"
 						| "InjectPosition"
 						| "InjectVarArgs" => {
-							features.push(segment.ident.clone());
+							features.push(ContextFeatureDecl::new(segment.ident.clone()));
 						}
 						// InjectIndex stays undeclared: a record node's injection
 						// re-addresses lanes derived from the incoming index, so it
@@ -1605,7 +1651,7 @@ mod tests {
 				pat_ident: pat_ident("_"),
 				ty: parse_quote!(impl Ctx + ExtractFootprint),
 				implementations: Punctuated::new(),
-				context_features: vec![format_ident!("ExtractFootprint")],
+				context_features: vec![ContextFeatureDecl::new(format_ident!("ExtractFootprint"))],
 			},
 			output_type: parse_quote!(Vector),
 			output_depth: 0,

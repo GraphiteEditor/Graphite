@@ -41,7 +41,7 @@ fn memoize<'e>(
 	// keys with the lane normalized away.
 	let leveled = content.layout().depth > 0;
 	let lane = match leveled {
-		true => ctx.innermost_index() as usize,
+		true => ctx.index() as usize,
 		false => 0,
 	};
 	let key = match leveled {
@@ -203,7 +203,7 @@ fn monitor<'e>(
 	// computes lane by lane. Serving THIS lane out of that batch rather than
 	// evaluating the content separately is what keeps the cost linear: the extra
 	// eval would double the work under every enclosing monitor.
-	if content.layout().depth > 0 && ctx.innermost_index() == 0 {
+	if content.layout().depth > 0 && ctx.index() == 0 {
 		return match content.materialize_level(ctx, ctx.arena()) {
 			LevelStatus::Batch(batch, finality) => {
 				// SAFETY: the batch came from this edge, so it carries the edge's layout.
@@ -235,7 +235,7 @@ fn monitor<'e>(
 		};
 	}
 	let result = content.eval(&ctx);
-	if ctx.innermost_index() == 0
+	if ctx.index() == 0
 		&& let GPoll::Final(value) | GPoll::Partial(value) = &result
 	{
 		// SAFETY: the value came from this edge, so it carries the edge's layout.

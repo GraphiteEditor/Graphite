@@ -18,7 +18,7 @@ fn path_modify<'e>(
 	node_path: Vec<NodeId>,
 ) -> Result<(Vector, Attr<'e, EditorLayerPath>, RemoveAttr<EditorClickTarget>), Interrupt> {
 	let mut element = element;
-	if ctx.innermost_index() == 0 {
+	if ctx.index() == 0 {
 		modification.apply(&mut element);
 	}
 

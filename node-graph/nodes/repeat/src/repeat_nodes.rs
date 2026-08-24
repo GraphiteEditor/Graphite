@@ -231,7 +231,7 @@ mod test {
 		type Output = RecordValue<'e>;
 
 		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			use core_types::context::{ExtractArena, ExtractIndex};
+			use core_types::context::{ExtractArena, ExtractIndices};
 			let (vector, transform) = &self.rows[input.innermost_index() as usize % self.rows.len()];
 			let dst = stack::push(self.layout.frame_bytes());
 			// SAFETY: dst is the claimed frame of this layout; offsets are the layout's own.
