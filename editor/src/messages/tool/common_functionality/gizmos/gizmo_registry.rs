@@ -332,15 +332,37 @@ const SPIRAL_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 
 // Only the radius slider: the heart's many shaping parameters (cleavage, lobes, shoulders, point)
 // are fine-tuned via the Properties panel, while the overall size reads naturally as a canvas handle.
-const HEART_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
-	parameter_index: heart::RadiusInput::INDEX,
-	gizmo_type: GizmoType::Slider,
-	name: "Radius",
-	min: Some(0.),
-	max: None,
-	behavior: GizmoBehavior::NONE,
-	position_hint: PositionHint::ParameterDerived,
-}];
+// The heart has eleven parameters; these three are the ones with an obvious place to grab on the shape.
+// The rest -- curvature, tilt, sharpness -- are shaping controls better set by number than by eye.
+const HEART_GIZMOS: &[GizmoInfo] = &[
+	GizmoInfo {
+		parameter_index: heart::RadiusInput::INDEX,
+		gizmo_type: GizmoType::Slider,
+		name: "Radius",
+		min: Some(0.),
+		max: None,
+		behavior: GizmoBehavior::NONE,
+		position_hint: PositionHint::ParameterDerived,
+	},
+	GizmoInfo {
+		parameter_index: heart::CleavageDepthInput::INDEX,
+		gizmo_type: GizmoType::Slider,
+		name: "Cleavage",
+		min: Some(0.),
+		max: Some(0.6),
+		behavior: gizmo_behaviors::HEART_CLEAVAGE,
+		position_hint: PositionHint::ParameterDerived,
+	},
+	GizmoInfo {
+		parameter_index: heart::ShoulderWidthInput::INDEX,
+		gizmo_type: GizmoType::Slider,
+		name: "Shoulder Width",
+		min: Some(0.),
+		max: Some(1.4),
+		behavior: gizmo_behaviors::HEART_SHOULDER,
+		position_hint: PositionHint::ParameterDerived,
+	},
+];
 
 // Rows and columns only. The spacing was declared as a position gizmo that was never built, and a grid's
 // spacing is a two-axis value with no obvious handle on the shape -- it stays in the Properties panel.
@@ -431,11 +453,23 @@ mod tests {
 	}
 
 	#[test]
-	fn heart_exposes_only_a_radius_slider() {
+	fn heart_exposes_radius_cleavage_and_shoulder() {
 		let infos = get_gizmo_info(&generator_nodes::heart::IDENTIFIER);
-		assert_eq!(infos.len(), 1);
-		assert_eq!(infos[0].gizmo_type, GizmoType::Slider);
-		assert_eq!(infos[0].min, Some(0.));
+		assert_eq!(infos.len(), 3);
+
+		// The radius is a plain distance, so it needs no behavior of its own.
+		let radius = &infos[0];
+		assert_eq!(radius.gizmo_type, GizmoType::Slider);
+		assert_eq!(radius.min, Some(0.));
+		assert!(radius.behavior.handle_positions.is_none());
+
+		// The other two are fractions of the radius rather than distances, so each places its own handle
+		// on the geometry and converts back on drag.
+		for proportion in &infos[1..] {
+			assert!(proportion.behavior.handle_positions.is_some());
+			assert!(proportion.behavior.drag.is_some());
+			assert!(proportion.max.is_some());
+		}
 	}
 
 	#[test]

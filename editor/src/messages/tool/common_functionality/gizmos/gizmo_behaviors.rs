@@ -120,6 +120,30 @@ pub const SPIRAL_TURNS: GizmoBehavior = GizmoBehavior {
 	draws_own_handle: false,
 };
 
+/// The heart's cleavage: the notch between its lobes, dragged straight down from the top.
+pub const HEART_CLEAVAGE: GizmoBehavior = GizmoBehavior {
+	snap_targets: None,
+	overlay: None,
+	coupled_writes: None,
+	handle_positions: Some(heart_cleavage_handles),
+	hover_distances: None,
+	drag: Some(heart_cleavage_drag),
+	angle_deadzone: 0.,
+	draws_own_handle: false,
+};
+
+/// The heart's shoulder width, grabbed at either lobe.
+pub const HEART_SHOULDER: GizmoBehavior = GizmoBehavior {
+	snap_targets: None,
+	overlay: None,
+	coupled_writes: None,
+	handle_positions: Some(heart_shoulder_handles),
+	hover_distances: None,
+	drag: Some(heart_shoulder_drag),
+	angle_deadzone: 0.,
+	draws_own_handle: false,
+};
+
 /// The polygon's radius, grabbable at any of its corners.
 pub const POLYGON_RADIUS: GizmoBehavior = GizmoBehavior {
 	snap_targets: None,
@@ -881,4 +905,83 @@ fn polygon_radius_overlay(context: &GizmoContext, overlay_context: &mut OverlayC
 	}
 
 	polygon_outline(Some(context.layer), context.document, overlay_context);
+}
+
+/// The bounds the heart node itself declares for these proportions. Past them the outline turns inside out
+/// -- a notch deeper than the shoulders are high crosses its own lobes and renders as nothing -- so the
+/// drags hold to them rather than to whatever the cursor asks for.
+const HEART_CLEAVAGE_RANGE: (f64, f64) = (0., 0.6);
+const HEART_SHOULDER_WIDTH_RANGE: (f64, f64) = (0., 1.4);
+
+/// The heart's proportions are fractions of its radius rather than distances, so its handles sit where the
+/// geometry puts them and the drag converts back. See `heart_bezpath`, which these mirror.
+fn heart_radius_and(context: &GizmoContext, index: usize) -> Option<(f64, f64)> {
+	use graphene_std::vector::generator_nodes::heart;
+
+	let parameters = NodeGraphLayer::new(context.layer, &context.document.network_interface).find_node_parameters(heart::IDENTIFIER)?;
+	let Some(&TaggedValue::F64(radius)) = parameters.value(heart::RadiusInput) else { return None };
+	let inputs = NodeGraphLayer::new(context.layer, &context.document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(heart::IDENTIFIER))?;
+	let Some(TaggedValue::F64(other)) = inputs.get(index)?.as_value() else { return None };
+
+	Some((radius, *other))
+}
+
+/// The notch sits on the vertical axis, `1 - cleavage_depth` of the radius above centre.
+fn heart_cleavage_handles(context: &GizmoContext, value: f64) -> Vec<DVec2> {
+	use graphene_std::vector::generator_nodes::heart;
+
+	let Some((radius, _)) = heart_radius_and(context, heart::CleavageDepthInput::INDEX) else {
+		return Vec::new();
+	};
+
+	vec![DVec2::new(0., (-1. + value) * radius)]
+}
+
+fn heart_cleavage_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
+	use graphene_std::vector::generator_nodes::heart;
+
+	let Some((radius, _)) = heart_radius_and(context, heart::CleavageDepthInput::INDEX) else {
+		return DragWrites::default();
+	};
+	if radius.abs() < f64::EPSILON {
+		return DragWrites::default();
+	}
+
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+	let local = viewport.inverse().transform_point2(drag.mouse_position);
+
+	// Invert `(-1 + depth) * radius`, held to the node's own range.
+	let depth = (1. + local.y / radius).clamp(HEART_CLEAVAGE_RANGE.0, HEART_CLEAVAGE_RANGE.1);
+
+	DragWrites::inputs(vec![(heart::CleavageDepthInput.into(), TaggedValue::F64(depth))])
+}
+
+/// Each shoulder sits `shoulder_width` of the radius out and `shoulder_height` up, mirrored across the axis.
+fn heart_shoulder_handles(context: &GizmoContext, value: f64) -> Vec<DVec2> {
+	use graphene_std::vector::generator_nodes::heart;
+
+	let Some((radius, height)) = heart_radius_and(context, heart::ShoulderHeightInput::INDEX) else {
+		return Vec::new();
+	};
+
+	vec![DVec2::new(value * radius, -height * radius), DVec2::new(-value * radius, -height * radius)]
+}
+
+fn heart_shoulder_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
+	use graphene_std::vector::generator_nodes::heart;
+
+	let Some((radius, _)) = heart_radius_and(context, heart::ShoulderHeightInput::INDEX) else {
+		return DragWrites::default();
+	};
+	if radius.abs() < f64::EPSILON {
+		return DragWrites::default();
+	}
+
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+	let local = viewport.inverse().transform_point2(drag.mouse_position);
+
+	// The lobes are mirrored, so whichever one is held reports the same positive width.
+	let width = (local.x.abs() / radius).clamp(HEART_SHOULDER_WIDTH_RANGE.0, HEART_SHOULDER_WIDTH_RANGE.1);
+
+	DragWrites::inputs(vec![(heart::ShoulderWidthInput.into(), TaggedValue::F64(width))])
 }
