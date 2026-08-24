@@ -66,7 +66,7 @@ pub const CIRCULAR_RADIUS: GizmoBehavior = GizmoBehavior {
 	coupled_writes: None,
 	handle_positions: None,
 	hover_distances: Some(circular_radius_distances),
-	drag: None,
+	drag: Some(circular_radius_drag),
 	angle_deadzone: 0.,
 	draws_own_handle: true,
 };
@@ -984,4 +984,35 @@ fn heart_shoulder_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrit
 	let width = (local.x.abs() / radius).clamp(HEART_SHOULDER_WIDTH_RANGE.0, HEART_SHOULDER_WIDTH_RANGE.1);
 
 	DragWrites::inputs(vec![(heart::ShoulderWidthInput.into(), TaggedValue::F64(width))])
+}
+
+/// A circumference can be grabbed at any angle, which rules out every rotational way of reading the drag.
+///
+/// Running along the ray from the centre through the grabbed point is the obvious choice and behaves badly
+/// at the top and bottom: a sideways slide there is almost entirely along the curve, so the radius either
+/// barely moves, or -- if the whole distance is counted and only the direction taken from the ray -- lurches
+/// in and out as microscopic vertical jitter flips the sign. The same motion has to mean two different
+/// things at three o'clock and at twelve, and no rotationally symmetric rule can give both.
+///
+/// So the drag reads horizontally, from wherever it was grabbed: right grows, left shrinks, whichever part
+/// of the curve is being held. It gives up on vertical movement meaning anything, and in exchange there is
+/// no dead zone, no sign that flips, and no angle where the control behaves differently from any other.
+fn circular_radius_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
+	let Some(radius) = circular_radius(context) else { return DragWrites::default() };
+
+	let inverse = context.document.metadata().transform_to_viewport(context.layer).inverse();
+	let travelled = inverse.transform_point2(drag.mouse_position).x - inverse.transform_point2(drag.drag_start).x;
+
+	// Keep the sign: a negative radius means an inside-out shape, and growing it should deepen that rather
+	// than flip it.
+	let magnitude = (drag.initial_value.abs() + travelled).max(0.);
+	let signed = if radius.is_sign_negative() { -magnitude } else { magnitude };
+
+	let parameter = if extract_circle_radius(context.layer, context.document).is_some() {
+		ParameterRef::from(graphene_std::vector::generator_nodes::circle::RadiusInput)
+	} else {
+		ParameterRef::from(graphene_std::vector::generator_nodes::arc::RadiusInput)
+	};
+
+	DragWrites::inputs(vec![(parameter, TaggedValue::F64(signed))])
 }
