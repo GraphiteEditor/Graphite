@@ -1,13 +1,9 @@
-use core_types::Context;
 use core_types::attribute::Attr;
-use core_types::gpoll::{GPoll, GraphError, Interrupt};
-use core_types::list::List;
+use core_types::gpoll::{GraphError, Interrupt};
 use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, ExtractIndex, InjectIndex, num_traits};
 use glam::{DAffine2, DVec2};
-use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Artboard, Graphic, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
@@ -743,48 +739,7 @@ fn logical_not(
 
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
 #[node_macro::node(category("Math: Logic"))]
-fn switch<T, C>(
-	#[implementations(Context)] ctx: C,
-	condition: bool,
-	#[expose]
-	#[implementations(
-		Context -> String,
-		Context -> bool,
-		Context -> f32,
-		Context -> f64,
-		Context -> u32,
-		Context -> u64,
-		Context -> DVec2,
-		Context -> DAffine2,
-		Context -> List<Artboard>,
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<GradientStops>,
-	)]
-	if_true: impl Node<C, Output = T>,
-	#[expose]
-	#[implementations(
-		Context -> String,
-		Context -> bool,
-		Context -> f32,
-		Context -> f64,
-		Context -> u32,
-		Context -> u64,
-		Context -> DVec2,
-		Context -> DAffine2,
-		Context -> List<Artboard>,
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<GradientStops>,
-	)]
-	if_false: impl Node<C, Output = T>,
-) -> GPoll<T> {
+fn switch<T>(ctx: impl Ctx + Copy, condition: bool, #[expose] if_true: impl Node<Context<'_>, Output = T>, #[expose] if_false: impl Node<Context<'_>, Output = T>) -> Result<T, Interrupt> {
 	if condition { if_true.eval(ctx) } else { if_false.eval(ctx) }
 }
 
@@ -1210,6 +1165,16 @@ mod graphene_test {
 	}
 
 	#[test]
+	fn switch_registers_one_erased_row() {
+		// Routing forwards the whole record, so the branch types need no rows.
+		let entries = super::_switch_mod::switch_entries();
+		assert_eq!(entries.len(), 1);
+		assert_eq!(entries[0].io.inputs[0], core_types::registry::record_edge_type::<bool>());
+		assert!(matches!(&entries[0].io.return_value, core_types::Type::Record(element) if matches!(**element, core_types::Type::Generic(_))));
+		assert_eq!(entries[0].io.inputs.len(), 3);
+	}
+
+	#[test]
 	fn converted_switch_evaluates_only_the_taken_branch() {
 		use std::sync::Arc;
 		use std::sync::atomic::{AtomicU32, Ordering};
@@ -1234,7 +1199,8 @@ mod graphene_test {
 		let (cond, lc) = lifted(SourceNode(true));
 		let (if_true, lt) = lifted(CountingSource(taken.clone(), 1.0));
 		let (if_false, lf) = lifted(CountingSource(untaken.clone(), 2.0));
-		let graph = SwitchNode::<_, _, _, f64>::new(cond, if_true, if_false, &lc, &lt, &lf);
+		let union = core_types::record::Layout::union(&[&lt, &lf]);
+		let graph = SwitchNode::new(cond, if_true, if_false, &union, &lc);
 		let out = Node::<ContextImpl>::layout(&graph).clone();
 		reserve_for(&[&lc, &lt, &lf, &out]);
 
@@ -1275,12 +1241,12 @@ mod graphene_test {
 		let (c1, lc1) = lifted(SourceNode(true));
 		let (p1, lp1) = lifted(PendingSource);
 		let (pa1, lpa1) = lifted(PartialSource);
-		let pending = SwitchNode::<_, _, _, f64>::new(c1, p1, pa1, &lc1, &lp1, &lpa1);
+		let pending = SwitchNode::new(c1, p1, pa1, &core_types::record::Layout::union(&[&lp1, &lpa1]), &lc1);
 
 		let (c2, lc2) = lifted(SourceNode(false));
 		let (p2, lp2) = lifted(PendingSource);
 		let (pa2, lpa2) = lifted(PartialSource);
-		let partial = SwitchNode::<_, _, _, f64>::new(c2, p2, pa2, &lc2, &lp2, &lpa2);
+		let partial = SwitchNode::new(c2, p2, pa2, &core_types::record::Layout::union(&[&lp2, &lpa2]), &lc2);
 		let out = Node::<ContextImpl>::layout(&partial).clone();
 		reserve_for(&[&lc1, &lp1, &lpa1, &lc2, &lp2, &lpa2, &out]);
 
@@ -1310,7 +1276,8 @@ mod graphene_test {
 		let (cond, lc) = lifted(PartialCondition);
 		let (if_true, lt) = lifted(SourceNode(1.0f64));
 		let (if_false, lf) = lifted(SourceNode(2.0f64));
-		let graph = SwitchNode::<_, _, _, f64>::new(cond, if_true, if_false, &lc, &lt, &lf);
+		let union = core_types::record::Layout::union(&[&lt, &lf]);
+		let graph = SwitchNode::new(cond, if_true, if_false, &union, &lc);
 		let out = Node::<ContextImpl>::layout(&graph).clone();
 		reserve_for(&[&lc, &lt, &lf, &out]);
 
