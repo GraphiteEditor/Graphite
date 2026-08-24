@@ -574,15 +574,22 @@ mod test_artboard {
 	use graphene_std::Artboard;
 	use graphene_std::list::List;
 
+	/// A leveled wire introspects as its whole legacy list, so each `extend`
+	/// occurrence yields one list rather than one element.
 	async fn get_artboards(editor: &mut EditorTestUtils) -> List<Artboard> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
-		instrumented
-			.grab_all_input::<graphene_std::graphic::extend::NewInput<Artboard>>(&editor.runtime)
-			.map(graphene_std::list::Item::new_from_element)
-			.collect()
+		let mut artboards = List::new();
+		for list in instrumented.grab_all_input_level::<graphene_std::graphic::extend::NewInput<Artboard>, Artboard>(&editor.runtime) {
+			for index in 0..list.len() {
+				if let Some(item) = list.clone_item(index) {
+					artboards.push(item);
+				}
+			}
+		}
+		artboards
 	}
 
 	#[derive(Debug, PartialEq)]

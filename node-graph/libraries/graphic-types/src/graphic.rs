@@ -128,9 +128,9 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 			let parent_has_transform = current_graphic_item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some();
 			let parent_has_opacity = current_graphic_item.attribute::<f64>(ATTR_OPACITY).is_some();
 			let parent_has_fill = current_graphic_item.attribute::<f64>(ATTR_OPACITY_FILL).is_some();
-			let parent_has_layer_path = current_graphic_item.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH).is_some();
+			let parent_has_layer_path = current_graphic_item.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH).is_some();
 
-			let layer_path: List<NodeId> = current_graphic_item.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
+			let layer_path: Vec<NodeId> = current_graphic_item.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 			let current_transform: DAffine2 = current_graphic_item.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let current_opacity: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY, 1.);
 			let current_fill: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
@@ -323,7 +323,7 @@ impl IntoGraphicList for List<Vector> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		// Propagate `editor:layer_path` from item 0 onto the wrapper Graphic item so a subsequent
 		// `flatten_graphic_list` doesn't overwrite the inner Vector's stamp with an empty value
-		let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		let layer_path: Vec<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
 		let mut graphic_list = List::new_from_element(Graphic::Vector(self));
 		if !layer_path.is_empty() {
 			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
@@ -358,7 +358,7 @@ impl IntoGraphicList for List<GradientStops> {
 
 impl IntoGraphicList for List<String> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		let layer_path: Vec<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
 		let mut graphic_list = List::new_from_element(Graphic::Text(self));
 		if !layer_path.is_empty() {
 			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);

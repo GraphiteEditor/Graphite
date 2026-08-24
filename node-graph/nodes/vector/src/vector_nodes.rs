@@ -1492,10 +1492,7 @@ fn emit_legacy_lane<'e>(
 	let element = output.element(lane).cloned().unwrap_or_default();
 	let fill = output.attribute::<List<Graphic>>(ATTR_FILL, lane).map(|paint| park_paint(arena, paint.clone())).transpose()?;
 	let stroke = output.attribute::<List<Graphic>>(ATTR_STROKE, lane).map(|paint| park_paint(arena, paint.clone())).transpose()?;
-	let layer_path: Vec<NodeId> = output
-		.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH, lane)
-		.map(|path| path.iter_element_values().copied().collect())
-		.unwrap_or_default();
+	let layer_path: Vec<NodeId> = output.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, lane).map(|path| path.clone()).unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	let merged_layers = output
 		.attribute::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, lane)
@@ -1753,8 +1750,8 @@ fn flatten_path_core<'e>(
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
 		let Some(element) = flattened.element(index) else { continue };
-		let layer_path: List<NodeId> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
-		let node_id = layer_path.iter_element_values().next_back().map(|node_id| node_id.0).unwrap_or_default();
+		let layer_path: Vec<NodeId> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+		let node_id = layer_path.last().map(|node_id| node_id.0).unwrap_or_default();
 
 		let mut hasher = DefaultHasher::new();
 		(index, node_id).hash(&mut hasher);
@@ -1786,11 +1783,7 @@ fn flatten_path_core<'e>(
 		stroke = carrier.attribute::<List<Graphic>>(ATTR_STROKE, 0).map(|paint| park_paint(arena, paint.clone())).transpose()?;
 
 		// Adopt the last input item's layer so the editor can also bucket clicks under a contributing child layer
-		layer_path = flattened
-			.attribute_cloned_or_default::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH, primary)
-			.iter_element_values()
-			.copied()
-			.collect();
+		layer_path = flattened.attribute_cloned_or_default::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, primary);
 	}
 	let exhausted = || {
 		Interrupt::from(GraphError {
@@ -3150,7 +3143,7 @@ fn morph_core(content: List<Graphic>, progression: f64, reverse: bool, distribut
 	// The result is a synthesis of source and target, so adopt whichever endpoint the result is closer to as
 	// the click-target identity (so the editor can route clicks back to one of the contributing layers)
 	let primary_index = if time < 0.5 { source_index } else { target_index };
-	let layer_path: List<NodeId> = content.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary_index);
+	let layer_path: Vec<NodeId> = content.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary_index);
 
 	let mut item = Item::new_from_element(vector)
 		.with_attribute(ATTR_TRANSFORM, lerped_transform)

@@ -74,10 +74,7 @@ fn boolean_core<'e>(
 	let element = result_vector_list.element(0).cloned().unwrap_or_default();
 	let fill = park_paint(graphic_types::graphic::graphic_list_at(&result_vector_list, 0, graphic_types::ATTR_FILL).map(|paint| paint.into_owned()))?;
 	let stroke = park_paint(graphic_types::graphic::graphic_list_at(&result_vector_list, 0, graphic_types::ATTR_STROKE).map(|paint| paint.into_owned()))?;
-	let layer_path: Vec<NodeId> = result_vector_list
-		.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH, 0)
-		.map(|path| path.iter_element_values().copied().collect())
-		.unwrap_or_default();
+	let layer_path: Vec<NodeId> = result_vector_list.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, 0).map(|path| path.clone()).unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	// Snapshot the input layers so the renderer can recurse into them for
 	// editor click-target preservation.
@@ -321,7 +318,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let layer: List<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
+							let layer: Vec<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
 							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
 							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
@@ -354,7 +351,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let layer: List<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
+							let layer: Vec<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
 							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
 							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);

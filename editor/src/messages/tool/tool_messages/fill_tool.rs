@@ -205,17 +205,22 @@ impl Fsm for FillToolFsmState {
 #[cfg(test)]
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
+	use graphene_std::Graphic;
 	use graphene_std::color::SRGBA8;
 	use graphene_std::vector::fill;
-	use graphene_std::Graphic;
 
-	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Graphic> {
+	/// Paint inputs are single-typed now, so the monitored wire carries the
+	/// colors themselves and the `Graphic` conversion sits downstream of it.
+	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Color> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
-		instrumented.grab_all_input::<fill::FillInput>(&editor.runtime).collect()
+		instrumented
+			.grab_all_input_level::<fill::FillInput, Color>(&editor.runtime)
+			.flat_map(|list| list.iter_element_values().cloned().collect::<Vec<_>>())
+			.collect()
 	}
 
 	#[tokio::test]
@@ -245,9 +250,7 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		let Some(Graphic::Color(color_list)) = fills.first() else { panic!("the fill paint holds a color") };
-		let color = color_list.element(0).expect("Color is stored in the list");
-		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::GREEN));
+		assert_eq!(SRGBA8::from(fills[0]), SRGBA8::from(Color::GREEN));
 	}
 
 	#[tokio::test]
@@ -259,8 +262,6 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		let Some(Graphic::Color(color_list)) = fills.first() else { panic!("the fill paint holds a color") };
-		let color = color_list.element(0).expect("Color is stored in the list");
-		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::YELLOW));
+		assert_eq!(SRGBA8::from(fills[0]), SRGBA8::from(Color::YELLOW));
 	}
 }

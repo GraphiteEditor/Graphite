@@ -225,10 +225,7 @@ where
 	}
 	let fill = park_paint(legacy.attribute::<List<Graphic>>(graphic_types::ATTR_FILL, source).cloned())?;
 	let stroke = park_paint(legacy.attribute::<List<Graphic>>(graphic_types::ATTR_STROKE, source).cloned())?;
-	let layer_path: Vec<NodeId> = legacy
-		.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH, source)
-		.map(|path| path.iter_element_values().copied().collect())
-		.unwrap_or_default();
+	let layer_path: Vec<NodeId> = legacy.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, source).map(|path| path.clone()).unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 
 	Ok((

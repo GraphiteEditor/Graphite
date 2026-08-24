@@ -1,9 +1,9 @@
 use super::TypesettingConfig;
 use super::text_context::TextContext;
+use crate::markers::{ATTR_FONT, ATTR_TEXT_ALIGN};
 use core_types::blending::BlendMode;
 use core_types::list::List;
 use core_types::uuid::NodeId;
-use crate::markers::{ATTR_FONT, ATTR_TEXT_ALIGN};
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_EDITOR_LAYER_PATH, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM,
 };
@@ -54,7 +54,7 @@ pub fn shape_text_list(strings: &List<String>, separate_glyphs: bool) -> List<Ve
 
 		let vectors = to_path(text, &font, typesetting, separate_glyphs);
 		let transform = strings.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index);
-		let layer_path = strings.attribute_cloned_or_default::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH, index);
+		let layer_path = strings.attribute_cloned_or_default::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, index);
 		let blend_mode = strings.attribute::<BlendMode>(ATTR_BLEND_MODE, index).copied();
 		let opacity = strings.attribute::<f64>(ATTR_OPACITY, index).copied();
 		let opacity_fill = strings.attribute::<f64>(ATTR_OPACITY_FILL, index).copied();
