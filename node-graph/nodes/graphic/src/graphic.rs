@@ -489,10 +489,33 @@ fn wrap_graphic_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Ext
 	GPoll::Final(Extent::Exactly(1))
 }
 
-/// Converts the level's elements into `Graphic` elements. A `Graphic` level passes through
-/// unchanged. The legacy list rows accept an unconverted producer's list value as one element.
+/// Converts graphical content into a `Graphic` level. A `Graphic` level passes through
+/// unchanged; a typed level nests as one graphic lane, keeping the pre-flip list
+/// collapse (`to_graphic_typed` serves those rows). The legacy list rows accept an
+/// unconverted producer's list value as one element.
 #[node_macro::node(category("General"))]
 pub fn to_graphic<T: Into<Graphic> + Clone + Send + Sync + core_types::CacheHash + 'static>(
+	_: impl Ctx,
+	#[implementations(
+		Graphic,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
+		List<String>,
+	)]
+	content: T,
+) -> Graphic {
+	content.into()
+}
+
+/// The elementwise `Graphic` coercion the compiler-inserted converts use: each
+/// lane's element converts on its own, so a typed wire feeds a graphic input
+/// without changing the level's shape. Registered under the convert identifier.
+#[node_macro::node(category(""))]
+pub fn to_graphic_element<T: Into<Graphic> + Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
 	#[implementations(
 		Graphic,
@@ -515,6 +538,22 @@ pub fn to_graphic<T: Into<Graphic> + Clone + Send + Sync + core_types::CacheHash
 	content.into()
 }
 
+/// The typed-level conversion: the whole level nests as one graphic lane, as
+/// the pre-flip `Into<Graphic>` list collapse did. Registered under the to
+/// graphic identifier.
+#[node_macro::node(category(""), extent(wrap_graphic_extent))]
+pub fn to_graphic_typed<T: Clone + Send + Sync + core_types::CacheHash + 'static>(
+	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	#[implementations(Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
+) -> Result<IList<Graphic>, Interrupt> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	Ok(Graphic::Group(core_types::record::Group {
+		row: None,
+		content: core_types::record::GroupContent::Run(item),
+	}))
+}
+
 /// The transitional level bridge: the wire's records as the legacy list an
 /// unconverted consumer expects, attributes copied through their erased
 /// reads. Registered under the legacy convert identifiers; the rows die with
@@ -531,7 +570,8 @@ pub fn level_to_list<T: Clone + Send + Sync + CacheHash + 'static>(
 }
 
 pub use _level_to_list_mod::level_to_list_entries;
-pub use _to_graphic_mod::to_graphic_entries;
+pub use _to_graphic_element_mod::to_graphic_element_entries;
+pub use _to_graphic_typed_mod::to_graphic_typed_entries;
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"), extent(flatten_graphic_extent))]

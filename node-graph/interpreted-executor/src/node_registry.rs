@@ -110,11 +110,17 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.map(|entry| (graphene_std::vector::morph::IDENTIFIER.clone(), entry)),
 	);
 	// Element-wise coercion into `Graphic` for single-typed leveled inputs,
-	// served by the to_graphic rows.
+	// served by the hidden elementwise rows.
 	node_types.extend(
-		graphene_std::graphic::to_graphic_entries()
+		graphene_std::graphic::to_graphic_element_entries()
 			.into_iter()
 			.map(|entry| (ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<Graphic>"), entry)),
+	);
+	// The typed-level collapse rows of To Graphic, served under its identifier.
+	node_types.extend(
+		graphene_std::graphic::to_graphic_typed_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::graphic::to_graphic::IDENTIFIER.clone(), entry)),
 	);
 	// The transitional level bridge: a leveled wire materializes into the legacy
 	// list an unconverted consumer expects. The rows are keyed under the legacy
