@@ -11,6 +11,7 @@
 
 use crate::consts::{ARC_SNAP_THRESHOLD, COLOR_OVERLAY_RED};
 use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION, NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{DragInput, DragWrites, GizmoBehavior, GizmoContext, GizmoState};
@@ -116,6 +117,18 @@ pub const SPIRAL_TURNS: GizmoBehavior = GizmoBehavior {
 	hover_distances: None,
 	drag: Some(spiral_turns_drag),
 	angle_deadzone: 0.5,
+	draws_own_handle: false,
+};
+
+/// The polygon's radius, grabbable at any of its corners.
+pub const POLYGON_RADIUS: GizmoBehavior = GizmoBehavior {
+	snap_targets: None,
+	overlay: Some(polygon_radius_overlay),
+	coupled_writes: None,
+	handle_positions: Some(polygon_radius_handles),
+	hover_distances: None,
+	drag: None,
+	angle_deadzone: 0.,
 	draws_own_handle: false,
 };
 
@@ -829,4 +842,43 @@ fn circular_radius_overlay(context: &GizmoContext, overlay_context: &mut Overlay
 		let y_radius = (y_point + direction_y * spacing * sign).distance(center);
 		overlay_context.dashed_ellipse(center, x_radius, y_radius, None, None, None, None, None, None, Some(4.), Some(4.), Some(0.5));
 	}
+}
+
+/// A regular polygon's radius reaches every corner equally, so every corner is a grab point -- the same
+/// arrangement as the star's, with one vertex per side rather than alternating between two radii.
+fn polygon_radius_handles(context: &GizmoContext, value: f64) -> Vec<DVec2> {
+	let Some((sides, _)) = extract_polygon_parameters(Some(context.layer), context.document) else {
+		return Vec::new();
+	};
+
+	(0..sides)
+		.map(|vertex| {
+			let angle = ((vertex as f64) * TAU) / (sides as f64);
+			DVec2::new(value * angle.sin(), -value * angle.cos())
+		})
+		.collect()
+}
+
+/// Mark every corner at rest, and show the outline being resized once one is held.
+fn polygon_radius_overlay(context: &GizmoContext, overlay_context: &mut OverlayContext) {
+	let Some((sides, radius)) = extract_polygon_parameters(Some(context.layer), context.document) else {
+		return;
+	};
+	let viewport = context.document.metadata().transform_to_viewport(context.layer);
+	let center = viewport.transform_point2(DVec2::ZERO);
+
+	if context.state == GizmoState::Inactive {
+		for vertex in 0..sides {
+			let point = polygon_vertex_position(viewport, vertex as i32, sides, radius);
+
+			// Once the polygon is this small the corners crowd its centre and cannot be told apart.
+			if point.distance(center) < GIZMO_HIDE_THRESHOLD {
+				return;
+			}
+			overlay_context.manipulator_handle(point, false, None);
+		}
+		return;
+	}
+
+	polygon_outline(Some(context.layer), context.document, overlay_context);
 }
