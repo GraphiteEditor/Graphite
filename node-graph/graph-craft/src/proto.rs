@@ -556,8 +556,10 @@ impl ProtoNetwork {
 			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
 			ConstructionArgs::Value(value) => {
 				let mut deps = own_deps;
-				// A leveled value serves its lanes by the innermost index.
-				if value.value_layout().is_some_and(|layout| layout.depth > 0) {
+				// A leveled value serves its lanes by the innermost index, unless
+				// it holds at most one lane to serve.
+				let leveled = value.value_layout().is_some_and(|layout| layout.depth > 0);
+				if leveled && value.lane_count().is_none_or(|lanes| lanes > 1) {
 					deps |= core_types::context::ContextFeatures::INDEX;
 					deps.index_levels |= core_types::context::IndexLevels::innermost();
 				}
