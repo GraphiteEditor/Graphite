@@ -212,6 +212,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			state.push(quote!(pub(super) __plan: ::std::vec::Vec<(usize, usize, usize)>));
 		}
 		state.push(quote!(pub(super) __frame_bytes: usize));
+		state.push(quote!(pub(super) __lane_invariant: u32));
 		state.extend(reading_secondary_indices(&struct_regular_fields, record_skips_carrier).into_iter().map(|index| {
 			let slot = format_ident!("__in_{index}");
 			quote!(pub(super) #slot: gcore::record::Layout)
@@ -231,7 +232,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}));
 		state
 	} else if routing_generic.is_some() {
-		let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout)];
+		let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout), quote!(pub(super) __lane_invariant: u32)];
 		state.extend(
 			routing_value_indices(&struct_regular_fields, routing_generic.as_ref().expect("guarded by the arm"))
 				.into_iter()
@@ -420,6 +421,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// offsets from the carrier layout; `new` cannot fill that state.
 	let routing_layout_param = (routing_generic.is_some() || opaque).then(|| quote!(__layout: &gcore::record::Layout,)).into_iter();
 	let routing_layout_init = (routing_generic.is_some() || opaque).then(|| quote!(__layout: __layout.clone(),)).into_iter();
+	// The lane-invariance mask arrives with the resolved layout, so `new` starts
+	// from the safe empty mask.
+	let routing_invariant_init = routing_generic.is_some().then(|| quote!(__lane_invariant: 0,)).into_iter();
 	let routing_value_layouts: Vec<usize> = routing_generic.as_ref().map(|generic| routing_value_indices(&struct_regular_fields, generic)).unwrap_or_default();
 	let routing_in_params = routing_value_layouts.iter().map(|index| {
 		let slot = format_ident!("__in_{index}");
@@ -503,6 +507,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					Self {
 						#(#all_field_inits,)*
 						#(#routing_layout_init)*
+						#(#routing_invariant_init)*
 						#(#routing_in_inits)*
 						#(#flip_layout_inits)*
 						#(#flip_read_inits)*
@@ -2052,7 +2057,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			// in the loop (or in the tail, for a carrier); everything else is
 			// batch-invariant and hoists.
 			let hoists = |index: usize| matches!(ir::value_binding(&node, index), ValueBinding::Materialized) || !node.inputs[index].subject;
-			let hoisted_binds = regular_fields
+			let hoisted_binds: Vec<TokenStream2> = regular_fields
 				.iter()
 				.enumerate()
 				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index))
@@ -2069,13 +2074,15 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							}
 						}
 					}
-				});
-			let hoisted_clamps = regular_fields
+				})
+				.collect();
+			let hoisted_clamps: Vec<TokenStream2> = regular_fields
 				.iter()
 				.enumerate()
 				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index))
-				.filter_map(|(_, field)| clamp_tokens(field));
-			let lane_binds = regular_fields
+				.filter_map(|(_, field)| clamp_tokens(field))
+				.collect();
+			let lane_binds: Vec<TokenStream2> = regular_fields
 				.iter()
 				.enumerate()
 				.filter(|(index, field)| match field.ty {
@@ -2086,10 +2093,26 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let body = bind_body(index, field, true);
 					let clamp = clamp_tokens(field);
 					quote!(#body #clamp)
-				});
+				})
+				.collect();
+			// The rebind path with nothing hoisted: every non-carrier input binds
+			// fresh per lane, so an index-dependent edge reaches its own lane.
+			let rebound_lane_binds: Vec<TokenStream2> = regular_fields
+				.iter()
+				.enumerate()
+				.filter(|(index, field)| match field.ty {
+					ParsedFieldType::Node(_) => true,
+					ParsedFieldType::Regular(_) => !matches!(ir::value_binding(&node, *index), ValueBinding::Carrier),
+				})
+				.map(|(index, field)| {
+					let body = bind_body(index, field, true);
+					let clamp = clamp_tokens(field);
+					quote!(#body #clamp)
+				})
+				.collect();
 			// A hoisted value is moved into every lane's kernel call, so each
 			// lane consumes a clone; view and borrow binds copy freely.
-			let lane_rebinds = regular_fields
+			let lane_rebinds: Vec<TokenStream2> = regular_fields
 				.iter()
 				.enumerate()
 				.filter(|(index, field)| {
@@ -2099,32 +2122,23 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.map(|(_, field)| {
 					let name = &field.pat_ident.ident;
 					quote!(let #name = ::core::clone::Clone::clone(&#name);)
-				});
-			quote! {
-				#batch_signature
-				{
-					let ::core::option::Option::Some(__scratch) = __scratch else {
-						return #core_types::node::BatchStatus::NeedBuffer;
-					};
-					let ::core::option::Option::Some(__len) = __range.end.checked_sub(__range.start).and_then(|__len| usize::try_from(__len).ok()) else {
-						return #core_types::node::BatchStatus::InvalidRange;
-					};
-					let __node_layout = <Self as #core_types::node::Node<#ctx_ident>>::layout(self);
-					let __stride = __node_layout.lane_stride();
-					if __scratch.len() * 8 < __len * __stride {
-						return #core_types::node::BatchStatus::InvalidRange;
-					}
-					let __entry_mark = #core_types::record::stack::sp();
-					let _entry_sp = __entry_mark;
-					let __cell = #cell_constructor;
-					let __base_ctx = {
-						let mut __ctx = *__input;
-						#core_types::context::InjectIndex::set_index(&mut __ctx, __range.start);
-						__ctx
-					};
-					let __input = &__base_ctx;
-					#(#hoisted_binds)*
-					#(#hoisted_clamps)*
+				})
+				.collect();
+			// A hoisted input past bit 31 has no bit to check, so it never reads
+			// back as invariant and the node keeps rebinding it.
+			let hoistable_mask: u32 = regular_fields
+				.iter()
+				.enumerate()
+				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index) && *index < 32)
+				.fold(0, |mask, (index, _)| mask | (1u32 << index));
+			let fill_loop = |hoisted: Vec<TokenStream2>, clamps: Vec<TokenStream2>, rebinds: Vec<TokenStream2>, binds: Vec<TokenStream2>| {
+				let hoisted = hoisted.into_iter();
+				let clamps = clamps.into_iter();
+				let rebinds = rebinds.into_iter();
+				let binds = binds.into_iter();
+				quote! {
+					#(#hoisted)*
+					#(#clamps)*
 					let __frames = __scratch.as_mut_ptr().cast::<u8>();
 					let mut __finality = #core_types::gpoll::Finality::AllFinal;
 					let mut __filled = __len;
@@ -2136,8 +2150,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let __lane_mark = #core_types::record::stack::sp();
 						let _entry_sp = __lane_mark;
 						let __cell = __cell.snapshot();
-						#(#lane_rebinds)*
-						#(#lane_binds)*
+						#(#rebinds)*
+						#(#binds)*
 						#lane_poll
 						let __value = match __poll {
 							#core_types::gpoll::GPoll::Final(__value) => __value,
@@ -2170,6 +2184,50 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					// SAFETY: the first `__filled` lanes were filled above with
 					// records of the node's layout.
 					#core_types::node::BatchStatus::Filled(unsafe { #core_types::node::RecordBatchMut::new(__scratch, __filled, __node_layout) }, __finality, __hint)
+				}
+			};
+			let hoisted_fill = fill_loop(hoisted_binds, hoisted_clamps, lane_rebinds, lane_binds);
+			let rebound_fill = fill_loop(Vec::new(), Vec::new(), Vec::new(), rebound_lane_binds);
+			// With nothing hoisted the two fills are the same code, and the mask
+			// test would read as an empty bit mask.
+			let selected_fill = match hoistable_mask {
+				0 => hoisted_fill,
+				mask => quote! {
+					// Binding once at the base lane is sound only where the
+					// installed layout marks every hoisted input invariant under
+					// the innermost index.
+					const __HOISTABLE: u32 = #mask;
+					if (self.__lane_invariant & __HOISTABLE) == __HOISTABLE {
+						#hoisted_fill
+					} else {
+						#rebound_fill
+					}
+				},
+			};
+			quote! {
+				#batch_signature
+				{
+					let ::core::option::Option::Some(__scratch) = __scratch else {
+						return #core_types::node::BatchStatus::NeedBuffer;
+					};
+					let ::core::option::Option::Some(__len) = __range.end.checked_sub(__range.start).and_then(|__len| usize::try_from(__len).ok()) else {
+						return #core_types::node::BatchStatus::InvalidRange;
+					};
+					let __node_layout = <Self as #core_types::node::Node<#ctx_ident>>::layout(self);
+					let __stride = __node_layout.lane_stride();
+					if __scratch.len() * 8 < __len * __stride {
+						return #core_types::node::BatchStatus::InvalidRange;
+					}
+					let __entry_mark = #core_types::record::stack::sp();
+					let _entry_sp = __entry_mark;
+					let __cell = #cell_constructor;
+					let __base_ctx = {
+						let mut __ctx = *__input;
+						#core_types::context::InjectIndex::set_index(&mut __ctx, __range.start);
+						__ctx
+					};
+					let __input = &__base_ctx;
+					#selected_fill
 				}
 			}
 		}
@@ -2273,11 +2331,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Some(quote! {
 			#(#write_installs)*
 			self.__frame_bytes = __resolved.frame_bytes;
+			self.__lane_invariant = __resolved.lane_invariant;
 			#plan
 			self.__layout = __resolved.layout;
 		})
 	} else if routing_generic.is_some() {
 		Some(quote! {
+			self.__lane_invariant = __resolved.lane_invariant;
 			self.__layout = __resolved.layout;
 		})
 	} else {
@@ -2442,6 +2502,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#(#plan_default)*
 						#(#marker_init)*
 						__frame_bytes: 0,
+						__lane_invariant: 0,
 						#(#read_names)*
 						#(#write_defaults)*
 						#(#mat_cache_defaults)*

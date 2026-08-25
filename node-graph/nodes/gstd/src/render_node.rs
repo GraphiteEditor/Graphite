@@ -278,6 +278,7 @@ mod tests {
 				frame_bytes: layout.frame_bytes(),
 				plan: Vec::new(),
 				layout: layout.clone(),
+				lane_invariant: u32::MAX,
 			},
 		);
 		let GPoll::Final(result) = Node::<ContextImpl>::eval(&graph, &ctx) else {

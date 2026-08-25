@@ -151,6 +151,10 @@ pub struct ProtoNode {
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
 	pub(crate) context_features: ContextDependencies,
+	/// Bit `i` marks input `i` as invariant under the innermost index. Inputs at
+	/// position 32 and above never set a bit, so they read as varying.
+	#[serde(skip)]
+	pub(crate) lane_invariant_inputs: u32,
 	#[serde(skip)]
 	pub(crate) resolved: Resolved,
 }
@@ -164,6 +168,7 @@ impl Default for ProtoNode {
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
 			context_features: Default::default(),
+			lane_invariant_inputs: 0,
 			resolved: Default::default(),
 		}
 	}
@@ -205,6 +210,7 @@ impl ProtoNode {
 			},
 			skip_deduplication: false,
 			context_features: Default::default(),
+			lane_invariant_inputs: 0,
 			resolved: Default::default(),
 		}
 	}
@@ -373,12 +379,14 @@ impl ProtoNetwork {
 
 	pub fn compute_layouts(&mut self) {
 		for index in 0..self.nodes.len() {
+			let lane_invariant = self.nodes[index].1.lane_invariant_inputs;
 			let layout = {
 				let node = &self.nodes[index].1;
 				match &node.construction_args {
 					ConstructionArgs::Value(value) => value.value_layout().map(|layout| core_types::record::RecordLayout {
 						frame_bytes: layout.frame_bytes(),
 						plan: Vec::new(),
+						lane_invariant,
 						layout,
 					}),
 					ConstructionArgs::Nodes(inputs) => node.resolved.layout_meta.as_ref().and_then(|meta| {
@@ -386,7 +394,10 @@ impl ProtoNetwork {
 							.iter()
 							.map(|input| self.nodes[input.0 as usize].1.resolved.layout.as_ref().map(|resolved| &resolved.layout))
 							.collect();
-						meta.sources.iter().all(|&source| input_layouts[source as usize].is_some()).then(|| meta.resolve(&input_layouts))
+						meta.sources.iter().all(|&source| input_layouts[source as usize].is_some()).then(|| core_types::record::RecordLayout {
+							lane_invariant,
+							..meta.resolve(&input_layouts)
+						})
 					}),
 					ConstructionArgs::Inline(_) => None,
 				}
@@ -557,14 +568,21 @@ impl ProtoNetwork {
 		};
 
 		// Compute the dependencies for each branch and combine all of them
+		let mut lane_invariant_inputs = 0u32;
 		for (input, &node) in inputs.iter().enumerate() {
 			let branch = self.find_context_dependencies(node);
+
+			let reads_innermost = branch.0.features.contains(core_types::context::ContextFeatures::INDEX) && branch.0.index_levels.contains_level(0);
+			if !reads_innermost && input < 32 {
+				lane_invariant_inputs |= 1 << input;
+			}
 
 			let mut lifted = branch.0.clone();
 			lifted.index_levels = lifted.index_levels.lifted(0, pushed_levels.get(input).copied().unwrap_or(0));
 			combined_deps |= &lifted;
 			branch_dependencies.push(branch);
 		}
+		self.nodes[node_index].1.lane_invariant_inputs = lane_invariant_inputs;
 		let mut new_deps = combined_deps.clone();
 
 		// Remove requirements which this node provides

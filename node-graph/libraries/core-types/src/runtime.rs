@@ -273,6 +273,7 @@ mod tests {
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
 			layout: layout.clone(),
+			lane_invariant: u32::MAX,
 		});
 		RecordExtract::new(graph, &layout)
 	}

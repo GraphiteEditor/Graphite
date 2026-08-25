@@ -288,7 +288,13 @@ mod tests {
 	}
 
 	fn install<N: Node<ContextImpl<'static>>>(mut node: N, meta: record::LayoutMeta, inputs: &[Option<&Layout>]) -> N {
-		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, meta.resolve(inputs));
+		// The fixtures wire constants into every eager input, which the compiler
+		// pass records as lane-invariant.
+		let resolved = record::RecordLayout {
+			lane_invariant: u32::MAX,
+			..meta.resolve(inputs)
+		};
+		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, resolved);
 		node
 	}
 
@@ -297,6 +303,7 @@ mod tests {
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
 			layout: layout.clone(),
+			lane_invariant: u32::MAX,
 		};
 		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, bundle);
 		node

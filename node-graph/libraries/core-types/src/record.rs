@@ -300,6 +300,10 @@ pub struct RecordLayout {
 	pub layout: Layout,
 	pub frame_bytes: usize,
 	pub plan: Vec<(usize, usize, usize)>,
+	/// Inputs whose value cannot change with the innermost index, as a bitmask
+	/// over input positions. Empty is the safe default: an uninstalled layout
+	/// rebinds every input per lane.
+	pub lane_invariant: u32,
 }
 
 /// its registry entry so the compiler can fold each wire's layout without
@@ -400,7 +404,12 @@ impl LayoutMeta {
 			}
 			_ => Vec::new(),
 		};
-		RecordLayout { layout, frame_bytes, plan }
+		RecordLayout {
+			layout,
+			frame_bytes,
+			plan,
+			lane_invariant: 0,
+		}
 	}
 }
 
