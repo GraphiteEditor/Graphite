@@ -247,6 +247,11 @@ impl IndexLevels {
 	/// The same requirement seen from outside `levels` pushed levels. An
 	/// all-levels mask stays saturated, since its reader's level is not known at
 	/// compile time.
+	///
+	/// TODO: a fold overwrites the level it consumes rather than pushing one, so
+	/// this shift misnumbers levels above 0 across fold edges; latent until a
+	/// numeric level above 0 is declared. Preferred fix: folds push a level,
+	/// once the pass cancels the level a fold supplies.
 	pub const fn popped(self, levels: u8) -> Self {
 		match self.0 {
 			u32::MAX => self,
@@ -265,9 +270,10 @@ impl IndexLevels {
 	}
 }
 
-/// Zeroes every index level outside `levels`, preserving the chain's depth so
-/// outer levels keep their positions for readers that do address them. Returns
-/// `None` only when the arena is exhausted.
+/// Zeroes every index level outside `levels` and drops zeroed levels off the
+/// outer end, so equal surviving indices key a memo identically whatever depth
+/// they arrived with. Interior zeroes keep their links, since outer levels are
+/// addressed by position. Returns `None` only when the arena is exhausted.
 pub fn nullify_index_levels<'s>(head: IndexLink<'s>, levels: IndexLevels, arena: &'s crate::arena::Arena) -> Option<IndexLink<'s>> {
 	if levels.is_all() {
 		return Some(head);
@@ -277,12 +283,15 @@ pub fn nullify_index_levels<'s>(head: IndexLink<'s>, levels: IndexLevels, arena:
 		true => indices[level],
 		false => 0,
 	};
-	if (0..indices.len()).all(|level| levels.contains_level(level) || indices[level] == 0) {
+	// A reader past the chain's end reads 0, so trailing zeroed levels carry
+	// no information.
+	let depth = (0..indices.len()).rev().find(|&level| masked(level) != 0).map_or(1, |level| level + 1);
+	if depth == indices.len() && (0..depth).all(|level| levels.contains_level(level) || indices[level] == 0) {
 		return Some(head);
 	}
 	// Built outermost inwards so each link can reference the one already placed.
 	let mut outer: Option<&'s IndexLink<'s>> = None;
-	for level in (1..indices.len()).rev() {
+	for level in (1..depth).rev() {
 		let link = IndexLink { index: masked(level), outer };
 		outer = Some(arena.alloc(link)?.0);
 	}
@@ -1503,6 +1512,60 @@ mod context_impl_tests {
 		ctx.set_index(11);
 		let levels: Vec<usize> = ctx.try_index().unwrap().collect();
 		assert_eq!(levels, vec![11, 0]);
+	}
+
+	fn collected(head: &IndexLink) -> Vec<u64> {
+		core::iter::successors(Some(head), |link| link.outer).map(|link| link.index).collect()
+	}
+
+	#[test]
+	fn nullify_drops_trailing_zeroed_levels() {
+		let arena = Arena::new(256).unwrap();
+		let outer = IndexLink { index: 9, outer: None };
+		let mid = IndexLink { index: 7, outer: Some(&outer) };
+		let head = IndexLink { index: 4, outer: Some(&mid) };
+		let result = nullify_index_levels(head, IndexLevels::innermost(), &arena).unwrap();
+		assert_eq!(collected(&result), vec![4]);
+	}
+
+	#[test]
+	fn nullify_canonicalizes_across_arrival_depths() {
+		let arena = Arena::new(256).unwrap();
+		let shallow = IndexLink { index: 4, outer: None };
+		let outer = IndexLink { index: 7, outer: None };
+		let deep = IndexLink { index: 4, outer: Some(&outer) };
+		let a = nullify_index_levels(shallow, IndexLevels::innermost(), &arena).unwrap();
+		let b = nullify_index_levels(deep, IndexLevels::innermost(), &arena).unwrap();
+		assert_eq!(collected(&a), collected(&b));
+	}
+
+	#[test]
+	fn nullify_keeps_interior_zeroes_positional() {
+		let arena = Arena::new(256).unwrap();
+		let levels = IndexLevels::innermost().with_level(2);
+		let outer = IndexLink { index: 9, outer: None };
+		let mid = IndexLink { index: 7, outer: Some(&outer) };
+		let head = IndexLink { index: 4, outer: Some(&mid) };
+		let result = nullify_index_levels(head, levels, &arena).unwrap();
+		assert_eq!(collected(&result), vec![4, 0, 9]);
+	}
+
+	#[test]
+	fn nullify_with_no_kept_levels_yields_the_root_chain() {
+		let arena = Arena::new(256).unwrap();
+		let outer = IndexLink { index: 9, outer: None };
+		let head = IndexLink { index: 4, outer: Some(&outer) };
+		let result = nullify_index_levels(head, IndexLevels::empty(), &arena).unwrap();
+		assert_eq!(collected(&result), vec![0]);
+	}
+
+	#[test]
+	fn nullify_saturated_mask_is_identity() {
+		let arena = Arena::new(256).unwrap();
+		let outer = IndexLink { index: 0, outer: None };
+		let head = IndexLink { index: 4, outer: Some(&outer) };
+		let result = nullify_index_levels(head, IndexLevels::all(), &arena).unwrap();
+		assert_eq!(collected(&result), vec![4, 0]);
 	}
 
 	#[test]
