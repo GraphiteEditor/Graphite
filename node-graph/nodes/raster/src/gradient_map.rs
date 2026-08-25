@@ -1,7 +1,7 @@
 //! Not immediately shader compatible due to needing [`GradientStops`] as a param, which needs [`Vec`]
 
 use crate::adjust::Adjust;
-use core_types::{Color, Ctx, ExtractIndex, InjectIndex};
+use core_types::{Color, Ctx};
 use raster_types::{CPU, Raster};
 use vector_types::GradientStops;
 
@@ -10,7 +10,7 @@ use vector_types::GradientStops;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
 #[node_macro::node(category("Raster: Adjustment"))]
 fn gradient_map<T: Adjust<Color> + Clone + Send + Sync + core_types::CacheHash + 'static>(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	#[implementations(
 		Raster<CPU>,
 		Color,

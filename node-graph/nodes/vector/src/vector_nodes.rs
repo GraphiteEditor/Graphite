@@ -924,7 +924,7 @@ fn extrude(_: impl Ctx, mut source: Vector, direction: DVec2, joining_algorithm:
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn box_warp(_: impl Ctx + ExtractIndex + InjectIndex + Copy, (vector, transform): (Vector, Attr<TransformAttr>), #[expose] rectangle: IList<Vector>) -> (Vector, Attr<TransformAttr>) {
+fn box_warp(_: impl Ctx, (vector, transform): (Vector, Attr<TransformAttr>), #[expose] rectangle: IList<Vector>) -> (Vector, Attr<TransformAttr>) {
 	if rectangle.is_empty() {
 		return (vector, Attr(*transform));
 	}
@@ -1283,7 +1283,7 @@ fn bounding_box(_: impl Ctx, vector: Vector) -> Vector {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-fn dimensions(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Vector>) -> DVec2 {
+fn dimensions(_: impl Ctx, content: IList<Vector>) -> DVec2 {
 	(0..content.len())
 		.filter_map(|index| content.element_ref(index).bounding_box_with_transform(content.lane(index).attr::<TransformAttr>()))
 		.reduce(|[acc_top_left, acc_bottom_right], [top_left, bottom_right]| [acc_top_left.min(top_left), acc_bottom_right.max(bottom_right)])
@@ -1704,7 +1704,7 @@ fn separate_subpaths_extent(content: ListIn<'_, Vector>, level: LevelIn) -> GPol
 /// Determines if the subpath at the given index (across all vector element subpaths) is closed, meaning its ends are connected together forming a loop.
 #[node_macro::node(name("Path is Closed"), category("Vector: Measure"), path(core_types::vector))]
 fn path_is_closed(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	/// The vector content whose subpaths are inspected.
 	content: IList<Vector>,
 	/// The index of the subpath to check, counting across subpaths in all vector elements.
@@ -2274,7 +2274,7 @@ fn cut_segments(_: impl Ctx, mut content: Vector) -> Vector {
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Position on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 fn position_on_path(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	/// The path to traverse.
 	content: IList<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
@@ -2312,7 +2312,7 @@ fn position_on_path(
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Tangent on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 fn tangent_on_path(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	/// The path to traverse.
 	content: IList<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
@@ -3584,7 +3584,7 @@ fn close_path(_: impl Ctx, mut source: Vector) -> Vector {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-fn point_inside(_: impl Ctx + ExtractIndex + InjectIndex + Copy, source: IList<Vector>, point: DVec2) -> bool {
+fn point_inside(_: impl Ctx, source: IList<Vector>, point: DVec2) -> bool {
 	(0..source.len()).any(|index| {
 		let transform: DAffine2 = source.lane(index).attr::<TransformAttr>();
 		source.element_ref(index).check_point_inside_shape(transform, point)
@@ -3595,14 +3595,14 @@ fn point_inside(_: impl Ctx + ExtractIndex + InjectIndex + Copy, source: IList<V
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
 fn count_elements<T: Clone + Send + Sync + CacheHash + 'static>(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	#[implementations(Graphic, Artboard, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<T>,
 ) -> f64 {
 	content.len() as f64
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-fn count_points(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Vector>) -> f64 {
+fn count_points(_: impl Ctx, content: IList<Vector>) -> f64 {
 	(0..content.len()).map(|index| content.element_ref(index).point_domain.positions().len() as f64).sum()
 }
 
@@ -3610,7 +3610,7 @@ fn count_points(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<
 /// If no value exists at that index, the position (0, 0) is returned.
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 fn index_points(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	/// The vector element or elements containing the anchor points to be retrieved.
 	content: IList<Vector>,
 	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last item.
@@ -3644,7 +3644,7 @@ fn index_points(
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-fn path_length(_: impl Ctx + ExtractIndex + InjectIndex + Copy, source: IList<Vector>) -> f64 {
+fn path_length(_: impl Ctx, source: IList<Vector>) -> f64 {
 	(0..source.len())
 		.map(|index| {
 			let transform: DAffine2 = source.lane(index).attr::<TransformAttr>();
@@ -3664,7 +3664,7 @@ fn path_length(_: impl Ctx + ExtractIndex + InjectIndex + Copy, source: IList<Ve
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 // The legacy form reset the footprint before evaluating; the nullification
 // pass now strips it upstream since this node declares no footprint feature.
-fn area(_: impl Ctx + ExtractIndex + InjectIndex + Copy, vector: IList<Vector>) -> Result<f64, Interrupt> {
+fn area(_: impl Ctx, vector: IList<Vector>) -> Result<f64, Interrupt> {
 	Ok((0..vector.len())
 		.map(|index| {
 			let transform: DAffine2 = vector.lane(index).attr::<TransformAttr>();
@@ -3676,7 +3676,7 @@ fn area(_: impl Ctx + ExtractIndex + InjectIndex + Copy, vector: IList<Vector>) 
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 // The footprint reset moved to the nullification pass, as in `area`.
-fn centroid(_: impl Ctx + ExtractIndex + InjectIndex + Copy, vector: IList<Vector>, centroid_type: CentroidType) -> Result<DVec2, Interrupt> {
+fn centroid(_: impl Ctx, vector: IList<Vector>, centroid_type: CentroidType) -> Result<DVec2, Interrupt> {
 	if vector.is_empty() {
 		return Ok(DVec2::ZERO);
 	}

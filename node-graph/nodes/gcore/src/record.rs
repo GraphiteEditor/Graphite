@@ -7,7 +7,7 @@
 
 use core_types::Ctx;
 use core_types::attribute::{Attr, EditorLayerPath, Opacity, RemoveAttr, Transform};
-use core_types::context::{DeriveCtx, ExtractIndex, ExtractIndices, IndexLink, InjectIndex};
+use core_types::context::{DeriveCtx, ExtractIndex, ExtractIndices, IndexLink, InjectIndex, ModifyIndex};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
 use core_types::node::Lane;
@@ -63,12 +63,12 @@ fn repeat_opacity(ctx: impl Ctx + ExtractIndex, element: f64, count: u32) -> ILi
 }
 
 #[node_macro::node(category("Test"))]
-fn sum(_: impl Ctx + ExtractIndex + InjectIndex + Copy, items: IList<f64>) -> f64 {
+fn sum(_: impl Ctx, items: IList<f64>) -> f64 {
 	items.into_iter().sum()
 }
 
 #[node_macro::node(category("Test"))]
-fn sum_nested(_: impl Ctx + ExtractIndex + InjectIndex + Copy, items: IList<IList<f64>>) -> f64 {
+fn sum_nested(_: impl Ctx, items: IList<IList<f64>>) -> f64 {
 	items.into_iter().sum()
 }
 
@@ -196,7 +196,7 @@ fn resolve_index(index: f64, total: u64) -> Option<u64> {
 /// the omitted index read one lane further. An out-of-range index passes the
 /// level through unchanged.
 #[node_macro::node(category("Test"), extent(omit_element_extent))]
-fn omit_element<T>(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: impl Node<Context<'_>, Output = T>, index: f64) -> Result<T, Interrupt> {
+fn omit_element<T>(ctx: impl Ctx + ModifyIndex + Copy, content: impl Node<Context<'_>, Output = T>, index: f64) -> Result<T, Interrupt> {
 	let total = match content.extent(ctx, Level::Total) {
 		GPoll::Final(Extent::Exactly(count)) => count as u64,
 		GPoll::Pending => return Err(Interrupt::Pending),
@@ -225,7 +225,7 @@ fn omit_element_extent(content: ExtentIn<'_>, index: ValueIn<'_, f64>, level: Le
 /// Rank-model Index Elements: a one-lane level holding the item at the index
 /// with its attributes, or an empty level when the index is out of range.
 #[node_macro::node(category("Test"), extent(index_elements_extent))]
-fn index_elements<T>(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: impl Node<Context<'_>, Output = T>, index: f64) -> Result<T, Interrupt> {
+fn index_elements<T>(ctx: impl Ctx + ModifyIndex + Copy, content: impl Node<Context<'_>, Output = T>, index: f64) -> Result<T, Interrupt> {
 	let total = match content.extent(ctx, Level::Total) {
 		GPoll::Final(Extent::Exactly(count)) => count as u64,
 		GPoll::Pending => return Err(Interrupt::Pending),

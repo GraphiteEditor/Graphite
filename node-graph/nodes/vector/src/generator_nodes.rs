@@ -1,5 +1,5 @@
 use core_types::registry::types::{Angle, PixelLength, PixelSize};
-use core_types::{CacheHash, Ctx, ExtractIndex, InjectIndex};
+use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
@@ -135,7 +135,7 @@ fn ellipse(
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
 #[node_macro::node(category("Vector: Shape"), properties("rectangle_properties"))]
 fn rectangle(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	_primary: (),
 	#[unit(" px")]
 	#[default(100)]

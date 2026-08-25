@@ -4,7 +4,7 @@ use core_types::color::Color;
 use core_types::extent::{ExtentIn, LevelIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, Interrupt};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
-use core_types::{CacheHash, Context, Ctx, DeriveCtx, ExtractIndex, InjectFootprint, InjectIndex, ModifyFootprint};
+use core_types::{CacheHash, Context, Ctx, DeriveCtx, InjectFootprint, ModifyFootprint};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -98,7 +98,7 @@ fn replace_transform<T>(_: impl Ctx + InjectFootprint, (element, _content_transf
 /// Obtains the transform of the first lane of the input wire, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
 fn extract_transform<T: Clone + Send + Sync + CacheHash + 'static>(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops)] content: IList<T>,
 ) -> DAffine2 {
 	match content.len() {

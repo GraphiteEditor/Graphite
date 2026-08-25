@@ -14,7 +14,9 @@ use core_types::runtime::SourceFuture;
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
 use core_types::{ATTR_TRANSFORM, WasmNotSend};
-use core_types::{Color, Ctx, ExtractIndex, InjectIndex};
+use core_types::{Color, Ctx};
+#[cfg(target_family = "wasm")]
+use graphic_types::ATTR_EDITOR_MERGED_LAYERS;
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
@@ -128,7 +130,7 @@ fn string_to_bytes(_: impl Ctx, string: String) -> Arc<[u8]> {
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx + ExtractIndex + InjectIndex + Copy, image: IList<Raster<CPU>>) -> Arc<[u8]> {
+fn image_to_bytes(_: impl Ctx, image: IList<Raster<CPU>>) -> Arc<[u8]> {
 	if image.is_empty() {
 		return Arc::from(Vec::new());
 	}

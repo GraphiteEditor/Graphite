@@ -5,7 +5,7 @@ use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt, Level};
 use core_types::list::List;
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyIndex};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, Artboard, Vector};
@@ -27,7 +27,7 @@ fn resolve_index(index: f64, total: u64) -> Option<u64> {
 /// attributes, or an empty level when the index is out of range.
 #[node_macro::node(category("General"), extent(index_elements_extent))]
 pub fn index_elements<T>(
-	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	ctx: impl Ctx + ModifyIndex + Copy,
 	/// The list of data.
 	list: impl Node<Context<'_>, Output = T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
@@ -60,7 +60,7 @@ fn index_elements_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: Lev
 /// If no value exists at that index, the list is returned unchanged.
 #[node_macro::node(category("General"), extent(omit_element_extent))]
 pub fn omit_element<T>(
-	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	ctx: impl Ctx + ModifyIndex + Copy,
 	/// The list of data.
 	list: impl Node<Context<'_>, Output = T>,
 	/// The index of the item to remove, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
@@ -96,7 +96,7 @@ fn omit_element_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: Level
 /// If no value exists at that index, the element type's default is returned.
 #[node_macro::node(category("General"))]
 pub fn extract_element<T: Clone + Default + Send + Sync + CacheHash + 'static>(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	/// The `List` of data to extract from.
 	#[implementations(String, f64, NodeId, Color, GradientStops, Vector, Raster<CPU>, Graphic, Artboard)]
 	list: IList<T>,
@@ -455,7 +455,7 @@ pub fn legacy_layer_extend<T: Send + Clone>(
 /// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"), extent(wrap_graphic_extent))]
 pub fn wrap_graphic<T: Clone + Send + Sync + core_types::CacheHash + 'static>(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
 ) -> Result<IList<Graphic>, Interrupt> {
 	// SAFETY: a materialized input's frames are arena-resident.
@@ -525,7 +525,7 @@ pub fn to_graphic_element<T: Into<Graphic> + Clone + Send + Sync + core_types::C
 /// graphic identifier.
 #[node_macro::node(category(""), extent(wrap_graphic_extent))]
 pub fn to_graphic_typed<T: Clone + Send + Sync + core_types::CacheHash + 'static>(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	#[implementations(Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
 ) -> Result<IList<Graphic>, Interrupt> {
 	// SAFETY: a materialized input's frames are arena-resident.
@@ -539,7 +539,7 @@ pub fn to_graphic_typed<T: Clone + Send + Sync + core_types::CacheHash + 'static
 /// An unconnected content input carries the unit, which renders as nothing like
 /// the pre-flip empty list. Registered under the to graphic identifier.
 #[node_macro::node(category(""), extent(to_graphic_unit_extent))]
-pub fn to_graphic_unit(_: impl Ctx + ExtractIndex + InjectIndex + Copy, _content: ()) -> Result<IList<Graphic>, Interrupt> {
+pub fn to_graphic_unit(_: impl Ctx, _content: ()) -> Result<IList<Graphic>, Interrupt> {
 	Err(core_types::gpoll::GraphError::past_end().into())
 }
 
@@ -553,7 +553,7 @@ fn to_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level:
 /// the last legacy consumer.
 #[node_macro::node(category(""))]
 pub fn level_to_list<T: Clone + Send + Sync + CacheHash + 'static>(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] value: IList<T>,
 	_converter: (),
 ) -> List<T> {
@@ -650,7 +650,7 @@ pub fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<
 
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"))]
-fn colors_to_gradient(_: impl Ctx + ExtractIndex + InjectIndex + Copy, colors: IList<Color>) -> GradientStops {
+fn colors_to_gradient(_: impl Ctx, colors: IList<Color>) -> GradientStops {
 	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
 	match colors.len() {
 		0 => GradientStops::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),

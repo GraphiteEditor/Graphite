@@ -1,5 +1,5 @@
 use core_types::arena::ArenaCell;
-use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ExtractIndex, InjectIndex};
+use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ModifyIndex};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
@@ -31,7 +31,7 @@ pub struct MemoLevel {
 /// materialization of the content instead of re-evaluating it per lane.
 #[node_macro::node(category("General"), path(graphene_core::memo))]
 fn memoize<'e>(
-	ctx: impl Ctx + CacheHash + DeriveCtx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	ctx: impl Ctx + CacheHash + DeriveCtx + ExtractArena<'e> + ModifyIndex + Copy,
 	#[data] cache: Arc<Mutex<Option<MemoLevel>>>,
 	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
 ) -> GPoll<RecordValue<'e>> {
@@ -188,7 +188,7 @@ type MonitorValue = Arc<Mutex<Option<IORecord<CtxSnapshot, RecordCapture>>>>;
 /// The Monitor node is used by the editor to access the data flowing through it.
 #[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
 fn monitor<'e>(
-	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + ModifyIndex + Copy,
 	#[data] io: MonitorValue,
 	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
 ) -> GPoll<RecordValue<'e>> {

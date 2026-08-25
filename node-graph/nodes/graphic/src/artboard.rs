@@ -2,7 +2,7 @@ use core_types::attribute::{Attr, Background, Clip, Dimensions, Location};
 use core_types::extent::{ExtentIn, LevelIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, Interrupt};
 use core_types::transform::TransformMut;
-use core_types::{Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyFootprint};
+use core_types::{Color, Ctx, DeriveCtx, ModifyFootprint};
 use glam::DVec2;
 use graphic_types::Artboard;
 use graphic_types::graphic::Graphic;
@@ -22,7 +22,7 @@ fn translate_footprint_extent(content: ExtentIn<'_>, _offset: ValueIn<'_, DVec2>
 /// Constructs an artboard element with the given content and metadata stored as attributes.
 #[node_macro::node(category(""))]
 pub fn create_artboard(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	/// Graphics to include within the artboard.
 	content: IList<Graphic>,
 	/// Coordinate of the top-left corner of the artboard within the document.

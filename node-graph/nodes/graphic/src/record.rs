@@ -115,7 +115,7 @@ fn flatten_extent(content: ListIn<'_, Graphic>, fully_flatten: ValueIn<'_, bool>
 /// Rank-model Wrap: the content level as one group element on a one-lane
 /// level, the inverse of flatten's one-level descent.
 #[node_macro::node(category("Test"), extent(wrap_extent))]
-fn wrap(_: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>) -> Result<IList<Graphic>, Interrupt> {
+fn wrap(_: impl Ctx, content: IList<Graphic>) -> Result<IList<Graphic>, Interrupt> {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	Ok(Graphic::Group(core_types::record::Group {
@@ -132,7 +132,7 @@ fn wrap_extent(_content: ListIn<'_, Graphic>, _level: LevelIn) -> GPoll<Extent> 
 /// Rank-model colors-to-gradient: the color level folds into one gradient
 /// with evenly spaced stops.
 #[node_macro::node(category("Test"))]
-fn to_gradient(_: impl Ctx + ExtractIndex + InjectIndex + Copy, colors: IList<Color>) -> GradientStops {
+fn to_gradient(_: impl Ctx, colors: IList<Color>) -> GradientStops {
 	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
 	match colors.len() {
 		0 => GradientStops::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),

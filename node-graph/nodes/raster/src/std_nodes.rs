@@ -229,7 +229,7 @@ fn combine_channels_extent(
 
 #[node_macro::node(category("Raster"))]
 pub fn mask(
-	_: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_: impl Ctx,
 	/// The image to be masked.
 	(mut image, lane_transform): (Raster<CPU>, Attr<TransformAttr>),
 	/// The stencil to be used for masking.
@@ -331,7 +331,7 @@ pub fn empty_image_core(transform: DAffine2, color: Color) -> Raster<CPU> {
 }
 
 #[node_macro::node(category("Debug"))]
-pub fn empty_image(_: impl Ctx + ExtractIndex + InjectIndex + Copy, transform: DAffine2, color: IList<Color>) -> (Raster<CPU>, Attr<TransformAttr>) {
+pub fn empty_image(_: impl Ctx, transform: DAffine2, color: IList<Color>) -> (Raster<CPU>, Attr<TransformAttr>) {
 	let color = match color.len() {
 		0 => Color::WHITE,
 		_ => color.get(0),

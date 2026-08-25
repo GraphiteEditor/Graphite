@@ -149,5 +149,5 @@ fn read_index(
 ) -> f64 {
 	// The chain's innermost entry is the consuming wire's own lane from the
 	// decompose-and-promote split; the loops the reader counts sit above it.
-	ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize + 1).or_else(|| iter.last())).unwrap_or(0) as f64
+	ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize + 1)).unwrap_or(0) as f64
 }
