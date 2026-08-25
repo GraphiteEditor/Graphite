@@ -1461,8 +1461,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ParsedFieldType::Node(_) => match ir::lazy_binding(&node, index) {
 					ir::LazyBinding::DeriveRouting | ir::LazyBinding::DeriveCarrier => quote! {
 						let #query = |__copy: u64, __lvl: u8| {
-							let __head = #core_types::context::DeriveCtx::index_head(__input);
-							#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &#core_types::context::DeriveCtx::promoted(__input, &__head, __copy), __lvl)
+							let mut __frame = #core_types::context::IndexLink { index: 0, outer: None };
+							let __derived = #core_types::context::DeriveCtx::push_level(__input, &mut __frame, __copy, 0);
+							#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &__derived, __lvl)
 						};
 						let #arg = #core_types::extent::ExtentIn::new(&#query);
 					},
@@ -1541,9 +1542,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let query = match &field.ty {
 			ParsedFieldType::Node(_) => match ir::lazy_binding(&node, subject_index) {
 				ir::LazyBinding::DeriveRouting | ir::LazyBinding::DeriveCarrier => quote! {
-					let __query = |__copy: u64, __lvl: u8| {
+					let __query = |_: u64, __lvl: u8| {
 						let __head = #core_types::context::DeriveCtx::index_head(__input);
-						#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &#core_types::context::DeriveCtx::promoted(__input, &__head, __copy), __lvl)
+						let __derived = #core_types::context::DeriveCtx::replaced(__input, __head.index);
+						#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &__derived, __lvl)
 					};
 				},
 				_ => quote! {

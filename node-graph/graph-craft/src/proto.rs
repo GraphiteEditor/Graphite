@@ -561,7 +561,7 @@ impl ProtoNetwork {
 			let branch = self.find_context_dependencies(node);
 
 			let mut lifted = branch.0.clone();
-			lifted.index_levels = lifted.index_levels.popped(pushed_levels.get(input).copied().unwrap_or(0));
+			lifted.index_levels = lifted.index_levels.lifted(0, pushed_levels.get(input).copied().unwrap_or(0));
 			combined_deps |= &lifted;
 			branch_dependencies.push(branch);
 		}

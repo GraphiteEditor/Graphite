@@ -901,8 +901,8 @@ where
 	B: crate::context::DeriveCtx,
 	N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
 {
-	let head = ctx.index_head();
-	let derived = ctx.promoted(&head, copy);
+	let mut frame = crate::context::IndexLink { index: 0, outer: None };
+	let derived = ctx.push_level(&mut frame, copy, 0);
 	let mut inner: u64 = 1;
 	for level in 0..levels {
 		match node.extent_at_derived(&derived, level) {

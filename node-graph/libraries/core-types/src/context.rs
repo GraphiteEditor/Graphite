@@ -244,19 +244,24 @@ impl IndexLevels {
 		self.0 == u32::MAX
 	}
 
-	/// The same requirement seen from outside `levels` pushed levels. An
-	/// all-levels mask stays saturated, since its reader's level is not known at
-	/// compile time.
-	///
-	/// TODO: a fold overwrites the level it consumes rather than pushing one, so
-	/// this shift misnumbers levels above 0 across fold edges; latent until a
-	/// numeric level above 0 is declared. Preferred fix: folds push a level,
-	/// once the pass cancels the level a fold supplies.
-	pub const fn popped(self, levels: u8) -> Self {
+	/// The same requirement seen from outside an edge whose innermost `supplied`
+	/// levels the reading node drives itself, and whose chain sits `delta`
+	/// deeper than that node's. A supplied level leaves no requirement behind;
+	/// the rest renumber by the depth difference. An all-levels mask stays
+	/// saturated, since its reader's level is not known at compile time.
+	pub const fn lifted(self, supplied: u8, delta: u8) -> Self {
 		match self.0 {
 			u32::MAX => self,
-			_ if levels as u32 >= u32::BITS => Self(0),
-			mask => Self(mask >> levels),
+			mask => {
+				let kept = match supplied as u32 >= u32::BITS {
+					true => 0,
+					false => mask & !((1 << supplied) - 1),
+				};
+				match delta as u32 >= u32::BITS {
+					true => Self(0),
+					false => Self(kept >> delta),
+				}
+			}
 		}
 	}
 
@@ -1516,6 +1521,29 @@ mod context_impl_tests {
 
 	fn collected(head: &IndexLink) -> Vec<u64> {
 		core::iter::successors(Some(head), |link| link.outer).map(|link| link.index).collect()
+	}
+
+	#[test]
+	fn lifting_a_fold_edge_clears_the_driven_level_in_place() {
+		let reads = IndexLevels::innermost().with_level(2);
+		assert_eq!(reads.lifted(1, 0), IndexLevels::empty().with_level(2));
+	}
+
+	#[test]
+	fn lifting_a_pushed_edge_renumbers_outwards() {
+		let reads = IndexLevels::innermost().with_level(2);
+		assert_eq!(reads.lifted(1, 1), IndexLevels::empty().with_level(1));
+	}
+
+	#[test]
+	fn lifting_a_decomposed_edge_drops_both_driven_levels() {
+		let reads = IndexLevels::innermost().with_level(1).with_level(3);
+		assert_eq!(reads.lifted(2, 1), IndexLevels::empty().with_level(2));
+	}
+
+	#[test]
+	fn lifting_leaves_a_saturated_mask_alone() {
+		assert_eq!(IndexLevels::all().lifted(2, 1), IndexLevels::all());
 	}
 
 	#[test]
