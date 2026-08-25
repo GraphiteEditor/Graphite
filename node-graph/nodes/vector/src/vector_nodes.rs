@@ -3594,10 +3594,7 @@ fn point_inside(_: impl Ctx, source: IList<Vector>, point: DVec2) -> bool {
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-fn count_elements<T: Clone + Send + Sync + CacheHash + 'static>(
-	_: impl Ctx,
-	#[implementations(Graphic, Artboard, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<T>,
-) -> f64 {
+fn count_elements<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Artboard, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<T>) -> f64 {
 	content.len() as f64
 }
 

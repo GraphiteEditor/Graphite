@@ -97,10 +97,7 @@ fn replace_transform<T>(_: impl Ctx + InjectFootprint, (element, _content_transf
 // TODO: Figure out how this node should behave once #2982 is implemented.
 /// Obtains the transform of the first lane of the input wire, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
-fn extract_transform<T: Clone + Send + Sync + CacheHash + 'static>(
-	_: impl Ctx,
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops)] content: IList<T>,
-) -> DAffine2 {
+fn extract_transform<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops)] content: IList<T>) -> DAffine2 {
 	match content.len() {
 		0 => DAffine2::default(),
 		_ => content.lane(0).attr::<TransformAttr>(),
