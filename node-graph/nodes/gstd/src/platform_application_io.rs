@@ -23,8 +23,6 @@ pub use graphene_canvas_utils as canvas_utils;
 #[cfg(target_family = "wasm")]
 use graphic_types::ATTR_EDITOR_MERGED_LAYERS;
 #[cfg(target_family = "wasm")]
-use graphic_types::ATTR_EDITOR_MERGED_LAYERS;
-#[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
 #[cfg(target_family = "wasm")]
 use graphic_types::IntoGraphicList;
