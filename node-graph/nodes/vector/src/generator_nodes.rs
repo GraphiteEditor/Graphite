@@ -172,6 +172,85 @@ fn regular_polygon<T: AsU64>(
 	Item::new_from_element(Vector::from_bezpath(shapes::regular_polygon_bezpath(DVec2::ZERO, points, *radius.element())))
 }
 
+/// Generates a heart shape with parametric control over the cleavage, lobes, shoulders, and bottom point.
+#[node_macro::node(category("Vector: Shape"))]
+fn heart(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(50)]
+	radius: Item<f64>,
+	/// How far the top V dips below the upper bound of the heart.
+	#[default(0.2)]
+	#[range]
+	#[hard(0..0.6)]
+	cleavage_depth: Item<f64>,
+	/// Half-angle of the top V. Zero collapses the V into a smooth join.
+	#[default(45.)]
+	#[range]
+	#[hard(0..89)]
+	cleavage_angle: Item<Angle>,
+	/// Tangent length leaving the top cusp, controlling the upper roundness of each lobe.
+	#[default(0.55)]
+	#[range]
+	#[hard(0..1.2)]
+	lobe_fullness: Item<f64>,
+	/// Vertical position of the side anchor (positive raises the shoulder).
+	#[default(0.5)]
+	#[range]
+	#[hard(-0.5..0.9)]
+	shoulder_height: Item<f64>,
+	/// Horizontal position of the side anchor.
+	#[default(1.)]
+	#[range]
+	#[hard(0..1.4)]
+	shoulder_width: Item<f64>,
+	/// Rotation of the shoulder tangent from vertical. Positive leans the shoulder outward at top.
+	#[default(0.)]
+	#[range]
+	#[hard(-60..60)]
+	shoulder_tilt: Item<Angle>,
+	/// Tangent length at the shoulder going up, controlling the curvature of the upper lobe side.
+	#[default(0.55)]
+	#[range]
+	#[hard(0..1.2)]
+	upper_curvature: Item<f64>,
+	/// Tangent length at the shoulder going down, controlling the curvature of the lower side.
+	#[default(1.)]
+	#[range]
+	#[hard(0..1.5)]
+	lower_curvature: Item<f64>,
+	/// Half-angle of the bottom V. Zero produces a needle-sharp point with vertical tangents.
+	#[default(30.)]
+	#[range]
+	#[hard(0..89)]
+	point_sharpness: Item<Angle>,
+	/// Tangent length arriving at the bottom cusp, controlling how the sides taper into the point.
+	#[default(0.7)]
+	#[range]
+	#[hard(0..1.2)]
+	taper_length: Item<f64>,
+) -> Item<Vector> {
+	let bezpath = shapes::heart_bezpath(
+		DVec2::ZERO,
+		*radius.element(),
+		shapes::HeartProportions {
+			cleavage_depth: *cleavage_depth.element(),
+			cleavage_angle: cleavage_angle.element().to_radians(),
+			lobe_fullness: *lobe_fullness.element(),
+			shoulder_height: *shoulder_height.element(),
+			shoulder_width: *shoulder_width.element(),
+			shoulder_tilt: shoulder_tilt.element().to_radians(),
+			upper_curvature: *upper_curvature.element(),
+			lower_curvature: *lower_curvature.element(),
+			point_sharpness: point_sharpness.element().to_radians(),
+			taper_length: *taper_length.element(),
+		},
+	);
+
+	Item::new_from_element(Vector::from_bezpath(bezpath))
+}
+
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
 #[node_macro::node(category("Vector: Shape"))]
 fn star<T: AsU64>(
