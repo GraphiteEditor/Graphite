@@ -157,7 +157,7 @@ fn repeat_on_points<T>(
 
 		let scoped = ctx.push_position(transformed_point);
 		let mut frame = IndexLink { index: 0, outer: None };
-		let (element, local) = content.eval(&scoped.ctx().push_level(&mut frame, index as u64, rest))?;
+		let (element, local) = content.eval(&scoped.ctx().push_level(&mut frame, copy, rest))?;
 		let mut composed = *local;
 		composed.translation = transformed_point;
 		return Ok((element, Attr(composed)));
