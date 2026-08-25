@@ -1,80 +1,13 @@
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::circle_arc_radius_handle::{RadiusHandle, RadiusHandleState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::{viewport_zoom, window_aligned_transform_set};
-use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, ShapeToolModifierKey};
+use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeToolModifierKey;
 use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-
-#[derive(Clone, Debug, Default)]
-pub struct CircleGizmoHandler {
-	circle_radius_handle: RadiusHandle,
-}
-
-impl ShapeGizmoHandler for CircleGizmoHandler {
-	fn is_any_gizmo_hovered(&self) -> bool {
-		self.circle_radius_handle.hovered()
-	}
-
-	fn handle_state(&mut self, selected_circle_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.circle_radius_handle.handle_actions(selected_circle_layer, document, mouse_position, responses);
-	}
-
-	fn handle_click(&mut self) {
-		if self.circle_radius_handle.hovered() {
-			self.circle_radius_handle.update_state(RadiusHandleState::Dragging);
-		}
-	}
-
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		if self.circle_radius_handle.is_dragging() {
-			self.circle_radius_handle.update_inner_radius(document, input, responses, drag_start);
-		}
-	}
-
-	fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		_selected_circle_layer: Option<LayerNodeIdentifier>,
-		_input: &InputPreprocessorMessageHandler,
-		_shape_editor: &mut &mut ShapeState,
-		_mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
-		self.circle_radius_handle.overlays(document, overlay_context);
-	}
-
-	fn dragging_overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		_input: &InputPreprocessorMessageHandler,
-		_shape_editor: &mut &mut ShapeState,
-		_mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
-		if self.circle_radius_handle.is_dragging() {
-			self.circle_radius_handle.overlays(document, overlay_context);
-		}
-	}
-
-	fn cleanup(&mut self) {
-		self.circle_radius_handle.cleanup();
-	}
-
-	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
-		if self.circle_radius_handle.hovered() || self.circle_radius_handle.is_dragging() {
-			return Some(MouseCursorIcon::EWResize);
-		}
-
-		None
-	}
-}
 
 #[derive(Default)]
 pub struct Circle;
