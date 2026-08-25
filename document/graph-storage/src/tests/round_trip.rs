@@ -248,11 +248,6 @@ fn test_nested_network_flattening() {
 #[test]
 fn test_metadata_preservation() {
 	// Create a network with nodes that have non-default metadata
-	let context_features = ContextDependencies::new(
-		core_types::context::ContextFeatures::FOOTPRINT | core_types::context::ContextFeatures::REAL_TIME,
-		core_types::context::ContextFeatures::empty(),
-	);
-
 	let network = NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: [
@@ -262,7 +257,6 @@ fn test_metadata_preservation() {
 					inputs: vec![NodeInput::import(concrete!(f64), 0), NodeInput::import(Type::Generic(Cow::Borrowed("T")), 1)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("test::NodeWithMetadata")),
 					call_argument: concrete!(String),
-					context_features,
 					visible: false,           // Non-default value
 					skip_deduplication: true, // Non-default value
 					..Default::default()
@@ -296,8 +290,12 @@ fn test_metadata_preservation() {
 	let conv_node_1 = converted.nodes.get(&NodeId(1)).unwrap();
 	assert_eq!(orig_node_1.call_argument, conv_node_1.call_argument, "call_argument for node 1 should be preserved");
 
-	// Verify context_features is preserved
-	assert_eq!(orig_node_0.context_features, conv_node_0.context_features, "context_features should be preserved");
+	// Verify context_features is not stored
+	assert_eq!(
+		conv_node_0.context_features,
+		ContextDependencies::default(),
+		"context_features should resolve at compile, not round-trip"
+	);
 
 	// Verify visible is preserved
 	assert_eq!(orig_node_0.visible, conv_node_0.visible, "visible should be preserved");

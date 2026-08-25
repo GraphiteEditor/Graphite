@@ -24,7 +24,6 @@ use graph_craft::Type;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
-use graphene_std::ContextDependencies;
 use graphene_std::Graphic;
 use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
@@ -4088,18 +4087,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node.call_argument = call_argument;
-	}
-
-	pub fn set_context_features(&mut self, node_id: &NodeId, network_path: &[NodeId], context_features: ContextDependencies) {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_context_features");
-			return;
-		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_context_features");
-			return;
-		};
-		node.context_features = context_features;
 	}
 
 	/// Lightweight version of `set_input` for bulk import operations.

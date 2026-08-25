@@ -42,7 +42,6 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			fields,
 			description,
 			properties,
-			context_features,
 			..
 		} = metadata;
 
@@ -78,7 +77,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 						implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 						visible: true,
 						skip_deduplication: false,
-						context_features: ContextDependencies::from(context_features.as_slice()),
+						context_features: ContextDependencies::default(),
 						..Default::default()
 					},
 					persistent_node_metadata: DocumentNodePersistentMetadata {

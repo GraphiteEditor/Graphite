@@ -2441,15 +2441,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Add context features to nodes that don't have them (fine-grained context caching migration)
-	if node.context_features == graphene_std::ContextDependencies::default()
-		&& let Some(reference) = document.network_interface.reference(node_id, network_path).clone()
-		&& let Some(node_definition) = resolve_document_node_type(&reference)
-	{
-		let context_features = node_definition.node_template.document_node.context_features.clone();
-		document.network_interface.set_context_features(node_id, network_path, context_features);
-	}
-
 	// Add the "Scale Type" parameter to the "Decompose Scale" node
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::decompose_scale::IDENTIFIER) && inputs_count == 1 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();

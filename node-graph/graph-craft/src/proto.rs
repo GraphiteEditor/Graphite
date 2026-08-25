@@ -500,18 +500,18 @@ impl ProtoNetwork {
 		nullification_node_id
 	}
 
-	/// The node's declared index levels and per-input pushed levels, both read
+	/// The node's declared dependencies and per-input pushed levels, both read
 	/// from the registry since they follow the node's signature. A node with no
-	/// registry entry pushes nothing and names no level.
-	fn registry_index_levels(&self, node_index: usize) -> (core_types::context::IndexLevels, Vec<u8>) {
+	/// registry entry declares nothing and pushes nothing.
+	fn registry_dependencies(&self, node_index: usize) -> (ContextDependencies, Vec<u8>) {
 		let identifier = &self.nodes[node_index].1.identifier;
 		let metadata = core_types::registry::NODE_METADATA.lock().unwrap();
 		match metadata.get(identifier) {
 			Some(entry) => (
-				ContextDependencies::from(entry.context_features.as_slice()).index_levels,
+				ContextDependencies::from(entry.context_features.as_slice()),
 				entry.fields.iter().map(|field| field.pushed_levels).collect(),
 			),
-			None => (core_types::context::IndexLevels::empty(), Vec::new()),
+			None => (ContextDependencies::default(), Vec::new()),
 		}
 	}
 
@@ -520,14 +520,21 @@ impl ProtoNetwork {
 		let mut combined_deps = ContextModification::default();
 		let node_index = id.0 as usize;
 
-		let (declared_levels, pushed_levels) = self.registry_index_levels(node_index);
+		let (registry_deps, pushed_levels) = self.registry_dependencies(node_index);
 		let (extract, inject, own_deps) = {
-			let dependencies = &self.nodes[node_index].1.context_features;
+			let carried = &self.nodes[node_index].1.context_features;
+			// A code-built wrapper node declares dependencies its signature cannot
+			// express; everything else resolves from the registry. Sources are
+			// input wiring, not declarations, so they merge either way.
+			let mut dependencies = match carried.extract.is_empty() && carried.inject.is_empty() {
+				false => carried.clone(),
+				true => registry_deps,
+			};
+			dependencies.add_sources(carried.sources());
 			let index_levels = match dependencies.extract.contains(core_types::context::ContextFeatures::INDEX) {
-				// A wrapper node declaring its dependencies by hand keeps `INDEX`
-				// without the signature naming a level, and addresses the innermost.
-				true if declared_levels.is_empty() => core_types::context::IndexLevels::innermost(),
-				true => declared_levels,
+				// A hand-declared `INDEX` names no level and addresses the innermost.
+				true if dependencies.index_levels.is_empty() => core_types::context::IndexLevels::innermost(),
+				true => dependencies.index_levels,
 				false => core_types::context::IndexLevels::empty(),
 			};
 			let own_deps = ContextModification::from_sources(dependencies.extract, dependencies.sources()).with_index_levels(index_levels);
@@ -536,7 +543,15 @@ impl ProtoNetwork {
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
 			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
-			ConstructionArgs::Value(_) => return (own_deps, Some(id)),
+			ConstructionArgs::Value(value) => {
+				let mut deps = own_deps;
+				// A leveled value serves its lanes by the innermost index.
+				if value.value_layout().is_some_and(|layout| layout.depth > 0) {
+					deps |= core_types::context::ContextFeatures::INDEX;
+					deps.index_levels |= core_types::context::IndexLevels::innermost();
+				}
+				return (deps, Some(id));
+			}
 			ConstructionArgs::Nodes(items) => items.clone(),
 			ConstructionArgs::Inline(_) => return (own_deps, Some(id)),
 		};
@@ -571,6 +586,9 @@ impl ProtoNetwork {
 		self.nodes[node_index].1.construction_args = ConstructionArgs::Nodes(inputs);
 
 		// Which dependencies do we supply (and don't need ourselves)?
+		// TODO: a shrinking index-level mask does not count as supplying a
+		// dependency, so a fold that consumes its subtree's only level inserts
+		// no boundary here.
 		let net_injections = inject.difference(extract);
 
 		// Which dependencies still need to be met after this node?

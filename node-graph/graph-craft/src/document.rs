@@ -57,7 +57,8 @@ pub struct DocumentNode {
 	#[serde(default)]
 	pub skip_deduplication: bool,
 	/// List of Extract and Inject annotations for the Context.
-	#[serde(default)]
+	/// Resolved from the registry at compile time; only code-built wrapper nodes carry a declaration here.
+	#[serde(skip)]
 	pub context_features: ContextDependencies,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
 	#[serde(skip)]

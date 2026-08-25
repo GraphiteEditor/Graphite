@@ -310,8 +310,8 @@ fn convert_node(
 		implementation: convert_implementation(context, &node.implementation, metadata_path, runtime_node_id, node_collector, network_collector)?,
 		visible: node.attributes.get_or(node::VISIBLE, true),
 		skip_deduplication: node.attributes.get_or(node::SKIP_DEDUPLICATION, false),
-		context_features: node.attributes.get_or_default(node::CONTEXT_FEATURES),
 		// Regenerated during compilation; not stored.
+		context_features: Default::default(),
 		original_location: Default::default(),
 	})
 }
