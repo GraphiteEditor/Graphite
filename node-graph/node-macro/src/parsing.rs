@@ -940,11 +940,15 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<ContextFeatureDecl> {
 						| "InjectVarArgs" => {
 							features.push(ContextFeatureDecl::new(segment.ident.clone()));
 						}
+						// Modify* is conditionally transparent: the node rewrites the
+						// field only on its content's behalf, so it names no
+						// requirement of its own and the field nullifies early when
+						// nothing upstream reads it.
+						"ModifyFootprint" | "ModifyRealTime" | "ModifyAnimationTime" | "ModifyPointerPosition" | "ModifyPosition" | "ModifyIndex" | "ModifyVarArgs" => {}
 						// InjectIndex stays undeclared: a record node's injection
 						// re-addresses lanes derived from the incoming index, so it
 						// must not cancel the cone's index requirement in the
 						// nullification pass.
-						// Skip Modify* traits as they don't affect usage tracking
 						// Also ignore other traits like Ctx, ExtractAll, etc.
 						_ => {}
 					}
