@@ -304,28 +304,6 @@ macro_rules! tagged_value {
 				}
 			}
 
-			/// The lane count of the level [`Self::to_edge`] serves, or `None` for a
-			/// scalar. At most one lane serves the same record at every index, so
-			/// the addressed lane cannot reach the value.
-			pub fn lane_count(&self) -> Option<usize> {
-				match self {
-					Self::TypeDefault(td) => {
-						let name = td.name.as_ref();
-						if name == std::any::type_name::<List<Graphic>>() { return Some(0); }
-						if name == std::any::type_name::<List<Artboard>>() { return Some(0); }
-						if name == std::any::type_name::<List<Raster<CPU>>>() { return Some(0); }
-						if name == std::any::type_name::<List<Vector>>() { return Some(1); }
-						if name == std::any::type_name::<List<String>>() { return Some(0); }
-						None
-					}
-					Self::F64Array(values) => Some(values.len()),
-					Self::Color(color) => Some(color.iter().count()),
-					Self::Gradient(_) => Some(1),
-					Self::BrushStrokes(strokes) => Some(strokes.len()),
-					_ => None,
-				}
-			}
-
 			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a `ClonedNode` edge typed by [`Self::ty`].
 			pub fn to_edge(self) -> Result<EdgeHandle, String> {
 				match self {
