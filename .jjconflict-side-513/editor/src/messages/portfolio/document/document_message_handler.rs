@@ -299,7 +299,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				graph_operation_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::Resource(message) => {
-				let context = ResourceMessageContext { document_id, fonts };
+				let context = ResourceMessageContext { document_id, fonts, resource_storage };
 				self.resources.process_message(message, responses, context);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {

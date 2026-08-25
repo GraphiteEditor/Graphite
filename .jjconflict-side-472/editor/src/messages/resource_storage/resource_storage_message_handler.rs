@@ -48,6 +48,11 @@ impl ResourceStorageMessageHandler {
 			inner: self.storage.clone().expect("Resource storage not initialized"),
 		}
 	}
+
+	/// Whether the resource's data is held in storage, assuming it is until storage is initialized.
+	pub fn contains(&self, hash: &ResourceHash) -> bool {
+		self.storage.as_ref().is_none_or(|storage| storage.contains(hash))
+	}
 }
 
 impl std::fmt::Debug for ResourceStorageMessageHandler {

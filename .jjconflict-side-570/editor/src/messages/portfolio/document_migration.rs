@@ -1979,79 +1979,38 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
-	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode")) && inputs_count == 8 {
+	// Every Text node era before alignment only appended inputs, so each is a prefix of the 11-input layout.
+	// Alignment (#2920) is the exception: it landed at index 9 and pushed Per-Glyph Instances out to 10.
+	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode")) && (4..=10).contains(&inputs_count) {
 		let mut template: NodeTemplate = legacy_text_node_template()?;
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
 
-		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[3].clone(), network_path);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 4),
-			if inputs_count == 6 {
-				old_inputs[4].clone()
-			} else {
-				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().line_height_ratio), false)
-			},
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 5),
-			if inputs_count == 6 {
-				old_inputs[5].clone()
-			} else {
-				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().letter_spacing), false)
-			},
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 6),
-			if inputs_count >= 7 {
-				old_inputs[6].clone()
-			} else {
-				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().max_width.unwrap_or_default()), false)
-			},
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 7),
-			if inputs_count >= 8 {
-				old_inputs[7].clone()
-			} else {
-				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().max_width.unwrap_or_default()), false)
-			},
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 8),
-			if inputs_count >= 9 {
-				old_inputs[8].clone()
-			} else {
-				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().letter_tilt), false)
-			},
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 9),
-			if inputs_count >= 10 {
-				old_inputs[9].clone()
-			} else {
-				NodeInput::value(TaggedValue::TextAlign(TextAlign::default()), false)
-			},
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 10),
-			if inputs_count >= 11 {
-				old_inputs[10].clone()
-			} else {
-				NodeInput::value(TaggedValue::Bool(false), false)
-			},
-			network_path,
-		);
+		// Line height and character spacing were hardcoded to 1 in the era before they became inputs
+		let hardcoded_to_one = || NodeInput::value(TaggedValue::F64(1.), false);
+		// Zero is how an absent `Option<f64>` maximum reads to the split below
+		let unset_maximum = || NodeInput::value(TaggedValue::F64(0.), false);
+
+		let upgraded_inputs = [
+			old_inputs[0].clone(),
+			old_inputs[1].clone(),
+			old_inputs[2].clone(),
+			old_inputs[3].clone(),
+			old_inputs.get(4).cloned().unwrap_or_else(hardcoded_to_one),
+			old_inputs.get(5).cloned().unwrap_or_else(hardcoded_to_one),
+			old_inputs.get(6).cloned().unwrap_or_else(unset_maximum),
+			old_inputs.get(7).cloned().unwrap_or_else(unset_maximum),
+			old_inputs
+				.get(8)
+				.cloned()
+				.unwrap_or_else(|| NodeInput::value(TaggedValue::F64(TypesettingConfig::default().letter_tilt), false)),
+			NodeInput::value(TaggedValue::TextAlign(TextAlign::default()), false),
+			old_inputs.get(9).cloned().unwrap_or_else(|| NodeInput::value(TaggedValue::Bool(false), false)),
+		];
+		for (index, input) in upgraded_inputs.into_iter().enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+
 		inputs_count = 11
 	}
 
@@ -2068,31 +2027,26 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i), old_inputs[i].clone(), network_path);
 		}
 
+		// The old `Option<f64>` maximum becomes a bool plus a value, with zero standing in for the absent option.
+		// A wired maximum has no value to read, so it keeps its connection and counts as present.
+		let split_maximum = |input: &NodeInput| match input.as_value() {
+			Some(&TaggedValue::F64(maximum)) => (maximum != 0., NodeInput::value(TaggedValue::F64(if maximum == 0. { 100. } else { maximum }), false)),
+			_ => (true, input.clone()),
+		};
+
 		// Max Width
-		let Some(&TaggedValue::F64(old_max_width)) = old_inputs[6].as_value() else { return None };
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 6),
-			NodeInput::value(TaggedValue::Bool(old_max_width != 0.), false),
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 7),
-			NodeInput::value(TaggedValue::F64(if old_max_width == 0. { 100. } else { old_max_width }), false),
-			network_path,
-		);
+		let (has_max_width, max_width) = split_maximum(&old_inputs[6]);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 6), NodeInput::value(TaggedValue::Bool(has_max_width), false), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 7), max_width, network_path);
 
 		// Max Height
-		let Some(&TaggedValue::F64(old_max_height)) = old_inputs[7].as_value() else { return None };
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 8),
-			NodeInput::value(TaggedValue::Bool(old_max_height != 0.), false),
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 9),
-			NodeInput::value(TaggedValue::F64(if old_max_height == 0. { 100. } else { old_max_height }), false),
-			network_path,
-		);
+		let (has_max_height, max_height) = split_maximum(&old_inputs[7]);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 8), NodeInput::value(TaggedValue::Bool(has_max_height), false), network_path);
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 9), max_height, network_path);
 
 		// Copy over old inputs
 		#[allow(clippy::needless_range_loop)]
@@ -2439,6 +2393,39 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &node_path);
 		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
+	}
+
+	// Drop the placeholder primary input the "Read Vector" node used to carry, since it reads its value from the context
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_vector::IDENTIFIER) && inputs_count > 0 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+	}
+
+	// The "Dot Product" node gained a "Normalize" toggle, which older nodes predate by always taking the raw dot product
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::dot_product::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (index, input) in old_inputs.iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+	}
+
+	// The "Query JSON" node succeeded "JSON Get", whose object lookups always returned their strings unquoted
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text_nodes::json::query_json::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (index, input) in old_inputs.iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 	}
 
 	// Upgrade the "Animation" node to add the "Rate" input
@@ -2883,19 +2870,39 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 /// definition by its old reference name, swaps it to a still-supported implementation, and preserves the user's inputs.
 /// After this runs, the node's reference resolves cleanly so the rest of `migrate_node` proceeds normally.
 fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler) -> Option<()> {
-	// Collapse the legacy "Sample Polyline" wrapper network into the standalone `sample_polyline` proto node.
-	// The proto node now computes per-bezpath segment lengths inline, so the wrapper's separate `subpath_segment_lengths`
-	// and `Memoize` nodes are no longer needed. The 7 user-facing inputs are positionally identical between the
-	// old wrapper and the new proto node.
-	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
-		&& name == "Sample Polyline"
-		&& node.inputs.len() == 7
+	// Collapse the legacy "Sample Points" and "Sample Polyline" wrapper networks into the standalone `sample_polyline`
+	// proto node, which now computes per-bezpath segment lengths inline instead of through the wrapper's helper nodes.
+	// The oldest documents lose their stored reference on load, so the wrapper is recognized by the nodes it encloses.
+	let wrapper_inputs = match &node.implementation {
+		DocumentNodeImplementation::Network(inner) => {
+			let helpers = [graphene_std::ops::passthrough::IDENTIFIER, graphene_std::memo::memoize::IDENTIFIER];
+			let mut sample_nodes = 0;
+			let only_helpers = inner.nodes.values().all(|inner_node| match &inner_node.implementation {
+				DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::vector::sample_polyline::IDENTIFIER => {
+					sample_nodes += 1;
+					true
+				}
+				DocumentNodeImplementation::ProtoNode(identifier) => helpers.contains(identifier),
+				_ => false,
+			});
+			(only_helpers && sample_nodes == 1).then_some(node.inputs.len())
+		}
+		_ => None,
+	};
+	if let Some(wrapper_inputs) = wrapper_inputs
+		&& (wrapper_inputs == 5 || wrapper_inputs == 7)
 	{
 		let mut node_template = resolve_proto_node_type(graphene_std::vector::sample_polyline::IDENTIFIER)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-		for (index, input) in old_inputs.iter().take(7).enumerate() {
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+
+		// The 5-input era predates the separation/quantity choice, so its lone spacing distance becomes the separation
+		let upgraded_inputs: Vec<(usize, NodeInput)> = match wrapper_inputs {
+			5 => [0, 2, 4, 5, 6].into_iter().zip(old_inputs.iter().cloned()).collect(),
+			_ => old_inputs.iter().take(7).cloned().enumerate().collect(),
+		};
+		for (index, input) in upgraded_inputs {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
 		}
 	}
 
@@ -2981,6 +2988,93 @@ mod tests {
 				document_migration_reset_node_definition(&format!(r#""implementation":{{"ProtoNode":"{alias}"}}"#)),
 				"a document referencing `{alias}` should reset its layer definitions"
 			);
+		}
+	}
+
+	// The Text node produced geometry until it became a string source, so every shape it ever had must reach the
+	// current one and gain the converter that turns its string back into geometry
+	#[test]
+	fn every_legacy_text_shape_gains_its_geometry_converter() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+		use graphene_std::NodeParameter;
+		use graphene_std::text::Font;
+
+		// Each era only appended to the one before it, so the shorter shapes are prefixes of this longest pre-alignment one
+		let legacy_inputs = [
+			NodeInput::scope("editor-api"),
+			NodeInput::value(TaggedValue::String("Lorem".into()), false),
+			NodeInput::value(TaggedValue::Font(Font::new("Lato".to_string(), "Regular (400)".to_string())), false),
+			NodeInput::value(TaggedValue::F64(48.), false),
+			NodeInput::value(TaggedValue::F64(1.5), false),
+			NodeInput::value(TaggedValue::F64(2.), false),
+			NodeInput::value(TaggedValue::F64(0.), false),
+			NodeInput::value(TaggedValue::F64(0.), false),
+			NodeInput::value(TaggedValue::F64(10.), false),
+			NodeInput::value(TaggedValue::Bool(false), false),
+		];
+
+		for shape in [4, 6, 8, 9, 10] {
+			let (text_id, consumer_id) = (NodeId(1), NodeId(2));
+			let mut document = DocumentMessageHandler::default();
+			document.network_interface.insert_node(
+				text_id,
+				NodeTemplate {
+					implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode")),
+					inputs: legacy_inputs[..shape].to_vec(),
+					..Default::default()
+				},
+				&[],
+			);
+			document.network_interface.insert_node(
+				consumer_id,
+				NodeTemplate {
+					inputs: vec![NodeInput::value(TaggedValue::None, false)],
+					..Default::default()
+				},
+				&[],
+			);
+			document.network_interface.set_input(&InputConnector::node_at_index(consumer_id, 0), NodeInput::node(text_id, 0), &[]);
+
+			document_migration_upgrades(&mut document, false);
+
+			let network = document.network_interface.document_network();
+			let text_node = network.nodes.get(&text_id).expect("the upgraded text node should keep its ID");
+			assert_eq!(text_node.inputs.len(), 12, "a {shape}-input text node should reach the current shape");
+
+			// The converter is a new node, so it is found by identity rather than by ID
+			let converter = network
+				.nodes
+				.iter()
+				.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::text::text_to_vector::IDENTIFIER))
+				.map(|(converter_id, _)| *converter_id)
+				.unwrap_or_else(|| panic!("a {shape}-input text node should gain a string converter"));
+			assert_eq!(
+				network.nodes[&consumer_id].inputs.first(),
+				Some(&NodeInput::node(converter, 0)),
+				"the converter should be spliced onto the wire leaving a {shape}-input text node"
+			);
+
+			let input_value = |index: usize| text_node.inputs.get(index).and_then(|input| input.as_value()).cloned();
+			assert_eq!(input_value(graphene_std::text::text::SizeInput::INDEX), Some(TaggedValue::F64(48.)), "shape {shape} lost its size");
+			if shape >= 6 {
+				assert_eq!(
+					input_value(graphene_std::text::text::LineHeightInput::INDEX),
+					Some(TaggedValue::F64(1.5)),
+					"shape {shape} lost its line height"
+				);
+				assert_eq!(
+					input_value(graphene_std::text::text::LetterSpacingInput::INDEX),
+					Some(TaggedValue::F64(2.)),
+					"shape {shape} lost its letter spacing"
+				);
+			}
+			if shape >= 9 {
+				assert_eq!(
+					input_value(graphene_std::text::text::LetterTiltInput::INDEX),
+					Some(TaggedValue::F64(10.)),
+					"shape {shape} lost its letter tilt"
+				);
+			}
 		}
 	}
 
