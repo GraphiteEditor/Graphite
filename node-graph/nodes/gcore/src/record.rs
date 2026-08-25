@@ -1484,6 +1484,56 @@ mod tests {
 		}
 	}
 
+	/// The compiler clears an input's bit when its edge reads the addressed
+	/// lane; the batch must then re-evaluate that edge per lane, since hoisting
+	/// a lane-varying value serves the range's first lane to all of them.
+	#[test]
+	fn batch_rebinds_an_eager_input_the_compiler_cannot_prove_invariant() {
+		struct CountingValue<'a>(bool, &'a std::cell::Cell<u32>);
+
+		impl<Input> Node<Input> for CountingValue<'_> {
+			type Output = bool;
+
+			fn eval(&self, _input: &Input) -> GPoll<bool> {
+				self.1.set(self.1.get() + 1);
+				GPoll::Final(self.0)
+			}
+		}
+
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = Layout::default().with_writes(1, core_types::record::element_write::<f64>(), &[core_types::record::FieldWrite::of::<Transform>(0)]);
+		reserve_for(&[&layout]);
+		let content = LeveledTransformSource {
+			layout: layout.clone(),
+			rows: [(1., 10.), (2., 30.), (3., 20.)]
+				.iter()
+				.map(|&(element, x)| (element, DAffine2::from_translation(glam::DVec2::new(x, 0.))))
+				.collect(),
+		};
+		let evals = std::cell::Cell::new(0u32);
+		let mut node = MirrorNode::new(RecordSource::new(content, &layout, &layout), CountingValue(true, &evals));
+		let resolved = core_types::record::RecordLayout {
+			lane_invariant: 0,
+			..mirror_layout_meta().resolve(&[Some(&layout)])
+		};
+		<_ as Node<ContextImpl<'static>>>::set_layout(&mut node, resolved);
+
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		let head = ctx.index_head();
+		let scoped = ctx.promoted(&head, 0);
+
+		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 6 * out.lane_stride() / 8];
+		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..6, Some(&mut scratch)) else {
+			panic!("expected a filled batch");
+		};
+		assert_eq!(batch.len(), 6);
+		assert_eq!(evals.get(), 6, "a lane-varying eager value binds once per lane");
+	}
+
 	#[test]
 	fn batch_binds_eager_inputs_once() {
 		struct CountingValue<'a>(bool, &'a std::cell::Cell<u32>);
