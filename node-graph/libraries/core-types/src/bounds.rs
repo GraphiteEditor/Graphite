@@ -1,4 +1,5 @@
 use crate::Color;
+use crate::lane::LaneSource;
 use glam::{DAffine2, DVec2};
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
@@ -49,5 +50,62 @@ impl BoundingBox for Color {
 	fn thumbnail_bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
 		// A solid color has no intrinsic extent, so its container's other content frames the thumbnail
 		RenderBoundingBox::Infinite
+	}
+}
+
+/// Combined bounding box of a lane source's elements, composing each lane's
+/// transform attribute with the given transform.
+pub fn lane_bounding_box<S: LaneSource>(source: &S, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox
+where
+	S::Element: BoundingBox,
+{
+	let mut combined_bounds = None;
+
+	for lane in 0..source.lane_count() {
+		let Some(element) = source.element(lane) else { continue };
+		let lane_transform: DAffine2 = source.attr::<crate::attribute::Transform>(lane);
+		match element.bounding_box(transform * lane_transform, include_stroke) {
+			RenderBoundingBox::None => continue,
+			RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
+			RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
+				Some(existing) => combined_bounds = Some(crate::math::quad::Quad::combine_bounds(existing, bounds)),
+				None => combined_bounds = Some(bounds),
+			},
+		}
+	}
+
+	match combined_bounds {
+		Some(bounds) => RenderBoundingBox::Rectangle(bounds),
+		None => RenderBoundingBox::None,
+	}
+}
+
+/// As [`lane_bounding_box`], but `Infinite` lanes are skipped (rather than
+/// propagating outward) so a finite sibling in a mixed group dictates the
+/// framing.
+pub fn lane_thumbnail_bounding_box<S: LaneSource>(source: &S, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox
+where
+	S::Element: BoundingBox,
+{
+	let mut combined_bounds = None;
+	let mut any_infinite = false;
+
+	for lane in 0..source.lane_count() {
+		let Some(element) = source.element(lane) else { continue };
+		let lane_transform: DAffine2 = source.attr::<crate::attribute::Transform>(lane);
+		match element.thumbnail_bounding_box(transform * lane_transform, include_stroke) {
+			RenderBoundingBox::None => continue,
+			RenderBoundingBox::Infinite => any_infinite = true,
+			RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
+				Some(existing) => combined_bounds = Some(crate::math::quad::Quad::combine_bounds(existing, bounds)),
+				None => combined_bounds = Some(bounds),
+			},
+		}
+	}
+
+	match (combined_bounds, any_infinite) {
+		(Some(bounds), _) => RenderBoundingBox::Rectangle(bounds),
+		(None, true) => RenderBoundingBox::Infinite,
+		(None, false) => RenderBoundingBox::None,
 	}
 }

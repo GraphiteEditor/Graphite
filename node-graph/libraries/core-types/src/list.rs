@@ -1,6 +1,5 @@
 use crate::attribute::Attribute as _;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
-use crate::math::quad::Quad;
 use crate::transform::ApplyTransform;
 use dyn_any::{StaticType, StaticTypeSized};
 use glam::DAffine2;
@@ -1105,48 +1104,12 @@ impl<T> List<T> {
 }
 
 impl<T: BoundingBox> BoundingBox for List<T> {
-	/// Computes the combined bounding box of all items, composing each item's transform attribute with the given transform.
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
-		let mut combined_bounds = None;
-
-		for (element, item_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
-			match element.bounding_box(transform * item_transform, include_stroke) {
-				RenderBoundingBox::None => continue,
-				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
-				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
-					Some(existing) => combined_bounds = Some(Quad::combine_bounds(existing, bounds)),
-					None => combined_bounds = Some(bounds),
-				},
-			}
-		}
-
-		match combined_bounds {
-			Some(bounds) => RenderBoundingBox::Rectangle(bounds),
-			None => RenderBoundingBox::None,
-		}
+		crate::bounds::lane_bounding_box(self, transform, include_stroke)
 	}
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
-		// `Infinite` items are skipped here (rather than propagating outward as in `bounding_box`) so a finite sibling in a mixed group dictates the framing
-		let mut combined_bounds = None;
-		let mut any_infinite = false;
-
-		for (element, item_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
-			match element.thumbnail_bounding_box(transform * item_transform, include_stroke) {
-				RenderBoundingBox::None => continue,
-				RenderBoundingBox::Infinite => any_infinite = true,
-				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
-					Some(existing) => combined_bounds = Some(Quad::combine_bounds(existing, bounds)),
-					None => combined_bounds = Some(bounds),
-				},
-			}
-		}
-
-		match (combined_bounds, any_infinite) {
-			(Some(bounds), _) => RenderBoundingBox::Rectangle(bounds),
-			(None, true) => RenderBoundingBox::Infinite,
-			(None, false) => RenderBoundingBox::None,
-		}
+		crate::bounds::lane_thumbnail_bounding_box(self, transform, include_stroke)
 	}
 }
 

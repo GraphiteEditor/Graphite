@@ -1919,6 +1919,16 @@ impl<'a, T: 'static> crate::lane::LaneSource for RunView<'a, T> {
 	}
 }
 
+impl<T: crate::bounds::BoundingBox + 'static> crate::bounds::BoundingBox for RunView<'_, T> {
+	fn bounding_box(&self, transform: glam::DAffine2, include_stroke: bool) -> crate::bounds::RenderBoundingBox {
+		crate::bounds::lane_bounding_box(self, transform, include_stroke)
+	}
+
+	fn thumbnail_bounding_box(&self, transform: glam::DAffine2, include_stroke: bool) -> crate::bounds::RenderBoundingBox {
+		crate::bounds::lane_thumbnail_bounding_box(self, transform, include_stroke)
+	}
+}
+
 /// The records a group stores: a single homogeneous run, or a list of
 /// segments.
 #[derive(Clone, Debug)]
