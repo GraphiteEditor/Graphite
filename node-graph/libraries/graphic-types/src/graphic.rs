@@ -200,21 +200,6 @@ pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 	graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
 }
 
-/// Look up the paint graphics stored under attribute for a vector item, in the canonical `List<Graphic>` form.
-pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str) -> Option<Cow<'a, List<Graphic>>> {
-	list.attribute::<Option<List<Graphic>>>(attribute, index)
-		.and_then(|optional| optional.as_ref())
-		.map(Cow::Borrowed)
-		// Treat a blank paint attribute as absent so an empty attribute doesn't count as painted
-		.filter(|graphic_list| is_paint_present(graphic_list))
-}
-
-/// Whether the item carries a non-blank canonical `List<Graphic>` paint attribute,
-/// checked by borrowing without cloning the renderable list.
-pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
-	graphic_list_at(list, index, attribute).is_some()
-}
-
 /// Look up the paint graphics stored under the marker `A`, in the canonical `List<Graphic>` form.
 pub fn paint_graphics<'a, A, S>(source: &'a S, index: usize) -> Option<Cow<'a, List<Graphic>>>
 where
