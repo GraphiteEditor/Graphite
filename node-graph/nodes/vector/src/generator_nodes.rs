@@ -231,47 +231,24 @@ fn heart(
 	#[hard(0..1.2)]
 	taper_length: Item<f64>,
 ) -> Item<Vector> {
-	let radius = *radius.element();
-	let cleavage_depth = *cleavage_depth.element();
-	let lobe_fullness = *lobe_fullness.element();
-	let shoulder_height = *shoulder_height.element();
-	let shoulder_width = *shoulder_width.element();
-	let upper_curvature = *upper_curvature.element();
-	let lower_curvature = *lower_curvature.element();
-	let taper_length = *taper_length.element();
-	let cleavage_angle = cleavage_angle.element().to_radians();
-	let point_sharpness = point_sharpness.element().to_radians();
-	let shoulder_tilt = shoulder_tilt.element().to_radians();
+	let bezpath = shapes::heart_bezpath(
+		DVec2::ZERO,
+		*radius.element(),
+		shapes::HeartProportions {
+			cleavage_depth: *cleavage_depth.element(),
+			cleavage_angle: cleavage_angle.element().to_radians(),
+			lobe_fullness: *lobe_fullness.element(),
+			shoulder_height: *shoulder_height.element(),
+			shoulder_width: *shoulder_width.element(),
+			shoulder_tilt: shoulder_tilt.element().to_radians(),
+			upper_curvature: *upper_curvature.element(),
+			lower_curvature: *lower_curvature.element(),
+			point_sharpness: point_sharpness.element().to_radians(),
+			taper_length: *taper_length.element(),
+		},
+	);
 
-	// Anchor points for the right half plus the y-axis cusps, in normalized coordinates (y points downward).
-	let top = DVec2::new(0., -1. + cleavage_depth);
-	let shoulder = DVec2::new(shoulder_width, -shoulder_height);
-	let bottom = DVec2::new(0., 1.);
-
-	// Unit tangent directions, all measured from the upward vertical.
-	let top_dir = DVec2::new(cleavage_angle.sin(), -cleavage_angle.cos());
-	let bottom_dir_out = DVec2::new(point_sharpness.sin(), -point_sharpness.cos());
-	let shoulder_up = DVec2::new(shoulder_tilt.sin(), -shoulder_tilt.cos());
-	let shoulder_down = -shoulder_up;
-
-	// Cubic Bezier control points for the right half.
-	let c1 = top + top_dir * lobe_fullness;
-	let c2 = shoulder + shoulder_up * upper_curvature;
-	let c3 = shoulder + shoulder_down * lower_curvature;
-	let c4 = bottom + bottom_dir_out * taper_length;
-
-	let mirror = |p: DVec2| DVec2::new(-p.x, p.y);
-
-	// Closed clockwise path: T → S → B → S' → T. Joins at T and B are sharp; joins at the shoulders are G1.
-	let manipulator_groups = [
-		subpath::ManipulatorGroup::new(top * radius, Some(mirror(c1) * radius), Some(c1 * radius)),
-		subpath::ManipulatorGroup::new(shoulder * radius, Some(c2 * radius), Some(c3 * radius)),
-		subpath::ManipulatorGroup::new(bottom * radius, Some(c4 * radius), Some(mirror(c4) * radius)),
-		subpath::ManipulatorGroup::new(mirror(shoulder) * radius, Some(mirror(c3) * radius), Some(mirror(c2) * radius)),
-	]
-	.to_vec();
-
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new(manipulator_groups, true)))
+	Item::new_from_element(Vector::from_bezpath(bezpath))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
