@@ -195,6 +195,16 @@ pub struct GizmoBehavior {
 	/// its line from the origin are suppressed. A grid marks its edge with a dashed line and a circle draws
 	/// the band around its circumference; neither has a handle sitting at a point.
 	pub draws_own_handle: bool,
+	/// Set when this gizmo is grabbed anywhere along a region rather than at a point -- a circle's whole
+	/// circumference, a grid's whole edge.
+	///
+	/// This decides priority when two handles overlap, and it has to, because the distances they report are
+	/// not the same measurement. A region reports how far the cursor is from the region: on a circumference
+	/// that is near zero everywhere along it. A point reports how far the cursor is from that point. An arc's
+	/// sweep endpoints sit *on* its circumference, so comparing the two numbers hands every grab to the radius
+	/// and the endpoints can never be taken hold of. A point target therefore wins outright over a region
+	/// target, and distance only separates handles of the same kind.
+	pub extended_target: bool,
 }
 
 impl GizmoBehavior {
@@ -208,6 +218,7 @@ impl GizmoBehavior {
 		drag: None,
 		angle_deadzone: 0.,
 		draws_own_handle: false,
+		extended_target: false,
 	};
 }
 
@@ -243,8 +254,8 @@ const CIRCLE_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	position_hint: PositionHint::ParameterDerived,
 }];
 
-// Only the sides dial: a polygon's radius is already adjustable via the transform cage, and a
-// `(radius, 0)` slider handle lands off the polygon's geometry, so it adds confusion without value.
+// The radius is grabbable at every corner rather than at a single `(radius, 0)` handle, which would
+// land off the polygon's geometry -- see `polygon_radius_handles`.
 const POLYGON_GIZMOS: &[GizmoInfo] = &[
 	GizmoInfo {
 		parameter_index: regular_polygon::SidesInput::INDEX,
@@ -486,5 +497,17 @@ mod tests {
 	fn unregistered_node_returns_no_gizmos() {
 		// The Fill node is not a generator with gizmos, so it must return an empty slice.
 		assert!(get_gizmo_info(&graphene_std::vector_nodes::fill::IDENTIFIER).is_empty());
+	}
+
+	#[test]
+	fn arc_sweep_outranks_the_radius_band_it_sits_on() {
+		let infos = get_gizmo_info(&generator_nodes::arc::IDENTIFIER);
+		let radius = infos.iter().find(|info| info.name == "Radius").expect("arc has a radius gizmo");
+		let sweep = infos.iter().find(|info| info.name == "Sweep").expect("arc has a sweep gizmo");
+
+		// The sweep endpoints lie on the circumference the radius is grabbed along, so the two overlap
+		// everywhere the sweep is reachable. Only the point/region distinction separates them.
+		assert!(radius.behavior.extended_target, "the radius is grabbed along the whole circumference");
+		assert!(!sweep.behavior.extended_target, "the sweep is grabbed at its endpoints");
 	}
 }
