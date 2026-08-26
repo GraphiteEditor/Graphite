@@ -1,15 +1,13 @@
 use crate::messages::message::Message;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::resize::viewport_zoom;
+use crate::messages::tool::common_functionality::resize::{viewport_zoom, window_aligned_transform_set};
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeToolModifierKey;
 use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
-use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
@@ -69,12 +67,10 @@ impl Heart {
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 
-			responses.add(GraphOperationMessage::TransformSet {
-				layer,
-				transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
-				transform_in: TransformIn::Viewport,
-				skip_rerender: false,
-			});
+			// Through the shared helper, as every other aspect-stretched shape does. Building the transform by
+			// hand sends a bare aspect ratio through `TransformIn::Viewport`, which divides by the zoom, so the
+			// net document scale came out as `aspect / zoom`. The helper multiplies by the zoom first.
+			responses.add(window_aligned_transform_set(document, layer, (start + end) / 2., scale));
 		}
 	}
 }
