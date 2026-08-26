@@ -405,8 +405,8 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 /// The identifier is cloned at call time because [`ProtoNodeIdentifier`]s are not trivially
 /// usable as `'static` references in a `const`. This is cheap (the identifiers are backed by
 /// `&'static str`) and only runs when a selection changes.
-pub fn registered_gizmo_nodes() -> Vec<(ProtoNodeIdentifier, &'static [GizmoInfo])> {
-	vec![
+pub fn registered_gizmo_nodes() -> [(ProtoNodeIdentifier, &'static [GizmoInfo]); 7] {
+	[
 		(generator_nodes::circle::IDENTIFIER, CIRCLE_GIZMOS),
 		(generator_nodes::regular_polygon::IDENTIFIER, POLYGON_GIZMOS),
 		(generator_nodes::star::IDENTIFIER, STAR_GIZMOS),
