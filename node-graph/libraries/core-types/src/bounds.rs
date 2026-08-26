@@ -1,5 +1,5 @@
 use crate::Color;
-use crate::lane::LaneSource;
+use crate::lane::{LaneColumn, LaneSource};
 use glam::{DAffine2, DVec2};
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
@@ -61,9 +61,10 @@ where
 {
 	let mut combined_bounds = None;
 
+	let transforms = source.column::<crate::attribute::Transform>();
 	for lane in 0..source.lane_count() {
 		let Some(element) = source.element(lane) else { continue };
-		let lane_transform: DAffine2 = source.attr::<crate::attribute::Transform>(lane);
+		let lane_transform: DAffine2 = transforms.get(lane);
 		match element.bounding_box(transform * lane_transform, include_stroke) {
 			RenderBoundingBox::None => continue,
 			RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
@@ -90,9 +91,10 @@ where
 	let mut combined_bounds = None;
 	let mut any_infinite = false;
 
+	let transforms = source.column::<crate::attribute::Transform>();
 	for lane in 0..source.lane_count() {
 		let Some(element) = source.element(lane) else { continue };
-		let lane_transform: DAffine2 = source.attr::<crate::attribute::Transform>(lane);
+		let lane_transform: DAffine2 = transforms.get(lane);
 		match element.thumbnail_bounding_box(transform * lane_transform, include_stroke) {
 			RenderBoundingBox::None => continue,
 			RenderBoundingBox::Infinite => any_infinite = true,

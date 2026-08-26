@@ -248,16 +248,32 @@ pub struct LanePaint<'a> {
 impl<'a> LanePaint<'a> {
 	pub const NONE: Self = Self { fill: None, stroke: None };
 
-	/// The lane's present, non-blank paint.
-	pub fn read<S: LaneSource>(source: &'a S, index: usize) -> Self {
+	pub fn is_present(&self) -> bool {
+		self.fill.is_some() || self.stroke.is_some()
+	}
+}
+
+/// A source's fill and stroke columns, resolved once for per-lane reads.
+pub struct PaintColumns<'a, S: LaneSource + 'a> {
+	fill: S::Column<'a, Fill>,
+	stroke: S::Column<'a, Stroke>,
+}
+
+impl<'a, S: LaneSource> PaintColumns<'a, S> {
+	pub fn new(source: &'a S) -> Self {
 		Self {
-			fill: paint_graphics::<Fill, _>(source, index),
-			stroke: paint_graphics::<Stroke, _>(source, index),
+			fill: source.column::<Fill>(),
+			stroke: source.column::<Stroke>(),
 		}
 	}
 
-	pub fn is_present(&self) -> bool {
-		self.fill.is_some() || self.stroke.is_some()
+	/// The lane's present, non-blank paint.
+	pub fn read(&self, lane: usize) -> LanePaint<'a> {
+		let present = |value: Option<Option<&'a List<Graphic>>>| value.flatten().filter(|list| is_paint_present(list));
+		LanePaint {
+			fill: present(self.fill.try_get(lane)),
+			stroke: present(self.stroke.try_get(lane)),
+		}
 	}
 }
 

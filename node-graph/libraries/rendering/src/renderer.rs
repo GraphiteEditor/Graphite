@@ -22,7 +22,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{LanePaint, PaintOverlay, group_to_legacy_list, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
+use graphic_types::graphic::{LanePaint, PaintColumns, PaintOverlay, group_to_legacy_list, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
@@ -626,20 +626,13 @@ struct PaintReach<'a> {
 impl<'a> PaintReach<'a> {
 	const NONE: Self = Self { paint: LanePaint::NONE, hops: 0 };
 
-	fn read<S: LaneSource>(source: &'a S, index: usize) -> Self {
-		Self {
-			paint: LanePaint::read(source, index),
-			hops: 2,
-		}
-	}
-
 	/// The lane's effective reach: an inherited paint stays authoritative
 	/// (lane paint below a push's origin is inert in the legacy model), an
 	/// absent one reads the lane's own paint.
-	fn for_lane<S: LaneSource>(self, source: &'a S, index: usize) -> Self {
+	fn for_lane<S: LaneSource>(self, columns: &PaintColumns<'a, S>, index: usize) -> Self {
 		match self.paint.is_present() {
 			true => self,
-			false => Self::read(source, index),
+			false => Self { paint: columns.read(index), hops: 2 },
 		}
 	}
 
@@ -1109,6 +1102,7 @@ fn render_graphic_svg<S: LaneSource<Element = Graphic>>(source: &S, render: &mut
 }
 
 fn render_graphic_svg_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, inherited: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
+	let paint_columns = PaintColumns::new(source);
 	let mut mask_state = None;
 
 	for index in 0..source.lane_count() {
@@ -1117,7 +1111,7 @@ fn render_graphic_svg_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, 
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 		let element = source.element(index).unwrap();
-		let reach = inherited.for_lane(source, index);
+		let reach = inherited.for_lane(&paint_columns, index);
 
 		render.parent_tag(
 			"g",
@@ -1170,6 +1164,7 @@ fn render_graphic_vello<S: LaneSource<Element = Graphic>>(source: &S, scene: &mu
 }
 
 fn render_graphic_vello_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, inherited: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+	let paint_columns = PaintColumns::new(source);
 	let mut mask_element_and_transform = None;
 
 	for index in 0..source.lane_count() {
@@ -1179,7 +1174,7 @@ fn render_graphic_vello_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 		let element = source.element(index).unwrap();
-		let reach = inherited.for_lane(source, index);
+		let reach = inherited.for_lane(&paint_columns, index);
 
 		let mut layer = false;
 
@@ -1253,12 +1248,13 @@ fn collect_graphic_metadata<S: LaneSource<Element = Graphic>>(source: &S, metada
 }
 
 fn collect_graphic_metadata_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, inherited: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+	let paint_columns = PaintColumns::new(source);
 	for index in 0..source.lane_count() {
 		let item_transform: DAffine2 = source.attr::<Transform>(index);
 		let layer_path: &[NodeId] = source.attr::<EditorLayerPath>(index);
 		let layer = layer_path.last().copied();
 		let element = source.element(index).unwrap();
-		let reach = inherited.for_lane(source, index);
+		let reach = inherited.for_lane(&paint_columns, index);
 
 		let mut footprint = footprint;
 		footprint.transform *= item_transform;
@@ -1278,7 +1274,7 @@ fn collect_graphic_metadata_with<'a, S: LaneSource<Element = Graphic>>(source: &
 		for index in 0..source.lane_count() {
 			let item_transform: DAffine2 = source.attr::<Transform>(index);
 			let element = source.element(index).unwrap();
-			let reach = inherited.for_lane(source, index);
+			let reach = inherited.for_lane(&paint_columns, index);
 
 			let mut new_click_targets = Vec::new();
 			add_element_upstream_click_targets(element, reach, &mut new_click_targets);
@@ -1307,10 +1303,11 @@ fn add_graphic_upstream_click_targets<S: LaneSource<Element = Graphic>>(source: 
 }
 
 fn add_graphic_upstream_click_targets_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, inherited: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
+	let paint_columns = PaintColumns::new(source);
 	for index in 0..source.lane_count() {
 		let item_transform: DAffine2 = source.attr::<Transform>(index);
 		let element = source.element(index).unwrap();
-		let reach = inherited.for_lane(source, index);
+		let reach = inherited.for_lane(&paint_columns, index);
 		let mut new_click_targets = Vec::new();
 
 		add_element_upstream_click_targets(element, reach, &mut new_click_targets);
@@ -1328,10 +1325,11 @@ fn add_graphic_upstream_outline_targets<S: LaneSource<Element = Graphic>>(source
 }
 
 fn add_graphic_upstream_outline_targets_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, inherited: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
+	let paint_columns = PaintColumns::new(source);
 	for index in 0..source.lane_count() {
 		let item_transform: DAffine2 = source.attr::<Transform>(index);
 		let element = source.element(index).unwrap();
-		let reach = inherited.for_lane(source, index);
+		let reach = inherited.for_lane(&paint_columns, index);
 		let mut new_outlines = Vec::new();
 
 		add_element_upstream_outline_targets(element, reach, &mut new_outlines);
