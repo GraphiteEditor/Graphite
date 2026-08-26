@@ -267,7 +267,7 @@ where
 	List::new_from_item(
 		Item::new_from_element(Raster::new_cpu(image))
 			.with_attribute(ATTR_TRANSFORM, footprint.transform)
-			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_list),
+			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, Some(upstream_graphic_list)),
 	)
 }
 

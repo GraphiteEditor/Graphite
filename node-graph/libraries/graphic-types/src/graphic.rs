@@ -206,13 +206,9 @@ pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str
 		.filter(|graphic_list| is_paint_present(graphic_list))
 }
 
-/// The paint attribute's list, in either transitional storage form: the
-/// canonical `List<Graphic>` value, or the fill marker's owned
-/// `Option<List<Graphic>>` clone as the render bridge copies it.
+/// The paint attribute's list. Storage is the paint marker's owned
+/// `Option<List<Graphic>>` form, which every writer produces.
 fn paint_at<'a, T>(list: &'a List<T>, index: usize, attribute: &str) -> Option<&'a List<Graphic>> {
-	if let Some(graphic_list) = list.attribute::<List<Graphic>>(attribute, index) {
-		return Some(graphic_list);
-	}
 	list.attribute::<Option<List<Graphic>>>(attribute, index).and_then(|optional| optional.as_ref())
 }
 
@@ -222,14 +218,14 @@ pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool 
 	paint_at(list, index, attribute).is_some_and(is_paint_present)
 }
 
-/// Stores a paint attribute in its canonical `List<Graphic>` form, the only representation paint readers accept.
+/// Stores a paint attribute in the paint marker's owned form, the only representation paint readers accept.
 pub fn set_paint_attribute(attributes: &mut ItemAttributeValues, key: &str, paint: impl IntoGraphicList) {
-	attributes.insert(key, paint.into_graphic_list());
+	attributes.insert(key, Some(paint.into_graphic_list()));
 }
 
-/// Stores a paint attribute at a list index in its canonical `List<Graphic>` form, the only representation paint readers accept.
+/// Stores a paint attribute at a list index in the paint marker's owned form, the only representation paint readers accept.
 pub fn set_paint_attribute_at<T>(list: &mut List<T>, index: usize, key: &str, paint: impl IntoGraphicList) {
-	list.set_attribute(key, index, paint.into_graphic_list());
+	list.set_attribute(key, index, Some(paint.into_graphic_list()));
 }
 
 /// Bake the provided transform into the per-item transforms of the paint graphics stored under the
@@ -256,9 +252,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 	}
 
 	for paint_key in [ATTR_FILL, ATTR_STROKE] {
-		if let Some(graphics) = attributes.get_mut::<List<Graphic>>(paint_key) {
-			bake_graphic_paint_transform(graphics, transform);
-		} else if let Some(Some(graphics)) = attributes.get_mut::<Option<List<Graphic>>>(paint_key) {
+		if let Some(Some(graphics)) = attributes.get_mut::<Option<List<Graphic>>>(paint_key) {
 			bake_graphic_paint_transform(graphics, transform);
 		}
 	}

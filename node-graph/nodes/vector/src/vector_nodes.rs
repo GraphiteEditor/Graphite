@@ -1427,13 +1427,13 @@ fn solidify_stroke_core(graphic_list: List<Graphic>) -> List<Vector> {
 				vector.stroke = None;
 				let mut fill_attributes = attributes.clone();
 				// No stroke remains on the fill row
-				fill_attributes.remove::<List<Graphic>>(ATTR_STROKE);
+				fill_attributes.remove::<Option<List<Graphic>>>(ATTR_STROKE);
 				Item::from_parts(vector, fill_attributes)
 			});
 
 			let mut stroke_attributes = attributes;
 			// Drop the original fill and use the stroke paint to fill the outlined stroke
-			stroke_attributes.remove::<List<Graphic>>(ATTR_FILL);
+			stroke_attributes.remove::<Option<List<Graphic>>>(ATTR_FILL);
 			stroke_attributes.rename(ATTR_STROKE, ATTR_FILL);
 
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
@@ -1461,7 +1461,7 @@ fn solidify_stroke_core(graphic_list: List<Graphic>) -> List<Vector> {
 			}
 		}
 
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
+		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, Some(graphic_list));
 	}
 
 	output
@@ -1523,12 +1523,21 @@ fn emit_legacy_lane<'e>(
 	};
 
 	let element = output.element(lane).cloned().unwrap_or_default();
-	let fill = output.attribute::<List<Graphic>>(ATTR_FILL, lane).map(|paint| park_paint(arena, paint.clone())).transpose()?;
-	let stroke = output.attribute::<List<Graphic>>(ATTR_STROKE, lane).map(|paint| park_paint(arena, paint.clone())).transpose()?;
+	let fill = output
+		.attribute::<Option<List<Graphic>>>(ATTR_FILL, lane)
+		.and_then(|paint| paint.as_ref())
+		.map(|paint| park_paint(arena, paint.clone()))
+		.transpose()?;
+	let stroke = output
+		.attribute::<Option<List<Graphic>>>(ATTR_STROKE, lane)
+		.and_then(|paint| paint.as_ref())
+		.map(|paint| park_paint(arena, paint.clone()))
+		.transpose()?;
 	let layer_path: Vec<NodeId> = output.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, lane).cloned().unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	let merged_layers = output
-		.attribute::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, lane)
+		.attribute::<Option<List<Graphic>>>(ATTR_EDITOR_MERGED_LAYERS, lane)
+		.and_then(|layers| layers.as_ref())
 		.map(|layers| arena.alloc(layers.clone()).ok_or_else(exhausted).map(|(parked, _)| parked))
 		.transpose()?;
 
@@ -1813,8 +1822,16 @@ fn flatten_path_core<'e>(
 		bake_paint_transforms(&mut attributes, source_transform);
 
 		let carrier = List::new_from_item(Item::from_parts(Vector::default(), attributes));
-		fill = carrier.attribute::<List<Graphic>>(ATTR_FILL, 0).map(|paint| park_paint(arena, paint.clone())).transpose()?;
-		stroke = carrier.attribute::<List<Graphic>>(ATTR_STROKE, 0).map(|paint| park_paint(arena, paint.clone())).transpose()?;
+		fill = carrier
+			.attribute::<Option<List<Graphic>>>(ATTR_FILL, 0)
+			.and_then(|paint| paint.as_ref())
+			.map(|paint| park_paint(arena, paint.clone()))
+			.transpose()?;
+		stroke = carrier
+			.attribute::<Option<List<Graphic>>>(ATTR_STROKE, 0)
+			.and_then(|paint| paint.as_ref())
+			.map(|paint| park_paint(arena, paint.clone()))
+			.transpose()?;
 
 		// Adopt the last input item's layer so the editor can also bucket clicks under a contributing child layer
 		layer_path = flattened.attribute_cloned_or_default::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, primary);
@@ -2995,7 +3012,7 @@ fn morph_core(content: List<Graphic>, progression: f64, reverse: bool, distribut
 
 		let mut attributes = content.clone_item_attributes(endpoint_index);
 		attributes.insert(ATTR_TRANSFORM, lerped_transform);
-		attributes.insert(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content);
+		attributes.insert(ATTR_EDITOR_MERGED_LAYERS, Some(graphic_list_content));
 
 		return List::new_from_item(Item::from_parts(endpoint_element.clone(), attributes));
 	}
@@ -3186,13 +3203,13 @@ fn morph_core(content: List<Graphic>, progression: f64, reverse: bool, distribut
 		.with_attribute(ATTR_OPACITY_FILL, lerped_fill)
 		.with_attribute(ATTR_CLIPPING_MASK, lerped_clip)
 		.with_attribute(ATTR_EDITOR_LAYER_PATH, layer_path)
-		.with_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content);
+		.with_attribute(ATTR_EDITOR_MERGED_LAYERS, Some(graphic_list_content));
 
 	if let Some(fill) = fill_paint {
-		item.set_attribute(ATTR_FILL, fill);
+		item.set_attribute(ATTR_FILL, Some(fill));
 	}
 	if let Some(stroke) = stroke_paint {
-		item.set_attribute(ATTR_STROKE, stroke);
+		item.set_attribute(ATTR_STROKE, Some(stroke));
 	}
 
 	List::new_from_item(item)
@@ -3885,10 +3902,10 @@ mod test {
 
 		let item_a = Item::new_from_element(rect())
 			.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY)
-			.with_attribute(ATTR_FILL, List::new_from_element(Color::RED).into_graphic_list());
+			.with_attribute(ATTR_FILL, Some(List::new_from_element(Color::RED).into_graphic_list()));
 		let item_b = Item::new_from_element(rect())
 			.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation((-100., -100.).into()))
-			.with_attribute(ATTR_FILL, List::new_from_element(Color::BLUE).into_graphic_list());
+			.with_attribute(ATTR_FILL, Some(List::new_from_element(Color::BLUE).into_graphic_list()));
 
 		let mut content = List::new_from_item(item_a);
 		content.push(item_b);

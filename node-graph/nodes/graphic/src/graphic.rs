@@ -224,8 +224,8 @@ where
 	if mirrored {
 		transform = reflected_transform.expect("a mirrored lane exists only under a reflection") * transform;
 	}
-	let fill = park_paint(legacy.attribute::<List<Graphic>>(graphic_types::ATTR_FILL, source).cloned())?;
-	let stroke = park_paint(legacy.attribute::<List<Graphic>>(graphic_types::ATTR_STROKE, source).cloned())?;
+	let fill = park_paint(legacy.attribute::<Option<List<Graphic>>>(graphic_types::ATTR_FILL, source).cloned().flatten())?;
+	let stroke = park_paint(legacy.attribute::<Option<List<Graphic>>>(graphic_types::ATTR_STROKE, source).cloned().flatten())?;
 	let layer_path: Vec<NodeId> = legacy.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, source).map(|path| path.clone()).unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 
@@ -624,7 +624,7 @@ pub fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Gr
 			}
 		}
 
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
+		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, Some(graphic_list));
 	}
 
 	output
