@@ -1,8 +1,8 @@
 use crate::markers::{ATTR_FILL, ATTR_STROKE, Fill, Stroke};
-use core_types::attribute::Attribute;
+use core_types::attribute::{Attribute, Opacity};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::lane::LaneSource;
+use core_types::lane::{LaneColumn, LaneSource};
 use core_types::list::{AttributeValueDyn, Item, ItemAttributeValues, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
@@ -11,7 +11,6 @@ use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
-use std::borrow::Cow;
 use vector_types::GradientStops;
 pub use vector_types::Vector;
 
@@ -201,14 +200,13 @@ pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 }
 
 /// Look up the paint graphics stored under the marker `A`, in the canonical `List<Graphic>` form.
-pub fn paint_graphics<'a, A, S>(source: &'a S, index: usize) -> Option<Cow<'a, List<Graphic>>>
+pub fn paint_graphics<'a, A, S>(source: &'a S, index: usize) -> Option<&'a List<Graphic>>
 where
 	S: LaneSource,
 	A: Attribute<Value<'a> = Option<&'a List<Graphic>>>,
 {
 	source
 		.attr::<A>(index)
-		.map(Cow::Borrowed)
 		// Treat a blank paint attribute as absent so an empty attribute doesn't count as painted
 		.filter(|graphic_list| is_paint_present(graphic_list))
 }
@@ -221,6 +219,110 @@ where
 	A: Attribute<Value<'a> = Option<&'a List<Graphic>>>,
 {
 	paint_graphics::<A, S>(source, index).is_some()
+}
+
+/// Whether every lane of a vector source draws as a plain clip path: fully
+/// opaque, fill absent or opaque, stroke invisible or fully transparent.
+pub fn vector_can_reduce_to_clip_path<S: LaneSource<Element = Vector>>(source: &S) -> bool {
+	(0..source.lane_count()).all(|index| {
+		let Some(element) = source.element(index) else { return false };
+		let opacity: f64 = source.attr::<Opacity>(index);
+
+		let fill_opaque_or_absent = paint_graphics::<Fill, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
+
+		let stroke_invisible_or_transparent = element.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke())
+			|| paint_graphics::<Stroke, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
+
+		opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
+	})
+}
+
+/// The paint a lane carries for its interiors, in the reference form
+/// [`PaintOverlay`] threads down.
+#[derive(Clone, Copy, Default)]
+pub struct LanePaint<'a> {
+	pub fill: Option<&'a List<Graphic>>,
+	pub stroke: Option<&'a List<Graphic>>,
+}
+
+impl<'a> LanePaint<'a> {
+	pub const NONE: Self = Self { fill: None, stroke: None };
+
+	/// The lane's present, non-blank paint.
+	pub fn read<S: LaneSource>(source: &'a S, index: usize) -> Self {
+		Self {
+			fill: paint_graphics::<Fill, _>(source, index),
+			stroke: paint_graphics::<Stroke, _>(source, index),
+		}
+	}
+
+	pub fn is_present(&self) -> bool {
+		self.fill.is_some() || self.stroke.is_some()
+	}
+}
+
+/// A source with a lane's paint forced over its fill and stroke columns,
+/// reaching the interiors the legacy conversion's paint push reached.
+pub struct PaintOverlay<'a, S> {
+	inner: &'a S,
+	paint: LanePaint<'a>,
+}
+
+impl<'a, S> PaintOverlay<'a, S> {
+	pub fn new(inner: &'a S, paint: LanePaint<'a>) -> Self {
+		Self { inner, paint }
+	}
+}
+
+pub struct PaintOverlayColumn<'a, S: LaneSource + 'a, A: Attribute> {
+	inner: S::Column<'a, A>,
+	forced: Option<A::Value<'a>>,
+}
+
+impl<'a, S: LaneSource, A: Attribute> LaneColumn<'a, A> for PaintOverlayColumn<'a, S, A> {
+	fn try_get(&self, lane: usize) -> Option<A::Value<'a>> {
+		match self.forced {
+			Some(forced) => Some(forced),
+			None => self.inner.try_get(lane),
+		}
+	}
+}
+
+/// The forced value for the marker `A`: the lane paint where `A` is this
+/// crate's fill or stroke marker, absent otherwise.
+fn forced_paint<'a, A: Attribute>(paint: LanePaint<'a>) -> Option<A::Value<'a>> {
+	let slot = match A::NAME {
+		name if name == Fill::NAME => paint.fill,
+		name if name == Stroke::NAME => paint.stroke,
+		_ => None,
+	}?;
+	// SAFETY: the census admits one value type per attribute name and panics on
+	// a conflict at registration, so a marker named `fill` or `stroke` carries
+	// this crate's `Option<&List<Graphic>>` value form.
+	Some(unsafe { std::mem::transmute_copy::<Option<&'a List<Graphic>>, A::Value<'a>>(&Some(slot)) })
+}
+
+impl<'a, S: LaneSource> LaneSource for PaintOverlay<'a, S> {
+	type Element = S::Element;
+	type Column<'b, A: Attribute>
+		= PaintOverlayColumn<'b, S, A>
+	where
+		Self: 'b;
+
+	fn lane_count(&self) -> usize {
+		self.inner.lane_count()
+	}
+
+	fn element(&self, lane: usize) -> Option<&S::Element> {
+		self.inner.element(lane)
+	}
+
+	fn column<A: Attribute>(&self) -> PaintOverlayColumn<'_, S, A> {
+		PaintOverlayColumn {
+			inner: self.inner.column::<A>(),
+			forced: forced_paint::<A>(self.paint),
+		}
+	}
 }
 
 /// Stores a paint attribute in the paint marker's owned form, the only representation paint readers accept.
@@ -449,17 +551,7 @@ impl Graphic {
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
-			Graphic::Vector(vector) => (0..vector.len()).all(|index| {
-				let Some(element) = vector.element(index) else { return false };
-				let opacity: f64 = vector.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-
-				let fill_opaque_or_absent = paint_graphics::<Fill, _>(vector, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
-
-				let stroke_invisible_or_transparent = element.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke())
-					|| paint_graphics::<Stroke, _>(vector, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
-
-				opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
-			}),
+			Graphic::Vector(vector) => vector_can_reduce_to_clip_path(vector),
 			_ => false,
 		}
 	}
@@ -1048,6 +1140,79 @@ mod tests {
 		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
 		let flattened: List<Vector> = group.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
+	}
+}
+
+#[cfg(test)]
+mod run_tests {
+	use super::*;
+	use core_types::attribute::Attribute;
+	use core_types::bounds::BoundingBox;
+	use core_types::lane::LaneSource;
+	use core_types::node::RecordBatch;
+	use core_types::record::{FieldWrite, GroupItem, Layout, RunView, element_write_hashed};
+	use glam::{DAffine2, DVec2};
+	use vector_types::subpath::Subpath;
+	use vector_types::vector::PointId;
+
+	fn unit_square_at(corner: DVec2) -> Vector {
+		Vector::from_subpath(Subpath::<PointId>::new_rectangle(corner, corner + DVec2::ONE))
+	}
+
+	#[test]
+	fn a_run_serves_the_parked_paint_reference() {
+		let paint = List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK)));
+		let vector = unit_square_at(DVec2::ZERO);
+
+		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
+		let mut bytes = vec![0u8; layout.lane_stride()];
+		// SAFETY: `bytes` is one lane of `layout`; a parked element stores its
+		// reference, and the fill field stores the marker's value form.
+		unsafe {
+			let base = bytes.as_mut_ptr();
+			base.cast::<&Vector>().write(&vector);
+			base.add(layout.offset_of(Fill::NAME, 0).unwrap()).cast::<Option<&List<Graphic>>>().write(Some(&paint));
+		}
+		// SAFETY: `bytes` holds one lane of `layout` at its stride.
+		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+		let run = RunView::<Vector>::new(&item).expect("the run holds vector elements");
+
+		assert_eq!(run.attr::<Fill>(0), Some(&paint));
+		assert_eq!(paint_graphics::<Fill, _>(&run, 0), Some(&paint));
+		assert_eq!(paint_graphics::<Stroke, _>(&run, 0), None);
+
+		let legacy = run_to_legacy_list::<Vector>(&item).expect("the run lowers to a legacy vector list");
+		assert_eq!(paint_graphics::<Fill, _>(&legacy, 0), paint_graphics::<Fill, _>(&run, 0));
+	}
+
+	#[test]
+	fn a_run_and_its_legacy_list_agree_on_bounding_boxes() {
+		let vectors = [unit_square_at(DVec2::ZERO), unit_square_at(DVec2::new(4., 4.))];
+		let transforms = [DAffine2::from_translation(DVec2::new(1., 2.)), DAffine2::from_scale(DVec2::splat(3.))];
+
+		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<core_types::attribute::Transform>(0)]);
+		let stride = layout.lane_stride();
+		let mut bytes = vec![0u8; stride * 2];
+		// SAFETY: `bytes` is `stride` per lane, and the offsets come from `layout`.
+		unsafe {
+			for lane in 0..2 {
+				let base = bytes.as_mut_ptr().add(lane * stride);
+				base.cast::<&Vector>().write(&vectors[lane]);
+				base.add(layout.offset_of(core_types::ATTR_TRANSFORM, 0).unwrap()).cast::<DAffine2>().write(transforms[lane]);
+			}
+		}
+		// SAFETY: `bytes` holds two lanes of `layout` at its stride.
+		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 2, &layout)) };
+		let run = RunView::<Vector>::new(&item).expect("the run holds vector elements");
+		let legacy = run_to_legacy_list::<Vector>(&item).expect("the run lowers to a legacy vector list");
+
+		let outer = DAffine2::from_angle(0.3);
+		for include_stroke in [false, true] {
+			let bounds = run.bounding_box(outer, include_stroke);
+			assert_eq!(bounds, legacy.bounding_box(outer, include_stroke));
+			assert!(matches!(bounds, RenderBoundingBox::Rectangle(_)));
+			assert_eq!(run.thumbnail_bounding_box(outer, include_stroke), legacy.thumbnail_bounding_box(outer, include_stroke));
+		}
 	}
 }
 

@@ -73,8 +73,8 @@ fn boolean_core<'e>(
 	};
 
 	let element = result_vector_list.element(0).cloned().unwrap_or_default();
-	let fill = park_paint(graphic_types::graphic::paint_graphics::<Fill, _>(&result_vector_list, 0).map(|paint| paint.into_owned()))?;
-	let stroke = park_paint(graphic_types::graphic::paint_graphics::<Stroke, _>(&result_vector_list, 0).map(|paint| paint.into_owned()))?;
+	let fill = park_paint(graphic_types::graphic::paint_graphics::<Fill, _>(&result_vector_list, 0).cloned())?;
+	let stroke = park_paint(graphic_types::graphic::paint_graphics::<Stroke, _>(&result_vector_list, 0).cloned())?;
 	let layer_path: Vec<NodeId> = result_vector_list.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, 0).map(|path| path.clone()).unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	// Snapshot the input layers so the renderer can recurse into them for

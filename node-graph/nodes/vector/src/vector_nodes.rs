@@ -3040,12 +3040,12 @@ fn morph_core(content: List<Graphic>, progression: f64, reverse: bool, distribut
 	let fill_paint = {
 		let source = paint_graphics::<Fill, _>(&content, source_index);
 		let target = paint_graphics::<Fill, _>(&content, target_index);
-		lerp_graphic(source.as_deref(), target.as_deref(), time)
+		lerp_graphic(source, target, time)
 	};
 	let stroke_paint = {
 		let source = paint_graphics::<StrokeAttr, _>(&content, source_index);
 		let target = paint_graphics::<StrokeAttr, _>(&content, target_index);
-		lerp_graphic(source.as_deref(), target.as_deref(), time)
+		lerp_graphic(source, target, time)
 	};
 
 	// Work directly with manipulator groups, bypassing the BezPath intermediate representation.
