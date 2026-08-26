@@ -44,7 +44,6 @@ use std::sync::{Arc, LazyLock};
 use text_nodes::markers::{Font, TextAlign};
 use vector_types::gradient::GradientSpreadMethod;
 use vector_types::markers::EditorClickTarget;
-use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1995,12 +1994,13 @@ impl Render for List<Raster<GPU>> {
 // For SVG, this is is achived by creating a truly giant rectangle.
 // For Vello, we create a layer with a placeholder transform which we
 // later replace with the current viewport transform before each render.
-impl Render for List<Color> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for (index, color) in self.iter_element_values().enumerate() {
-			let blend_mode: BlendMode = self.attr::<BlendModeAttr>(index);
-			let opacity_attr: f64 = self.attr::<Opacity>(index);
-			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
+fn render_color_svg<S: LaneSource<Element = Color>>(source: &S, render: &mut SvgRender, render_params: &RenderParams) {
+	{
+		for index in 0..source.lane_count() {
+			let Some(color) = source.element(index) else { continue };
+			let blend_mode: BlendMode = source.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = source.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 			render.leaf_tag("polyline", |attributes| {
 				// Stand-in for an infinite background. Chrome's SVG renderer keeps internal coordinates in f32 and loses
 				// precision past ~2^24 (~16.7 million), causing tile-boundary artifacts that pop in and out during panning.
@@ -2024,14 +2024,17 @@ impl Render for List<Color> {
 			});
 		}
 	}
+}
 
-	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+fn render_color_vello<S: LaneSource<Element = Color>>(source: &S, scene: &mut Scene, render_params: &RenderParams) {
+	{
 		use vello::peniko;
 
-		for (index, color) in self.iter_element_values().enumerate() {
-			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
-			let opacity_attr: f64 = self.attr::<Opacity>(index);
-			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
+		for index in 0..source.lane_count() {
+			let Some(color) = source.element(index) else { continue };
+			let blend_mode_attr: BlendMode = source.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = source.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
@@ -2052,6 +2055,16 @@ impl Render for List<Color> {
 				scene.pop_layer();
 			}
 		}
+	}
+}
+
+impl Render for List<Color> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		render_color_svg(self, render, render_params)
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		render_color_vello(self, scene, render_params)
 	}
 }
 
@@ -2155,12 +2168,10 @@ impl Render for List<GradientStops> {
 			return;
 		}
 
-		for (((index, gradient), spread_method), gradient_type) in self
-			.iter_element_values()
-			.enumerate()
-			.zip(self.iter_attribute_values_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD))
-			.zip(self.iter_attribute_values_or_default::<GradientType>(ATTR_GRADIENT_TYPE))
-		{
+		for index in 0..self.len() {
+			let Some(gradient) = self.element(index) else { continue };
+			let spread_method: GradientSpreadMethod = self.attr::<SpreadMethod>(index);
+			let gradient_type: GradientType = self.attr::<GradientTypeAttr>(index);
 			let transform: DAffine2 = self.attr::<Transform>(index);
 			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
 			let opacity_attr: f64 = self.attr::<Opacity>(index);
