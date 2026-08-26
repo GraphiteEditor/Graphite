@@ -37,10 +37,10 @@ pub fn create_artboard(
 ) -> (Artboard, Attr<Location>, Attr<Dimensions>, Attr<Background>, Attr<Clip>) {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	let content = graphic_types::graphic::group_to_legacy_list(&core_types::record::Group {
+	let content = core_types::list::List::new_from_element(Graphic::Group(core_types::record::Group {
 		row: None,
 		content: core_types::record::GroupContent::Run(item),
-	});
+	}));
 
 	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input
 	// dimensions to represent dragging from the opposite corner). Compute the corner using the raw signed

@@ -68,7 +68,16 @@ pub fn capture_to_legacy(capture: &RecordCapture, arena: &Arena) -> Option<Box<d
 		};
 		return Some(Box::new(group_to_legacy_list(&group)));
 	}
-	None.or_else(|| typed::<Artboard>(&item))
+	fn typed_artboards(item: &GroupItem) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+		let mut list = run_to_legacy_list::<Artboard>(item)?;
+		// The capture outlives the arena generation, so group content must
+		// leave in its owned legacy form.
+		for artboard in list.iter_element_values_mut() {
+			*artboard = artboard.with_legacy_groups();
+		}
+		Some(Box::new(list))
+	}
+	None.or_else(|| typed_artboards(&item))
 		.or_else(|| typed::<Vector>(&item))
 		.or_else(|| typed::<Raster<CPU>>(&item))
 		.or_else(|| typed::<Raster<GPU>>(&item))

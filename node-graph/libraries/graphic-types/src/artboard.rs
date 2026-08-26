@@ -30,7 +30,42 @@ impl Artboard {
 	pub fn into_graphic_list(self) -> List<Graphic> {
 		self.0
 	}
+
+	/// The artboard with every content group converted to its legacy form, so
+	/// the value owns all of its content free of arena borrows.
+	pub fn with_legacy_groups(&self) -> Artboard {
+		let mut content = self.0.clone();
+		for element in content.iter_element_values_mut() {
+			*element = crate::graphic::map_groups_to_legacy(element);
+		}
+		Artboard(content)
+	}
 }
+
+/// The deep clone-out for `Artboard` elements: as for `Graphic`, a plain
+/// clone of group content would carry frame pointers into the evaluation's
+/// arena, so memo and capture seams copy out the legacy-converted form.
+///
+/// # Safety
+/// `ptr` must point at a live parked `Artboard` element field.
+unsafe fn deep_clone_artboard(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
+	let artboard = unsafe { core_types::record::borrow_element::<Artboard>(core_types::record::Rec::new(ptr)) };
+	Box::new(artboard.with_legacy_groups())
+}
+
+const _: () = {
+	#[cfg(not(target_family = "wasm"))]
+	#[core_types::ctor::ctor]
+	fn register() {
+		core_types::record::register_deep_element_clone::<Artboard>(deep_clone_artboard);
+	}
+
+	#[cfg(target_family = "wasm")]
+	#[unsafe(export_name = "__node_registry_deep_element_artboard")]
+	extern "C" fn register() {
+		core_types::record::register_deep_element_clone::<Artboard>(deep_clone_artboard);
+	}
+};
 
 impl From<List<Graphic>> for Artboard {
 	fn from(content: List<Graphic>) -> Self {
