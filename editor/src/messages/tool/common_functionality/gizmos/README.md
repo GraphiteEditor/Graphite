@@ -12,6 +12,15 @@ gizmo_behaviors.rs   the shape-specific half, and the only place node geometry b
 gizmo_manager.rs     picks the right handler for the selected layer
 ```
 
+Three controls back the declarations:
+
+| `GizmoType` | Parameter | Control |
+|---|---|---|
+| `Slider` | `f64` | a handle on a ray, dragged in and out |
+| `Dial` | `u32` | a count, stepped by horizontal drag distance |
+| `Position` | `DVec2` | a draggable point |
+| `Angle` | `f64` degrees | the slider's machinery with a drag of your own |
+
 The generic layer always owns the hover/drag state machine, arbitration between overlapping gizmos,
 cursor feedback, and the write to the graph. You supply what is genuinely particular to your node, and
 often that is nothing at all.
@@ -138,8 +147,12 @@ transform is the one exception, and it moves the layer rather than the geometry.
   through, which is meaningless for a fraction-of-the-radius parameter.
 - **The transform cage sits on top of the obvious grab points.** Its corner and edge handles land where a
   circle's radius or an arc's endpoint invites the cursor, and it wins the press. Test away from them.
-- **The bounding-box `PositionHint` variants are inert.** Every migrated shape derives its handle from a
-  parameter, so `BoundingBoxCenter` and friends currently fall through to the +X axis.
+- **The bounding-box `PositionHint` variants are inert.** Every declaration so far derives its handle from
+  a parameter, so `BoundingBoxCenter` and friends still fall through to the +X axis. They are the natural
+  place to start for a node whose parameter is not a length.
+- **A `Position` handle is placed by the *parent* transform, not the layer's own.** A translation is
+  expressed in the space its transform is built from. Using the layer transform folds the value being
+  edited into the handle's position, and the handle runs away from the cursor as you drag it.
 - **Two overlapping handles are not ranked by distance alone.** A gizmo grabbed along a region reports how
   far the cursor is from that region, which is near zero everywhere along it; a point handle reports its
   real distance. Comparing those two numbers gives the region every grab. Mark the region one
@@ -147,6 +160,37 @@ transform is the one exception, and it moves the layer rather than the geometry.
   reachable at all, since they sit on the very circumference its radius is grabbed along.
 - **Nothing is drawn at rest unless something asks for it.** A slider with no overlay marks its grab
   points; one that supplies an overlay is expected to draw its own resting state.
+
+## Nodes that are not shapes
+
+The registry has no notion of a shape, but the gizmo *manager* has to live in a tool, and for a long time
+that tool was only the Shape tool. A Blur or a Transform layer is selected with the Select tool, so a
+declaration for one of those rendered nothing at all until the manager was hosted there too.
+
+Both tools now run it. If you add a gizmo to a node and see no handle, check which tool selects that kind
+of layer before you suspect the declaration.
+
+Two things behave differently on the Select tool:
+
+- **The transform cage gets first refusal on a press** everywhere except where a handle actually sits.
+  A handle inside the bounding box is checked *before* the cage, or it could never be grabbed at all.
+- **There is no `ShapeType` to key off.** The manager looks up whichever node it finds upstream of the
+  selected layer, which is exactly what makes a non-shape node work.
+
+The smallest possible example is the Blur radius, which is a length in pixels and therefore needs no
+behaviour code whatsoever:
+
+```rust
+const BLUR_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
+    parameter_index: blur::RadiusInput::INDEX,
+    gizmo_type: GizmoType::Slider,
+    name: "Radius",
+    min: Some(0.),
+    max: None,
+    behavior: GizmoBehavior::NONE,
+    position_hint: PositionHint::ParameterDerived,
+}];
+```
 
 ## Testing
 
