@@ -42,4 +42,16 @@ mod tests {
 	fn an_absent_paint_defaults_to_none() {
 		assert_eq!(<Fill as Attribute>::default(), None);
 	}
+
+	#[test]
+	fn a_paint_marker_reads_back_what_the_paint_writer_stored() {
+		use core_types::lane::LaneSource;
+
+		let paint = List::new_from_element(Graphic::default());
+		let mut list = List::new_from_element(Graphic::default());
+		crate::graphic::set_paint_attribute_at(&mut list, 0, ATTR_FILL, paint.clone());
+
+		assert_eq!(list.attr::<Fill>(0), Some(&paint));
+		assert_eq!(list.attr::<Stroke>(0), None);
+	}
 }

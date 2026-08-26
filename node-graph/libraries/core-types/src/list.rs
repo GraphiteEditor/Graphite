@@ -738,6 +738,11 @@ impl Attributes {
 			.find_map(|(k, attribute)| if k == key { attribute.get_any(index)?.downcast_ref::<T>() } else { None })
 	}
 
+	/// The whole column for the given key, resolved once for repeated lane reads.
+	fn column(&self, key: &str) -> Option<&dyn AnyAttribute> {
+		self.attributes.iter().find_map(|(k, attribute)| (k == key).then_some(&**attribute))
+	}
+
 	/// Removes the entire attribute for the given key, if present.
 	fn remove_attribute(&mut self, key: &str) {
 		if let Some(position) = self.attributes.iter().position(|(k, _)| k == key) {
@@ -1164,6 +1169,41 @@ impl<T> Default for List<T> {
 		Self {
 			element: Vec::new(),
 			attributes: Attributes::new(),
+		}
+	}
+}
+
+/// A marker's column on a [`List`], absent when the list carries no such key.
+pub struct ListColumn<'a, A: crate::attribute::Attribute> {
+	stored: Option<&'a dyn AnyAttribute>,
+	marker: std::marker::PhantomData<A>,
+}
+
+impl<'a, A: crate::attribute::Attribute> crate::lane::LaneColumn<'a, A> for ListColumn<'a, A> {
+	fn get(&self, lane: usize) -> A::Value<'a> {
+		self.stored.and_then(|column| column.get_any(lane)).and_then(A::from_stored).unwrap_or_else(A::default)
+	}
+}
+
+impl<T> crate::lane::LaneSource for List<T> {
+	type Element = T;
+	type Column<'a, A: crate::attribute::Attribute>
+		= ListColumn<'a, A>
+	where
+		Self: 'a;
+
+	fn lane_count(&self) -> usize {
+		List::len(self)
+	}
+
+	fn element(&self, lane: usize) -> Option<&T> {
+		List::element(self, lane)
+	}
+
+	fn column<A: crate::attribute::Attribute>(&self) -> ListColumn<'_, A> {
+		ListColumn {
+			stored: self.attributes.column(A::NAME),
+			marker: std::marker::PhantomData,
 		}
 	}
 }

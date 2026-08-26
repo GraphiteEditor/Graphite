@@ -8,6 +8,7 @@ pub mod context;
 pub mod extent;
 pub mod frame_table;
 pub mod gpoll;
+pub mod lane;
 pub mod list;
 pub mod math;
 pub mod memo;

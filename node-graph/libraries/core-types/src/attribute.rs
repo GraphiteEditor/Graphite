@@ -35,6 +35,11 @@ pub trait Attribute: 'static {
 		Default::default()
 	}
 
+	/// Borrows the value out of legacy list storage, whose stored form is the
+	/// owned clone [`Self::read_erased`] produces. `None` where the column is
+	/// absent or holds another type.
+	fn from_stored<'a>(stored: &'a dyn std::any::Any) -> Option<Self::Value<'a>>;
+
 	/// # Safety
 	/// `ptr` must point at a live field of this marker's value type.
 	unsafe fn read_erased(ptr: *const u8) -> Box<dyn AnyAttributeValue>;
@@ -178,6 +183,12 @@ macro_rules! attribute {
 			const NAME: &'static str = $name;
 			type Value<'e> = ::core::option::Option<&'e $value>;
 
+			fn from_stored<'a>(stored: &'a dyn ::std::any::Any) -> ::core::option::Option<Self::Value<'a>> {
+				stored
+					.downcast_ref::<::core::option::Option<<$value as ::std::borrow::ToOwned>::Owned>>()
+					.map(|owned| owned.as_ref().map(::std::borrow::Borrow::borrow))
+			}
+
 			unsafe fn read_erased(ptr: *const u8) -> ::std::boxed::Box<dyn $crate::list::AnyAttributeValue> {
 				::std::boxed::Box::new(unsafe { ptr.cast::<::core::option::Option<&$value>>().read() }.map(|value| <$value as ::std::borrow::ToOwned>::to_owned(value)))
 			}
@@ -216,6 +227,10 @@ macro_rules! attribute {
 				}
 			)?
 
+			fn from_stored<'a>(stored: &'a dyn ::std::any::Any) -> ::core::option::Option<Self::Value<'a>> {
+				stored.downcast_ref::<<$value as ::std::borrow::ToOwned>::Owned>().map(::std::borrow::Borrow::borrow)
+			}
+
 			unsafe fn read_erased(ptr: *const u8) -> ::std::boxed::Box<dyn $crate::list::AnyAttributeValue> {
 				::std::boxed::Box::new(unsafe { ptr.cast::<&$value>().read() }.to_owned())
 			}
@@ -246,6 +261,10 @@ macro_rules! attribute {
 					$default
 				}
 			)?
+
+			fn from_stored<'a>(stored: &'a dyn ::std::any::Any) -> ::core::option::Option<Self::Value<'a>> {
+				stored.downcast_ref::<$value>().copied()
+			}
 
 			unsafe fn read_erased(ptr: *const u8) -> ::std::boxed::Box<dyn $crate::list::AnyAttributeValue> {
 				::std::boxed::Box::new(unsafe { ptr.cast::<$value>().read() })
@@ -372,6 +391,10 @@ mod tests {
 		impl Attribute for Conflict {
 			const NAME: &'static str = "opacity";
 			type Value<'e> = bool;
+
+			fn from_stored<'a>(stored: &'a dyn std::any::Any) -> Option<Self::Value<'a>> {
+				stored.downcast_ref::<bool>().copied()
+			}
 
 			unsafe fn read_erased(ptr: *const u8) -> Box<dyn AnyAttributeValue> {
 				Box::new(unsafe { ptr.cast::<bool>().read() })

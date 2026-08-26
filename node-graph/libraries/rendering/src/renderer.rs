@@ -1,32 +1,35 @@
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
+use core_types::attribute::{
+	Background as BackgroundAttr, BlendMode as BlendModeAttr, Clip, ClippingMask, Dimensions, EditorLayerPath, FontSize, LetterSpacing, LetterTilt, LineHeight, Location, MaxHeight, MaxWidth, Opacity,
+	OpacityFill, Transform,
+};
 use core_types::blending::BlendMode;
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
-use core_types::consts::DEFAULT_FONT_SIZE;
+use core_types::lane::LaneSource;
 use core_types::list::{Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
-use core_types::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT,
-	ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM,
-};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
+use graphic_types::markers::EditorMergedLayers;
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
+use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
-use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_STROKE, Artboard, Graphic, Vector};
+use graphic_types::{ATTR_FILL, ATTR_STROKE, Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -38,7 +41,7 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use text_nodes::{ATTR_FONT, ATTR_TEXT_ALIGN};
+use text_nodes::markers::{Font, TextAlign};
 use vector_types::gradient::GradientSpreadMethod;
 use vector_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use vello::*;
@@ -398,9 +401,9 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
-	let gradient_type: GradientType = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
-	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-	let spread_method: GradientSpreadMethod = gradient_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
+	let gradient_type: GradientType = gradient_list.attr::<GradientTypeAttr>(0);
+	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
+	let spread_method: GradientSpreadMethod = gradient_list.attr::<SpreadMethod>(0);
 
 	let mut peniko_stops = peniko::ColorStops::new();
 	for (position, color, _) in stops.interpolated_samples() {
@@ -584,9 +587,9 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
-						let layer_path: Vec<NodeId> = list.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+						let layer_path: &[NodeId] = list.attr::<EditorLayerPath>(0);
 						let layer = layer_path.last().copied();
-						let transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+						let transform: DAffine2 = list.attr::<Transform>(0);
 
 						metadata.first_element_source_id.insert(element_id, layer);
 						metadata.local_transforms.insert(element_id, transform);
@@ -597,7 +600,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
-						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+						metadata.local_transforms.insert(element_id, list.attr::<Transform>(0));
 					}
 				}
 				Graphic::RasterGPU(list) => {
@@ -605,7 +608,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
-						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+						metadata.local_transforms.insert(element_id, list.attr::<Transform>(0));
 					}
 				}
 				Graphic::Color(list) => {
@@ -613,7 +616,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
-						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+						metadata.local_transforms.insert(element_id, list.attr::<Transform>(0));
 					}
 				}
 				Graphic::Gradient(list) => {
@@ -621,7 +624,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
-						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+						metadata.local_transforms.insert(element_id, list.attr::<Transform>(0));
 					}
 				}
 				Graphic::Text(list) => {
@@ -629,7 +632,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
-						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+						metadata.local_transforms.insert(element_id, list.attr::<Transform>(0));
 					}
 				}
 			}
@@ -702,10 +705,10 @@ impl Render for Graphic {
 
 /// Reads the artboard metadata for the item at `index` from a `List<Artboard>`.
 fn read_artboard_attributes(list: &List<Artboard>, index: usize) -> (DVec2, DVec2, Color, bool) {
-	let location: DVec2 = list.attribute_cloned_or_default(ATTR_LOCATION, index);
-	let dimensions: DVec2 = list.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
-	let background: Color = list.attribute_cloned_or_default(ATTR_BACKGROUND, index);
-	let clip: bool = list.attribute_cloned_or_default(ATTR_CLIP, index);
+	let location: DVec2 = list.attr::<Location>(index);
+	let dimensions: DVec2 = list.attr::<Dimensions>(index);
+	let background: Color = list.attr::<BackgroundAttr>(index);
+	let clip: bool = list.attr::<Clip>(index);
 	(location, dimensions, background, clip)
 }
 
@@ -803,7 +806,7 @@ impl Render for List<Artboard> {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
 
-			let layer_path: Vec<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: &[NodeId] = self.attr::<EditorLayerPath>(index);
 			let element_id = layer_path.last().copied();
 
 			if let Some(element_id) = element_id {
@@ -826,7 +829,7 @@ impl Render for List<Artboard> {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
-			let dimensions: DVec2 = self.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
+			let dimensions: DVec2 = self.attr::<Dimensions>(index);
 			let subpath_rectangle = Subpath::new_rectangle(DVec2::ZERO, dimensions);
 			click_targets.push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
 		}
@@ -842,10 +845,10 @@ impl Render for List<Graphic> {
 		let mut mask_state = None;
 
 		for index in 0..self.len() {
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let transform: DAffine2 = self.attr::<Transform>(index);
+			let blend_mode: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
 			let element = self.element(index).unwrap();
 
 			render.parent_tag(
@@ -898,11 +901,11 @@ impl Render for List<Graphic> {
 		let mut mask_element_and_transform = None;
 
 		for index in 0..self.len() {
-			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attr::<Transform>(index);
 			let transform = transform * item_transform;
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
 			let element = self.element(index).unwrap();
 
 			let mut layer = false;
@@ -974,8 +977,8 @@ impl Render for List<Graphic> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: Vec<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let item_transform: DAffine2 = self.attr::<Transform>(index);
+			let layer_path: &[NodeId] = self.attr::<EditorLayerPath>(index);
 			let layer = layer_path.last().copied();
 			let element = self.element(index).unwrap();
 
@@ -995,7 +998,7 @@ impl Render for List<Graphic> {
 			let mut all_upstream_outlines = Vec::new();
 
 			for index in 0..self.len() {
-				let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+				let item_transform: DAffine2 = self.attr::<Transform>(index);
 				let element = self.element(index).unwrap();
 
 				let mut new_click_targets = Vec::new();
@@ -1022,7 +1025,7 @@ impl Render for List<Graphic> {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
-			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attr::<Transform>(index);
 			let element = self.element(index).unwrap();
 			let mut new_click_targets = Vec::new();
 
@@ -1038,7 +1041,7 @@ impl Render for List<Graphic> {
 
 	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
-			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attr::<Transform>(index);
 			let element = self.element(index).unwrap();
 			let mut new_outlines = Vec::new();
 
@@ -1068,10 +1071,10 @@ impl Render for List<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
-			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let item_transform: DAffine2 = self.attr::<Transform>(index);
+			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
 
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
@@ -1284,10 +1287,10 @@ impl Render for List<Vector> {
 			use graphic_types::vector_types::vector;
 
 			let Some(element) = self.element(index) else { continue };
-			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let item_transform: DAffine2 = self.attr::<Transform>(index);
+			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
 			let multiplied_transform = parent_transform * item_transform;
 			let has_real_stroke = element.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
@@ -1559,11 +1562,7 @@ impl Render for List<Vector> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
 		// Aggregate all items' targets per element_id so multi-item lists (e.g. 'Text' node with "Separate Glyphs" active) produce hit areas for every glyph.
 		// Targets are baked relative to item 0's transform since `Graphic::collect_metadata` records that as `local_transforms[element_id]`.
-		let item_zero_transform: DAffine2 = if !self.is_empty() {
-			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
-		} else {
-			DAffine2::IDENTITY
-		};
+		let item_zero_transform: DAffine2 = if !self.is_empty() { self.attr::<Transform>(0) } else { DAffine2::IDENTITY };
 		let item_zero_inverse = if transform_is_invertible(item_zero_transform) {
 			item_zero_transform.inverse()
 		} else {
@@ -1575,8 +1574,8 @@ impl Render for List<Vector> {
 
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: Vec<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let transform: DAffine2 = self.attr::<Transform>(index);
+			let layer_path: &[NodeId] = self.attr::<EditorLayerPath>(index);
 			let layer = layer_path.last().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
@@ -1626,8 +1625,7 @@ impl Render for List<Vector> {
 			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
 			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 			// surface the original child layers' click targets.
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Option<List<Graphic>>>(ATTR_EDITOR_MERGED_LAYERS, index).unwrap_or_default();
-			if !upstream_nested_layers.is_empty() {
+			if let Some(upstream_nested_layers) = self.attr::<EditorMergedLayers>(index).filter(|layers| !layers.is_empty()) {
 				let mut upstream_footprint = footprint;
 				upstream_footprint.transform *= transform;
 				upstream_nested_layers.collect_metadata(metadata, upstream_footprint, None);
@@ -1646,7 +1644,7 @@ impl Render for List<Vector> {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform: DAffine2 = self.attr::<Transform>(index);
 
 			// Use click-target override geometry if the item provides one (e.g. 'Text' node's per-glyph bounding boxes)
 			let vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
@@ -1659,7 +1657,7 @@ impl Render for List<Vector> {
 		// Source geometry only, ignoring `editor:click_target`, so outlines reflect actual letterforms
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform: DAffine2 = self.attr::<Transform>(index);
 
 			extend_targets_from_vector(outlines, self, index, source, transform);
 		}
@@ -1731,10 +1729,10 @@ impl Render for List<Raster<CPU>> {
 		for index in 0..self.len() {
 			let Some(image) = self.element(index) else { continue };
 
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let transform: DAffine2 = self.attr::<Transform>(index);
+			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
 
 			if image.data.is_empty() {
 				continue;
@@ -1818,9 +1816,9 @@ impl Render for List<Raster<CPU>> {
 				continue;
 			}
 
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
 			let blend_mode = blend_mode_attr.to_peniko();
 
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
@@ -1835,7 +1833,7 @@ impl Render for List<Raster<CPU>> {
 				layer = true;
 			}
 
-			let transform_attribute: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform_attribute: DAffine2 = self.attr::<Transform>(index);
 
 			if let RenderMode::Outline = render_params.render_mode {
 				let outline_transform: DAffine2 = transform * transform_attribute;
@@ -1875,7 +1873,7 @@ impl Render for List<Raster<CPU>> {
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one item of the `List<Raster<...>>`
 		if !self.is_empty() {
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+			let transform: DAffine2 = self.attr::<Transform>(0);
 			metadata.local_transforms.insert(element_id, transform);
 
 			// If this raster carries a snapshot of upstream graphic content (e.g. it was produced by Rasterize,
@@ -1884,8 +1882,7 @@ impl Render for List<Raster<CPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Option<List<Graphic>>>(ATTR_EDITOR_MERGED_LAYERS, 0).unwrap_or_default();
-			if !upstream_nested_layers.is_empty() {
+			if let Some(upstream_nested_layers) = self.attr::<EditorMergedLayers>(0).filter(|layers| !layers.is_empty()) {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
 		}
@@ -1907,10 +1904,10 @@ impl Render for List<Raster<GPU>> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(raster) = self.element(index) else { continue };
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let clip_attr: bool = self.attribute_cloned_or_default(ATTR_CLIPPING_MASK, index);
+			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
+			let clip_attr: bool = self.attr::<ClippingMask>(index);
 			let blend_mode = match render_params.render_mode {
 				RenderMode::Outline => peniko::Mix::Normal,
 				_ => blend_mode_attr.to_peniko(),
@@ -1929,7 +1926,7 @@ impl Render for List<Raster<GPU>> {
 				layer = true;
 			}
 
-			let transform_attribute: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform_attribute: DAffine2 = self.attr::<Transform>(index);
 
 			if let RenderMode::Outline = render_params.render_mode {
 				let outline_transform = transform * transform_attribute;
@@ -1970,7 +1967,7 @@ impl Render for List<Raster<GPU>> {
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one item of the `List<Raster<...>>`
 		if !self.is_empty() {
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+			let transform: DAffine2 = self.attr::<Transform>(0);
 			metadata.local_transforms.insert(element_id, transform);
 
 			// If this raster carries a snapshot of upstream graphic content (e.g. it was produced by Rasterize,
@@ -1979,8 +1976,7 @@ impl Render for List<Raster<GPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Option<List<Graphic>>>(ATTR_EDITOR_MERGED_LAYERS, 0).unwrap_or_default();
-			if !upstream_nested_layers.is_empty() {
+			if let Some(upstream_nested_layers) = self.attr::<EditorMergedLayers>(0).filter(|layers| !layers.is_empty()) {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
 		}
@@ -2001,9 +1997,9 @@ impl Render for List<Raster<GPU>> {
 impl Render for List<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for (index, color) in self.iter_element_values().enumerate() {
-			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let blend_mode: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
 			render.leaf_tag("polyline", |attributes| {
 				// Stand-in for an infinite background. Chrome's SVG renderer keeps internal coordinates in f32 and loses
 				// precision past ~2^24 (~16.7 million), causing tile-boundary artifacts that pop in and out during panning.
@@ -2032,9 +2028,9 @@ impl Render for List<Color> {
 		use vello::peniko;
 
 		for (index, color) in self.iter_element_values().enumerate() {
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
@@ -2072,12 +2068,12 @@ impl Render for List<GradientStops> {
 
 		for index in 0..self.len() {
 			let Some(gradient) = self.element(index) else { continue };
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, index);
-			let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, index);
+			let transform: DAffine2 = self.attr::<Transform>(index);
+			let blend_mode: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
+			let spread_method: GradientSpreadMethod = self.attr::<SpreadMethod>(index);
+			let gradient_type: GradientType = self.attr::<GradientTypeAttr>(index);
 			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 			render.leaf_tag(tag, |attributes| {
 				if let Some((min, size)) = thumbnail_rect {
@@ -2164,10 +2160,10 @@ impl Render for List<GradientStops> {
 			.zip(self.iter_attribute_values_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD))
 			.zip(self.iter_attribute_values_or_default::<GradientType>(ATTR_GRADIENT_TYPE))
 		{
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let transform: DAffine2 = self.attr::<Transform>(index);
+			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
 			let gradient_transform = parent_transform * transform;
 
 			let blend_mode = blend_mode_attr.to_peniko();
@@ -2315,16 +2311,16 @@ fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, ()>, x_offset: f3
 fn text_item_size_and_transform(list: &List<String>, index: usize) -> Option<(DVec2, DAffine2)> {
 	let text = list.element(index)?;
 	let font: Resource = {
-		let f: Resource = list.attribute_cloned_or_default(ATTR_FONT, index);
-		if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
+		let f = list.attr::<Font>(index);
+		if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f.clone() }
 	};
-	let font_size: f64 = list.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
-	let line_height: f64 = list.attribute_cloned_or(ATTR_LINE_HEIGHT, index, 1.2);
-	let letter_spacing: f64 = list.attribute_cloned_or(ATTR_LETTER_SPACING, index, 0.);
-	let max_width: Option<f64> = list.attribute_cloned_or(ATTR_MAX_WIDTH, index, None);
-	let max_height: Option<f64> = list.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
-	let align: text_nodes::TextAlign = list.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
-	let transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+	let font_size: f64 = list.attr::<FontSize>(index);
+	let line_height: f64 = list.attr::<LineHeight>(index);
+	let letter_spacing: f64 = list.attr::<LetterSpacing>(index);
+	let max_width: Option<f64> = list.attr::<MaxWidth>(index);
+	let max_height: Option<f64> = list.attr::<MaxHeight>(index);
+	let align: text_nodes::TextAlign = list.attr::<TextAlign>(index);
+	let transform: DAffine2 = list.attr::<Transform>(index);
 
 	let typesetting = text_nodes::TypesettingConfig {
 		font_size,
@@ -2376,7 +2372,7 @@ pub fn graphic_list_bounding_box(list: &List<Graphic>, transform: DAffine2) -> R
 	let mut any_infinite = false;
 
 	for index in 0..list.len() {
-		let item_transform = transform * list.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index);
+		let item_transform = transform * list.attr::<Transform>(index);
 		let Some(graphic) = list.element(index) else { continue };
 		let bounds = match graphic {
 			Graphic::Text(text_list) => text_list_bounding_box(text_list, item_transform),
@@ -2410,21 +2406,21 @@ impl Render for List<String> {
 				continue;
 			}
 
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let transform: DAffine2 = self.attr::<Transform>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
+			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
 			let font: Resource = {
-				let f: Resource = self.attribute_cloned_or_default(ATTR_FONT, index);
-				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
+				let f = self.attr::<Font>(index);
+				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f.clone() }
 			};
-			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
-			let line_height: f64 = self.attribute_cloned_or(ATTR_LINE_HEIGHT, index, 1.2);
-			let letter_spacing: f64 = self.attribute_cloned_or(ATTR_LETTER_SPACING, index, 0.);
-			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_MAX_WIDTH, index, None);
-			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
-			let letter_tilt: f64 = self.attribute_cloned_or(ATTR_LETTER_TILT, index, 0.);
-			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
+			let font_size: f64 = self.attr::<FontSize>(index);
+			let line_height: f64 = self.attr::<LineHeight>(index);
+			let letter_spacing: f64 = self.attr::<LetterSpacing>(index);
+			let max_width: Option<f64> = self.attr::<MaxWidth>(index);
+			let max_height: Option<f64> = self.attr::<MaxHeight>(index);
+			let letter_tilt: f64 = self.attr::<LetterTilt>(index);
+			let align: text_nodes::TextAlign = self.attr::<TextAlign>(index);
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 			let typesetting = text_nodes::TypesettingConfig {
@@ -2495,21 +2491,21 @@ impl Render for List<String> {
 				continue;
 			}
 
-			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attr::<Transform>(index);
 			let font: Resource = {
-				let f: Resource = self.attribute_cloned_or_default(ATTR_FONT, index);
-				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
+				let f = self.attr::<Font>(index);
+				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f.clone() }
 			};
-			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
-			let line_height: f64 = self.attribute_cloned_or(ATTR_LINE_HEIGHT, index, 1.2);
-			let letter_spacing: f64 = self.attribute_cloned_or(ATTR_LETTER_SPACING, index, 0.);
-			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_MAX_WIDTH, index, None);
-			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
-			let letter_tilt: f64 = self.attribute_cloned_or(ATTR_LETTER_TILT, index, 0.);
-			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let font_size: f64 = self.attr::<FontSize>(index);
+			let line_height: f64 = self.attr::<LineHeight>(index);
+			let letter_spacing: f64 = self.attr::<LetterSpacing>(index);
+			let max_width: Option<f64> = self.attr::<MaxWidth>(index);
+			let max_height: Option<f64> = self.attr::<MaxHeight>(index);
+			let letter_tilt: f64 = self.attr::<LetterTilt>(index);
+			let align: text_nodes::TextAlign = self.attr::<TextAlign>(index);
+			let blend_mode_attr: BlendMode = self.attr::<BlendModeAttr>(index);
+			let opacity_attr: f64 = self.attr::<Opacity>(index);
+			let opacity_fill_attr: f64 = self.attr::<OpacityFill>(index);
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 			let typesetting = text_nodes::TypesettingConfig {
@@ -2559,11 +2555,7 @@ impl Render for List<String> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
 		// Click targets are baked relative to item 0's transform, which `Graphic::collect_metadata` records as `local_transforms[element_id]`.
-		let item_zero_transform: DAffine2 = if !self.is_empty() {
-			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
-		} else {
-			DAffine2::IDENTITY
-		};
+		let item_zero_transform: DAffine2 = if !self.is_empty() { self.attr::<Transform>(0) } else { DAffine2::IDENTITY };
 		let item_zero_inverse = if item_zero_transform.matrix2.determinant() != 0. {
 			item_zero_transform.inverse()
 		} else {
@@ -2573,7 +2565,7 @@ impl Render for List<String> {
 		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 
 		for index in 0..self.len() {
-			let layer_path: Vec<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: &[NodeId] = self.attr::<EditorLayerPath>(index);
 			let layer = layer_path.last().copied();
 			let Some(element_id) = caller_element_id.or(layer) else { continue };
 

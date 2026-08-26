@@ -1,16 +1,19 @@
 use crate::renderer::{RenderParams, format_transform_matrix, gradient_placement, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
+use core_types::Color;
+use core_types::attribute::Transform;
 use core_types::color::SRGBA8;
+use core_types::lane::LaneSource;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientType;
+use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
+use vector_types::GradientStops;
 use vector_types::gradient::GradientSpreadMethod;
-use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, GradientStops};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -93,9 +96,9 @@ impl RenderExt for List<GradientStops> {
 		let mut stop = String::new();
 
 		let Some(stops) = self.element(0) else { return 0 };
-		let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
-		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
+		let gradient_type: GradientType = self.attr::<GradientTypeAttr>(0);
+		let local_gradient_transform: DAffine2 = self.attr::<Transform>(0);
+		let spread_method: GradientSpreadMethod = self.attr::<SpreadMethod>(0);
 
 		for (position, color, original_midpoint) in stops.interpolated_samples() {
 			stop.push_str("<stop");
