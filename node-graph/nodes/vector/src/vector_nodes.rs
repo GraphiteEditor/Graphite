@@ -17,7 +17,7 @@ use core_types::transform::Transform;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
+use graphic_types::graphic::{bake_paint_transforms, has_paint, is_paint_present, paint_graphics, set_paint_attribute_at};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_STROKE, Graphic, IntoGraphicList};
@@ -1367,7 +1367,7 @@ fn solidify_stroke_core(graphic_list: List<Graphic>) -> List<Vector> {
 	let flattened: List<Vector> = graphic_list.clone().into_flattened_list();
 
 	// A fill exists when the canonical attribute carries paint
-	let has_fills: Vec<bool> = (0..flattened.len()).map(|index| has_paint_at(&flattened, index, ATTR_FILL)).collect();
+	let has_fills: Vec<bool> = (0..flattened.len()).map(|index| has_paint::<Fill, _>(&flattened, index)).collect();
 
 	let mut output: List<Vector> = flattened
 		.into_iter()
@@ -3038,13 +3038,13 @@ fn morph_core(content: List<Graphic>, progression: f64, reverse: bool, distribut
 	let mut vector = Vector { stroke, ..Default::default() };
 
 	let fill_paint = {
-		let source = graphic_list_at(&content, source_index, ATTR_FILL);
-		let target = graphic_list_at(&content, target_index, ATTR_FILL);
+		let source = paint_graphics::<Fill, _>(&content, source_index);
+		let target = paint_graphics::<Fill, _>(&content, target_index);
 		lerp_graphic(source.as_deref(), target.as_deref(), time)
 	};
 	let stroke_paint = {
-		let source = graphic_list_at(&content, source_index, ATTR_STROKE);
-		let target = graphic_list_at(&content, target_index, ATTR_STROKE);
+		let source = paint_graphics::<StrokeAttr, _>(&content, source_index);
+		let target = paint_graphics::<StrokeAttr, _>(&content, target_index);
 		lerp_graphic(source.as_deref(), target.as_deref(), time)
 	};
 
@@ -3912,7 +3912,7 @@ mod test {
 
 		let morphed = super::morph_core(content.into_graphic_list(), 0.5, false, InterpolationDistribution::default(), List::default());
 
-		let fill = graphic_list_at(&morphed, 0, ATTR_FILL).expect("Morph should keep the fill paint at the midpoint");
+		let fill = paint_graphics::<Fill, _>(&morphed, 0).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
 		let Some(Graphic::Color(colors)) = fill.element(0) else {

@@ -1,6 +1,8 @@
-use crate::markers::{ATTR_FILL, ATTR_STROKE};
+use crate::markers::{ATTR_FILL, ATTR_STROKE, Fill, Stroke};
+use core_types::attribute::Attribute;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
+use core_types::lane::LaneSource;
 use core_types::list::{AttributeValueDyn, Item, ItemAttributeValues, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
@@ -200,22 +202,40 @@ pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 
 /// Look up the paint graphics stored under attribute for a vector item, in the canonical `List<Graphic>` form.
 pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str) -> Option<Cow<'a, List<Graphic>>> {
-	paint_at(list, index, attribute)
+	list.attribute::<Option<List<Graphic>>>(attribute, index)
+		.and_then(|optional| optional.as_ref())
 		.map(Cow::Borrowed)
 		// Treat a blank paint attribute as absent so an empty attribute doesn't count as painted
 		.filter(|graphic_list| is_paint_present(graphic_list))
 }
 
-/// The paint attribute's list. Storage is the paint marker's owned
-/// `Option<List<Graphic>>` form, which every writer produces.
-fn paint_at<'a, T>(list: &'a List<T>, index: usize, attribute: &str) -> Option<&'a List<Graphic>> {
-	list.attribute::<Option<List<Graphic>>>(attribute, index).and_then(|optional| optional.as_ref())
-}
-
 /// Whether the item carries a non-blank canonical `List<Graphic>` paint attribute,
 /// checked by borrowing without cloning the renderable list.
 pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
-	paint_at(list, index, attribute).is_some_and(is_paint_present)
+	graphic_list_at(list, index, attribute).is_some()
+}
+
+/// Look up the paint graphics stored under the marker `A`, in the canonical `List<Graphic>` form.
+pub fn paint_graphics<'a, A, S>(source: &'a S, index: usize) -> Option<Cow<'a, List<Graphic>>>
+where
+	S: LaneSource,
+	A: Attribute<Value<'a> = Option<&'a List<Graphic>>>,
+{
+	source
+		.attr::<A>(index)
+		.map(Cow::Borrowed)
+		// Treat a blank paint attribute as absent so an empty attribute doesn't count as painted
+		.filter(|graphic_list| is_paint_present(graphic_list))
+}
+
+/// Whether the item carries a non-blank canonical `List<Graphic>` paint under the marker `A`,
+/// checked by borrowing without cloning the renderable list.
+pub fn has_paint<'a, A, S>(source: &'a S, index: usize) -> bool
+where
+	S: LaneSource,
+	A: Attribute<Value<'a> = Option<&'a List<Graphic>>>,
+{
+	paint_graphics::<A, S>(source, index).is_some()
 }
 
 /// Stores a paint attribute in the paint marker's owned form, the only representation paint readers accept.
@@ -448,10 +468,10 @@ impl Graphic {
 				let Some(element) = vector.element(index) else { return false };
 				let opacity: f64 = vector.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 
-				let fill_opaque_or_absent = graphic_list_at(vector, index, ATTR_FILL).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
+				let fill_opaque_or_absent = paint_graphics::<Fill, _>(vector, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
 
 				let stroke_invisible_or_transparent = element.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke())
-					|| graphic_list_at(vector, index, ATTR_STROKE).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
+					|| paint_graphics::<Stroke, _>(vector, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
 
 				opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
 			}),
@@ -463,15 +483,17 @@ impl Graphic {
 		match self {
 			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
 			Graphic::Vector(list) => {
-				let is_paint_opaque_at = |key: &str, index: usize| graphic_list_at(list, index, key).is_some_and(|graphic_list| graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque()));
+				fn is_paint_opaque_at<'a, A: Attribute<Value<'a> = Option<&'a List<Graphic>>>>(list: &'a List<Vector>, index: usize) -> bool {
+					paint_graphics::<A, _>(list, index).is_some_and(|graphic_list| graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque()))
+				}
 
 				!list.is_empty()
 					&& (0..list.len()).all(|i| {
 						let Some(vector) = list.element(i) else { return false };
 						let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 						let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-						let fill_opaque = opacity_fill >= 1. - f64::EPSILON && is_paint_opaque_at(ATTR_FILL, i);
-						let stroke_opaque_or_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_opaque_at(ATTR_STROKE, i);
+						let fill_opaque = opacity_fill >= 1. - f64::EPSILON && is_paint_opaque_at::<Fill>(list, i);
+						let stroke_opaque_or_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_opaque_at::<Stroke>(list, i);
 						opacity >= 1. - f64::EPSILON && fill_opaque && stroke_opaque_or_invisible
 					})
 			}
@@ -487,16 +509,17 @@ impl Graphic {
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
 			Graphic::Vector(list) => (0..list.len()).all(|i| {
 				let Some(vector) = list.element(i) else { return false };
-				let is_paint_fully_transparent_at =
-					|key: &str, index: usize| graphic_list_at(list, index, key).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
+				fn is_paint_fully_transparent_at<'a, A: Attribute<Value<'a> = Option<&'a List<Graphic>>>>(list: &'a List<Vector>, index: usize) -> bool {
+					paint_graphics::<A, _>(list, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()))
+				}
 
 				let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 				if opacity <= f64::EPSILON {
 					return true;
 				}
 				let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-				let fill_invisible = opacity_fill <= f64::EPSILON || is_paint_fully_transparent_at(ATTR_FILL, i);
-				let stroke_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_fully_transparent_at(ATTR_STROKE, i);
+				let fill_invisible = opacity_fill <= f64::EPSILON || is_paint_fully_transparent_at::<Fill>(list, i);
+				let stroke_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_fully_transparent_at::<Stroke>(list, i);
 				fill_invisible && stroke_invisible
 			}),
 			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
@@ -713,7 +736,8 @@ pub fn run_to_render_list<T: Clone + Send + Sync + 'static>(item: &core_types::r
 fn push_lane_paint_into_interiors(list: &mut List<Graphic>) {
 	for index in 0..list.len() {
 		for key in [ATTR_FILL, ATTR_STROKE] {
-			let Some(paint) = paint_at(list, index, key).filter(|paint| is_paint_present(paint)).cloned() else {
+			let stored = list.attribute::<Option<List<Graphic>>>(key, index).and_then(|optional| optional.as_ref());
+			let Some(paint) = stored.filter(|paint| is_paint_present(paint)).cloned() else {
 				continue;
 			};
 			let Some(element) = list.element_mut(index) else { continue };
