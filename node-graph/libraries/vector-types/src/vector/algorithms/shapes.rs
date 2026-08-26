@@ -4,7 +4,7 @@
 
 use crate::vector::misc::{ArcType, SpiralType, bezpath_from_anchors_and_handles};
 use glam::DVec2;
-use kurbo::{BezPath, ParamCurve};
+use kurbo::BezPath;
 use std::f64::consts::TAU;
 
 /// Constant from <https://pomax.github.io/bezierinfo/#circles_cubic>
@@ -420,6 +420,7 @@ fn archimedean_spiral_arc_length_origin(theta: f64, a: f64, b: f64) -> f64 {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use kurbo::ParamCurve;
 	use kurbo::{PathEl, Shape};
 
 	fn default_heart() -> HeartProportions {
