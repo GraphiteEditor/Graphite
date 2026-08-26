@@ -116,6 +116,12 @@ impl GenericDialGizmo {
 	/// Pure hover test: returns the mouse's distance to the dial center when it is a hover
 	/// candidate, or `None` otherwise. Used by the manager to resolve overlap priority. Performs
 	/// no state mutation.
+	/// Whether this gizmo is grabbed along a region rather than at a point, which decides priority
+	/// against an overlapping handle. See [`GizmoBehavior::extended_target`].
+	pub fn is_extended_target(&self) -> bool {
+		self.info.behavior.extended_target
+	}
+
 	pub fn hover_distance(&self, mouse_position: DVec2, document: &DocumentMessageHandler) -> Option<f64> {
 		self.current_value(document)?;
 

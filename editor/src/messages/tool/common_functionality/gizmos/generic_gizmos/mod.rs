@@ -94,6 +94,14 @@ impl GenericGizmo {
 		}
 	}
 
+	/// Whether this gizmo is grabbed along a region rather than at a point.
+	fn is_extended_target(&self) -> bool {
+		match self {
+			Self::Slider(g) => g.is_extended_target(),
+			Self::Dial(g) => g.is_extended_target(),
+		}
+	}
+
 	fn enter_hover(&mut self, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
 		match self {
 			Self::Slider(g) => g.enter_hover(document, mouse_position, responses),
@@ -194,17 +202,29 @@ impl GenericGizmoManager {
 		None
 	}
 
-	/// Index of the gizmo whose handle is closest to the cursor among all hover candidates.
-	/// This is the priority rule for overlapping handles: nearest wins, ties broken by the
-	/// registry declaration order (earlier entries win).
+	/// Index of the gizmo winning the hover among all candidates.
+	///
+	/// This is the priority rule for overlapping handles: a point target beats a region target, and
+	/// between two of the same kind the nearer one wins. Ties go to the earlier registry declaration.
 	fn closest_hover_candidate(&self, mouse_position: DVec2, document: &DocumentMessageHandler) -> Option<usize> {
 		self.gizmos
 			.iter()
 			.enumerate()
-			.filter_map(|(index, gizmo)| gizmo.hover_distance(mouse_position, document).map(|distance| (index, distance)))
-			.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+			.filter_map(|(index, gizmo)| gizmo.hover_distance(mouse_position, document).map(|distance| (index, (gizmo.is_extended_target(), distance))))
+			.min_by(|(_, a), (_, b)| rank_candidates(*a, *b))
 			.map(|(index, _)| index)
 	}
+}
+
+/// Orders two hover candidates, each given as `(is_extended_target, distance)`.
+///
+/// A point target wins outright over a region target, whatever the two distances say, because the numbers
+/// are not the same measurement: a region reports distance *to the region*, which along a circle's
+/// circumference is near zero everywhere, while a point reports distance to that one point. An arc's sweep
+/// endpoints sit on its circumference, so comparing the two directly hands every grab to the radius. Only
+/// once the kinds match does distance decide.
+fn rank_candidates(a: (bool, f64), b: (bool, f64)) -> std::cmp::Ordering {
+	a.0.cmp(&b.0).then_with(|| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
 }
 
 impl ShapeGizmoHandler for GenericGizmoManager {
@@ -281,5 +301,34 @@ impl ShapeGizmoHandler for GenericGizmoManager {
 
 	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
 		self.gizmos.iter().find_map(GenericGizmo::mouse_cursor_icon)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::rank_candidates;
+	use std::cmp::Ordering;
+
+	const POINT: bool = false;
+	const REGION: bool = true;
+
+	#[test]
+	fn point_target_beats_region_target_however_far_it_is() {
+		// The arc case: the radius band reads ~0 all along the circumference while the sweep endpoint
+		// sitting on that circumference reads its real distance. The endpoint still has to win.
+		assert_eq!(rank_candidates((POINT, 7.9), (REGION, 0.01)), Ordering::Less);
+		assert_eq!(rank_candidates((REGION, 0.01), (POINT, 7.9)), Ordering::Greater);
+	}
+
+	#[test]
+	fn distance_decides_between_targets_of_the_same_kind() {
+		assert_eq!(rank_candidates((POINT, 2.), (POINT, 5.)), Ordering::Less);
+		assert_eq!(rank_candidates((REGION, 5.), (REGION, 2.)), Ordering::Greater);
+	}
+
+	#[test]
+	fn equal_candidates_tie_so_declaration_order_wins() {
+		// `min_by` keeps the first of equal elements, which is the earlier registry entry.
+		assert_eq!(rank_candidates((POINT, 3.), (POINT, 3.)), Ordering::Equal);
 	}
 }

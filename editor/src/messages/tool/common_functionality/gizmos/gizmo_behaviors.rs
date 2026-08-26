@@ -43,6 +43,7 @@ pub const STAR_SIDES: GizmoBehavior = GizmoBehavior {
 	drag: None,
 	angle_deadzone: 0.,
 	draws_own_handle: false,
+	extended_target: false,
 };
 
 /// Either of the star's radius handles: snaps to the radii where the star's points line up, and previews
@@ -56,6 +57,7 @@ pub const STAR_RADIUS: GizmoBehavior = GizmoBehavior {
 	drag: None,
 	angle_deadzone: 0.,
 	draws_own_handle: false,
+	extended_target: false,
 };
 
 /// A circular radius, for the circle and the arc. Grabbed anywhere on the circumference rather than at one
@@ -69,6 +71,7 @@ pub const CIRCULAR_RADIUS: GizmoBehavior = GizmoBehavior {
 	drag: Some(circular_radius_drag),
 	angle_deadzone: 0.,
 	draws_own_handle: true,
+	extended_target: true,
 };
 
 /// The grid's row count, grabbed along its top or bottom edge.
@@ -81,6 +84,7 @@ pub const GRID_ROWS: GizmoBehavior = GizmoBehavior {
 	drag: Some(grid_edge_drag),
 	angle_deadzone: 0.,
 	draws_own_handle: true,
+	extended_target: true,
 };
 
 /// The grid's column count, grabbed along its left or right edge.
@@ -93,6 +97,7 @@ pub const GRID_COLUMNS: GizmoBehavior = GizmoBehavior {
 	drag: Some(grid_edge_drag),
 	angle_deadzone: 0.,
 	draws_own_handle: true,
+	extended_target: true,
 };
 
 /// The arc's sweep, grabbable at either end of the curve. Dragging either endpoint reshapes the arc; the
@@ -106,6 +111,7 @@ pub const ARC_SWEEP: GizmoBehavior = GizmoBehavior {
 	drag: Some(arc_sweep_drag),
 	angle_deadzone: 0.,
 	draws_own_handle: false,
+	extended_target: false,
 };
 
 /// The spiral's winding control. Grabbable at either end of the curve; dragging winds or unwinds it.
@@ -118,6 +124,7 @@ pub const SPIRAL_TURNS: GizmoBehavior = GizmoBehavior {
 	drag: Some(spiral_turns_drag),
 	angle_deadzone: 0.5,
 	draws_own_handle: false,
+	extended_target: false,
 };
 
 /// The heart's cleavage: the notch between its lobes, dragged straight down from the top.
@@ -130,6 +137,7 @@ pub const HEART_CLEAVAGE: GizmoBehavior = GizmoBehavior {
 	drag: Some(heart_cleavage_drag),
 	angle_deadzone: 0.,
 	draws_own_handle: false,
+	extended_target: false,
 };
 
 /// The heart's shoulder width, grabbed at either lobe.
@@ -142,6 +150,7 @@ pub const HEART_SHOULDER: GizmoBehavior = GizmoBehavior {
 	drag: Some(heart_shoulder_drag),
 	angle_deadzone: 0.,
 	draws_own_handle: false,
+	extended_target: false,
 };
 
 /// The polygon's radius, grabbable at any of its corners.
@@ -154,6 +163,7 @@ pub const POLYGON_RADIUS: GizmoBehavior = GizmoBehavior {
 	drag: None,
 	angle_deadzone: 0.,
 	draws_own_handle: false,
+	extended_target: false,
 };
 
 /// The polygon's sides dial, the counterpart to [`STAR_SIDES`].
@@ -166,6 +176,7 @@ pub const POLYGON_SIDES: GizmoBehavior = GizmoBehavior {
 	drag: None,
 	angle_deadzone: 0.,
 	draws_own_handle: false,
+	extended_target: false,
 };
 
 /// The radii at which dragging one of a star's radius handles makes its points line up: the value where

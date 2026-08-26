@@ -69,6 +69,7 @@ the function in `gizmo_behaviors.rs` rather than in the generic layer.
 | `snap_targets` | the drag should settle onto values derived from the node's other inputs |
 | `overlay` | the shape draws something of its own: an outline, a guide, ticks |
 | `draws_own_handle` | your overlay already draws the thing being grabbed, so the generic handle would double it |
+| `extended_target` | what you grab is a region, so an overlapping point handle should outrank it |
 | `angle_deadzone` | a rotational drag needs a jitter guard near the origin |
 
 A worked example, from `POLYGON_RADIUS`. A regular polygon's radius reaches every corner, so every
@@ -139,6 +140,11 @@ transform is the one exception, and it moves the layer rather than the geometry.
   circle's radius or an arc's endpoint invites the cursor, and it wins the press. Test away from them.
 - **The bounding-box `PositionHint` variants are inert.** Every migrated shape derives its handle from a
   parameter, so `BoundingBoxCenter` and friends currently fall through to the +X axis.
+- **Two overlapping handles are not ranked by distance alone.** A gizmo grabbed along a region reports how
+  far the cursor is from that region, which is near zero everywhere along it; a point handle reports its
+  real distance. Comparing those two numbers gives the region every grab. Mark the region one
+  `extended_target: true` and the point wins outright — this is what makes an arc's sweep endpoints
+  reachable at all, since they sit on the very circumference its radius is grabbed along.
 - **Nothing is drawn at rest unless something asks for it.** A slider with no overlay marks its grab
   points; one that supplies an overlay is expected to draw its own resting state.
 
