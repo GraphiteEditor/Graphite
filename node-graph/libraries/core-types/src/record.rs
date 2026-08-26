@@ -1866,6 +1866,62 @@ impl GroupItem {
 	}
 }
 
+/// A run read at its element type. Record fields hold each marker's value
+/// verbatim, so lane reads are plain typed reads at a hoisted offset.
+pub struct RunView<'a, T> {
+	item: &'a GroupItem,
+	lanes: crate::node::List<'a, T>,
+}
+
+impl<'a, T: 'static> RunView<'a, T> {
+	/// `None` where the run holds another element type.
+	pub fn new(item: &'a GroupItem) -> Option<Self> {
+		item.typed_lanes::<T>().map(|lanes| Self { item, lanes })
+	}
+}
+
+/// A marker's field on a run, its offset resolved once.
+pub struct RunColumn<'a, A: crate::attribute::Attribute> {
+	item: &'a GroupItem,
+	offset: Option<usize>,
+	marker: std::marker::PhantomData<A>,
+}
+
+impl<'a, A: crate::attribute::Attribute> crate::lane::LaneColumn<'a, A> for RunColumn<'a, A> {
+	fn get(&self, lane: usize) -> A::Value<'a> {
+		match self.offset {
+			// SAFETY: the offset comes from the item's own layout, whose field at
+			// this name holds this marker's value type by census registration.
+			Some(offset) => unsafe { self.item.lanes().get(lane).rec().ptr().add(offset).cast::<A::Value<'a>>().read() },
+			None => A::default(),
+		}
+	}
+}
+
+impl<'a, T: 'static> crate::lane::LaneSource for RunView<'a, T> {
+	type Element = T;
+	type Column<'b, A: crate::attribute::Attribute>
+		= RunColumn<'b, A>
+	where
+		Self: 'b;
+
+	fn lane_count(&self) -> usize {
+		self.lanes.len()
+	}
+
+	fn element(&self, lane: usize) -> Option<&T> {
+		(lane < self.lanes.len()).then(|| self.lanes.element_ref(lane))
+	}
+
+	fn column<A: crate::attribute::Attribute>(&self) -> RunColumn<'_, A> {
+		RunColumn {
+			item: self.item,
+			offset: self.item.layout().offset_of(A::NAME, 0),
+			marker: std::marker::PhantomData,
+		}
+	}
+}
+
 /// The records a group stores: a single homogeneous run, or a list of
 /// segments.
 #[derive(Clone, Debug)]
@@ -2014,6 +2070,58 @@ mod tests {
 
 	fn f64_field(name: &'static str) -> FieldWrite {
 		sized_field(name, 8, 8)
+	}
+
+	#[test]
+	fn a_run_and_a_legacy_list_serve_the_same_values() {
+		use crate::attribute::{Attribute, Opacity, Transform};
+		use crate::lane::LaneSource;
+		use glam::DAffine2;
+
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[FieldWrite::of::<Transform>(0), FieldWrite::of::<Opacity>(0)]);
+		let stride = layout.lane_stride();
+		let transform = DAffine2::from_translation((5., 6.).into());
+		let mut bytes = vec![0u8; stride * 2];
+		for lane in 0..2 {
+			// SAFETY: `bytes` is `stride` per lane, and the offsets come from `layout`.
+			unsafe {
+				let base = bytes.as_mut_ptr().add(lane * stride);
+				base.cast::<f64>().write(lane as f64);
+				base.add(layout.offset_of(Transform::NAME, 0).unwrap()).cast::<DAffine2>().write(transform);
+				base.add(layout.offset_of(Opacity::NAME, 0).unwrap()).cast::<f64>().write(0.25);
+			}
+		}
+		// SAFETY: `bytes` holds two lanes of `layout` at its stride.
+		let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr(), 2, &layout)) };
+		let run = RunView::<f64>::new(&item).expect("the run holds f64 elements");
+
+		let mut list = crate::list::List::new_from_element(0f64);
+		list.push(crate::list::Item::new_from_element(1f64));
+		for lane in 0..2 {
+			list.set_attribute(Transform::NAME, lane, transform);
+			list.set_attribute(Opacity::NAME, lane, 0.25);
+		}
+
+		assert_eq!(run.lane_count(), list.lane_count());
+		for lane in 0..2 {
+			assert_eq!(run.attr::<Transform>(lane), list.attr::<Transform>(lane));
+			assert_eq!(run.attr::<Opacity>(lane), list.attr::<Opacity>(lane));
+			assert_eq!(run.element(lane), list.element(lane));
+		}
+	}
+
+	#[test]
+	fn a_run_missing_a_column_serves_the_census_default() {
+		use crate::attribute::Opacity;
+		use crate::lane::LaneSource;
+
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[]);
+		let bytes = vec![0u8; layout.lane_stride()];
+		// SAFETY: `bytes` holds one lane of `layout` at its stride.
+		let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+		let run = RunView::<f64>::new(&item).expect("the run holds f64 elements");
+
+		assert_eq!(run.attr::<Opacity>(0), 1.);
 	}
 
 	#[test]
