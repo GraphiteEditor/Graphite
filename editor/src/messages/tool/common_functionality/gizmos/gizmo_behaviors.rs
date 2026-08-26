@@ -814,7 +814,19 @@ fn circular_grab_spacing(viewport: DAffine2, radius: f64, center: DVec2, stroke_
 
 /// The radius this gizmo edits, whichever of the two shapes owns it.
 fn circular_radius(context: &GizmoContext) -> Option<f64> {
-	extract_circle_radius(context.layer, context.document).or_else(|| extract_arc_parameters(Some(context.layer), context.document).map(|(radius, ..)| radius))
+	circular_radius_and_parameter(context).map(|(radius, _)| radius)
+}
+
+/// The radius and the input it came from. Both callers need the value; the drag also needs to know which
+/// node it is writing back to, and deriving that separately meant looking the shape up twice.
+fn circular_radius_and_parameter(context: &GizmoContext) -> Option<(f64, ParameterRef)> {
+	use graphene_std::vector::generator_nodes::{arc, circle};
+
+	if let Some(radius) = extract_circle_radius(context.layer, context.document) {
+		return Some((radius, ParameterRef::from(circle::RadiusInput)));
+	}
+	let (radius, ..) = extract_arc_parameters(Some(context.layer), context.document)?;
+	Some((radius, ParameterRef::from(arc::RadiusInput)))
 }
 
 /// How far the cursor is from the circumference, or `None` when it is not on it. Reporting the radial
@@ -1011,7 +1023,9 @@ fn heart_shoulder_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrit
 /// of the curve is being held. It gives up on vertical movement meaning anything, and in exchange there is
 /// no dead zone, no sign that flips, and no angle where the control behaves differently from any other.
 fn circular_radius_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
-	let Some(radius) = circular_radius(context) else { return DragWrites::default() };
+	let Some((radius, parameter)) = circular_radius_and_parameter(context) else {
+		return DragWrites::default();
+	};
 
 	let inverse = context.document.metadata().transform_to_viewport(context.layer).inverse();
 	let travelled = inverse.transform_point2(drag.mouse_position).x - inverse.transform_point2(drag.drag_start).x;
@@ -1020,12 +1034,6 @@ fn circular_radius_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWri
 	// than flip it.
 	let magnitude = (drag.initial_value.abs() + travelled).max(0.);
 	let signed = if radius.is_sign_negative() { -magnitude } else { magnitude };
-
-	let parameter = if extract_circle_radius(context.layer, context.document).is_some() {
-		ParameterRef::from(graphene_std::vector::generator_nodes::circle::RadiusInput)
-	} else {
-		ParameterRef::from(graphene_std::vector::generator_nodes::arc::RadiusInput)
-	};
 
 	DragWrites::inputs(vec![(parameter, TaggedValue::F64(signed))])
 }
