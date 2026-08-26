@@ -22,6 +22,7 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use glam::{DAffine2, DVec2};
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::raster_nodes::filter::blur;
 use graphene_std::vector::generator_nodes;
 use graphene_std::vector::generator_nodes::{arc, circle, grid, heart, regular_polygon, spiral, star};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -405,7 +406,20 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 /// The identifier is cloned at call time because [`ProtoNodeIdentifier`]s are not trivially
 /// usable as `'static` references in a `const`. This is cheap (the identifiers are backed by
 /// `&'static str`) and only runs when a selection changes.
-pub fn registered_gizmo_nodes() -> [(ProtoNodeIdentifier, &'static [GizmoInfo]); 7] {
+/// A blur radius is a length in pixels, so the default slider covers it whole: the handle sits `radius`
+/// out along the local +X axis, the drag reads a distance, and nothing here knows what blurring is. The
+/// node declares `#[hard(0..)]`, which the `min` below mirrors.
+const BLUR_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
+	parameter_index: blur::RadiusInput::INDEX,
+	gizmo_type: GizmoType::Slider,
+	name: "Radius",
+	min: Some(0.),
+	max: None,
+	behavior: GizmoBehavior::NONE,
+	position_hint: PositionHint::ParameterDerived,
+}];
+
+pub fn registered_gizmo_nodes() -> [(ProtoNodeIdentifier, &'static [GizmoInfo]); 8] {
 	[
 		(generator_nodes::circle::IDENTIFIER, CIRCLE_GIZMOS),
 		(generator_nodes::regular_polygon::IDENTIFIER, POLYGON_GIZMOS),
@@ -414,6 +428,8 @@ pub fn registered_gizmo_nodes() -> [(ProtoNodeIdentifier, &'static [GizmoInfo]);
 		(generator_nodes::spiral::IDENTIFIER, SPIRAL_GIZMOS),
 		(generator_nodes::grid::IDENTIFIER, GRID_GIZMOS),
 		(generator_nodes::heart::IDENTIFIER, HEART_GIZMOS),
+		// A node that is not a shape generator, and never had a gizmo before the registry.
+		(blur::IDENTIFIER, BLUR_GIZMOS),
 	]
 }
 
@@ -487,9 +503,21 @@ mod tests {
 
 	#[test]
 	fn all_existing_shapes_are_registered() {
-		assert_eq!(registered_gizmo_nodes().len(), 7);
-		for (_, infos) in registered_gizmo_nodes() {
-			assert!(!infos.is_empty(), "every registered node must declare at least one gizmo");
+		// Pins the shapes themselves rather than the size of the table, which now also carries nodes
+		// that are not shapes at all.
+		for identifier in [
+			generator_nodes::circle::IDENTIFIER,
+			generator_nodes::regular_polygon::IDENTIFIER,
+			generator_nodes::star::IDENTIFIER,
+			generator_nodes::arc::IDENTIFIER,
+			generator_nodes::spiral::IDENTIFIER,
+			generator_nodes::grid::IDENTIFIER,
+			generator_nodes::heart::IDENTIFIER,
+		] {
+			assert!(!get_gizmo_info(&identifier).is_empty(), "{identifier:?} should declare at least one gizmo");
+		}
+		for (identifier, infos) in registered_gizmo_nodes() {
+			assert!(!infos.is_empty(), "{identifier:?} is registered but declares no gizmos");
 		}
 	}
 
@@ -509,5 +537,22 @@ mod tests {
 		// everywhere the sweep is reachable. Only the point/region distinction separates them.
 		assert!(radius.behavior.extended_target, "the radius is grabbed along the whole circumference");
 		assert!(!sweep.behavior.extended_target, "the sweep is grabbed at its endpoints");
+	}
+
+	#[test]
+	fn blur_is_registered_without_any_behaviour_code() {
+		// The point of the registry: a node that never had a gizmo gets one from a table entry alone.
+		let infos = get_gizmo_info(&graphene_std::raster_nodes::filter::blur::IDENTIFIER);
+		assert_eq!(infos.len(), 1);
+		assert_eq!(infos[0].gizmo_type, GizmoType::Slider);
+		assert_eq!(infos[0].min, Some(0.), "mirrors the node's own #[hard(0..)]");
+		assert!(infos[0].behavior.drag.is_none(), "a length needs no drag hook");
+		assert!(infos[0].behavior.handle_positions.is_none(), "nor any grab-point hook");
+	}
+
+	#[test]
+	fn the_registry_reaches_beyond_shape_generators() {
+		let nodes = registered_gizmo_nodes();
+		assert_eq!(nodes.len(), 8, "seven shape generators plus Blur");
 	}
 }
