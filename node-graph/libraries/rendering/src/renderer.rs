@@ -701,8 +701,9 @@ fn element_can_reduce_to_clip_path<'a>(element: &'a Graphic, reach: PaintReach<'
 fn collect_element_metadata<'a>(element: &'a Graphic, reach: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 	if let Some(element_id) = element_id {
 		match element {
-			Graphic::Group(_) => {
+			Graphic::Group(group) => {
 				metadata.upstream_footprints.insert(element_id, footprint);
+				collect_group_row_metadata(group, metadata, element_id);
 			}
 			Graphic::Graphic(_) => {
 				metadata.upstream_footprints.insert(element_id, footprint);
@@ -772,6 +773,35 @@ fn collect_element_metadata<'a>(element: &'a Graphic, reach: PaintReach<'a>, met
 		Graphic::Gradient(_) => {}
 		Graphic::Text(list) => collect_text_metadata(list, metadata, footprint, element_id),
 		Graphic::Group(group) => collect_group_metadata(group, reach, metadata, footprint, element_id),
+	}
+}
+
+/// The id-level metadata the legacy lowering exposed for a group element: a
+/// bare typed run serves its lane-0 transform (and source id for vectors) as
+/// the layer's local transform, matching the typed list the conversion made.
+fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, element_id: NodeId) {
+	fn lane_zero_transform<T: 'static>(item: &core_types::record::GroupItem) -> Option<DAffine2> {
+		RunView::<T>::new(item).map(|run| run.attr::<Transform>(0))
+	}
+
+	let GroupContent::Run(item) = &group.content else { return };
+	if group.row.is_some() || item.is_empty() || item.typed_lanes::<Graphic>().is_some() {
+		return;
+	}
+	if let Some(run) = RunView::<Vector>::new(item) {
+		let layer_path: &[NodeId] = run.attr::<EditorLayerPath>(0);
+		metadata.first_element_source_id.insert(element_id, layer_path.last().copied());
+		metadata.local_transforms.insert(element_id, run.attr::<Transform>(0));
+		return;
+	}
+	let transform = None
+		.or_else(|| lane_zero_transform::<Raster<CPU>>(item))
+		.or_else(|| lane_zero_transform::<Raster<GPU>>(item))
+		.or_else(|| lane_zero_transform::<Color>(item))
+		.or_else(|| lane_zero_transform::<GradientStops>(item))
+		.or_else(|| lane_zero_transform::<String>(item));
+	if let Some(transform) = transform {
+		metadata.local_transforms.insert(element_id, transform);
 	}
 }
 
@@ -853,29 +883,10 @@ fn render_group_vello<'a>(group: &'a Group, reach: PaintReach<'a>, scene: &mut S
 	}
 }
 
-/// Reproduces the legacy wrapper's metadata effects for a typed run: the
-/// lanes collect with their own recovered ids, and the caller's element id
-/// aggregates the run's upstream click targets and outlines.
+/// Collects a group as its legacy lowering did: a typed run behaves as the
+/// typed variant the conversion produced, so a caller's element id passes
+/// through to the typed body unchanged.
 fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-	fn typed_run<S: LaneSource>(
-		source: &S,
-		metadata: &mut RenderMetadata,
-		footprint: Footprint,
-		element_id: Option<NodeId>,
-		collect: impl Fn(&S, &mut RenderMetadata, Footprint, Option<NodeId>),
-		click: impl Fn(&S, &mut Vec<ClickTarget>),
-		outline: impl Fn(&S, &mut Vec<ClickTarget>),
-	) {
-		collect(source, metadata, footprint, None);
-		let Some(element_id) = element_id else { return };
-		let mut click_targets = Vec::new();
-		click(source, &mut click_targets);
-		metadata.click_targets.insert(element_id, click_targets.into_iter().map(Into::into).collect());
-		let mut outlines = Vec::new();
-		outline(source, &mut outlines);
-		metadata.outlines.insert(element_id, outlines.into_iter().map(Into::into).collect());
-	}
-
 	let GroupContent::Run(item) = &group.content else {
 		return group_to_legacy_list(group).collect_metadata(metadata, footprint, element_id);
 	};
@@ -883,31 +894,16 @@ fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata:
 		collect_graphic_metadata_with(&run, reach.into_group_graphics(), metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
 		match reach.applies() {
-			true => typed_run(
-				&PaintOverlay::new(&run, reach.paint),
-				metadata,
-				footprint,
-				element_id,
-				collect_vector_metadata,
-				add_vector_upstream_click_targets,
-				add_vector_upstream_outline_targets,
-			),
-			false => typed_run(&run, metadata, footprint, element_id, collect_vector_metadata, add_vector_upstream_click_targets, add_vector_upstream_outline_targets),
+			true => collect_vector_metadata(&PaintOverlay::new(&run, reach.paint), metadata, footprint, element_id),
+			false => collect_vector_metadata(&run, metadata, footprint, element_id),
 		}
 	} else if let Some(run) = RunView::<Raster<CPU>>::new(item) {
-		typed_run(&run, metadata, footprint, element_id, collect_raster_metadata, |_, out| add_raster_upstream_click_targets(out), |_, out| {
-			add_raster_upstream_click_targets(out)
-		})
+		collect_raster_metadata(&run, metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Raster<GPU>>::new(item) {
-		typed_run(&run, metadata, footprint, element_id, collect_raster_metadata, |_, out| add_raster_upstream_click_targets(out), |_, out| {
-			add_raster_upstream_click_targets(out)
-		})
-	} else if let Some(run) = RunView::<Color>::new(item) {
-		typed_run(&run, metadata, footprint, element_id, |_, _, _, _| (), |_, _| (), |_, _| ())
-	} else if let Some(run) = RunView::<GradientStops>::new(item) {
-		typed_run(&run, metadata, footprint, element_id, |_, _, _, _| (), |_, _| (), |_, _| ())
+		collect_raster_metadata(&run, metadata, footprint, element_id)
+	} else if item.typed_lanes::<Color>().is_some() || item.typed_lanes::<GradientStops>().is_some() {
 	} else if let Some(run) = RunView::<String>::new(item) {
-		typed_run(&run, metadata, footprint, element_id, collect_text_metadata, add_text_upstream_click_targets, add_text_upstream_click_targets)
+		collect_text_metadata(&run, metadata, footprint, element_id)
 	} else {
 		group_to_legacy_list(group).collect_metadata(metadata, footprint, element_id)
 	}
@@ -3105,7 +3101,7 @@ mod group_walk_tests {
 	}
 
 	#[test]
-	fn a_group_collects_the_wrapper_metadata() {
+	fn a_group_collects_like_its_legacy_lowering() {
 		let paint = color_paint();
 		let vectors = [unit_square_at(DVec2::ZERO)];
 		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
@@ -3122,15 +3118,15 @@ mod group_walk_tests {
 		Graphic::Group(group.clone()).collect_metadata(&mut native, footprint, Some(caller));
 
 		let mut legacy = RenderMetadata::default();
-		legacy.upstream_footprints.insert(caller, footprint);
-		graphic_types::graphic::group_to_legacy_list(&group).collect_metadata(&mut legacy, footprint, Some(caller));
+		group_to_legacy_graphic(&group).collect_metadata(&mut legacy, footprint, Some(caller));
 
 		assert!(native.click_targets.get(&caller).is_some_and(|targets| !targets.is_empty()));
+		assert!(native.local_transforms.contains_key(&caller));
 		assert_eq!(native, legacy);
 	}
 
 	#[test]
-	fn a_group_serves_the_wrapper_click_targets() {
+	fn a_group_serves_its_legacy_lowerings_click_targets() {
 		let paint = color_paint();
 		let vectors = [unit_square_at(DVec2::ZERO), unit_square_at(DVec2::new(2., 2.))];
 		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
