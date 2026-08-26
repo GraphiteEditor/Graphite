@@ -224,10 +224,12 @@ fn star_snap_radii(context: &GizmoContext) -> Vec<f64> {
 		if factor < 0. {
 			break;
 		}
+		// Both pushes need the guard. For an even-sided star `factor` is ~1e-16 at i == sides/2, and the
+		// unguarded reciprocal turned that into a ~1e18 px snap target with a tick drawn off-screen.
 		if other_radius.abs() * factor > 1e-6 {
 			snap_radii.push(other_radius.abs() * sign * factor);
+			snap_radii.push((other_radius.abs() * sign) / factor);
 		}
-		snap_radii.push((other_radius.abs() * sign) / factor);
 	}
 
 	snap_radii
