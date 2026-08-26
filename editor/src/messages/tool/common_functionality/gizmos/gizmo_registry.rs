@@ -23,6 +23,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::raster_nodes::filter::blur;
+use graphene_std::transform_nodes::transform;
 use graphene_std::vector::generator_nodes;
 use graphene_std::vector::generator_nodes::{arc, circle, grid, heart, regular_polygon, spiral, star};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -419,7 +420,19 @@ const BLUR_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	position_hint: PositionHint::ParameterDerived,
 }];
 
-pub fn registered_gizmo_nodes() -> [(ProtoNodeIdentifier, &'static [GizmoInfo]); 8] {
+/// The Transform node's translation, and the first use of [`GizmoType::Position`]. It is unbounded in
+/// both directions, so it declares no `min`/`max` at all.
+const TRANSFORM_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
+	parameter_index: transform::TranslationInput::INDEX,
+	gizmo_type: GizmoType::Position,
+	name: "Translation",
+	min: None,
+	max: None,
+	behavior: GizmoBehavior::NONE,
+	position_hint: PositionHint::ParameterDerived,
+}];
+
+pub fn registered_gizmo_nodes() -> [(ProtoNodeIdentifier, &'static [GizmoInfo]); 9] {
 	[
 		(generator_nodes::circle::IDENTIFIER, CIRCLE_GIZMOS),
 		(generator_nodes::regular_polygon::IDENTIFIER, POLYGON_GIZMOS),
@@ -428,8 +441,9 @@ pub fn registered_gizmo_nodes() -> [(ProtoNodeIdentifier, &'static [GizmoInfo]);
 		(generator_nodes::spiral::IDENTIFIER, SPIRAL_GIZMOS),
 		(generator_nodes::grid::IDENTIFIER, GRID_GIZMOS),
 		(generator_nodes::heart::IDENTIFIER, HEART_GIZMOS),
-		// A node that is not a shape generator, and never had a gizmo before the registry.
+		// Nodes that are not shape generators, and never had a gizmo before the registry.
 		(blur::IDENTIFIER, BLUR_GIZMOS),
+		(transform::IDENTIFIER, TRANSFORM_GIZMOS),
 	]
 }
 
@@ -551,8 +565,18 @@ mod tests {
 	}
 
 	#[test]
+	fn transform_exposes_its_translation_as_a_position() {
+		let infos = get_gizmo_info(&graphene_std::transform_nodes::transform::IDENTIFIER);
+		assert_eq!(infos.len(), 1);
+		assert_eq!(infos[0].gizmo_type, GizmoType::Position);
+		// A translation runs to either side of the origin, so bounding it would be wrong.
+		assert_eq!(infos[0].min, None);
+		assert_eq!(infos[0].max, None);
+	}
+
+	#[test]
 	fn the_registry_reaches_beyond_shape_generators() {
 		let nodes = registered_gizmo_nodes();
-		assert_eq!(nodes.len(), 8, "seven shape generators plus Blur");
+		assert_eq!(nodes.len(), 9, "seven shape generators plus Blur and Transform");
 	}
 }
