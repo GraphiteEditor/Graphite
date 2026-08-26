@@ -185,7 +185,7 @@ fn heart(
 	#[range]
 	#[hard(0..0.6)]
 	cleavage_depth: Item<f64>,
-	/// Half-angle of the top V. Zero collapses the V into a smooth join.
+	/// Half-angle of the top V. Zero produces a needle-sharp notch with vertical tangents; larger angles open it into a smooth join.
 	#[default(45.)]
 	#[range]
 	#[hard(0..89)]
