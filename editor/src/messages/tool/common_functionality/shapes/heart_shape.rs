@@ -5,6 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler};
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::resize::viewport_zoom;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeToolModifierKey;
 use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
@@ -42,7 +43,16 @@ impl Heart {
 				return;
 			};
 
-			let dimensions = (start - end).abs();
+			// In document units, as every other generator does: without this the heart is drawn at the
+			// wrong size whenever the canvas is not at 100% zoom.
+			let dimensions = ((start - end) / viewport_zoom(document)).abs();
+
+			// A drag that is exactly horizontal, exactly vertical, or has not moved leaves one dimension at
+			// zero. Dividing by it would write an infinite or NaN scale into the layer transform, so the
+			// degenerate frame is skipped and the last good size stands.
+			if dimensions.x == 0. || dimensions.y == 0. {
+				return;
+			}
 
 			let mut scale = DVec2::ONE;
 			let radius: f64;
