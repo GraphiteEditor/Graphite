@@ -6,9 +6,13 @@ use crate::attribute::Attribute;
 /// One marker's column on a source, resolved once so lane reads skip the key
 /// lookup.
 pub trait LaneColumn<'a, A: Attribute> {
-	/// The lane's value, or the marker's census default where the column is
-	/// absent.
-	fn get(&self, lane: usize) -> A::Value<'a>;
+	/// The lane's value, `None` where the source carries no such column.
+	fn try_get(&self, lane: usize) -> Option<A::Value<'a>>;
+
+	/// The lane's value, falling back to the marker's census default.
+	fn get(&self, lane: usize) -> A::Value<'a> {
+		self.try_get(lane).unwrap_or_else(A::default)
+	}
 }
 
 /// A source of lanes carrying an element and census attributes.
@@ -26,6 +30,11 @@ pub trait LaneSource {
 
 	fn attr<A: Attribute>(&self, lane: usize) -> A::Value<'_> {
 		self.column::<A>().get(lane)
+	}
+
+	/// Distinguishes an absent column from one holding the census default.
+	fn try_attr<A: Attribute>(&self, lane: usize) -> Option<A::Value<'_>> {
+		self.column::<A>().try_get(lane)
 	}
 }
 

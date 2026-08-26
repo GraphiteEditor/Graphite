@@ -2,8 +2,8 @@ use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
 use core_types::attribute::{
-	Background as BackgroundAttr, BlendMode as BlendModeAttr, Clip, ClippingMask, Dimensions, EditorLayerPath, FontSize, LetterSpacing, LetterTilt, LineHeight, Location, MaxHeight, MaxWidth, Opacity,
-	OpacityFill, Transform,
+	Background as BackgroundAttr, BlendMode as BlendModeAttr, Clip, ClippingMask, Dimensions, EditorLayerPath, EditorTextFrame, FontSize, LetterSpacing, LetterTilt, LineHeight, Location, MaxHeight,
+	MaxWidth, Opacity, OpacityFill, Transform,
 };
 use core_types::blending::BlendMode;
 use core_types::bounds::BoundingBox;
@@ -16,7 +16,7 @@ use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM};
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
@@ -43,7 +43,8 @@ use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use text_nodes::markers::{Font, TextAlign};
 use vector_types::gradient::GradientSpreadMethod;
-use vector_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
+use vector_types::markers::EditorClickTarget;
+use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1588,7 +1589,7 @@ impl Render for List<Vector> {
 				}
 
 				// Use click-target override if the item provides one (e.g. 'Text' node's per-glyph bboxes)
-				let click_target_vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
+				let click_target_vector = self.attr::<EditorClickTarget>(index).unwrap_or(source);
 
 				let item_relative_transform = item_zero_inverse * transform;
 
@@ -1617,7 +1618,7 @@ impl Render for List<Vector> {
 				}
 
 				// Surface `editor:text_frame` for the Text tool's drag cage
-				if let Some(&frame) = self.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index) {
+				if let Some(frame) = self.try_attr::<EditorTextFrame>(index) {
 					metadata.text_frames.entry(element_id).or_insert(frame);
 				}
 			}
@@ -1647,7 +1648,7 @@ impl Render for List<Vector> {
 			let transform: DAffine2 = self.attr::<Transform>(index);
 
 			// Use click-target override geometry if the item provides one (e.g. 'Text' node's per-glyph bounding boxes)
-			let vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
+			let vector = self.attr::<EditorClickTarget>(index).unwrap_or(source);
 
 			extend_targets_from_vector(click_targets, self, index, vector, transform);
 		}

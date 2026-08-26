@@ -1888,13 +1888,10 @@ pub struct RunColumn<'a, A: crate::attribute::Attribute> {
 }
 
 impl<'a, A: crate::attribute::Attribute> crate::lane::LaneColumn<'a, A> for RunColumn<'a, A> {
-	fn get(&self, lane: usize) -> A::Value<'a> {
-		match self.offset {
-			// SAFETY: the offset comes from the item's own layout, whose field at
-			// this name holds this marker's value type by census registration.
-			Some(offset) => unsafe { self.item.lanes().get(lane).rec().ptr().add(offset).cast::<A::Value<'a>>().read() },
-			None => A::default(),
-		}
+	fn try_get(&self, lane: usize) -> Option<A::Value<'a>> {
+		// SAFETY: the offset comes from the item's own layout, whose field at
+		// this name holds this marker's value type by census registration.
+		self.offset.map(|offset| unsafe { self.item.lanes().get(lane).rec().ptr().add(offset).cast::<A::Value<'a>>().read() })
 	}
 }
 

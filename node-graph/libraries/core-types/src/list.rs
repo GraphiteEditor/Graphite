@@ -1180,8 +1180,8 @@ pub struct ListColumn<'a, A: crate::attribute::Attribute> {
 }
 
 impl<'a, A: crate::attribute::Attribute> crate::lane::LaneColumn<'a, A> for ListColumn<'a, A> {
-	fn get(&self, lane: usize) -> A::Value<'a> {
-		self.stored.and_then(|column| column.get_any(lane)).and_then(A::from_stored).unwrap_or_else(A::default)
+	fn try_get(&self, lane: usize) -> Option<A::Value<'a>> {
+		self.stored.and_then(|column| column.get_any(lane)).and_then(A::from_stored)
 	}
 }
 

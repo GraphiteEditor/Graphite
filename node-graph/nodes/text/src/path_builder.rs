@@ -198,7 +198,7 @@ impl PathBuilder {
 			for (entry, widened) in entries.iter().zip(layer_bboxes.iter()) {
 				let glyph_local = [widened[0] - entry.1, widened[1] - entry.1];
 				let rect = Subpath::new_rectangle(glyph_local[0], glyph_local[1]);
-				self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, Vector::from_subpaths([rect], false));
+				self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, Some(Vector::from_subpaths([rect], false)));
 			}
 		}
 
@@ -208,7 +208,7 @@ impl PathBuilder {
 			widen_horizontal_gaps(&mut bboxes, &self.merged_click_target_baselines);
 
 			let widened_subpaths: Vec<_> = bboxes.iter().map(|[min, max]| Subpath::new_rectangle(*min, *max)).collect();
-			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_subpaths(widened_subpaths, false));
+			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Some(Vector::from_subpaths(widened_subpaths, false)));
 		}
 
 		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
