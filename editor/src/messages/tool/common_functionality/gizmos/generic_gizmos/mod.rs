@@ -33,15 +33,6 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
 
-/// Read an `f64` node input value by node identifier and parameter index.
-pub fn read_f64_input(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, identifier: &ProtoNodeIdentifier, index: usize) -> Option<f64> {
-	let inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(identifier.clone()))?;
-	match inputs.get(index)?.as_value()? {
-		TaggedValue::F64(value) => Some(*value),
-		_ => None,
-	}
-}
-
 /// Read a node input as a number, whichever numeric type it is stored as.
 ///
 /// The generic gizmos use this for hit-testing and overlays, where all that matters is how large the value
@@ -160,6 +151,7 @@ impl GenericGizmo {
 /// when multiple handles overlap (the handle closest to the cursor wins the hover).
 #[derive(Clone, Debug, Default)]
 pub struct GenericGizmoManager {
+	layer: LayerNodeIdentifier,
 	gizmos: Vec<GenericGizmo>,
 }
 
@@ -195,7 +187,7 @@ impl GenericGizmoManager {
 			}
 
 			if !gizmos.is_empty() {
-				return Some(Self { gizmos });
+				return Some(Self { layer, gizmos });
 			}
 		}
 
@@ -267,12 +259,27 @@ impl ShapeGizmoHandler for GenericGizmoManager {
 	fn overlays(
 		&self,
 		document: &DocumentMessageHandler,
-		_selected_shape_layers: Option<LayerNodeIdentifier>,
+		selected_shape_layers: Option<LayerNodeIdentifier>,
 		_input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
+		// The gizmos held here are bound to `self.layer`. When the manager is asked to draw for a
+		// different selected layer -- which happens whenever several layers are selected at once -- it has
+		// to resolve that layer's own gizmos instead, or it draws this layer's handles a second time and
+		// the other layer gets none.
+		if let Some(layer) = selected_shape_layers
+			&& layer != self.layer
+		{
+			if let Some(manager) = Self::detect_gizmos(layer, document) {
+				for gizmo in &manager.gizmos {
+					gizmo.overlays(document, mouse_position, Some(shape_editor), overlay_context);
+				}
+			}
+			return;
+		}
+
 		for gizmo in &self.gizmos {
 			gizmo.overlays(document, mouse_position, Some(shape_editor), overlay_context);
 		}
