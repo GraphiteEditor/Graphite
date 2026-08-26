@@ -7,6 +7,7 @@
 //!
 //! - [`GenericSliderGizmo`](generic_slider_gizmo::GenericSliderGizmo) edits an `f64` parameter.
 //! - [`GenericDialGizmo`](generic_dial_gizmo::GenericDialGizmo) edits a `u32` parameter.
+//! - [`GenericPositionGizmo`](generic_position_gizmo::GenericPositionGizmo) edits a `DVec2` parameter.
 //!
 //! [`GenericGizmoHandler`] ties them together behind the existing
 //! [`ShapeGizmoHandler`](crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler)
@@ -14,6 +15,7 @@
 //! knowledge of the underlying node.
 
 pub mod generic_dial_gizmo;
+pub mod generic_position_gizmo;
 pub mod generic_slider_gizmo;
 
 use crate::messages::frontend::utility_types::MouseCursorIcon;
@@ -27,6 +29,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::NodeG
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use generic_dial_gizmo::GenericDialGizmo;
+use generic_position_gizmo::GenericPositionGizmo;
 use generic_slider_gizmo::GenericSliderGizmo;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
@@ -46,6 +49,15 @@ pub fn read_number_input(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	}
 }
 
+/// Read a `DVec2` node input, for the position gizmo and anything else that needs a point parameter.
+pub fn read_dvec2_input(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, identifier: &ProtoNodeIdentifier, index: usize) -> Option<DVec2> {
+	let inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(identifier.clone()))?;
+	match inputs.get(index)?.as_value()? {
+		TaggedValue::DVec2(value) => Some(*value),
+		_ => None,
+	}
+}
+
 /// Read a `u32` node input value by node identifier and parameter index.
 pub fn read_u32_input(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, identifier: &ProtoNodeIdentifier, index: usize) -> Option<u32> {
 	let inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(identifier.clone()))?;
@@ -60,6 +72,7 @@ pub fn read_u32_input(layer: LayerNodeIdentifier, document: &DocumentMessageHand
 enum GenericGizmo {
 	Slider(GenericSliderGizmo),
 	Dial(GenericDialGizmo),
+	Position(GenericPositionGizmo),
 }
 
 impl GenericGizmo {
@@ -67,6 +80,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.is_hovered(),
 			Self::Dial(g) => g.is_hovered(),
+			Self::Position(g) => g.is_hovered(),
 		}
 	}
 
@@ -74,6 +88,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.is_dragging(),
 			Self::Dial(g) => g.is_dragging(),
+			Self::Position(g) => g.is_dragging(),
 		}
 	}
 
@@ -82,6 +97,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.hover_distance(mouse_position, document),
 			Self::Dial(g) => g.hover_distance(mouse_position, document),
+			Self::Position(g) => g.hover_distance(mouse_position, document),
 		}
 	}
 
@@ -90,6 +106,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.is_extended_target(),
 			Self::Dial(g) => g.is_extended_target(),
+			Self::Position(g) => g.is_extended_target(),
 		}
 	}
 
@@ -97,6 +114,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.enter_hover(document, mouse_position, responses),
 			Self::Dial(g) => g.enter_hover(document, mouse_position, responses),
+			Self::Position(g) => g.enter_hover(document, mouse_position, responses),
 		}
 	}
 
@@ -104,6 +122,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.exit_hover(responses),
 			Self::Dial(g) => g.exit_hover(responses),
+			Self::Position(g) => g.exit_hover(responses),
 		}
 	}
 
@@ -111,6 +130,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.handle_click(),
 			Self::Dial(g) => g.handle_click(),
+			Self::Position(g) => g.handle_click(),
 		}
 	}
 
@@ -118,6 +138,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.handle_update(drag_start, document, input, responses),
 			Self::Dial(g) => g.handle_update(drag_start, document, input, responses),
+			Self::Position(g) => g.handle_update(drag_start, document, input, responses),
 		}
 	}
 
@@ -125,6 +146,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.overlays(document, mouse_position, shape_editor, overlay_context),
 			Self::Dial(g) => g.overlays(document, mouse_position, shape_editor, overlay_context),
+			Self::Position(g) => g.overlays(document, mouse_position, shape_editor, overlay_context),
 		}
 	}
 
@@ -132,6 +154,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.cleanup(),
 			Self::Dial(g) => g.cleanup(),
+			Self::Position(g) => g.cleanup(),
 		}
 	}
 
@@ -139,6 +162,7 @@ impl GenericGizmo {
 		match self {
 			Self::Slider(g) => g.mouse_cursor_icon(),
 			Self::Dial(g) => g.mouse_cursor_icon(),
+			Self::Position(g) => g.mouse_cursor_icon(),
 		}
 	}
 }
@@ -180,9 +204,7 @@ impl GenericGizmoManager {
 					GizmoType::Dial if !brings_own_drag => gizmos.push(GenericGizmo::Dial(GenericDialGizmo::new(layer, node_id, identifier.clone(), *info))),
 					// An angle runs on the same handle machinery as a length; what differs is the drag.
 					GizmoType::Slider | GizmoType::Angle | GizmoType::Dial => gizmos.push(GenericGizmo::Slider(GenericSliderGizmo::new(layer, node_id, identifier.clone(), *info))),
-					// Position gizmos are not yet implemented; they are skipped so a partially-migrated node
-					// still gets its other controls.
-					GizmoType::Position => {}
+					GizmoType::Position => gizmos.push(GenericGizmo::Position(GenericPositionGizmo::new(layer, node_id, identifier.clone(), *info))),
 				}
 			}
 
