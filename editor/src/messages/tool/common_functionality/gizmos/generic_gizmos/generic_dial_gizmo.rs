@@ -112,16 +112,15 @@ impl GenericDialGizmo {
 		read_u32_input(self.layer, document, &self.identifier, self.info.parameter_index)
 	}
 
-	/// Hover detection: the dial occupies a disc of `DIAL_INDICATOR_RADIUS` around the layer origin.
-	/// Pure hover test: returns the mouse's distance to the dial center when it is a hover
-	/// candidate, or `None` otherwise. Used by the manager to resolve overlap priority. Performs
-	/// no state mutation.
 	/// Whether this gizmo is grabbed along a region rather than at a point, which decides priority
 	/// against an overlapping handle. See [`GizmoBehavior::extended_target`].
 	pub fn is_extended_target(&self) -> bool {
 		self.info.behavior.extended_target
 	}
 
+	/// Pure hover test: the mouse's distance to the dial's centre when it is a hover candidate, else
+	/// `None`. The dial occupies a disc of `DIAL_HOVER_RADIUS` around the layer origin. Performs no
+	/// state mutation; the manager uses this to resolve overlapping handles.
 	pub fn hover_distance(&self, mouse_position: DVec2, document: &DocumentMessageHandler) -> Option<f64> {
 		self.current_value(document)?;
 
@@ -169,7 +168,8 @@ impl GenericDialGizmo {
 		let steps = ((drag.length() / DIAL_PIXELS_PER_STEP).round() * direction) as i64;
 
 		let min = self.info.min.map(|m| m as i64).unwrap_or(0);
-		let max = self.info.max.map(|m| m as i64).unwrap_or(i64::MAX);
+		// u32::MAX, not i64::MAX: the cast below would wrap anything above it.
+		let max = self.info.max.map(|m| m as i64).unwrap_or(u32::MAX as i64);
 		let new_value = (self.initial_value as i64 + steps).clamp(min, max) as u32;
 
 		responses.add(NodeGraphMessage::SetInput {

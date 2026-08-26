@@ -336,7 +336,9 @@ impl GenericSliderGizmo {
 		let direction = if self.initial_value.is_sign_negative() { -1. } else { 1. };
 		let mut value = self.initial_value + travelled * direction;
 
-		value = self.snap(self.clamp(value));
+		// Clamp last: snapping after clamping lets a target just outside the declared bounds pull the
+		// value back out of range.
+		value = self.clamp(self.snap(value));
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(self.node_id, self.parameter()),
