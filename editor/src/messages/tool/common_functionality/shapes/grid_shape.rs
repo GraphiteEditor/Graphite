@@ -351,9 +351,10 @@ fn calculate_isometric_left_line_points(columns: u32, rows: u32, spacing: DVec2,
 	(top_left - offset, bottom_left + offset)
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RowColumnGizmoType {
-	#[default]
+	/// No edge is in play. `Default` is deliberately not derived: every accessor below panics on this
+	/// variant, so a derived default would turn an omitted initialiser into a crash at the first call.
 	None,
 	Top,
 	Bottom,
@@ -397,7 +398,7 @@ impl RowColumnGizmoType {
 		let (x0, x1) = match self {
 			Self::Top | Self::Left => (viewport.transform_point2(p0 + gap), viewport.transform_point2(p1)),
 			Self::Bottom | Self::Right => (viewport.transform_point2(p0), viewport.transform_point2(p1 + gap)),
-			Self::None => panic!("RowColumnGizmoType::None does not have opposite"),
+			Self::None => panic!("RowColumnGizmoType::None does not have a rect"),
 		};
 
 		kurbo::Rect::new(x0.x, x0.y, x1.x, x1.y)
@@ -409,7 +410,7 @@ impl RowColumnGizmoType {
 			Self::Right => Self::Left,
 			Self::Bottom => Self::Top,
 			Self::Left => Self::Right,
-			Self::None => panic!("RowColumnGizmoType::None does not have opposite"),
+			Self::None => panic!("RowColumnGizmoType::None does not have a rect"),
 		}
 	}
 
@@ -419,7 +420,7 @@ impl RowColumnGizmoType {
 			RowColumnGizmoType::Bottom => viewport.transform_vector2(DVec2::Y),
 			RowColumnGizmoType::Right => viewport.transform_vector2(DVec2::X),
 			RowColumnGizmoType::Left => viewport.transform_vector2(-DVec2::X),
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a line"),
+			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a direction"),
 		}
 	}
 
@@ -427,7 +428,7 @@ impl RowColumnGizmoType {
 		match self {
 			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => rows,
 			RowColumnGizmoType::Left | RowColumnGizmoType::Right => columns,
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
+			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have an opposite"),
 		}
 	}
 
@@ -441,7 +442,7 @@ impl RowColumnGizmoType {
 					spacing.y / (angles.x.to_radians().tan() + angles.y.to_radians().tan())
 				}
 			}
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
+			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have an initial dimension"),
 		}
 	}
 
@@ -459,7 +460,7 @@ impl RowColumnGizmoType {
 		match self {
 			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => MouseCursorIcon::NSResize,
 			RowColumnGizmoType::Left | RowColumnGizmoType::Right => MouseCursorIcon::EWResize,
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
+			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a spacing"),
 		}
 	}
 
