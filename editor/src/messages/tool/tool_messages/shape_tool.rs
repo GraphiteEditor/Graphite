@@ -581,7 +581,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 		// control bar). Any parameter the control bar mirrors — polygon/star sides, spiral turns, etc. — must be re-read
 		// from the selected layer afterward, otherwise the control bar fields go stale. We reuse the same live-read sync
 		// that runs on `SelectionChanged`, so every edit path (gizmo, properties panel, API) stays consistent.
-		let is_gizmo_drag = matches!(&message, ToolMessage::Shape(ShapeToolMessage::PointerMove { .. })) && matches!(self.fsm_state, ShapeToolFsmState::ModifyingGizmo);
+		// `DragStop` is included alongside `PointerMove` deliberately. A gizmo does not edit the document in
+		// place: it queues a `SetInput` into `responses`, which is applied only after this handler returns, so
+		// a sync during the drag necessarily reads the value the *previous* move wrote. Without the `DragStop`
+		// pass the last move is never re-read at all and the mirrored field stays stale until the next
+		// selection change.
+		let is_gizmo_drag = matches!(&message, ToolMessage::Shape(ShapeToolMessage::PointerMove { .. }) | ToolMessage::Shape(ShapeToolMessage::DragStop))
+			&& matches!(self.fsm_state, ShapeToolFsmState::ModifyingGizmo);
 
 		let ToolMessage::Shape(ShapeToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
