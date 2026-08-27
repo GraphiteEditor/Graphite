@@ -1,0 +1,14 @@
+{%- set alt = alt | default(value = title) -%}
+{%- set timestamp = timestamp | default(value = 0) -%}
+{%- set watch_url = "https://www.youtube.com/watch?v=" ~ id -%}
+{%- if timestamp %}{% set watch_url = watch_url ~ "&t=" ~ timestamp %}{% endif -%}
+<div class="youtube-embed" data-youtube-embed="{{ id }}" {% if timestamp %}data-youtube-timestamp="{{ timestamp }}"{% endif %} role="button" tabindex="0">
+	<img class="youtube-embed-thumbnail" loading="lazy" src="https://img.youtube.com/vi/{{ id }}/maxresdefault.jpg" onload="if (this.naturalWidth < 1000 && this.src.includes('maxresdefault')) this.src = 'https://img.youtube.com/vi/{{ id }}/hqdefault.jpg'" onerror="this.onerror = null; this.src = 'https://img.youtube.com/vi/{{ id }}/hqdefault.jpg'" alt="{{ alt }}" />
+	<div class="youtube-embed-shade"></div>
+	<img class="youtube-embed-play" src="https://static.graphite.art/icons/youtube-embed-play.svg" />
+	<a class="youtube-embed-title" href="{{ watch_url }}" target="_blank" rel="noopener">{{ title }}</a>
+	<a class="youtube-embed-watch" href="{{ watch_url }}" target="_blank" rel="noopener">
+		<span>Watch on</span>
+		<img src="https://static.graphite.art/icons/youtube-embed-logo.svg" alt="YouTube" />
+	</a>
+</div>

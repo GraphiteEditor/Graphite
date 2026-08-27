@@ -1,4 +1,4 @@
-use crate::WgpuExecutorHandle;
+use crate::{Buffer, WgpuExecutor, WgpuExecutorHandle};
 use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
@@ -6,36 +6,29 @@ use core_types::ops::{Convert, ConvertAsync};
 use core_types::runtime::SourceFuture;
 use core_types::transform::Footprint;
 use raster_types::Image;
-use raster_types::{CPU, GPU, Raster};
-use wgpu::util::{DeviceExt, TextureDataOrder};
-use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
+use raster_types::{CPU, GPU, Raster, Texture};
+use wgpu::{Extent3d, TextureFormat};
 
 /// Uploads CPU image data to a GPU texture
-///
-/// Creates a new WGPU texture with RGBA8UnormSrgb format and uploads the provided
-/// image data. The texture is configured for binding, copying, and source operations.
-fn upload_to_texture(device: &wgpu::Device, queue: &wgpu::Queue, image: &Raster<CPU>) -> wgpu::Texture {
+fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raster<CPU>) -> Texture {
 	let rgba8_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();
 
-	device.create_texture_with_data(
-		queue,
-		&TextureDescriptor {
-			label: Some("upload_to_texture staging texture"),
-			size: Extent3d {
-				width: image.width,
-				height: image.height,
-				depth_or_array_layers: 1,
-			},
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: TextureDimension::D2,
-			format: TextureFormat::Rgba8UnormSrgb,
-			usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::COPY_SRC,
-			view_formats: &[],
-		},
-		TextureDataOrder::LayerMajor,
+	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), TextureFormat::Rgba8UnormSrgb);
+	queue.write_texture(
+		texture.as_image_copy(),
 		bytemuck::cast_slice(rgba8_data.as_slice()),
-	)
+		wgpu::TexelCopyBufferLayout {
+			offset: 0,
+			bytes_per_row: Some(4 * image.width),
+			rows_per_image: Some(image.height),
+		},
+		Extent3d {
+			width: image.width,
+			height: image.height,
+			depth_or_array_layers: 1,
+		},
+	);
+	texture
 }
 
 /// Passthrough conversion for GPU `List`s - no conversion needed
@@ -91,7 +84,7 @@ impl Convert<List<Raster<CPU>>, WgpuExecutorHandle> for List<Raster<CPU>> {
 /// - 4 bytes-per-pixel RGBA8
 /// - Texture has COPY_SRC usage
 struct RasterGpuToRasterCpuConverter {
-	buffer: wgpu::Buffer,
+	buffer: Buffer,
 	width: u32,
 	height: u32,
 	unpadded_bytes_per_row: u32,
@@ -99,7 +92,7 @@ struct RasterGpuToRasterCpuConverter {
 	_source: raster_types::Texture,
 }
 impl RasterGpuToRasterCpuConverter {
-	fn new(device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, data_gpu: Raster<GPU>) -> Self {
+	fn new(executor: &WgpuExecutor, encoder: &mut wgpu::CommandEncoder, data_gpu: Raster<GPU>) -> Self {
 		let texture = data_gpu.data();
 		let width = texture.width();
 		let height = texture.height();
@@ -109,7 +102,7 @@ impl RasterGpuToRasterCpuConverter {
 		let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
 		let buffer_size = padded_bytes_per_row as u64 * height as u64;
 
-		let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+		let buffer = executor.create_buffer(&wgpu::BufferDescriptor {
 			label: Some("texture_download_buffer"),
 			size: buffer_size,
 			usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
@@ -203,7 +196,7 @@ impl ConvertAsync<List<Raster<CPU>>, WgpuExecutorHandle> for List<Raster<GPU>> {
 
 		for row in self {
 			let (element, attributes) = row.into_parts();
-			converters.push(RasterGpuToRasterCpuConverter::new(&device, &mut encoder, element));
+			converters.push(RasterGpuToRasterCpuConverter::new(executor, &mut encoder, element));
 			rows_meta.push(Item::from_parts((), attributes));
 		}
 
@@ -242,7 +235,7 @@ impl ConvertAsync<Raster<CPU>, WgpuExecutorHandle> for Raster<GPU> {
 			label: Some("single_texture_download_encoder"),
 		});
 
-		let converter = RasterGpuToRasterCpuConverter::new(&device, &mut encoder, self);
+		let converter = RasterGpuToRasterCpuConverter::new(executor, &mut encoder, self);
 
 		queue.submit([encoder.finish()]);
 

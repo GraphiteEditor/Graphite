@@ -1,0 +1,347 @@
+pub mod ast;
+mod constants;
+pub mod context;
+pub mod executer;
+pub mod lexer;
+pub mod parser;
+pub mod value;
+
+use context::EvalContext;
+use executer::EvalError;
+use parser::ParseError;
+use value::Value;
+
+pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError> {
+	let expr = ast::Node::try_parse_from_str(expression);
+	let context = EvalContext::default();
+	expr.map(|node| node.eval(&context))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use value::Number;
+
+	const EPSILON: f64 = 1e-10_f64;
+
+	#[test]
+	fn malformed_juxtaposed_numbers_fail_to_parse() {
+		// Two numbers cannot be glued together by a stray decimal point (they must not parse as implicit multiplication)
+		for input in ["1..5", "1.5.5", "1..", ".5.5"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn unrecognized_characters_fail_to_parse() {
+		// Unrecognized trailing input must be rejected rather than silently dropped after a valid prefix
+		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "2 = 3"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn juxtaposed_numbers_fail_to_parse() {
+		// Adjacent number literals like digit-grouped `10 000` must not silently multiply
+		for input in ["2 3", "10 000", "1 .5", "sqrt(4).5", "2 3 + 1"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn extremely_long_fraction_parses() {
+		let input = format!("0.{}", "1".repeat(320));
+		let value = evaluate(&input).unwrap().unwrap();
+		assert_eq!(value.as_real(), Some(1. / 9.));
+	}
+
+	fn run_end_to_end_test(input: &str, expected_value: Value) {
+		let expr = match ast::Node::try_parse_from_str(input) {
+			Ok(expr) => expr,
+			Err(err) => panic!("failed to parse `{input}`: {err}"),
+		};
+		let context = EvalContext::default();
+
+		let actual_value = match expr.eval(&context) {
+			Ok(v) => v,
+			Err(err) => panic!("failed to evaluate `{input}` because of error {err}"),
+		};
+
+		match (actual_value, expected_value) {
+			(Value::Number(Number::Complex(a)), Value::Number(Number::Complex(e))) => {
+				// real part
+				if a.re.is_infinite() || e.re.is_infinite() {
+					assert!(a.re == e.re, "`{}` → real part: expected {:?}, got {:?}", input, e.re, a.re);
+				} else {
+					assert!((a.re - e.re).abs() < EPSILON, "`{}` → real part: expected {}, got {}", input, e.re, a.re);
+				}
+
+				// imag part
+				if a.im.is_infinite() || e.im.is_infinite() {
+					assert!(a.im == e.im, "`{}` → imag part: expected {:?}, got {:?}", input, e.im, a.im);
+				} else {
+					assert!((a.im - e.im).abs() < EPSILON, "`{}` → imag part: expected {}, got {}", input, e.im, a.im);
+				}
+			}
+
+			(Value::Number(Number::Real(a)), Value::Number(Number::Real(e))) => {
+				if a.is_infinite() || e.is_infinite() {
+					// both must be infinite and equal (i.e. both +∞ or both −∞)
+					assert!(a == e, "`{input}` → expected infinite {e:?}, got {a:?}");
+				} else if a.is_nan() || e.is_nan() {
+					// both must be NaN
+					assert!(a.is_nan() && e.is_nan(), "`{input}` → expected NaN, got {a:?}");
+				} else {
+					let diff = (a - e).abs();
+					assert!(diff < EPSILON, "`{input}` → expected {e}, got {a}, Δ={diff}");
+				}
+			}
+
+			(got, expect) => {
+				panic!("`{input}` → mismatched types: expected {expect:?}, got {got:?}");
+			}
+		}
+	}
+
+	macro_rules! test_end_to_end {
+		($($name:ident: $input:expr => $expected:expr),* $(,)?) => {
+			$(
+				#[test]
+				fn $name() {
+					run_end_to_end_test($input, ($expected).into());
+				}
+			)*
+		};
+	}
+	test_end_to_end! {
+		// Basic arithmetic
+		infix_addition: "5 + 5" => 10.,
+		infix_subtraction: "5 - 3" => 2.,
+		infix_multiplication: "4 * 4" => 16.,
+		infix_division: "8/2" => 4.,
+		modulo_pos_pos: "3.2 % 2" => 1.2,
+		modulo_pos_neg: "3.2 % -2" => 1.2,
+		modulo_neg_neg: "(-3.2) % -2" => -1.2,
+		modulo_neg_pos: "(-3.2) % 2" => -1.2,
+		exp_pos_pos: "3.2 ^ 2" => 256. / 25.,
+		exp_pos_neg: "3.2 ^ -2" => 25. / 256.,
+		exp_neg_neg: "-3.2 ^ -2" => -25. / 256.,
+		exp_neg_pos: "-3.2 ^ 2" => -256. / 25.,
+
+		// Order of operations
+		order_of_operations_negative_prefix: "-10 + 5" => -5.,
+		order_of_operations_add_multiply: "5+1*1+5" => 11.,
+		order_of_operations_add_negative_multiply: "5+(-1)*1+5" => 9.,
+		order_of_operations_sqrt: "sqrt(25) + 11" => 16.,
+		order_of_operations_sqrt_expression: "sqrt(25+11)" => 6.,
+
+		// Parentheses and nested expressions
+		parentheses_nested_multiply: "(5 + 3) * (2 + 6)" => 64.,
+		parentheses_mixed_operations: "2 * (3 + 5 * (2 + 1))" => 36.,
+		parentheses_divide_add_multiply: "10 / (2 + 3) + (7 * 2)" => 16.,
+
+		// Square root and nested square root
+		sqrt_chain_operations: "sqrt(16) + sqrt(9) * sqrt(4)" => 10.,
+		sqrt_nested: "sqrt(sqrt(81))" => 3.,
+		sqrt_divide_expression: "sqrt((25 + 11) / 9)" => 2.,
+
+		// Mixed square root and units
+		sqrt_add_multiply: "sqrt(49) - 1 + 2 * 3" => 12.,
+		sqrt_addition_multiply: "(sqrt(36) + 2) * 2" => 16.,
+
+		// Exponentiation
+		exponent_single: "2^3" => 8.,
+		exponent_mixed_operations: "2^3 + 4^2" => 24.,
+		exponent_nested: "2^(3+1)" => 16.,
+		exponent_right_associative: "2^2^3" => 256.,
+		exponent_unary_operand: "2^-1" => 0.5,
+
+		// Implicit multiplication binds like `*`/`/`: tighter than `+`, looser than `^`, left to right
+		implicit_multiplication_constant: "2pi" => 2. * std::f64::consts::PI,
+		implicit_multiplication_before_addition: "2pi + 1" => 2. * std::f64::consts::PI + 1.,
+		implicit_multiplication_shares_division: "1/2pi" => std::f64::consts::PI / 2.,
+		implicit_multiplication_left_to_right: "6/2pi" => 3. * std::f64::consts::PI,
+		implicit_multiplication_power_operand: "2pi^2" => 2. * std::f64::consts::PI.powi(2),
+		implicit_multiplication_function: "2sqrt(4)" => 4.,
+		implicit_multiplication_excludes_unary_minus: "2 -3" => -1.,
+
+		// Factorial (postfix !)
+		factorial_simple: "5!" => 120.,
+		factorial_nested: "(3 + 2)!" => 120.,
+		factorial_zero: "0!" => 1.,
+		factorial_chain: "3!!" => 720., // (3!)! = 6! = 720
+
+		// Operations with negative values
+		negative_nested_parentheses: "-(5 + 3 * (2 - 1))" => -8.,
+		negative_sqrt_addition: "-(sqrt(16) + sqrt(9))" => -7.,
+		multiply_sqrt_subtract: "5 * 2 + sqrt(16) / 2 - 3" => 9.,
+		add_multiply_subtract_sqrt: "4 + 3 * (2 + 1) - sqrt(25)" => 8.,
+		add_sqrt_subtract_nested_multiply: "10 + sqrt(64) - (5 * (2 + 1))" => 3.,
+
+		// Mathematical constants
+		constant_pi: "pi" => std::f64::consts::PI,
+		constant_e: "e" => std::f64::consts::E,
+		constant_phi: "phi" => 1.61803398875,
+		constant_tau: "tau" => 2. * std::f64::consts::PI,
+		constant_infinity: "if(inf == ∞, inf, 0)" => f64::INFINITY,
+		multiply_pi: "2 * pi" => 2. * std::f64::consts::PI,
+		add_e_constant: "e + 1" => std::f64::consts::E + 1.,
+		multiply_phi_constant: "phi * 2" => 1.61803398875 * 2.,
+		exponent_tau: "2^tau" => 2f64.powf(2. * std::f64::consts::PI),
+		infinity_subtract_large_number: "inf - 1000" => f64::INFINITY,
+
+		// Decimals with no leading digit before the point
+		leading_dot_decimal: ".5" => 0.5,
+		leading_dot_in_expression: "1+.5" => 1.5,
+		leading_dot_exponent: ".5e3" => 500.,
+
+		// Trigonometric functions
+		trig_sin_pi: "sin(pi)" => 0.,
+		trig_cos_zero: "cos(0)" => 1.,
+		trig_tan_pi_div_four: "tan(pi/4)" => 1.,
+		trig_sin_tau: "sin(tau)" => 0.,
+		trig_cos_tau_div_two: "cos(tau/2)" => -1.,
+		trig_csc: "csc(pi/2)" => 1.,
+		trig_sec: "sec(0)" => 1.,
+		trig_cot: "cot(pi/4)" => 1.,
+
+		// Inverse trig aliases
+		inverse_trig_asin: "asin(1)" => std::f64::consts::FRAC_PI_2,
+		inverse_trig_acos: "acos(1)" => 0.,
+		inverse_trig_atan: "atan(1)" => std::f64::consts::FRAC_PI_4,
+		inverse_trig_acsc: "acsc(1)" => std::f64::consts::FRAC_PI_2,
+		inverse_trig_asec: "asec(1)" => 0.,
+		inverse_trig_acot: "acot(1)" => std::f64::consts::FRAC_PI_4,
+
+		// Hyperbolic and reciprocal hyperbolic
+		hyperbolic_sinh: "sinh(0)" => 0.,
+		hyperbolic_cosh: "cosh(0)" => 1.,
+		hyperbolic_tanh: "tanh(0)" => 0.,
+		hyperbolic_csch: "csch(1)" => 1f64.sinh().recip(),
+		hyperbolic_sech: "sech(0)" => 1.,
+		hyperbolic_coth: "coth(1)" => 1f64.tanh().recip(),
+
+		// Inverse hyperbolic
+		inverse_hyperbolic_asinh: "asinh(0)" => 0.,
+		inverse_hyperbolic_acosh: "acosh(1)" => 0.,
+		inverse_hyperbolic_atanh: "atanh(0)" => 0.,
+		inverse_hyperbolic_acsch: "acsch(1)" => 1f64.asinh(),
+		inverse_hyperbolic_asech: "asech(1)" => 1f64.acosh(),
+		inverse_hyperbolic_acoth: "acoth(2)" => 0.5f64.atanh(),
+
+		// Basic if statements
+		if_true_condition: "if(1,5,3)" => 5.,
+		if_false_condition: "if(0, 5, 3)" => 3.,
+
+		// Arithmetic conditions
+		if_arithmetic_true: "if(2+2-4, 1 , 0)" => 0.,
+		if_arithmetic_false: "if(3*2-5, 1, 0)" => 1.,
+
+		// Nested arithmetic
+		if_complex_arithmetic: "if((5+3)*(2-1), 10, 20)" => 10.,
+		if_with_division: "if(8/4-2 == 0, 15, 25)" => 15.,
+		if_with_division_ne: "if(8/4-2 ≠ 0, 15, 25)" => 25.,
+
+		// Constants in conditions
+		if_with_pi: "if(pi > 3, 1, 0)" => 1.,
+		if_with_e: "if(e < 3, 1, 0)" => 1.,
+
+		// Functions in conditions
+		if_with_sqrt: "if(sqrt(16) == 4, 1, 0)" => 1.,
+		if_with_sin: "if(sin(pi) == 0.0, 1, 0)" => 0.,
+
+		// Logical NOT (prefix !)
+		logical_not_zero: "!0" => 1.,
+		logical_not_nonzero: "!5" => 0.,
+		logical_not_expression: "!(2 - 2)" => 1.,
+
+		// Logical helpers as functions
+		logical_isnan: "isnan(0/0)" => 1.,
+		logical_eq: "eq(2, 2)" => 1.,
+		logical_greater: "greater(3, 2)" => 1.,
+
+		// Log / exp / pow / root
+		log_ln: "ln(e)" => 1.,
+		log_log10: "log(100)" => 2.,
+		log_log2: "log2(8)" => 3.,
+		log_change_of_base: "log(8, 2)" => 3.,
+		exp_function: "exp(1)" => std::f64::consts::E,
+		pow_real: "pow(2, 3)" => 8.,
+		root_square: "root(9, 2)" => 3.,
+		root_cube: "root(8, 3)" => 2.,
+
+		// Nested if statements
+		nested_if: "if(1, if(0, 1, 2), 3)" => 2.,
+		nested_if_complex: "if(2-2 == 0, if(1, 5, 6), if(1, 7, 8))" => 5.,
+
+		// Mixed operations in conditions and blocks
+		if_complex_condition: "if(sqrt(16) + sin(pi) < 5, 2*pi, 3*e)" => 2. * std::f64::consts::PI,
+		if_complex_blocks: "if(1, 2*sqrt(16) + sin(pi/2), 3*cos(0) + 4)" => 9.,
+
+		// Mapping helpers
+		mapping_trunc: "trunc(3.7)" => 3.,
+		mapping_fract: "fract(3.25)" => 0.25,
+		mapping_sign_pos: "sign(5)" => 1.,
+		mapping_sign_neg: "sign(-5)" => -1.,
+
+		// Geometry / mapping extras
+		geometry_hypot: "hypot(3, 4)" => 5.,
+		mapping_remap: "remap(5, 0, 10, 0, 100)" => 50.,
+
+		// GCD / LCM
+		gcd_simple: "gcd(24, 18)" => 6.,
+		lcm_simple: "lcm(4, 6)" => 12.,
+
+		// atan2
+		trig_atan2_axis: "atan2(1, 0)" => std::f64::consts::FRAC_PI_2,
+
+		// Comparison operators combined with logical AND
+		comparison_operators: "if(1 <= 2 && 1 ≤ 2 && 2 >= 1 && 2 ≥ 1, 1., 0.)" => 1.,
+
+		// Logical AND / OR
+		logical_and_true: "if(1 <= 2 && 2 < 3, 1., 0.)" => 1.,
+		logical_and_false: "if(1 <= 2 && 3 < 2, 1., 0.)" => 0.,
+		logical_or_true_left: "if(1 > 2 || 2 < 3, 1., 0.)" => 1.,
+		logical_or_true_right: "if(2 < 1 || 2 < 3, 1., 0.)" => 1.,
+		logical_or_false: "if(1 > 2 || 3 < 2, 1., 0.)" => 0.,
+		logical_precedence_and_over_or: "if(0 == 1 || 1 == 1 && 0 == 0, 1., 0.)" => 1.,
+
+		// Edge cases
+		if_zero: "if(0.0, 1, 2)" => 2.,
+
+		// Complex nested expressions
+		if_nested_expr: "if((sqrt(16) + 2) * (sin(pi) + 1), 3 + 4 * 2, 5 - 2 / 1)" => 11.,
+
+		// Overflow-safe evaluation
+		factorial_overflows_to_infinity: "171!" => f64::INFINITY,
+		factorial_huge_input: "10000000000000000000000!" => f64::INFINITY,
+		lcm_huge_no_overflow: "lcm(1099511627776, 1099511627775)" => 1099511627776. * 1099511627775.,
+		gcd_non_finite: "gcd(inf, 6)" => f64::NAN,
+		long_literal: "10000000000000000000000" => 1e22,
+		huge_exponent_saturates: "1e4294967296" => f64::INFINITY,
+
+		// Odd integer roots of negative values are real
+		root_negative_odd: "root(-8, 3)" => -2.,
+		root_negative_odd_reciprocal: "root(-8, -3)" => -0.5,
+		root_negative_even: "root(-4, 2)" => f64::NAN,
+
+		// NaN poisons conditions and logic instead of acting as a boolean
+		if_nan_condition: "if(sqrt(-1), 1, 2)" => f64::NAN,
+		nan_and: "sqrt(-1) && 1" => f64::NAN,
+		nan_or: "sqrt(-1) || 1" => f64::NAN,
+		nan_not: "!sqrt(-1)" => f64::NAN,
+
+		// Logic and equality span real and complex operands
+		mixed_equality: "1 == i" => 0.,
+		complex_equality: "i == i" => 1.,
+		mixed_and: "1 && i" => 1.,
+		mixed_nan_and: "sqrt(-1) && i" => f64::NAN,
+
+		// Correctly rounded literals via std parsing
+		seventeen_digit_literal: "999999999999999999" => 1e18,
+		long_fraction_literal: "0.1111111111111111111111111111111111111111" => 1. / 9.,
+
+		// Integer functions reject inputs beyond f64's exact integer range
+		gcd_beyond_exact_integers: "gcd(10000000000000000000, 2)" => f64::NAN,
+	}
+}

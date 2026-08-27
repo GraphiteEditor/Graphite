@@ -1,0 +1,25 @@
+[package]
+name = "wgpu-executor"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors.workspace = true
+
+[dependencies]
+# Local dependencies
+core-types = { workspace = true }
+raster-types = { workspace = true, features = ["wgpu"] }
+graphene-application-io = { workspace = true, features = ["wgpu"] }
+rendering = { workspace = true }
+dyn-any = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+glam = { workspace = true }
+anyhow = { workspace = true }
+wgpu = { workspace = true }
+wgpu-sync = { workspace = true }
+futures = { workspace = true }
+web-sys = { workspace = true }
+vello = { workspace = true }
+bytemuck = { workspace = true }

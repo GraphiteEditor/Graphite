@@ -1,0 +1,173 @@
+mod buffer;
+mod context;
+mod pipeline;
+pub mod shader_runtime;
+mod texture_cache;
+pub mod texture_conversion;
+
+use crate::shader_runtime::ShaderRuntime;
+use crate::texture_cache::TextureCache;
+use anyhow::Result;
+use core_types::Color;
+use core_types::color::SRGBA8;
+use glam::UVec2;
+use graphene_application_io::{ApplicationIo, EditorApi};
+use std::sync::Arc;
+use std::sync::Mutex;
+use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
+use wgpu::util::DeviceExt;
+use wgpu::{Origin3d, TextureAspect};
+
+pub use buffer::Buffer;
+pub use context::Context as WgpuContext;
+pub use context::ContextBuilder as WgpuContextBuilder;
+pub use pipeline::Pipeline as WgpuPipeline;
+pub use pipeline::PipelineCache as WgpuPipelineCache;
+pub use raster_types::Texture;
+pub use rendering::RenderContext;
+pub use wgpu::Backends as WgpuBackends;
+pub use wgpu::Features as WgpuFeatures;
+pub use wgpu_sync::CurrentSurfaceTexture as WgpuCurrentSurfaceTexture;
+pub use wgpu_sync::Instance as WgpuInstance;
+pub use wgpu_sync::Queue as WgpuQueue;
+pub use wgpu_sync::Surface as WgpuSurface;
+
+#[cfg(not(target_family = "wasm"))]
+const TEXTURE_CACHE_SIZE: u64 = 1024 * 1024 * 1024; // 1GB
+#[cfg(target_family = "wasm")]
+const TEXTURE_CACHE_SIZE: u64 = 512 * 1024 * 1024; // 512MB
+
+#[derive(dyn_any::DynAny, Clone)]
+pub struct WgpuExecutor {
+	inner: Arc<WgpuExecutorInner>,
+}
+
+impl WgpuExecutor {
+	pub fn context(&self) -> &WgpuContext {
+		&self.inner.context
+	}
+}
+
+#[derive(dyn_any::DynAny)]
+pub struct WgpuExecutorInner {
+	context: WgpuContext,
+	texture_cache: std::sync::Mutex<TextureCache>,
+	vello_renderer: Mutex<Renderer>,
+	shader_runtime: ShaderRuntime,
+}
+
+impl std::fmt::Debug for WgpuExecutor {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("WgpuExecutor").field("context", &self.context()).finish()
+	}
+}
+
+/// Owned Arc handle carrying the executor as an ordinary wire value.
+#[derive(Clone, Debug, dyn_any::DynAny)]
+pub struct WgpuExecutorHandle(pub std::sync::Arc<WgpuExecutor>);
+
+impl std::ops::Deref for WgpuExecutorHandle {
+	type Target = WgpuExecutor;
+
+	fn deref(&self) -> &WgpuExecutor {
+		&self.0
+	}
+}
+
+impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &'a WgpuExecutor {
+	fn from(editor_api: &'a EditorApi<T>) -> Self {
+		editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap()
+	}
+}
+
+impl WgpuExecutor {
+	pub fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Texture> {
+		let texture = self.request_texture(size);
+
+		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+		let SRGBA8 { red, green, blue, alpha } = background.unwrap_or(Color::TRANSPARENT).into();
+		let render_params = RenderParams {
+			base_color: vello::peniko::Color::from_rgba8(red, green, blue, alpha),
+			width: size.x,
+			height: size.y,
+			antialiasing_method: AaConfig::Msaa16,
+		};
+
+		{
+			let mut renderer = self.inner.vello_renderer.lock().unwrap();
+			for (image_brush, texture) in context.resource_overrides.iter() {
+				let texture_view = wgpu::TexelCopyTextureInfoBase {
+					texture: (**texture).clone(),
+					mip_level: 0,
+					origin: Origin3d::ZERO,
+					aspect: TextureAspect::All,
+				};
+				renderer.override_image(&image_brush.image, Some(texture_view));
+			}
+
+			{
+				let queue = self.context().queue.lock();
+				renderer.render_to_texture(&self.context().device, &queue, scene, &texture_view, &render_params)?;
+			}
+			for (image_brush, _) in context.resource_overrides.iter() {
+				renderer.override_image(&image_brush.image, None);
+			}
+		}
+
+		Ok(texture)
+	}
+
+	pub fn pipeline_init<P: WgpuPipeline>(&self, pipeline: &WgpuPipelineCache) {
+		pipeline.init::<P>(self);
+	}
+
+	pub fn request_texture(&self, size: UVec2) -> Texture {
+		self.request_texture_with_format(size, wgpu::TextureFormat::Rgba8Unorm)
+	}
+
+	pub fn request_texture_with_format(&self, size: UVec2, format: wgpu::TextureFormat) -> Texture {
+		self.inner.texture_cache.lock().unwrap().request_texture(&self.context().device, size, format)
+	}
+
+	pub fn create_buffer(&self, desc: &wgpu::BufferDescriptor) -> Buffer {
+		self.context().device.create_buffer(desc).into()
+	}
+
+	pub fn create_buffer_init(&self, desc: &wgpu::util::BufferInitDescriptor) -> Buffer {
+		self.context().device.create_buffer_init(desc).into()
+	}
+}
+
+impl WgpuExecutor {
+	pub async fn new() -> Option<Self> {
+		Self::with_context(WgpuContext::new().await?)
+	}
+
+	pub fn with_context(context: WgpuContext) -> Option<Self> {
+		let vello_renderer = Renderer::new(
+			&context.device,
+			RendererOptions {
+				pipeline_cache: None,
+				use_cpu: false,
+				antialiasing_support: AaSupport::all(),
+				num_init_threads: std::num::NonZeroUsize::new(1),
+			},
+		)
+		.map_err(|e| anyhow::anyhow!("Failed to create Vello renderer: {:?}", e))
+		.ok()?;
+
+		let texture_cache = TextureCache::new(TEXTURE_CACHE_SIZE);
+
+		let shader_runtime = ShaderRuntime::default();
+
+		Some(Self {
+			inner: Arc::new(WgpuExecutorInner {
+				context,
+				texture_cache: texture_cache.into(),
+				vello_renderer: vello_renderer.into(),
+				shader_runtime,
+			}),
+		})
+	}
+}

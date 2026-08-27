@@ -1,0 +1,43 @@
+use crate::messages::prelude::*;
+
+#[impl_message(Message, Dialog)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum DialogMessage {
+	// Sub-messages
+	#[child]
+	ExportDialog(ExportDialogMessage),
+	#[child]
+	NewDocumentDialog(NewDocumentDialogMessage),
+	#[child]
+	PreferencesDialog(PreferencesDialogMessage),
+
+	// Messages
+	Dismiss,
+	Close,
+	CloseAndThen {
+		followups: Vec<Message>,
+	},
+	CloseAllDocumentsWithConfirmation,
+	DisplayDialogError {
+		title: String,
+		description: String,
+	},
+	RequestAboutGraphiteDialog,
+	RequestAboutGraphiteDialogWithLocalizedCommitDate {
+		localized_commit_date: String,
+		localized_commit_year: String,
+	},
+	RequestDemoArtworkDialog,
+	RequestExportDialog,
+	RequestLicensesDialogWithLocalizedCommitDate {
+		localized_commit_year: String,
+	},
+	RequestLicensesThirdPartyDialogWithLicenseText {
+		license_text: String,
+	},
+	RequestNewDocumentDialog,
+	RequestPreferencesDialog,
+	RequestConfirmRestartDialog {
+		preferences_requiring_restart: Vec<String>,
+	},
+}

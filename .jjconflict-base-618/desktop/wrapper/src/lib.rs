@@ -1,0 +1,81 @@
+use graph_craft::application_io::PlatformApplicationIo;
+use graph_craft::application_io::resource::ResourceStorage;
+use graphite_editor::application::{Editor, Environment, Host, Platform};
+use graphite_editor::messages::frontend::FrontendMessage;
+use graphite_editor::messages::prelude::Wake;
+
+use message_dispatcher::DesktopWrapperMessageDispatcher;
+use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
+use std::sync::Arc;
+
+pub use graph_craft::application_io::resource::MmapResourceStorage;
+pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
+pub use wgpu_executor::Texture;
+pub use wgpu_executor::WgpuBackends;
+pub use wgpu_executor::WgpuContext;
+pub use wgpu_executor::WgpuContextBuilder;
+pub use wgpu_executor::WgpuCurrentSurfaceTexture;
+pub use wgpu_executor::WgpuExecutor;
+pub use wgpu_executor::WgpuFeatures;
+pub use wgpu_executor::WgpuInstance;
+pub use wgpu_executor::WgpuSurface;
+
+mod handle_desktop_wrapper_message;
+mod intercept_editor_message;
+mod intercept_frontend_message;
+mod message_dispatcher;
+pub mod messages;
+pub(crate) mod utils;
+
+pub struct DesktopWrapper {
+	editor: Editor,
+}
+
+impl DesktopWrapper {
+	pub fn new(uuid_random_seed: u64, resource_storage: Arc<dyn ResourceStorage>, working_copy_root: std::path::PathBuf, wgpu_context: WgpuContext, schedule_wake: Wake) -> Self {
+		#[cfg(target_os = "windows")]
+		let host = Host::Windows;
+		#[cfg(target_os = "macos")]
+		let host = Host::Mac;
+		#[cfg(target_os = "linux")]
+		let host = Host::Linux;
+		let env = Environment { platform: Platform::Desktop, host };
+		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
+
+		Self {
+			editor: Editor::new(env, uuid_random_seed, resource_storage, Some(working_copy_root), application_io, schedule_wake),
+		}
+	}
+
+	pub fn dispatch(&mut self, message: DesktopWrapperMessage) -> Vec<DesktopFrontendMessage> {
+		let mut executor = DesktopWrapperMessageDispatcher::new(&mut self.editor);
+		executor.queue_desktop_wrapper_message(message);
+		executor.execute()
+	}
+
+	pub fn set_completion_notifier(notifier: impl Fn() + Send + Sync + 'static) {
+		graphite_editor::node_graph_executor::set_completion_notifier(Arc::new(notifier));
+	}
+
+	pub async fn execute_node_graph() -> NodeGraphExecutionResult {
+		let result = graphite_editor::node_graph_executor::run_node_graph().await;
+		match result {
+			(true, texture) => NodeGraphExecutionResult::HasRun(texture),
+			(false, _) => NodeGraphExecutionResult::NotRun,
+		}
+	}
+}
+
+pub enum NodeGraphExecutionResult {
+	HasRun(Option<Texture>),
+	NotRun,
+}
+
+pub fn deserialize_editor_message(data: &[u8]) -> Option<DesktopWrapperMessage> {
+	let message = graphite_wasm_wrapper::native_communication::decode_editor_command(data)?;
+	Some(DesktopWrapperMessage::FromWeb(message.into()))
+}
+
+pub fn serialize_frontend_messages(messages: Vec<FrontendMessage>) -> Option<Vec<u8>> {
+	graphite_wasm_wrapper::native_communication::encode_frontend_messages(messages)
+}

@@ -1,0 +1,50 @@
+use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
+use crate::messages::preferences::SelectionMode;
+use crate::messages::prelude::*;
+
+#[impl_message(Message, Preferences)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum PreferencesMessage {
+	// Management messages
+	Load {
+		preferences: PreferencesMessageHandler,
+	},
+	ResetToDefaults,
+
+	// Per-preference messages
+	SelectionMode {
+		selection_mode: SelectionMode,
+	},
+	BrushTool {
+		enabled: bool,
+	},
+	ModifyLayout {
+		zoom_with_scroll: bool,
+	},
+	GraphWireStyle {
+		style: GraphWireStyle,
+	},
+	ViewportZoomWheelRate {
+		rate: f64,
+	},
+	UIScale {
+		scale: f64,
+	},
+	MaxRenderRegionSize {
+		size: u32,
+	},
+	DisableUIAcceleration {
+		disable_ui_acceleration: bool,
+	},
+	ValidateStorageRoundTrip {
+		enabled: bool,
+	},
+	SaveAsGdd {
+		enabled: bool,
+	},
+	ToggleShowStoragePreferences,
+	#[cfg(target_os = "macos")]
+	VSync {
+		vsync: bool,
+	},
+}

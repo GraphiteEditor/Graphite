@@ -1,0 +1,43 @@
+[package]
+name = "vector-types"
+version = "0.1.0"
+edition = "2024"
+description = "Vector graphics types and algorithms for Graphene"
+authors = ["Graphite Authors <contact@graphite.art>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "core-types/serde"]
+wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
+
+[dependencies]
+# Local dependencies
+core-types = { workspace = true }
+graphene-hash = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+bitflags = { workspace = true }
+bytemuck = { workspace = true }
+color = { workspace = true }
+num-traits = { workspace = true }
+glam = { workspace = true }
+kurbo = { workspace = true }
+lyon_geom = { workspace = true }
+dyn-any = { workspace = true }
+log = { workspace = true }
+petgraph = { workspace = true }
+rustc-hash = { workspace = true }
+polycool = { workspace = true }
+tinyvec = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true }
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+fixedbitset = "0.5.7"
+
+[dev-dependencies]
+# Workspace dependencies
+serde_json = { workspace = true }

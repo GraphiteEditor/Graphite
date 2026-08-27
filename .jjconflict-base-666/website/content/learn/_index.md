@@ -1,0 +1,28 @@
++++
+title = "User manual"
+template = "book.html"
+page_template = "book.html"
+
+[extra]
+book = true
+js = ["/js/component/youtube-embed.js"]
+css = ["/component/youtube-embed.css"]
++++
+
+Welcome to the Graphite user manual. Keep reading to learn how the software can help bring your 2D creative ideas to life.
+
+## More chapters on the way
+
+Additional manual chapters are being added over time. Check back every so often.
+
+## Need help?
+
+If you're ever stuck or confused, ask your questions in the `#🧭user-help` channel of the [Graphite Discord server](https://discord.graphite.art) or post a thread in the [discussion board](https://github.com/GraphiteEditor/Graphite/discussions) on GitHub.
+
+## Jump right in
+
+<!-- If you're eager to skip the reading, head straight to the [hands-on quickstart video](./introduction) in the next chapter for a beginner project walkthrough you can follow along with. -->
+
+The fastest way to get started is to watch and follow along steps-by-step in the hands-on quickstart tutorial:
+
+{{ youtube_embed(id="7gjUhl_3X10", title="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite") }}

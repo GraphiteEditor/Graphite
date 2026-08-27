@@ -1,0 +1,66 @@
+name: "Library: Rawkit"
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "libraries/rawkit/**"
+  pull_request:
+    paths:
+      - "libraries/rawkit/**"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+
+      - name: 📦 Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.6
+        continue-on-error: true
+
+      - name: 🔧 Fallback if sccache fails
+        if: failure()
+        run: |
+          echo "sccache failed, disabling it"
+          echo "RUSTC_WRAPPER=" >> $GITHUB_ENV
+
+      - name: 🔬 Check Rust formatting
+        run: |
+          cd libraries/rawkit
+          cargo fmt --all -- --check
+
+      - name: 🦀 Build Rust code
+        run: |
+          cd libraries/rawkit
+          cargo build --release --all-features
+
+      - name: 🧪 Run Rust tests
+        run: |
+          cd libraries/rawkit
+          cargo test --release --all-features
+
+      - name: 📈 Run sccache stat for check
+        shell: bash
+        run: sccache --show-stats || echo "sccache stats unavailable"

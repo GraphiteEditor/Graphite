@@ -1,0 +1,525 @@
++++
+title = "Free online vector editor & procedural design tool"
+template = "section.html"
+
+[extra]
+css = ["/page/index.css", "/component/carousel.css", "/component/feature-icons.css", "/component/feature-box.css", "/component/youtube-embed.css"]
+js = ["/js/component/carousel.js", "/js/component/youtube-embed.js", "/js/component/video-autoplay.js"]
+linked_js = []
+meta_description = "Open source free software. A vector graphics creativity suite with a clean, intuitive interface. Opens instantly (no signup) and runs locally in a browser. Exports SVG, PNG, JPG."
++++
+
+<!-- replacements::text_balancer() -->
+
+<!-- ▛ LOGO ▜ -->
+<section id="logo">
+<div class="block">
+	<img src="https://static.graphite.art/logos/graphite-logotype-color.svg" alt="Graphite Logo" />
+</div>
+</section>
+<!-- ▙ LOGO ▟ -->
+
+<!-- ▛ TAGLINE ▜ -->
+<section id="tagline">
+<div class="block">
+
+<h1 class="balance-text">Your <span>procedural</span> toolbox for 2D content creation</h1>
+
+<p class="balance-text">Graphite is a free, open source vector graphics editor and animation engine, available now in alpha. Get creative with a fully nondestructive editing workflow that combines layer-based compositing with node-based generative design.</p>
+
+</div>
+</section>
+<!-- ▙ TAGLINE ▟ -->
+<!--                -->
+<!-- ▛ QUICK LINKS ▜ -->
+<section id="quick-links" data-quick-links>
+
+<div class="call-to-action-buttons">
+	<a href="https://github.com/GraphiteEditor/Graphite" class="button github-stars">
+		<img src="https://static.graphite.art/icons/github.svg" alt="GitHub" />
+		<span class="arrow">Star</span>
+		<div data-github-stars></div>
+	</a>
+	<a href="#newsletter" class="button arrow">Subscribe to newsletter</a>
+</div>
+<div class="social-media-buttons">
+	<a href="https://discord.graphite.art" target="_blank">
+		<img src="https://static.graphite.art/icons/discord__2.svg" alt="Discord" />
+	</a>
+	<a href="https://www.reddit.com/r/graphite/" target="_blank">
+		<img src="https://static.graphite.art/icons/reddit__3.svg" alt="Reddit" />
+	</a>
+	<a href="https://bsky.app/profile/graphiteeditor.bsky.social" target="_blank">
+		<img src="https://static.graphite.art/icons/bluesky.svg" alt="Bluesky" />
+	</a>
+	<a href="https://twitter.com/graphiteeditor" target="_blank">
+		<img src="https://static.graphite.art/icons/twitter.svg" alt="Twitter" />
+	</a>
+	<a href="https://www.youtube.com/@GraphiteEditor" target="_blank">
+		<img src="https://static.graphite.art/icons/youtube.svg" alt="YouTube" />
+	</a>
+</div>
+
+</section>
+
+<script>
+(async () => {
+	const element = document.querySelector("[data-github-stars]");
+	try {
+		const response = await fetch("https://api.github.com/repos/graphiteeditor/graphite?per_page=1");
+		const json = await response.json();
+		const stars = parseInt(json.stargazers_count);
+		if (!stars) throw new Error();
+		let quantity = stars.toLocaleString("en-US");
+		element.innerText = quantity;
+		// Force repaint to work around Safari bug <https://bugs.webkit.org/show_bug.cgi?id=286403> (remove this and its data attribute when the bug is fixed and widely deployed)
+		document.querySelector("[data-quick-links]").style.transform = "scale(1)";
+	} catch {
+		element.remove();
+	}
+})();
+</script>
+<!-- ▙ QUICK LINKS ▟ -->
+
+<!-- ▛ SCREENSHOTS ▜ -->
+<section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
+
+<div class="carousel-slide" data-carousel-slide>
+	<img src="https://static.graphite.art/content/index/gui-demo-fractal__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<!-- Above is a copy of the last -->
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.art/content/index/gui-demo-painted-dreams__4.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.art/content/index/gui-demo-magazine-page-layout.avif" />
+	<video style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loop muted disablepictureinpicture disableremoteplayback preload="none" poster="https://static.graphite.art/content/index/gui-demo-animation-twirl-poster.avif"><source src="https://static.graphite.art/content/index/gui-demo-animation-twirl.webm" type="video/webm" /><source src="https://static.graphite.art/content/index/gui-demo-animation-twirl.mp4" type="video/mp4" /></video>
+	<video style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loop muted disablepictureinpicture disableremoteplayback preload="none" poster="https://static.graphite.art/content/index/gui-demo-creative-coding-poster.avif"><source src="https://static.graphite.art/content/index/gui-demo-creative-coding.webm" type="video/webm" /><source src="https://static.graphite.art/content/index/gui-demo-creative-coding.mp4" type="video/mp4" /></video>
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.art/content/index/gui-demo-fractal__4.avif" />
+	<!-- Below is a copy of the first -->
+	<img src="https://static.graphite.art/content/index/gui-demo-painted-dreams__4.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+</div>
+
+<div class="carousel-slide torn left" data-carousel-slide-torn-left></div>
+<div class="carousel-slide torn right" data-carousel-slide-torn-right></div>
+
+<div class="screenshot-details">
+
+<div class="carousel-controls">
+
+<button class="direction prev" data-carousel-prev aria-label="Move to previous screenshot">
+
+<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+
+<path d="M20,0C8.95,0,0,8.95,0,20c0,11.05,8.95,20,20,20c11.05,0,20-8.95,20-20C40,8.95,31.05,0,20,0z M20,38c-9.93,0-18-8.07-18-18S10.07,2,20,2s18,8.07,18,18S29.93,38,20,38z" />
+<polygon points="24.71,10.71 23.29,9.29 12.59,20 23.29,30.71 24.71,29.29 15.41,20" />
+
+</svg>
+
+</button>
+<button class="dot active" data-carousel-dot aria-label="Move to screenshot 1"></button>
+<button class="dot" data-carousel-dot aria-label="Move to screenshot 2"></button>
+<button class="dot" data-carousel-dot aria-label="Move to screenshot 3"></button>
+<button class="dot" data-carousel-dot aria-label="Move to screenshot 4"></button>
+<button class="dot" data-carousel-dot aria-label="Move to screenshot 5"></button>
+<button class="direction next" data-carousel-next aria-label="Move to next screenshot">
+
+<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+
+<path d="M20,0C8.95,0,0,8.95,0,20c0,11.05,8.95,20,20,20c11.05,0,20-8.95,20-20C40,8.95,31.05,0,20,0z M20,38c-9.93,0-18-8.07-18-18S10.07,2,20,2s18,8.07,18,18S29.93,38,20,38z" />
+<polygon points="16.71,9.29 15.29,10.71 24.59,20 15.29,29.29 16.71,30.71 27.41,20" />
+
+</svg>
+
+</button>
+
+</div>
+<div class="screenshot-description">
+
+<p data-carousel-description class="active">
+	<a href="https://editor.graphite.art/#demo/painted-dreams"><em>Painted Dreams</em></a> — Made using nondestructive boolean operations and procedural polka dot patterns
+</p>
+<p data-carousel-description>
+	Design for a magazine spread, a preview of the upcoming focus on desktop publishing
+</p>
+<p data-carousel-description>
+	Procedurally generated animation demonstrating Graphite's approach to creative coding with nodes
+</p>
+<p data-carousel-description>
+	Procedurally generated animation demonstrating Graphite's approach to creative coding with nodes
+</p>
+<p data-carousel-description>
+	Mandelbrot fractal filled with a noise pattern, procedurally generated and infinitely scalable
+</p>
+
+</div>
+
+</div>
+</section>
+<!-- ▙ SCREENSHOTS ▟ -->
+<!--                  -->
+<!-- ▛ WHAT'S NEW ▜ -->
+<section id="what-is-new" class="block">
+
+<div class="block">
+
+## What's new?
+
+The latest major update is out now! See what the team has been cooking up recently:
+
+<div class="block video-container">
+<div>
+{{ youtube_embed(id="U3E-sWo2H_M", title="May Update - Graphite, the Open Source 2D Graphics Suite") }}
+</div>
+</div>
+
+</div>
+
+</section>
+<!-- ▙ WHAT'S NEW ▟ -->
+<!--                 -->
+<!-- ▛ OVERVIEW ▜ -->
+<section id="overview" class="feature-box-outer">
+<div class="feature-box-inner">
+
+<div class="block">
+
+<h1 class="feature-box-header">Software overview</h1>
+
+---
+
+<div class="diptych sizzle-video">
+<div class="block text">
+
+Starting life as a vector editor, Graphite is evolving into a general-purpose, all-in-one graphics toolbox that is built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, exposing user-friendly workflows for vector, raster, animation, and beyond.
+
+<a href="https://editor.graphite.art" class="button arrow">Start creating</a>
+
+</div>
+<div class="block video">
+
+<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play preload="none" poster="https://static.graphite.art/content/index/sizzle-compilation-poster.avif">
+	<source src="https://static.graphite.art/content/index/sizzle-compilation.webm" type="video/webm" />
+	<source src="https://static.graphite.art/content/index/sizzle-compilation.mp4" type="video/mp4" />
+</video>
+
+</div>
+</div>
+
+</div>
+<div class="block workflows">
+
+## One app to rule them all
+
+Stop jumping between programs. Upcoming tools will make Graphite a first-class content creation suite for many workflows, including:
+
+<div class="feature-icons stacked no-background">
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Graphic Design</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Motion Graphics</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Image Editing</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Digital Painting</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Page Layout & Print</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>VFX Compositing</span>
+	</div>
+</div>
+
+</div>
+<div class="diptych">
+
+<div class="block">
+
+## Current features
+
+<div class="feature-icons">
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Vector editing tools</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Procedural workflow for graphic design</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Node-based layers</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Forever free and open source</span>
+	</div>
+</div>
+
+Presently, Graphite is a lightweight offline web app with features primarily oriented around procedural vector graphics editing.
+
+</div>
+<div class="block">
+
+## Upcoming features
+
+<div class="feature-icons">
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 4" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>All-in-one creative tool for all things 2D</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Fully-featured raster manipulation</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Windows/Mac/Linux native apps + web</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span>Live collaborative editing</span>
+	</div>
+</div>
+
+<a href="/features#roadmap" class="button arrow">Roadmap</a>
+
+</div>
+
+</div>
+<div class="block">
+
+## Desktop-first and web-ready
+
+Where's the download? The [web app](https://editor.graphite.art) is currently live and desktop apps for Windows, Mac, and Linux are now in a release candidate stage. Check the `#🔥announcements` channel of [the Discord](https://discord.graphite.art) for download links if you would like to partake in testing prior to the impending launch.
+
+Graphite is designed principally as a professional desktop application that is also accessible in a browser for quick access from anywhere. It's built for speed with (nearly) no JavaScript. And regardless of platform, it runs locally and privately on your own hardware— there is no server.
+
+<a href="https://github.com/GraphiteEditor/Graphite/issues/2535" target="_blank">Engineering the tech</a> for a native app distributed across three new platforms takes extra time. That's why supporting the web platform, which keeps up-to-date and reaches all devices, has been the initial target. For now, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install the app as a PWA</a> for a desktop-like experience.
+
+Graphite's code architecture is structured to deliver true native performance for your graphically intensive workloads on desktop platforms and very low overhead on the web thanks to WebAssembly and WebGPU, new high-performance browser technologies.
+
+</div>
+
+</div>
+</section>
+<!-- ▙ OVERVIEW ▟ -->
+<!--               -->
+<!-- ▛ DONATE ▜ -->
+<section id="donate" class="block">
+
+<div class="block">
+
+<h2 class="heart">Support the mission</h2>
+
+Free software doesn't grow on trees! Chip in your share of the (very real) development costs so you're not leaving others to pick up your tab. In just a few clicks, becoming a member (or giving a one-time donation) lets you help maintain Graphite's sustainability and independence.
+
+<a href="/donate" class="button arrow">Donate now</a>
+
+</div>
+
+</section>
+<!-- ▙ DONATE ▟ -->
+<!--                 -->
+<!-- ▛ PROCEDURALISM ▜ -->
+<section id="proceduralism" class="feature-box-outer">
+<div class="feature-box-inner">
+
+<div class="block">
+
+<h1 class="feature-box-header">The power of proceduralism</h1>
+
+---
+
+Graphite is the first and only comprehensive graphic design suite built for procedural editing — where everything you make is nondestructive.
+
+</div>
+
+<div class="diptych red-dress">
+
+<div class="block video-background">
+	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play preload="none" poster="https://static.graphite.art/content/index/procedural-demo-red-dress-poster.avif">
+		<source src="https://static.graphite.art/content/index/procedural-demo-red-dress.webm" type="video/webm" />
+		<source src="https://static.graphite.art/content/index/procedural-demo-red-dress.mp4" type="video/mp4" />
+	</video>
+</div>
+
+<div class="block description">
+
+<h1 class="feature-box-header balance-text">Explore parametric possibilities</h1>
+
+Save hours on tedious alterations and make better creative choices. Graphite lets you iterate rapidly by adjusting node parameters instead of individual elements.
+
+Scatter circles with just a couple nodes...  
+Want them denser? Bigger? Those are sliders.  
+Want a different placement area? Just tweak the path.
+
+<a href="https://editor.graphite.art/#demo/red-dress">Open this artwork</a> and give it a try yourself.
+
+</div>
+
+</div>
+<div class="diptych leaves">
+
+<div class="block description">
+
+<h1 class="feature-box-header balance-text">Mix and morph anything</h1>
+
+Nondestructive editing means every decision is tied to a parameter you can adjust later on. Use Graphite to interpolate between any states just by dragging value sliders.
+
+Blend across color schemes. Morph shapes before they're scattered around the canvas. The options are endless.
+
+<a href="https://editor.graphite.art/#demo/changing-seasons">Open this artwork</a> and give it a try yourself.
+
+</div>
+
+<div class="block video-background">
+	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play preload="none" poster="https://static.graphite.art/content/index/procedural-demo-leaves-poster.avif">
+		<source src="https://static.graphite.art/content/index/procedural-demo-leaves.webm" type="video/webm" />
+		<source src="https://static.graphite.art/content/index/procedural-demo-leaves.mp4" type="video/mp4" />
+	</video>
+</div>
+
+</div>
+<div class="block pipelines">
+
+## Geared for generative pipelines
+
+Graphite's representation of artwork as a node graph lets you customize, compose, automate, reuse, and share your content workflows.
+
+<div class="feature-icons four-wide">
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span class="balance-text">Infinitely pan and zoom without pixelation, export any resolution</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 1" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span class="balance-text">Compile standalone programs from node systems <em>(future)</em></span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span class="balance-text">Deploy asset pipelines in studio production environments <em>(future)</em></span>
+	</div>
+</div>
+
+</div>
+
+</div>
+</section>
+<!-- ▙ PROCEDURALISM ▟ -->
+<!--                   -->
+<!-- ▛ NEWSLETTER ▜ -->
+<section id="newsletter" class="feature-box-narrow">
+<div id="newsletter-success"><!-- Used only as a URL hash fragment anchor --></div>
+
+<div class="diptych">
+
+<div class="block newsletter-signup">
+
+<h1 class="feature-box-header">Stay in the loop</h1>
+
+Subscribe to the newsletter for future updates on major development progress. And follow along, or join the conversation, on social media.
+
+<div class="newsletter-success">
+
+## Thanks!
+
+You'll receive your first newsletter email with the next major Graphite news.
+
+</div>
+<form action="https://graphite.art/newsletter-signup" method="post">
+	<div class="same-line">
+		<div class="input-column name">
+			<label for="newsletter-name">First + last name:</label>
+			<input id="newsletter-name" name="name" type="text" required />
+		</div>
+		<div class="input-column phone">
+			<label for="newsletter-phone">Phone:</label>
+			<input id="newsletter-phone" name="phone" type="text" tabindex="-1" autocomplete="off" />
+		</div>
+		<div class="input-column email">
+			<label for="newsletter-email">Email address:</label>
+			<input id="newsletter-email" name="email" type="email" required />
+		</div>
+	</div>
+	<div class="input-column submit">
+		<input type="submit" value="Subscribe" class="button" />
+	</div>
+</form>
+
+</div>
+<div class="block social-media-links">
+
+<a href="https://discord.graphite.art" target="_blank">
+	<img src="https://static.graphite.art/icons/discord__2.svg" alt="" />
+	<span class="link not-uppercase arrow">Discord</span>
+</a>
+<a href="https://www.reddit.com/r/graphite/" target="_blank">
+	<img src="https://static.graphite.art/icons/reddit__3.svg" alt="" />
+	<span class="link not-uppercase arrow">Reddit</span>
+</a>
+<a href="https://bsky.app/profile/graphiteeditor.bsky.social" target="_blank">
+	<img src="https://static.graphite.art/icons/bluesky.svg" alt="" />
+	<span class="link not-uppercase arrow">Bluesky</span>
+</a>
+<a href="https://twitter.com/graphiteeditor" target="_blank">
+	<img src="https://static.graphite.art/icons/twitter.svg" alt="" />
+	<span class="link not-uppercase arrow">Twitter</span>
+</a>
+<a href="https://www.youtube.com/@GraphiteEditor" target="_blank">
+	<img src="https://static.graphite.art/icons/youtube.svg" alt="" />
+	<span class="link not-uppercase arrow">YouTube</span>
+</a>
+
+</div>
+
+</div>
+</section>
+<!-- ▙ NEWSLETTER ▟ -->
+<!--                -->
+<!-- ▛ DIVE IN ▜ -->
+<section id="dive-in" class="block">
+
+<div class="block">
+
+## Ready to dive in?
+
+Get started with Graphite by following along to a hands-on quickstart tutorial.
+
+<div class="block video-container">
+<div>
+{{ youtube_embed(id="7gjUhl_3X10", title="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite") }}
+</div>
+</div>
+
+<div class="buttons">
+<a href="https://editor.graphite.art" class="button arrow">Launch Graphite</a>
+<a href="/learn" class="button arrow">Continue learning</a>
+</div>
+
+</div>
+
+</section>
+<!-- ▙ DIVE IN ▟ -->
+<!--                 -->
+<!-- ▛ RECENT NEWS ▜ -->
+<section id="recent-news" class="feature-box-outer">
+<div class="feature-box-inner">
+
+<h1 class="feature-box-header">Recent news <span> / </span> <a href="/blog" class="link arrow">More in the blog</a></h1>
+
+---
+
+<div class="diptych">
+<!-- replacements::blog_posts(count = 2) -->
+</div>
+
+</div>
+</section>
+<!-- ▙ RECENT NEWS ▟ -->
