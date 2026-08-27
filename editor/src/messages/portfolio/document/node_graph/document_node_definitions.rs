@@ -2,7 +2,7 @@ mod document_node_derive;
 
 use super::node_properties::choice::enum_choice;
 use super::node_properties::{self, ParameterWidgetsInfo};
-use super::utility_types::FrontendNodeType;
+use super::utility_types::{FrontendNodeType, InputTypeConstraint};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	InputMetadata, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, Vec2InputSettings, WidgetOverride,
@@ -1485,26 +1485,127 @@ pub fn resolve_document_node_type(identifier: &DefinitionIdentifier) -> Option<&
 	DOCUMENT_NODE_TYPES.get(identifier)
 }
 
+impl InputTypeConstraint {
+	#[must_use]
+	fn type_name(ty: &Type) -> String {
+		ty.nested_type().to_string()
+	}
+
+	/// Find types that satisfy both constraints
+	#[must_use]
+	fn intersection(self, other: Self) -> Self {
+		match (self, other) {
+			(Self::Limited(a), Self::Limited(b)) => Self::Limited(a.intersection(&b).cloned().collect()),
+			(Self::Limited(a), Self::All) | (Self::All, Self::Limited(a)) => Self::Limited(a),
+			(Self::All, Self::All) => Self::All,
+		}
+	}
+
+	/// Construct a constraint that no types satisfy
+	#[must_use]
+	fn empty() -> Self {
+		Self::Limited(Default::default())
+	}
+
+	/// Check if type satisfies the constraint
+	#[must_use]
+	fn satisfies(&self, ty: &Type) -> bool {
+		match self {
+			Self::Limited(types) => types.contains(&Self::type_name(ty)),
+			Self::All => true,
+		}
+	}
+
+	/// Add a new type that the constraint satisfied. Returns true if the type is not previously added.
+	fn insert(&mut self, ty: &Type) -> bool {
+		match self {
+			Self::Limited(types) => types.insert(Self::type_name(ty)),
+			Self::All => false,
+		}
+	}
+
+	/// Compute the type constraint for one input. Note that this cannot use the infrastructure in the node network interface as the node is not placed in a network.
+	#[must_use]
+	fn compute_constraint_for_input(template_document_node: &NodeTemplate, name: &str, input_index: usize) -> Self {
+		// Add input type from node implementation
+		match &template_document_node.implementation {
+			// TODO: This does not consider the constrains by nodes not directly connected to the import
+			NodeTemplateImplementation::Network(nested_network) => {
+				// Find all inputs connected to the relevant import
+				fn valid_types_from_node(child_node: &NodeTemplate, name: &str, input_index: usize) -> impl Iterator<Item = InputTypeConstraint> {
+					let all_inputs = child_node.inputs.iter().enumerate();
+					let input_for_import = all_inputs.filter(move |(_, child_input)| matches!(child_input, NodeInput::Import { import_index, .. }  if *import_index == input_index));
+					input_for_import.map(move |(index, _)| InputTypeConstraint::compute_constraint_for_input(child_node, name, index))
+				}
+				let all_type_constraints = nested_network.nodes.values().flat_map(|node| valid_types_from_node(node, name, input_index));
+				// The type fed to the network must satisfy all protonodes it is connected to
+				let intersection_of_constraints = all_type_constraints.reduce(|a, b| a.intersection(b));
+				// If no constraints, then all types are accepted
+				intersection_of_constraints.unwrap_or(Self::All)
+			}
+			NodeTemplateImplementation::ProtoNode(proto_node_identifier) => {
+				// The passthrough node has no implementations but accepts all types (it is filtered from the compiled network)
+				if proto_node_identifier == &graphene_std::ops::passthrough::IDENTIFIER {
+					return Self::All;
+				}
+
+				let Some(implementations) = interpreted_executor::node_registry::NODE_REGISTRY.get(proto_node_identifier) else {
+					warn!("No implementations found for protonode {proto_node_identifier} in {name}");
+					return Self::All;
+				};
+
+				// Find the union of all the possible types from the dynamic executor implementations
+				let mut result_accepted = Self::empty();
+				for node_io in implementations.keys() {
+					if let Some(input_type) = node_io.inputs.get(input_index) {
+						result_accepted.insert(input_type);
+					}
+				}
+				result_accepted
+			}
+			NodeTemplateImplementation::Extract => {
+				warn!("Input types for extract node {name} not supported");
+				Self::All
+			}
+		}
+	}
+
+	/// Compute the type constraints for each input, validating that the current input satisfies the value.
+	#[must_use]
+	fn constraints_for_all_inputs(template_document_node: &NodeTemplate, name: &str) -> Vec<Self> {
+		let input_indices = 0..template_document_node.inputs.len();
+		let all_input_constraints: Vec<_> = input_indices.map(|input_index| Self::compute_constraint_for_input(template_document_node, name, input_index)).collect();
+
+		// Validate that the current inputs are valid
+		for (index, (constraint, input)) in all_input_constraints.iter().zip(&template_document_node.inputs).enumerate() {
+			if let Some(value) = input.as_value() {
+				let input_ty = value.ty();
+
+				// Empty types are used when the input must come from the graph so they can be skipped.
+				if input_ty.nested_type() != &concrete!(()) && !constraint.satisfies(&input_ty) {
+					warn!("The default value for input index {index} node {name} is {input_ty}, but does not satisfy {constraint:?}");
+				}
+			}
+		}
+
+		all_input_constraints
+	}
+}
+
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
 		.filter(|(_, definition)| !definition.category.is_empty())
 		.map(|(identifier, definition)| {
-			let input_types = definition
-				.node_template
-				.inputs
-				.iter()
-				.map(|node_input| node_input.as_value().map(|node_value| node_value.ty().nested_type().to_string()).unwrap_or_default())
-				.collect::<Vec<String>>();
 			let mut name = definition.node_template.display_name.clone();
 			if name.is_empty() {
 				name = identifier.implementation_name_from_identifier()
 			}
 			FrontendNodeType {
 				identifier: identifier.serialized(),
+				input_types: InputTypeConstraint::constraints_for_all_inputs(&definition.node_template, &name),
 				name,
 				category: definition.category.to_string(),
-				input_types,
 			}
 		})
 		.collect()
@@ -1576,5 +1677,82 @@ mod test {
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
 
 		editor.eval_graph().await.expect("the Origins to Polyline chain should type-resolve and evaluate");
+	}
+}
+
+#[cfg(test)]
+mod test_type_constraints {
+	use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+	use crate::messages::portfolio::document::node_graph::utility_types::InputTypeConstraint;
+	use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation};
+	use crate::test_utils::test_prelude::*;
+	use core_types::{Ctx, list::Item};
+	use graph_craft::document::{NodeId, NodeInput};
+	use graphene_std::{Type, concrete, generic};
+	use node_macro;
+
+	#[track_caller]
+	fn all_satisifed(constraint: &InputTypeConstraint, values: impl IntoIterator<Item = Type>) {
+		for ty in values {
+			assert!(constraint.satisfies(&ty), "{ty} not satisfied by {:#?}", constraint);
+		}
+	}
+
+	#[test]
+	fn passthrough() {
+		let node_type = resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).expect("passthrough node");
+		let constraint = InputTypeConstraint::constraints_for_all_inputs(&node_type.node_template, "name");
+		assert_eq!(constraint, vec![InputTypeConstraint::All]);
+	}
+
+	#[node_macro::node(category(""))]
+	fn test_node_accept_f32_f64_dvec2<T: std::any::Any>(_: impl Ctx, #[implementations(f32, f64, DVec2)] a: Item<T>, _b: Item<bool>) -> Item<T> {
+		a
+	}
+
+	#[test]
+	fn single_protonode() {
+		let node_type = resolve_proto_node_type(test_node_accept_f_32_f_64_dvec_2::IDENTIFIER).expect("test node to exist");
+		let constraint = InputTypeConstraint::constraints_for_all_inputs(&node_type.node_template, "name");
+		all_satisifed(&constraint[0], [concrete!(f32), concrete!(f64), concrete!(glam::DVec2)]);
+		assert!(!constraint[0].satisfies(&concrete!(String)));
+		all_satisifed(&constraint[1], [concrete!(bool)]);
+	}
+
+	#[node_macro::node(category(""))]
+	fn test_node_accept_f32_f64_string<T: std::any::Any>(_: impl Ctx, #[implementations(f32, f64, String)] a: Item<T>, _b: Item<bool>) -> Item<T> {
+		a
+	}
+
+	#[test]
+	fn single_protonode2() {
+		let node_type = resolve_proto_node_type(test_node_accept_f_32_f_64_string::IDENTIFIER).expect("test node to exist");
+		let constraint = InputTypeConstraint::constraints_for_all_inputs(&node_type.node_template, "name");
+		all_satisifed(&constraint[0], [concrete!(f32), concrete!(f64), concrete!(String)]);
+		assert!(!constraint[0].satisfies(&concrete!(glam::DVec2)));
+		all_satisifed(&constraint[1], [concrete!(bool)]);
+	}
+
+	#[test]
+	fn network() {
+		let atan_definition = resolve_proto_node_type(test_node_accept_f_32_f_64_dvec_2::IDENTIFIER).expect("test node to exist");
+		let min_definition = resolve_proto_node_type(test_node_accept_f_32_f_64_string::IDENTIFIER).expect("test node to exist");
+		let atan_node = atan_definition.node_template_input_override([Some(NodeInput::import(generic!(X), 0))]);
+		let min_node = min_definition.node_template_input_override([Some(NodeInput::import(generic!(X), 0))]);
+		let inner_network = NodeNetworkTemplate {
+			exports: vec![NodeInput::node(NodeId(10), 0)],
+			nodes: [(NodeId(10), atan_node), (NodeId(11), min_node)].into_iter().collect(),
+			..Default::default()
+		};
+
+		let node = NodeTemplate {
+			inputs: vec![NodeInput::import(generic!(X), 0)],
+			implementation: NodeTemplateImplementation::Network(inner_network),
+			..Default::default()
+		};
+		let constraint = InputTypeConstraint::compute_constraint_for_input(&node, "name", 0);
+		all_satisifed(&constraint, [concrete!(f32), concrete!(f64)]);
+		assert!(!constraint.satisfies(&concrete!(String)));
+		assert!(!constraint.satisfies(&concrete!(glam::DVec2)));
 	}
 }

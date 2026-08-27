@@ -104,12 +104,19 @@ pub struct FrontendNode {
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum InputTypeConstraint {
+	Limited(std::collections::BTreeSet<String>),
+	All,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendNodeType {
 	pub identifier: String,
 	pub name: String,
 	pub category: String,
 	#[serde(rename = "inputTypes")]
-	pub input_types: Vec<String>,
+	pub input_types: Vec<InputTypeConstraint>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
