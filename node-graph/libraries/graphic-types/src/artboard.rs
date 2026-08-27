@@ -38,6 +38,7 @@ impl Artboard {
 		for element in content.iter_element_values_mut() {
 			*element = crate::graphic::map_groups_to_legacy(element);
 		}
+		crate::graphic::map_paint_attrs_to_legacy(&mut content);
 		Artboard(content)
 	}
 }

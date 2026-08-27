@@ -1,8 +1,9 @@
 //! Attribute markers whose value types live in this crate, with their name
 //! constants for the string-keyed legacy readers and writers.
 //!
-//! The list-valued markers deep-copy by cloning the list, so their values must
-//! stay free of arena-borrowing content such as [`Graphic::Group`].
+//! The list-valued markers may carry native [`Graphic::Group`] content: the
+//! registered deep field glue owns it across persistence seams, and legacy
+//! products convert it through [`crate::graphic::map_paint_attrs_to_legacy`].
 
 use crate::Graphic;
 use core_types::attribute::Attribute;

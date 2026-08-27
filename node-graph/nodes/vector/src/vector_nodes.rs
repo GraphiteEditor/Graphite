@@ -311,14 +311,12 @@ fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>,
 	}
 }
 
-/// The materialized paint level as the canonical paint table.
+/// The materialized paint level as the canonical owned paint list, content
+/// kept in its native form.
 fn paint_table(paint: core_types::node::List<'_, Graphic>) -> List<Graphic> {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(paint.batch()) };
-	graphic_types::graphic::group_to_legacy_list(&core_types::record::Group {
-		row: None,
-		content: core_types::record::GroupContent::Run(item),
-	})
+	graphic_types::graphic::run_to_list::<Graphic>(&item).expect("a paint level holds graphic lanes")
 }
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.

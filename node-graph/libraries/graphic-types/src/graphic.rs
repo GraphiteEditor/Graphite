@@ -792,9 +792,10 @@ fn group_bounding_box(group: &core_types::record::Group, transform: DAffine2, in
 	}
 }
 
-/// One typed run as a legacy list, elements cloned and every attribute
-/// copied through its erased read.
-pub(crate) fn run_to_legacy_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::GroupItem) -> Option<List<T>> {
+/// One typed run as an owned list, elements cloned and every attribute copied
+/// through its erased read. Content keeps its native form; the legacy
+/// conversions layer their mapping on top.
+pub fn run_to_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::GroupItem) -> Option<List<T>> {
 	let lanes = item.typed_lanes::<T>()?;
 	let mut list = List::new();
 	for lane in 0..lanes.len() {
@@ -807,6 +808,27 @@ pub(crate) fn run_to_legacy_list<T: Clone + Send + Sync + 'static>(item: &core_t
 			list.set_attribute_value_dyn(field.name, lane, AttributeValueDyn(value));
 		}
 	}
+	Some(list)
+}
+
+/// Converts the group content of the list's paint attribute values to legacy
+/// form, so a legacy product owns everything its attributes reach.
+pub fn map_paint_attrs_to_legacy<T: 'static>(list: &mut List<T>) {
+	for key in [ATTR_FILL, ATTR_STROKE, crate::markers::ATTR_EDITOR_MERGED_LAYERS] {
+		let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(key) else { continue };
+		for value in values.flatten() {
+			for element in value.iter_element_values_mut() {
+				*element = map_groups_to_legacy(element);
+			}
+		}
+	}
+}
+
+/// One typed run as a legacy list: [`run_to_list`] with the paint attribute
+/// contents converted to their legacy form.
+pub(crate) fn run_to_legacy_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::GroupItem) -> Option<List<T>> {
+	let mut list = run_to_list::<T>(item)?;
+	map_paint_attrs_to_legacy(&mut list);
 	Some(list)
 }
 
@@ -992,6 +1014,7 @@ pub fn map_groups_to_legacy(graphic: &Graphic) -> Graphic {
 			for child in children.iter_element_values_mut() {
 				*child = map_groups_to_legacy(child);
 			}
+			map_paint_attrs_to_legacy(&mut children);
 			Graphic::Graphic(children)
 		}
 		other => other.clone(),
@@ -1059,6 +1082,7 @@ pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic> 
 					}
 				}
 			}
+			map_paint_attrs_to_legacy(&mut list);
 			push_lane_paint_into_interiors(&mut list);
 			list
 		}
@@ -1434,6 +1458,56 @@ mod run_tests {
 		// SAFETY: the replay wrote a record of `layout`.
 		let served = unsafe { layout.rec(&value).read::<Option<&List<Graphic>>>(offset) }.expect("the fill replays present");
 		assert_eq!(map_groups_to_legacy(served.element(0).unwrap()), expected);
+	}
+
+	#[test]
+	fn a_legacy_list_owns_its_paint_attr_content() {
+		let inner_vector = unit_square_at(DVec2::ZERO);
+		let inner_layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[]);
+		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
+		let paint = native_group_paint(&inner_vector, &inner_layout, &mut inner_bytes);
+
+		let vector = unit_square_at(DVec2::new(4., 4.));
+		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
+		let mut bytes = vec![0u8; layout.lane_stride()];
+		// SAFETY: `bytes` is one lane of `layout`; a parked element stores its
+		// reference, and the fill field stores the marker's value form.
+		unsafe {
+			bytes.as_mut_ptr().cast::<&Vector>().write(&vector);
+			bytes.as_mut_ptr().add(layout.offset_of(Fill::NAME, 0).unwrap()).cast::<Option<&List<Graphic>>>().write(Some(&paint));
+		}
+		let (legacy, expected) = {
+			// SAFETY: `bytes` holds one lane of `layout` at its stride.
+			let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+			let legacy = run_to_legacy_list::<Vector>(&item).expect("the run lowers to a legacy vector list");
+			(legacy, map_groups_to_legacy(paint.element(0).unwrap()))
+		};
+		bytes.fill(u8::MAX);
+		inner_bytes.fill(u8::MAX);
+		drop(paint);
+
+		let served = legacy.attribute::<Option<List<Graphic>>>(Fill::NAME, 0).expect("the fill attribute rides the list");
+		let served = served.as_ref().expect("the fill is present");
+		assert_eq!(served.element(0).unwrap(), &expected);
+	}
+
+	#[test]
+	fn a_run_list_keeps_native_group_elements() {
+		let inner_vector = unit_square_at(DVec2::ZERO);
+		let inner_layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[]);
+		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
+		let content = native_group_paint(&inner_vector, &inner_layout, &mut inner_bytes);
+		let element = content.element(0).unwrap();
+
+		let layout = Layout::default().with_writes(0, element_write_hashed::<Graphic>(), &[]);
+		let mut bytes = vec![0u8; layout.lane_stride()];
+		// SAFETY: `bytes` is one lane of `layout`; a parked element stores its
+		// reference.
+		unsafe { bytes.as_mut_ptr().cast::<&Graphic>().write(element) };
+		// SAFETY: `bytes` holds one lane of `layout` at its stride.
+		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+		let list = run_to_list::<Graphic>(&item).expect("the run holds graphic lanes");
+		assert!(matches!(list.element(0), Some(Graphic::Group(_))), "the list keeps the native group form");
 	}
 
 	#[test]
