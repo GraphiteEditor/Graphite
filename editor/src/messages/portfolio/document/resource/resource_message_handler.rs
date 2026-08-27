@@ -3,7 +3,7 @@ use crate::messages::portfolio::{document::resource::utility_types::EmbeddedReso
 use crate::messages::prelude::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry};
+use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry, ResourceStorage};
 use graphene_std::text::Font;
 use std::sync::Arc;
 use url::Url;
@@ -49,8 +49,9 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				responses.add(ResourceMessage::Resolve { resource_id });
 			}
 			ResourceMessage::ResolveAll => {
-				let unresolved_ids: Vec<ResourceId> = self.registry.unresolved().map(|info| info.id).collect();
-				for id in unresolved_ids {
+				let storage = resource_storage.resources_mut();
+				let ids: Vec<ResourceId> = self.registry.ids().filter(|id| !self.registry.hash(id).is_some_and(|hash| storage.contains(&hash))).collect();
+				for id in ids {
 					if self.pending_resolves.contains(&id) {
 						continue;
 					}
@@ -66,7 +67,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					log::error!("Resolve for {resource_id}: no registry entry");
 					return;
 				};
-				if info.hash.is_some() {
+				if info.hash.is_some_and(|hash| resource_storage.resources_mut().contains(hash)) {
 					log::warn!("Resource {resource_id} already resolved");
 					return;
 				}
