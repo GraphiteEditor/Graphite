@@ -289,43 +289,24 @@ pub fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Item<Arc<Platf
 }
 
 #[node_macro::node(category(""))]
-pub async fn resource<'a: 'n>(
-	_: impl Ctx,
-	/// The scope-provided editor API giving access to the platform's resource storage.
-	#[scope(editor_api::IDENTIFIER)]
-	editor_api: Item<&'a PlatformEditorApi>,
-	/// The content hash identifying which stored resource to load.
-	hash: Item<ResourceHash>,
-) -> Item<Resource> {
-	let hash = hash.into_element();
-	let application_io = editor_api.into_element().application_io.as_ref().expect("ApplicationIo must be available when using resources");
-	let resource = application_io.load_resource(hash).await.unwrap_or_else(|| panic!("Resource {hash} not found"));
-	Item::new_from_element(resource)
+pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Resource {
+	let application_io = editor_api.application_io.as_ref().expect("ApplicationIo must be available when using resources");
+	application_io.load_resource(hash).await.unwrap_or_else(|| {
+		panic!("Resource {hash} not found");
+	})
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a ::wgpu_executor::WgpuExecutor> {
-	let executor = editor_api
-		.into_element()
+pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> &'a ::wgpu_executor::WgpuExecutor {
+	editor_api
 		.application_io
 		.as_ref()
-		.expect("ApplicationIo not available")
+		.expect("ApplicationIo not not available")
 		.gpu_executor()
-		.expect("GPU executor not available");
-	Item::new_from_element(executor)
+		.expect("GPU executor not available")
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<Option<&'a ::wgpu_executor::WgpuExecutor>> {
-	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor());
-	Item::new_from_element(executor)
-}
-
-/// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
-#[node_macro::node(category("Debug"), memoize)]
-pub async fn upload_texture<'a: 'n>(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<&'a ::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
-	let executor = executor.into_element();
-	let (raster, attributes) = content.into_parts();
-
-	Item::from_parts(raster.convert(Footprint::DEFAULT, executor).await, attributes)
+pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Option<&'a ::wgpu_executor::WgpuExecutor> {
+	editor_api.application_io.as_ref()?.gpu_executor()
 }

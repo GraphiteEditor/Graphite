@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicU64;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
-use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
+use syn::{Error, Expr, ExprPath, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
@@ -188,6 +188,20 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				_ => quote!(RegistryValueSource::None),
 			},
 			None => quote!(RegistryValueSource::None),
+		})
+		.collect();
+
+	let default_colors: Vec<_> = regular_fields
+		.iter()
+		.map(|field| match field.ty.regular() {
+			Some(RegularParsedField {
+				value_source: ParsedValueSource::Default(data),
+				..
+			}) => match color_constant_paths(data) {
+				Some(paths) => quote!(Some(&[#(#paths),*])),
+				None => quote!(None),
+			},
+			_ => quote!(None),
 		})
 		.collect();
 
@@ -858,6 +872,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								hidden: #input_hidden,
 								exposed: #exposed,
 								value_source: #value_sources,
+								default_colors: #default_colors,
 								default_type: #default_types,
 								number_soft_min: #number_soft_min_values,
 								number_soft_max: #number_soft_max_values,
@@ -879,6 +894,26 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 		#gpu_node
 	})
+}
+
+/// The `Color::*` constant paths making up a default expression, when it consists solely of them (the form used by color and gradient parameter defaults).
+fn color_constant_paths(tokens: &TokenStream2) -> Option<Vec<ExprPath>> {
+	use syn::parse::Parser;
+
+	let expressions = Punctuated::<Expr, Token![,]>::parse_terminated.parse2(tokens.clone()).ok()?;
+	if expressions.is_empty() {
+		return None;
+	}
+
+	expressions
+		.into_iter()
+		.map(|expression| {
+			let Expr::Path(path) = expression else { return None };
+			let segments = &path.path.segments;
+			let is_color_constant = path.qself.is_none() && segments.len() == 2 && segments[0].ident == "Color" && segments.iter().all(|segment| segment.arguments.is_none());
+			is_color_constant.then_some(path)
+		})
+		.collect()
 }
 
 /// Generates the per-parameter symbol types used to reference this node's inputs.

@@ -4,7 +4,7 @@ use crate::messages::tool::common_functionality::color_selector::solid;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::vector::style::FillChoiceUI;
 
 #[derive(Default, ExtractField)]
 pub struct FillTool {
@@ -44,7 +44,7 @@ impl ToolMetadata for FillTool {
 impl LayoutHolder for FillTool {
 	fn layout(&self) -> Layout {
 		let widgets = vec![
-			ColorInput::new(FillChoice::<SRGBA8>::from(&solid(self.primary_color)))
+			ColorInput::new(FillChoiceUI::from(&solid(self.primary_color)))
 				.narrow(true)
 				.on_update(|color: &ColorInput| {
 					FillToolMessage::SetColor {
@@ -206,17 +206,19 @@ impl Fsm for FillToolFsmState {
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
 	use graphene_std::color::SRGBA8;
-	use graphene_std::list::Item;
 	use graphene_std::vector::fill;
 
-	// The Fill tool writes solid colors, whose stored values the input monitor records as `Item<Color>` wires
-	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Item<Color>> {
+	/// The monitored fill wire carries `Color`; the `Graphic` conversion sits downstream of the monitor.
+	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Color> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
-		instrumented.grab_all_input::<fill::FillInput, Item<Color>>(&editor.runtime).collect()
+		instrumented
+			.grab_all_input_level::<fill::FillInput, Color>(&editor.runtime)
+			.flat_map(|list| list.iter_element_values().cloned().collect::<Vec<_>>())
+			.collect()
 	}
 
 	#[tokio::test]
@@ -246,8 +248,7 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		let color = fills.first().unwrap().element();
-		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::GREEN));
+		assert_eq!(SRGBA8::from(fills[0]), SRGBA8::from(Color::GREEN));
 	}
 
 	#[tokio::test]
@@ -259,7 +260,6 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		let color = fills.first().unwrap().element();
-		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::YELLOW));
+		assert_eq!(SRGBA8::from(fills[0]), SRGBA8::from(Color::YELLOW));
 	}
 }

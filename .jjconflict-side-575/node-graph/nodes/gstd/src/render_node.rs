@@ -1,5 +1,5 @@
 use core_types::gpoll::Interrupt;
-use core_types::list::{Item, List};
+use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
 use core_types::{Color, Context, Ctx, DeriveCtx, ExtractFootprint, ExtractIndex, ExtractVarArgs, InjectIndex, VarArgLink, VarArgSlots, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
@@ -25,8 +25,8 @@ pub struct RenderIntermediate {
 fn intermediate_of<R: Render>(data: &R, render_params: &RenderParams) -> RenderIntermediate {
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
-	data.collect_metadata(&mut metadata, footprint, None, None);
-	let intermediate = match &render_params.render_output_type {
+	data.collect_metadata(&mut metadata, footprint, None);
+	match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => {
 			let mut scene = vello::Scene::new();
 
@@ -48,9 +48,7 @@ fn intermediate_of<R: Render>(data: &R, render_params: &RenderParams) -> RenderI
 				metadata,
 			}
 		}
-	};
-
-	Item::new_from_element(intermediate)
+	}
 }
 
 #[node_macro::node(category(""))]
@@ -101,9 +99,9 @@ where
 #[node_macro::node(category(""))]
 fn render(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<wgpu_executor::WgpuExecutorHandle>>,
-	data: Item<RenderIntermediate>,
-) -> Item<RenderOutput> {
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<wgpu_executor::WgpuExecutorHandle>,
+	data: RenderIntermediate,
+) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -113,7 +111,7 @@ fn render(
 	let mut render_params = render_params.clone();
 	render_params.footprint = *footprint;
 
-	let RenderIntermediate { ty, mut metadata } = data.into_element();
+	let RenderIntermediate { ty, mut metadata } = data;
 	metadata.apply_transform(footprint.transform);
 
 	let data = match (render_params.render_output_type, ty) {
@@ -156,7 +154,6 @@ fn render(
 			}
 
 			let texture = executor
-				.into_element()
 				.expect("GPU executor not available")
 				.render_vello_scene(&transformed_scene, footprint.resolution, context, None)
 				.expect("Failed to render Vello scene");
@@ -165,7 +162,7 @@ fn render(
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 
-	Item::new_from_element(RenderOutput { data, metadata })
+	RenderOutput { data, metadata }
 }
 
 #[node_macro::node(category(""))]

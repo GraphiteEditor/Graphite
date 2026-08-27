@@ -400,6 +400,31 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 	}
 }
 
+/// Converts a gradient's renderer samples to peniko color stops, duplicating an off-zero first stop at position 0 since Vello ignores the first stop's position and always treats it as 0.
+fn peniko_color_stops(gradient: &GradientStops) -> peniko::ColorStops {
+	let mut peniko_stops = peniko::ColorStops::new();
+
+	for (position, color, _) in gradient.interpolated_samples() {
+		let color = peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color());
+
+		if peniko_stops.is_empty() && position > 0. {
+			peniko_stops.push(peniko::ColorStop { offset: 0., color });
+		}
+
+		peniko_stops.push(peniko::ColorStop { offset: position as f32, color });
+	}
+
+	// A gradient with no stops paints as solid black, matching `Gradient::evaluate`
+	if peniko_stops.is_empty() {
+		peniko_stops.push(peniko::ColorStop {
+			offset: 0.,
+			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(Color::BLACK).to_peniko_color()),
+		});
+	}
+
+	peniko_stops
+}
+
 fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
@@ -407,13 +432,7 @@ fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient
 	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
 	let spread_method: GradientSpreadMethod = gradient_list.attr::<SpreadMethod>(0);
 
-	let mut peniko_stops = peniko::ColorStops::new();
-	for (position, color, _) in stops.interpolated_samples() {
-		peniko_stops.push(peniko::ColorStop {
-			offset: position as f32,
-			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
-		});
-	}
+	let peniko_stops = peniko_color_stops(stops);
 
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
 	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type));
@@ -2398,13 +2417,7 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 		let blend_mode = blend_mode_attr.to_peniko();
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-		let mut stops: peniko::ColorStops = peniko::ColorStops::new();
-		for (position, color, _) in gradient.interpolated_samples() {
-			stops.push(peniko::ColorStop {
-				offset: position as f32,
-				color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
-			})
-		}
+		let stops = peniko_color_stops(gradient);
 
 		let extend = match spread_method {
 			GradientSpreadMethod::Pad => peniko::Extend::Pad,

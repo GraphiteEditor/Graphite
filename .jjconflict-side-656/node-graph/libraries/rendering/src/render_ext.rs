@@ -1,16 +1,20 @@
 use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, spread_adjusted_samples, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
+use core_types::Color;
+use core_types::attribute::Transform;
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_GRADIENT_FORM, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientForm;
+use graphic_types::vector_types::markers::{
+	GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
+};
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
-use vector_types::gradient::{GradientSettings, GradientSpread};
+use vector_types::gradient::{GradientHueDirection, GradientSpace, GradientSpread};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -50,6 +54,20 @@ pub trait RenderExt {
 	) -> Self::Output;
 }
 
+/// The color paint attribute over any color lane source.
+pub fn render_color_paint<S: core_types::lane::LaneSource<Element = Color>>(source: &S, target: PaintTarget) -> String {
+	let Some(color) = source.element(0) else {
+		return format!(r#" {}="none""#, target.paint_attr());
+	};
+
+	let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
+	if color.a() < 1. {
+		let _ = write!(result, r#" {}="{}""#, target.opacity_attr(), (color.a() * 1000.).round() / 1000.);
+	}
+
+	result
+}
+
 impl RenderExt for List<Color> {
 	type Output = String;
 
@@ -63,16 +81,7 @@ impl RenderExt for List<Color> {
 		_render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
-		let Some(color) = self.element(0) else {
-			return format!(r#" {}="none""#, target.paint_attr());
-		};
-
-		let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
-		if color.a() < 1. {
-			let _ = write!(result, r#" {}="{}""#, target.opacity_attr(), (color.a() * 1000.).round() / 1000.);
-		}
-
-		result
+		render_color_paint(self, target)
 	}
 }
 
@@ -90,14 +99,24 @@ impl RenderExt for List<Gradient> {
 		_render_params: &RenderParams,
 		_target: PaintTarget,
 	) -> Self::Output {
-		let mut stop = String::new();
+		render_gradient_paint(self, svg_defs, item_transform, element_transform)
+	}
+}
 
-		let Some(stops) = self.element(0) else { return 0 };
-		let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, 0);
-		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let settings = GradientSettings::from_list_row_attributes(self, 0);
+/// Adds the gradient def through mutating `svg_defs`, returning the gradient
+/// ID, over any gradient lane source.
+pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientStops>>(source: &S, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> u64 {
+	let mut stop = String::new();
 
-		let (samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
+	{
+		let Some(stops) = source.element(0) else { return 0 };
+		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(0);
+		let local_gradient_transform: DAffine2 = source.attr::<Transform>(0);
+		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(0);
+		let gradient_space: GradientSpace = source.attr::<GradientSpaceAttr>(0);
+		let gradient_hue_direction: GradientHueDirection = source.attr::<GradientHueDirectionAttr>(0);
+
+		let (samples, _) = spread_adjusted_samples(stops, gradient_spread, gradient_form, gradient_space, gradient_hue_direction, ClearGuardPlacement::SvgStopOrder);
 
 		for (position, color, original_midpoint) in samples {
 			stop.push_str("<stop");
@@ -136,10 +155,10 @@ impl RenderExt for List<Gradient> {
 			format!(r#" gradientTransform="{gradient_transform}""#)
 		};
 
-		let gradient_spread = if matches!(settings.spread, GradientSpread::Pad | GradientSpread::Clear) {
+		let gradient_spread = if matches!(gradient_spread, GradientSpread::Pad | GradientSpread::Clear) {
 			String::new()
 		} else {
-			format!(r#" spreadMethod="{}""#, settings.spread.svg_name())
+			format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
 		};
 
 		let gradient_id = generate_uuid();
@@ -226,7 +245,7 @@ impl RenderExt for Stroke {
 	}
 }
 
-impl RenderExt for List<Graphic> {
+impl RenderExt for List<Graphic<'_>> {
 	type Output = String;
 
 	fn render(
@@ -243,13 +262,12 @@ impl RenderExt for List<Graphic> {
 		let paint_attr = target.paint_attr();
 
 		match fill_graphic {
-			Some(Graphic::Color(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
-			Some(Graphic::Gradient(gradient_list)) => {
-				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target);
+			Some(Graphic::Color(color)) => render_color_paint(&core_types::lane::LeafLane::new(self, 0, color), target),
+			Some(Graphic::Gradient(gradient)) => {
+				let gradient_id = render_gradient_paint(&core_types::lane::LeafLane::new(self, 0, gradient), svg_defs, item_transform, element_transform);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
-			Some(Graphic::None) => format!(r#" {paint_attr}="none""#),
-			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) => {
+			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) | Some(Graphic::Group(_)) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };

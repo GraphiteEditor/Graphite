@@ -45,14 +45,6 @@ pub struct NodeReplacement<'a> {
 	aliases: &'a [&'a str],
 }
 
-/// Every name the Merge layer network's two type-coercion nodes have gone by, which is every alias of the node they both converged on.
-fn into_group_aliases() -> impl Iterator<Item = &'static &'static str> {
-	NODE_REPLACEMENTS
-		.iter()
-		.filter(|replacement| replacement.node == graphene_std::graphic::into_group::IDENTIFIER)
-		.flat_map(|replacement| replacement.aliases)
-}
-
 const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	// ================================
 	// blending
@@ -202,20 +194,22 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::into_group::IDENTIFIER,
+		node: graphene_std::graphic::to_graphic::IDENTIFIER,
 		aliases: &[
-			// Converted from "To Element", then "Wrap Graphic"
-			"graphene_core::ToGraphicElementNode",
-			"graphene_core::graphic_element::ToElementNode",
-			"graphene_core::graphic_types::ToElementNode",
-			"graphene_core::graphic::WrapGraphicNode",
-			"graphic_nodes::graphic::WrapGraphicNode",
-			// Converted from "To Graphic", whose grouping of non-graphical content this node now carries alone
 			"graphene_core::ToGraphicGroupNode",
 			"graphene_core::graphic_element::ToGroupNode",
 			"graphene_core::graphic_types::ToGroupNode",
 			"graphene_core::graphic::ToGraphicNode",
-			"graphic_nodes::graphic::ToGraphicNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::wrap_graphic::IDENTIFIER,
+		aliases: &[
+			// Converted from "To Element"
+			"graphene_core::ToGraphicElementNode",
+			"graphene_core::graphic_element::ToElementNode",
+			"graphene_core::graphic_types::ToElementNode",
+			"graphene_core::graphic::WrapGraphicNode",
 		],
 	},
 	// ================================
@@ -1056,6 +1050,12 @@ fn replace_optional_f64_null(input: &str) -> String {
 	result
 }
 
+/// Serialized proto identifiers of the pre-flip Merge and Artboard layer internals.
+/// A document containing any of them predates the leveled-records flip and rebuilds its
+/// layer definitions through the same reset mechanism as the `SourceNodeIdNode` entry in
+/// `document_migration_reset_node_definition`.
+pub const FLIP_RESET_NODE_MARKERS: &[&str] = &["graphic_nodes::graphic::WriteAttributeNode"];
+
 pub fn document_migration_reset_node_definition(document_serialized_content: &str) -> bool {
 	// Upgrade a document being opened to use fresh copies of all nodes
 	if document_serialized_content.contains("node_output_index") {
@@ -1077,9 +1077,9 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 		return true;
 	}
 
-	// Every Merge layer network is built from the two nodes that became "As Graphic" and "Into Group", so their definitions
-	// are reset to pick up the current plumbing instead of the alias migration meant for standalone copies of those nodes.
-	if into_group_aliases().any(|alias| document_serialized_content.contains(alias)) {
+	// The leveled-records flip replaced the layer internals; documents from before it rebuild
+	// their layer definitions.
+	if FLIP_RESET_NODE_MARKERS.iter().any(|marker| document_serialized_content.contains(marker)) {
 		return true;
 	}
 
@@ -1451,6 +1451,34 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	if reset_node_definitions_on_open && let Some(reference) = document.network_interface.reference(node_id, network_path) {
 		let node_definition = resolve_document_node_type(&reference)?;
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
+
+		// The leveled-records flip moved the Copy to Points content wire ahead of the points wire.
+		if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::copy_to_points::IDENTIFIER) {
+			let mut node_template = node_definition.default_node_template();
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[0].clone(), network_path);
+			for (index, input) in old_inputs.into_iter().enumerate().skip(2) {
+				document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
+			}
+		}
+
+		// The leveled-records flip moved the Repeat on Points content wire ahead of the points wire.
+		if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) {
+			let mut node_template = node_definition.default_node_template();
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[0].clone(), network_path);
+			for (index, input) in old_inputs.into_iter().enumerate().skip(2) {
+				document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
+			}
+		}
+
+		// The leveled-records flip gave Mandelbrot a unit primary input.
+		if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER) {
+			let mut node_template = node_definition.default_node_template();
+			document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		}
 	}
 
 	// Rebuild stale Merge/Artboard subgraphs that still use the removed LegacyLayerExtendNode internally
@@ -1461,6 +1489,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.any(|n| matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("LegacyLayerExtend") || id.as_str().contains("legacy_layer_extend")))
 		&& let Some(reference) = document.network_interface.reference(node_id, network_path)
 		&& let Some(node_definition) = resolve_document_node_type(&reference)
+	{
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
+	}
+
+	// Rebuild stale Rasterize subgraphs from before the async-source conversion gave the inner proto node a unit primary input (5 inputs, now 6).
+	if let DocumentNodeImplementation::Network(inner) = &node.implementation
+		&& inner
+			.nodes
+			.values()
+			.any(|n| n.inputs.len() == 5 && matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("rasterize")))
+		&& document.network_interface.reference(node_id, network_path) == Some(DefinitionIdentifier::Network("Rasterize".into()))
+		&& let Some(node_definition) = resolve_document_node_type(&DefinitionIdentifier::Network("Rasterize".into()))
 	{
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 	}
@@ -2733,15 +2773,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Add context features to nodes that don't have them (fine-grained context caching migration)
-	if node.context_features == graphene_std::ContextDependencies::default()
-		&& let Some(reference) = document.network_interface.reference(node_id, network_path).clone()
-		&& let Some(node_definition) = resolve_document_node_type(&reference)
-	{
-		let context_features = node_definition.node_template.context_features;
-		document.network_interface.set_context_features(node_id, network_path, context_features);
-	}
-
 	// Add the "Scale Type" parameter to the "Decompose Scale" node
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::decompose_scale::IDENTIFIER) && inputs_count == 1 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
@@ -2970,18 +3001,11 @@ mod tests {
 		assert!(resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER).is_some());
 	}
 
-	// Migrating a Merge network's coercion nodes by alias would leave a reducer in the primary slot, so every alias must reset instead
 	#[test]
-	fn every_into_group_alias_resets_the_merge_definition() {
-		let aliases = into_group_aliases().collect::<Vec<_>>();
-		assert!(!aliases.is_empty(), "the reset is driven by these aliases, so losing them all would disable it unnoticed");
-
-		for alias in aliases {
-			assert!(
-				document_migration_reset_node_definition(&format!(r#""implementation":{{"ProtoNode":"{alias}"}}"#)),
-				"a document referencing `{alias}` should reset its layer definitions"
-			);
-		}
+	fn the_flip_reset_markers_keep_the_historical_merge_internals_spelling() {
+		// The node itself is removed; the marker matches its spelling in
+		// documents saved before the flip, which must stay stable.
+		assert_eq!(FLIP_RESET_NODE_MARKERS, &["graphic_nodes::graphic::WriteAttributeNode"]);
 	}
 
 	#[test]

@@ -666,8 +666,8 @@ mod tests {
 
 #[cfg(test)]
 mod graphic_is_opaque_tests {
-	use core_types::ATTR_SPREAD_METHOD;
-	use vector_types::{GradientSpreadMethod, GradientStop};
+	use core_types::ATTR_GRADIENT_SPREAD;
+	use vector_types::{GradientSpread, GradientStop};
 
 	use super::*;
 
@@ -678,7 +678,7 @@ mod graphic_is_opaque_tests {
 
 	fn gradient_graphic(gradient: Gradient) -> Graphic {
 		let mut gradient_list = List::new_from_element(gradient);
-		gradient_list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Pad);
+		gradient_list.set_attribute(ATTR_GRADIENT_SPREAD, 0, GradientSpread::Pad);
 		Graphic::Gradient(gradient_list)
 	}
 

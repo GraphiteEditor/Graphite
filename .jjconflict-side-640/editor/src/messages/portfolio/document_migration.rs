@@ -10,7 +10,7 @@ use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
-use graph_craft::{Type, item, list};
+use graph_craft::{Type, item};
 use graphene_std::Color;
 use graphene_std::ParameterRef;
 use graphene_std::ProtoNodeIdentifier;
@@ -1050,12 +1050,6 @@ fn replace_optional_f64_null(input: &str) -> String {
 	result
 }
 
-/// Serialized proto identifiers of the pre-flip Merge and Artboard layer internals.
-/// A document containing any of them predates the leveled-records flip and rebuilds its
-/// layer definitions through the same reset mechanism as the `SourceNodeIdNode` entry in
-/// `document_migration_reset_node_definition`.
-pub const FLIP_RESET_NODE_MARKERS: &[&str] = &["graphic_nodes::graphic::WriteAttributeNode"];
-
 pub fn document_migration_reset_node_definition(document_serialized_content: &str) -> bool {
 	// Upgrade a document being opened to use fresh copies of all nodes
 	if document_serialized_content.contains("node_output_index") {
@@ -1074,12 +1068,6 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 		|| document_serialized_content.contains("graphene_core::graphic::graphic::SourceNodeIdNode")
 		|| document_serialized_content.contains("graphene_core::graphic::SourceNodeIdNode")
 	{
-		return true;
-	}
-
-	// The leveled-records flip replaced the layer internals; documents from before it rebuild
-	// their layer definitions.
-	if FLIP_RESET_NODE_MARKERS.iter().any(|marker| document_serialized_content.contains(marker)) {
 		return true;
 	}
 
@@ -1451,34 +1439,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	if reset_node_definitions_on_open && let Some(reference) = document.network_interface.reference(node_id, network_path) {
 		let node_definition = resolve_document_node_type(&reference)?;
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
-
-		// The leveled-records flip moved the Copy to Points content wire ahead of the points wire.
-		if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::copy_to_points::IDENTIFIER) {
-			let mut node_template = node_definition.default_node_template();
-			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[1].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[0].clone(), network_path);
-			for (index, input) in old_inputs.into_iter().enumerate().skip(2) {
-				document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
-			}
-		}
-
-		// The leveled-records flip moved the Repeat on Points content wire ahead of the points wire.
-		if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) {
-			let mut node_template = node_definition.default_node_template();
-			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[1].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[0].clone(), network_path);
-			for (index, input) in old_inputs.into_iter().enumerate().skip(2) {
-				document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
-			}
-		}
-
-		// The leveled-records flip gave Mandelbrot a unit primary input.
-		if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER) {
-			let mut node_template = node_definition.default_node_template();
-			document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-		}
 	}
 
 	// Rebuild stale Merge/Artboard subgraphs that still use the removed LegacyLayerExtendNode internally
@@ -1489,18 +1449,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.any(|n| matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("LegacyLayerExtend") || id.as_str().contains("legacy_layer_extend")))
 		&& let Some(reference) = document.network_interface.reference(node_id, network_path)
 		&& let Some(node_definition) = resolve_document_node_type(&reference)
-	{
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
-	}
-
-	// Rebuild stale Rasterize subgraphs from before the async-source conversion gave the inner proto node a unit primary input (5 inputs, now 6).
-	if let DocumentNodeImplementation::Network(inner) = &node.implementation
-		&& inner
-			.nodes
-			.values()
-			.any(|n| n.inputs.len() == 5 && matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("rasterize")))
-		&& document.network_interface.reference(node_id, network_path) == Some(DefinitionIdentifier::Network("Rasterize".into()))
-		&& let Some(node_definition) = resolve_document_node_type(&DefinitionIdentifier::Network("Rasterize".into()))
 	{
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 	}
@@ -1944,28 +1892,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashPatternInput), migrated, network_path);
-	}
-
-	// The stored no-paint sentinel was the `List<Graphic>` type default before the paint connectors ranked down to `Item<Graphic>`.
-	// This must run before the stale-List-default cleanup below, which would otherwise adopt the definition's default paint.
-	{
-		let legacy_no_paint = TaggedValue::TypeDefault(list!(graphene_std::Graphic));
-		let paint_parameters: &[ParameterRef] = &[graphene_std::vector::fill::FillInput.into(), graphene_std::vector::stroke::PaintInput.into()];
-		for parameter in paint_parameters {
-			if reference != DefinitionIdentifier::ProtoNode(parameter.node_identifier.clone()) {
-				continue;
-			}
-			let Some(NodeInput::Value { tagged_value, exposed }) = node.inputs.get(parameter.input_index) else {
-				continue;
-			};
-			if **tagged_value == legacy_no_paint {
-				document.network_interface.set_input(
-					&InputConnector::node_at_index(*node_id, parameter.input_index),
-					NodeInput::value(TaggedValue::no_paint(), *exposed),
-					network_path,
-				);
-			}
-		}
 	}
 
 	// The corner radius became the `BoxCorners` value type; convert any already-shaped rectangle that still stores a legacy corner input
@@ -2773,6 +2699,15 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
+	// Add context features to nodes that don't have them (fine-grained context caching migration)
+	if node.context_features == graphene_std::ContextDependencies::default()
+		&& let Some(reference) = document.network_interface.reference(node_id, network_path).clone()
+		&& let Some(node_definition) = resolve_document_node_type(&reference)
+	{
+		let context_features = node_definition.node_template.context_features;
+		document.network_interface.set_context_features(node_id, network_path, context_features);
+	}
+
 	// Add the "Scale Type" parameter to the "Decompose Scale" node
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::decompose_scale::IDENTIFIER) && inputs_count == 1 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
@@ -2999,13 +2934,6 @@ mod tests {
 	fn removed_definition_swap_targets_resolve() {
 		assert!(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).is_some());
 		assert!(resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER).is_some());
-	}
-
-	#[test]
-	fn the_flip_reset_markers_keep_the_historical_merge_internals_spelling() {
-		// The node itself is removed; the marker matches its spelling in
-		// documents saved before the flip, which must stay stable.
-		assert_eq!(FLIP_RESET_NODE_MARKERS, &["graphic_nodes::graphic::WriteAttributeNode"]);
 	}
 
 	#[test]

@@ -146,7 +146,7 @@ impl PerPixelAdjustCodegen<'_> {
 				ParamType::Uniform => quote!(uniform.#ident),
 			})
 			.collect::<Vec<_>>();
-		let context = quote!(());
+		let context = quote!(&());
 
 		let entry_point_mod = &self.entry_point_mod;
 		let entry_point_name = &self.entry_point_name_ident;
@@ -231,9 +231,11 @@ impl PerPixelAdjustCodegen<'_> {
 			description: "".to_string(),
 			widget_override: Default::default(),
 			ty: ParsedFieldType::Regular(RegularParsedField {
-				ty: parse_quote!(&'a WgpuExecutor),
+				ty: parse_quote!(#wgpu_executor::WgpuExecutorHandle),
+				list_levels: 0,
+				lend: None,
 				exposed: true,
-				value_source: ParsedValueSource::Scope(parse_quote!("graphene_std::platform_application_io::WgpuExecutorNode")),
+				value_source: ParsedValueSource::Scope(Box::new(parse_quote!("graphene_std::platform_application_io::WgpuExecutorNode"))),
 				number_soft_min: None,
 				number_soft_max: None,
 				number_hard_min: None,
@@ -246,6 +248,7 @@ impl PerPixelAdjustCodegen<'_> {
 			number_step: None,
 			unit: None,
 			is_data_field: false,
+			attribute_reads: Vec::new(),
 		});
 
 		// find exactly one gpu_image field, runtime doesn't support more than 1 atm
@@ -287,7 +290,7 @@ impl PerPixelAdjustCodegen<'_> {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
 					has_uniform: #has_uniform,
-				}, #gpu_image, #uniform_buffer).await
+				}, #gpu_image, #uniform_buffer)
 			}
 		};
 
@@ -305,7 +308,7 @@ impl PerPixelAdjustCodegen<'_> {
 			fn_name: self.shader_node_mod.clone(),
 			struct_name: format_ident!("{}", self.shader_node_mod.to_string().to_case(Case::Pascal)),
 			mod_name: self.shader_node_mod.clone(),
-			fn_generics: vec![parse_quote!('a: 'n)],
+			fn_generics: Vec::new(),
 			where_clause: None,
 			input: Input {
 				pat_ident: self.parsed.input.pat_ident.clone(),
@@ -314,7 +317,9 @@ impl PerPixelAdjustCodegen<'_> {
 				context_features: self.parsed.input.context_features.clone(),
 			},
 			output_type: raster_gpu,
-			is_async: true,
+			output_depth: 0,
+			claim: None,
+			is_async: false,
 			fields,
 			body,
 			description: self.parsed.description.clone(),

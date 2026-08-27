@@ -1,33 +1,29 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, ItemAttributeValues, List};
-use core_types::ops::{FromAnchorPosition, ListConvert};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, NodeIdPath};
+use core_types::ops::FromAnchorPosition;
 use core_types::render_complexity::RenderComplexity;
-use core_types::uuid::NodeId;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
 use std::borrow::Cow;
-use vector_types::GradientStops;
+use vector_types::Gradient;
 pub use vector_types::Vector;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
-#[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
+#[derive(Clone, Debug, Default, CacheHash, PartialEq, DynAny)]
 pub enum Graphic {
+	/// The absence of graphical content, like CSS's `none` keyword: painting it produces nothing.
+	#[default]
+	None,
 	Graphic(List<Graphic>),
 	Vector(List<Vector>),
 	RasterCPU(List<Raster<CPU>>),
 	RasterGPU(List<Raster<GPU>>),
 	Color(List<Color>),
-	Gradient(List<GradientStops>),
+	Gradient(List<Gradient>),
 	Text(List<String>),
-}
-
-impl Default for Graphic {
-	fn default() -> Self {
-		Self::Graphic(List::new())
-	}
 }
 
 // Graphic
@@ -91,14 +87,14 @@ impl From<List<Color>> for Graphic {
 // Note: List conversions handled by blanket impl in gcore
 // Note: List<Color> -> Option<Color> is in gcore (Color is defined there)
 
-// GradientStops
-impl From<GradientStops> for Graphic {
-	fn from(gradient: GradientStops) -> Self {
+// Gradient
+impl From<Gradient> for Graphic {
+	fn from(gradient: Gradient) -> Self {
 		Graphic::Gradient(List::new_from_element(gradient))
 	}
 }
-impl From<List<GradientStops>> for Graphic {
-	fn from(gradient: List<GradientStops>) -> Self {
+impl From<List<Gradient>> for Graphic {
+	fn from(gradient: List<Gradient>) -> Self {
 		Graphic::Gradient(gradient)
 	}
 }
@@ -126,9 +122,9 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 			let parent_has_transform = current_graphic_item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some();
 			let parent_has_opacity = current_graphic_item.attribute::<f64>(ATTR_OPACITY).is_some();
 			let parent_has_fill = current_graphic_item.attribute::<f64>(ATTR_OPACITY_FILL).is_some();
-			let parent_has_layer_path = current_graphic_item.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH).is_some();
+			let parent_has_layer_path = current_graphic_item.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).is_some();
 
-			let layer_path: List<NodeId> = current_graphic_item.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
+			let layer_path: NodeIdPath = current_graphic_item.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 			let current_transform: DAffine2 = current_graphic_item.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let current_opacity: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY, 1.);
 			let current_fill: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
@@ -232,6 +228,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 	fn bake_graphic_paint_transform(graphics: &mut List<Graphic>, transform: DAffine2) {
 		for graphic in graphics.iter_element_values_mut() {
 			match graphic {
+				Graphic::None => {}
 				Graphic::Graphic(list) => bake_list_transform(list, transform),
 				Graphic::Vector(list) => bake_list_transform(list, transform),
 				Graphic::RasterCPU(list) => bake_list_transform(list, transform),
@@ -274,7 +271,7 @@ impl TryFromGraphic for Color {
 	}
 }
 
-impl TryFromGraphic for GradientStops {
+impl TryFromGraphic for Gradient {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		if let Graphic::Gradient(t) = graphic { Some(t) } else { None }
 	}
@@ -307,11 +304,11 @@ impl IntoGraphicList for List<Graphic> {
 
 impl IntoGraphicList for List<Vector> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		// Propagate `editor:layer_path` from item 0 onto the wrapper Graphic item so a subsequent
-		// `flatten_graphic_list` doesn't overwrite the inner Vector's stamp with an empty value
-		let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		// Propagate the `editor:layer_path` column (if present) from item 0 onto the wrapper Graphic item so a
+		// subsequent `flatten_graphic_list` doesn't drop the inner Vector's layer stamp
+		let layer_path = self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).cloned();
 		let mut graphic_list = List::new_from_element(Graphic::Vector(self));
-		if !layer_path.is_empty() {
+		if let Some(layer_path) = layer_path {
 			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
 		}
 		graphic_list
@@ -336,7 +333,7 @@ impl IntoGraphicList for List<Color> {
 	}
 }
 
-impl IntoGraphicList for List<GradientStops> {
+impl IntoGraphicList for List<Gradient> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::Gradient(self))
 	}
@@ -344,32 +341,32 @@ impl IntoGraphicList for List<GradientStops> {
 
 impl IntoGraphicList for List<String> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		let layer_path = self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).cloned();
 		let mut graphic_list = List::new_from_element(Graphic::Text(self));
-		if !layer_path.is_empty() {
+		if let Some(layer_path) = layer_path {
 			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
 		}
 		graphic_list
 	}
 }
 
-impl IntoGraphicList for DAffine2 {
+impl IntoGraphicList for Item<DAffine2> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::default())
 	}
 }
 
 // DAffine2
-impl From<DAffine2> for Graphic {
-	fn from(_: DAffine2) -> Self {
+impl From<Item<DAffine2>> for Graphic {
+	fn from(_: Item<DAffine2>) -> Self {
 		Graphic::default()
 	}
 }
 
 // DVec2
-impl From<DVec2> for Graphic {
-	fn from(position: DVec2) -> Self {
-		Graphic::Vector(List::new_from_element(Vector::from_anchor_position(position)))
+impl From<Item<DVec2>> for Graphic {
+	fn from(position: Item<DVec2>) -> Self {
+		Graphic::Vector(List::new_from_element(Vector::from_anchor_position(position.into_element())))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -423,6 +420,7 @@ impl Graphic {
 		}
 
 		match self {
+			Graphic::None => true,
 			Graphic::Vector(list) => all_clipped(list),
 			Graphic::Graphic(list) => all_clipped(list),
 			Graphic::RasterCPU(list) => all_clipped(list),
@@ -452,6 +450,7 @@ impl Graphic {
 
 	pub fn is_opaque(&self) -> bool {
 		match self {
+			Graphic::None => false,
 			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
 			Graphic::Vector(list) => {
 				let is_paint_opaque_at = |key: &str, index: usize| graphic_list_at(list, index, key).is_some_and(|graphic_list| graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque()));
@@ -474,6 +473,7 @@ impl Graphic {
 
 	pub fn is_fully_transparent(&self) -> bool {
 		match self {
+			Graphic::None => true,
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
 			Graphic::Vector(list) => (0..list.len()).all(|i| {
 				let Some(vector) = list.element(i) else { return false };
@@ -501,9 +501,10 @@ impl Graphic {
 		matches!(self, Graphic::Color(_) | Graphic::Gradient(_)) && self.is_opaque()
 	}
 
-	/// Returns true if this graphic's inner list is empty.
+	/// Returns true if this graphic contains no content.
 	pub fn is_empty(&self) -> bool {
 		match self {
+			Graphic::None => true,
 			Graphic::Graphic(list) => list.is_empty(),
 			Graphic::Vector(list) => list.is_empty(),
 			Graphic::Color(list) => list.is_empty(),
@@ -518,6 +519,7 @@ impl Graphic {
 impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
+			Graphic::None => RenderBoundingBox::None,
 			Graphic::Vector(list) => list.bounding_box(transform, include_stroke),
 			Graphic::RasterCPU(list) => list.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(list) => list.bounding_box(transform, include_stroke),
@@ -530,6 +532,7 @@ impl BoundingBox for Graphic {
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
+			Graphic::None => RenderBoundingBox::None,
 			Graphic::Vector(vector) => vector.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
@@ -541,25 +544,10 @@ impl BoundingBox for Graphic {
 	}
 }
 
-impl ListConvert<Graphic> for Vector {
-	fn convert_item(self) -> Graphic {
-		Graphic::Vector(List::new_from_element(self))
-	}
-}
-impl ListConvert<Graphic> for Raster<CPU> {
-	fn convert_item(self) -> Graphic {
-		Graphic::RasterCPU(List::new_from_element(self))
-	}
-}
-impl ListConvert<Graphic> for Raster<GPU> {
-	fn convert_item(self) -> Graphic {
-		Graphic::RasterGPU(List::new_from_element(self))
-	}
-}
-
 impl RenderComplexity for Graphic {
 	fn render_complexity(&self) -> usize {
 		match self {
+			Self::None => 0,
 			Self::Graphic(list) => list.render_complexity(),
 			Self::Vector(list) => list.render_complexity(),
 			Self::RasterCPU(list) => list.render_complexity(),
@@ -688,7 +676,7 @@ mod graphic_is_opaque_tests {
 		Graphic::Color(List::new_from_element(color))
 	}
 
-	fn gradient_graphic(gradient: GradientStops) -> Graphic {
+	fn gradient_graphic(gradient: Gradient) -> Graphic {
 		let mut gradient_list = List::new_from_element(gradient);
 		gradient_list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Pad);
 		Graphic::Gradient(gradient_list)
@@ -716,7 +704,7 @@ mod graphic_is_opaque_tests {
 	fn gradient_with_all_opaque_stops_is_opaque() {
 		let color_1 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
 		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
-		let gradient = GradientStops::new(vec![
+		let gradient = Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -736,7 +724,7 @@ mod graphic_is_opaque_tests {
 	fn gradient_with_transparent_stop_is_not_opaque() {
 		let color_1 = Color::from_rgbaf32(1., 0., 0., 0.5).unwrap();
 		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
-		let gradient = GradientStops::new(vec![
+		let gradient = Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,

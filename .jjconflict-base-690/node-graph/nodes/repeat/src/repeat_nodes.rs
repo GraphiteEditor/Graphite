@@ -1,466 +1,397 @@
+use crate::gcore::Context;
 use core::f64::consts::TAU;
-use core_types::attribute::{Attr, Transform as TransformAttr};
-use core_types::context::IndexLink;
-use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
-use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
+use core_types::list::{Item, List};
 use core_types::registry::types::{Angle, PixelSize};
-use core_types::{Ctx, DeriveCtx, ExtractIndex, InjectIndex};
+use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::Vector;
+use graphic_types::{Artboard, Graphic, Vector};
+use raster_types::{CPU, GPU, Raster};
+use vector_types::Gradient;
 
-/// Each copy evaluates the content within the copy's index pushed in,
-/// producing a level of `count` copies.
-// Someday this node can have the option to generate infinitely instead of a fixed count (basically `std::iter::repeat`).
-#[node_macro::node(category("Repeat"), extent(repeat_extent))]
-fn repeat<T>(
-	ctx: impl Ctx + DeriveCtx + ExtractIndex,
-	content: impl Node<Context<'_>, Output = T>,
+#[node_macro::node(category("Repeat"))]
+async fn repeat<T: Send + Clone + 'static>(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	#[implementations(
+		Context -> List<String>,
+		Context -> List<bool>,
+		Context -> List<f32>,
+		Context -> List<f64>,
+		Context -> List<u32>,
+		Context -> List<u64>,
+		Context -> List<DVec2>,
+		Context -> List<DAffine2>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+		Context -> List<Artboard>,
+	)]
+	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	#[default(1)]
 	#[hard(1..)]
-	count: u32,
-	reverse: bool,
-) -> Result<IList<T>, Interrupt> {
-	let inner = content.inner_extent(ctx)?;
-	let (copy, rest) = ctx.split_innermost(inner);
-	if copy >= count as u64 {
-		return Err(GraphError::past_end().into());
+	count: Item<u32>,
+	reverse: Item<bool>,
+) -> List<T> {
+	// Someday this node can have the option to generate infinitely instead of a fixed count (basically `std::iter::repeat`).
+
+	let (count, reverse) = (count.into_element(), reverse.into_element());
+	let count = count as usize;
+
+	let mut result_list = List::new();
+
+	for index in 0..count {
+		let index = if reverse { count - index - 1 } else { index };
+
+		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
+		let generated_content = content.eval(new_ctx.into_context()).await;
+
+		for generated_row in generated_content.into_iter() {
+			result_list.push(generated_row);
+		}
 	}
-	let copy = match reverse {
-		true => count as u64 - 1 - copy,
-		false => copy,
-	};
-	let mut frame = IndexLink { index: 0, outer: None };
-	content.eval(&ctx.push_level(&mut frame, copy, rest))
+
+	result_list
 }
 
-/// The pushed level's extent is the copy count; inner levels forward to the
-/// content, whose extent is taken uniform across copies (queried at copy 0).
-fn repeat_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, _reverse: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
-	match level.pushed() {
-		true => count.get().map(|count| Extent::Exactly(count as usize)),
-		false => content.at(level),
-	}
-}
-
-/// Each copy evaluates the content within the copy's index pushed in, the
-/// copy's step transform composed between the lane transform's translation
-/// and matrix parts.
-#[node_macro::node(category("Repeat"), extent(repeat_array_extent))]
-pub fn repeat_array<T>(
-	ctx: impl Ctx + DeriveCtx + ExtractIndex,
-	content: impl Node<Context<'_>, Output = (T, Attr<TransformAttr>)>,
+#[node_macro::node(category("Repeat"))]
+pub async fn repeat_array<T: Send + Clone + 'static>(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	#[implementations(
+		Context -> List<String>,
+		Context -> List<bool>,
+		Context -> List<f32>,
+		Context -> List<f64>,
+		Context -> List<u32>,
+		Context -> List<u64>,
+		Context -> List<DVec2>,
+		Context -> List<DAffine2>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+		Context -> List<Artboard>,
+	)]
+	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: Item<PixelSize>,
 	angle: Item<Angle>,
 	#[default(5)]
 	#[hard(1..)]
-	count: u32,
-) -> Result<IList<(T, Attr<TransformAttr>)>, Interrupt> {
+	count: Item<u32>,
+) -> List<T> {
+	let (direction, angle, count) = (direction.into_element(), angle.into_element(), count.into_element());
 	let angle = angle.to_radians();
 	// A single copy has no steps between copies, so the denominator is kept at 1 to avoid `0. / 0.` producing a NaN transform
 	let total = (count - 1).max(1) as f64;
 
-	let inner = content.inner_extent(ctx)?;
-	let (copy, rest) = ctx.split_innermost(inner);
-	if copy >= count as u64 {
-		return Err(GraphError::past_end().into());
-	}
-	let step_angle = copy as f64 * angle / total;
-	let translation = copy as f64 * direction / total;
-	let transform = DAffine2::from_angle(step_angle) * DAffine2::from_translation(translation);
+	let mut result_list = List::new();
 
-	let mut frame = IndexLink { index: 0, outer: None };
-	let (element, local_transform) = content.eval(&ctx.push_level(&mut frame, copy, rest))?;
-	let local_translation = DAffine2::from_translation(local_transform.translation);
-	let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
-	Ok((element, Attr(local_translation * transform * local_matrix)))
+	for index in 0..count {
+		let angle = index as f64 * angle / total;
+		let translation = index as f64 * direction / total;
+		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
+
+		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
+		let generated_content = content.eval(new_ctx.into_context()).await;
+
+		for row_index in 0..generated_content.len() {
+			let Some(mut row) = generated_content.clone_item(row_index) else { continue };
+
+			let local_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let local_translation = DAffine2::from_translation(local_transform.translation);
+			let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
+			*row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = local_translation * transform * local_matrix;
+
+			result_list.push(row);
+		}
+	}
+
+	result_list
 }
 
-/// The pushed level's extent is the copy count; inner levels forward to the
-/// content, whose extent is taken uniform across copies (queried at copy 0).
-fn repeat_array_extent(content: ExtentIn<'_>, _direction: ValueIn<'_, DVec2>, _angle: ValueIn<'_, f64>, count: ValueIn<'_, u32>, level: LevelIn) -> GPoll<Extent> {
-	match level.pushed() {
-		true => count.get().map(|count| Extent::Exactly(count as usize)),
-		false => content.at(level),
-	}
-}
-
-/// Each copy evaluates the content within the copy's index pushed in, rotated
-/// around the center by the copy's share of the turn.
-#[node_macro::node(category("Repeat"), extent(repeat_radial_extent))]
-fn repeat_radial<T>(
-	ctx: impl Ctx + DeriveCtx + ExtractIndex,
-	content: impl Node<Context<'_>, Output = (T, Attr<TransformAttr>)>,
-	start_angle: Angle,
+#[node_macro::node(category("Repeat"))]
+async fn repeat_radial<T: Send + Clone + 'static>(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	#[implementations(
+		Context -> List<String>,
+		Context -> List<bool>,
+		Context -> List<f32>,
+		Context -> List<f64>,
+		Context -> List<u32>,
+		Context -> List<u64>,
+		Context -> List<DVec2>,
+		Context -> List<DAffine2>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+		Context -> List<Artboard>,
+	)]
+	content: impl Node<'n, Context<'static>, Output = List<T>>,
+	start_angle: Item<Angle>,
 	#[unit(" px")]
 	#[default(5)]
 	radius: Item<f64>,
 	#[default(5)]
 	#[hard(1..)]
-	count: u32,
-) -> Result<IList<(T, Attr<TransformAttr>)>, Interrupt> {
-	let inner = content.inner_extent(ctx)?;
-	let (copy, rest) = ctx.split_innermost(inner);
-	if copy >= count as u64 {
-		return Err(GraphError::past_end().into());
-	}
-	let mut frame = IndexLink { index: 0, outer: None };
-	let (element, local) = content.eval(&ctx.push_level(&mut frame, copy, rest))?;
+	count: Item<u32>,
+) -> List<T> {
+	let (start_angle, radius, count) = (start_angle.into_element(), radius.into_element(), count.into_element());
 
-	let angle = DAffine2::from_angle((TAU / count as f64) * copy as f64 + start_angle.to_radians());
-	let translation = DAffine2::from_translation(radius * DVec2::Y);
-	let step = angle * translation;
-	let local_translation = DAffine2::from_translation(local.translation);
-	let local_matrix = DAffine2::from_mat2(local.matrix2);
-	Ok((element, Attr(local_translation * step * local_matrix)))
-}
+	let mut result_list = List::new();
 
-/// The pushed level's extent is the copy count; inner levels forward to the
-/// content, whose extent is taken uniform across copies (queried at copy 0).
-fn repeat_radial_extent(content: ExtentIn<'_>, _start_angle: ValueIn<'_, Angle>, _radius: ValueIn<'_, f64>, count: ValueIn<'_, u32>, level: LevelIn) -> GPoll<Extent> {
-	match level.pushed() {
-		true => count.get().map(|count| Extent::Exactly(count as usize)),
-		false => content.at(level),
-	}
-}
+	for index in 0..count {
+		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
+		let translation = DAffine2::from_translation(radius * DVec2::Y);
+		let transform = angle * translation;
 
-/// The pushed level flattens every point of every points row, mirroring the
-/// legacy iteration order (rows in order, a row's points reversed when
-/// `reverse` is set); each copy evaluates the content with its point's
-/// transformed position pushed, then lands the content row's transform on
-/// that position.
-#[node_macro::node(category("Repeat"), name("Repeat on Points"), extent(repeat_on_points_extent))]
-fn repeat_on_points<T>(
-	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	content: impl Node<Context<'_>, Output = (T, Attr<TransformAttr>)>,
-	points: IList<Vector>,
-	reverse: bool,
-) -> Result<IList<(T, Attr<TransformAttr>)>, Interrupt> {
-	let inner = content.inner_extent(ctx)?;
-	let (copy, rest) = ctx.split_innermost(inner);
+		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
+		let generated_content = content.eval(new_ctx.into_context()).await;
 
-	let mut remaining = copy as usize;
-	for row_index in 0..points.len() {
-		let vector = points.element_ref(row_index);
-		let positions = vector.point_domain.positions();
-		if remaining >= positions.len() {
-			remaining -= positions.len();
-			continue;
+		for row_index in 0..generated_content.len() {
+			let Some(mut row) = generated_content.clone_item(row_index) else { continue };
+
+			let local_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let local_translation = DAffine2::from_translation(local_transform.translation);
+			let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
+			*row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = local_translation * transform * local_matrix;
+
+			result_list.push(row);
 		}
-		let index = match reverse {
-			true => positions.len() - 1 - remaining,
-			false => remaining,
-		};
-		let transform: DAffine2 = points.lane(row_index).attr::<TransformAttr>();
-		let transformed_point = transform.transform_point2(positions[index]);
-
-		let scoped = ctx.push_position(transformed_point);
-		let mut frame = IndexLink { index: 0, outer: None };
-		let (element, local) = content.eval(&scoped.ctx().push_level(&mut frame, copy, rest))?;
-		let mut composed = *local;
-		composed.translation = transformed_point;
-		return Ok((element, Attr(composed)));
 	}
-	Err(GraphError::past_end().into())
+
+	result_list
 }
 
-/// The pushed level's extent is the flattened point count across the points
-/// rows; inner levels forward to the content, uniform across copies.
-fn repeat_on_points_extent(content: ExtentIn<'_>, points: ListIn<'_, Vector>, _reverse: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
-	match level.pushed() {
-		true => points
-			.get()
-			.map(|points| Extent::Exactly((0..points.len()).map(|row| points.element_ref(row).point_domain.positions().len()).sum())),
-		false => content.at(level),
+#[node_macro::node(category("Repeat"), name("Repeat on Points"))]
+async fn repeat_on_points<T: Send + Clone + 'static>(
+	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectVarArgs,
+	points: List<Vector>,
+	#[implementations(
+		Context -> List<String>,
+		Context -> List<bool>,
+		Context -> List<f32>,
+		Context -> List<f64>,
+		Context -> List<u32>,
+		Context -> List<u64>,
+		Context -> List<DVec2>,
+		Context -> List<DAffine2>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+		Context -> List<Artboard>,
+	)]
+	content: impl Node<'n, Context<'static>, Output = List<T>>,
+	reverse: Item<bool>,
+) -> List<T> {
+	let reverse = reverse.into_element();
+
+	let mut result_list = List::new();
+
+	for points_index in 0..points.len() {
+		let Some(points_element) = points.element(points_index) else { continue };
+		let transform: DAffine2 = points.attribute_cloned_or_default(ATTR_TRANSFORM, points_index);
+
+		let mut iteration = async |index, point| {
+			let transformed_point = transform.transform_point2(point);
+
+			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(transformed_point);
+			let generated_content = content.eval(new_ctx.into_context()).await;
+
+			for mut generated_row in generated_content.into_iter() {
+				generated_row.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM).translation = transformed_point;
+				result_list.push(generated_row);
+			}
+		};
+
+		let range = points_element.point_domain.positions().iter().enumerate();
+		if reverse {
+			for (index, &point) in range.rev() {
+				iteration(index, point).await;
+			}
+		} else {
+			for (index, &point) in range {
+				iteration(index, point).await;
+			}
+		}
 	}
+
+	result_list
 }
 
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core_types::SourceId;
-	use core_types::arena::Arena;
-	use core_types::context::{ContextImpl, EvalScope, ExtractArena};
-	use core_types::node::Node;
-	use core_types::record::{FieldWrite, FrameClaim, Layout, RecordSource, Served, capture, element_write};
-	use core_types::value::ValueSource;
+	use core_types::Ctx;
+	use core_types::Node;
+	use core_types::list::Item;
+	use core_types::transform::Footprint;
+	use glam::DVec2;
+	use graphene_core::ReadPositionNode;
+	use graphene_core::extract_xy::{ExtractXyNode, XY};
+	use graphic_types::Vector;
+	use kurbo::Shape;
+	use kurbo::{BezPath, DEFAULT_ACCURACY, Rect};
+	use std::future::Future;
+	use std::pin::Pin;
+	use vector_nodes::generator_nodes::RectangleNode;
 	use vector_types::subpath::Subpath;
 	use vector_types::vector::misc::BoxCorners;
 
-	struct TransformSource {
-		layout: Layout,
-		element: f64,
-		transform: DAffine2,
+	fn vector_node_from_bezpath(bezpath: BezPath) -> List<Vector> {
+		List::new_from_element(Vector::from_bezpath(bezpath))
 	}
 
-	impl<C: ExtractIndex> Node<C> for TransformSource {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
-		where
-			C: ExtractArena<ArenaRef = &'e Arena>,
-		{
-			let mut frame = slot;
-			let arena = ExtractArena::arena(input);
-			if frame.element(self.element, arena).is_none() {
-				return GPoll::arena_exhausted();
-			}
-			write_attr_at::<TransformAttr>(&mut frame, &self.layout, self.transform);
-			// SAFETY: the writes above complete the record of this layout.
-			GPoll::Final(unsafe { frame.finish_served() })
-		}
+	#[derive(Clone)]
+	pub struct FutureWrapperNode<T: Clone>(T);
 
-		fn layout(&self) -> &Layout {
-			&self.layout
+	impl<'i, I: Ctx, T: 'i + Clone + Send> Node<'i, I> for FutureWrapperNode<T> {
+		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
+		fn eval(&'i self, _input: I) -> Self::Output {
+			let value = self.0.clone();
+			Box::pin(async move { value })
 		}
 	}
 
-	/// Writes a field at the layout's resolved offset, the wiring-proven pairing
-	/// a generated node performs.
-	fn write_field_at<T: Copy + 'static>(frame: &mut FrameClaim<'_, '_>, layout: &Layout, name: &str, level: u8, value: T) {
-		let field = layout
-			.fields
-			.iter()
-			.find(|field| field.name == name && field.level == level)
-			.expect("the layout carries the written field");
-		assert_eq!(field.type_id, std::any::TypeId::of::<T>(), "the field was declared at this value type");
-		// SAFETY: the offset is this layout's own, at the field's declared type.
-		unsafe { frame.attr_at(field.offset, value) };
-	}
+	// Raises a generator's rank-0 `Item<Vector>` output to a singleton `List<Vector>` for the still-list-typed Repeat on Points content connector
+	#[derive(Clone)]
+	pub struct RaiseToListNode<N>(N);
 
-	/// [`write_field_at`] for a census marker at level 0.
-	fn write_attr_at<A: core_types::attribute::Attribute>(frame: &mut FrameClaim<'_, '_>, layout: &Layout, value: A::Value<'static>)
+	impl<'i, I: 'i, N> Node<'i, I> for RaiseToListNode<N>
 	where
-		A::Value<'static>: Copy + 'static,
+		N: Node<'i, I, Output = Pin<Box<dyn Future<Output = Item<Vector>> + 'i + Send>>>,
 	{
-		write_field_at(frame, layout, A::NAME, 0, value);
-	}
-	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
-		EvalScope::new(Some(0.5), None, None, generations, arena)
-	}
-
-	struct VectorRows {
-		layout: Layout,
-		rows: Vec<(Vector, DAffine2)>,
-	}
-
-	impl<C: ExtractIndex> Node<C> for VectorRows {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
-		where
-			C: ExtractArena<ArenaRef = &'e Arena>,
-		{
-			let (vector, transform) = &self.rows[input.innermost_index() as usize % self.rows.len()];
-			let mut frame = slot;
-			let arena = ExtractArena::arena(input);
-			if frame.element(vector.clone(), arena).is_none() {
-				return GPoll::arena_exhausted();
-			}
-			write_attr_at::<TransformAttr>(&mut frame, &self.layout, *transform);
-			// SAFETY: the writes above complete the record of this layout.
-			GPoll::Final(unsafe { frame.finish_served() })
-		}
-
-		fn extent_at<'x>(&self, _input: &C, _level: u8, _frames: &core_types::record::Frames<'x>) -> GPoll<Extent>
-		where
-			C: ExtractArena<ArenaRef = &'x Arena>,
-		{
-			GPoll::Final(Extent::Exactly(self.rows.len()))
-		}
-
-		fn layout(&self) -> &Layout {
-			&self.layout
+		type Output = Pin<Box<dyn Future<Output = List<Vector>> + 'i + Send>>;
+		fn eval(&'i self, input: I) -> Self::Output {
+			let future = self.0.eval(input);
+			Box::pin(async move { future.await.into() })
 		}
 	}
 
-	fn vector_rows_layout() -> Layout {
-		Layout::default().with_writes(1, element_write::<Vector>(), &[FieldWrite::of::<TransformAttr>(0)])
-	}
-
-	struct PositionProbe {
-		layout: Layout,
-	}
-
-	impl<C: ExtractIndex + core_types::context::ExtractPosition> Node<C> for PositionProbe {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
-		where
-			C: ExtractArena<ArenaRef = &'e Arena>,
-		{
-			let position = input.try_position().and_then(|mut positions| positions.next()).unwrap_or(DVec2::ZERO);
-			let mut frame = slot;
-			let arena = ExtractArena::arena(input);
-			if frame.element(position.x, arena).is_none() {
-				return GPoll::arena_exhausted();
-			}
-			write_attr_at::<TransformAttr>(&mut frame, &self.layout, DAffine2::IDENTITY);
-			// SAFETY: the writes above complete the record of this layout.
-			GPoll::Final(unsafe { frame.finish_served() })
-		}
-
-		fn layout(&self) -> &Layout {
-			&self.layout
-		}
-	}
-
-	fn transform_layout() -> Layout {
-		Layout::default().with_writes(0, element_write::<f64>(), &[FieldWrite::of::<TransformAttr>(0)])
-	}
-
-	#[test]
-	fn repeat_array_composes_the_step_onto_each_copys_transform() {
-		let frames = core_types::record::test_frames(1 << 16);
-		let arena = Arena::new(1024).unwrap();
-		let generations = [];
-		let scope = scope_fixture(&generations, &arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let layout = transform_layout();
-		let content = TransformSource {
-			layout: layout.clone(),
-			element: 7.,
-			transform: DAffine2::from_translation(DVec2::new(5., 5.)),
-		};
-
-		let mut node = RepeatArrayNode::new(
-			RecordSource::new(content, &layout, &layout),
-			ValueSource::new(DVec2::new(10., 0.)),
-			ValueSource::new(0.0f64),
-			ValueSource::new(3u32),
-			&layout,
-		);
-		Node::<ContextImpl>::set_layout(&mut node, repeat_array_layout_meta().resolve(&[Some(&layout)]));
-		let leveled = Node::<ContextImpl>::layout(&node).clone();
-		assert_eq!(leveled.depth, 1, "the IList return pushed one rank level above the content");
-		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(3)));
-
-		let head = ctx.index_head();
-		for copy in 0..3u64 {
-			let lane = ctx.promoted(&head, copy);
-			let GPoll::Final(record) = capture(&node, &lane, &frames) else {
-				panic!("expected a final record");
-			};
-			assert_eq!(record.element::<f64>(), 7.);
-			// Zero angle, direction (10, 0), count 3: copy `j` steps j * (5, 0)
-			// past the row's own (5, 5) translation.
-			let composed: DAffine2 = record.attr::<TransformAttr>();
-			assert_eq!(composed, DAffine2::from_translation(DVec2::new(5. + copy as f64 * 5., 5.)));
-		}
-	}
-
-	#[test]
-	fn repeat_radial_rotates_each_copy_around_the_center() {
-		let frames = core_types::record::test_frames(1 << 16);
-		let arena = Arena::new(1024).unwrap();
-		let generations = [];
-		let scope = scope_fixture(&generations, &arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let layout = transform_layout();
-		let local = DAffine2::from_translation(DVec2::new(1., 0.));
-		let content = TransformSource {
-			layout: layout.clone(),
-			element: 7.,
-			transform: local,
-		};
-
-		let mut node = RepeatRadialNode::new(
-			RecordSource::new(content, &layout, &layout),
-			ValueSource::new(90.0f64),
-			ValueSource::new(2.0f64),
-			ValueSource::new(4u32),
-			&layout,
-		);
-		Node::<ContextImpl>::set_layout(&mut node, repeat_radial_layout_meta().resolve(&[Some(&layout)]));
-		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(4)));
-
-		let head = ctx.index_head();
-		for copy in 0..4u64 {
-			let lane = ctx.promoted(&head, copy);
-			let GPoll::Final(record) = capture(&node, &lane, &frames) else {
-				panic!("expected a final record");
-			};
-			assert_eq!(record.element::<f64>(), 7.);
-			// The kernel's own formula, so the float operations match exactly.
-			let step = DAffine2::from_angle((TAU / 4.) * copy as f64 + 90.0f64.to_radians()) * DAffine2::from_translation(2. * DVec2::Y);
-			let expected = DAffine2::from_translation(local.translation) * step * DAffine2::from_mat2(local.matrix2);
-			let composed: DAffine2 = record.attr::<TransformAttr>();
-			assert_eq!(composed, expected);
-		}
-	}
-
-	#[test]
-	fn repeat_on_points_lands_each_copy_on_its_transformed_point() {
-		let frames = core_types::record::test_frames(1 << 16);
-		let arena = Arena::new(1 << 16).unwrap();
-		let generations = [];
-		let scope = scope_fixture(&generations, &arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let row0: Vec<DVec2> = vec![DVec2::new(40., 20.), DVec2::ONE];
-		let row1: Vec<DVec2> = vec![DVec2::new(-42., 9.), DVec2::new(10., 345.), DVec2::new(3., 4.)];
-		let row0_transform = DAffine2::from_translation(DVec2::new(100., 0.));
-		let points = VectorRows {
-			layout: vector_rows_layout(),
-			rows: vec![
-				(Vector::from_subpath(Subpath::from_anchors(row0.clone(), false)), row0_transform),
-				(Vector::from_subpath(Subpath::from_anchors(row1.clone(), false)), DAffine2::IDENTITY),
-			],
-		};
-		let content_layout = transform_layout();
-		let content = PositionProbe { layout: content_layout.clone() };
-
-		let mut node = RepeatOnPointsNode::new(RecordSource::new(content, &content_layout, &content_layout), points, ValueSource::new(false), &content_layout);
-		Node::<ContextImpl>::set_layout(&mut node, repeat_on_points_layout_meta().resolve(&[Some(&content_layout)]));
-		let leveled = Node::<ContextImpl>::layout(&node).clone();
-		assert_eq!(leveled.depth, 1);
-		assert_eq!(
-			node.extent_at(&ctx, 0, &frames.reborrow()),
-			GPoll::Final(Extent::Exactly(5)),
-			"the pushed level flattens both rows' points"
+	#[tokio::test]
+	async fn repeat_on_points_test() {
+		let context = OwnedContextImpl::default().into_context();
+		let rect = RectangleNode::new(
+			FutureWrapperNode(()),
+			ExtractXyNode::new(
+				ReadPositionNode::new(FutureWrapperNode(()), FutureWrapperNode(Item::new_from_element(0_u32))),
+				FutureWrapperNode(Item::new_from_element(XY::Y)),
+			),
+			FutureWrapperNode(Item::new_from_element(2_f64)),
+			FutureWrapperNode(Item::new_from_element(BoxCorners::default())),
+			FutureWrapperNode(Item::new_from_element(false)),
+			FutureWrapperNode(Item::new_from_element(false)),
 		);
 
-		let expected: Vec<DVec2> = row0.iter().map(|&point| row0_transform.transform_point2(point)).chain(row1.iter().copied()).collect();
-
-		let head = ctx.index_head();
-		for (flat, &point) in expected.iter().enumerate() {
-			let lane = ctx.promoted(&head, flat as u64);
-			let GPoll::Final(record) = capture(&node, &lane, &frames) else {
-				panic!("expected a final record");
-			};
-			// The content saw the pushed position, and the output transform lands on it.
-			assert_eq!(record.element::<f64>(), point.x);
-			let composed: DAffine2 = record.attr::<TransformAttr>();
-			assert_eq!(composed.translation, point);
+		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
+		let points = List::new_from_element(Vector::from_subpath(Subpath::from_anchors(positions, false)));
+		let generated = super::repeat_on_points(context, points, &RaiseToListNode(rect), Item::new_from_element(false)).await;
+		assert_eq!(generated.len(), positions.len());
+		for (position, index) in positions.into_iter().zip(0..generated.len()) {
+			let bounds = generated
+				.element(index)
+				.unwrap()
+				.bounding_box_with_transform(generated.attribute_cloned_or_default(ATTR_TRANSFORM, index))
+				.unwrap();
+			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
+			assert_eq!((bounds[1] - bounds[0]).x, position.y);
 		}
 	}
 
-	#[test]
-	fn repeat_on_points_reverse_flips_each_rows_points() {
-		let frames = core_types::record::test_frames(1 << 16);
-		let arena = Arena::new(1 << 16).unwrap();
-		let generations = [];
-		let scope = scope_fixture(&generations, &arena);
-		let ctx = ContextImpl::root(&scope);
+	#[tokio::test]
+	async fn repeat() {
+		let direction = DVec2::X * 1.5;
+		let count = 3;
+		let context = OwnedContextImpl::default().into_context();
+		let repeated = super::repeat_array(
+			context,
+			&FutureWrapperNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))),
+			Item::new_from_element(direction),
+			Item::new_from_element(0.),
+			Item::new_from_element(count),
+		)
+		.await;
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
+		let vector = vector_list.element(0).unwrap();
+		assert_eq!(vector.region_manipulator_groups().count(), 3);
+		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
+			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
+		}
+	}
 
-		let positions: Vec<DVec2> = vec![DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
-		let points = VectorRows {
-			layout: vector_rows_layout(),
-			rows: vec![(Vector::from_subpath(Subpath::from_anchors(positions.clone(), false)), DAffine2::IDENTITY)],
-		};
-		let content_layout = transform_layout();
-		let content = PositionProbe { layout: content_layout.clone() };
+	#[tokio::test]
+	async fn repeat_single_copy() {
+		let context = OwnedContextImpl::default().into_context();
+		let repeated = super::repeat_array(
+			context,
+			&FutureWrapperNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))),
+			Item::new_from_element(DVec2::new(12., 10.)),
+			Item::new_from_element(45.),
+			Item::new_from_element(1),
+		)
+		.await;
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
+		let vector = vector_list.element(0).unwrap();
+		assert_eq!(vector.region_manipulator_groups().count(), 1);
 
-		let mut node = RepeatOnPointsNode::new(RecordSource::new(content, &content_layout, &content_layout), points, ValueSource::new(true), &content_layout);
-		Node::<ContextImpl>::set_layout(&mut node, repeat_on_points_layout_meta().resolve(&[Some(&content_layout)]));
+		let (_, manipulator_groups) = vector.region_manipulator_groups().next().unwrap();
+		let anchor = manipulator_groups[0].anchor;
+		assert!(anchor.length() < 1e-5, "Expected the single copy to be untransformed, found anchor {anchor}");
+	}
 
-		let mut expected = positions.clone();
-		expected.reverse();
-		let head = ctx.index_head();
-		for (flat, &point) in expected.iter().enumerate() {
-			let lane = ctx.promoted(&head, flat as u64);
-			let GPoll::Final(record) = capture(&node, &lane, &frames) else {
-				panic!("expected a final record");
-			};
-			let composed: DAffine2 = record.attr::<TransformAttr>();
-			assert_eq!(composed.translation, point);
+	#[tokio::test]
+	async fn repeat_transform_position() {
+		let direction = DVec2::new(12., 10.);
+		let count = 8;
+		let context = OwnedContextImpl::default().into_context();
+		let repeated = super::repeat_array(
+			context,
+			&FutureWrapperNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))),
+			Item::new_from_element(direction),
+			Item::new_from_element(0.),
+			Item::new_from_element(count),
+		)
+		.await;
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
+		let vector = vector_list.element(0).unwrap();
+		assert_eq!(vector.region_manipulator_groups().count(), 8);
+		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
+			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
+		}
+	}
+
+	#[tokio::test]
+	async fn repeat_radial() {
+		let context = OwnedContextImpl::default().into_context();
+		let repeated = super::repeat_radial(
+			context,
+			&FutureWrapperNode(vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))),
+			Item::new_from_element(45.),
+			Item::new_from_element(4.),
+			Item::new_from_element(8),
+		)
+		.await;
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
+		let vector = vector_list.element(0).unwrap();
+		assert_eq!(vector.region_manipulator_groups().count(), 8);
+
+		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
+			let expected_angle = (index as f64 + 1.) * 45.;
+
+			let center = (manipulator_groups[0].anchor + manipulator_groups[2].anchor) / 2.;
+			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
+
+			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5, "Expected {expected_angle} found {actual_angle}");
 		}
 	}
 }

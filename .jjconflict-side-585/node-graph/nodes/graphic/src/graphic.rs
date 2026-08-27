@@ -9,7 +9,7 @@ use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
-use vector_types::gradient::{GradientSpread, GradientType};
+use vector_types::gradient::{GradientForm, GradientHueDirection, GradientSpace, GradientSpread};
 use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
@@ -567,7 +567,7 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<Gradient>,
 		List<Artboard>,
 		List<BlendMode>,
-		List<GradientType>,
+		List<GradientForm>,
 		List<GradientSpread>,
 	)]
 	content: List<T>,
@@ -713,18 +713,18 @@ fn read_attribute_blend_mode(
 	result
 }
 
-/// Reads a named `GradientType` attribute from the input list, outputting each value as an element of a new `GradientType[]`.
+/// Reads a named `GradientForm` attribute from the input list, outputting each value as an element of a new `GradientForm[]`.
 #[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_type(
+fn read_attribute_gradient_form(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: Item<String>,
-) -> List<GradientType> {
+) -> List<GradientForm> {
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
+		let Some(value) = content.attribute::<GradientForm>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -742,6 +742,40 @@ fn read_attribute_gradient_spread(
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientSpread>(&name, index) else { continue };
+		result.push(Item::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientSpace` attribute from the input list, outputting each value as an element of a new `GradientSpace[]`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_gradient_space(
+	_: impl Ctx,
+	content: ListDyn,
+	/// The attribute name (key) to read.
+	name: Item<String>,
+) -> List<GradientSpace> {
+	let name = name.into_element();
+	let mut result = List::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientSpace>(&name, index) else { continue };
+		result.push(Item::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientHueDirection` attribute from the input list, outputting each value as an element of a new `GradientHueDirection[]`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_gradient_hue_direction(
+	_: impl Ctx,
+	content: ListDyn,
+	/// The attribute name (key) to read.
+	name: Item<String>,
+) -> List<GradientHueDirection> {
+	let name = name.into_element();
+	let mut result = List::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientHueDirection>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result

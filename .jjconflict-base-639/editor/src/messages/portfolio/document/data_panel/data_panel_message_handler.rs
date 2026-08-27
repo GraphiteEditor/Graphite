@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::portfolio::document::data_panel::{DataPanelMessage, PathStep};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{format_rounded, round_away_float_noise};
+use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
@@ -13,6 +13,8 @@ use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{Item, List, NodeIdPath};
+use graphene_std::math::float_noise::round_away_float_noise;
+use graphene_std::memo::IORecord;
 use graphene_std::raster::{
 	CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice,
 };
@@ -21,13 +23,14 @@ use graphene_std::text::TextAlign;
 use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
-	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+	ArcType, BezierHandles, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,
+	SpiralType,
 };
 use graphene_std::vector::style::{
-	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin,
+	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
-use graphene_std::{Artboard, Color, Graphic};
+use graphene_std::{Appearance, Artboard, Color, Context, Cover, Coverage, Graphic};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -148,7 +151,8 @@ impl DataPanelMessageHandler {
 
 		// Element path breadcrumbs
 		if !layout_data.breadcrumbs.is_empty() {
-			let breadcrumb = BreadcrumbTrailButtons::new(layout_data.breadcrumbs)
+			let labels = layout_data.breadcrumbs.iter().map(|label| truncate_breadcrumb_label(label)).collect();
+			let breadcrumb = BreadcrumbTrailButtons::new(labels)
 				.on_update(|&len| DataPanelMessage::TruncateElementPath { len: len as usize }.into())
 				.widget_instance();
 			widgets.push(breadcrumb);
@@ -184,8 +188,8 @@ macro_rules! generate_layout_downcast {
 	($introspected_data:expr, $data:expr, [ $($ty:ty),* $(,)? ]) => {
 		if false { None }
 		$(
-			else if let Some(element) = $introspected_data.downcast_ref::<$ty>() {
-				Some(element.layout_with_breadcrumb($data))
+			else if let Some(io) = $introspected_data.downcast_ref::<IORecord<Context, $ty>>() {
+				Some(io.output.layout_with_breadcrumb($data))
 			}
 		)*
 		else { None }
@@ -195,13 +199,8 @@ macro_rules! generate_layout_downcast {
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// `Item<NodeIdPath>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
 	// `List` where each item's NodeId resolves against the prefix made up of the items above it.
-	if let Some(list) = introspected_data.downcast_ref::<List<NodeId>>() {
-		return Some(table_node_id_path_layout_with_breadcrumb(list, data));
-	}
-	// The path's plain value form, produced by `path_of_subgraph` on leveled wires.
-	if let Some(path) = introspected_data.downcast_ref::<Vec<NodeId>>() {
-		let list: List<NodeId> = path.iter().copied().map(graphene_std::list::Item::new_from_element).collect();
-		return Some(table_node_id_path_layout_with_breadcrumb(&list, data));
+	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<NodeIdPath>>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(&io.output.element().0, data));
 	}
 	generate_layout_downcast!(introspected_data, data, [
 		List<Artboard>,
@@ -232,7 +231,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<StrokeJoin>,
 		List<StrokeAlign>,
 		List<StrokeCap>,
-		List<PaintOrder>,
 		List<MergeByDistanceAlgorithm>,
 		List<ExtrudeJoiningAlgorithm>,
 		List<PointSpacingType>,
@@ -288,7 +286,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<StrokeJoin>,
 		Item<StrokeAlign>,
 		Item<StrokeCap>,
-		Item<PaintOrder>,
 		Item<MergeByDistanceAlgorithm>,
 		Item<ExtrudeJoiningAlgorithm>,
 		Item<PointSpacingType>,
@@ -481,7 +478,7 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 	}
 }
 
-impl TableItemLayout for Artboard<'_> {
+impl TableItemLayout for Artboard {
 	fn type_name() -> &'static str {
 		"Artboard"
 	}
@@ -517,6 +514,45 @@ impl TableItemLayout for DashPattern {
 	}
 }
 
+impl TableItemLayout for Appearance {
+	fn type_name() -> &'static str {
+		"Appearance"
+	}
+	fn identifier(&self) -> String {
+		"Appearance".to_string()
+	}
+	// The wrapping `Item` already contributes the breadcrumb; the inner list supplies the next level
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
+	// Label the spreadsheet's element button with the inner list's identifier, like Artboard
+	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
+		self.0.value_widgets(target, data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.0.layout_with_breadcrumb(data)
+	}
+}
+
+impl TableItemLayout for Coverage {
+	fn type_name() -> &'static str {
+		"Coverage"
+	}
+	fn identifier(&self) -> String {
+		"Coverage".to_string()
+	}
+	// The wrapping row already contributes the breadcrumb; the inner item supplies the next level
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
+	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
+		self.0.value_widgets(target, data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.0.layout_with_breadcrumb(data)
+	}
+}
+
 impl TableItemLayout for BoxCorners {
 	fn type_name() -> &'static str {
 		"BoxCorners"
@@ -537,21 +573,40 @@ impl TableItemLayout for BoxCorners {
 	}
 }
 
-impl TableItemLayout for Graphic<'_> {
+impl TableItemLayout for graphene_std::core_types::none::None {
+	fn type_name() -> &'static str {
+		"None"
+	}
+	fn identifier(&self) -> String {
+		"None".to_string()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		label("None")
+	}
+}
+
+impl TableItemLayout for Graphic {
 	fn type_name() -> &'static str {
 		"Graphic"
 	}
 	fn identifier(&self) -> String {
 		match self {
-			Self::None => "None".to_string(),
-			Self::Graphic(list) => list.identifier(),
-			Self::Vector(list) => list.identifier(),
-			Self::RasterCPU(list) => list.identifier(),
-			Self::RasterGPU(list) => list.identifier(),
-			Self::Color(list) => list.identifier(),
-			Self::Gradient(list) => list.identifier(),
-			Self::Text(list) => list.identifier(),
-			Self::Group(_) => "Group".to_string(),
+			Self::None(item) => item.identifier(),
+			Self::Graphic(item) => item.identifier(),
+			Self::Vector(item) => item.identifier(),
+			Self::RasterCPU(item) => item.identifier(),
+			Self::RasterGPU(item) => item.identifier(),
+			Self::Color(item) => item.identifier(),
+			Self::Gradient(item) => item.identifier(),
+			Self::Text(item) => item.identifier(),
+			Self::NoneList(list) => list.identifier(),
+			Self::GraphicList(list) => list.identifier(),
+			Self::VectorList(list) => list.identifier(),
+			Self::RasterCPUList(list) => list.identifier(),
+			Self::RasterGPUList(list) => list.identifier(),
+			Self::ColorList(list) => list.identifier(),
+			Self::GradientList(list) => list.identifier(),
+			Self::TextList(list) => list.identifier(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -560,15 +615,22 @@ impl TableItemLayout for Graphic<'_> {
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
-			Self::None => label("None"),
-			Self::Graphic(list) => list.layout_with_breadcrumb(data),
-			Self::Vector(list) => list.layout_with_breadcrumb(data),
-			Self::RasterCPU(list) => list.layout_with_breadcrumb(data),
-			Self::RasterGPU(list) => list.layout_with_breadcrumb(data),
-			Self::Color(list) => list.layout_with_breadcrumb(data),
-			Self::Gradient(list) => list.layout_with_breadcrumb(data),
-			Self::Text(list) => list.layout_with_breadcrumb(data),
-			Self::Group(_) => Vec::new(),
+			Self::None(item) => item.layout_with_breadcrumb(data),
+			Self::Graphic(item) => item.layout_with_breadcrumb(data),
+			Self::Vector(item) => item.layout_with_breadcrumb(data),
+			Self::RasterCPU(item) => item.layout_with_breadcrumb(data),
+			Self::RasterGPU(item) => item.layout_with_breadcrumb(data),
+			Self::Color(item) => item.layout_with_breadcrumb(data),
+			Self::Gradient(item) => item.layout_with_breadcrumb(data),
+			Self::Text(item) => item.layout_with_breadcrumb(data),
+			Self::NoneList(list) => list.layout_with_breadcrumb(data),
+			Self::GraphicList(list) => list.layout_with_breadcrumb(data),
+			Self::VectorList(list) => list.layout_with_breadcrumb(data),
+			Self::RasterCPUList(list) => list.layout_with_breadcrumb(data),
+			Self::RasterGPUList(list) => list.layout_with_breadcrumb(data),
+			Self::ColorList(list) => list.layout_with_breadcrumb(data),
+			Self::GradientList(list) => list.layout_with_breadcrumb(data),
+			Self::TextList(list) => list.layout_with_breadcrumb(data),
 		}
 	}
 }
@@ -587,7 +649,7 @@ impl TableItemLayout for Vector {
 		)
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let table_tab_entries = [VectorTableTab::Properties, VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Regions]
+		let table_tab_entries = [VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Handles]
 			.into_iter()
 			.map(|tab| {
 				RadioEntryData::new(format!("{tab:?}"))
@@ -599,89 +661,38 @@ impl TableItemLayout for Vector {
 
 		let mut table_rows = Vec::new();
 		match data.vector_table_tab {
-			VectorTableTab::Properties => {
-				table_rows.push(column_headings(&["property", "value"]));
-
-				if let Some(stroke) = self.stroke.as_ref() {
-					table_rows.push(vec![
-						TextLabel::new("Stroke Weight").narrow(true).widget_instance(),
-						TextLabel::new(format!("{} px", stroke.weight)).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Dash Lengths").narrow(true).widget_instance(),
-						TextLabel::new(if stroke.dash_lengths.is_empty() {
-							"-".to_string()
-						} else {
-							format!("[{}]", stroke.dash_lengths.iter().map(|x| format!("{x} px")).collect::<Vec<_>>().join(", "))
-						})
-						.narrow(true)
-						.widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Dash Offset").narrow(true).widget_instance(),
-						TextLabel::new(format!("{}", stroke.dash_offset)).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Cap").narrow(true).widget_instance(),
-						TextLabel::new(stroke.cap.to_string()).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Join").narrow(true).widget_instance(),
-						TextLabel::new(stroke.join.to_string()).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Join Miter Limit").narrow(true).widget_instance(),
-						TextLabel::new(format!("{}", stroke.join_miter_limit)).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Align").narrow(true).widget_instance(),
-						TextLabel::new(stroke.align.to_string()).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Transform").narrow(true).widget_instance(),
-						TextLabel::new(format_transform_matrix(stroke.transform)).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Paint Order").narrow(true).widget_instance(),
-						TextLabel::new(stroke.paint_order.to_string()).narrow(true).widget_instance(),
-					]);
-				}
-
-				let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
-				let colinear = if colinear.is_empty() { "-".to_string() } else { colinear };
-				table_rows.push(vec![
-					TextLabel::new("Colinear Handle IDs").narrow(true).widget_instance(),
-					TextLabel::new(colinear).narrow(true).widget_instance(),
-				]);
+			VectorTableTab::Handles => {
+				table_rows.push(column_headings(&["", "colinear_manipulators[0]", "colinear_manipulators[1]"]));
+				table_rows.extend(self.colinear_manipulators.iter().enumerate().map(|(index, [a, b])| {
+					vec![
+						TextLabel::new(format!("{index}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("{a}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("{b}")).narrow(true).widget_instance(),
+					]
+				}));
 			}
 			VectorTableTab::Points => {
 				table_rows.push(column_headings(&["", "position"]));
 				table_rows.extend(self.point_domain.iter().map(|(id, position)| {
-					let position = DVec2::new(round_away_float_noise(position.x), round_away_float_noise(position.y));
 					vec![
 						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format!("{position}")).narrow(true).widget_instance(),
+						TextLabel::new(format_dvec2(position)).narrow(true).widget_instance(),
 					]
 				}));
 			}
 			VectorTableTab::Segments => {
-				table_rows.push(column_headings(&["", "start_index", "end_index", "handles"]));
+				table_rows.push(column_headings(&["", "start_point", "end_point", "handles"]));
 				table_rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
+					let handles = match handles {
+						BezierHandles::Linear => "Linear".to_string(),
+						BezierHandles::Quadratic { handle } => format!("Quadratic — {}", format_dvec2(handle)),
+						BezierHandles::Cubic { handle_start, handle_end } => format!("Cubic — start: {}, end: {}", format_dvec2(handle_start), format_dvec2(handle_end)),
+					};
 					vec![
 						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format!("{start}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("{end}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("{handles:?}")).narrow(true).widget_instance(),
-					]
-				}));
-			}
-			VectorTableTab::Regions => {
-				table_rows.push(column_headings(&["", "segment_range", "fill"]));
-				table_rows.extend(self.region_domain.iter().map(|(id, segment_range, fill)| {
-					vec![
-						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format!("{segment_range:?}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("{}", fill.inner())).narrow(true).widget_instance(),
+						TextLabel::new(format!("Point {start}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("Point {end}")).narrow(true).widget_instance(),
+						TextLabel::new(handles).narrow(true).widget_instance(),
 					]
 				}));
 			}
@@ -787,18 +798,41 @@ impl TableItemLayout for Gradient {
 	}
 }
 
+macro_rules! impl_table_item_layout_for_number {
+	($($ty:ty => $type_name:literal),* $(,)?) => {
+		$(
+			impl TableItemLayout for $ty {
+				fn type_name() -> &'static str {
+					$type_name
+				}
+				fn identifier(&self) -> String {
+					format!("{self}")
+				}
+				fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+					vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
+				}
+			}
+		)*
+	}
+}
+impl_table_item_layout_for_number!(
+	f32 => "Number (f32)",
+	u32 => "Number (u32)",
+	i32 => "Number (i32)",
+	u64 => "Number (u64)",
+	i64 => "Number (i64)",
+);
+
+// Denoised so 0.1 + 0.2 reads as 0.3 rather than 0.30000000000000004. We don't do this for f32 because it lacks precision to reliably distinguish between intentional digits and noise.
 impl TableItemLayout for f64 {
 	fn type_name() -> &'static str {
-		"Number (f64)"
+		"Number"
 	}
 	fn identifier(&self) -> String {
-		format!("{self}")
+		format!("{}", round_away_float_noise(*self))
 	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
 	}
 }
 
@@ -807,88 +841,10 @@ impl TableItemLayout for u8 {
 		"Byte"
 	}
 	fn identifier(&self) -> String {
-		format!("{self:02X}")
+		format!("0x{self:02X} ({self})")
 	}
-	// Values fall back to the default drill-in button (labeled with the hex string via `identifier`); the value page shows the same hex value as a label.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![TextLabel::new(self.identifier()).widget_instance()])]
-	}
-}
-
-impl TableItemLayout for f32 {
-	fn type_name() -> &'static str {
-		"Number (f32)"
-	}
-	fn identifier(&self) -> String {
-		format!("{self}")
-	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
-	}
-}
-
-impl TableItemLayout for u32 {
-	fn type_name() -> &'static str {
-		"Number (u32)"
-	}
-	fn identifier(&self) -> String {
-		format!("{self}")
-	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
-	}
-}
-
-impl TableItemLayout for i32 {
-	fn type_name() -> &'static str {
-		"Number (i32)"
-	}
-	fn identifier(&self) -> String {
-		format!("{self}")
-	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
-	}
-}
-
-impl TableItemLayout for i64 {
-	fn type_name() -> &'static str {
-		"Number (i64)"
-	}
-	fn identifier(&self) -> String {
-		format!("{self}")
-	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	// TODO: Make this robust for large i64 values that don't fit in f64 (beyond roughly 2^53), as with u64.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
-	}
-}
-
-impl TableItemLayout for u64 {
-	fn type_name() -> &'static str {
-		"Number (u64)"
-	}
-	fn identifier(&self) -> String {
-		format!("{self}")
-	}
-	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
-	// TODO: Make this robust for large u64 values that don't fit in f64 (above roughly 2^53). Perhaps using a bigint kind of approach through the widget's data flow.
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![
-			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
-		])]
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
 	}
 }
 
@@ -912,18 +868,48 @@ impl TableItemLayout for String {
 		"String"
 	}
 	fn identifier(&self) -> String {
-		// Show the first line, and if there are more, indicate that with an ellipsis
-		let first_line = self.lines().next().unwrap_or("");
-		if self.lines().count() > 1 {
-			format!("\"{} …\"", first_line)
-		} else {
-			format!("\"{}\"", first_line)
-		}
+		format!("\"{}\"", string_preview(self))
 	}
-	// Values fall back to the default drill-in button (labeled with the truncated quoted preview via `identifier`); the value page shows the full multi-line text in a `TextAreaInput`.
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		data.breadcrumbs.push(character_count_label(self));
+		self.value_page(data)
+	}
+	// The preview truncates for length and line breaks, so a button beside it reaches the full text, labeled by length
+	fn value_widgets(&self, target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![
+			TextLabel::new(string_preview(self)).enquote(true).selectable(true).monospace(true).narrow(true).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextButton::new(character_count_label(self))
+				.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
+				.narrow(true)
+				.widget_instance(),
+		]
+	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![TextAreaInput::new(self.to_string()).monospace(true).disabled(true).widget_instance()])]
 	}
+}
+
+fn character_count_label(value: &str) -> String {
+	let character_count = value.chars().count();
+
+	format!("{character_count} Char{}", if character_count == 1 { "" } else { "s" })
+}
+
+/// Shortens a string to fit a table cell, cutting at the first line break or 40 characters with an ellipsis.
+/// The 40 matches `truncate_breadcrumb_label`, so a preview reaching the trail isn't cut twice.
+fn string_preview(value: &str) -> String {
+	const MAX_CHARACTERS: usize = 40;
+
+	let first_line = value.lines().next().unwrap_or_default();
+	let cut_by_line_break = value.contains('\n');
+	let cut_by_length = first_line.chars().count() > MAX_CHARACTERS;
+
+	if !cut_by_line_break && !cut_by_length {
+		return value.to_string();
+	}
+
+	first_line.chars().take(MAX_CHARACTERS - 1).chain(['…']).collect()
 }
 
 impl TableItemLayout for Option<f64> {
@@ -934,7 +920,12 @@ impl TableItemLayout for Option<f64> {
 		"Option<f64>".to_string()
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![TextLabel::new(format!("{self:?}")).narrow(true).widget_instance()]
+		let text = match self {
+			Some(value) => format!("Some({})", round_away_float_noise(*value)),
+			None => "None".to_string(),
+		};
+
+		vec![TextLabel::new(text).selectable(true).narrow(true).widget_instance()]
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
@@ -979,7 +970,7 @@ impl TableItemLayout for DAffine2 {
 		"Transform".to_string()
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		vec![TextLabel::new(format_transform_matrix(*self)).narrow(true).widget_instance()]
+		transform_widgets(*self)
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
@@ -994,8 +985,7 @@ impl TableItemLayout for Affine2 {
 		"Transform".to_string()
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		let matrix = DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64));
-		vec![TextLabel::new(format_transform_matrix(matrix)).narrow(true).widget_instance()]
+		transform_widgets(DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64)))
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
@@ -1025,6 +1015,7 @@ macro_rules! impl_table_item_layout_for_choice_enum {
 }
 impl_table_item_layout_for_choice_enum!(
 	BlendMode,
+	Cover,
 	GradientForm,
 	GradientSpread,
 	GradientSpace,
@@ -1033,7 +1024,6 @@ impl_table_item_layout_for_choice_enum!(
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
-	PaintOrder,
 	MergeByDistanceAlgorithm,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
@@ -1237,6 +1227,9 @@ macro_rules! known_item_types {
 			Raster<GPU>,
 			Graphic,
 			Artboard,
+			Appearance,
+			Coverage,
+			Cover,
 			DashPattern,
 			BoxCorners,
 			BlendMode,
@@ -1248,7 +1241,6 @@ macro_rules! known_item_types {
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,
-			PaintOrder,
 			MergeByDistanceAlgorithm,
 			ExtrudeJoiningAlgorithm,
 			PointSpacingType,
@@ -1361,11 +1353,6 @@ fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Ve
 	if let Some(path) = any.downcast_ref::<NodeIdPath>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(&path.0, data));
 	}
-	// The path's plain value form, the layer-path marker's owned shape.
-	if let Some(path) = any.downcast_ref::<Vec<NodeId>>() {
-		let list: List<NodeId> = path.iter().copied().map(graphene_std::list::Item::new_from_element).collect();
-		return Some(table_node_id_path_layout_with_breadcrumb(&list, data));
-	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {
 			$(
@@ -1379,7 +1366,8 @@ fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Ve
 	None
 }
 
-fn format_transform_matrix(transform: DAffine2) -> String {
+/// Decomposes a transform into location, rotation, and scale, each headed by the icon of its Layer menu action.
+fn transform_widgets(transform: DAffine2) -> Vec<WidgetInstance> {
 	let (scale, angle, translation) = if transform.matrix2.determinant().abs() <= f64::EPSILON {
 		let [col_0, col_1] = transform.matrix2.to_cols_array_2d().map(|[x, y]| DVec2::new(x, y));
 
@@ -1397,15 +1385,24 @@ fn format_transform_matrix(transform: DAffine2) -> String {
 	} else {
 		transform.to_scale_angle_translation()
 	};
-	let rotation = format_rounded(angle.to_degrees(), 3);
 
-	format!(
-		"Location: ({} px, {} px) — Rotation: {rotation}° — Scale: ({}x, {}x)",
-		format_rounded(translation.x, 3),
-		format_rounded(translation.y, 3),
-		format_rounded(scale.x, 3),
-		format_rounded(scale.y, 3)
-	)
+	let location_text = format!("({} px, {} px)", format_rounded(translation.x, 3), format_rounded(translation.y, 3));
+	let rotation_text = format!("{}°", format_rounded(angle.to_degrees(), 3));
+	let scale_text = format!("({}x, {}x)", format_rounded(scale.x, 3), format_rounded(scale.y, 3));
+
+	vec![
+		IconLabel::new("TransformationGrab").tooltip_label("Location").widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		TextLabel::new(location_text).narrow(true).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		IconLabel::new("TransformationRotate").tooltip_label("Rotation").widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		TextLabel::new(rotation_text).narrow(true).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		IconLabel::new("TransformationScale").tooltip_label("Scale").widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		TextLabel::new(scale_text).narrow(true).widget_instance(),
+	]
 }
 
 fn format_dvec2(value: DVec2) -> String {

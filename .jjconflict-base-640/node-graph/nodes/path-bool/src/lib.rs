@@ -1,11 +1,12 @@
-use core_types::list::{ATTR_FILL, Item, ItemAttributeValues, List};
+use core_types::list::{ATTR_FILL, Item, List};
+use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_OPACITY,
-	ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, BlendMode, Color,
+	Ctx,
 };
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
-use graphic_types::vector_types::gradient::{GradientForm, GradientHueDirection, GradientSpace, GradientSpread};
+use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
@@ -33,9 +34,8 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
 	/// Intersection cuts away all but the overlapping areas shared by every path.
 	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
-	operation: Item<BooleanOperation>,
-) -> Item<Vector> {
-	let operation = operation.into_element();
+	operation: BooleanOperation,
+) -> List<Vector> {
 	let content = content.into_graphic_list();
 
 	// The first index is the bottom of the stack
@@ -60,7 +60,7 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
 	}
 
-	result_vector_list.into_iter().next().unwrap_or_default()
+	result_vector_list
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -198,16 +198,18 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 				}
 				Graphic::RasterCPU(image) => {
 					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					let make_item = |transform: DAffine2, source_attributes: &ItemAttributeValues| {
+					let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
 						let element = Vector::from_subpath(subpath);
 
-						let mut item = Item::new_from_element(element);
-						for key in [ATTR_BLEND_MODE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH] {
-							item.attributes_mut().insert_cloned_from(source_attributes, key);
-						}
+						let mut item = Item::new_from_element(element)
+							.with_attribute(ATTR_BLEND_MODE, blend_mode)
+							.with_attribute(ATTR_OPACITY, opacity)
+							.with_attribute(ATTR_OPACITY_FILL, fill)
+							.with_attribute(ATTR_CLIPPING_MASK, clip)
+							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
 						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
 						item
 					};
@@ -218,23 +220,29 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let source_attributes = image.clone_item_attributes(i);
-							make_item(parent_transform * row_transform, &source_attributes)
+							let layer: List<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
+							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
+							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
+							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
+							let clip: bool = image.attribute_cloned_or_default(ATTR_CLIPPING_MASK, i);
+							make_item(parent_transform * row_transform, layer, blend_mode, opacity, fill, clip)
 						})
 						.collect::<Vec<_>>()
 				}
 				Graphic::RasterGPU(image) => {
 					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					let make_item = |transform: DAffine2, source_attributes: &ItemAttributeValues| {
+					let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
 						let element = Vector::from_subpath(subpath);
 
-						let mut item = Item::new_from_element(element);
-						for key in [ATTR_BLEND_MODE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH] {
-							item.attributes_mut().insert_cloned_from(source_attributes, key);
-						}
+						let mut item = Item::new_from_element(element)
+							.with_attribute(ATTR_BLEND_MODE, blend_mode)
+							.with_attribute(ATTR_OPACITY, opacity)
+							.with_attribute(ATTR_OPACITY_FILL, fill)
+							.with_attribute(ATTR_CLIPPING_MASK, clip)
+							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
 						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
 						item
 					};
@@ -245,8 +253,12 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let source_attributes = image.clone_item_attributes(i);
-							make_item(parent_transform * row_transform, &source_attributes)
+							let layer: List<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
+							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
+							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
+							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
+							let clip: bool = image.attribute_cloned_or_default(ATTR_CLIPPING_MASK, i);
+							make_item(parent_transform * row_transform, layer, blend_mode, opacity, fill, clip)
 						})
 						.collect::<Vec<_>>()
 				}
@@ -284,17 +296,11 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
 							gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
 						}
-						if let Some(gradient_form) = attributes.remove::<GradientForm>(ATTR_GRADIENT_FORM) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_FORM, 0, gradient_form);
+						if let Some(gradient_type) = attributes.remove::<GradientType>(ATTR_GRADIENT_TYPE) {
+							gradient_paint.set_attribute(ATTR_GRADIENT_TYPE, 0, gradient_type);
 						}
-						if let Some(gradient_spread) = attributes.remove::<GradientSpread>(ATTR_GRADIENT_SPREAD) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_SPREAD, 0, gradient_spread);
-						}
-						if let Some(gradient_space) = attributes.remove::<GradientSpace>(ATTR_GRADIENT_SPACE) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_SPACE, 0, gradient_space);
-						}
-						if let Some(gradient_hue_direction) = attributes.remove::<GradientHueDirection>(ATTR_GRADIENT_HUE_DIRECTION) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_HUE_DIRECTION, 0, gradient_hue_direction);
+						if let Some(spread_method) = attributes.remove::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
+							gradient_paint.set_attribute(ATTR_SPREAD_METHOD, 0, spread_method);
 						}
 						set_paint_attribute(&mut attributes, ATTR_FILL, gradient_paint);
 

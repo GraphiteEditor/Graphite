@@ -56,15 +56,26 @@ pub const ATTR_BACKGROUND: &str = "background";
 /// `bool` for whether an artboard clips content to its bounds.
 pub const ATTR_CLIP: &str = "clip";
 // TODO: Consider adding "gradient_spread_left" and "gradient_spread_right" override attributes to allow setting different gradient spreads on each side of a gradient
-/// Gradient's `GradientSpread` (`Pad`, `Reflect`, or `Repeat`).
+/// Gradient's `GradientSpread` (`Pad`, `Reflect`, `Repeat`, or `Clear`).
 pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
 /// Gradient's `GradientForm` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
+/// Gradient's `GradientSpace`, the color space its stops interpolate in.
+pub const ATTR_GRADIENT_SPACE: &str = "gradient_space";
+/// Gradient's `GradientHueDirection` (`Shorter`, `Longer`, `Increasing`, or `Decreasing`), which way around the
+/// hue wheel the stops interpolate when the gradient space is polar.
+pub const ATTR_GRADIENT_HUE_DIRECTION: &str = "gradient_hue_direction";
+/// Gradient's `GradientInterpolation` (`Stepped`, `Linear`, or `Smooth`), the path its stops interpolate along
+/// and thus whether the ramp jumps, turns corners, or flows smoothly through them.
+pub const ATTR_GRADIENT_INTERPOLATION: &str = "gradient_interpolation";
+/// Gradient's `bool` (implicit default `false`) for treating the stop list as a cycle, where a wrapped interval
+/// interpolates from the last stop through the 1|0 boundary back to the first.
+pub const ATTR_GRADIENT_CYCLIC: &str = "gradient_cyclic";
 /// Gradient stop's `f64` position from 0 to 1 along the gradient, on the `List<Color>` inside a `Gradient`.
 /// When the attribute is absent, stops distribute evenly across the 0 to 1 range.
 pub const ATTR_POSITION: &str = "position";
-/// Gradient stop's `f64` midpoint (implicit default `0.5`, linear), a factor from 0 to 1 across the distance
-/// to the next stop, on the `List<Color>` inside a `Gradient`. The final stop's midpoint is ignored.
+/// Gradient stop's `f64` midpoint (implicit default `0.5`, linear), a factor from 0 to 1 across the distance to the next
+/// stop, on the `List<Color>` inside a `Gradient`. The final stop's midpoint is ignored if "gradient_cyclic" is false.
 pub const ATTR_MIDPOINT: &str = "midpoint";
 /// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
 pub const ATTR_FILL: &str = "fill";

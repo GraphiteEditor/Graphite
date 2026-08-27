@@ -3,20 +3,23 @@ use core_types::registry::types::Percentage;
 use core_types::{Color, Ctx};
 use graphic_types::Graphic;
 
-pub mod brush;
-mod brush_cache;
-pub mod brush_stroke;
+pub mod basic_brush;
 
 pub use brush_types::*;
+
+pub(crate) const DEFAULT_DIAMETER: f64 = 40.;
+pub(crate) const DEFAULT_HARDNESS: f64 = 0.;
+pub(crate) const DEFAULT_FLOW: f64 = 100.;
+pub(crate) const DEFAULT_COLOR: Color = Color::BLACK;
 
 #[node_macro::node(category("Raster: Brush"))]
 fn brush_strokes(
 	_: impl Ctx,
 	strokes: List<Stroke>,
 	color: List<Color>,
-	#[default(40.)] diameter: Item<f64>,
-	#[default(0.)] hardness: Item<Percentage>,
-	#[default(100.)] flow: Item<Percentage>,
+	#[default(DEFAULT_DIAMETER)] diameter: Item<f64>,
+	#[default(DEFAULT_HARDNESS)] hardness: Item<Percentage>,
+	#[default(DEFAULT_FLOW)] flow: Item<Percentage>,
 ) -> List<Graphic> {
 	let (diameter, hardness, flow) = (diameter.into_element(), hardness.into_element(), flow.into_element());
 	List::new_from_item(
@@ -26,31 +29,4 @@ fn brush_strokes(
 			.with_attribute(ATTR_HARDNESS, (hardness / 100.).clamp(0., 1.))
 			.with_attribute(ATTR_FLOW, (flow / 100.).clamp(0., 1.)),
 	)
-}
-
-pub mod migrations {
-	use crate::brush_stroke::BrushStroke;
-
-	// TODO: Eventually remove this document upgrade code
-	pub fn migrate_to_brush_strokes<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<BrushStroke>, D::Error> {
-		use serde::Deserialize;
-
-		#[derive(serde::Deserialize)]
-		struct LegacyTable {
-			#[serde(alias = "instances", alias = "instance")]
-			element: Vec<BrushStroke>,
-		}
-
-		#[derive(serde::Deserialize)]
-		#[serde(untagged)]
-		enum BrushStrokesFormat {
-			Strokes(Vec<BrushStroke>),
-			List(LegacyTable),
-		}
-
-		Ok(match BrushStrokesFormat::deserialize(deserializer)? {
-			BrushStrokesFormat::Strokes(strokes) => strokes,
-			BrushStrokesFormat::List(list) => list.element,
-		})
-	}
 }

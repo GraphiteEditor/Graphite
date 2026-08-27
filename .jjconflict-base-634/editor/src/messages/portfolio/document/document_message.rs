@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::utility_types::misc::{GroupFolderType, SnappingState};
-use crate::messages::input_mapper::utility_types::keyboard::Key;
+use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -11,8 +11,9 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
-use graphene_std::Appearance;
 use graphene_std::Color;
+use graphene_std::Graphic;
+use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
@@ -244,10 +245,14 @@ pub enum DocumentMessage {
 		vector_data: HashMap<NodeId, Arc<Vector>>,
 	},
 	// `Message` is only serialized at `editor_wrapper.rs`, and only inputs from JS pass through it.
-	// `UpdateAppearanceAttributes` is produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
+	// `UpdateFillAttributes` and `UpdateStrokeAttributes` are produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
 	#[serde(skip)]
-	UpdateAppearanceAttributes {
-		appearance_attributes: HashMap<NodeId, Arc<Appearance>>,
+	UpdateFillAttributes {
+		fill_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,
+	},
+	#[serde(skip)]
+	UpdateStrokeAttributes {
+		stroke_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,
 	},
 	Undo,
 	UngroupSelectedLayers,

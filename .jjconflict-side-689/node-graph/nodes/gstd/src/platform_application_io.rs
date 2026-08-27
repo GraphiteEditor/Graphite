@@ -2,22 +2,16 @@
 use base64::Engine;
 #[cfg(target_family = "wasm")]
 use canvas_utils::{Canvas, CanvasHandle};
-#[cfg(target_family = "wasm")]
-use core_types::attribute::{Attr, OwnedAttr, Transform};
 use core_types::color::SRGBA8;
-use core_types::gpoll::GPoll;
 use core_types::list::Item;
 #[cfg(target_family = "wasm")]
 use core_types::list::List;
-
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
 use core_types::ops::Convert;
-use core_types::runtime::SourceFuture;
-#[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
-use core_types::{ATTR_TRANSFORM, WasmNotSend};
+use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, WasmNotSend};
 use core_types::{Color, Ctx};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
@@ -30,8 +24,6 @@ use graphic_types::Graphic;
 use graphic_types::IntoGraphicList;
 #[cfg(target_family = "wasm")]
 use graphic_types::Vector;
-#[cfg(target_family = "wasm")]
-use graphic_types::markers::EditorMergedLayers;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 #[cfg(target_family = "wasm")]
@@ -153,7 +145,7 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
-async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Item<Resource> {
+async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Item<Resource> {
 	let url = url.into_element();
 	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
 
@@ -203,16 +195,15 @@ fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
+async fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
 	Item::new_from_element(CanvasHandle::new())
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn rasterize<T: WasmNotSend + Clone>(
+async fn rasterize<T: WasmNotSend + Clone + 'n>(
 	_: impl Ctx,
-	_: (),
 	#[implementations(
 		List<Vector>,
 		List<Raster<CPU>>,
@@ -223,7 +214,7 @@ async fn rasterize<T: WasmNotSend + Clone>(
 	data: List<T>,
 	footprint: Item<Footprint>,
 	canvas: Item<CanvasHandle>,
-) -> (Raster<CPU>, Attr<Transform>, OwnedAttr<EditorMergedLayers>)
+) -> List<Raster<CPU>>
 where
 	List<T>: Render + Clone + graphic_types::IntoGraphicList,
 {
@@ -235,15 +226,12 @@ where
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		// A zero-size raster renders as nothing, matching the legacy empty list
-		return (Raster::new_cpu(Image::default()), Attr(DAffine2::IDENTITY), OwnedAttr::new(None));
+		return List::new();
 	}
 
 	// Snapshot the input as a List<Graphic> so the renderer can recurse into the original child layers
 	// when collecting metadata, exposing their click targets to editor tools (same mechanism as Boolean Operation).
-	// The copy is owned before the first await: the input's arena content dies with the spawning evaluation.
 	let upstream_graphic_list = data.clone().into_graphic_list();
-	let merged_layers = OwnedAttr::new(Some(&upstream_graphic_list));
 
 	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
@@ -280,11 +268,15 @@ where
 	let rasterized = context.get_image_data(0, 0, resolution.x as i32, resolution.y as i32).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	(Raster::new_cpu(image), Attr(footprint.transform), merged_layers)
+	List::new_from_item(
+		Item::new_from_element(Raster::new_cpu(image))
+			.with_attribute(ATTR_TRANSFORM, footprint.transform)
+			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_list),
+	)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<Arc<PlatformEditorApi>> {
+pub async fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a PlatformEditorApi> {
 	editor_api
 }
 

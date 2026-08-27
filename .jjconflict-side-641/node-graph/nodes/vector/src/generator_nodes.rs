@@ -1,4 +1,4 @@
-use core_types::list::{Item, List};
+use core_types::list::List;
 use core_types::registry::types::{Angle, PixelLength, PixelSize};
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
@@ -16,10 +16,10 @@ fn circle(
 	_primary: (),
 	#[unit(" px")]
 	#[default(50.)]
-	radius: Item<f64>,
-) -> Item<Vector> {
-	let radius = radius.element().abs();
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
+	radius: f64,
+) -> List<Vector> {
+	let radius = radius.abs();
+	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
@@ -29,16 +29,15 @@ fn arc(
 	_primary: (),
 	#[unit(" px")]
 	#[default(50.)]
-	radius: Item<f64>,
-	start_angle: Item<Angle>,
+	radius: f64,
+	start_angle: Angle,
 	#[default(270.)]
 	#[range]
 	#[soft(0..360)]
-	sweep_angle: Item<Angle>,
-	arc_type: Item<ArcType>,
-) -> Item<Vector> {
-	let (radius, start_angle, sweep_angle, arc_type) = (*radius.element(), *start_angle.element(), *sweep_angle.element(), arc_type.into_element());
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
+	sweep_angle: Angle,
+	arc_type: ArcType,
+) -> List<Vector> {
+	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
@@ -55,27 +54,20 @@ fn arc(
 fn spiral(
 	_: impl Ctx,
 	_primary: (),
-	spiral_type: Item<SpiralType>,
-	#[default(5.)] turns: Item<f64>,
-	#[default(0.)] start_angle: Item<f64>,
-	#[default(0.)] inner_radius: Item<f64>,
-	#[default(25)] outer_radius: Item<f64>,
-	#[default(90.)] angular_resolution: Item<f64>,
-) -> Item<Vector> {
-	let (turns, start_angle, inner_radius, outer_radius, angular_resolution) = (
-		*turns.element(),
-		*start_angle.element(),
-		*inner_radius.element(),
-		*outer_radius.element(),
-		*angular_resolution.element(),
-	);
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
+	spiral_type: SpiralType,
+	#[default(5.)] turns: f64,
+	#[default(0.)] start_angle: f64,
+	#[default(0.)] inner_radius: f64,
+	#[default(25)] outer_radius: f64,
+	#[default(90.)] angular_resolution: f64,
+) -> List<Vector> {
+	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
 		inner_radius,
 		outer_radius,
 		turns,
 		start_angle.to_radians(),
 		angular_resolution.to_radians(),
-		spiral_type.into_element(),
+		spiral_type,
 	)))
 }
 
@@ -86,12 +78,12 @@ fn ellipse(
 	_primary: (),
 	#[unit(" px")]
 	#[default(50)]
-	radius_x: Item<f64>,
+	radius_x: f64,
 	#[unit(" px")]
 	#[default(25)]
-	radius_y: Item<f64>,
-) -> Item<Vector> {
-	let radius = DVec2::new(*radius_x.element(), *radius_y.element());
+	radius_y: f64,
+) -> List<Vector> {
+	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
 
@@ -104,7 +96,7 @@ fn ellipse(
 			.push([HandleId::end(ellipse.segment_domain.ids()[i]), HandleId::primary(ellipse.segment_domain.ids()[(i + 1) % len])]);
 	}
 
-	Item::new_from_element(ellipse)
+	List::new_from_element(ellipse)
 }
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
@@ -114,19 +106,19 @@ fn rectangle(
 	_primary: (),
 	#[unit(" px")]
 	#[default(100)]
-	width: Item<f64>,
+	width: f64,
 	#[unit(" px")]
 	#[default(100)]
-	height: Item<f64>,
-	corner_radius: Item<BoxCorners>,
-	#[default(true)] clamped: Item<bool>,
-	_individual_corner_radii: Item<bool>,
-) -> Item<Vector> {
-	let size = DVec2::new(*width.element(), *height.element());
-	let radii = corner_radius.element().to_corner_values();
+	height: f64,
+	corner_radius: BoxCorners,
+	#[default(true)] clamped: bool,
+	_individual_corner_radii: bool,
+) -> List<Vector> {
+	let size = DVec2::new(width, height);
+	let radii = corner_radius.to_corner_values();
 
 	// Scale down overlapping adjacent radii to fit, following the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
-	let radii = if *clamped.element() {
+	let radii = if clamped {
 		let radii = radii.map(|radius| radius.max(0.));
 
 		let mut scale_factor: f64 = 1.;
@@ -143,7 +135,7 @@ fn rectangle(
 		radii
 	};
 
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., radii)))
+	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., radii)))
 }
 
 /// Builds a set of four corner values, such as a rectangle's corner radii, from a list of one, two, three, or four values.
@@ -152,9 +144,9 @@ fn box_corners(
 	_: impl Ctx,
 	/// The corner values, filling the four corners clockwise from the top-left. Give one value for all corners, two for opposite pairs, three for top-left, the two sides, then bottom-right, or four for each corner.
 	values: List<f64>,
-) -> Item<BoxCorners> {
+) -> BoxCorners {
 	let values: Vec<f64> = values.iter_element_values().copied().collect();
-	Item::new_from_element(BoxCorners::from(values))
+	BoxCorners::from(values)
 }
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
@@ -165,14 +157,14 @@ fn regular_polygon<T: AsU64>(
 	#[default(6)]
 	#[hard(3..)]
 	#[implementations(u32, u64, f64)]
-	sides: Item<T>,
+	sides: T,
 	#[unit(" px")]
 	#[default(50)]
-	radius: Item<f64>,
-) -> Item<Vector> {
-	let points = sides.element().as_u64();
-	let radius: f64 = *radius.element() * 2.;
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
+	radius: f64,
+) -> List<Vector> {
+	let points = sides.as_u64();
+	let radius: f64 = radius * 2.;
+	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
@@ -183,19 +175,19 @@ fn star<T: AsU64>(
 	#[default(5)]
 	#[hard(2..)]
 	#[implementations(u32, u64, f64)]
-	sides: Item<T>,
+	sides: T,
 	#[unit(" px")]
 	#[default(50)]
-	radius_1: Item<f64>,
+	radius_1: f64,
 	#[unit(" px")]
 	#[default(25)]
-	radius_2: Item<f64>,
-) -> Item<Vector> {
-	let points = sides.element().as_u64();
-	let diameter: f64 = *radius_1.element() * 2.;
-	let inner_diameter = *radius_2.element() * 2.;
+	radius_2: f64,
+) -> List<Vector> {
+	let points = sides.as_u64();
+	let diameter: f64 = radius_1 * 2.;
+	let inner_diameter = radius_2 * 2.;
 
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
+	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -221,18 +213,15 @@ fn qr_code(
 	_primary: (),
 	#[widget(ParsedWidgetOverride::Custom = "text_area")]
 	#[default("https://graphite.art")]
-	text: Item<String>,
-	#[widget(ParsedWidgetOverride::Hidden)] has_size: Item<bool>,
+	text: String,
+	#[widget(ParsedWidgetOverride::Hidden)] has_size: bool,
 	#[unit(" px")]
 	#[hard(1..)]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
-	size: Item<f64>,
-	error_correction: Item<QRCodeErrorCorrectionLevel>,
-	individual_squares: Item<bool>,
-) -> Item<Vector> {
-	let (text, error_correction) = (text.into_element(), error_correction.into_element());
-	let (has_size, size, individual_squares) = (*has_size.element(), *size.element(), *individual_squares.element());
-
+	size: f64,
+	error_correction: QRCodeErrorCorrectionLevel,
+	#[default(false)] individual_squares: bool,
+) -> List<Vector> {
 	let ecc = match error_correction {
 		QRCodeErrorCorrectionLevel::Low => qrcodegen::QrCodeEcc::Low,
 		QRCodeErrorCorrectionLevel::Medium => qrcodegen::QrCodeEcc::Medium,
@@ -240,9 +229,7 @@ fn qr_code(
 		QRCodeErrorCorrectionLevel::High => qrcodegen::QrCodeEcc::High,
 	};
 
-	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else {
-		return Item::new_from_element(Vector::default());
-	};
+	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else { return List::default() };
 
 	let mut vector = match individual_squares {
 		true => {
@@ -271,7 +258,7 @@ fn qr_code(
 		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size / qr_code.size() as f64)));
 	}
 
-	Item::new_from_element(vector)
+	List::new_from_element(vector)
 }
 
 /// Generates an arrow from the origin to the chosen coordinate.
@@ -279,18 +266,17 @@ fn qr_code(
 fn arrow(
 	_: impl Ctx,
 	_primary: (),
-	#[default(100., 0.)] arrow_to: Item<PixelSize>,
-	#[default(10)] shaft_width: Item<PixelLength>,
-	#[default(30)] head_width: Item<PixelLength>,
-	#[default(20)] head_length: Item<PixelLength>,
-) -> Item<Vector> {
-	let (arrow_to, shaft_width, head_width, head_length) = (*arrow_to.element(), *shaft_width.element(), *head_width.element(), *head_length.element());
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
+	#[default(100., 0.)] arrow_to: PixelSize,
+	#[default(10)] shaft_width: PixelLength,
+	#[default(30)] head_width: PixelLength,
+	#[default(20)] head_length: PixelLength,
+) -> List<Vector> {
+	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: Item<PixelSize>) -> Item<Vector> {
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, *line_to.element())))
+fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: PixelSize) -> List<Vector> {
+	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to)))
 }
 
 trait GridSpacing {
@@ -312,113 +298,114 @@ impl GridSpacing for DVec2 {
 fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),
-	grid_type: Item<GridType>,
+	grid_type: GridType,
 	#[unit(" px")]
 	#[hard(0..)]
 	#[default(10)]
 	#[implementations(f64, DVec2)]
-	spacing: Item<T>,
-	#[default(10)] columns: Item<u32>,
-	#[default(10)] rows: Item<u32>,
-	#[default(30., 30.)] angles: Item<DVec2>,
-	#[default(true)] connect_cells: Item<bool>,
-) -> Item<Vector> {
-	let (grid_type, columns, rows, angles, connect_cells) = (grid_type.into_element(), *columns.element(), *rows.element(), *angles.element(), *connect_cells.element());
-
-	let (x_spacing, y_spacing) = spacing.element().as_dvec2().into();
+	spacing: T,
+	#[default(10)] columns: u32,
+	#[default(10)] rows: u32,
+	#[default(30., 30.)] angles: DVec2,
+) -> List<Vector> {
+	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
-
-	// Isometric grid spacing based on the two skew angles. Unused for rectangular grids.
-	let tan_a = angle_a.to_radians().tan();
-	let tan_b = angle_b.to_radians().tan();
-	let isometric_spacing = DVec2::new(y_spacing / (tan_a + tan_b), y_spacing);
-
-	// The position of the grid point at column `x`, row `y`.
-	let position = |x: u32, y: u32| -> DVec2 {
-		match grid_type {
-			GridType::Rectangular => DVec2::new(x_spacing * x as f64, y_spacing * y as f64),
-			GridType::Isometric => {
-				// Odd columns are offset vertically so the cells skew into the isometric shape.
-				let a_angles_eaten = x.div_ceil(2) as f64;
-				let b_angles_eaten = (x / 2) as f64;
-				let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
-				DVec2::new(isometric_spacing.x * x as f64, isometric_spacing.y * y as f64 + offset_y_fraction * isometric_spacing.x)
-			}
-		}
-	};
-
-	// When the cells aren't connected, each one is its own closed quadrilateral subpath.
-	// The vertices are ordered counter-clockwise to match the framework's fill winding.
-	if !connect_cells {
-		let mut cells = Vec::new();
-		for y in 0..rows.saturating_sub(1) {
-			for x in 0..columns.saturating_sub(1) {
-				cells.push(vec![position(x, y), position(x + 1, y), position(x + 1, y + 1), position(x, y + 1)]);
-			}
-		}
-		let mut vector = Vector::default();
-		crate::vector_nodes::replace_with_polygons(&mut vector, cells, connect_cells);
-		return Item::new_from_element(vector);
-	}
 
 	let mut vector = Vector::default();
 	let mut segment_id = SegmentId::ZERO;
 	let mut point_id = PointId::ZERO;
 
-	for y in 0..rows {
-		for x in 0..columns {
-			// Add the current point to the grid.
-			let current_index = vector.point_domain.ids().len();
-			vector.point_domain.push(point_id.next_id(), position(x, y));
+	match grid_type {
+		GridType::Rectangular => {
+			// Create rectangular grid points and connect them with line segments
+			for y in 0..rows {
+				for x in 0..columns {
+					// Add current point to the grid
+					let current_index = vector.point_domain.ids().len();
+					vector.point_domain.push(point_id.next_id(), DVec2::new(x_spacing * x as f64, y_spacing * y as f64));
 
-			// Helper function to connect points with line segments.
-			let mut push_segment = |to_index: Option<usize>| {
-				if let Some(other_index) = to_index {
-					vector
-						.segment_domain
-						.push(segment_id.next_id(), other_index, current_index, subpath::BezierHandles::Linear, StrokeId::ZERO);
+					// Helper function to connect points with line segments
+					let mut push_segment = |to_index: Option<usize>| {
+						if let Some(other_index) = to_index {
+							vector
+								.segment_domain
+								.push(segment_id.next_id(), other_index, current_index, subpath::BezierHandles::Linear, StrokeId::ZERO);
+						}
+					};
+
+					// Connect to the point to the left (horizontal connection)
+					push_segment((x > 0).then(|| current_index - 1));
+
+					// Connect to the point above (vertical connection)
+					push_segment(current_index.checked_sub(columns as usize));
 				}
-			};
+			}
+		}
+		GridType::Isometric => {
+			// Calculate isometric grid spacing based on angles
+			let tan_a = angle_a.to_radians().tan();
+			let tan_b = angle_b.to_radians().tan();
+			let spacing = DVec2::new(y_spacing / (tan_a + tan_b), y_spacing);
 
-			// Connect to the point to the left (horizontal connection).
-			push_segment((x > 0).then(|| current_index - 1));
+			// Create isometric grid points and connect them with line segments
+			for y in 0..rows {
+				for x in 0..columns {
+					// Add current point to the grid with offset for odd columns
+					let current_index = vector.point_domain.ids().len();
 
-			// Connect to the point directly above (vertical connection).
-			push_segment(current_index.checked_sub(columns as usize));
+					let a_angles_eaten = x.div_ceil(2) as f64;
+					let b_angles_eaten = (x / 2) as f64;
 
-			// Isometric grids additionally connect odd columns diagonally, splitting each cell into triangles.
-			if grid_type == GridType::Isometric && x % 2 == 1 {
-				// Connect to the point diagonally up-right (if not at the right edge).
-				push_segment(current_index.checked_sub(columns as usize - 1).filter(|_| x + 1 < columns));
+					let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
 
-				// Connect to the point diagonally up-left.
-				push_segment(current_index.checked_sub(columns as usize + 1));
+					let position = DVec2::new(spacing.x * x as f64, spacing.y * y as f64 + offset_y_fraction * spacing.x);
+					vector.point_domain.push(point_id.next_id(), position);
+
+					// Helper function to connect points with line segments
+					let mut push_segment = |to_index: Option<usize>| {
+						if let Some(other_index) = to_index {
+							vector
+								.segment_domain
+								.push(segment_id.next_id(), other_index, current_index, subpath::BezierHandles::Linear, StrokeId::ZERO);
+						}
+					};
+
+					// Connect to the point to the left
+					push_segment((x > 0).then(|| current_index - 1));
+
+					// Connect to the point directly above
+					push_segment(current_index.checked_sub(columns as usize));
+
+					// Additional diagonal connections for odd columns (creates hexagonal pattern)
+					if x % 2 == 1 {
+						// Connect to the point diagonally up-right (if not at right edge)
+						push_segment(current_index.checked_sub(columns as usize - 1).filter(|_| x + 1 < columns));
+
+						// Connect to the point diagonally up-left
+						push_segment(current_index.checked_sub(columns as usize + 1));
+					}
+				}
 			}
 		}
 	}
 
-	Item::new_from_element(vector)
+	List::new_from_element(vector)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	fn item<T>(value: T) -> Item<T> {
-		Item::new_from_element(value)
-	}
-
 	#[test]
 	fn isometric_grid_test() {
 		// Doesn't crash with weird angles
-		grid((), (), item(GridType::Isometric), item(0.), item(5_u32), item(5_u32), item((0., 0.).into()), item(true));
-		grid((), (), item(GridType::Isometric), item(90.), item(5_u32), item(5_u32), item((90., 90.).into()), item(true));
+		grid((), (), GridType::Isometric, 0., 5, 5, (0., 0.).into());
+		grid((), (), GridType::Isometric, 90., 5, 5, (90., 90.).into());
 
 		// Works properly
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((30., 30.).into()), item(true));
-		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.element().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.element().segment_bezier_iter() {
+		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (30., 30.).into());
+		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
 			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
 			assert!(
 				((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
@@ -430,10 +417,10 @@ mod tests {
 
 	#[test]
 	fn skew_isometric_grid_test() {
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((40., 30.).into()), item(true));
-		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.element().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.element().segment_bezier_iter() {
+		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (40., 30.).into());
+		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
 			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
 			let vector = bezier.start - bezier.end;
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
@@ -442,35 +429,9 @@ mod tests {
 	}
 
 	#[test]
-	fn grid_disconnected_cells_test() {
-		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath with a fillable region.
-		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_u32), item(3_u32), item((30., 30.).into()), item(false));
-		let vector = grid.element();
-		assert_eq!(vector.region_domain.ids().len(), 4);
-		assert_eq!(vector.point_domain.ids().len(), 4 * 4);
-		assert_eq!(vector.segment_domain.ids().len(), 4 * 4);
-
-		// Each cell winds counter-clockwise (positive signed area), matching the shape generators.
-		for (group, closed) in vector.stroke_manipulator_groups() {
-			assert!(closed);
-			let anchors: Vec<DVec2> = group.iter().map(|g| g.anchor).collect();
-			let signed_area: f64 = (0..anchors.len()).map(|i| anchors[i].perp_dot(anchors[(i + 1) % anchors.len()])).sum::<f64>() / 2.;
-			assert!(signed_area > 0., "grid cell should wind counter-clockwise");
-		}
-	}
-
-	#[test]
 	fn qr_code_test() {
-		let qr = qr_code(
-			(),
-			(),
-			item("https://graphite.art".to_string()),
-			item(false),
-			item(1.),
-			item(QRCodeErrorCorrectionLevel::Low),
-			item(true),
-		);
-		assert!(!qr.element().point_domain.ids().is_empty());
-		assert!(!qr.element().segment_domain.ids().is_empty());
+		let qr = qr_code((), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
+		assert!(qr.element(0).unwrap().point_domain.ids().len() > 0);
+		assert!(qr.element(0).unwrap().segment_domain.ids().len() > 0);
 	}
 }

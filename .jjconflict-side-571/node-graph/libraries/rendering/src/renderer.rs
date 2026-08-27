@@ -26,8 +26,8 @@ use graphene_resource::Resource;
 use graphic_types::graphic::{PaintColumns, PaintOverlay, PaintReach, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
-use graphic_types::vector_types::gradient::{GradientForm, GradientStops};
-use graphic_types::vector_types::markers::{GradientForm as GradientFormAttr, GradientSpread as GradientSpreadAttr};
+use graphic_types::vector_types::gradient::{GradientStops, GradientType};
+use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
@@ -44,7 +44,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use text_nodes::markers::{Font, TextAlign};
-use vector_types::gradient::GradientSpread;
+use vector_types::gradient::GradientSpreadMethod;
 use vector_types::markers::EditorClickTarget;
 use vello::*;
 
@@ -385,10 +385,10 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 /// non-uniform transform makes an ellipse), while linear is reduced to the equivalent non-sheared gradient line (the
 /// axis projected onto the band normal) so the iso-color bands keep following a sheared transform, which Vello can
 /// represent since it stores only two endpoints.
-pub(crate) fn gradient_placement(transform: DAffine2, gradient_form: GradientForm) -> DAffine2 {
-	match gradient_form {
-		GradientForm::Radial => transform,
-		GradientForm::Linear => {
+pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientType) -> DAffine2 {
+	match gradient_type {
+		GradientType::Radial => transform,
+		GradientType::Linear => {
 			let axis = transform.matrix2.x_axis;
 			let band_normal = transform.matrix2.y_axis.perp();
 			let line = if band_normal.length_squared() > 0. { axis.project_onto(band_normal) } else { axis };
@@ -400,51 +400,32 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_form: GradientFor
 	}
 }
 
-/// Converts a gradient's renderer samples to peniko color stops, duplicating an off-zero first stop at position 0 since Vello ignores the first stop's position and always treats it as 0.
-fn peniko_color_stops(gradient: &GradientStops) -> peniko::ColorStops {
-	let mut peniko_stops = peniko::ColorStops::new();
-
-	for (position, color, _) in gradient.interpolated_samples() {
-		let color = peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color());
-
-		if peniko_stops.is_empty() && position > 0. {
-			peniko_stops.push(peniko::ColorStop { offset: 0., color });
-		}
-
-		peniko_stops.push(peniko::ColorStop { offset: position as f32, color });
-	}
-
-	// A gradient with no stops paints as solid black, matching `Gradient::evaluate`
-	if peniko_stops.is_empty() {
-		peniko_stops.push(peniko::ColorStop {
-			offset: 0.,
-			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(Color::BLACK).to_peniko_color()),
-		});
-	}
-
-	peniko_stops
-}
-
 fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
-	let gradient_form: GradientForm = gradient_list.attr::<GradientFormAttr>(0);
+	let gradient_type: GradientType = gradient_list.attr::<GradientTypeAttr>(0);
 	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
-	let gradient_spread: GradientSpread = gradient_list.attr::<GradientSpreadAttr>(0);
+	let spread_method: GradientSpreadMethod = gradient_list.attr::<SpreadMethod>(0);
 
-	let peniko_stops = peniko_color_stops(stops);
+	let mut peniko_stops = peniko::ColorStops::new();
+	for (position, color, _) in stops.interpolated_samples() {
+		peniko_stops.push(peniko::ColorStop {
+			offset: position as f32,
+			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+		});
+	}
 
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
-	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_form));
+	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type));
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
-		kind: match gradient_form {
-			GradientForm::Linear => peniko::LinearGradientPosition {
+		kind: match gradient_type {
+			GradientType::Linear => peniko::LinearGradientPosition {
 				start: to_point(start),
 				end: to_point(end),
 			}
 			.into(),
-			GradientForm::Radial => peniko::RadialGradientPosition {
+			GradientType::Radial => peniko::RadialGradientPosition {
 				start_center: to_point(start),
 				start_radius: 0.,
 				end_center: to_point(start),
@@ -452,10 +433,10 @@ fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient
 			}
 			.into(),
 		},
-		extend: match gradient_spread {
-			GradientSpread::Pad => peniko::Extend::Pad,
-			GradientSpread::Reflect => peniko::Extend::Reflect,
-			GradientSpread::Repeat => peniko::Extend::Repeat,
+		extend: match spread_method {
+			GradientSpreadMethod::Pad => peniko::Extend::Pad,
+			GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
+			GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
 		},
 		stops: peniko_stops,
 		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
@@ -1844,7 +1825,7 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(source: &S, metadata
 		}
 
 		// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
-		// Combine Paths, Morph, or any other destructive merge), recurse into that snapshot so the editor can
+		// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 		// surface the original child layers' click targets.
 		if let Some(upstream_nested_layers) = source.attr::<EditorMergedLayers>(index).filter(|layers| !layers.is_empty()) {
 			let mut upstream_footprint = footprint;
@@ -2322,8 +2303,8 @@ fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, rende
 		let blend_mode: BlendMode = source.attr::<BlendModeAttr>(index);
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
-		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(index);
-		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
+		let spread_method: GradientSpreadMethod = source.attr::<SpreadMethod>(index);
+		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(index);
 		let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 		render.leaf_tag(tag, |attributes| {
 			if let Some((min, size)) = thumbnail_rect {
@@ -2361,24 +2342,24 @@ fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, rende
 			};
 
 			let gradient_id = generate_uuid();
-			let gradient_spread_attribute = if gradient_spread == GradientSpread::Pad {
+			let spread_method_attribute = if spread_method == GradientSpreadMethod::Pad {
 				String::new()
 			} else {
-				format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
+				format!(r#" spreadMethod="{}""#, spread_method.svg_name())
 			};
 
 			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
-			match gradient_form {
-				GradientForm::Linear => {
+			match gradient_type {
+				GradientType::Linear => {
 					let _ = write!(
 						&mut attributes.0.svg_defs,
-						r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
+						r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
 					);
 				}
-				GradientForm::Radial => {
+				GradientType::Radial => {
 					let _ = write!(
 						&mut attributes.0.svg_defs,
-						r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+						r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
 					);
 				}
 			}
@@ -2406,8 +2387,8 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 
 	for index in 0..source.lane_count() {
 		let Some(gradient) = source.element(index) else { continue };
-		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(index);
-		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
+		let spread_method: GradientSpreadMethod = source.attr::<SpreadMethod>(index);
+		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(index);
 		let transform: DAffine2 = source.attr::<Transform>(index);
 		let blend_mode_attr: BlendMode = source.attr::<BlendModeAttr>(index);
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
@@ -2417,23 +2398,29 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 		let blend_mode = blend_mode_attr.to_peniko();
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-		let stops = peniko_color_stops(gradient);
+		let mut stops: peniko::ColorStops = peniko::ColorStops::new();
+		for (position, color, _) in gradient.interpolated_samples() {
+			stops.push(peniko::ColorStop {
+				offset: position as f32,
+				color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+			})
+		}
 
-		let extend = match gradient_spread {
-			GradientSpread::Pad => peniko::Extend::Pad,
-			GradientSpread::Reflect => peniko::Extend::Reflect,
-			GradientSpread::Repeat => peniko::Extend::Repeat,
+		let extend = match spread_method {
+			GradientSpreadMethod::Pad => peniko::Extend::Pad,
+			GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
+			GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
 		};
 
 		// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
 		// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.
-		let kind = match gradient_form {
-			GradientForm::Linear => peniko::LinearGradientPosition {
+		let kind = match gradient_type {
+			GradientType::Linear => peniko::LinearGradientPosition {
 				start: to_point(DVec2::ZERO),
 				end: to_point(DVec2::X),
 			}
 			.into(),
-			GradientForm::Radial => peniko::RadialGradientPosition {
+			GradientType::Radial => peniko::RadialGradientPosition {
 				start_center: to_point(DVec2::ZERO),
 				start_radius: 0.,
 				end_center: to_point(DVec2::ZERO),
@@ -2449,7 +2436,7 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 			interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
 			..Default::default()
 		});
-		let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_form).to_cols_array());
+		let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_type).to_cols_array());
 		let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 		let mut layer = false;

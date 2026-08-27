@@ -1377,19 +1377,27 @@ fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHIT
 	gradient
 }
 
-/// Sets the type (linear or radial) of each gradient in the input list.
+/// Sets the form (linear or radial) of each gradient in the input list.
 #[node_macro::node(category("Gradient"))]
-fn gradient_type(_: impl Ctx, gradient: Item<Gradient>, gradient_type: Item<vector_types::GradientType>) -> Item<Gradient> {
+fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vector_types::GradientForm>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_TYPE, *gradient_type.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_FORM, *gradient_form.element());
 	gradient
 }
 
-/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
+/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, Repeat, or Clear.
 #[node_macro::node(category("Gradient"))]
 fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<vector_types::GradientSpread>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_SPREAD, *gradient_spread.element());
+	gradient
+}
+
+/// Sets the color space each gradient in the input list blends between its stops with: linear light or gamma-encoded sRGB.
+#[node_macro::node(category("Gradient"))]
+fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, gradient_interpolation: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *gradient_interpolation.element());
 	gradient
 }
 
@@ -1417,11 +1425,12 @@ fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, or Repeat.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops blend in the gradient's `gradient_interpolation` color space.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
 	let gradient_spread = gradient.attribute_cloned_or_default::<vector_types::GradientSpread>(core_types::ATTR_GRADIENT_SPREAD);
-	let color = gradient.element().evaluate(*position.element(), gradient_spread);
+	let gradient_interpolation = gradient.attribute_cloned_or_default::<vector_types::GradientInterpolation>(core_types::ATTR_GRADIENT_INTERPOLATION);
+	let color = gradient.element().evaluate(*position.element(), gradient_spread, gradient_interpolation);
 	Item::new_from_element(color)
 }
 
