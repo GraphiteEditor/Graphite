@@ -1554,96 +1554,6 @@ pub unsafe fn interrupt_frame(entry: usize, layout: &Layout) {
 	claim_frame(layout);
 }
 
-/// A captured record: the layout plus a generation-checked handle to the
-/// arena copy, materialized by the introspection holder, which owns the
-/// arena. A dead generation materializes to `None`, never to a stale read.
-#[derive(Clone)]
-pub struct RecordCapture {
-	layout: Layout,
-	lanes: usize,
-	bytes: crate::arena::ArenaWeak<Box<[u8]>>,
-}
-
-impl std::fmt::Debug for RecordCapture {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str("RecordCapture(..)")
-	}
-}
-
-impl RecordCapture {
-	/// # Safety
-	/// `rec` must be a live record of `layout`.
-	pub unsafe fn capture(layout: &Layout, rec: Rec, arena: &crate::arena::Arena) -> Option<RecordCapture> {
-		let bytes = unsafe { copy_record_bytes(layout, rec) };
-		arena.alloc(bytes).map(|(_, weak)| RecordCapture {
-			layout: layout.clone(),
-			lanes: 1,
-			bytes: weak,
-		})
-	}
-
-	/// Captures every lane of a leveled wire's batch.
-	///
-	/// # Safety
-	/// `batch` must hold live records of `layout`.
-	pub unsafe fn capture_level(layout: &Layout, batch: crate::node::RecordBatch<'_>, arena: &crate::arena::Arena) -> Option<RecordCapture> {
-		let stride = layout.lane_stride();
-		let mut bytes = vec![0u8; batch.len() * stride].into_boxed_slice();
-		for lane in 0..batch.len() {
-			// SAFETY: both sides hold `len` lanes at the shared layout's stride.
-			unsafe { std::ptr::copy_nonoverlapping(batch.get(lane).rec().ptr(), bytes.as_mut_ptr().add(lane * stride), stride) };
-		}
-		arena.alloc(bytes).map(|(_, weak)| RecordCapture {
-			layout: layout.clone(),
-			lanes: batch.len(),
-			bytes: weak,
-		})
-	}
-
-	pub fn layout(&self) -> &Layout {
-		&self.layout
-	}
-
-	/// The captured lane count: one for a rank-0 capture, the whole extent
-	/// for a level capture.
-	pub fn lanes(&self) -> usize {
-		self.lanes
-	}
-
-	/// A batch view over the captured records, alive while the arena holds
-	/// the capture's generation.
-	pub fn batch<'a>(&'a self, arena: &'a crate::arena::Arena) -> Option<crate::node::RecordBatch<'a>> {
-		let bytes = self.bytes.upgrade(arena)?;
-		// SAFETY: the constructors store `lanes` records of `layout`.
-		Some(unsafe { crate::node::RecordBatch::new(bytes.as_ptr(), self.lanes, &self.layout) })
-	}
-
-	/// The captured element of the first lane, cloned out through the
-	/// layout's erased glue.
-	pub fn materialize_element(&self, arena: &crate::arena::Arena) -> Option<Box<dyn std::any::Any + Send + Sync>> {
-		let bytes = self.bytes.upgrade(arena)?;
-		match self.lanes {
-			0 => None,
-			_ => Some(unsafe { (self.layout.element.clone_out)(bytes.as_ptr()) }),
-		}
-	}
-
-	/// The first lane's attributes, read out through the layout's erased glue.
-	pub fn materialize(&self, arena: &crate::arena::Arena) -> Option<Vec<(&'static str, Box<dyn crate::list::AnyAttributeValue>)>> {
-		let bytes = self.bytes.upgrade(arena)?;
-		if self.lanes == 0 {
-			return Some(Vec::new());
-		}
-		Some(
-			self.layout
-				.fields
-				.iter()
-				.map(|field| (field.name, unsafe { (field.read_erased)(bytes.as_ptr().add(field.offset)) }))
-				.collect(),
-		)
-	}
-}
-
 /// A record deep-copied out of its evaluation: the packed bytes plus owned
 /// clones of every parked payload, replayable into a later evaluation's
 /// storage through the layout's erased glue. The layout stays with the
@@ -2085,6 +1995,13 @@ impl<'a, T: 'static> crate::lane::LaneSource for RunView<'a, T> {
 			offset: self.item.layout().offset_of(A::NAME, 0),
 			marker: std::marker::PhantomData,
 		}
+	}
+}
+
+impl<T: crate::render_complexity::RenderComplexity + 'static> crate::render_complexity::RenderComplexity for RunView<'_, T> {
+	fn render_complexity(&self) -> usize {
+		use crate::lane::LaneSource;
+		(0..self.lane_count()).filter_map(|lane| self.element(lane)).map(crate::render_complexity::RenderComplexity::render_complexity).sum()
 	}
 }
 

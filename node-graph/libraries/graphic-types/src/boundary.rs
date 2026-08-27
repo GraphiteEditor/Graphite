@@ -10,7 +10,7 @@ use core_types::arena::Arena;
 use core_types::context::InjectIndex;
 use core_types::gpoll::{Finality, GraphError};
 use core_types::node::Node;
-use core_types::record::{Group, GroupContent, GroupItem, LevelStatus, RecordCapture, RecordValue, materialize_level};
+use core_types::record::{Group, GroupContent, GroupItem, LevelStatus, RecordValue, materialize_level};
 use core_types::uuid::NodeId;
 use glam::{DAffine2, DVec2};
 use vector_types::GradientStops;
@@ -46,36 +46,35 @@ where
 	}
 }
 
-/// The captured wire as the legacy value the editor's downcasts expect: a
-/// rank-0 capture is its element, a leveled `Graphic` capture becomes its
-/// legacy list through the group bridge, and another element type becomes a
-/// legacy list of that element. `None` for an element type outside the
-/// legacy vocabulary or a capture whose arena generation has passed.
-pub fn capture_to_legacy(capture: &RecordCapture, arena: &Arena) -> Option<Box<dyn std::any::Any + Send + Sync>> {
-	if capture.layout().depth == 0 {
-		// The group-carrying types legacy-convert while the capture is still
+/// The resident batch as the legacy value the editor's downcasts expect: a
+/// rank-0 wire is its element, a leveled `Graphic` wire becomes its legacy
+/// list through the group bridge, and another element type becomes a legacy
+/// list of that element. `None` for an element type outside the legacy
+/// vocabulary or an empty rank-0 batch.
+pub fn batch_to_legacy(layout: &core_types::record::Layout, batch: core_types::node::RecordBatch<'_>, _arena: &Arena) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+	if layout.depth == 0 {
+		// The group-carrying types legacy-convert while the batch is
 		// resident; the deep clone-out would hand back the unreadable owned
 		// form.
-		if capture.lanes() > 0 {
-			let element = &capture.layout().element;
-			if element.type_id == std::any::TypeId::of::<Graphic>() {
-				let batch = capture.batch(arena)?;
-				// SAFETY: the layout records the element type, and a parked
-				// element stores its reference at offset 0.
-				let graphic = unsafe { core_types::record::borrow_element::<Graphic>(batch.get(0).rec()) };
-				return Some(Box::new(crate::graphic::map_groups_to_legacy(graphic)));
-			}
-			if element.type_id == std::any::TypeId::of::<Artboard>() {
-				let batch = capture.batch(arena)?;
-				// SAFETY: as for the graphic arm.
-				let artboard = unsafe { core_types::record::borrow_element::<Artboard>(batch.get(0).rec()) };
-				return Some(Box::new(artboard.with_legacy_groups()));
-			}
+		if batch.is_empty() {
+			return None;
 		}
-		return capture.materialize_element(arena);
+		let element = &layout.element;
+		if element.type_id == std::any::TypeId::of::<Graphic>() {
+			// SAFETY: the layout records the element type, and a parked
+			// element stores its reference at offset 0.
+			let graphic = unsafe { core_types::record::borrow_element::<Graphic>(batch.get(0).rec()) };
+			return Some(Box::new(crate::graphic::map_groups_to_legacy(graphic)));
+		}
+		if element.type_id == std::any::TypeId::of::<Artboard>() {
+			// SAFETY: as for the graphic arm.
+			let artboard = unsafe { core_types::record::borrow_element::<Artboard>(batch.get(0).rec()) };
+			return Some(Box::new(artboard.with_legacy_groups()));
+		}
+		// SAFETY: lane 0 is a live record of `layout`.
+		return Some(unsafe { (element.clone_out)(batch.get(0).rec().ptr()) });
 	}
-	let batch = capture.batch(arena)?;
-	// SAFETY: the captured bytes live in the arena for the capture's generation.
+	// SAFETY: the caller's batch is resident for the read.
 	let item = unsafe { GroupItem::from_resident(batch) };
 	fn typed<T: Clone + Send + Sync + 'static>(item: &GroupItem) -> Option<Box<dyn std::any::Any + Send + Sync>> {
 		run_to_legacy_list::<T>(item).map(|list| Box::new(list) as Box<dyn std::any::Any + Send + Sync>)

@@ -684,7 +684,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_level_capture_converts_to_its_legacy_list() {
+	fn a_level_batch_converts_to_its_legacy_list() {
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -695,8 +695,7 @@ mod tests {
 		let record::LevelStatus::Batch(batch, _) = record::materialize_level(&source, &ctx, &arena) else {
 			panic!("expected a batch");
 		};
-		let capture = unsafe { record::RecordCapture::capture_level(&layout, batch, &arena) }.expect("the capture parks in the arena");
-		let legacy = graphic_types::boundary::capture_to_legacy(&capture, &arena).expect("f64 is in the legacy vocabulary");
+		let legacy = graphic_types::boundary::batch_to_legacy(&layout, batch, &arena).expect("f64 is in the legacy vocabulary");
 		let list = legacy.downcast_ref::<List<f64>>().unwrap();
 		assert_eq!(list.len(), 2);
 		assert_eq!(list.element(0).copied(), Some(1.5));

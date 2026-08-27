@@ -1,6 +1,6 @@
 use crate::node_registry;
 use core_types::arena::Arena;
-use core_types::context::{ContextImpl, DynSlot, EvalScope, VarArg, VarArgLink, VarArgSlots};
+use core_types::context::{ContextImpl, DynSlot, EvalScope, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, VarArg, VarArgLink, VarArgSlots};
 use core_types::gpoll::GPoll;
 use core_types::node::Node;
 use core_types::registry::{EdgeHandle, ErasedNode};
@@ -144,19 +144,74 @@ impl DynamicExecutor {
 		Ok(ResolvedDocumentNodeTypesDelta { add, remove })
 	}
 
-	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	/// A monitor's record capture materializes here against the arena, inside
-	/// the introspection window, so consumers downcast the legacy value type
-	/// directly: a rank-0 capture yields its element and a level capture its
-	/// legacy list. The captured input context stays on the serialized io
-	/// record for consumers that need it.
+	/// Calls the `Node::serialize` for that specific node. A monitor serializes
+	/// its stored context snapshot, and this entry recreates the monitored
+	/// value from it as the legacy value the editor's downcasts expect: a
+	/// rank-0 wire yields its element and a leveled wire its legacy list.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let result = self.tree.introspect(node_path)?;
-		if let Some(io) = result.downcast_ref::<core_types::memo::IORecord<core_types::context::CtxSnapshot, core_types::record::RecordCapture>>() {
-			let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
-			return graphic_types::boundary::capture_to_legacy(&io.output, &arena).map(Arc::from).ok_or(IntrospectError::NoData);
+		if result.downcast_ref::<core_types::context::CtxSnapshot>().is_some() {
+			return self
+				.introspect_with(node_path, |layout, batch, arena| graphic_types::boundary::batch_to_legacy(layout, batch, arena))
+				.map(Arc::from);
 		}
 		Ok(result)
+	}
+
+	/// Re-evaluates the monitored edge at `node_path` with its stored context
+	/// snapshot and hands the resulting resident batch to `read`, inside the
+	/// introspection window. The monitor stores only the context; the value is
+	/// recreated against current source data, so a read right after an
+	/// execution serves out of the warm memo entries.
+	pub fn introspect_with<R>(
+		&self,
+		node_path: &[NodeId],
+		read: impl FnOnce(&core_types::record::Layout, core_types::node::RecordBatch<'_>, &Arena) -> Option<R>,
+	) -> Result<R, IntrospectError> {
+		let serialized = self.tree.introspect(node_path)?;
+		let Some(snapshot) = serialized.downcast_ref::<core_types::context::CtxSnapshot>() else {
+			return Err(IntrospectError::NoData);
+		};
+		let edge = self
+			.tree
+			.get_by_path(node_path)
+			.and_then(EdgeHandle::record_edge)
+			.ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
+		let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
+		core_types::record::stack::reserve(self.tree.stack_need());
+		let generations = self.runtime.snapshot();
+		let scope = EvalScope::new(snapshot.try_real_time(), snapshot.try_animation_time(), snapshot.try_pointer_position(), &generations, &arena);
+		let Some(ctx) = snapshot.rehydrate(&scope) else {
+			return Err(IntrospectError::NoData);
+		};
+		let layout = core_types::node::Node::<ContextImpl>::layout(&edge);
+		let mark = core_types::record::stack::sp();
+		let result = if layout.depth > 0 {
+			match core_types::record::materialize_level(&edge, &ctx, &arena) {
+				core_types::record::LevelStatus::Batch(batch, _) => read(layout, batch, &arena),
+				_ => None,
+			}
+		} else {
+			match core_types::node::Node::eval(&edge, &ctx) {
+				GPoll::Final(value) | GPoll::Partial(value) => {
+					let rec = layout.rec(&value);
+					// SAFETY: the eval produced one live record of the edge's layout.
+					let batch = unsafe { core_types::node::RecordBatch::new(rec.ptr(), 1, layout) };
+					read(layout, batch, &arena)
+				}
+				GPoll::Fallback(boxed) => {
+					let (value, _) = *boxed;
+					let rec = layout.rec(&value);
+					// SAFETY: as for the final arm.
+					let batch = unsafe { core_types::node::RecordBatch::new(rec.ptr(), 1, layout) };
+					read(layout, batch, &arena)
+				}
+				_ => None,
+			}
+		};
+		// SAFETY: the read finished, so no record above the mark is live.
+		unsafe { core_types::record::stack::rewind(mark) };
+		result.ok_or(IntrospectError::NoData)
 	}
 
 	pub fn input_type(&self) -> Option<Type> {
@@ -323,6 +378,12 @@ impl BorrowTree {
 
 	pub fn get(&self, id: NodeId) -> Option<EdgeHandle> {
 		self.nodes.get(&id).map(|(node, _)| node.duplicate())
+	}
+
+	/// The edge handle for the node at a document path.
+	pub fn get_by_path(&self, node_path: &[NodeId]) -> Option<EdgeHandle> {
+		let (id, _) = self.source_map.get(node_path)?;
+		self.get(*id)
 	}
 
 	/// Evaluate a node of the [`BorrowTree`], downcasting its edge to the expected output type.

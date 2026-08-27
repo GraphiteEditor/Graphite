@@ -303,6 +303,12 @@ impl EdgeHandle {
 		self.downcast_erased(record_edge_type::<T>())
 	}
 
+	/// The erased record edge, for callers that dispatch on the layout rather
+	/// than a static element type. `None` for a plain (non-record) edge.
+	pub fn record_edge(self) -> Option<SharedEdge<ErasedRecordNode>> {
+		self.node.downcast::<SharedEdge<ErasedRecordNode>>().ok().map(|edge| *edge)
+	}
+
 	pub fn downcast_erased<N: ?Sized + 'static>(self, expected: Type) -> Result<SharedEdge<N>, ConstructionError> {
 		let found = self.ty;
 		self.node.downcast::<SharedEdge<N>>().map(|edge| *edge).map_err(|_| ConstructionError::Type {

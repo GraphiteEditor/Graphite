@@ -2966,6 +2966,46 @@ impl Render for List<String> {
 	}
 }
 
+impl Render for RunView<'_, Artboard> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		render_artboard_svg(self, render, render_params)
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+		render_artboard_vello(self, scene, transform, context, render_params)
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
+		collect_artboard_metadata(self, metadata, footprint)
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		add_artboard_upstream_click_targets(self, click_targets)
+	}
+
+	fn contains_artboard(&self) -> bool {
+		self.lane_count() > 0
+	}
+}
+
+impl Render for RunView<'_, String> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		render_text_svg(self, render, render_params)
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		render_text_vello(self, scene, transform, render_params)
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
+		collect_text_metadata(self, metadata, footprint, caller_element_id)
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		add_text_upstream_click_targets(self, click_targets)
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SvgSegment {
 	Slice(&'static str),

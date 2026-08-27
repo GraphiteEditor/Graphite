@@ -3,8 +3,7 @@ use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ModifyIndex};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
-use core_types::memo::IORecord;
-use core_types::record::{LevelStatus, OwnedRecord, RecordCapture, RecordValue, claim_frame, copy_record_bytes, serve_frame};
+use core_types::record::{LevelStatus, OwnedRecord, RecordValue, claim_frame, copy_record_bytes, serve_frame};
 use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -183,70 +182,27 @@ fn frame_memo<'e>(
 	}
 }
 
-type MonitorValue = Arc<Mutex<Option<IORecord<CtxSnapshot, RecordCapture>>>>;
+type MonitorValue = Arc<Mutex<Option<CtxSnapshot>>>;
 
-/// The Monitor node is used by the editor to access the data flowing through it.
+/// The Monitor node is used by the editor to access the data flowing through
+/// it. It stores only the evaluation context: the output is pure over
+/// (context, source generations), so introspection recreates it by
+/// re-evaluating this edge with the rehydrated snapshot.
 #[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
 fn monitor<'e>(
 	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + ModifyIndex + Copy,
 	#[data] io: MonitorValue,
 	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
 ) -> GPoll<RecordValue<'e>> {
-	let entry_sp = core_types::record::stack::sp();
-	let publish = |captured: Option<RecordCapture>| {
-		*io.lock().unwrap() = captured.map(|output| IORecord {
-			input: CtxSnapshot::capture(ctx),
-			output,
-		});
-	};
-	// A leveled capture covers the whole extent, which the materialization below
-	// computes lane by lane. Serving THIS lane out of that batch rather than
-	// evaluating the content separately is what keeps the cost linear: the extra
-	// eval would double the work under every enclosing monitor.
-	if content.layout().depth > 0 && ctx.index() == 0 {
-		return match content.materialize_level(ctx, ctx.arena()) {
-			LevelStatus::Batch(batch, finality) => {
-				// SAFETY: the batch came from this edge, so it carries the edge's layout.
-				publish(unsafe { RecordCapture::capture_level(content.layout(), batch, ctx.arena()) });
-				let Some(lane) = (!batch.is_empty()).then(|| batch.get(0)) else {
-					// An empty level ends here; the past-end signal serves drains.
-					claim_frame(content.layout());
-					return GPoll::Error(Box::new(core_types::gpoll::GraphError::past_end()));
-				};
-				// SAFETY: the lane is a live record of this edge's layout.
-				let value = unsafe { serve_frame(content.layout(), lane.rec().ptr()) };
-				match finality {
-					Finality::AllFinal => GPoll::Final(value),
-					Finality::Partial => GPoll::Partial(value),
-				}
-			}
-			// A valueless materialization leaves frames no one reads, so the
-			// entry mark, not the current top, is what this node's frame sits on.
-			LevelStatus::Pending => {
-				// SAFETY: nothing borrows the frames above the entry mark.
-				unsafe { core_types::record::interrupt_frame(entry_sp, content.layout()) };
-				GPoll::Pending
-			}
-			LevelStatus::Error(error) => {
-				// SAFETY: nothing borrows the frames above the entry mark.
-				unsafe { core_types::record::interrupt_frame(entry_sp, content.layout()) };
-				GPoll::Error(Box::new(error))
-			}
-		};
+	if ctx.index() == 0 {
+		*io.lock().unwrap() = Some(CtxSnapshot::capture(ctx));
 	}
-	let result = content.eval(&ctx);
-	if ctx.index() == 0
-		&& let GPoll::Final(value) | GPoll::Partial(value) = &result
-	{
-		// SAFETY: the value came from this edge, so it carries the edge's layout.
-		publish(unsafe { RecordCapture::capture(content.layout(), content.layout().rec(value), ctx.arena()) });
-	}
-	result
+	content.eval(&ctx)
 }
 
 fn serialize_monitor(io: &MonitorValue) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
 	let io = io.lock().unwrap();
-	io.as_ref().map(|io| Arc::new(io.clone()) as Arc<dyn std::any::Any + Send + Sync>)
+	io.as_ref().map(|snapshot| Arc::new(snapshot.clone()) as Arc<dyn std::any::Any + Send + Sync>)
 }
 
 #[cfg(test)]
@@ -299,7 +255,7 @@ mod tests {
 	}
 
 	#[test]
-	fn monitor_serialize_exposes_the_capture_through_the_edge() {
+	fn monitor_serialize_recreates_the_value_from_its_snapshot() {
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -308,25 +264,25 @@ mod tests {
 		let layout = element_layout::<u32>();
 		let monitor = MonitorNode::new(core_types::record::RecordLift::<u32, _>::new(ValueNode(11u32)), &layout);
 		let handle = EdgeHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
-		assert!(handle.serialize().is_none(), "no capture before the first eval");
+		assert!(handle.serialize().is_none(), "no snapshot before the first eval");
 
 		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
 		let GPoll::Final(_) = edge.eval(&ctx) else {
 			panic!("expected a final record");
 		};
 
-		let io = handle.serialize().expect("the eval landed a capture");
-		let io = io.downcast_ref::<IORecord<CtxSnapshot, RecordCapture>>().expect("the capture is the monitor io");
-		assert!(
-			core_types::context::ExtractFootprint::try_footprint(&io.input).is_none(),
-			"the root context has no footprint to capture"
-		);
-		let element = io.output.materialize_element(&arena).expect("the capture materializes inside the window");
-		assert_eq!(*element.downcast_ref::<u32>().unwrap(), 11);
+		let io = handle.serialize().expect("the eval landed a snapshot");
+		let snapshot = io.downcast_ref::<CtxSnapshot>().expect("the monitor serializes its context snapshot");
+		let ctx = snapshot.rehydrate(&scope).expect("the arena holds the chains");
+		let GPoll::Final(value) = edge.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		// SAFETY: the eval produced a live record of the edge's layout.
+		assert_eq!(unsafe { layout.rec(&value).element::<u32>() }, 11);
 	}
 
 	#[test]
-	fn a_leveled_monitor_captures_the_whole_extent() {
+	fn a_leveled_monitor_recreates_the_whole_extent() {
 		let arena = Arena::new(1 << 12).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -342,10 +298,13 @@ mod tests {
 			panic!("expected a final record");
 		};
 
-		let io = handle.serialize().expect("the eval landed a capture");
-		let io = io.downcast_ref::<IORecord<CtxSnapshot, RecordCapture>>().expect("the capture is the monitor io");
-		assert_eq!(io.output.lanes(), 3, "the capture holds the whole extent, not the addressed lane");
-		let batch = io.output.batch(&arena).expect("the capture lives in this generation");
+		let io = handle.serialize().expect("the eval landed a snapshot");
+		let snapshot = io.downcast_ref::<CtxSnapshot>().expect("the monitor serializes its context snapshot");
+		let ctx = snapshot.rehydrate(&scope).expect("the arena holds the chains");
+		let LevelStatus::Batch(batch, _) = core_types::record::materialize_level(&edge, &ctx, &arena) else {
+			panic!("expected a materialized level");
+		};
+		assert_eq!(batch.len(), 3, "the recreation holds the whole extent, not the addressed lane");
 		let lanes = unsafe { core_types::node::List::<u32>::new(batch) };
 		let values: Vec<u32> = (0..lanes.len()).map(|lane| *lanes.element_ref(lane)).collect();
 		assert_eq!(values, vec![10, 20, 30]);

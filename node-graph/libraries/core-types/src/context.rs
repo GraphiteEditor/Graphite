@@ -1004,6 +1004,54 @@ impl CtxSnapshot {
 	pub fn generations(&self) -> &[(SourceId, u64)] {
 		&self.generations
 	}
+
+	/// Rebuilds the captured context against `scope`, allocating the borrowed
+	/// chains in the scope's arena; `None` reports arena exhaustion. The
+	/// scope carries the serving generation, so the recreated evaluation reads
+	/// current source data under the captured addressing.
+	pub fn rehydrate<'e>(&'e self, scope: &'e EvalScope<'e>) -> Option<ContextImpl<'e>> {
+		let arena = scope.arena();
+		let mut ctx = ContextImpl::root(scope);
+		if let Some(footprint) = self.footprint {
+			let (footprint, _) = arena.alloc(footprint)?;
+			ctx = ctx.with_footprint(footprint);
+		}
+		if let Some(levels) = &self.index {
+			let mut outer = None;
+			for &index in levels.iter().skip(1).rev() {
+				let (link, _) = arena.alloc(IndexLink { index: index as u64, outer })?;
+				outer = Some(link);
+			}
+			ctx.index = IndexLink {
+				index: levels.first().copied().unwrap_or_default() as u64,
+				outer,
+			};
+		}
+		if let Some(positions) = &self.positions {
+			let mut head = None;
+			for &position in positions.iter().rev() {
+				let (link, _) = arena.alloc(PositionLink { position, outer: head })?;
+				head = Some(link);
+			}
+			if let Some(head) = head {
+				ctx = ctx.with_position(head);
+			}
+		}
+		let mut varargs = None;
+		for args in self.varargs.iter().rev() {
+			let slots: Vec<DynSlot<'e>> = args.iter().map(|slot| &**slot as DynSlot<'e>).collect();
+			let slots = arena.alloc_slice_copy(&slots)?;
+			let (link, _) = arena.alloc(VarArgLink {
+				args: VarArgSlots::Slice(slots),
+				outer: varargs,
+			})?;
+			varargs = Some(link);
+		}
+		if let Some(varargs) = varargs {
+			ctx = ctx.with_varargs(varargs);
+		}
+		Some(ctx)
+	}
 }
 
 impl ExtractFootprint for CtxSnapshot {

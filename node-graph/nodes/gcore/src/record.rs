@@ -2576,16 +2576,16 @@ mod tests {
 	}
 
 	#[test]
-	fn record_monitor_forwards_and_captures_for_the_introspection_window() {
-		let mut arena = Arena::new(1024).unwrap();
+	fn record_monitor_forwards_and_recreates_from_its_snapshot() {
+		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 
 		let layout = f64_layout(&["opacity"]);
 		reserve_for(&[&layout, &layout]);
 
 		let monitor = crate::memo::MonitorNode::new(f64_record_source(&layout, 4., vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)]), &layout);
+		let scope = scope_fixture(&generations, &arena);
 		{
-			let scope = scope_fixture(&generations, &arena);
 			let ctx = ContextImpl::root(&scope);
 			let GPoll::Final(value) = monitor.eval(&ctx) else {
 				panic!("expected a final record");
@@ -2594,16 +2594,14 @@ mod tests {
 		}
 
 		let io = Node::<ContextImpl>::serialize(&monitor).unwrap();
-		let io = io
-			.downcast_ref::<core_types::memo::IORecord<core_types::context::CtxSnapshot, core_types::record::RecordCapture>>()
-			.unwrap();
-		let fields = io.output.materialize(&arena).unwrap();
-		assert_eq!(fields.len(), 1);
-		assert_eq!(fields[0].0, "opacity");
-		assert_eq!(*fields[0].1.as_any().downcast_ref::<f64>().unwrap(), 0.25);
-
-		arena.reset();
-		assert!(io.output.materialize(&arena).is_none(), "a dead generation materializes to nothing");
+		let snapshot = io.downcast_ref::<core_types::context::CtxSnapshot>().expect("the monitor serializes its context snapshot");
+		let ctx = snapshot.rehydrate(&scope).expect("the arena holds the chains");
+		let GPoll::Final(value) = monitor.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		let rec = layout.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 4.);
+		assert_eq!(unsafe { rec.read::<f64>(layout.offset_of("opacity", 0).unwrap()) }, 0.25);
 	}
 
 	#[test]

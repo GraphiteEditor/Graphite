@@ -10,7 +10,6 @@ use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig, Texture};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::core_types::gpoll::GPoll;
-use graphene_std::list::List;
 use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
@@ -492,44 +491,66 @@ impl NodeRuntime {
 				continue;
 			};
 
-			// Extract the monitor node's stored `Graphic` data
-			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else {
+			// Read the monitored run directly, inside the introspection window
+			let thumbnail_renders = &mut self.thumbnail_renders;
+			let vector_modify = &mut self.vector_modify;
+			let result = self.executor.introspect_with(monitor_node_path, |layout, batch, _arena| {
+				use graphene_std::core_types::record::{Group, GroupContent, GroupItem, RunView};
+				let type_id = layout.element.type_id;
+				// Graphic run: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
+				if type_id == std::any::TypeId::of::<Graphic>() {
+					if update_thumbnails {
+						// SAFETY: the batch is resident for the read.
+						let item = unsafe { GroupItem::from_resident(batch) };
+						let bounds = graphene_std::renderer::graphic_list_bounding_box(&RunView::<Graphic>::new(&item)?, DAffine2::IDENTITY);
+						let group = Graphic::Group(Group {
+							row: None,
+							content: GroupContent::Run(item),
+						});
+						Self::render_thumbnail(thumbnail_renders, parent_network_node_id, &group, bounds, responses)
+					}
+					Some(())
+				}
+				// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
+				// clips content to those rectangles so anything outside isn't visible
+				else if type_id == std::any::TypeId::of::<Artboard>() {
+					if update_thumbnails {
+						// SAFETY: the batch is resident for the read.
+						let item = unsafe { GroupItem::from_resident(batch) };
+						let run = RunView::<Artboard>::new(&item)?;
+						let bounds = artboard_clip_bounds(&run);
+						Self::render_thumbnail(thumbnail_renders, parent_network_node_id, &run, bounds, responses)
+					}
+					Some(())
+				}
+				// Vector run: vector modifications
+				else if type_id == std::any::TypeId::of::<Vector>() {
+					// SAFETY: the batch is resident for the read.
+					let item = unsafe { GroupItem::from_resident(batch) };
+					let run = RunView::<Vector>::new(&item)?;
+					use graphene_std::core_types::lane::LaneSource;
+					vector_modify.insert(parent_network_node_id, run.element(0).cloned().unwrap_or_default());
+					Some(())
+				}
+				// String run: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
+				else if type_id == std::any::TypeId::of::<String>() {
+					if update_thumbnails {
+						// SAFETY: the batch is resident for the read.
+						let item = unsafe { GroupItem::from_resident(batch) };
+						let run = RunView::<String>::new(&item)?;
+						let bounds = graphene_std::renderer::text_list_bounding_box(&run, DAffine2::IDENTITY);
+						Self::render_thumbnail(thumbnail_renders, parent_network_node_id, &run, bounds, responses)
+					}
+					Some(())
+				} else {
+					log::warn!("Failed to read monitor node output {parent_network_node_id:?}");
+					Some(())
+				}
+			});
+			if result.is_err() {
 				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
 				#[cfg(debug_assertions)]
-				warn!("Failed to introspect monitor node {}", self.executor.introspect(monitor_node_path).unwrap_err());
-				continue;
-			};
-
-			// Graphic list: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
-			if let Some(list) = introspected_data.downcast_ref::<List<Graphic>>() {
-				if update_thumbnails {
-					let bounds = graphene_std::renderer::graphic_list_bounding_box(list, DAffine2::IDENTITY);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, list, bounds, responses)
-				}
-			}
-			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
-			// clips content to those rectangles so anything outside isn't visible
-			else if let Some(list) = introspected_data.downcast_ref::<List<Artboard>>() {
-				if update_thumbnails {
-					let bounds = artboard_clip_bounds(list);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, list, bounds, responses)
-				}
-			}
-			// Vector list: vector modifications
-			else if let Some(list) = introspected_data.downcast_ref::<List<Vector>>() {
-				// Insert the vector modify
-				self.vector_modify.insert(parent_network_node_id, list.element(0).cloned().unwrap_or_default());
-			}
-			// String list: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
-			else if let Some(list) = introspected_data.downcast_ref::<List<String>>() {
-				if update_thumbnails {
-					let bounds = graphene_std::renderer::text_list_bounding_box(list, DAffine2::IDENTITY);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, list, bounds, responses)
-				}
-			}
-			// Other
-			else {
-				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");
+				warn!("Failed to introspect monitor node {}", result.unwrap_err());
 			}
 		}
 	}
@@ -597,11 +618,12 @@ impl NodeRuntime {
 
 /// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
 /// framing matches what's actually visible after clipping rather than the unclipped content extents.
-fn artboard_clip_bounds(artboards: &List<Artboard>) -> RenderBoundingBox {
+fn artboard_clip_bounds<S: graphene_std::core_types::lane::LaneSource<Element = Artboard>>(artboards: &S) -> RenderBoundingBox {
+	use graphene_std::core_types::attribute::{Dimensions, Location};
 	let mut combined: Option<[DVec2; 2]> = None;
-	for index in 0..artboards.len() {
-		let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);
-		let dimensions: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_DIMENSIONS, index);
+	for index in 0..artboards.lane_count() {
+		let location: DVec2 = artboards.attr::<Location>(index);
+		let dimensions: DVec2 = artboards.attr::<Dimensions>(index);
 		let bounds = [location, location + dimensions];
 		combined = Some(match combined {
 			Some(existing) => [existing[0].min(bounds[0]), existing[1].max(bounds[1])],
