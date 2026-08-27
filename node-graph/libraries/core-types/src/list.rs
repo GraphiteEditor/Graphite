@@ -602,6 +602,11 @@ impl ItemAttributeValues {
 		self.0.iter().map(|(key, _)| key.as_str())
 	}
 
+	/// Returns an iterator over the stored (key, value) pairs, in insertion order.
+	pub fn iter(&self) -> impl Iterator<Item = (&str, &dyn AnyAttributeValue)> {
+		self.0.iter().map(|(key, value)| (key.as_str(), &**value))
+	}
+
 	/// Returns a debug-formatted string representation of the attribute value for the given key, if it exists.
 	/// The `overrides` function can provide custom formatting for specific type.
 	pub fn display_value(&self, key: &str, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {

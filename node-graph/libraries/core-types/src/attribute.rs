@@ -105,12 +105,41 @@ pub struct AttributeInfo {
 	pub align: usize,
 	/// Writes the declared default's bytes into a `size`-long slice.
 	pub write_default_bytes: fn(&mut [u8]),
+	/// The marker's field form at the given level, for layouts built at runtime.
+	pub field_write_at: fn(u8) -> crate::record::FieldWrite,
+	/// Writes a legacy stored value into a field of this marker, parking
+	/// droppable payloads. A wrong-typed stored value leaves the field
+	/// untouched; `None` reports arena exhaustion.
+	pub write_stored: unsafe fn(&dyn AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>,
 }
 
 fn write_default_bytes<A: Attribute>(out: &mut [u8]) {
 	assert_eq!(out.len(), size_of::<A::Value<'static>>());
 	let value: A::Value<'static> = A::default();
 	unsafe { std::ptr::copy_nonoverlapping((&raw const value).cast::<u8>(), out.as_mut_ptr(), size_of::<A::Value<'static>>()) };
+}
+
+fn field_write_at<A: Attribute>(level: u8) -> crate::record::FieldWrite
+where
+	A::Value<'static>: graphene_hash::CacheHash + PartialEq,
+{
+	crate::record::FieldWrite::of::<A>(level)
+}
+
+unsafe fn write_stored<A: Attribute>(stored: &dyn AnyAttributeValue, dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
+	if A::from_stored(stored.as_any()).is_none() {
+		// A wrong-typed stored value reads as absent, so the field keeps its default.
+		return Some(());
+	}
+	match A::REPARK {
+		Some(repark) => unsafe { repark(stored, dst, arena) },
+		None => {
+			let value = A::from_stored(stored.as_any()).expect("checked above");
+			// SAFETY: a marker without re-park glue stores a plain value, so the bytes carry no borrowed data.
+			unsafe { dst.cast::<A::Value<'_>>().write(value) };
+			Some(())
+		}
+	}
 }
 
 /// All declared attribute names, keyed by name.
@@ -122,7 +151,7 @@ pub static ATTRIBUTE_REGISTRY: LazyLock<Mutex<HashMap<&'static str, AttributeInf
 /// claiming the name at a different value type panics.
 pub fn register<A: Attribute>()
 where
-	A::Value<'static>: AnyAttributeValue,
+	A::Value<'static>: AnyAttributeValue + graphene_hash::CacheHash + PartialEq,
 {
 	let info = AttributeInfo {
 		name: A::NAME,
@@ -132,6 +161,8 @@ where
 		size: size_of::<A::Value<'static>>(),
 		align: align_of::<A::Value<'static>>(),
 		write_default_bytes: write_default_bytes::<A>,
+		field_write_at: field_write_at::<A>,
+		write_stored: write_stored::<A>,
 	};
 	let conflict = match ATTRIBUTE_REGISTRY.lock().unwrap().entry(A::NAME) {
 		Entry::Vacant(vacant) => {

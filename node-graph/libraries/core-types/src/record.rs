@@ -1739,6 +1739,100 @@ where
 	}
 }
 
+/// Builds a resident run lane by lane: fresh frames in the arena at a layout
+/// derived from the element glue and field writes, elements pushed in order
+/// and attributes written onto pushed lanes. The finished item's frames are
+/// arena-resident, valid for the evaluation like every parked payload.
+pub struct RunBuilder<'e> {
+	arena: &'e crate::arena::Arena,
+	layout: Layout,
+	frames: *mut u8,
+	len: usize,
+	pushed: usize,
+}
+
+impl<'e> RunBuilder<'e> {
+	/// Fresh frames for `len` lanes of a layout over `element` and `fields`.
+	/// `None` reports arena exhaustion.
+	pub fn new(arena: &'e crate::arena::Arena, element: ElementWrite, fields: &[FieldWrite], len: usize) -> Option<Self> {
+		let layout = Layout::default().with_writes(0, element, fields);
+		assert!(!layout.element.parked || layout.element.content_hash.is_some(), "a parked element adopts only with content glue");
+		for field in &layout.fields {
+			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");
+		}
+		let stride = layout.lane_stride();
+		let scratch = arena.alloc_scratch::<u64>((len * stride).div_ceil(8))?;
+		Some(Self {
+			arena,
+			layout,
+			frames: scratch.as_mut_ptr().cast(),
+			len,
+			pushed: 0,
+		})
+	}
+
+	/// Starts the next lane: moves its element in and default-fills its
+	/// fields. Returns the lane index; `None` reports arena exhaustion.
+	pub fn push<T: Send + Sync + 'static>(&mut self, element: T) -> Option<usize> {
+		assert_eq!(std::any::TypeId::of::<T>(), self.layout.element.type_id, "the pushed element must match the layout's element type");
+		assert!(self.pushed < self.len, "the builder holds exactly its declared lane count");
+		let lane = self.pushed;
+		let stride = self.layout.lane_stride();
+		// SAFETY: the frames hold `len` lanes at the layout's stride, and
+		// `lane` is below `len`; the element slot and each field's region are
+		// disjoint parts of this lane.
+		let base = unsafe { self.frames.add(lane * stride) };
+		unsafe { write_element(base, element, self.arena) }?;
+		for field in &self.layout.fields {
+			// SAFETY: as above; the field region is within the lane.
+			let bytes = unsafe { std::slice::from_raw_parts_mut(base.add(field.offset), field.size) };
+			bytes.fill(0);
+			if let Some(info) = crate::attribute::info(field.name)
+				&& info.size == field.size
+			{
+				(info.write_default_bytes)(bytes);
+			}
+		}
+		self.pushed = lane + 1;
+		Some(lane)
+	}
+
+	/// Writes the marker's value on an already pushed lane. The layout must
+	/// carry the marker among its field writes.
+	pub fn attr<A: crate::attribute::Attribute>(&mut self, lane: usize, value: A::Value<'e>) {
+		assert!(lane < self.pushed, "attributes write onto pushed lanes");
+		let offset = self.layout.offset_of(A::NAME, 0).expect("the layout carries the written marker");
+		let field = self.layout.fields.iter().find(|field| field.name == A::NAME && field.level == 0).expect("resolved above");
+		assert_eq!(field.size, size_of::<A::Value<'e>>(), "the field was declared at the marker's value type");
+		// SAFETY: the offset comes from the builder's own layout and the size
+		// matches the marker's value type.
+		unsafe { self.frames.add(lane * self.layout.lane_stride() + offset).cast::<A::Value<'e>>().write(value) };
+	}
+
+	/// Writes a legacy stored value on an already pushed lane through the
+	/// census glue, parking droppable payloads. A marker outside the layout's
+	/// fields is dropped; a wrong-typed stored value leaves the field's
+	/// default. `None` reports arena exhaustion.
+	pub fn attr_stored(&mut self, lane: usize, info: &crate::attribute::AttributeInfo, value: &dyn crate::list::AnyAttributeValue) -> Option<()> {
+		assert!(lane < self.pushed, "attributes write onto pushed lanes");
+		let Some(offset) = self.layout.offset_of(info.name, 0) else { return Some(()) };
+		// SAFETY: the offset comes from the builder's own layout, and the
+		// census writer verifies the stored type before touching the field.
+		unsafe { (info.write_stored)(value, self.frames.add(lane * self.layout.lane_stride() + offset), self.arena) }
+	}
+
+	/// The finished run. Panics unless every lane was pushed, since an
+	/// unwritten parked element slot must never become readable.
+	pub fn finish(self) -> GroupItem {
+		assert_eq!(self.pushed, self.len, "every lane pushes before the run finishes");
+		GroupItem {
+			layout: self.layout,
+			storage: ItemStorage::Resident(self.frames.cast_const()),
+			len: self.len,
+		}
+	}
+}
+
 /// `len` records stored in the arena at `layout`'s stride. The layout is
 /// owned by the value and identifies the run's element type. The records are
 /// valid for the current evaluation, like every arena payload. An owned item
@@ -1805,6 +1899,26 @@ impl GroupItem {
 			storage: ItemStorage::Resident(frames.cast_const()),
 			len: batch.len(),
 		})
+	}
+
+	/// A resident run built from a legacy list: one lane per item, the element
+	/// moved in and every census-declared attribute written through its stored
+	/// form. An undeclared key has no field form and is dropped; a wrong-typed
+	/// stored value leaves its field's default, matching the legacy read.
+	/// `None` reports arena exhaustion.
+	pub fn from_list<T: Clone + Send + Sync + graphene_hash::CacheHash + PartialEq + 'static>(list: crate::list::List<T>, arena: &crate::arena::Arena) -> Option<GroupItem> {
+		let declared: Vec<crate::attribute::AttributeInfo> = list.attribute_keys().filter_map(crate::attribute::info).collect();
+		let writes: Vec<FieldWrite> = declared.iter().map(|info| (info.field_write_at)(0)).collect();
+		let mut builder = RunBuilder::new(arena, element_write_hashed::<T>(), &writes, list.len())?;
+		for item in list.into_iter() {
+			let (element, attributes) = item.into_parts();
+			let lane = builder.push(element)?;
+			for (key, value) in attributes.iter() {
+				let Some(info) = declared.iter().find(|info| info.name == key) else { continue };
+				builder.attr_stored(lane, info, value)?;
+			}
+		}
+		Some(builder.finish())
 	}
 
 	/// The resident frame base. An owned item has none until it replays.
@@ -2414,6 +2528,73 @@ mod tests {
 			assert_eq!(unsafe { read_element::<String>(rec) }, format!("element {lane}"));
 			assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, format!("field {lane}"));
 		}
+	}
+
+	#[test]
+	fn a_run_builds_from_a_legacy_list_and_serves_its_rows() {
+		let mut list = crate::list::List::new_from_element(String::from("row 0"));
+		list.push(crate::list::Item::new_from_element(String::from("row 1")));
+		let transform = glam::DAffine2::from_translation(glam::DVec2::new(3., 4.));
+		list.set_attribute(crate::ATTR_TRANSFORM, 0, transform);
+		list.set_attribute("name", 0, String::from("first"));
+		list.set_attribute(crate::ATTR_EDITOR_LAYER_PATH, 1, vec![crate::uuid::NodeId(7), crate::uuid::NodeId(9)]);
+		list.set_attribute("max_width", 1, Some(12.5f64));
+
+		let arena = crate::arena::Arena::new(1 << 16).unwrap();
+		let item = GroupItem::from_list(list, &arena).unwrap();
+		assert_eq!(item.len(), 2);
+		let layout = item.layout().clone();
+		let lanes = item.lanes();
+
+		let rec = lanes.get(0).rec();
+		assert_eq!(unsafe { read_element::<String>(rec) }, "row 0");
+		assert_eq!(unsafe { rec.read::<glam::DAffine2>(layout.offset_of(crate::ATTR_TRANSFORM, 0).unwrap()) }, transform);
+		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "first");
+		assert!(unsafe { rec.read::<&[crate::uuid::NodeId]>(layout.offset_of(crate::ATTR_EDITOR_LAYER_PATH, 0).unwrap()) }.is_empty());
+
+		let rec = lanes.get(1).rec();
+		assert_eq!(unsafe { read_element::<String>(rec) }, "row 1");
+		// A lane without the value reads the census default, not garbage.
+		assert_eq!(unsafe { rec.read::<glam::DAffine2>(layout.offset_of(crate::ATTR_TRANSFORM, 0).unwrap()) }, glam::DAffine2::IDENTITY);
+		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "");
+		assert_eq!(
+			unsafe { rec.read::<&[crate::uuid::NodeId]>(layout.offset_of(crate::ATTR_EDITOR_LAYER_PATH, 0).unwrap()) },
+			&[crate::uuid::NodeId(7), crate::uuid::NodeId(9)]
+		);
+		assert_eq!(unsafe { rec.read::<Option<f64>>(layout.offset_of("max_width", 0).unwrap()) }, Some(12.5));
+	}
+
+	#[test]
+	fn a_built_run_replays_after_the_source_dies() {
+		let owned = {
+			let arena = crate::arena::Arena::new(1 << 16).unwrap();
+			let mut list = crate::list::List::new_from_element(String::from("element"));
+			list.set_attribute("name", 0, String::from("label"));
+			list.set_attribute(crate::ATTR_EDITOR_LAYER_PATH, 0, vec![crate::uuid::NodeId(3)]);
+			GroupItem::from_list(list, &arena).unwrap().copy_out()
+		};
+
+		let arena = crate::arena::Arena::new(1 << 16).unwrap();
+		let replayed = owned.replay(&arena).unwrap();
+		let layout = replayed.layout().clone();
+		let rec = replayed.lanes().get(0).rec();
+		assert_eq!(unsafe { read_element::<String>(rec) }, "element");
+		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "label");
+		assert_eq!(unsafe { rec.read::<&[crate::uuid::NodeId]>(layout.offset_of(crate::ATTR_EDITOR_LAYER_PATH, 0).unwrap()) }, &[crate::uuid::NodeId(3)]);
+	}
+
+	#[test]
+	fn a_wrong_typed_or_undeclared_column_leaves_the_default() {
+		let mut list = crate::list::List::new_from_element(String::from("element"));
+		list.set_attribute(crate::ATTR_OPACITY, 0, String::from("not an f64"));
+		list.set_attribute("never_declared", 0, 5u32);
+
+		let arena = crate::arena::Arena::new(1 << 16).unwrap();
+		let item = GroupItem::from_list(list, &arena).unwrap();
+		let layout = item.layout().clone();
+		assert!(layout.offset_of("never_declared", 0).is_none(), "an undeclared key has no field form");
+		let rec = item.lanes().get(0).rec();
+		assert_eq!(unsafe { rec.read::<f64>(layout.offset_of(crate::ATTR_OPACITY, 0).unwrap()) }, 1., "the wrong-typed value reads as absent");
 	}
 
 	#[test]
