@@ -2,7 +2,7 @@ use super::widgets::button_widgets::*;
 use super::widgets::input_widgets::*;
 use super::widgets::label_widgets::*;
 use crate::application::generate_uuid;
-use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
+use crate::messages::input_mapper::utility_types::keyboard::KeysGroup;
 use crate::messages::prelude::*;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;

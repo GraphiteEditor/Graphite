@@ -1,5 +1,5 @@
 use crate::messages::input_mapper::input_mapper_message_handler::InputMapperMessageContext;
-use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
+use crate::messages::input_mapper::utility_types::keyboard::KeysGroup;
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]

@@ -1,5 +1,23 @@
 use std::time::Duration;
 
+pub const MULTICLICK_TIMEOUT: Duration = Duration::from_millis(500);
+pub const MULTICLICK_ALLOWED_TRAVEL: usize = 4;
+
+pub const SCROLL_LINE_HEIGHT: f64 = 40.;
+pub const SCROLL_LINE_WIDTH: f64 = 40.;
+
+#[cfg(target_os = "linux")]
+pub const SCROLL_SPEED_X: f64 = 3.;
+#[cfg(target_os = "linux")]
+pub const SCROLL_SPEED_Y: f64 = 3.;
+
+#[cfg(not(target_os = "linux"))]
+pub const SCROLL_SPEED_X: f64 = 1.;
+#[cfg(not(target_os = "linux"))]
+pub const SCROLL_SPEED_Y: f64 = 1.;
+
+pub const PINCH_ZOOM_SPEED: f64 = 300.;
+
 pub(crate) const RESOURCE_SCHEME: &str = "resources";
 pub(crate) const RESOURCE_DOMAIN: &str = "resources";
 
@@ -17,21 +35,3 @@ pub(crate) const HOST_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[cfg(target_os = "macos")]
 pub(crate) const IPC_BOOTSTRAP_PREFIX: &str = "art.graphite.Graphite.ipc.";
-
-pub(crate) const SCROLL_LINE_HEIGHT: usize = 40;
-pub(crate) const SCROLL_LINE_WIDTH: usize = 40;
-
-#[cfg(target_os = "linux")]
-pub(crate) const SCROLL_SPEED_X: f32 = 3.;
-#[cfg(target_os = "linux")]
-pub(crate) const SCROLL_SPEED_Y: f32 = 3.;
-
-#[cfg(not(target_os = "linux"))]
-pub(crate) const SCROLL_SPEED_X: f32 = 1.;
-#[cfg(not(target_os = "linux"))]
-pub(crate) const SCROLL_SPEED_Y: f32 = 1.;
-
-pub(crate) const PINCH_ZOOM_SPEED: f64 = 300.;
-
-pub(crate) const MULTICLICK_TIMEOUT: Duration = Duration::from_millis(500);
-pub(crate) const MULTICLICK_ALLOWED_TRAVEL: usize = 4;

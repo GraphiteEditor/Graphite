@@ -1,11 +1,11 @@
 use crate::application::Editor;
 use crate::consts::{BIG_NUDGE_AMOUNT, BRUSH_SIZE_CHANGE_KEYBOARD, NUDGE_AMOUNT};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates};
-use crate::messages::input_mapper::utility_types::input_mouse::MouseButton;
+use crate::messages::input_mapper::utility_types::keyboard::{Key, KeyStates};
 use crate::messages::input_mapper::utility_types::macros::*;
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
 use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapping};
+use crate::messages::input_mapper::utility_types::pointer::MouseButton;
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::prelude::*;

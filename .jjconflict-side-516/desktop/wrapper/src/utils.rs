@@ -3,7 +3,7 @@ pub(crate) mod menu {
 	use base64::engine::Engine;
 	use base64::engine::general_purpose::STANDARD as BASE64;
 
-	use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, LabeledKeyOrMouseMotion, LabeledShortcut};
+	use graphite_editor::messages::input_mapper::utility_types::keyboard::{Key, LabeledKeyOrMouseMotion, LabeledShortcut};
 	use graphite_editor::messages::input_mapper::utility_types::misc::ActionShortcut;
 	use graphite_editor::messages::layout::LayoutMessage;
 	use graphite_editor::messages::tool::tool_messages::tool_prelude::{Layout, LayoutGroup, LayoutTarget, MenuListEntry, Widget, WidgetId, WidgetRow};

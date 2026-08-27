@@ -22,6 +22,8 @@ mod resources;
 mod utility;
 mod view;
 
+pub use consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
+
 pub struct UiContext<S: Stage = Started> {
 	inner: S::ContextData,
 }
