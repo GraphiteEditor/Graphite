@@ -1139,6 +1139,125 @@ impl Drop for ReclaimGuard {
 	}
 }
 
+/// Serves one record of a layout: claims the frame, takes type-checked
+/// element and attribute writes, and closes into the served [`RecordValue`].
+/// Unwritten fields serve their census defaults. The single-record sibling
+/// of [`RunBuilder`], for sources that spell their own serving.
+pub struct FrameBuilder<'l, 'e> {
+	layout: &'l Layout,
+	arena: &'e crate::arena::Arena,
+	value: RecordValue<'e>,
+	frame: Option<*mut u8>,
+	wrote_element: bool,
+	exhausted: bool,
+}
+
+impl<'l, 'e> FrameBuilder<'l, 'e> {
+	/// Claims the layout's frame and default-fills its fields.
+	pub fn new(layout: &'l Layout, arena: &'e crate::arena::Arena) -> Self {
+		let frame = match layout.frame_bytes() {
+			0 => None,
+			bytes => Some(stack::push(bytes)),
+		};
+		if let Some(frame) = frame {
+			// SAFETY: the frame was just claimed for this layout, and each
+			// field's region lies within it.
+			let bytes = unsafe { std::slice::from_raw_parts_mut(frame, layout.frame_bytes()) };
+			bytes.fill(0);
+			for field in &layout.fields {
+				if let Some(info) = crate::attribute::info(field.name)
+					&& info.size == field.size
+				{
+					(info.write_default_bytes)(&mut bytes[field.offset..field.offset + field.size]);
+				}
+			}
+		}
+		Self {
+			layout,
+			arena,
+			value: RecordValue::zeroed(),
+			frame,
+			wrote_element: false,
+			exhausted: false,
+		}
+	}
+
+	fn dst(&mut self) -> *mut u8 {
+		match self.frame {
+			Some(frame) => frame,
+			None => self.value.as_mut_ptr(),
+		}
+	}
+
+	/// Moves the element in, parking a droppable payload. Arena exhaustion
+	/// surfaces at [`Self::finish`].
+	pub fn element<T: Send + Sync + 'static>(&mut self, element: T) {
+		assert_eq!(std::any::TypeId::of::<T>(), self.layout.element.type_id, "the served element must match the layout's element type");
+		assert!(!self.wrote_element, "the element serves once");
+		self.wrote_element = true;
+		let dst = self.dst();
+		// SAFETY: dst is this record's own element slot and the type matches
+		// the layout's element.
+		if unsafe { write_element(dst, element, self.arena) }.is_none() {
+			self.exhausted = true;
+		}
+	}
+
+	/// Writes the marker's value. The layout must carry the marker among its
+	/// level-0 fields, declared at the marker's value type.
+	pub fn attr<A: crate::attribute::Attribute>(&mut self, value: A::Value<'e>)
+	where
+		A::Value<'static>: 'static,
+	{
+		let layout = self.layout;
+		let field = layout.fields.iter().find(|field| field.name == A::NAME && field.level == 0).expect("the layout carries the written marker");
+		assert_eq!(field.type_id, std::any::TypeId::of::<A::Value<'static>>(), "the field was declared at the marker's value type");
+		let dst = self.dst();
+		// SAFETY: the offset is the builder's own layout's and the value type
+		// matches the field's declared type.
+		unsafe { write_field(dst, field.offset, value) };
+	}
+
+	/// Writes a field by name and level, for layouts whose fields are not
+	/// census markers. The field must be declared at this value type.
+	pub fn field<T: Copy + 'static>(&mut self, name: &str, level: u8, value: T) {
+		let layout = self.layout;
+		let field = layout.fields.iter().find(|field| field.name == name && field.level == level).expect("the layout carries the written field");
+		assert_eq!(field.type_id, std::any::TypeId::of::<T>(), "the field was declared at this value type");
+		let dst = self.dst();
+		// SAFETY: as for [`Self::attr`].
+		unsafe { write_field(dst, field.offset, value) };
+	}
+
+	/// The served record. Panics unless the element was written, since an
+	/// unwritten parked slot must never become readable; `None` reports arena
+	/// exhaustion, with the frame released either way.
+	pub fn finish(mut self) -> Option<RecordValue<'e>> {
+		assert!(self.wrote_element || self.layout.element.size == 0, "the element serves before the frame closes");
+		let value = match self.frame.take() {
+			Some(frame) => {
+				stack::pop(frame);
+				// SAFETY: the frame was claimed for this layout and stays
+				// readable until the next claim.
+				RecordValue::spilled(unsafe { Rec::new(frame.cast_const()) })
+			}
+			None => std::mem::replace(&mut self.value, RecordValue::zeroed()),
+		};
+		match self.exhausted {
+			true => None,
+			false => Some(value),
+		}
+	}
+}
+
+impl Drop for FrameBuilder<'_, '_> {
+	fn drop(&mut self) {
+		if let Some(frame) = self.frame {
+			stack::pop(frame);
+		}
+	}
+}
+
 /// Field-by-field carry from `from`'s layout into `to`'s, computed at
 /// wiring. The element copy is included when `carry_element` holds, which is
 /// exactly when the node does not write a concrete element itself. `removes`
@@ -1605,6 +1724,73 @@ impl OwnedRecord {
 		}
 		Some(())
 	}
+}
+
+/// One record captured out of a poll: the deep copy plus the layout it was
+/// served at, so assertions read owned storage with no tie to the record
+/// stack. [`capture`] is the only constructor.
+pub struct ServedRecord {
+	layout: Layout,
+	record: OwnedRecord,
+}
+
+impl ServedRecord {
+	pub fn layout(&self) -> &Layout {
+		&self.layout
+	}
+
+	/// The element, cloned out of the capture. Panics unless `T` is the
+	/// layout's element type.
+	pub fn element<T: Clone + 'static>(&self) -> T {
+		assert_eq!(std::any::TypeId::of::<T>(), self.layout.element.type_id, "the read type must match the layout's element type");
+		match &self.record.element {
+			Some(parked) => parked.downcast_ref::<T>().expect("the element parked at its own type").clone(),
+			// SAFETY: the captured bytes image a record of this layout; a
+			// byte-carried element is a `T` with no drop glue.
+			None => unsafe { self.record.bytes.as_ptr().cast::<T>().read_unaligned() },
+		}
+	}
+
+	/// The marker's level-0 field value. Panics unless the layout declares
+	/// the marker at its value type.
+	pub fn attr<A: crate::attribute::Attribute>(&self) -> A::Value<'static>
+	where
+		A::Value<'static>: Copy + 'static,
+	{
+		self.field(A::NAME, 0)
+	}
+
+	/// A field by name and level, for layouts whose fields are not census
+	/// markers. Panics unless the field is declared at `T` and byte-carried;
+	/// a parked field reads through replay, not the captured bytes.
+	pub fn field<T: Copy + 'static>(&self, name: &str, level: u8) -> T {
+		let field = self.layout.fields.iter().find(|field| field.name == name && field.level == level).expect("the layout carries the read field");
+		assert_eq!(field.type_id, std::any::TypeId::of::<T>(), "the field was declared at this value type");
+		assert!(field.repark.is_none(), "a parked field reads through replay, not the captured bytes");
+		// SAFETY: the captured bytes image a record of this layout and the
+		// field is byte-carried at `T`.
+		unsafe { self.record.bytes.as_ptr().add(field.offset).cast::<T>().read_unaligned() }
+	}
+}
+
+/// Polls `node` once and captures any served record: the record is
+/// deep-copied at the node's own declared layout, then the record stack
+/// rewinds to its entry state, so the result is owned and no stack slot
+/// stays claimed. Assertion scaffolding for law tests; production consumers
+/// read served records in place.
+pub fn capture<'e, C, N: Node<C, Output = RecordValue<'e>>>(node: &N, ctx: &C) -> GPoll<ServedRecord> {
+	let mark = stack::sp();
+	let layout = node.layout().clone();
+	let result = node.eval(ctx).map(|value| ServedRecord {
+		// SAFETY: the poll served `value` at the node's declared layout and
+		// nothing has claimed frames since.
+		record: unsafe { OwnedRecord::copy_out(&layout, layout.rec(&value)) },
+		layout: layout.clone(),
+	});
+	// SAFETY: any served record was deep-copied out above, so nothing above
+	// the mark is live.
+	unsafe { stack::rewind(mark) };
+	result
 }
 
 /// Law-test scaffolding: wraps an arbitrary plain node onto a record wire
@@ -2659,5 +2845,54 @@ mod tests {
 				.unwrap();
 		});
 		stack::pop(here);
+	}
+
+	#[test]
+	fn a_captured_frame_serves_its_writes_and_defaults() {
+		use crate::attribute::{Opacity, Transform};
+		use glam::{DAffine2, DVec2};
+
+		struct Fixture {
+			layout: Layout,
+		}
+
+		impl<'e> Node<&'e crate::arena::Arena> for Fixture {
+			type Output = RecordValue<'e>;
+
+			fn eval(&self, arena: &&'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
+				let mut frame = FrameBuilder::new(&self.layout, arena);
+				frame.element(String::from("parked"));
+				frame.attr::<Transform>(DAffine2::from_translation(DVec2::new(3., 4.)));
+				match frame.finish() {
+					Some(value) => GPoll::Final(value),
+					None => GPoll::error("arena exhausted"),
+				}
+			}
+
+			fn layout(&self) -> &Layout {
+				&self.layout
+			}
+		}
+
+		let layout = Layout::default().with_writes(0, element_write::<String>(), &[FieldWrite::of::<Transform>(0), FieldWrite::of::<Opacity>(0)]);
+		stack::reserve(1 << 10);
+		let arena = crate::arena::Arena::new(1024).unwrap();
+		let mark = stack::sp();
+		let GPoll::Final(served) = capture(&Fixture { layout }, &&arena) else {
+			panic!("the fixture serves finally");
+		};
+		assert_eq!(stack::sp(), mark, "capture returns every claimed slot");
+		assert_eq!(served.element::<String>(), "parked");
+		assert_eq!(served.attr::<Transform>(), DAffine2::from_translation(DVec2::new(3., 4.)));
+		assert_eq!(served.attr::<Opacity>(), 1., "an unwritten field serves its census default");
+	}
+
+	#[test]
+	#[should_panic(expected = "the served element must match the layout's element type")]
+	fn a_mistyped_element_is_rejected_at_the_write() {
+		stack::reserve(1 << 10);
+		let arena = crate::arena::Arena::new(256).unwrap();
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[]);
+		FrameBuilder::new(&layout, &arena).element(1u32);
 	}
 }
