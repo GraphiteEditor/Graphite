@@ -1,3 +1,6 @@
+pub mod cache;
+pub use cache::BrushCache;
+
 use core_types::CacheHash;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::render_complexity::RenderComplexity;
