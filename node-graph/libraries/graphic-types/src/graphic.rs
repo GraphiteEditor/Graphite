@@ -854,29 +854,73 @@ fn push_lane_paint_into_interiors(list: &mut List<Graphic>) {
 	}
 }
 
-/// The deep clone-out for `Graphic` elements: a plain clone of a group
+/// The graphic with every `Group` deep-copied to its owned form, which
+/// survives the arena generation but cannot be read until
+/// [`map_groups_to_resident`] re-parks it into a serving arena.
+pub fn map_groups_to_owned(graphic: &Graphic) -> Graphic {
+	match graphic {
+		Graphic::Group(group) => Graphic::Group(group.copy_out()),
+		Graphic::Graphic(children) => {
+			let mut children = children.clone();
+			for child in children.iter_element_values_mut() {
+				*child = map_groups_to_owned(child);
+			}
+			Graphic::Graphic(children)
+		}
+		other => other.clone(),
+	}
+}
+
+/// The graphic with every owned `Group` re-parked into `arena`; `None`
+/// reports arena exhaustion.
+pub fn map_groups_to_resident(graphic: &Graphic, arena: &core_types::arena::Arena) -> Option<Graphic> {
+	match graphic {
+		Graphic::Group(group) => group.replay(arena).map(Graphic::Group),
+		Graphic::Graphic(children) => {
+			let mut children = children.clone();
+			for child in children.iter_element_values_mut() {
+				*child = map_groups_to_resident(child, arena)?;
+			}
+			Some(Graphic::Graphic(children))
+		}
+		other => Some(other.clone()),
+	}
+}
+
+/// The deep copy-out for `Graphic` elements: a plain clone of a group
 /// interior would carry frame pointers into the evaluation's arena, so memo
-/// and capture seams copy out the legacy-converted form, which owns all of
-/// its content. The generic re-park replays it as an ordinary `Graphic`.
+/// and capture seams copy out the owned-group form.
 ///
 /// # Safety
 /// `ptr` must point at a live parked `Graphic` element field.
 unsafe fn deep_clone_graphic(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
 	let graphic = unsafe { core_types::record::borrow_element::<Graphic>(core_types::record::Rec::new(ptr)) };
-	Box::new(map_groups_to_legacy(graphic))
+	Box::new(map_groups_to_owned(graphic))
+}
+
+/// The deep re-park for `Graphic` elements: owned groups replay into the
+/// serving arena before the graphic parks.
+///
+/// # Safety
+/// `value` must hold a `Graphic` and `dst` must be a live `Graphic` element
+/// field.
+unsafe fn deep_repark_graphic(value: &(dyn std::any::Any + Send + Sync), dst: *mut u8, arena: &core_types::arena::Arena) -> Option<()> {
+	let graphic = value.downcast_ref::<Graphic>().expect("an element replays at its own type");
+	let resident = map_groups_to_resident(graphic, arena)?;
+	unsafe { core_types::record::write_element(dst, resident, arena) }
 }
 
 const _: () = {
 	#[cfg(not(target_family = "wasm"))]
 	#[core_types::ctor::ctor]
 	fn register() {
-		core_types::record::register_deep_element_clone::<Graphic>(deep_clone_graphic);
+		core_types::record::register_deep_element_clone::<Graphic>(deep_clone_graphic, deep_repark_graphic);
 	}
 
 	#[cfg(target_family = "wasm")]
 	#[unsafe(export_name = "__node_registry_deep_element_graphic")]
 	extern "C" fn register() {
-		core_types::record::register_deep_element_clone::<Graphic>(deep_clone_graphic);
+		core_types::record::register_deep_element_clone::<Graphic>(deep_clone_graphic, deep_repark_graphic);
 	}
 };
 
@@ -1199,6 +1243,77 @@ mod run_tests {
 
 		let legacy = run_to_legacy_list::<Vector>(&item).expect("the run lowers to a legacy vector list");
 		assert_eq!(paint_graphics::<Fill, _>(&legacy, 0), paint_graphics::<Fill, _>(&run, 0));
+	}
+
+	#[test]
+	fn an_owned_group_replays_content_equal_after_the_source_dies() {
+		let paint = List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK)));
+		let vector = unit_square_at(DVec2::ZERO);
+
+		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
+		let mut bytes = vec![0u8; layout.lane_stride()];
+		// SAFETY: `bytes` is one lane of `layout`; a parked element stores its
+		// reference, and the fill field stores the marker's value form.
+		unsafe {
+			let base = bytes.as_mut_ptr();
+			base.cast::<&Vector>().write(&vector);
+			base.add(layout.offset_of(Fill::NAME, 0).unwrap()).cast::<Option<&List<Graphic>>>().write(Some(&paint));
+		}
+		let (owned, expected) = {
+			// SAFETY: `bytes` holds one lane of `layout` at its stride.
+			let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+			let group = core_types::record::Group {
+				row: None,
+				content: core_types::record::GroupContent::Run(item),
+			};
+			let expected = group_to_legacy_list(&group);
+			(map_groups_to_owned(&Graphic::Group(group)), expected)
+		};
+		bytes.fill(u8::MAX);
+
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let resident = map_groups_to_resident(&owned, &arena).expect("the arena holds the replay");
+		let Graphic::Group(group) = &resident else { panic!("the replay keeps the group form") };
+		assert_eq!(group_to_legacy_list(group), expected);
+	}
+
+	#[test]
+	fn an_owned_group_replays_nested_groups_through_the_element_glue() {
+		let vector = unit_square_at(DVec2::ZERO);
+		let inner_layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[]);
+		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
+		// SAFETY: `inner_bytes` is one lane of `inner_layout`; a parked element
+		// stores its reference.
+		unsafe { inner_bytes.as_mut_ptr().cast::<&Vector>().write(&vector) };
+		// SAFETY: `inner_bytes` holds one lane of `inner_layout` at its stride.
+		let inner_item = unsafe { GroupItem::from_resident(RecordBatch::new(inner_bytes.as_ptr(), 1, &inner_layout)) };
+		let nested = Graphic::Group(core_types::record::Group {
+			row: None,
+			content: core_types::record::GroupContent::Run(inner_item),
+		});
+
+		let outer_layout = Layout::default().with_writes(0, element_write_hashed::<Graphic>(), &[]);
+		let mut outer_bytes = vec![0u8; outer_layout.lane_stride()];
+		// SAFETY: `outer_bytes` is one lane of `outer_layout`; a parked element
+		// stores its reference.
+		unsafe { outer_bytes.as_mut_ptr().cast::<&Graphic>().write(&nested) };
+		let (owned, expected) = {
+			// SAFETY: `outer_bytes` holds one lane of `outer_layout` at its stride.
+			let outer_item = unsafe { GroupItem::from_resident(RecordBatch::new(outer_bytes.as_ptr(), 1, &outer_layout)) };
+			let group = core_types::record::Group {
+				row: None,
+				content: core_types::record::GroupContent::Run(outer_item),
+			};
+			let expected = group_to_legacy_list(&group);
+			(map_groups_to_owned(&Graphic::Group(group)), expected)
+		};
+		outer_bytes.fill(u8::MAX);
+		inner_bytes.fill(u8::MAX);
+
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let resident = map_groups_to_resident(&owned, &arena).expect("the arena holds the replay");
+		let Graphic::Group(group) = &resident else { panic!("the replay keeps the group form") };
+		assert_eq!(group_to_legacy_list(group), expected);
 	}
 
 	#[test]

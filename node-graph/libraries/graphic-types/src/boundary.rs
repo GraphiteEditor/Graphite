@@ -53,6 +53,25 @@ where
 /// legacy vocabulary or a capture whose arena generation has passed.
 pub fn capture_to_legacy(capture: &RecordCapture, arena: &Arena) -> Option<Box<dyn std::any::Any + Send + Sync>> {
 	if capture.layout().depth == 0 {
+		// The group-carrying types legacy-convert while the capture is still
+		// resident; the deep clone-out would hand back the unreadable owned
+		// form.
+		if capture.lanes() > 0 {
+			let element = &capture.layout().element;
+			if element.type_id == std::any::TypeId::of::<Graphic>() {
+				let batch = capture.batch(arena)?;
+				// SAFETY: the layout records the element type, and a parked
+				// element stores its reference at offset 0.
+				let graphic = unsafe { core_types::record::borrow_element::<Graphic>(batch.get(0).rec()) };
+				return Some(Box::new(crate::graphic::map_groups_to_legacy(graphic)));
+			}
+			if element.type_id == std::any::TypeId::of::<Artboard>() {
+				let batch = capture.batch(arena)?;
+				// SAFETY: as for the graphic arm.
+				let artboard = unsafe { core_types::record::borrow_element::<Artboard>(batch.get(0).rec()) };
+				return Some(Box::new(artboard.with_legacy_groups()));
+			}
+		}
 		return capture.materialize_element(arena);
 	}
 	let batch = capture.batch(arena)?;

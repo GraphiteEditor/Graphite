@@ -1247,23 +1247,31 @@ pub fn element_dims<T>() -> (usize, usize) {
 	}
 }
 
-/// Deep clone-out overrides for element types whose plain clone borrows the
+/// Deep-copy overrides for element types whose plain clone borrows the
 /// evaluation's arena (a `Graphic` holding a group interior). The generic
 /// element glue consults this registry, so every layout carrying such an
 /// element deep-copies at memo and capture seams regardless of which
-/// constructor built the glue. The override must produce a value of the
-/// element's own type that owns all of its content, so the generic re-park
-/// replays it unchanged.
-static DEEP_ELEMENT_CLONES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>>>> =
-	std::sync::LazyLock::new(Default::default);
-
-/// Registers `clone_out` as the deep clone-out for elements of `T`. Called at
-/// startup from the crate that owns the type.
-pub fn register_deep_element_clone<T: 'static>(clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>) {
-	DEEP_ELEMENT_CLONES.lock().unwrap().insert(std::any::TypeId::of::<T>(), clone_out);
+/// constructor built the glue. The clone-out must produce a value of the
+/// element's own type that owns all of its content; the re-park restores that
+/// value's arena-resident form before parking it.
+#[derive(Clone, Copy)]
+struct DeepElementGlue {
+	clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>,
+	repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
 }
 
-fn deep_element_clone(type_id: std::any::TypeId) -> Option<unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>> {
+static DEEP_ELEMENT_CLONES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, DeepElementGlue>>> = std::sync::LazyLock::new(Default::default);
+
+/// Registers the deep copy-out and re-park pair for elements of `T`. Called
+/// at startup from the crate that owns the type.
+pub fn register_deep_element_clone<T: 'static>(
+	clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>,
+	repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
+) {
+	DEEP_ELEMENT_CLONES.lock().unwrap().insert(std::any::TypeId::of::<T>(), DeepElementGlue { clone_out, repark });
+}
+
+fn deep_element_glue(type_id: std::any::TypeId) -> Option<DeepElementGlue> {
 	DEEP_ELEMENT_CLONES.lock().unwrap().get(&type_id).copied()
 }
 
@@ -1271,12 +1279,15 @@ fn deep_element_clone(type_id: std::any::TypeId) -> Option<unsafe fn(*const u8) 
 /// the statically-known type.
 pub fn element_write<T: Clone + Send + Sync + 'static>() -> ElementWrite {
 	unsafe fn clone_out<T: Clone + Send + Sync + 'static>(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
-		if let Some(deep) = deep_element_clone(std::any::TypeId::of::<T>()) {
-			return unsafe { deep(ptr) };
+		if let Some(deep) = deep_element_glue(std::any::TypeId::of::<T>()) {
+			return unsafe { (deep.clone_out)(ptr) };
 		}
 		Box::new(unsafe { read_element::<T>(Rec::new(ptr)) })
 	}
 	unsafe fn repark<T: Clone + Send + Sync + 'static>(value: &(dyn std::any::Any + Send + Sync), dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
+		if let Some(deep) = deep_element_glue(std::any::TypeId::of::<T>()) {
+			return unsafe { (deep.repark)(value, dst, arena) };
+		}
 		let value = value.downcast_ref::<T>().expect("an element replays at its own type");
 		unsafe { write_element(dst, value.clone(), arena) }
 	}
@@ -1778,12 +1789,38 @@ where
 
 /// `len` records stored in the arena at `layout`'s stride. The layout is
 /// owned by the value and identifies the run's element type. The records are
-/// valid for the current evaluation, like every arena payload.
+/// valid for the current evaluation, like every arena payload. An owned item
+/// ([`Self::copy_out`]) survives the generation instead, and must
+/// [`Self::replay`] into a serving arena before any read.
 #[derive(Clone, Debug)]
 pub struct GroupItem {
 	layout: Layout,
-	frames: *const u8,
+	storage: ItemStorage,
 	len: usize,
+}
+
+#[derive(Clone)]
+enum ItemStorage {
+	Resident(*const u8),
+	Owned(std::sync::Arc<OwnedLanes>),
+}
+
+impl std::fmt::Debug for ItemStorage {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			ItemStorage::Resident(frames) => write!(f, "Resident({frames:p})"),
+			ItemStorage::Owned(_) => f.write_str("Owned(..)"),
+		}
+	}
+}
+
+/// The lanes deep-copied out of their evaluation: the packed bytes plus owned
+/// clones of every parked payload, per lane. The byte image's parked
+/// references are stale until [`GroupItem::replay`] re-parks the payloads.
+struct OwnedLanes {
+	bytes: Box<[u8]>,
+	elements: Option<Vec<Box<dyn std::any::Any + Send + Sync>>>,
+	fields: Vec<(usize, Vec<Box<dyn crate::list::AnyAttributeValue>>)>,
 }
 
 // SAFETY: the same argument as for `RecordValue`. The element bounds and the
@@ -1813,9 +1850,17 @@ impl GroupItem {
 		}
 		Some(Self {
 			layout,
-			frames: frames.cast_const(),
+			storage: ItemStorage::Resident(frames.cast_const()),
 			len: batch.len(),
 		})
+	}
+
+	/// The resident frame base. An owned item has none until it replays.
+	fn frames(&self) -> *const u8 {
+		match &self.storage {
+			ItemStorage::Resident(frames) => *frames,
+			ItemStorage::Owned(_) => panic!("an owned item replays into an arena before it is read"),
+		}
 	}
 
 	pub fn len(&self) -> usize {
@@ -1842,17 +1887,85 @@ impl GroupItem {
 			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");
 		}
 		Self {
-			frames: batch.frames_ptr(),
+			storage: ItemStorage::Resident(batch.frames_ptr()),
 			len: batch.len(),
 			layout,
 		}
 	}
 
-	/// A batch view over the stored records.
+	/// A batch view over the stored records. Panics on an owned item, which
+	/// must [`Self::replay`] first.
 	pub fn lanes(&self) -> crate::node::RecordBatch<'_> {
 		// SAFETY: the constructors store `len` lanes of `layout` at the
 		// layout's stride.
-		unsafe { crate::node::RecordBatch::new(self.frames, self.len, &self.layout) }
+		unsafe { crate::node::RecordBatch::new(self.frames(), self.len, &self.layout) }
+	}
+
+	/// The item deep-copied out of its evaluation: lane bytes plus owned
+	/// clones of every parked payload, for storage that outlives the arena
+	/// generation. An owned item cannot be read until it replays.
+	pub fn copy_out(&self) -> GroupItem {
+		if let ItemStorage::Owned(_) = &self.storage {
+			return self.clone();
+		}
+		let stride = self.layout.lane_stride();
+		let frames = self.frames();
+		// SAFETY: the constructors store `len` lanes of `layout` at the
+		// layout's stride, and the erased glue reads each lane's own region.
+		let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(frames, self.len * stride) }.into();
+		let elements = self
+			.layout
+			.element
+			.parked
+			.then(|| (0..self.len).map(|lane| unsafe { (self.layout.element.clone_out)(frames.add(lane * stride)) }).collect());
+		let fields = self
+			.layout
+			.fields
+			.iter()
+			.enumerate()
+			.filter(|(_, field)| field.repark.is_some())
+			.map(|(index, field)| {
+				let values = (0..self.len).map(|lane| unsafe { (field.read_erased)(frames.add(lane * stride + field.offset)) }).collect();
+				(index, values)
+			})
+			.collect();
+		GroupItem {
+			layout: self.layout.clone(),
+			storage: ItemStorage::Owned(std::sync::Arc::new(OwnedLanes { bytes, elements, fields })),
+			len: self.len,
+		}
+	}
+
+	/// Re-parks an owned item's lanes into `arena`, restoring the resident
+	/// form; `None` reports arena exhaustion. A resident item returns a plain
+	/// clone.
+	pub fn replay(&self, arena: &crate::arena::Arena) -> Option<GroupItem> {
+		let ItemStorage::Owned(owned) = &self.storage else {
+			return Some(self.clone());
+		};
+		let stride = self.layout.lane_stride();
+		let scratch = arena.alloc_scratch::<u64>((self.len * stride).div_ceil(8))?;
+		let frames = scratch.as_mut_ptr().cast::<u8>();
+		// SAFETY: the scratch holds `len` lanes at the layout's stride, and the
+		// re-park glue writes each lane's own region under that layout.
+		unsafe { std::ptr::copy_nonoverlapping(owned.bytes.as_ptr(), frames, owned.bytes.len()) };
+		if let Some(elements) = &owned.elements {
+			for (lane, element) in elements.iter().enumerate() {
+				unsafe { (self.layout.element.repark)(&**element, frames.add(lane * stride), arena) }?;
+			}
+		}
+		for (index, values) in &owned.fields {
+			let field = &self.layout.fields[*index];
+			let repark = field.repark.expect("copied fields carry re-park glue");
+			for (lane, value) in values.iter().enumerate() {
+				unsafe { repark(&**value, frames.add(lane * stride + field.offset), arena) }?;
+			}
+		}
+		Some(GroupItem {
+			layout: self.layout.clone(),
+			storage: ItemStorage::Resident(frames.cast_const()),
+			len: self.len,
+		})
 	}
 
 	/// A typed view over the stored records, checked against the layout's
@@ -1946,6 +2059,34 @@ pub struct Group {
 	pub content: GroupContent,
 }
 
+impl Group {
+	/// The group deep-copied out of its evaluation, every run in owned form.
+	pub fn copy_out(&self) -> Group {
+		let content = match &self.content {
+			GroupContent::Run(item) => GroupContent::Run(item.copy_out()),
+			GroupContent::Stack(children) => GroupContent::Stack(children.iter().map(Group::copy_out).collect()),
+		};
+		Group {
+			row: self.row.as_ref().map(GroupItem::copy_out),
+			content,
+		}
+	}
+
+	/// Re-parks an owned group's runs into `arena`; `None` reports arena
+	/// exhaustion.
+	pub fn replay(&self, arena: &crate::arena::Arena) -> Option<Group> {
+		let content = match &self.content {
+			GroupContent::Run(item) => GroupContent::Run(item.replay(arena)?),
+			GroupContent::Stack(children) => GroupContent::Stack(children.iter().map(|child| child.replay(arena)).collect::<Option<_>>()?),
+		};
+		let row = match &self.row {
+			Some(row) => Some(row.replay(arena)?),
+			None => None,
+		};
+		Some(Group { row, content })
+	}
+}
+
 /// Compares one record region of `layout` by content. Regions without glue
 /// compare as bytes, which is the content for unparked values.
 unsafe fn record_content_eq(layout: &Layout, a: *const u8, b: *const u8) -> bool {
@@ -1993,8 +2134,9 @@ impl PartialEq for GroupItem {
 			return false;
 		}
 		let stride = self.layout.lane_stride();
+		let (a, b) = (self.frames(), other.frames());
 		// SAFETY: both sides hold `len` lanes of the shared layout.
-		(0..self.len).all(|lane| unsafe { record_content_eq(&self.layout, self.frames.add(lane * stride), other.frames.add(lane * stride)) })
+		(0..self.len).all(|lane| unsafe { record_content_eq(&self.layout, a.add(lane * stride), b.add(lane * stride)) })
 	}
 }
 
@@ -2003,9 +2145,10 @@ impl graphene_hash::CacheHash for GroupItem {
 		layout_shape_hash(&self.layout, state);
 		state.write_usize(self.len);
 		let stride = self.layout.lane_stride();
+		let frames = self.frames();
 		for lane in 0..self.len {
 			// SAFETY: `adopt` filled `len` lanes of `layout`.
-			unsafe { record_content_hash(&self.layout, self.frames.add(lane * stride), state) };
+			unsafe { record_content_hash(&self.layout, frames.add(lane * stride), state) };
 		}
 	}
 }
@@ -2302,6 +2445,46 @@ mod tests {
 		let rec = layout.rec(&value);
 		assert_eq!(unsafe { read_element::<String>(rec) }, "element");
 		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "field");
+	}
+
+	#[test]
+	fn owned_items_replay_re_parked_payloads_after_the_source_dies() {
+		let layout = Layout::default().with_writes(0, element_write_hashed::<String>(), &[FieldWrite::of::<crate::attribute::Name>(0)]);
+		let stride = layout.lane_stride();
+		let mut bytes = vec![0u8; stride * 2];
+
+		let owned = {
+			let arena = crate::arena::Arena::new(1024).unwrap();
+			for lane in 0..2 {
+				let base = unsafe { bytes.as_mut_ptr().add(lane * stride) };
+				unsafe { write_element(base, format!("element {lane}"), &arena) }.unwrap();
+				let (name, _) = arena.alloc(format!("field {lane}")).unwrap();
+				unsafe { write_field::<&str>(base, layout.offset_of("name", 0).unwrap(), name.as_str()) };
+			}
+			let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr(), 2, &layout)) };
+			item.copy_out()
+		};
+		bytes.fill(u8::MAX);
+
+		let arena = crate::arena::Arena::new(1024).unwrap();
+		let replayed = owned.replay(&arena).unwrap();
+		let lanes = replayed.lanes();
+		for lane in 0..2 {
+			let rec = lanes.get(lane).rec();
+			assert_eq!(unsafe { read_element::<String>(rec) }, format!("element {lane}"));
+			assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, format!("field {lane}"));
+		}
+	}
+
+	#[test]
+	#[should_panic(expected = "an owned item replays")]
+	fn an_owned_item_refuses_reads() {
+		let layout = Layout::default().with_writes(0, element_write_hashed::<String>(), &[]);
+		let mut bytes = vec![0u8; layout.lane_stride()];
+		let arena = crate::arena::Arena::new(1024).unwrap();
+		unsafe { write_element(bytes.as_mut_ptr(), String::from("parked"), &arena) }.unwrap();
+		let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+		item.copy_out().lanes();
 	}
 
 	#[test]

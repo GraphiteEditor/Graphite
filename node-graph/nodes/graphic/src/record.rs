@@ -743,7 +743,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_group_element_deep_copies_to_its_legacy_form() {
+	fn a_group_element_deep_copies_to_its_owned_form_and_replays() {
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -763,12 +763,25 @@ mod tests {
 			panic!("expected a final record");
 		};
 		let copy = unsafe { (out.element.clone_out)(out.rec(&value).ptr()) };
-		let Graphic::Graphic(list) = *copy.downcast::<Graphic>().expect("the deep copy replays at the element's own type") else {
-			panic!("expected the legacy-converted form");
+
+		let replay_arena = Arena::new(1 << 16).unwrap();
+		let mut slot = [0u8; 8];
+		unsafe { (out.element.repark)(&*copy, slot.as_mut_ptr(), &replay_arena) }.expect("the arena holds the replay");
+		// SAFETY: the re-park wrote a parked `Graphic` element into `slot`.
+		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(record::Rec::new(slot.as_ptr())) }) else {
+			panic!("the replay restores the group element");
 		};
-		assert_eq!(list.len(), 2);
-		assert_eq!(text_of(list.element(0).unwrap()), "a");
-		assert_eq!(text_of(list.element(1).unwrap()), "b");
+		let record::GroupContent::Run(item) = &group.content else {
+			panic!("expected a single run");
+		};
+		assert_eq!(item.len(), 2);
+		let lanes = item.typed_lanes::<Graphic>().expect("the run holds the adopted graphic lanes");
+		let offset = item.layout().offset_of(ATTR_TRANSFORM, 0).unwrap();
+		for (lane, (label, x)) in [("a", 1.), ("b", 2.)].into_iter().enumerate() {
+			assert_eq!(text_of(lanes.element_ref(lane)), label, "lane {lane}");
+			let transform: DAffine2 = unsafe { item.lanes().get(lane).rec().read(offset) };
+			assert_eq!(transform.translation.x, x, "lane {lane}");
+		}
 	}
 
 	#[test]

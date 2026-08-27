@@ -359,7 +359,11 @@ mod tests {
 			let value = unsafe { core_types::record::borrow_element::<Payload>(core_types::record::Rec::new(ptr)) };
 			Box::new(Payload(value.0.clone(), value.1 + 1))
 		}
-		core_types::record::register_deep_element_clone::<Payload>(deep);
+		unsafe fn deep_repark(value: &(dyn std::any::Any + Send + Sync), dst: *mut u8, arena: &Arena) -> Option<()> {
+			let value = value.downcast_ref::<Payload>().expect("an element replays at its own type");
+			unsafe { core_types::record::write_element(dst, Payload(value.0.clone(), value.1 + 1), arena) }
+		}
+		core_types::record::register_deep_element_clone::<Payload>(deep, deep_repark);
 
 		let arena = Arena::new(4096).unwrap();
 		let generations = [];
@@ -371,7 +375,7 @@ mod tests {
 		let memoized = core_types::record::RecordExtract::<Payload, _>::new(memoized, &layout);
 
 		assert_eq!(memoized.eval(&ctx), GPoll::Final(Payload("deep".to_string(), 0)), "the miss serves the live value");
-		assert_eq!(memoized.eval(&ctx), GPoll::Final(Payload("deep".to_string(), 1)), "the hit replays the deep copy");
+		assert_eq!(memoized.eval(&ctx), GPoll::Final(Payload("deep".to_string(), 2)), "the hit replays through both halves of the deep glue");
 	}
 
 	#[test]
