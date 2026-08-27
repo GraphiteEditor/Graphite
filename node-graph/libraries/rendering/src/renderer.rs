@@ -22,7 +22,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{LanePaint, PaintColumns, PaintOverlay, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
+use graphic_types::graphic::{PaintColumns, PaintOverlay, PaintReach, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
@@ -610,50 +610,6 @@ impl Render for Graphic {
 			Graphic::Gradient(_) => (),
 			Graphic::Text(_) => (),
 			Graphic::Group(_) => (),
-		}
-	}
-}
-
-/// How far a lane's paint reaches into the element beneath it, mirroring the
-/// legacy conversion's paint push: vector interiors directly and vector
-/// children of a nested graphic list, one level deep.
-#[derive(Clone, Copy)]
-struct PaintReach<'a> {
-	paint: LanePaint<'a>,
-	hops: u8,
-}
-
-impl<'a> PaintReach<'a> {
-	const NONE: Self = Self { paint: LanePaint::NONE, hops: 0 };
-
-	/// The lane's effective reach: an inherited paint stays authoritative
-	/// (lane paint below a push's origin is inert in the legacy model), an
-	/// absent one reads the lane's own paint.
-	fn for_lane<S: LaneSource>(self, columns: &PaintColumns<'a, S>, index: usize) -> Self {
-		match self.paint.is_present() {
-			true => self,
-			false => Self { paint: columns.read(index), hops: 2 },
-		}
-	}
-
-	fn applies(&self) -> bool {
-		self.hops > 0 && self.paint.is_present()
-	}
-
-	/// The reach one graphic nesting level further down.
-	fn nested(self) -> Self {
-		Self {
-			paint: self.paint,
-			hops: self.hops.saturating_sub(1),
-		}
-	}
-
-	/// The reach entering a group's own graphic run: a spent or absent reach
-	/// resets so the group's own lane paint applies at its own boundary.
-	fn into_group_graphics(self) -> Self {
-		match self.applies() {
-			true => self.nested(),
-			false => Self::NONE,
 		}
 	}
 }

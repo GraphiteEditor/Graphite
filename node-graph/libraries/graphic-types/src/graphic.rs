@@ -1,5 +1,5 @@
 use crate::markers::{ATTR_FILL, ATTR_STROKE, Fill, Stroke};
-use core_types::attribute::{Attribute, Opacity};
+use core_types::attribute::{Attribute, EditorLayerPath, Opacity, OpacityFill, Transform};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::lane::{LaneColumn, LaneSource};
@@ -273,6 +273,50 @@ impl<'a, S: LaneSource> PaintColumns<'a, S> {
 		LanePaint {
 			fill: present(self.fill.try_get(lane)),
 			stroke: present(self.stroke.try_get(lane)),
+		}
+	}
+}
+
+/// How far a lane's paint reaches into the element beneath it, mirroring the
+/// legacy conversion's paint push: vector interiors directly and vector
+/// children of a nested graphic list, one level deep.
+#[derive(Clone, Copy)]
+pub struct PaintReach<'a> {
+	pub paint: LanePaint<'a>,
+	hops: u8,
+}
+
+impl<'a> PaintReach<'a> {
+	pub const NONE: Self = Self { paint: LanePaint::NONE, hops: 0 };
+
+	/// The lane's effective reach: an inherited paint stays authoritative
+	/// (lane paint below a push's origin is inert in the legacy model), an
+	/// absent one reads the lane's own paint.
+	pub fn for_lane<S: LaneSource>(self, columns: &PaintColumns<'a, S>, index: usize) -> Self {
+		match self.paint.is_present() {
+			true => self,
+			false => Self { paint: columns.read(index), hops: 2 },
+		}
+	}
+
+	pub fn applies(&self) -> bool {
+		self.hops > 0 && self.paint.is_present()
+	}
+
+	/// The reach one graphic nesting level further down.
+	pub fn nested(self) -> Self {
+		Self {
+			paint: self.paint,
+			hops: self.hops.saturating_sub(1),
+		}
+	}
+
+	/// The reach entering a group's own graphic run: a spent or absent reach
+	/// resets so the group's own lane paint applies at its own boundary.
+	pub fn into_group_graphics(self) -> Self {
+		match self.applies() {
+			true => self.nested(),
+			false => Self::NONE,
 		}
 	}
 }
@@ -791,6 +835,217 @@ pub(crate) fn run_to_legacy_list<T: Clone + Send + Sync + 'static>(item: &core_t
 	let mut list = run_to_list::<T>(item)?;
 	map_paint_attrs_to_legacy(&mut list);
 	Some(list)
+}
+
+/// One step of the vector-row walk: continue to the next row or stop early.
+pub enum RowStep {
+	Continue,
+	Stop,
+}
+
+/// The ancestor composition a flattened row inherits: transform, opacity and
+/// fill opacity multiply down, each composing only where some ancestor
+/// carries the attribute, matching the legacy flatten.
+#[derive(Clone, Copy)]
+struct FlattenScale {
+	has_transform: bool,
+	transform: DAffine2,
+	has_opacity: bool,
+	opacity: f64,
+	has_fill_opacity: bool,
+	fill_opacity: f64,
+}
+
+impl FlattenScale {
+	const ROOT: Self = Self {
+		has_transform: false,
+		transform: DAffine2::IDENTITY,
+		has_opacity: false,
+		opacity: 1.,
+		has_fill_opacity: false,
+		fill_opacity: 1.,
+	};
+
+	fn composed<S: LaneSource>(self, source: &S, lane: usize) -> Self {
+		let transform = source.try_attr::<Transform>(lane);
+		let opacity = source.try_attr::<Opacity>(lane);
+		let fill_opacity = source.try_attr::<OpacityFill>(lane);
+		Self {
+			has_transform: self.has_transform || transform.is_some(),
+			transform: self.transform * transform.unwrap_or(DAffine2::IDENTITY),
+			has_opacity: self.has_opacity || opacity.is_some(),
+			opacity: self.opacity * opacity.unwrap_or(1.),
+			has_fill_opacity: self.has_fill_opacity || fill_opacity.is_some(),
+			fill_opacity: self.fill_opacity * fill_opacity.unwrap_or(1.),
+		}
+	}
+}
+
+/// One flattened vector row served by [`walk_vector_rows`]: cheap probes
+/// first, the full row built on demand.
+pub struct VectorRow<'w> {
+	source: RowSourceRef<'w>,
+	scale: FlattenScale,
+	layer_path: Option<&'w [NodeId]>,
+	paint: LanePaint<'w>,
+}
+
+enum RowSourceRef<'w> {
+	Legacy(&'w List<Vector>, usize),
+	Run(&'w core_types::record::RunView<'w, Vector>, &'w core_types::record::GroupItem, usize),
+}
+
+impl VectorRow<'_> {
+	/// The row's vector, borrowed.
+	pub fn element(&self) -> &Vector {
+		match &self.source {
+			RowSourceRef::Legacy(list, index) => list.element(*index).expect("the walk visits held rows"),
+			RowSourceRef::Run(run, _, index) => LaneSource::element(*run, *index).expect("the walk visits held lanes"),
+		}
+	}
+
+	/// Whether the built row will carry fill paint: the reaching lane paint,
+	/// else the row's own.
+	pub fn has_fill(&self) -> bool {
+		if self.paint.fill.is_some() {
+			return true;
+		}
+		match &self.source {
+			RowSourceRef::Legacy(list, index) => list
+				.attribute::<Option<List<Graphic>>>(ATTR_FILL, *index)
+				.and_then(|paint| paint.as_ref())
+				.is_some_and(is_paint_present),
+			RowSourceRef::Run(run, _, index) => paint_graphics::<Fill, _>(*run, *index).is_some(),
+		}
+	}
+
+	/// Builds the row at the end of `out`, applying the reach paint and the
+	/// inherited composition.
+	pub fn build_into(&self, out: &mut List<Vector>) {
+		let index = out.len();
+		match &self.source {
+			RowSourceRef::Legacy(list, row) => {
+				out.push(list.clone_item(*row).expect("the walk visits held rows"));
+			}
+			RowSourceRef::Run(run, item, lane) => {
+				out.push(Item::new_from_element(LaneSource::element(*run, *lane).expect("the walk visits held lanes").clone()));
+				for field in &item.layout().fields {
+					// SAFETY: the offset comes from the item's own layout.
+					let value = unsafe { (field.read_erased)(item.lanes().get(*lane).rec().ptr().add(field.offset)) };
+					out.set_attribute_value_dyn(field.name, index, AttributeValueDyn(value));
+				}
+			}
+		}
+		for (key, slot) in [(ATTR_FILL, self.paint.fill), (ATTR_STROKE, self.paint.stroke)] {
+			if let Some(paint) = slot {
+				set_paint_attribute_at(out, index, key, paint.clone());
+			}
+		}
+		if self.scale.has_transform || out.attribute::<DAffine2>(ATTR_TRANSFORM, index).is_some() {
+			let row_transform: DAffine2 = out.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			out.set_attribute(ATTR_TRANSFORM, index, self.scale.transform * row_transform);
+		}
+		if self.scale.has_opacity || out.attribute::<f64>(ATTR_OPACITY, index).is_some() {
+			let row_opacity: f64 = out.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			out.set_attribute(ATTR_OPACITY, index, self.scale.opacity * row_opacity);
+		}
+		if self.scale.has_fill_opacity || out.attribute::<f64>(ATTR_OPACITY_FILL, index).is_some() {
+			let row_fill: f64 = out.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			out.set_attribute(ATTR_OPACITY_FILL, index, self.scale.fill_opacity * row_fill);
+		}
+		if let Some(layer_path) = self.layer_path {
+			out.set_attribute(ATTR_EDITOR_LAYER_PATH, index, layer_path.to_vec());
+		}
+	}
+}
+
+fn walk_rows_of_list(list: &List<Vector>, scale: FlattenScale, layer_path: Option<&[NodeId]>, paint: LanePaint<'_>, visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep) -> RowStep {
+	for row in 0..list.len() {
+		if let RowStep::Stop = visit(VectorRow {
+			source: RowSourceRef::Legacy(list, row),
+			scale,
+			layer_path,
+			paint,
+		}) {
+			return RowStep::Stop;
+		}
+	}
+	RowStep::Continue
+}
+
+fn walk_rows_of_run(
+	item: &core_types::record::GroupItem,
+	scale: FlattenScale,
+	layer_path: Option<&[NodeId]>,
+	paint: LanePaint<'_>,
+	visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep,
+) -> RowStep {
+	let Some(run) = core_types::record::RunView::<Vector>::new(item) else {
+		return RowStep::Continue;
+	};
+	for lane in 0..item.len() {
+		if let RowStep::Stop = visit(VectorRow {
+			source: RowSourceRef::Run(&run, item, lane),
+			scale,
+			layer_path,
+			paint,
+		}) {
+			return RowStep::Stop;
+		}
+	}
+	RowStep::Continue
+}
+
+/// Walks a graphic level into its flattened vector rows, matching the legacy
+/// push-then-flatten lowering: lane paint threads with [`PaintReach`],
+/// ancestor transform, opacity and fill opacity compose down, the immediate
+/// parent's layer path overwrites its rows, and non-vector content is
+/// discarded.
+pub fn walk_vector_rows<S: LaneSource<Element = Graphic>>(source: &S, visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep) {
+	walk_vector_rows_impl(source, FlattenScale::ROOT, PaintReach::NONE, visit);
+}
+
+fn walk_vector_rows_impl<'a, S: LaneSource<Element = Graphic>>(
+	source: &'a S,
+	scale: FlattenScale,
+	inherited: PaintReach<'a>,
+	visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep,
+) -> RowStep {
+	let columns = PaintColumns::new(source);
+	for index in 0..source.lane_count() {
+		let Some(element) = source.element(index) else { continue };
+		let reach = inherited.for_lane(&columns, index);
+		let lane_scale = scale.composed(source, index);
+		let layer_path = source.try_attr::<EditorLayerPath>(index);
+		let row_paint = match reach.applies() {
+			true => reach.paint,
+			false => LanePaint::NONE,
+		};
+		let step = match element {
+			Graphic::Vector(inner) => walk_rows_of_list(inner, lane_scale, layer_path, row_paint, visit),
+			Graphic::Graphic(children) => walk_vector_rows_impl(children, lane_scale, reach.nested(), visit),
+			Graphic::Group(group) => match core_types::record::RunView::<Graphic>::new(&group.content) {
+				Some(run) => walk_vector_rows_impl(&run, lane_scale, reach.into_group_graphics(), visit),
+				None => walk_rows_of_run(&group.content, lane_scale, layer_path, row_paint, visit),
+			},
+			_ => RowStep::Continue,
+		};
+		if let RowStep::Stop = step {
+			return RowStep::Stop;
+		}
+	}
+	RowStep::Continue
+}
+
+/// The level's flattened vector rows as one owned list, the walk's collect
+/// form.
+pub fn flatten_vector_rows<S: LaneSource<Element = Graphic>>(source: &S) -> List<Vector> {
+	let mut out = List::new();
+	walk_vector_rows(source, &mut |row| {
+		row.build_into(&mut out);
+		RowStep::Continue
+	});
+	out
 }
 
 /// One typed run as the legacy list its `Render` impl consumes, nested
@@ -1442,6 +1697,54 @@ mod run_tests {
 		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
 		let list = run_to_list::<Graphic>(&item).expect("the run holds graphic lanes");
 		assert!(matches!(list.element(0), Some(Graphic::Group(_))), "the list keeps the native group form");
+	}
+
+	#[test]
+	fn the_vector_row_walk_matches_the_legacy_flatten() {
+		let inner_vector = unit_square_at(DVec2::ZERO);
+		let inner_layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[]);
+		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
+		// SAFETY: `inner_bytes` is one lane of `inner_layout`; a parked element
+		// stores its reference.
+		unsafe { inner_bytes.as_mut_ptr().cast::<&Vector>().write(&inner_vector) };
+		// SAFETY: `inner_bytes` holds one lane of `inner_layout` at its stride.
+		let inner_item = unsafe { GroupItem::from_resident(RecordBatch::new(inner_bytes.as_ptr(), 1, &inner_layout)) };
+
+		let mut painted = List::new();
+		painted.push(Item::new_from_element(unit_square_at(DVec2::ZERO)));
+		painted.push(Item::new_from_element(unit_square_at(DVec2::ONE)));
+		painted.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(1., 0.)));
+		painted.set_attribute(core_types::ATTR_TRANSFORM, 1, DAffine2::from_translation(DVec2::new(0., 1.)));
+		set_paint_attribute_at(&mut painted, 1, ATTR_FILL, List::new_from_element(Graphic::Color(List::new_from_element(Color::WHITE))));
+
+		let mut nested_child = List::new();
+		nested_child.push(Item::new_from_element(unit_square_at(DVec2::new(2., 2.))));
+		let mut nested = List::new_from_element(Graphic::Vector(nested_child));
+		nested.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_scale(DVec2::splat(2.)));
+
+		let mut top = List::new();
+		top.push(Item::new_from_element(Graphic::Vector(painted)));
+		top.push(Item::new_from_element(Graphic::Graphic(nested)));
+		top.push(Item::new_from_element(Graphic::Group(core_types::record::Group {
+			row: None,
+			content: inner_item,
+		})));
+		top.push(Item::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK))));
+		top.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(5., 5.)));
+		top.set_attribute(core_types::ATTR_EDITOR_LAYER_PATH, 0, vec![core_types::uuid::NodeId(7)]);
+		set_paint_attribute_at(&mut top, 0, ATTR_FILL, List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK))));
+		top.set_attribute(core_types::ATTR_OPACITY, 1, 0.5);
+		top.set_attribute(core_types::ATTR_TRANSFORM, 2, DAffine2::from_scale(DVec2::splat(3.)));
+
+		let legacy = {
+			let mut list = top.clone();
+			for element in list.iter_element_values_mut() {
+				*element = map_groups_to_legacy(element);
+			}
+			push_lane_paint_into_interiors(&mut list);
+			list.into_flattened_list::<Vector>()
+		};
+		assert_eq!(flatten_vector_rows(&top), legacy);
 	}
 
 	#[test]

@@ -1359,15 +1359,13 @@ fn offset_path(_: impl Ctx, (vector, lane_transform): (Vector, Attr<TransformAtt
 	(result, Attr(transform_attribute))
 }
 
-fn solidify_stroke_core(graphic_list: List<Graphic>) -> List<Vector> {
+fn solidify_rows(flattened: List<Vector>) -> List<Vector> {
 	// TODO: Make this node support stroke align, which it currently ignores
-
-	let flattened: List<Vector> = graphic_list.clone().into_flattened_list();
 
 	// A fill exists when the canonical attribute carries paint
 	let has_fills: Vec<bool> = (0..flattened.len()).map(|index| has_paint::<Fill, _>(&flattened, index)).collect();
 
-	let mut output: List<Vector> = flattened
+	let output: List<Vector> = flattened
 		.into_iter()
 		.zip(has_fills)
 		.flat_map(|(row, has_fill)| {
@@ -1444,31 +1442,17 @@ fn solidify_stroke_core(graphic_list: List<Graphic>) -> List<Vector> {
 		})
 		.collect();
 
-	// Snapshot the upstream content so the renderer can recurse into it for editor click-target preservation
-	// and surface the original pre-solidified `Vector` to the Path tool for editing.
-	if !output.is_empty() {
-		// Row 0 carries a composed transform inherited from the flattened input, but the merged_layers
-		// already holds the original transforms; pre-compensate by row 0's inverse so the renderer's
-		// `upstream_footprint *= row_0_transform` recursion cancels out and leaves the originals intact.
-		let mut graphic_list = graphic_list;
-		let row_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		if row_0_transform.matrix2.determinant().abs() > f64::EPSILON {
-			let inverse = row_0_transform.inverse();
-			for transform in graphic_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-				*transform = inverse * *transform;
-			}
-		}
-
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, Some(graphic_list));
-	}
-
 	output
 }
 
+/// One output lane of the solidify: the walk locates the flattened row the
+/// lane addresses (a fill-bearing row serves two lanes), builds and splits
+/// only that row, and lane 0 additionally carries the merged-layers snapshot.
 #[allow(clippy::type_complexity)]
-fn solidify_lane<'e>(
+fn solidify_native_lane<'e, S: core_types::lane::LaneSource<Element = Graphic>>(
 	arena: &'e core_types::arena::Arena,
-	graphic_list: List<Graphic>,
+	source: &S,
+	snapshot: impl FnOnce() -> List<Graphic>,
 	lane: usize,
 ) -> Result<
 	(
@@ -1485,7 +1469,42 @@ fn solidify_lane<'e>(
 	),
 	Interrupt,
 > {
-	emit_legacy_lane(arena, solidify_stroke_core(graphic_list), lane)
+	use graphic_types::graphic::RowStep;
+	let mut remaining = lane;
+	let mut located: Option<List<Vector>> = None;
+	graphic_types::graphic::walk_vector_rows(source, &mut |row| {
+		let parts = 1 + row.has_fill() as usize;
+		if remaining >= parts {
+			remaining -= parts;
+			return RowStep::Continue;
+		}
+		let mut one = List::new();
+		row.build_into(&mut one);
+		located = Some(one);
+		RowStep::Stop
+	});
+	let Some(row) = located else {
+		return Err(GraphError::past_end().into());
+	};
+	let mut split = solidify_rows(row);
+	// Snapshot the upstream content so the renderer can recurse into it for editor click-target preservation
+	// and surface the original pre-solidified `Vector` to the Path tool for editing.
+	if lane == 0 && !split.is_empty() {
+		// Row 0 carries a composed transform inherited from the flattened input, but the merged_layers
+		// already holds the original transforms; pre-compensate by row 0's inverse so the renderer's
+		// `upstream_footprint *= row_0_transform` recursion cancels out and leaves the originals intact.
+		let mut graphic_list = snapshot();
+		let row_0_transform: DAffine2 = split.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		if row_0_transform.matrix2.determinant().abs() > f64::EPSILON {
+			let inverse = row_0_transform.inverse();
+			for transform in graphic_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+				*transform = inverse * *transform;
+			}
+		}
+
+		split.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, Some(graphic_list));
+	}
+	emit_legacy_lane(arena, split, remaining)
 }
 
 /// One lane of a legacy result list as the element and standard-attribute
@@ -1584,7 +1603,10 @@ fn solidify_stroke<'e>(
 	)>,
 	Interrupt,
 > {
-	solidify_lane(ctx.arena(), legacy_graphic_list_of(content), ctx.index() as usize)
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let run = core_types::record::RunView::<Graphic>::new(&item).expect("the run holds graphic lanes");
+	solidify_native_lane(ctx.arena(), &run, || legacy_graphic_list_of(content), ctx.index() as usize)
 }
 
 /// A fill-bearing row splits into a fill lane and a solidified stroke lane,
@@ -1623,7 +1645,19 @@ fn solidify_stroke_vector<'e>(
 	)>,
 	Interrupt,
 > {
-	solidify_lane(ctx.arena(), legacy_graphic_list_of(content), ctx.index() as usize)
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	// The wrap the legacy list collapse applied: lane 0's layer path stamps
+	// every row.
+	let layer_path: Vec<NodeId> = match content.len() > 0 {
+		true => content.lane(0).attr::<EditorLayerPath>().to_vec(),
+		false => Vec::new(),
+	};
+	let mut wrapper = List::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: item }));
+	if !layer_path.is_empty() {
+		wrapper.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+	}
+	solidify_native_lane(ctx.arena(), &wrapper, || legacy_graphic_list_of(content), ctx.index() as usize)
 }
 
 fn solidify_stroke_vector_extent(content: ListIn<'_, Vector>, level: LevelIn) -> GPoll<Extent> {
