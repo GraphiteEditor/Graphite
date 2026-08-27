@@ -1,16 +1,17 @@
-use crate::WgpuContext;
-use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime};
+use crate::shader_runtime::FULLSCREEN_VERTEX_SHADER_NAME;
+use crate::{Buffer, WgpuContext, WgpuExecutor};
 use core_types::list::{Item, List};
 use core_types::shaders::buffer_struct::BufferStruct;
 use futures::lock::Mutex;
+use glam::UVec2;
 use raster_types::{GPU, Raster};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
+use wgpu::util::BufferInitDescriptor;
 use wgpu::{
-	BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBinding, BufferBindingType, BufferUsages, ColorTargetState, Face,
+	BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BufferBinding, BufferBindingType, BufferUsages, ColorTargetState, Face,
 	FragmentState, FrontFace, LoadOp, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
-	ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureViewDescriptor, TextureViewDimension, VertexState,
+	ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TextureFormat, TextureSampleType, TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
 pub struct PerPixelAdjustShaderRuntime {
@@ -32,22 +33,21 @@ impl PerPixelAdjustShaderRuntime {
 	}
 }
 
-impl ShaderRuntime {
+impl WgpuExecutor {
 	pub async fn run_per_pixel_adjust<T: BufferStruct>(&self, shaders: &Shaders<'_>, textures: List<Raster<GPU>>, args: Option<&T>) -> List<Raster<GPU>> {
-		let mut cache = self.per_pixel_adjust.pipeline_cache.lock().await;
+		let mut cache = self.inner.shader_runtime.per_pixel_adjust.pipeline_cache.lock().await;
 		let pipeline = cache
 			.entry(shaders.fragment_shader_name.to_owned())
-			.or_insert_with(|| PerPixelAdjustGraphicsPipeline::new(&self.context, shaders));
+			.or_insert_with(|| PerPixelAdjustGraphicsPipeline::new(self.context(), shaders));
 
 		let arg_buffer = args.map(|args| {
-			let device = &self.context.device;
-			device.create_buffer_init(&BufferInitDescriptor {
+			self.create_buffer_init(&BufferInitDescriptor {
 				label: Some(&format!("{} arg buffer", pipeline.name.as_str())),
 				usage: BufferUsages::STORAGE,
 				contents: bytemuck::bytes_of(&T::write(*args)),
 			})
 		});
-		pipeline.dispatch(&self.context, textures, arg_buffer)
+		pipeline.dispatch(self, textures, arg_buffer)
 	}
 }
 
@@ -160,9 +160,9 @@ impl PerPixelAdjustGraphicsPipeline {
 		}
 	}
 
-	pub fn dispatch(&self, context: &WgpuContext, textures: List<Raster<GPU>>, arg_buffer: Option<Buffer>) -> List<Raster<GPU>> {
+	pub fn dispatch(&self, executor: &WgpuExecutor, textures: List<Raster<GPU>>, arg_buffer: Option<Buffer>) -> List<Raster<GPU>> {
 		assert_eq!(self.has_uniform, arg_buffer.is_some());
-		let device = &context.device;
+		let device = &executor.context().device;
 		let name = self.name.as_str();
 
 		let mut cmd = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -203,16 +203,7 @@ impl PerPixelAdjustGraphicsPipeline {
 					entries,
 				});
 
-				let tex_out = device.create_texture(&TextureDescriptor {
-					label: Some(&format!("{name} texture out")),
-					size: tex_in.size(),
-					mip_level_count: 1,
-					sample_count: 1,
-					dimension: TextureDimension::D2,
-					format,
-					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
-					view_formats: &[format],
-				});
+				let tex_out = executor.request_texture_with_format(UVec2::new(tex_in.width(), tex_in.height()), format);
 
 				let view_out = tex_out.create_view(&TextureViewDescriptor::default());
 				let mut rp = cmd.begin_render_pass(&RenderPassDescriptor {
@@ -237,7 +228,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				Item::from_parts(Raster::new_gpu(tex_out), attributes)
 			})
 			.collect::<List<_>>();
-		context.queue.submit([cmd.finish()]);
+		executor.context().queue.submit([cmd.finish()]);
 		out
 	}
 }
