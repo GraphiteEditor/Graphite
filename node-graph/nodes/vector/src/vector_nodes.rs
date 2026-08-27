@@ -178,11 +178,11 @@ fn assign_colors_graphic<'e>(
 	if lane >= content.len() {
 		return Err(GraphError::past_end().into());
 	}
-	let mut element = graphic_types::graphic::map_groups_to_legacy(content.element_ref(lane));
+	let original = content.element_ref(lane);
 	let (transform, layer_path) = carried_lane_attrs(ctx.arena(), *content.lane(lane))?;
 
 	if gradient.is_empty() {
-		return Ok((element, transform, layer_path));
+		return Ok((original.clone(), transform, layer_path));
 	}
 	let gradient_element = gradient.element_ref(0);
 	let reversed;
@@ -218,30 +218,31 @@ fn assign_colors_graphic<'e>(
 		(entry.offsets[content.len()], entry.offsets[lane])
 	};
 
-	// A de-tabled vector leaf carries no attributes, so the paint rides the
-	// containing lane: a bare leaf wraps into a one-lane list, and a lowered
-	// vector run's leaves take one color per lane.
-	if graphic_types::graphic::direct_vector_len(content.element_ref(lane)) > 0 {
-		let mut children = match element {
-			Graphic::Graphic(children) => children,
-			leaf => List::new_from_element(leaf),
-		};
-		let mut consumed = 0;
-		for index in 0..children.len() {
-			let Some(Graphic::Vector(vector)) = children.element(index) else { continue };
-			let has_stroke = vector.stroke.is_some();
-			let color = assign_color_at(gradient_element, position + consumed, length, randomize, seed, repeat_every);
-			let paint = List::new_from_element(color).into_graphic_list();
-			if fill {
-				set_paint_attribute_at(&mut children, index, ATTR_FILL, paint.clone());
+	// The direct vector rows as a scratch list, one color per row, rebuilt as
+	// a native run; a lane without direct rows passes through untouched.
+	let rows = match original {
+		Graphic::Vector(vector) => Some(List::new_from_element(vector.clone())),
+		Graphic::Group(group) if group.row.is_none() => graphic_types::graphic::run_to_list::<Vector>(&group.content),
+		_ => None,
+	};
+	let element = match rows {
+		Some(mut rows) => {
+			for row in 0..rows.len() {
+				let has_stroke = rows.element(row).is_some_and(|vector| vector.stroke.is_some());
+				let color = assign_color_at(gradient_element, position + row, length, randomize, seed, repeat_every);
+				let paint = List::new_from_element(color).into_graphic_list();
+				if fill {
+					set_paint_attribute_at(&mut rows, row, ATTR_FILL, paint.clone());
+				}
+				if stroke && has_stroke {
+					set_paint_attribute_at(&mut rows, row, ATTR_STROKE, paint.clone());
+				}
 			}
-			if stroke && has_stroke {
-				set_paint_attribute_at(&mut children, index, ATTR_STROKE, paint.clone());
-			}
-			consumed += 1;
+			let content = core_types::record::GroupItem::from_list(rows, ctx.arena()).ok_or_else(|| Interrupt::from(GraphError::new("the arena is exhausted")))?;
+			Graphic::Group(core_types::record::Group { row: None, content })
 		}
-		element = Graphic::Graphic(children);
-	}
+		None => original.clone(),
+	};
 
 	Ok((element, transform, layer_path))
 }
@@ -1596,7 +1597,7 @@ where
 {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	graphic_types::graphic::run_to_render_list::<T>(&item)
+	graphic_types::graphic::run_to_list::<T>(&item)
 		.expect("the run holds the row's element type")
 		.into_graphic_list()
 }
@@ -1905,7 +1906,7 @@ pub fn flatten_path<'e>(
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Run(&item));
-	let snapshot = graphic_types::graphic::run_to_render_list::<Graphic>(&item).expect("the run holds the row's element type");
+	let snapshot = graphic_types::graphic::run_to_list::<Graphic>(&item).expect("the run holds the row's element type");
 	flatten_path_core(ctx.arena(), flattened, snapshot)
 }
 

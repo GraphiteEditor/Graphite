@@ -242,11 +242,11 @@ where
 	))
 }
 
-/// The materialized level as its legacy render list.
+/// The materialized level as its legacy list, content kept native.
 fn legacy_render_list_of<T: Clone + Send + Sync + 'static>(content: core_types::node::List<'_, T>) -> List<T> {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type")
+	graphic_types::graphic::run_to_list::<T>(&item).expect("the run holds the row's element type")
 }
 
 #[node_macro::node(category("General"), extent(mirror_extent))]
@@ -474,10 +474,10 @@ fn wrap_graphic_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Ext
 /// Converts graphical content into a `Graphic` level. A `Graphic` level passes through
 /// unchanged; a typed level nests as one graphic lane, keeping the pre-flip list
 /// collapse (`to_graphic_typed` serves those rows). The legacy list rows accept an
-/// unconverted producer's list value as one element.
+/// unconverted producer's list value as one element, built as a native group.
 #[node_macro::node(category("General"))]
-pub fn to_graphic<T: Into<Graphic> + Clone + Send + Sync + core_types::CacheHash + 'static>(
-	_: impl Ctx,
+pub fn to_graphic<T: graphic_types::graphic::IntoGraphicElement>(
+	ctx: impl Ctx + core_types::context::BorrowArena,
 	#[implementations(
 		Graphic,
 		List<Graphic>,
@@ -489,16 +489,16 @@ pub fn to_graphic<T: Into<Graphic> + Clone + Send + Sync + core_types::CacheHash
 		List<String>,
 	)]
 	content: T,
-) -> Graphic {
-	content.into()
+) -> Result<Graphic, Interrupt> {
+	content.into_graphic_element(ctx.borrow_arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
 }
 
 /// The elementwise `Graphic` coercion the compiler-inserted converts use: each
 /// lane's element converts on its own, so a typed wire feeds a graphic input
 /// without changing the level's shape. Registered under the convert identifier.
 #[node_macro::node(category(""))]
-pub fn to_graphic_element<T: Into<Graphic> + Clone + Send + Sync + core_types::CacheHash + 'static>(
-	_: impl Ctx,
+pub fn to_graphic_element<T: graphic_types::graphic::IntoGraphicElement>(
+	ctx: impl Ctx + core_types::context::BorrowArena,
 	#[implementations(
 		Graphic,
 		Vector,
@@ -516,8 +516,8 @@ pub fn to_graphic_element<T: Into<Graphic> + Clone + Send + Sync + core_types::C
 		List<String>,
 	)]
 	content: T,
-) -> Graphic {
-	content.into()
+) -> Result<Graphic, Interrupt> {
+	content.into_graphic_element(ctx.borrow_arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
 }
 
 /// The typed-level conversion: the whole level nests as one graphic lane, as
@@ -549,8 +549,8 @@ fn to_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level:
 
 /// The transitional level bridge: the wire's records as the legacy list an
 /// unconverted consumer expects, attributes copied through their erased
-/// reads. Registered under the legacy convert identifiers; the rows die with
-/// the last legacy consumer.
+/// reads and content kept in its native form. Registered under the legacy
+/// convert identifiers; the rows die with the last legacy consumer.
 #[node_macro::node(category(""))]
 pub fn level_to_list<T: Clone + Send + Sync + CacheHash + 'static>(
 	_: impl Ctx,
@@ -559,7 +559,7 @@ pub fn level_to_list<T: Clone + Send + Sync + CacheHash + 'static>(
 ) -> List<T> {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(value.batch()) };
-	graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type")
+	graphic_types::graphic::run_to_list::<T>(&item).expect("the run holds the row's element type")
 }
 
 pub use _level_to_list_mod::level_to_list_entries;

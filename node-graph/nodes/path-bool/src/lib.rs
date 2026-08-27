@@ -128,7 +128,7 @@ fn boolean_operation<'e>(
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	let flattened = flatten_vector_run(GraphicLevel::Run(&item), DAffine2::IDENTITY, PaintReach::NONE);
-	let snapshot = graphic_types::graphic::run_to_render_list::<Graphic>(&item)
+	let snapshot = graphic_types::graphic::run_to_list::<Graphic>(&item)
 		.expect("the run holds the row's element type")
 		.into_graphic_list();
 	boolean_core(ctx.arena(), flattened, snapshot, operation)
@@ -158,7 +158,7 @@ fn boolean_operation_vector<'e>(
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	let flattened = graphic_types::graphic::run_to_list::<Vector>(&item).expect("the run holds vector lanes");
-	let snapshot = graphic_types::graphic::run_to_render_list::<Vector>(&item)
+	let snapshot = graphic_types::graphic::run_to_list::<Vector>(&item)
 		.expect("the run holds the row's element type")
 		.into_graphic_list();
 	boolean_core(ctx.arena(), flattened, snapshot, operation)

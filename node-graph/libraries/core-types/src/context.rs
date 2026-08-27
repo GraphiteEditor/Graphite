@@ -899,6 +899,19 @@ pub trait ExtractArena {
 	fn arena(&self) -> Self::ArenaRef;
 }
 
+/// The arena borrowed at the caller's scope, for kernels whose node shape
+/// cannot carry the evaluation lifetime (a flipped value node takes no fn
+/// lifetime).
+pub trait BorrowArena {
+	fn borrow_arena(&self) -> &crate::arena::Arena;
+}
+
+impl BorrowArena for ContextImpl<'_> {
+	fn borrow_arena(&self) -> &crate::arena::Arena {
+		ExtractArena::arena(self)
+	}
+}
+
 pub trait CtxFamily {
 	type Ctx<'s>: Ctx + DeriveCtx<Family = Self>;
 }

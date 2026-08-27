@@ -36,13 +36,6 @@ impl Default for Graphic {
 	}
 }
 
-// Graphic
-impl From<List<Graphic>> for Graphic {
-	fn from(graphic: List<Graphic>) -> Self {
-		Graphic::Graphic(graphic)
-	}
-}
-
 /// A typed legacy list as a legacy graphic list: each item de-tables to a
 /// leaf element, keeping its attributes on the containing lane.
 fn detable_items<T: Clone + Send + Sync + 'static>(list: List<T>, leaf: fn(T) -> Graphic) -> List<Graphic> {
@@ -54,19 +47,66 @@ fn detable_items<T: Clone + Send + Sync + 'static>(list: List<T>, leaf: fn(T) ->
 	out
 }
 
+/// The element-space coercion into `Graphic`: a leaf converts in place and a
+/// legacy list becomes a native group built over the arena, so the coercion
+/// never constructs a legacy interior.
+pub trait IntoGraphicElement: Clone + Send + Sync + CacheHash + 'static {
+	/// `None` reports arena exhaustion.
+	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic>;
+}
+
+fn list_group<T: Clone + Send + Sync + CacheHash + PartialEq + 'static>(list: List<T>, arena: &core_types::arena::Arena) -> Option<Graphic> {
+	Some(Graphic::Group(core_types::record::Group {
+		row: None,
+		content: core_types::record::GroupItem::from_list(list, arena)?,
+	}))
+}
+
+macro_rules! into_graphic_element {
+	($($leaf:ident: $element:ty;)*) => {
+		$(
+			impl IntoGraphicElement for $element {
+				fn into_graphic_element(self, _arena: &core_types::arena::Arena) -> Option<Graphic> {
+					Some(Graphic::$leaf(self))
+				}
+			}
+
+			impl IntoGraphicElement for List<$element> {
+				fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic> {
+					list_group(self, arena)
+				}
+			}
+		)*
+	};
+}
+
+into_graphic_element! {
+	Vector: Vector;
+	RasterCPU: Raster<CPU>;
+	RasterGPU: Raster<GPU>;
+	Color: Color;
+	Gradient: GradientStops;
+	Text: String;
+}
+
+impl IntoGraphicElement for Graphic {
+	fn into_graphic_element(self, _arena: &core_types::arena::Arena) -> Option<Graphic> {
+		Some(self)
+	}
+}
+
+impl IntoGraphicElement for List<Graphic> {
+	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic> {
+		list_group(self, arena)
+	}
+}
+
 // Vector
 impl From<Vector> for Graphic {
 	fn from(vector: Vector) -> Self {
 		Graphic::Vector(vector)
 	}
 }
-impl From<List<Vector>> for Graphic {
-	fn from(vector: List<Vector>) -> Self {
-		Graphic::Graphic(detable_items(vector, Graphic::Vector))
-	}
-}
-
-// Note: List<Vector> -> List<Graphic> conversion handled by blanket impl in gcore
 
 // Raster<CPU>
 impl From<Raster<CPU>> for Graphic {
@@ -74,12 +114,6 @@ impl From<Raster<CPU>> for Graphic {
 		Graphic::RasterCPU(raster)
 	}
 }
-impl From<List<Raster<CPU>>> for Graphic {
-	fn from(raster: List<Raster<CPU>>) -> Self {
-		Graphic::Graphic(detable_items(raster, Graphic::RasterCPU))
-	}
-}
-// Note: List conversions handled by blanket impl in gcore
 
 // Raster<GPU>
 impl From<Raster<GPU>> for Graphic {
@@ -87,12 +121,6 @@ impl From<Raster<GPU>> for Graphic {
 		Graphic::RasterGPU(raster)
 	}
 }
-impl From<List<Raster<GPU>>> for Graphic {
-	fn from(raster: List<Raster<GPU>>) -> Self {
-		Graphic::Graphic(detable_items(raster, Graphic::RasterGPU))
-	}
-}
-// Note: List conversions handled by blanket impl in gcore
 
 // Color
 impl From<Color> for Graphic {
@@ -100,12 +128,6 @@ impl From<Color> for Graphic {
 		Graphic::Color(color)
 	}
 }
-impl From<List<Color>> for Graphic {
-	fn from(color: List<Color>) -> Self {
-		Graphic::Graphic(detable_items(color, Graphic::Color))
-	}
-}
-// Note: List conversions handled by blanket impl in gcore
 // Note: List<Color> -> Option<Color> is in gcore (Color is defined there)
 
 // GradientStops
@@ -114,21 +136,11 @@ impl From<GradientStops> for Graphic {
 		Graphic::Gradient(gradient)
 	}
 }
-impl From<List<GradientStops>> for Graphic {
-	fn from(gradient: List<GradientStops>) -> Self {
-		Graphic::Graphic(detable_items(gradient, Graphic::Gradient))
-	}
-}
 
 // String
 impl From<String> for Graphic {
 	fn from(text: String) -> Self {
 		Graphic::Text(text)
-	}
-}
-impl From<List<String>> for Graphic {
-	fn from(text: List<String>) -> Self {
-		Graphic::Graphic(detable_items(text, Graphic::Text))
 	}
 }
 
@@ -171,6 +183,11 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 					}
 
 					flatten_recursive(output, sub_list, extract_variant, lane_layer_path.as_deref());
+				}
+				// A bridge row's native group flattens through its legacy lowering; the arm dies with the legacy interior.
+				Graphic::Group(group) => {
+					let lowered = List::new_from_item(Item::from_parts(group_to_legacy_graphic(&group), attributes.clone()));
+					flatten_recursive(output, lowered, extract_variant, parent_layer_path);
 				}
 				// A de-tabled leaf is one attr-less element; the extracted row rides with its containing lane's full attributes, paint included.
 				// The enclosing group lane's own layer path overrides, one hop only, matching the native walk.
@@ -1084,19 +1101,6 @@ pub fn flatten_vector_rows(level: GraphicLevel<'_>) -> List<Vector> {
 		RowStep::Continue
 	});
 	out
-}
-
-/// One typed run as the legacy list its `Render` impl consumes, nested
-/// groups converted to their legacy form.
-pub fn run_to_render_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::GroupItem) -> Option<List<T>> {
-	let mut list = run_to_legacy_list::<T>(item)?;
-	if let Some(graphics) = (&mut list as &mut dyn std::any::Any).downcast_mut::<List<Graphic>>() {
-		for element in graphics.iter_element_values_mut() {
-			*element = map_groups_to_legacy(element);
-		}
-		push_lane_paint_into_interiors(graphics);
-	}
-	Some(list)
 }
 
 /// The transitional paint placement: a lane-level fill or stroke paint
