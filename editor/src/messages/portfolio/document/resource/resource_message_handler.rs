@@ -12,7 +12,6 @@ use url::Url;
 pub struct ResourceMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub fonts: &'a FontsMessageHandler,
-	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, ExtractField)]
@@ -26,7 +25,7 @@ pub struct ResourceMessageHandler {
 #[message_handler_data]
 impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMessageHandler {
 	fn process_message(&mut self, message: ResourceMessage, responses: &mut VecDeque<Message>, context: ResourceMessageContext) {
-		let ResourceMessageContext { document_id, fonts, resource_storage } = context;
+		let ResourceMessageContext { document_id, fonts } = context;
 
 		match message {
 			ResourceMessage::StoreEmbedded { resource_id, data } => {
@@ -49,16 +48,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				responses.add(ResourceMessage::Resolve { resource_id });
 			}
 			ResourceMessage::ResolveAll => {
-				// A resource keeps its hash when storage evicts its data, so only a fetchable source can repair it
-				let refetchable = self
-					.registry
-					.resolved()
-					.filter(|info| info.hash.is_some_and(|hash| !resource_storage.contains(hash)))
-					.filter(|info| info.sources.iter().any(|source| matches!(source, DataSource::Url(_) | DataSource::Font { .. })))
-					.map(|info| info.id);
-				let ids: Vec<ResourceId> = self.registry.unresolved().map(|info| info.id).chain(refetchable).collect();
-
-				for id in ids {
+				let unresolved_ids: Vec<ResourceId> = self.registry.unresolved().map(|info| info.id).collect();
+				for id in unresolved_ids {
 					if self.pending_resolves.contains(&id) {
 						continue;
 					}
@@ -74,9 +65,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					log::error!("Resolve for {resource_id}: no registry entry");
 					return;
 				};
-				// This hash names the very data that is missing, so it cannot stand in for fetching that data
-				let data_missing = info.hash.is_some_and(|hash| !resource_storage.contains(hash));
-				if info.hash.is_some() && !data_missing {
+				if info.hash.is_some() {
 					log::warn!("Resource {resource_id} already resolved");
 					return;
 				}
@@ -89,7 +78,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					.sources
 					.iter()
 					.map(|source| match source {
-						DataSource::Font { family, style } if !data_missing => {
+						DataSource::Font { family, style } => {
 							let font = match style {
 								Some(style) => Font::new(family.clone(), style.clone()),
 								None => Font::new_with_default_style(family.clone()),
@@ -225,20 +214,16 @@ impl ResourceMessageHandler {
 			.resolved()
 			.filter(|info| info.sources.contains(&DataSource::Embedded))
 			.filter_map(|info| {
-				let (id, hash) = (info.id, *info.hash?);
-				let resource = resources_load_handle.load(hash);
-				Some(async move { (id, hash, resource.await) })
+				if let Some(hash) = info.hash {
+					let resource = resources_load_handle.load(*hash);
+					Some(async move { resource.await.map(|resource| (*hash, resource)) })
+				} else {
+					None
+				}
 			})
 			.collect::<Vec<_>>();
 
-		let loaded = futures::future::join_all(embedded).await;
-
-		// Saving without these bytes writes a document whose registry claims to carry them
-		for (id, hash, _) in loaded.iter().filter(|(_, _, resource)| resource.is_none()) {
-			log::error!("Resource {id} ({hash}) is marked as embedded but its data is missing from storage, so the saved document will not contain it");
-		}
-
-		self.embedded = EmbeddedResources::from_iter(loaded.into_iter().filter_map(|(_, hash, resource)| resource.map(|resource| (hash, resource))));
+		self.embedded = EmbeddedResources::from_iter(futures::future::join_all(embedded).await.into_iter().flatten());
 	}
 
 	pub fn collect_garbage(&mut self, used: &[ResourceId]) {
@@ -310,67 +295,5 @@ impl<'de> serde::Deserialize<'de> for ResourceMessageHandler {
 
 		let human_readable = deserializer.is_human_readable();
 		deserializer.deserialize_map(EmbeddedResourcesVisitor { human_readable })
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use graph_craft::application_io::resource::ResourceStorage;
-
-	/// Storage can lose a resource's data while the document keeps the hash naming it, which leaves the graph
-	/// pointing at bytes that are gone. Only sources that can be fetched again are worth re-resolving.
-	#[test]
-	fn resolve_all_refetches_resources_whose_data_is_missing() {
-		let mut handler = ResourceMessageHandler::default();
-		let storage = ResourceStorageMessageHandler::default();
-
-		// Present: its bytes are in storage, so it is already usable
-		let present = ResourceId::new();
-		let present_hash = storage.resources_mut().store(b"stored font bytes");
-		handler.registry.resolve(&present, present_hash);
-		handler.registry.push_source_back(&present, DataSource::Embedded);
-		handler.registry.push_source_back(
-			&present,
-			DataSource::Font {
-				family: "Lato".into(),
-				style: Some("Regular (400)".into()),
-			},
-		);
-
-		// Recoverable: its bytes are gone, but the font it came from can be downloaded again
-		let recoverable = ResourceId::new();
-		handler.registry.resolve(&recoverable, ResourceHash::from(b"evicted font bytes".as_slice()));
-		handler.registry.push_source_back(&recoverable, DataSource::Embedded);
-		handler.registry.push_source_back(
-			&recoverable,
-			DataSource::Font {
-				family: "Lato".into(),
-				style: Some("Black (900)".into()),
-			},
-		);
-
-		// Unrecoverable: its bytes are gone and nothing records where to fetch them from
-		let unrecoverable = ResourceId::new();
-		handler.registry.resolve(&unrecoverable, ResourceHash::from(b"evicted image bytes".as_slice()));
-		handler.registry.push_source_back(&unrecoverable, DataSource::Embedded);
-
-		let mut responses = VecDeque::new();
-		let fonts = FontsMessageHandler::default();
-		handler.process_message(
-			ResourceMessage::ResolveAll,
-			&mut responses,
-			ResourceMessageContext {
-				document_id: DocumentId(0),
-				fonts: &fonts,
-				resource_storage: &storage,
-			},
-		);
-
-		let resolve_requested = |id: ResourceId| responses.contains(&Message::from(ResourceMessage::Resolve { resource_id: id }));
-
-		assert!(resolve_requested(recoverable), "a missing resource with a font source should be fetched again");
-		assert!(!resolve_requested(present), "a resource whose data is in storage should be left alone");
-		assert!(!resolve_requested(unrecoverable), "a missing resource with no fetchable source has nowhere to fetch from");
 	}
 }
