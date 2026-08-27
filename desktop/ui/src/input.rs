@@ -82,14 +82,16 @@ pub(crate) fn translate(input_state: &mut InputState, event: &WindowEvent) -> Ve
 		}
 		WindowEvent::PointerButton { state, button, position, .. } => {
 			let mouse_button = match button {
-				ButtonSource::Mouse(mouse_button) => mouse_button,
-				_ => {
-					return Vec::new(); // TODO: Handle touch input
-				}
+				ButtonSource::Mouse(mouse_button) => Some(*mouse_button),
+				ButtonSource::TabletTool { button, .. } => (*button).into(),
+				_ => None, // TODO: Handle touch input
+			};
+			let Some(mouse_button) = mouse_button else {
+				return Vec::new();
 			};
 
 			let _ = input_state.cursor_move(position);
-			let click_count = input_state.mouse_input(mouse_button, state).into();
+			let click_count = input_state.mouse_input(&mouse_button, state).into();
 			let up = matches!(state, ElementState::Released);
 			let button = match mouse_button {
 				MouseButton::Left => MouseButtonKind::Left,
@@ -110,8 +112,8 @@ pub(crate) fn translate(input_state: &mut InputState, event: &WindowEvent) -> Ve
 				MouseScrollDelta::LineDelta(x, y) => (x * SCROLL_LINE_WIDTH as f32, y * SCROLL_LINE_HEIGHT as f32),
 				MouseScrollDelta::PixelDelta(physical_position) => (physical_position.x as f32, physical_position.y as f32),
 			};
-			delta_x *= SCROLL_SPEED_X;
-			delta_y *= SCROLL_SPEED_Y;
+			delta_x *= SCROLL_SPEED_X as f32;
+			delta_y *= SCROLL_SPEED_Y as f32;
 
 			vec![InputEvent::MouseWheel {
 				data: input_state.mouse_data(),

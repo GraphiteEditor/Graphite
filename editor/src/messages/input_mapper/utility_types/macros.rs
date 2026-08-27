@@ -162,7 +162,7 @@ macro_rules! action_shortcut {
 macro_rules! action_shortcut_manual {
 	($($keys:expr),*) => {
 		Some(crate::messages::input_mapper::utility_types::misc::ActionShortcut::Shortcut(
-			crate::messages::input_mapper::utility_types::input_keyboard::LabeledShortcut(vec![$($keys.into()),*]).into(),
+			crate::messages::input_mapper::utility_types::keyboard::LabeledShortcut(vec![$($keys.into()),*]).into(),
 		))
 	};
 }
