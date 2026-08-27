@@ -2368,6 +2368,39 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
 	}
 
+	// Drop the placeholder primary input the "Read Vector" node used to carry, since it reads its value from the context
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_vector::IDENTIFIER) && inputs_count > 0 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+	}
+
+	// The "Dot Product" node gained a "Normalize" toggle, which older nodes predate by always taking the raw dot product
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::dot_product::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (index, input) in old_inputs.iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+	}
+
+	// The "Query JSON" node succeeded "JSON Get", whose object lookups always returned their strings unquoted
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text_nodes::json::query_json::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (index, input) in old_inputs.iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+	}
+
 	// Upgrade the "Animation" node to add the "Rate" input
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::animation::animation_time::IDENTIFIER) && inputs_count < 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
@@ -2810,19 +2843,39 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 /// definition by its old reference name, swaps it to a still-supported implementation, and preserves the user's inputs.
 /// After this runs, the node's reference resolves cleanly so the rest of `migrate_node` proceeds normally.
 fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler) -> Option<()> {
-	// Collapse the legacy "Sample Polyline" wrapper network into the standalone `sample_polyline` proto node.
-	// The proto node now computes per-bezpath segment lengths inline, so the wrapper's separate `subpath_segment_lengths`
-	// and `Memoize` nodes are no longer needed. The 7 user-facing inputs are positionally identical between the
-	// old wrapper and the new proto node.
-	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
-		&& name == "Sample Polyline"
-		&& node.inputs.len() == 7
+	// Collapse the legacy "Sample Points" and "Sample Polyline" wrapper networks into the standalone `sample_polyline`
+	// proto node, which now computes per-bezpath segment lengths inline instead of through the wrapper's helper nodes.
+	// The oldest documents lose their stored reference on load, so the wrapper is recognized by the nodes it encloses.
+	let wrapper_inputs = match &node.implementation {
+		DocumentNodeImplementation::Network(inner) => {
+			let helpers = [graphene_std::ops::passthrough::IDENTIFIER, graphene_std::memo::memoize::IDENTIFIER];
+			let mut sample_nodes = 0;
+			let only_helpers = inner.nodes.values().all(|inner_node| match &inner_node.implementation {
+				DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::vector::sample_polyline::IDENTIFIER => {
+					sample_nodes += 1;
+					true
+				}
+				DocumentNodeImplementation::ProtoNode(identifier) => helpers.contains(identifier),
+				_ => false,
+			});
+			(only_helpers && sample_nodes == 1).then_some(node.inputs.len())
+		}
+		_ => None,
+	};
+	if let Some(wrapper_inputs) = wrapper_inputs
+		&& (wrapper_inputs == 5 || wrapper_inputs == 7)
 	{
 		let mut node_template = resolve_proto_node_type(graphene_std::vector::sample_polyline::IDENTIFIER)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-		for (index, input) in old_inputs.iter().take(7).enumerate() {
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+
+		// The 5-input era predates the separation/quantity choice, so its lone spacing distance becomes the separation
+		let upgraded_inputs: Vec<(usize, NodeInput)> = match wrapper_inputs {
+			5 => [0, 2, 4, 5, 6].into_iter().zip(old_inputs.iter().cloned()).collect(),
+			_ => old_inputs.iter().take(7).cloned().enumerate().collect(),
+		};
+		for (index, input) in upgraded_inputs {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
 		}
 	}
 
