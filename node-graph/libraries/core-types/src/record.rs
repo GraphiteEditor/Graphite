@@ -19,6 +19,7 @@ pub struct FieldWrite {
 	pub level: u8,
 	pub size: usize,
 	pub align: usize,
+	pub type_id: std::any::TypeId,
 	pub read_erased: unsafe fn(*const u8) -> Box<dyn crate::list::AnyAttributeValue>,
 	pub repark: Option<unsafe fn(&dyn crate::list::AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>>,
 	/// Hashes the field's content. `None` means the stored bytes are the
@@ -31,7 +32,7 @@ pub struct FieldWrite {
 impl FieldWrite {
 	pub fn of<A: crate::attribute::Attribute>(level: u8) -> Self
 	where
-		A::Value<'static>: graphene_hash::CacheHash + PartialEq,
+		A::Value<'static>: graphene_hash::CacheHash + PartialEq + 'static,
 	{
 		unsafe fn content_hash<V: graphene_hash::CacheHash>(ptr: *const u8, state: &mut dyn core::hash::Hasher) {
 			let mut state = state;
@@ -45,6 +46,7 @@ impl FieldWrite {
 			level,
 			size: size_of::<A::Value<'static>>(),
 			align: align_of::<A::Value<'static>>(),
+			type_id: std::any::TypeId::of::<A::Value<'static>>(),
 			read_erased: A::read_erased,
 			repark: A::REPARK,
 			content_hash: Some(content_hash::<A::Value<'static>>),
@@ -55,9 +57,10 @@ impl FieldWrite {
 
 /// One field of a [`Layout`]: a (name, level) key resolved to an offset.
 /// Levels are numbered innermost-out; only level 0 exists at rank 0.
-/// Equality is structural: the glue pointer is excluded, since fn-pointer
-/// identity is not guaranteed across codegen units and layout equality
-/// drives identity forwarding.
+/// Equality is structural over the field's identity, its value type
+/// included; only the glue pointers are excluded, since fn-pointer identity
+/// is not guaranteed across codegen units and layout equality drives
+/// identity forwarding.
 #[derive(Clone, Debug)]
 pub struct FieldDesc {
 	pub name: &'static str,
@@ -65,6 +68,7 @@ pub struct FieldDesc {
 	pub offset: usize,
 	pub size: usize,
 	pub align: usize,
+	pub type_id: std::any::TypeId,
 	pub read_erased: unsafe fn(*const u8) -> Box<dyn crate::list::AnyAttributeValue>,
 	pub repark: Option<unsafe fn(&dyn crate::list::AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>>,
 	/// Hashes the field's content. `None` means the stored bytes are the
@@ -76,7 +80,25 @@ pub struct FieldDesc {
 
 impl PartialEq for FieldDesc {
 	fn eq(&self, other: &Self) -> bool {
-		(self.name, self.level, self.offset, self.size, self.align) == (other.name, other.level, other.offset, other.size, other.align)
+		(self.name, self.level, self.offset, self.size, self.align, self.type_id) == (other.name, other.level, other.offset, other.size, other.align, other.type_id)
+	}
+}
+
+impl FieldDesc {
+	/// The write this field re-declares when a layout's fields fold into
+	/// another layout.
+	pub fn as_write(&self) -> FieldWrite {
+		FieldWrite {
+			name: self.name,
+			level: self.level,
+			size: self.size,
+			align: self.align,
+			type_id: self.type_id,
+			read_erased: self.read_erased,
+			repark: self.repark,
+			content_hash: self.content_hash,
+			content_eq: self.content_eq,
+		}
 	}
 }
 
@@ -84,8 +106,9 @@ impl Eq for FieldDesc {}
 
 /// The element slot of a layout: its dimensions plus erased glue bound where
 /// the element type is statically known, so generic consumers read or
-/// deep-copy the element without it. Equality is structural: glue pointers
-/// are excluded for the same reason as [`FieldDesc`]'s.
+/// deep-copy the element without it. Equality is structural over the
+/// element's identity, its type included; glue pointers are excluded for the
+/// same reason as [`FieldDesc`]'s.
 #[derive(Clone, Copy, Debug)]
 pub struct ElementWrite {
 	pub size: usize,
@@ -103,7 +126,7 @@ pub struct ElementWrite {
 
 impl PartialEq for ElementWrite {
 	fn eq(&self, other: &Self) -> bool {
-		(self.size, self.align, self.parked) == (other.size, other.align, other.parked)
+		(self.size, self.align, self.parked, self.type_id) == (other.size, other.align, other.parked, other.type_id)
 	}
 }
 
@@ -176,23 +199,10 @@ impl Layout {
 	/// size is a type conflict and panics; the census keeps declared names to
 	/// one type, so this only fires on wiring bugs.
 	pub fn with_writes(&self, depth: u8, element: ElementWrite, writes: &[FieldWrite]) -> Layout {
-		let mut merged: Vec<FieldWrite> = self
-			.fields
-			.iter()
-			.map(|field| FieldWrite {
-				name: field.name,
-				level: field.level,
-				size: field.size,
-				align: field.align,
-				read_erased: field.read_erased,
-				repark: field.repark,
-				content_hash: field.content_hash,
-				content_eq: field.content_eq,
-			})
-			.collect();
+		let mut merged: Vec<FieldWrite> = self.fields.iter().map(FieldDesc::as_write).collect();
 		for &write in writes {
 			match merged.iter().find(|field| field.name == write.name && field.level == write.level) {
-				Some(existing) => assert_eq!(existing.size, write.size, "attribute `{}` written at two different sizes", write.name),
+				Some(existing) => assert_eq!(existing.type_id, write.type_id, "attribute `{}` written at two different types", write.name),
 				None => merged.push(write),
 			}
 		}
@@ -210,6 +220,7 @@ impl Layout {
 					offset,
 					size: write.size,
 					align: write.align,
+					type_id: write.type_id,
 					read_erased: write.read_erased,
 					repark: write.repark,
 					content_hash: write.content_hash,
@@ -231,21 +242,7 @@ impl Layout {
 	/// This layout minus the named fields, offsets recomputed. Removing an
 	/// absent name is a no-op: downstream reads yield the default either way.
 	pub fn without(&self, removes: &[(&str, u8)]) -> Layout {
-		let retained: Vec<FieldWrite> = self
-			.fields
-			.iter()
-			.filter(|field| !removes.contains(&(field.name, field.level)))
-			.map(|field| FieldWrite {
-				name: field.name,
-				level: field.level,
-				size: field.size,
-				align: field.align,
-				read_erased: field.read_erased,
-				repark: field.repark,
-				content_hash: field.content_hash,
-				content_eq: field.content_eq,
-			})
-			.collect();
+		let retained: Vec<FieldWrite> = self.fields.iter().filter(|field| !removes.contains(&(field.name, field.level))).map(FieldDesc::as_write).collect();
 		Layout::default().with_writes(self.depth, self.element, &retained)
 	}
 
@@ -258,20 +255,7 @@ impl Layout {
 		let mut union = Layout::default().with_writes(depth, first.element, &[]);
 		for layout in layouts {
 			assert_eq!(union.element, layout.element, "union layouts must share the element");
-			let writes: Vec<FieldWrite> = layout
-				.fields
-				.iter()
-				.map(|field| FieldWrite {
-					name: field.name,
-					level: field.level,
-					size: field.size,
-					align: field.align,
-					read_erased: field.read_erased,
-					repark: field.repark,
-					content_hash: field.content_hash,
-					content_eq: field.content_eq,
-				})
-				.collect();
+			let writes: Vec<FieldWrite> = layout.fields.iter().map(FieldDesc::as_write).collect();
 			union = union.with_writes(union.depth, union.element, &writes);
 		}
 		union
@@ -1799,13 +1783,16 @@ impl<'e> RunBuilder<'e> {
 
 	/// Writes the marker's value on an already pushed lane. The layout must
 	/// carry the marker among its field writes.
-	pub fn attr<A: crate::attribute::Attribute>(&mut self, lane: usize, value: A::Value<'e>) {
+	pub fn attr<A: crate::attribute::Attribute>(&mut self, lane: usize, value: A::Value<'e>)
+	where
+		A::Value<'static>: 'static,
+	{
 		assert!(lane < self.pushed, "attributes write onto pushed lanes");
-		let offset = self.layout.offset_of(A::NAME, 0).expect("the layout carries the written marker");
-		let field = self.layout.fields.iter().find(|field| field.name == A::NAME && field.level == 0).expect("resolved above");
-		assert_eq!(field.size, size_of::<A::Value<'e>>(), "the field was declared at the marker's value type");
-		// SAFETY: the offset comes from the builder's own layout and the size
-		// matches the marker's value type.
+		let field = self.layout.fields.iter().find(|field| field.name == A::NAME && field.level == 0).expect("the layout carries the written marker");
+		let offset = field.offset;
+		assert_eq!(field.type_id, std::any::TypeId::of::<A::Value<'static>>(), "the field was declared at the marker's value type");
+		// SAFETY: the offset comes from the builder's own layout and the value
+		// type matches the field's declared type.
 		unsafe { self.frames.add(lane * self.layout.lane_stride() + offset).cast::<A::Value<'e>>().write(value) };
 	}
 
@@ -2265,6 +2252,7 @@ mod tests {
 			level: 0,
 			size,
 			align,
+			type_id: std::any::TypeId::of::<()>(),
 			read_erased: unread,
 			repark: None,
 			content_hash: None,
@@ -2339,10 +2327,12 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "two different sizes")]
-	fn size_conflicts_panic() {
+	#[should_panic(expected = "two different types")]
+	fn type_conflicts_panic() {
+		let mut conflicting = sized_field("opacity", 8, 8);
+		conflicting.type_id = std::any::TypeId::of::<u64>();
 		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity")]);
-		layout.with_writes(0, element_write::<f64>(), &[sized_field("opacity", 4, 4)]);
+		layout.with_writes(0, element_write::<f64>(), &[conflicting]);
 	}
 
 	#[test]
