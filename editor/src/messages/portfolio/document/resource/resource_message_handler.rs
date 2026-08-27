@@ -12,6 +12,7 @@ use url::Url;
 pub struct ResourceMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub fonts: &'a FontsMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, ExtractField)]
@@ -25,7 +26,7 @@ pub struct ResourceMessageHandler {
 #[message_handler_data]
 impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMessageHandler {
 	fn process_message(&mut self, message: ResourceMessage, responses: &mut VecDeque<Message>, context: ResourceMessageContext) {
-		let ResourceMessageContext { document_id, fonts } = context;
+		let ResourceMessageContext { document_id, fonts, resource_storage } = context;
 
 		match message {
 			ResourceMessage::StoreEmbedded { resource_id, data } => {
