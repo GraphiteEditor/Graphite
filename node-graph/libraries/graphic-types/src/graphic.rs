@@ -15,15 +15,18 @@ use vector_types::GradientStops;
 pub use vector_types::Vector;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
+/// A leaf holds its element directly; its attributes ride the containing
+/// lane. Multi-element content is a [`core_types::record::Group`] run, or
+/// transitionally the legacy `Graphic` list.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
 pub enum Graphic {
 	Graphic(List<Graphic>),
-	Vector(List<Vector>),
-	RasterCPU(List<Raster<CPU>>),
-	RasterGPU(List<Raster<GPU>>),
-	Color(List<Color>),
-	Gradient(List<GradientStops>),
-	Text(List<String>),
+	Vector(Vector),
+	RasterCPU(Raster<CPU>),
+	RasterGPU(Raster<GPU>),
+	Color(Color),
+	Gradient(GradientStops),
+	Text(String),
 	Group(core_types::record::Group),
 }
 
@@ -40,15 +43,26 @@ impl From<List<Graphic>> for Graphic {
 	}
 }
 
+/// A typed legacy list as a legacy graphic list: each item de-tables to a
+/// leaf element, keeping its attributes on the containing lane.
+fn detable_items<T: Clone + Send + Sync + 'static>(list: List<T>, leaf: fn(T) -> Graphic) -> List<Graphic> {
+	let mut out = List::new();
+	for item in list.into_iter() {
+		let (element, attributes) = item.into_parts();
+		out.push(Item::from_parts(leaf(element), attributes));
+	}
+	out
+}
+
 // Vector
 impl From<Vector> for Graphic {
 	fn from(vector: Vector) -> Self {
-		Graphic::Vector(List::new_from_element(vector))
+		Graphic::Vector(vector)
 	}
 }
 impl From<List<Vector>> for Graphic {
 	fn from(vector: List<Vector>) -> Self {
-		Graphic::Vector(vector)
+		Graphic::Graphic(detable_items(vector, Graphic::Vector))
 	}
 }
 
@@ -57,12 +71,12 @@ impl From<List<Vector>> for Graphic {
 // Raster<CPU>
 impl From<Raster<CPU>> for Graphic {
 	fn from(raster: Raster<CPU>) -> Self {
-		Graphic::RasterCPU(List::new_from_element(raster))
+		Graphic::RasterCPU(raster)
 	}
 }
 impl From<List<Raster<CPU>>> for Graphic {
 	fn from(raster: List<Raster<CPU>>) -> Self {
-		Graphic::RasterCPU(raster)
+		Graphic::Graphic(detable_items(raster, Graphic::RasterCPU))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -70,12 +84,12 @@ impl From<List<Raster<CPU>>> for Graphic {
 // Raster<GPU>
 impl From<Raster<GPU>> for Graphic {
 	fn from(raster: Raster<GPU>) -> Self {
-		Graphic::RasterGPU(List::new_from_element(raster))
+		Graphic::RasterGPU(raster)
 	}
 }
 impl From<List<Raster<GPU>>> for Graphic {
 	fn from(raster: List<Raster<GPU>>) -> Self {
-		Graphic::RasterGPU(raster)
+		Graphic::Graphic(detable_items(raster, Graphic::RasterGPU))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -83,12 +97,12 @@ impl From<List<Raster<GPU>>> for Graphic {
 // Color
 impl From<Color> for Graphic {
 	fn from(color: Color) -> Self {
-		Graphic::Color(List::new_from_element(color))
+		Graphic::Color(color)
 	}
 }
 impl From<List<Color>> for Graphic {
 	fn from(color: List<Color>) -> Self {
-		Graphic::Color(color)
+		Graphic::Graphic(detable_items(color, Graphic::Color))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -97,31 +111,31 @@ impl From<List<Color>> for Graphic {
 // GradientStops
 impl From<GradientStops> for Graphic {
 	fn from(gradient: GradientStops) -> Self {
-		Graphic::Gradient(List::new_from_element(gradient))
+		Graphic::Gradient(gradient)
 	}
 }
 impl From<List<GradientStops>> for Graphic {
 	fn from(gradient: List<GradientStops>) -> Self {
-		Graphic::Gradient(gradient)
+		Graphic::Graphic(detable_items(gradient, Graphic::Gradient))
 	}
 }
 
 // String
 impl From<String> for Graphic {
 	fn from(text: String) -> Self {
-		Graphic::Text(List::new_from_element(text))
+		Graphic::Text(text)
 	}
 }
 impl From<List<String>> for Graphic {
 	fn from(text: List<String>) -> Self {
-		Graphic::Text(text)
+		Graphic::Graphic(detable_items(text, Graphic::Text))
 	}
 }
 
 /// Deeply flattens a `List<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
 /// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-`List`s composes transforms and opacity.
 fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
-	fn flatten_recursive<T>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
+	fn flatten_recursive<T>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>, parent_layer_path: Option<&[NodeId]>) {
 		for current_graphic_item in current_graphic_list.into_iter() {
 			// Whether the parent carries each attribute: a structural fact (column presence), never a value comparison.
 			// Flattening composes a parent attribute onto its children only when the parent has it,
@@ -129,14 +143,14 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 			let parent_has_transform = current_graphic_item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some();
 			let parent_has_opacity = current_graphic_item.attribute::<f64>(ATTR_OPACITY).is_some();
 			let parent_has_fill = current_graphic_item.attribute::<f64>(ATTR_OPACITY_FILL).is_some();
-			let parent_has_layer_path = current_graphic_item.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH).is_some();
 
-			let layer_path: Vec<NodeId> = current_graphic_item.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 			let current_transform: DAffine2 = current_graphic_item.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let current_opacity: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY, 1.);
 			let current_fill: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+			let lane_layer_path: Option<Vec<NodeId>> = current_graphic_item.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH).cloned();
 
-			match current_graphic_item.into_element() {
+			let (element, attributes) = current_graphic_item.into_parts();
+			match element {
 				// Compose the parent's transform/opacity/fill onto each child, but only for attributes the parent carries.
 				// A child lacking one is padded with the composition identity (`1.` for opacity/fill, identity for transform), so composing through it is a no-op.
 				Graphic::Graphic(mut sub_list) => {
@@ -156,31 +170,18 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 						}
 					}
 
-					flatten_recursive(output, sub_list, extract_variant);
+					flatten_recursive(output, sub_list, extract_variant, lane_layer_path.as_deref());
 				}
-				// Extract the target variant and push its items, composing the parent's attributes onto each
+				// A de-tabled leaf is one attr-less element; the extracted row rides with its containing lane's full attributes, paint included.
+				// The enclosing group lane's own layer path overrides, one hop only, matching the native walk.
 				other => {
 					if let Some(typed_list) = extract_variant(other) {
-						for mut item in typed_list.into_iter() {
-							// Each `|| item.attribute(...)` keeps an attribute the item itself carries
-							// (recomposed with the parent's identity value) even when the parent lacks it
-							if parent_has_transform || item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some() {
-								let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-								item.set_attribute(ATTR_TRANSFORM, current_transform * item_transform);
+						for item in typed_list.into_iter() {
+							let mut row = Item::from_parts(item.into_element(), attributes.clone());
+							if let Some(layer_path) = parent_layer_path {
+								row.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.to_vec());
 							}
-							if parent_has_opacity || item.attribute::<f64>(ATTR_OPACITY).is_some() {
-								let item_opacity: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-								item.set_attribute(ATTR_OPACITY, current_opacity * item_opacity);
-							}
-							if parent_has_fill || item.attribute::<f64>(ATTR_OPACITY_FILL).is_some() {
-								let item_fill: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
-								item.set_attribute(ATTR_OPACITY_FILL, current_fill * item_fill);
-							}
-							if parent_has_layer_path {
-								item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
-							}
-
-							output.push(item);
+							output.push(row);
 						}
 					}
 				}
@@ -189,7 +190,7 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 	}
 
 	let mut output = List::new();
-	flatten_recursive(&mut output, content, extract_variant);
+	flatten_recursive(&mut output, content, extract_variant, None);
 	output
 }
 
@@ -398,22 +399,13 @@ pub fn set_paint_attribute_at<T>(list: &mut List<T>, index: usize, key: &str, pa
 /// Bake the provided transform into the per-item transforms of the paint graphics stored under the
 /// canonical `List<Graphic>` fill and stroke attributes.
 pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DAffine2) {
-	fn bake_list_transform<T>(list: &mut List<T>, transform: DAffine2) {
-		for item_transform in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+	fn bake_graphic_paint_transform(graphics: &mut List<Graphic>, transform: DAffine2) {
+		for item_transform in graphics.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 			*item_transform = transform * *item_transform;
 		}
-	}
-
-	fn bake_graphic_paint_transform(graphics: &mut List<Graphic>, transform: DAffine2) {
 		for graphic in graphics.iter_element_values_mut() {
-			match graphic {
-				Graphic::Graphic(list) => bake_list_transform(list, transform),
-				Graphic::Vector(list) => bake_list_transform(list, transform),
-				Graphic::RasterCPU(list) => bake_list_transform(list, transform),
-				Graphic::RasterGPU(list) => bake_list_transform(list, transform),
-				Graphic::Gradient(list) => bake_list_transform(list, transform),
-				Graphic::Text(list) => bake_list_transform(list, transform),
-				Graphic::Color(_) | Graphic::Group(_) => {}
+			if let Graphic::Graphic(list) = graphic {
+				bake_graphic_paint_transform(list, transform);
 			}
 		}
 	}
@@ -433,31 +425,31 @@ pub trait TryFromGraphic: Clone + Sized {
 
 impl TryFromGraphic for Vector {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Vector(t) = graphic { Some(t) } else { None }
+		if let Graphic::Vector(t) = graphic { Some(List::new_from_element(t)) } else { None }
 	}
 }
 
 impl TryFromGraphic for Raster<CPU> {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::RasterCPU(t) = graphic { Some(t) } else { None }
+		if let Graphic::RasterCPU(t) = graphic { Some(List::new_from_element(t)) } else { None }
 	}
 }
 
 impl TryFromGraphic for Color {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Color(t) = graphic { Some(t) } else { None }
+		if let Graphic::Color(t) = graphic { Some(List::new_from_element(t)) } else { None }
 	}
 }
 
 impl TryFromGraphic for GradientStops {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Gradient(t) = graphic { Some(t) } else { None }
+		if let Graphic::Gradient(t) = graphic { Some(List::new_from_element(t)) } else { None }
 	}
 }
 
 impl TryFromGraphic for String {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Text(t) = graphic { Some(t) } else { None }
+		if let Graphic::Text(t) = graphic { Some(List::new_from_element(t)) } else { None }
 	}
 }
 
@@ -482,49 +474,37 @@ impl IntoGraphicList for List<Graphic> {
 
 impl IntoGraphicList for List<Vector> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		// Propagate `editor:layer_path` from item 0 onto the wrapper Graphic item so a subsequent
-		// `flatten_graphic_list` doesn't overwrite the inner Vector's stamp with an empty value
-		let layer_path: Vec<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
-		let mut graphic_list = List::new_from_element(Graphic::Vector(self));
-		if !layer_path.is_empty() {
-			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
-		}
-		graphic_list
+		detable_items(self, Graphic::Vector)
 	}
 }
 
 impl IntoGraphicList for List<Raster<CPU>> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		List::new_from_element(Graphic::RasterCPU(self))
+		detable_items(self, Graphic::RasterCPU)
 	}
 }
 
 impl IntoGraphicList for List<Raster<GPU>> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		List::new_from_element(Graphic::RasterGPU(self))
+		detable_items(self, Graphic::RasterGPU)
 	}
 }
 
 impl IntoGraphicList for List<Color> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		List::new_from_element(Graphic::Color(self))
+		detable_items(self, Graphic::Color)
 	}
 }
 
 impl IntoGraphicList for List<GradientStops> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		List::new_from_element(Graphic::Gradient(self))
+		detable_items(self, Graphic::Gradient)
 	}
 }
 
 impl IntoGraphicList for List<String> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		let layer_path: Vec<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
-		let mut graphic_list = List::new_from_element(Graphic::Text(self));
-		if !layer_path.is_empty() {
-			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
-		}
-		graphic_list
+		detable_items(self, Graphic::Text)
 	}
 }
 
@@ -544,7 +524,7 @@ impl From<DAffine2> for Graphic {
 // DVec2
 impl From<DVec2> for Graphic {
 	fn from(position: DVec2) -> Self {
-		Graphic::Vector(List::new_from_element(Vector::from_anchor_position(position)))
+		Graphic::Vector(Vector::from_anchor_position(position))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -564,54 +544,50 @@ impl Graphic {
 		}
 	}
 
-	pub fn as_vector(&self) -> Option<&List<Vector>> {
+	pub fn as_vector(&self) -> Option<&Vector> {
 		match self {
 			Graphic::Vector(vector) => Some(vector),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_mut(&mut self) -> Option<&mut List<Vector>> {
+	pub fn as_vector_mut(&mut self) -> Option<&mut Vector> {
 		match self {
 			Graphic::Vector(vector) => Some(vector),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster(&self) -> Option<&List<Raster<CPU>>> {
+	pub fn as_raster(&self) -> Option<&Raster<CPU>> {
 		match self {
 			Graphic::RasterCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster_mut(&mut self) -> Option<&mut List<Raster<CPU>>> {
+	pub fn as_raster_mut(&mut self) -> Option<&mut Raster<CPU>> {
 		match self {
 			Graphic::RasterCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
+	/// A leaf carries no clipping attribute, which rides its containing lane.
 	pub fn had_clip_enabled(&self) -> bool {
 		fn all_clipped<T>(list: &List<T>) -> bool {
 			list.iter_attribute_values_or_default::<bool>(ATTR_CLIPPING_MASK).all(|clip| clip)
 		}
 
 		match self {
-			Graphic::Vector(list) => all_clipped(list),
 			Graphic::Graphic(list) => all_clipped(list),
-			Graphic::RasterCPU(list) => all_clipped(list),
-			Graphic::RasterGPU(list) => all_clipped(list),
-			Graphic::Color(list) => all_clipped(list),
-			Graphic::Gradient(list) => all_clipped(list),
-			Graphic::Text(list) => all_clipped(list),
 			Graphic::Group(group) => group_all_clipped(group),
+			_ => false,
 		}
 	}
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
-			Graphic::Vector(vector) => vector_can_reduce_to_clip_path(vector),
+			Graphic::Vector(vector) => vector_can_reduce_to_clip_path(&core_types::lane::Single(vector)),
 			_ => false,
 		}
 	}
@@ -619,23 +595,11 @@ impl Graphic {
 	pub fn is_opaque(&self) -> bool {
 		match self {
 			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
-			Graphic::Vector(list) => {
-				fn is_paint_opaque_at<'a, A: Attribute<Value<'a> = Option<&'a List<Graphic>>>>(list: &'a List<Vector>, index: usize) -> bool {
-					paint_graphics::<A, _>(list, index).is_some_and(|graphic_list| graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque()))
-				}
-
-				!list.is_empty()
-					&& (0..list.len()).all(|i| {
-						let Some(vector) = list.element(i) else { return false };
-						let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
-						let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-						let fill_opaque = opacity_fill >= 1. - f64::EPSILON && is_paint_opaque_at::<Fill>(list, i);
-						let stroke_opaque_or_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_opaque_at::<Stroke>(list, i);
-						opacity >= 1. - f64::EPSILON && fill_opaque && stroke_opaque_or_invisible
-					})
-			}
-			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
-			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
+			// A bare leaf carries no paint attribute, which rides its lane, so
+			// nothing here claims opacity.
+			Graphic::Vector(_) => false,
+			Graphic::Color(color) => color.is_opaque(),
+			Graphic::Gradient(stops) => stops.iter().all(|stop| stop.color.is_opaque()),
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
 			Graphic::Group(group) => group_is_opaque(group),
 		}
@@ -644,23 +608,11 @@ impl Graphic {
 	pub fn is_fully_transparent(&self) -> bool {
 		match self {
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
-			Graphic::Vector(list) => (0..list.len()).all(|i| {
-				let Some(vector) = list.element(i) else { return false };
-				fn is_paint_fully_transparent_at<'a, A: Attribute<Value<'a> = Option<&'a List<Graphic>>>>(list: &'a List<Vector>, index: usize) -> bool {
-					paint_graphics::<A, _>(list, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()))
-				}
-
-				let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
-				if opacity <= f64::EPSILON {
-					return true;
-				}
-				let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-				let fill_invisible = opacity_fill <= f64::EPSILON || is_paint_fully_transparent_at::<Fill>(list, i);
-				let stroke_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_fully_transparent_at::<Stroke>(list, i);
-				fill_invisible && stroke_invisible
-			}),
-			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
-			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
+			// A bare leaf carries no paint attribute, so only an unstroked
+			// vector is invisible on its own.
+			Graphic::Vector(vector) => vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()),
+			Graphic::Color(color) => color.a() == 0.,
+			Graphic::Gradient(stops) => stops.iter().all(|stop| stop.color.a() == 0.),
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
 			Graphic::Group(group) => group_is_fully_transparent(group),
 		}
@@ -672,17 +624,12 @@ impl Graphic {
 		matches!(self, Graphic::Color(_) | Graphic::Gradient(_)) && self.is_opaque()
 	}
 
-	/// Returns true if this graphic's inner list is empty.
+	/// Whether the graphic holds no content: a leaf always holds its element.
 	pub fn is_empty(&self) -> bool {
 		match self {
 			Graphic::Graphic(list) => list.is_empty(),
-			Graphic::Vector(list) => list.is_empty(),
-			Graphic::Color(list) => list.is_empty(),
-			Graphic::Gradient(list) => list.is_empty(),
-			Graphic::RasterCPU(list) => list.is_empty(),
-			Graphic::RasterGPU(list) => list.is_empty(),
-			Graphic::Text(list) => list.is_empty(),
 			Graphic::Group(group) => group_is_empty(group),
+			_ => false,
 		}
 	}
 }
@@ -881,6 +828,83 @@ impl FlattenScale {
 	}
 }
 
+/// A graphic level in either of its two storages, as one lane source.
+#[derive(Clone, Copy)]
+pub enum GraphicLevel<'a> {
+	Legacy(&'a List<Graphic>),
+	Run(&'a core_types::record::GroupItem),
+}
+
+pub enum GraphicLevelColumn<'a, A: Attribute> {
+	Legacy(core_types::list::ListColumn<'a, A>),
+	Run(core_types::record::RunColumn<'a, A>),
+}
+
+impl<'a, A: Attribute> core_types::lane::LaneColumn<'a, A> for GraphicLevelColumn<'a, A> {
+	fn try_get(&self, lane: usize) -> Option<A::Value<'a>> {
+		match self {
+			GraphicLevelColumn::Legacy(column) => column.try_get(lane),
+			GraphicLevelColumn::Run(column) => column.try_get(lane),
+		}
+	}
+}
+
+impl<'a> LaneSource for GraphicLevel<'a> {
+	type Element = Graphic;
+	type Column<'b, A: Attribute>
+		= GraphicLevelColumn<'b, A>
+	where
+		Self: 'b;
+
+	fn lane_count(&self) -> usize {
+		match self {
+			GraphicLevel::Legacy(list) => list.len(),
+			GraphicLevel::Run(item) => item.len(),
+		}
+	}
+
+	fn element(&self, lane: usize) -> Option<&Graphic> {
+		match self {
+			GraphicLevel::Legacy(list) => list.element(lane),
+			GraphicLevel::Run(item) => {
+				let lanes = item.typed_lanes::<Graphic>()?;
+				if lane >= lanes.len() {
+					return None;
+				}
+				// SAFETY: the layout records the element type, and a parked
+				// element stores its reference at offset 0.
+				Some(unsafe { core_types::record::borrow_element::<Graphic>(item.lanes().get(lane).rec()) })
+			}
+		}
+	}
+
+	fn column<A: Attribute>(&self) -> GraphicLevelColumn<'_, A> {
+		match self {
+			GraphicLevel::Legacy(list) => GraphicLevelColumn::Legacy(list.column::<A>()),
+			GraphicLevel::Run(item) => GraphicLevelColumn::Run(core_types::record::RunColumn::of(item)),
+		}
+	}
+}
+
+/// The lane's attributes as an owned set, read through the erased glue.
+pub fn run_lane_attributes(item: &core_types::record::GroupItem, lane: usize) -> ItemAttributeValues {
+	let mut scratch: List<Vector> = List::new_from_element(Vector::default());
+	for field in &item.layout().fields {
+		// SAFETY: the offset comes from the item's own layout.
+		let value = unsafe { (field.read_erased)(item.lanes().get(lane).rec().ptr().add(field.offset)) };
+		scratch.set_attribute_value_dyn(field.name, 0, AttributeValueDyn(value));
+	}
+	scratch.clone_item_attributes(0)
+}
+
+/// The lane's attributes as an owned set, from either level storage.
+pub fn lane_attributes(level: GraphicLevel<'_>, lane: usize) -> ItemAttributeValues {
+	match level {
+		GraphicLevel::Legacy(list) => list.clone_item_attributes(lane),
+		GraphicLevel::Run(item) => run_lane_attributes(item, lane),
+	}
+}
+
 /// One flattened vector row served by [`walk_vector_rows`]: cheap probes
 /// first, the full row built on demand.
 pub struct VectorRow<'w> {
@@ -891,7 +915,9 @@ pub struct VectorRow<'w> {
 }
 
 enum RowSourceRef<'w> {
-	Legacy(&'w List<Vector>, usize),
+	/// A de-tabled vector leaf on a graphic lane: the lane is the row.
+	Lane(GraphicLevel<'w>, usize),
+	/// A lane of a vector run.
 	Run(&'w core_types::record::RunView<'w, Vector>, &'w core_types::record::GroupItem, usize),
 }
 
@@ -899,7 +925,7 @@ impl VectorRow<'_> {
 	/// The row's vector, borrowed.
 	pub fn element(&self) -> &Vector {
 		match &self.source {
-			RowSourceRef::Legacy(list, index) => list.element(*index).expect("the walk visits held rows"),
+			RowSourceRef::Lane(level, index) => level.element(*index).and_then(Graphic::as_vector).expect("the walk visits vector lanes"),
 			RowSourceRef::Run(run, _, index) => LaneSource::element(*run, *index).expect("the walk visits held lanes"),
 		}
 	}
@@ -911,10 +937,7 @@ impl VectorRow<'_> {
 			return true;
 		}
 		match &self.source {
-			RowSourceRef::Legacy(list, index) => list
-				.attribute::<Option<List<Graphic>>>(ATTR_FILL, *index)
-				.and_then(|paint| paint.as_ref())
-				.is_some_and(is_paint_present),
+			RowSourceRef::Lane(level, index) => paint_graphics::<Fill, _>(level, *index).is_some(),
 			RowSourceRef::Run(run, _, index) => paint_graphics::<Fill, _>(*run, *index).is_some(),
 		}
 	}
@@ -924,16 +947,13 @@ impl VectorRow<'_> {
 	pub fn build_into(&self, out: &mut List<Vector>) {
 		let index = out.len();
 		match &self.source {
-			RowSourceRef::Legacy(list, row) => {
-				out.push(list.clone_item(*row).expect("the walk visits held rows"));
+			RowSourceRef::Lane(level, lane) => {
+				let vector = self.element().clone();
+				out.push(Item::from_parts(vector, lane_attributes(*level, *lane)));
 			}
 			RowSourceRef::Run(run, item, lane) => {
-				out.push(Item::new_from_element(LaneSource::element(*run, *lane).expect("the walk visits held lanes").clone()));
-				for field in &item.layout().fields {
-					// SAFETY: the offset comes from the item's own layout.
-					let value = unsafe { (field.read_erased)(item.lanes().get(*lane).rec().ptr().add(field.offset)) };
-					out.set_attribute_value_dyn(field.name, index, AttributeValueDyn(value));
-				}
+				let vector = LaneSource::element(*run, *lane).expect("the walk visits held lanes").clone();
+				out.push(Item::from_parts(vector, run_lane_attributes(item, *lane)));
 			}
 		}
 		for (key, slot) in [(ATTR_FILL, self.paint.fill), (ATTR_STROKE, self.paint.stroke)] {
@@ -957,20 +977,6 @@ impl VectorRow<'_> {
 			out.set_attribute(ATTR_EDITOR_LAYER_PATH, index, layer_path.to_vec());
 		}
 	}
-}
-
-fn walk_rows_of_list(list: &List<Vector>, scale: FlattenScale, layer_path: Option<&[NodeId]>, paint: LanePaint<'_>, visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep) -> RowStep {
-	for row in 0..list.len() {
-		if let RowStep::Stop = visit(VectorRow {
-			source: RowSourceRef::Legacy(list, row),
-			scale,
-			layer_path,
-			paint,
-		}) {
-			return RowStep::Stop;
-		}
-	}
-	RowStep::Continue
 }
 
 fn walk_rows_of_run(
@@ -998,36 +1004,68 @@ fn walk_rows_of_run(
 
 /// Walks a graphic level into its flattened vector rows, matching the legacy
 /// push-then-flatten lowering: lane paint threads with [`PaintReach`],
-/// ancestor transform, opacity and fill opacity compose down, the immediate
-/// parent's layer path overwrites its rows, and non-vector content is
-/// discarded.
-pub fn walk_vector_rows<S: LaneSource<Element = Graphic>>(source: &S, visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep) {
-	walk_vector_rows_impl(source, FlattenScale::ROOT, PaintReach::NONE, visit);
+/// ancestor transform, opacity and fill opacity compose down, the containing
+/// level's parent layer path overwrites its rows, and non-vector content is
+/// discarded. A de-tabled leaf's row is its lane, attributes included.
+pub fn walk_vector_rows(level: GraphicLevel<'_>, visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep) {
+	walk_vector_rows_impl(level, FlattenScale::ROOT, None, PaintReach::NONE, visit);
 }
 
-fn walk_vector_rows_impl<'a, S: LaneSource<Element = Graphic>>(
-	source: &'a S,
+fn walk_vector_rows_impl<'a>(
+	level: GraphicLevel<'a>,
 	scale: FlattenScale,
+	parent_layer_path: Option<&'a [NodeId]>,
 	inherited: PaintReach<'a>,
 	visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep,
 ) -> RowStep {
-	let columns = PaintColumns::new(source);
-	for index in 0..source.lane_count() {
-		let Some(element) = source.element(index) else { continue };
+	if let GraphicLevel::Run(item) = level {
+		// A vector-typed run is already its rows.
+		if item.typed_lanes::<Vector>().is_some() {
+			let paint = match inherited.applies() {
+				true => inherited.paint,
+				false => LanePaint::NONE,
+			};
+			return walk_rows_of_run(item, scale, parent_layer_path, paint, visit);
+		}
+	}
+	let columns = PaintColumns::new(&level);
+	for index in 0..level.lane_count() {
+		let Some(element) = level.element(index) else { continue };
 		let reach = inherited.for_lane(&columns, index);
-		let lane_scale = scale.composed(source, index);
-		let layer_path = source.try_attr::<EditorLayerPath>(index);
 		let row_paint = match reach.applies() {
 			true => reach.paint,
 			false => LanePaint::NONE,
 		};
 		let step = match element {
-			Graphic::Vector(inner) => walk_rows_of_list(inner, lane_scale, layer_path, row_paint, visit),
-			Graphic::Graphic(children) => walk_vector_rows_impl(children, lane_scale, reach.nested(), visit),
-			Graphic::Group(group) => match core_types::record::RunView::<Graphic>::new(&group.content) {
-				Some(run) => walk_vector_rows_impl(&run, lane_scale, reach.into_group_graphics(), visit),
-				None => walk_rows_of_run(&group.content, lane_scale, layer_path, row_paint, visit),
-			},
+			Graphic::Vector(_) => visit(VectorRow {
+				source: RowSourceRef::Lane(level, index),
+				scale,
+				layer_path: parent_layer_path,
+				paint: row_paint,
+			}),
+			Graphic::Graphic(children) => walk_vector_rows_impl(
+				GraphicLevel::Legacy(children),
+				scale.composed(&level, index),
+				level.try_attr::<EditorLayerPath>(index),
+				reach.nested(),
+				visit,
+			),
+			Graphic::Group(group) => {
+				let item = &group.content;
+				if item.typed_lanes::<Vector>().is_some() {
+					walk_rows_of_run(item, scale.composed(&level, index), level.try_attr::<EditorLayerPath>(index), row_paint, visit)
+				} else if item.typed_lanes::<Graphic>().is_some() {
+					walk_vector_rows_impl(
+						GraphicLevel::Run(item),
+						scale.composed(&level, index),
+						level.try_attr::<EditorLayerPath>(index),
+						reach.into_group_graphics(),
+						visit,
+					)
+				} else {
+					RowStep::Continue
+				}
+			}
 			_ => RowStep::Continue,
 		};
 		if let RowStep::Stop = step {
@@ -1039,9 +1077,9 @@ fn walk_vector_rows_impl<'a, S: LaneSource<Element = Graphic>>(
 
 /// The level's flattened vector rows as one owned list, the walk's collect
 /// form.
-pub fn flatten_vector_rows<S: LaneSource<Element = Graphic>>(source: &S) -> List<Vector> {
+pub fn flatten_vector_rows(level: GraphicLevel<'_>) -> List<Vector> {
 	let mut out = List::new();
-	walk_vector_rows(source, &mut |row| {
+	walk_vector_rows(level, &mut |row| {
 		row.build_into(&mut out);
 		RowStep::Continue
 	});
@@ -1071,22 +1109,11 @@ fn push_lane_paint_into_interiors(list: &mut List<Graphic>) {
 			let Some(paint) = stored.filter(|paint| is_paint_present(paint)).cloned() else {
 				continue;
 			};
-			let Some(element) = list.element_mut(index) else { continue };
-			let fill_list = |inner: &mut List<Vector>| {
-				for item in 0..inner.len() {
-					set_paint_attribute_at(inner, item, key, paint.clone());
+			let Some(Graphic::Graphic(children)) = list.element_mut(index) else { continue };
+			for child in 0..children.len() {
+				if matches!(children.element(child), Some(Graphic::Vector(_))) {
+					set_paint_attribute_at(children, child, key, paint.clone());
 				}
-			};
-			match element {
-				Graphic::Vector(inner) => fill_list(inner),
-				Graphic::Graphic(children) => {
-					for child in children.iter_element_values_mut() {
-						if let Some(inner) = child.as_vector_mut() {
-							fill_list(inner);
-						}
-					}
-				}
-				_ => {}
 			}
 		}
 	}
@@ -1213,7 +1240,7 @@ const _: () = {
 /// [`group_to_legacy_graphic`]'s typed-run path, where `Vector` is tried first.
 pub fn direct_vector_len(graphic: &Graphic) -> usize {
 	match graphic {
-		Graphic::Vector(list) => list.len(),
+		Graphic::Vector(_) => 1,
 		Graphic::Group(group) => match &group.row {
 			None => group.content.typed_lanes::<Vector>().map_or(0, |lanes| lanes.len()),
 			_ => 0,
@@ -1244,14 +1271,14 @@ pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic {
 	if group.row.is_none() {
 		let item = &group.content;
 		let typed = None
-			.or_else(|| run_to_legacy_list::<Vector>(item).map(Graphic::Vector))
-			.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(Graphic::RasterCPU))
-			.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(Graphic::RasterGPU))
-			.or_else(|| run_to_legacy_list::<Color>(item).map(Graphic::Color))
-			.or_else(|| run_to_legacy_list::<GradientStops>(item).map(Graphic::Gradient))
-			.or_else(|| run_to_legacy_list::<String>(item).map(Graphic::Text));
+			.or_else(|| run_to_legacy_list::<Vector>(item).map(|list| detable_items(list, Graphic::Vector)))
+			.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(|list| detable_items(list, Graphic::RasterCPU)))
+			.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(|list| detable_items(list, Graphic::RasterGPU)))
+			.or_else(|| run_to_legacy_list::<Color>(item).map(|list| detable_items(list, Graphic::Color)))
+			.or_else(|| run_to_legacy_list::<GradientStops>(item).map(|list| detable_items(list, Graphic::Gradient)))
+			.or_else(|| run_to_legacy_list::<String>(item).map(|list| detable_items(list, Graphic::Text)));
 		if let Some(typed) = typed {
-			return typed;
+			return Graphic::Graphic(typed);
 		}
 	}
 	Graphic::Graphic(group_to_legacy_list(group))
@@ -1268,17 +1295,13 @@ pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic> 
 		push_lane_paint_into_interiors(&mut list);
 		return list;
 	}
-	let element = None
-		.or_else(|| run_to_legacy_list::<Vector>(item).map(Graphic::Vector))
-		.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(Graphic::RasterCPU))
-		.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(Graphic::RasterGPU))
-		.or_else(|| run_to_legacy_list::<Color>(item).map(Graphic::Color))
-		.or_else(|| run_to_legacy_list::<GradientStops>(item).map(Graphic::Gradient))
-		.or_else(|| run_to_legacy_list::<String>(item).map(Graphic::Text));
-	match element {
-		Some(element) => List::new_from_element(element),
-		None => List::new(),
-	}
+	None.or_else(|| run_to_legacy_list::<Vector>(item).map(|list| detable_items(list, Graphic::Vector)))
+		.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(|list| detable_items(list, Graphic::RasterCPU)))
+		.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(|list| detable_items(list, Graphic::RasterGPU)))
+		.or_else(|| run_to_legacy_list::<Color>(item).map(|list| detable_items(list, Graphic::Color)))
+		.or_else(|| run_to_legacy_list::<GradientStops>(item).map(|list| detable_items(list, Graphic::Gradient)))
+		.or_else(|| run_to_legacy_list::<String>(item).map(|list| detable_items(list, Graphic::Text)))
+		.unwrap_or_default()
 }
 
 fn group_render_complexity(group: &core_types::record::Group) -> usize {
@@ -1300,13 +1323,13 @@ fn group_render_complexity(group: &core_types::record::Group) -> usize {
 impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
-			Graphic::Vector(list) => list.bounding_box(transform, include_stroke),
-			Graphic::RasterCPU(list) => list.bounding_box(transform, include_stroke),
-			Graphic::RasterGPU(list) => list.bounding_box(transform, include_stroke),
+			Graphic::Vector(vector) => BoundingBox::bounding_box(vector, transform, include_stroke),
+			Graphic::RasterCPU(raster) => raster.bounding_box(transform, include_stroke),
+			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::Graphic(list) => list.bounding_box(transform, include_stroke),
-			Graphic::Color(list) => list.bounding_box(transform, include_stroke),
-			Graphic::Gradient(list) => list.bounding_box(transform, include_stroke),
-			Graphic::Text(list) => list.bounding_box(transform, include_stroke),
+			Graphic::Color(color) => color.bounding_box(transform, include_stroke),
+			Graphic::Gradient(gradient) => gradient.bounding_box(transform, include_stroke),
+			Graphic::Text(text) => text.bounding_box(transform, include_stroke),
 			Graphic::Group(group) => group_bounding_box(group, transform, include_stroke, false),
 		}
 	}
@@ -1327,17 +1350,17 @@ impl BoundingBox for Graphic {
 
 impl ListConvert<Graphic> for Vector {
 	fn convert_item(self) -> Graphic {
-		Graphic::Vector(List::new_from_element(self))
+		Graphic::Vector(self)
 	}
 }
 impl ListConvert<Graphic> for Raster<CPU> {
 	fn convert_item(self) -> Graphic {
-		Graphic::RasterCPU(List::new_from_element(self))
+		Graphic::RasterCPU(self)
 	}
 }
 impl ListConvert<Graphic> for Raster<GPU> {
 	fn convert_item(self) -> Graphic {
-		Graphic::RasterGPU(List::new_from_element(self))
+		Graphic::RasterGPU(self)
 	}
 }
 
@@ -1433,7 +1456,7 @@ mod tests {
 	use core_types::list::List;
 
 	fn vector_graphic() -> Graphic {
-		Graphic::Vector(List::new_from_element(Vector::default()))
+		Graphic::Vector(Vector::default())
 	}
 
 	// Flattening must not invent attribute columns that neither the parent graphic nor the child carried
@@ -1479,7 +1502,7 @@ mod run_tests {
 
 	#[test]
 	fn a_run_serves_the_parked_paint_reference() {
-		let paint = List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK)));
+		let paint = List::new_from_element(Graphic::Color(Color::BLACK));
 		let vector = unit_square_at(DVec2::ZERO);
 
 		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
@@ -1505,7 +1528,7 @@ mod run_tests {
 
 	#[test]
 	fn an_owned_group_replays_content_equal_after_the_source_dies() {
-		let paint = List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK)));
+		let paint = List::new_from_element(Graphic::Color(Color::BLACK));
 		let vector = unit_square_at(DVec2::ZERO);
 
 		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
@@ -1711,30 +1734,32 @@ mod run_tests {
 		let inner_item = unsafe { GroupItem::from_resident(RecordBatch::new(inner_bytes.as_ptr(), 1, &inner_layout)) };
 
 		let mut painted = List::new();
-		painted.push(Item::new_from_element(unit_square_at(DVec2::ZERO)));
-		painted.push(Item::new_from_element(unit_square_at(DVec2::ONE)));
+		painted.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO))));
+		painted.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ONE))));
 		painted.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(1., 0.)));
 		painted.set_attribute(core_types::ATTR_TRANSFORM, 1, DAffine2::from_translation(DVec2::new(0., 1.)));
-		set_paint_attribute_at(&mut painted, 1, ATTR_FILL, List::new_from_element(Graphic::Color(List::new_from_element(Color::WHITE))));
+		set_paint_attribute_at(&mut painted, 1, ATTR_FILL, List::new_from_element(Graphic::Color(Color::WHITE)));
 
-		let mut nested_child = List::new();
-		nested_child.push(Item::new_from_element(unit_square_at(DVec2::new(2., 2.))));
-		let mut nested = List::new_from_element(Graphic::Vector(nested_child));
+		let mut nested = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(2., 2.))));
 		nested.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_scale(DVec2::splat(2.)));
 
 		let mut top = List::new();
-		top.push(Item::new_from_element(Graphic::Vector(painted)));
+		top.push(Item::new_from_element(Graphic::Graphic(painted)));
 		top.push(Item::new_from_element(Graphic::Graphic(nested)));
 		top.push(Item::new_from_element(Graphic::Group(core_types::record::Group {
 			row: None,
 			content: inner_item,
 		})));
-		top.push(Item::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK))));
+		top.push(Item::new_from_element(Graphic::Color(Color::BLACK)));
+		top.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(6., 0.)))));
 		top.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(5., 5.)));
 		top.set_attribute(core_types::ATTR_EDITOR_LAYER_PATH, 0, vec![core_types::uuid::NodeId(7)]);
-		set_paint_attribute_at(&mut top, 0, ATTR_FILL, List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK))));
+		set_paint_attribute_at(&mut top, 0, ATTR_FILL, List::new_from_element(Graphic::Color(Color::BLACK)));
 		top.set_attribute(core_types::ATTR_OPACITY, 1, 0.5);
 		top.set_attribute(core_types::ATTR_TRANSFORM, 2, DAffine2::from_scale(DVec2::splat(3.)));
+		top.set_attribute(core_types::ATTR_TRANSFORM, 4, DAffine2::from_translation(DVec2::new(0., 7.)));
+		top.set_attribute(core_types::ATTR_EDITOR_LAYER_PATH, 4, vec![core_types::uuid::NodeId(9)]);
+		set_paint_attribute_at(&mut top, 4, ATTR_FILL, List::new_from_element(Graphic::Color(Color::WHITE)));
 
 		let legacy = {
 			let mut list = top.clone();
@@ -1744,7 +1769,19 @@ mod run_tests {
 			push_lane_paint_into_interiors(&mut list);
 			list.into_flattened_list::<Vector>()
 		};
-		assert_eq!(flatten_vector_rows(&top), legacy);
+		let native = flatten_vector_rows(GraphicLevel::Legacy(&top));
+		assert_eq!(native.len(), legacy.len());
+		for row in 0..native.len() {
+			assert_eq!(native.attribute::<DAffine2>(core_types::ATTR_TRANSFORM, row), legacy.attribute::<DAffine2>(core_types::ATTR_TRANSFORM, row), "transform, row {row}");
+			assert_eq!(native.attribute::<f64>(core_types::ATTR_OPACITY, row), legacy.attribute::<f64>(core_types::ATTR_OPACITY, row), "opacity, row {row}");
+			assert_eq!(
+				native.attribute::<Vec<core_types::uuid::NodeId>>(core_types::ATTR_EDITOR_LAYER_PATH, row),
+				legacy.attribute::<Vec<core_types::uuid::NodeId>>(core_types::ATTR_EDITOR_LAYER_PATH, row),
+				"layer path, row {row}"
+			);
+			assert_eq!(native.attribute::<Option<List<Graphic>>>(ATTR_FILL, row), legacy.attribute::<Option<List<Graphic>>>(ATTR_FILL, row), "fill, row {row}");
+		}
+		assert_eq!(native, legacy);
 	}
 
 	#[test]
@@ -1780,19 +1817,17 @@ mod run_tests {
 
 #[cfg(test)]
 mod graphic_is_opaque_tests {
-	use vector_types::{ATTR_SPREAD_METHOD, GradientSpreadMethod, GradientStop};
+	use vector_types::GradientStop;
 
 	use super::*;
 
 	fn color_graphic(alpha: f64) -> Graphic {
 		let color = Color::from_rgbaf32(1., 0., 0., alpha as f32).unwrap();
-		Graphic::Color(List::new_from_element(color))
+		Graphic::Color(color)
 	}
 
 	fn gradient_graphic(gradient: GradientStops) -> Graphic {
-		let mut gradient_list = List::new_from_element(gradient);
-		gradient_list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Pad);
-		Graphic::Gradient(gradient_list)
+		Graphic::Gradient(gradient)
 	}
 
 	#[test]
@@ -1809,7 +1844,7 @@ mod graphic_is_opaque_tests {
 
 	#[test]
 	fn vector_is_not_opaque() {
-		let g = Graphic::Vector(List::default());
+		let g = Graphic::Vector(Vector::default());
 		assert!(!g.is_opaque());
 	}
 

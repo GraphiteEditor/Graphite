@@ -300,7 +300,7 @@ mod tests {
 	}
 
 	fn text(label: &str) -> Graphic {
-		Graphic::Text(List::new_from_element(label.to_string()))
+		Graphic::Text(label.to_string())
 	}
 
 	fn group(children: Vec<(Graphic, DAffine2)>) -> Graphic {
@@ -313,10 +313,10 @@ mod tests {
 	}
 
 	fn text_of(graphic: &Graphic) -> &str {
-		let Graphic::Text(list) = graphic else {
+		let Graphic::Text(text) = graphic else {
 			panic!("expected a text leaf, got {graphic:?}");
 		};
-		list.element(0).expect("a text leaf holds its string")
+		text
 	}
 
 	fn translation(x: f64) -> DAffine2 {
@@ -367,7 +367,7 @@ mod tests {
 		let arg = core_types::ExtractVarArgs::vararg(input, 0).ok()?;
 		let list = arg.downcast_ref::<core_types::list::List<Graphic>>()?;
 		let Graphic::Text(text) = list.element(0)? else { return None };
-		Some(text.element(0)?.clone())
+		Some(text.clone())
 	}
 
 	impl<'e> Node<ContextImpl<'e>> for PerRowSource {

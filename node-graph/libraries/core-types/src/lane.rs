@@ -38,6 +38,99 @@ pub trait LaneSource {
 	}
 }
 
+/// A bare element as a one-lane source: no columns, so every marker reads its
+/// census default. The read surface for a de-tabled leaf, whose attributes
+/// ride the containing lane.
+pub struct Single<'a, T>(pub &'a T);
+
+/// The column of a [`Single`]: always absent, so reads fall to the census
+/// default.
+pub struct NoColumn;
+
+impl<'a, A: Attribute> LaneColumn<'a, A> for NoColumn {
+	fn try_get(&self, _lane: usize) -> Option<A::Value<'a>> {
+		None
+	}
+}
+
+impl<T> LaneSource for Single<'_, T> {
+	type Element = T;
+	type Column<'a, A: Attribute>
+		= NoColumn
+	where
+		Self: 'a;
+
+	fn lane_count(&self) -> usize {
+		1
+	}
+
+	fn element(&self, lane: usize) -> Option<&T> {
+		(lane == 0).then_some(self.0)
+	}
+
+	fn column<A: Attribute>(&self) -> NoColumn {
+		NoColumn
+	}
+}
+
+impl<T: crate::bounds::BoundingBox> crate::bounds::BoundingBox for Single<'_, T> {
+	fn bounding_box(&self, transform: glam::DAffine2, include_stroke: bool) -> crate::bounds::RenderBoundingBox {
+		self.0.bounding_box(transform, include_stroke)
+	}
+
+	fn thumbnail_bounding_box(&self, transform: glam::DAffine2, include_stroke: bool) -> crate::bounds::RenderBoundingBox {
+		self.0.thumbnail_bounding_box(transform, include_stroke)
+	}
+}
+
+/// One lane of a source re-based as a one-lane source of a leaf element: the
+/// de-tabled leaf read with its containing lane's attributes.
+pub struct LeafLane<'a, S, T> {
+	source: &'a S,
+	index: usize,
+	element: &'a T,
+}
+
+impl<'a, S, T> LeafLane<'a, S, T> {
+	pub fn new(source: &'a S, index: usize, element: &'a T) -> Self {
+		Self { source, index, element }
+	}
+}
+
+pub struct LaneColumnAt<'a, S: LaneSource + 'a, A: Attribute> {
+	inner: S::Column<'a, A>,
+	index: usize,
+}
+
+impl<'a, S: LaneSource, A: Attribute> LaneColumn<'a, A> for LaneColumnAt<'a, S, A> {
+	fn try_get(&self, lane: usize) -> Option<A::Value<'a>> {
+		(lane == 0).then(|| self.inner.try_get(self.index)).flatten()
+	}
+}
+
+impl<S: LaneSource, T> LaneSource for LeafLane<'_, S, T> {
+	type Element = T;
+	type Column<'a, A: Attribute>
+		= LaneColumnAt<'a, S, A>
+	where
+		Self: 'a;
+
+	fn lane_count(&self) -> usize {
+		1
+	}
+
+	fn element(&self, lane: usize) -> Option<&T> {
+		(lane == 0).then_some(self.element)
+	}
+
+	fn column<A: Attribute>(&self) -> LaneColumnAt<'_, S, A> {
+		LaneColumnAt {
+			inner: self.source.column::<A>(),
+			index: self.index,
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::LaneSource;

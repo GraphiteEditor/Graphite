@@ -1966,6 +1966,17 @@ pub struct RunColumn<'a, A: crate::attribute::Attribute> {
 	marker: std::marker::PhantomData<A>,
 }
 
+impl<'a, A: crate::attribute::Attribute> RunColumn<'a, A> {
+	/// The marker's column on an item, its offset resolved once.
+	pub fn of(item: &'a GroupItem) -> Self {
+		Self {
+			item,
+			offset: item.layout().offset_of(A::NAME, 0),
+			marker: std::marker::PhantomData,
+		}
+	}
+}
+
 impl<'a, A: crate::attribute::Attribute> crate::lane::LaneColumn<'a, A> for RunColumn<'a, A> {
 	fn try_get(&self, lane: usize) -> Option<A::Value<'a>> {
 		// SAFETY: the offset comes from the item's own layout, whose field at
@@ -1990,11 +2001,7 @@ impl<'a, T: 'static> crate::lane::LaneSource for RunView<'a, T> {
 	}
 
 	fn column<A: crate::attribute::Attribute>(&self) -> RunColumn<'_, A> {
-		RunColumn {
-			item: self.item,
-			offset: self.item.layout().offset_of(A::NAME, 0),
-			marker: std::marker::PhantomData,
-		}
+		RunColumn::of(self.item)
 	}
 }
 

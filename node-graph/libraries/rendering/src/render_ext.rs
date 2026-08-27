@@ -3,7 +3,6 @@ use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::Color;
 use core_types::attribute::Transform;
 use core_types::color::SRGBA8;
-use core_types::lane::LaneSource;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
 use glam::{DAffine2, DVec2};
@@ -53,6 +52,20 @@ pub trait RenderExt {
 	) -> Self::Output;
 }
 
+/// The color paint attribute over any color lane source.
+pub fn render_color_paint<S: core_types::lane::LaneSource<Element = Color>>(source: &S, target: PaintTarget) -> String {
+	let Some(color) = source.element(0) else {
+		return format!(r#" {}="none""#, target.paint_attr());
+	};
+
+	let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
+	if color.a() < 1. {
+		let _ = write!(result, r#" {}="{}""#, target.opacity_attr(), (color.a() * 1000.).round() / 1000.);
+	}
+
+	result
+}
+
 impl RenderExt for List<Color> {
 	type Output = String;
 
@@ -66,16 +79,7 @@ impl RenderExt for List<Color> {
 		_render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
-		let Some(color) = self.element(0) else {
-			return format!(r#" {}="none""#, target.paint_attr());
-		};
-
-		let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
-		if color.a() < 1. {
-			let _ = write!(result, r#" {}="{}""#, target.opacity_attr(), (color.a() * 1000.).round() / 1000.);
-		}
-
-		result
+		render_color_paint(self, target)
 	}
 }
 
@@ -93,12 +97,20 @@ impl RenderExt for List<GradientStops> {
 		_render_params: &RenderParams,
 		_target: PaintTarget,
 	) -> Self::Output {
-		let mut stop = String::new();
+		render_gradient_paint(self, svg_defs, item_transform, element_transform)
+	}
+}
 
-		let Some(stops) = self.element(0) else { return 0 };
-		let gradient_type: GradientType = self.attr::<GradientTypeAttr>(0);
-		let local_gradient_transform: DAffine2 = self.attr::<Transform>(0);
-		let spread_method: GradientSpreadMethod = self.attr::<SpreadMethod>(0);
+/// Adds the gradient def through mutating `svg_defs`, returning the gradient
+/// ID, over any gradient lane source.
+pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientStops>>(source: &S, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> u64 {
+	let mut stop = String::new();
+
+	{
+		let Some(stops) = source.element(0) else { return 0 };
+		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(0);
+		let local_gradient_transform: DAffine2 = source.attr::<Transform>(0);
+		let spread_method: GradientSpreadMethod = source.attr::<SpreadMethod>(0);
 
 		for (position, color, original_midpoint) in stops.interpolated_samples() {
 			stop.push_str("<stop");
@@ -239,9 +251,9 @@ impl RenderExt for List<Graphic> {
 		let paint_attr = target.paint_attr();
 
 		match fill_graphic {
-			Some(Graphic::Color(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
-			Some(Graphic::Gradient(gradient_list)) => {
-				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target);
+			Some(Graphic::Color(color)) => render_color_paint(&core_types::lane::LeafLane::new(self, 0, color), target),
+			Some(Graphic::Gradient(gradient)) => {
+				let gradient_id = render_gradient_paint(&core_types::lane::LeafLane::new(self, 0, gradient), svg_defs, item_transform, element_transform);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
 			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) | Some(Graphic::Group(_)) => {

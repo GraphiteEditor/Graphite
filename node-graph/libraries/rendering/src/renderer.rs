@@ -12,6 +12,7 @@ use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::lane::LaneSource;
 use core_types::list::{Item, List};
+use core_types::lane::{LeafLane, Single};
 use core_types::record::{Group, RunView};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
@@ -399,7 +400,7 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 	}
 }
 
-fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
+fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_type: GradientType = gradient_list.attr::<GradientTypeAttr>(0);
@@ -552,12 +553,12 @@ impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			Graphic::Graphic(list) => list.render_svg(render, render_params),
-			Graphic::Vector(list) => list.render_svg(render, render_params),
-			Graphic::RasterCPU(list) => list.render_svg(render, render_params),
+			Graphic::Vector(vector) => render_vector_svg(&Single(vector), render, render_params),
+			Graphic::RasterCPU(raster) => render_raster_cpu_svg(&Single(raster), render, render_params),
 			Graphic::RasterGPU(_) => (),
-			Graphic::Color(list) => list.render_svg(render, render_params),
-			Graphic::Gradient(list) => list.render_svg(render, render_params),
-			Graphic::Text(list) => list.render_svg(render, render_params),
+			Graphic::Color(color) => render_color_svg(&Single(color), render, render_params),
+			Graphic::Gradient(gradient) => render_gradient_svg(&Single(gradient), render, render_params),
+			Graphic::Text(text) => render_text_svg(&Single(text), render, render_params),
 			Graphic::Group(group) => render_group_svg(group, PaintReach::NONE, render, render_params),
 		}
 	}
@@ -565,18 +566,18 @@ impl Render for Graphic {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
 			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Vector(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterCPU(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterGPU(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Text(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::Vector(vector) => render_vector_vello(&Single(vector), scene, transform, context, render_params),
+			Graphic::RasterCPU(raster) => render_raster_cpu_vello(&Single(raster), scene, transform, render_params),
+			Graphic::RasterGPU(raster) => render_raster_gpu_vello(&Single(raster), scene, transform, context, render_params),
+			Graphic::Color(color) => render_color_vello(&Single(color), scene, render_params),
+			Graphic::Gradient(gradient) => render_gradient_vello(&Single(gradient), scene, transform, render_params),
+			Graphic::Text(text) => render_text_vello(&Single(text), scene, transform, render_params),
 			Graphic::Group(group) => render_group_vello(group, PaintReach::NONE, scene, transform, context, render_params),
 		}
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		collect_element_metadata(self, PaintReach::NONE, metadata, footprint, element_id)
+		collect_element_metadata(self, PaintReach::NONE, DAffine2::IDENTITY, None, metadata, footprint, element_id)
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -590,33 +591,22 @@ impl Render for Graphic {
 	fn contains_artboard(&self) -> bool {
 		match self {
 			Graphic::Graphic(list) => list.contains_artboard(),
-			Graphic::Vector(list) => list.contains_artboard(),
-			Graphic::RasterCPU(list) => list.contains_artboard(),
-			Graphic::RasterGPU(list) => list.contains_artboard(),
-			Graphic::Color(list) => list.contains_artboard(),
-			Graphic::Gradient(list) => list.contains_artboard(),
-			Graphic::Text(list) => list.contains_artboard(),
-			Graphic::Group(_) => false,
+			_ => false,
 		}
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
 			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
-			Graphic::Vector(list) => list.new_ids_from_hash(reference),
-			Graphic::RasterCPU(_) => (),
-			Graphic::RasterGPU(_) => (),
-			Graphic::Color(_) => (),
-			Graphic::Gradient(_) => (),
-			Graphic::Text(_) => (),
-			Graphic::Group(_) => (),
+			Graphic::Vector(vector) => vector.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default()),
+			_ => (),
 		}
 	}
 }
 
 fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
 	match element {
-		Graphic::Vector(inner) if reach.applies() => render_vector_svg(&PaintOverlay::new(inner, reach.paint), render, render_params),
+		Graphic::Vector(vector) if reach.applies() => render_vector_svg(&PaintOverlay::new(&Single(vector), reach.paint), render, render_params),
 		Graphic::Graphic(inner) => render_graphic_svg_with(inner, reach.nested(), render, render_params),
 		Graphic::Group(group) => render_group_svg(group, reach, render, render_params),
 		_ => element.render_svg(render, render_params),
@@ -625,7 +615,7 @@ fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &
 
 fn render_element_vello<'a>(element: &'a Graphic, reach: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 	match element {
-		Graphic::Vector(inner) if reach.applies() => render_vector_vello(&PaintOverlay::new(inner, reach.paint), scene, transform, context, render_params),
+		Graphic::Vector(vector) if reach.applies() => render_vector_vello(&PaintOverlay::new(&Single(vector), reach.paint), scene, transform, context, render_params),
 		Graphic::Graphic(inner) => render_graphic_vello_with(inner, reach.nested(), scene, transform, context, render_params),
 		Graphic::Group(group) => render_group_vello(group, reach, scene, transform, context, render_params),
 		_ => element.render_to_vello(scene, transform, context, render_params),
@@ -634,7 +624,7 @@ fn render_element_vello<'a>(element: &'a Graphic, reach: PaintReach<'a>, scene: 
 
 fn element_can_reduce_to_clip_path<'a>(element: &'a Graphic, reach: PaintReach<'a>) -> bool {
 	match element {
-		Graphic::Vector(inner) if reach.applies() => vector_can_reduce_to_clip_path(&PaintOverlay::new(inner, reach.paint)),
+		Graphic::Vector(vector) if reach.applies() => vector_can_reduce_to_clip_path(&PaintOverlay::new(&Single(vector), reach.paint)),
 		Graphic::Group(group) => match RunView::<Vector>::new(&group.content) {
 			Some(run) if reach.applies() => vector_can_reduce_to_clip_path(&PaintOverlay::new(&run, reach.paint)),
 			Some(run) => vector_can_reduce_to_clip_path(&run),
@@ -644,80 +634,40 @@ fn element_can_reduce_to_clip_path<'a>(element: &'a Graphic, reach: PaintReach<'
 	}
 }
 
-fn collect_element_metadata<'a>(element: &'a Graphic, reach: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+fn collect_element_metadata<'a>(
+	element: &'a Graphic,
+	reach: PaintReach<'a>,
+	lane_transform: DAffine2,
+	lane_source: Option<NodeId>,
+	metadata: &mut RenderMetadata,
+	footprint: Footprint,
+	element_id: Option<NodeId>,
+) {
 	if let Some(element_id) = element_id {
+		metadata.upstream_footprints.insert(element_id, footprint);
 		match element {
-			Graphic::Group(group) => {
-				metadata.upstream_footprints.insert(element_id, footprint);
-				collect_group_row_metadata(group, metadata, element_id);
+			Graphic::Group(group) => collect_group_row_metadata(group, metadata, element_id),
+			Graphic::Graphic(_) => {}
+			// A leaf's layer identity and transform ride its containing lane.
+			Graphic::Vector(_) => {
+				metadata.first_element_source_id.insert(element_id, lane_source);
+				metadata.local_transforms.insert(element_id, lane_transform);
 			}
-			Graphic::Graphic(_) => {
-				metadata.upstream_footprints.insert(element_id, footprint);
-			}
-			Graphic::Vector(list) => {
-				metadata.upstream_footprints.insert(element_id, footprint);
-				// TODO: Find a way to handle more than the first item
-				if !list.is_empty() {
-					let layer_path: &[NodeId] = list.attr::<EditorLayerPath>(0);
-					let layer = layer_path.last().copied();
-					let transform: DAffine2 = list.attr::<Transform>(0);
-
-					metadata.first_element_source_id.insert(element_id, layer);
-					metadata.local_transforms.insert(element_id, transform);
-				}
-			}
-			Graphic::RasterCPU(list) => {
-				metadata.upstream_footprints.insert(element_id, footprint);
-
-				// TODO: Find a way to handle more than the first item
-				if !list.is_empty() {
-					metadata.local_transforms.insert(element_id, list.attr::<Transform>(0));
-				}
-			}
-			Graphic::RasterGPU(list) => {
-				metadata.upstream_footprints.insert(element_id, footprint);
-
-				// TODO: Find a way to handle more than the first item
-				if !list.is_empty() {
-					metadata.local_transforms.insert(element_id, list.attr::<Transform>(0));
-				}
-			}
-			Graphic::Color(list) => {
-				metadata.upstream_footprints.insert(element_id, footprint);
-
-				// TODO: Find a way to handle more than the first item
-				if !list.is_empty() {
-					metadata.local_transforms.insert(element_id, list.attr::<Transform>(0));
-				}
-			}
-			Graphic::Gradient(list) => {
-				metadata.upstream_footprints.insert(element_id, footprint);
-
-				// TODO: Find a way to handle more than the first item
-				if !list.is_empty() {
-					metadata.local_transforms.insert(element_id, list.attr::<Transform>(0));
-				}
-			}
-			Graphic::Text(list) => {
-				metadata.upstream_footprints.insert(element_id, footprint);
-
-				// TODO: Find a way to handle more than the first item
-				if !list.is_empty() {
-					metadata.local_transforms.insert(element_id, list.attr::<Transform>(0));
-				}
+			_ => {
+				metadata.local_transforms.insert(element_id, lane_transform);
 			}
 		}
 	}
 
 	match element {
 		Graphic::Graphic(list) => collect_graphic_metadata_with(list, reach.nested(), metadata, footprint, element_id),
-		Graphic::Vector(list) if reach.applies() => collect_vector_metadata(&PaintOverlay::new(list, reach.paint), metadata, footprint, element_id),
-		Graphic::Vector(list) => collect_vector_metadata(list, metadata, footprint, element_id),
-		Graphic::RasterCPU(list) => collect_raster_metadata(list, metadata, footprint, element_id),
-		Graphic::RasterGPU(list) => collect_raster_metadata(list, metadata, footprint, element_id),
+		Graphic::Vector(vector) if reach.applies() => collect_vector_metadata(&PaintOverlay::new(&Single(vector), reach.paint), metadata, footprint, element_id),
+		Graphic::Vector(vector) => collect_vector_metadata(&Single(vector), metadata, footprint, element_id),
+		Graphic::RasterCPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
+		Graphic::RasterGPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::Color(_) => {}
 		Graphic::Gradient(_) => {}
-		Graphic::Text(list) => collect_text_metadata(list, metadata, footprint, element_id),
+		Graphic::Text(text) => collect_text_metadata(&Single(text), metadata, footprint, element_id),
 		Graphic::Group(group) => collect_group_metadata(group, reach, metadata, footprint, element_id),
 	}
 }
@@ -754,11 +704,11 @@ fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, elem
 fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
 	match element {
 		Graphic::Graphic(list) => add_graphic_upstream_click_targets_with(list, reach.nested(), click_targets),
-		Graphic::Vector(list) if reach.applies() => add_vector_upstream_click_targets(&PaintOverlay::new(list, reach.paint), click_targets),
-		Graphic::Vector(list) => add_vector_upstream_click_targets(list, click_targets),
+		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_click_targets(&PaintOverlay::new(&Single(vector), reach.paint), click_targets),
+		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(vector), click_targets),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(click_targets),
 		Graphic::Color(_) | Graphic::Gradient(_) => {}
-		Graphic::Text(list) => add_text_upstream_click_targets(list, click_targets),
+		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), click_targets),
 		Graphic::Group(group) => add_group_upstream_click_targets(group, reach, click_targets),
 	}
 }
@@ -766,11 +716,11 @@ fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReac
 fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
 	match element {
 		Graphic::Graphic(list) => add_graphic_upstream_outline_targets_with(list, reach.nested(), outlines),
-		Graphic::Vector(list) if reach.applies() => add_vector_upstream_outline_targets(&PaintOverlay::new(list, reach.paint), outlines),
-		Graphic::Vector(list) => add_vector_upstream_outline_targets(list, outlines),
+		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_outline_targets(&PaintOverlay::new(&Single(vector), reach.paint), outlines),
+		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(vector), outlines),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(outlines),
 		Graphic::Color(_) | Graphic::Gradient(_) => {}
-		Graphic::Text(list) => add_text_upstream_click_targets(list, outlines),
+		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), outlines),
 		Graphic::Group(group) => add_group_upstream_outline_targets(group, reach, outlines),
 	}
 }
@@ -1190,10 +1140,10 @@ fn collect_graphic_metadata_with<'a, S: LaneSource<Element = Graphic>>(source: &
 		footprint.transform *= item_transform;
 
 		if let Some(element_id) = layer {
-			collect_element_metadata(element, reach, metadata, footprint, Some(element_id));
+			collect_element_metadata(element, reach, item_transform, layer, metadata, footprint, Some(element_id));
 		} else {
 			// Recurse through anonymous wrapper items to reach nested content with editor:layer_path tags
-			collect_element_metadata(element, reach, metadata, footprint, None);
+			collect_element_metadata(element, reach, item_transform, layer, metadata, footprint, None);
 		}
 	}
 
@@ -1601,14 +1551,12 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 			for paint_index in 0..fill_graphic.len() {
 				let Some(paint) = fill_graphic.element(paint_index) else { continue };
 				match paint {
-					Graphic::Color(list) => {
-						let Some(color) = list.element(0) else { continue };
-
+					Graphic::Color(color) => {
 						let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 						scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 					}
-					Graphic::Gradient(list) => {
-						let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &multiplied_transform) else {
+					Graphic::Gradient(gradient) => {
+						let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(&LeafLane::new(fill_graphic, paint_index, gradient), &multiplied_transform) else {
 							continue;
 						};
 
@@ -1683,14 +1631,13 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 				};
 
 				match stroke_graphic {
-					Graphic::Color(list) => {
-						let Some(color) = list.element(0) else { continue };
+					Graphic::Color(color) => {
 						let brush = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 
 						scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
 					}
-					Graphic::Gradient(list) => {
-						let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &multiplied_transform) else {
+					Graphic::Gradient(gradient) => {
+						let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(&LeafLane::new(stroke_graphic_list, paint_index, gradient), &multiplied_transform) else {
 							continue;
 						};
 						let inverse_element_transform = if transform_is_invertible(element_transform) {
@@ -2655,7 +2602,7 @@ pub fn graphic_list_bounding_box<S: LaneSource<Element = Graphic>>(source: &S, t
 		let item_transform = transform * source.attr::<Transform>(index);
 		let Some(graphic) = source.element(index) else { continue };
 		let bounds = match graphic {
-			Graphic::Text(text_list) => text_list_bounding_box(text_list, item_transform),
+			Graphic::Text(text) => text_list_bounding_box(&Single(text), item_transform),
 			Graphic::Graphic(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
 			other => other.thumbnail_bounding_box(item_transform, true),
 		};
@@ -3081,7 +3028,6 @@ mod group_walk_tests {
 	use core_types::attribute::Attribute;
 	use core_types::node::RecordBatch;
 	use core_types::record::{FieldWrite, GroupItem, Layout, element_write_hashed};
-	use graphic_types::graphic::group_to_legacy_graphic;
 	use graphic_types::markers::Fill;
 	use graphic_types::vector_types::vector::PointId;
 
@@ -3090,7 +3036,7 @@ mod group_walk_tests {
 	}
 
 	fn color_paint() -> List<Graphic> {
-		List::new_from_element(Graphic::Color(List::new_from_element(Color::from_rgbaf32(0.8, 0.2, 0.33, 1.).unwrap())))
+		List::new_from_element(Graphic::Color(Color::from_rgbaf32(0.8, 0.2, 0.33, 1.).unwrap()))
 	}
 
 	fn rendered_svg(render: impl FnOnce(&mut SvgRender)) -> (String, String) {
@@ -3117,7 +3063,7 @@ mod group_walk_tests {
 	}
 
 	#[test]
-	fn a_vector_run_group_renders_like_its_legacy_form() {
+	fn a_vector_run_group_renders_its_rows_without_layer_wrappers() {
 		let paint = color_paint();
 		let vectors = [unit_square_at(DVec2::ZERO), unit_square_at(DVec2::new(3., 1.))];
 		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
@@ -3129,16 +3075,15 @@ mod group_walk_tests {
 
 		let params = RenderParams::default();
 		let native = rendered_svg(|render| Graphic::Group(group.clone()).render_svg(render, &params));
-		let legacy = rendered_svg(|render| group_to_legacy_graphic(&group).render_svg(render, &params));
 
-		assert!(native.0.contains(r##"fill="#"##), "the run's fill paint must render: {}", native.0);
-		assert_eq!(native, legacy);
+		let expected = "\n<path d=\"M0,0 L1,0 L1,1 L0,1 L0,0 Z\" fill=\"#e77c9b\"/>\n<path d=\"M3,1 L4,1 L4,2 L3,2 L3,1 Z\" fill=\"none\"/>";
+		assert_eq!(native, (expected.to_string(), String::new()));
 	}
 
 	#[test]
 	fn lane_paint_on_a_graphic_run_reaches_vector_interiors() {
 		let paint = color_paint();
-		let inner = Graphic::Vector(List::new_from_element(unit_square_at(DVec2::ZERO)));
+		let inner = Graphic::Vector(unit_square_at(DVec2::ZERO));
 		let layout = Layout::default().with_writes(0, element_write_hashed::<Graphic>(), &[FieldWrite::of::<Fill>(0)]);
 		// SAFETY: the layout carries a parked graphic element and the fill field.
 		let bytes = unsafe { write_lanes::<Graphic>(&layout, &[&inner], &[Some(&paint)]) };
@@ -3155,7 +3100,7 @@ mod group_walk_tests {
 	}
 
 	#[test]
-	fn a_group_collects_like_its_legacy_lowering() {
+	fn a_group_collects_its_lane_metadata_for_the_caller() {
 		let paint = color_paint();
 		let vectors = [unit_square_at(DVec2::ZERO)];
 		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
@@ -3171,12 +3116,12 @@ mod group_walk_tests {
 		let mut native = RenderMetadata::default();
 		Graphic::Group(group.clone()).collect_metadata(&mut native, footprint, Some(caller));
 
-		let mut legacy = RenderMetadata::default();
-		group_to_legacy_graphic(&group).collect_metadata(&mut legacy, footprint, Some(caller));
-
 		assert!(native.click_targets.get(&caller).is_some_and(|targets| !targets.is_empty()));
+		assert!(native.outlines.get(&caller).is_some_and(|targets| !targets.is_empty()));
 		assert!(native.local_transforms.contains_key(&caller));
-		assert_eq!(native, legacy);
+		assert!(native.upstream_footprints.contains_key(&caller));
+		assert_eq!(native.vector_data.get(&caller).map(|vector| vector.as_ref()), Some(&vectors[0]));
+		assert!(native.fill_attributes.get(&caller).is_some_and(|fill| matches!(fill.element(0), Some(Graphic::Color(_)))));
 	}
 
 	#[test]

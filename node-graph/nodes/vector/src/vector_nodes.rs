@@ -202,7 +202,7 @@ fn assign_colors_graphic<'e>(
 		core_types::registry::cache_key(&keyed)
 	};
 	let generation = ctx.arena().generation();
-	let (length, mut position) = {
+	let (length, position) = {
 		let mut cached = lane_offsets.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 		if !matches!(cached.as_ref(), Some(entry) if entry.key == key && entry.generation == generation) {
 			let mut offsets = Vec::with_capacity(content.len() + 1);
@@ -218,20 +218,29 @@ fn assign_colors_graphic<'e>(
 		(entry.offsets[content.len()], entry.offsets[lane])
 	};
 
-	if let Some(vector_list) = element.as_vector_mut() {
-		for index in 0..vector_list.len() {
-			let color = assign_color_at(gradient_element, position, length, randomize, seed, repeat_every);
+	// A de-tabled vector leaf carries no attributes, so the paint rides the
+	// containing lane: a bare leaf wraps into a one-lane list, and a lowered
+	// vector run's leaves take one color per lane.
+	if graphic_types::graphic::direct_vector_len(content.element_ref(lane)) > 0 {
+		let mut children = match element {
+			Graphic::Graphic(children) => children,
+			leaf => List::new_from_element(leaf),
+		};
+		let mut consumed = 0;
+		for index in 0..children.len() {
+			let Some(Graphic::Vector(vector)) = children.element(index) else { continue };
+			let has_stroke = vector.stroke.is_some();
+			let color = assign_color_at(gradient_element, position + consumed, length, randomize, seed, repeat_every);
 			let paint = List::new_from_element(color).into_graphic_list();
-
 			if fill {
-				set_paint_attribute_at(vector_list, index, ATTR_FILL, paint.clone());
+				set_paint_attribute_at(&mut children, index, ATTR_FILL, paint.clone());
 			}
-			if stroke && vector_list.element(index).is_some_and(|vector| vector.stroke.is_some()) {
-				set_paint_attribute_at(vector_list, index, ATTR_STROKE, paint.clone());
+			if stroke && has_stroke {
+				set_paint_attribute_at(&mut children, index, ATTR_STROKE, paint.clone());
 			}
-
-			position += 1;
+			consumed += 1;
 		}
+		element = Graphic::Graphic(children);
 	}
 
 	Ok((element, transform, layer_path))
@@ -277,21 +286,20 @@ fn park_paint(arena: &core_types::arena::Arena, paint: List<Graphic>) -> Result<
 /// The gradient defaulting the legacy fill performed, applied to the nested
 /// stops list the paint table wraps.
 fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: Option<DAffine2>) {
+	let has_type = paint.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_some();
+	let has_spread = paint.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_some();
+	let has_transform = paint.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_some();
 	for index in 0..paint.len() {
-		let Some(Graphic::Gradient(gradient)) = paint.element_mut(index) else { continue };
-		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
-				*value = gradient_type;
-			}
+		if !matches!(paint.element(index), Some(Graphic::Gradient(_))) {
+			continue;
 		}
-
-		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-				*value = spread_method;
-			}
+		if !has_type {
+			paint.set_attribute(ATTR_GRADIENT_TYPE, index, gradient_type);
 		}
-
-		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
+		if !has_spread {
+			paint.set_attribute(ATTR_SPREAD_METHOD, index, spread_method);
+		}
+		if !has_transform {
 			let transform = transform.unwrap_or_else(|| {
 				// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
 				let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
@@ -303,10 +311,7 @@ fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>,
 				}
 				initial_gradient_transform_for_bounding_box([min, max])
 			});
-
-			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-				*value = transform;
-			}
+			paint.set_attribute(ATTR_TRANSFORM, index, transform);
 		}
 	}
 }
@@ -420,18 +425,13 @@ fn stroke<'e>(
 /// The vector items of a graphic lane's interior, one wrap level deep, the
 /// reach of the pre-flip broadcast over a legacy list.
 fn for_each_interior_vector_mut(element: &mut Graphic, mut f: impl FnMut(&mut Vector, DAffine2)) {
-	let mut walk_list = |list: &mut List<Vector>| {
-		let (elements, transforms) = list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
-		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
-			f(vector, *transform);
-		}
-	};
 	match element {
-		Graphic::Vector(list) => walk_list(list),
+		Graphic::Vector(vector) => f(vector, DAffine2::IDENTITY),
 		Graphic::Graphic(children) => {
-			for child in children.iter_element_values_mut() {
-				if let Some(list) = child.as_vector_mut() {
-					walk_list(list);
+			for index in 0..children.len() {
+				let transform: DAffine2 = children.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+				if let Some(Graphic::Vector(vector)) = children.element_mut(index) {
+					f(vector, transform);
 				}
 			}
 		}
@@ -1449,9 +1449,9 @@ fn solidify_rows(flattened: List<Vector>) -> List<Vector> {
 /// lane addresses (a fill-bearing row serves two lanes), builds and splits
 /// only that row, and lane 0 additionally carries the merged-layers snapshot.
 #[allow(clippy::type_complexity)]
-fn solidify_native_lane<'e, S: core_types::lane::LaneSource<Element = Graphic>>(
+fn solidify_native_lane<'e>(
 	arena: &'e core_types::arena::Arena,
-	source: &S,
+	level: graphic_types::graphic::GraphicLevel<'_>,
 	snapshot: impl FnOnce() -> List<Graphic>,
 	lane: usize,
 ) -> Result<
@@ -1472,7 +1472,7 @@ fn solidify_native_lane<'e, S: core_types::lane::LaneSource<Element = Graphic>>(
 	use graphic_types::graphic::RowStep;
 	let mut remaining = lane;
 	let mut located: Option<List<Vector>> = None;
-	graphic_types::graphic::walk_vector_rows(source, &mut |row| {
+	graphic_types::graphic::walk_vector_rows(level, &mut |row| {
 		let parts = 1 + row.has_fill() as usize;
 		if remaining >= parts {
 			remaining -= parts;
@@ -1622,8 +1622,7 @@ fn solidify_stroke<'e>(
 > {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	let run = core_types::record::RunView::<Graphic>::new(&item).expect("the run holds graphic lanes");
-	solidify_native_lane(ctx.arena(), &run, || legacy_graphic_list_of(content), ctx.index() as usize)
+	solidify_native_lane(ctx.arena(), graphic_types::graphic::GraphicLevel::Run(&item), || legacy_graphic_list_of(content), ctx.index() as usize)
 }
 
 /// A fill-bearing row splits into a fill lane and a solidified stroke lane,
@@ -1663,7 +1662,7 @@ fn solidify_stroke_vector<'e>(
 	Interrupt,
 > {
 	let wrapper = wrap_vector_level(content);
-	solidify_native_lane(ctx.arena(), &wrapper, || legacy_graphic_list_of(content), ctx.index() as usize)
+	solidify_native_lane(ctx.arena(), graphic_types::graphic::GraphicLevel::Legacy(&wrapper), || legacy_graphic_list_of(content), ctx.index() as usize)
 }
 
 fn solidify_stroke_vector_extent(content: ListIn<'_, Vector>, level: LevelIn) -> GPoll<Extent> {
@@ -1905,8 +1904,7 @@ pub fn flatten_path<'e>(
 > {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	let run = core_types::record::RunView::<Graphic>::new(&item).expect("the run holds graphic lanes");
-	let flattened = graphic_types::graphic::flatten_vector_rows(&run);
+	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Run(&item));
 	let snapshot = graphic_types::graphic::run_to_render_list::<Graphic>(&item).expect("the run holds the row's element type");
 	flatten_path_core(ctx.arena(), flattened, snapshot)
 }
@@ -1929,7 +1927,7 @@ pub fn flatten_path_vector<'e>(
 	Interrupt,
 > {
 	let wrapper = wrap_vector_level(content);
-	let flattened = graphic_types::graphic::flatten_vector_rows(&wrapper);
+	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Legacy(&wrapper));
 	let snapshot = legacy_graphic_list_of(content);
 	flatten_path_core(ctx.arena(), flattened, snapshot)
 }
@@ -2724,9 +2722,9 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic>, progression: f64
 		}
 	}
 
-	fn lerp_gradient_transform(gradient_list_a: &List<GradientStops>, gradient_list_b: &List<GradientStops>, time: f64) -> DAffine2 {
-		let transform_a = gradient_list_a.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
-		let transform_b = gradient_list_b.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
+	fn lerp_gradient_transform(paint_a: &List<Graphic>, paint_b: &List<Graphic>, time: f64) -> DAffine2 {
+		let transform_a = paint_a.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
+		let transform_b = paint_b.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
 
 		let start_a = transform_a.translation;
 		let end_a = transform_a.translation + transform_a.matrix2.x_axis;
@@ -2754,47 +2752,37 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic>, progression: f64
 			(Some(a), Some(b)) => (a, b),
 		};
 
-		// This keeps the gradient metadata attributes
-		let gradient_with_stops = |mut gradient_list: List<GradientStops>, stops: GradientStops| -> Graphic {
-			if let Some(target) = gradient_list.element_mut(0) {
-				*target = stops;
-			} else {
-				gradient_list.push(Item::new_from_element(stops));
+		// This keeps the gradient metadata attributes, which ride the paint lane
+		let gradient_paint = |metadata_source: &List<Graphic>, stops: GradientStops, transform: Option<DAffine2>| -> List<Graphic> {
+			let mut out = List::new_from_item(Item::from_parts(Graphic::Gradient(stops), metadata_source.clone_item_attributes(0)));
+			if let Some(transform) = transform {
+				out.set_attribute(ATTR_TRANSFORM, 0, transform);
 			}
-			Graphic::Gradient(gradient_list)
+			out
 		};
 
-		let graphic = match (a.element(0), b.element(0)) {
-			(Some(Graphic::Color(color_list_a)), Some(Graphic::Color(color_list_b))) => color_list_a
-				.element(0)
-				.zip(color_list_b.element(0))
-				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
-			(Some(Graphic::Color(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
+		match (a.element(0), b.element(0)) {
+			(Some(Graphic::Color(color_a)), Some(Graphic::Color(color_b))) => Some(List::new_from_element(Graphic::from(color_a.lerp(color_b, time as f32)))),
+			(Some(Graphic::Color(color_a)), Some(Graphic::Gradient(stops_b))) => {
 				let mut solid_to_gradient = stops_b.clone();
 				solid_to_gradient.color.iter_mut().for_each(|color| *color = *color_a);
 				let stops = solid_to_gradient.lerp(stops_b, time);
-				gradient_with_stops(gradient_list_b.clone(), stops)
-			}),
-			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Color(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
+				Some(gradient_paint(b, stops, None))
+			}
+			(Some(Graphic::Gradient(stops_a)), Some(Graphic::Color(color_b))) => {
 				let mut gradient_to_solid = stops_a.clone();
 				gradient_to_solid.color.iter_mut().for_each(|color| *color = *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
-				gradient_with_stops(gradient_list_a.clone(), stops)
-			}),
-			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Gradient(gradient_list_b))) => gradient_list_a.element(0).zip(gradient_list_b.element(0)).map(|(stops_a, stops_b)| {
+				Some(gradient_paint(a, stops, None))
+			}
+			(Some(Graphic::Gradient(stops_a)), Some(Graphic::Gradient(stops_b))) => {
 				let stops = stops_a.lerp(stops_b, time);
-				let metadata_source = if time < 0.5 { gradient_list_a } else { gradient_list_b };
-
-				let mut gradient_list = metadata_source.clone();
-				gradient_list.set_attribute(ATTR_TRANSFORM, 0, lerp_gradient_transform(gradient_list_a, gradient_list_b, time));
-
-				gradient_with_stops(gradient_list, stops)
-			}),
+				let metadata_source = if time < 0.5 { a } else { b };
+				Some(gradient_paint(metadata_source, stops, Some(lerp_gradient_transform(a, b, time))))
+			}
 			// Pairings beyond solid colors and gradients (raster, vector, or mixed) can't be interpolated, so step at the midpoint
-			_ => return Some(if time < 0.5 { a.clone() } else { b.clone() }),
-		};
-
-		graphic.map(List::new_from_element)
+			_ => Some(if time < 0.5 { a.clone() } else { b.clone() }),
+		}
 	}
 
 	// Preserve the original legacy snapshot as upstream data so this group layer's nested layers can be edited by the tools.
@@ -3323,8 +3311,7 @@ fn morph<'e>(
 	let path = graphic_types::graphic::run_to_list::<Vector>(&path_item).expect("the run holds vector lanes");
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	let run = core_types::record::RunView::<Graphic>::new(&item).expect("the run holds graphic lanes");
-	let flattened = graphic_types::graphic::flatten_vector_rows(&run);
+	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Run(&item));
 	morph_lane(ctx.arena(), flattened, legacy_graphic_list_of(content), progression, reverse, distribution, path)
 }
 
@@ -3357,7 +3344,7 @@ fn morph_vector<'e>(
 	let path_item = unsafe { core_types::record::GroupItem::from_resident(path.batch()) };
 	let path = graphic_types::graphic::run_to_list::<Vector>(&path_item).expect("the run holds vector lanes");
 	let wrapper = wrap_vector_level(content);
-	let flattened = graphic_types::graphic::flatten_vector_rows(&wrapper);
+	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Legacy(&wrapper));
 	morph_lane(ctx.arena(), flattened, legacy_graphic_list_of(content), progression, reverse, distribution, path)
 }
 
@@ -3961,10 +3948,10 @@ mod test {
 		let fill = paint_graphics::<Fill, _>(&morphed, 0).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
-		let Some(Graphic::Color(colors)) = fill.element(0) else {
+		let Some(Graphic::Color(color)) = fill.element(0) else {
 			panic!("Expected a solid color fill, got {:?}", fill.element(0));
 		};
-		let color = *colors.element(0).expect("Color present");
+		let color = *color;
 		assert!(color.r() > 0. && color.b() > 0., "Fill should be a red-to-blue blend, got {color:?}");
 	}
 

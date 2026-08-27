@@ -3,7 +3,7 @@ use core_types::list::{Item, List};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{PaintColumns, PaintReach, bake_paint_transforms, set_paint_attribute, set_paint_attribute_at};
+use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_transforms, set_paint_attribute, set_paint_attribute_at};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
@@ -127,8 +127,7 @@ fn boolean_operation<'e>(
 > {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	let run = core_types::record::RunView::<Graphic>::new(&item).expect("the run holds graphic lanes");
-	let flattened = flatten_vector_run(&run, DAffine2::IDENTITY, PaintReach::NONE);
+	let flattened = flatten_vector_run(GraphicLevel::Run(&item), DAffine2::IDENTITY, PaintReach::NONE);
 	let snapshot = graphic_types::graphic::run_to_render_list::<Graphic>(&item)
 		.expect("the run holds the row's element type")
 		.into_graphic_list();
@@ -282,85 +281,69 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 	list
 }
 
-/// A raster stand-in row: the image's unit rectangle under its transform,
-/// black-filled, keeping the layer routing and blending attributes.
-fn raster_stand_in_rows<T>(image: &List<T>, parent_transform: DAffine2) -> Vec<Item<Vector>> {
-	let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
-		let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-		subpath.apply_transform(transform);
-
-		let element = Vector::from_subpath(subpath);
-
-		let mut item = Item::new_from_element(element)
-			.with_attribute(ATTR_BLEND_MODE, blend_mode)
-			.with_attribute(ATTR_OPACITY, opacity)
-			.with_attribute(ATTR_OPACITY_FILL, fill)
-			.with_attribute(ATTR_CLIPPING_MASK, clip)
-			.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
-		set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
-		item
-	};
-
-	(0..image.len())
+/// A raster stand-in row per lane: the image's unit rectangle under its
+/// transform, black-filled, keeping the layer routing and blending
+/// attributes.
+fn raster_stand_in_rows<S: core_types::lane::LaneSource>(image: &S, parent_transform: DAffine2) -> Vec<Item<Vector>> {
+	(0..image.lane_count())
 		.map(|i| {
-			let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-			let layer: Vec<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
-			let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
-			let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
-			let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-			let clip: bool = image.attribute_cloned_or_default(ATTR_CLIPPING_MASK, i);
-			make_item(parent_transform * row_transform, layer, blend_mode, opacity, fill, clip)
+			let row_transform: DAffine2 = image.attr::<TransformAttr>(i);
+			let layer: Vec<NodeId> = image.attr::<EditorLayerPath>(i).to_vec();
+			let blend_mode: BlendMode = image.attr::<BlendModeAttr>(i);
+			let opacity: f64 = image.attr::<Opacity>(i);
+			let fill: f64 = image.attr::<OpacityFill>(i);
+			let clip: bool = image.attr::<ClippingMask>(i);
+
+			let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
+			subpath.apply_transform(parent_transform * row_transform);
+
+			let element = Vector::from_subpath(subpath);
+
+			let mut item = Item::new_from_element(element)
+				.with_attribute(ATTR_BLEND_MODE, blend_mode)
+				.with_attribute(ATTR_OPACITY, opacity)
+				.with_attribute(ATTR_OPACITY_FILL, fill)
+				.with_attribute(ATTR_CLIPPING_MASK, clip)
+				.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
+			set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+			item
 		})
 		.collect()
 }
 
-/// A color row: an empty vector carrying the color as its fill paint.
-fn color_paint_rows(color: &List<Color>) -> Vec<Item<Vector>> {
-	color
-		.clone()
-		.into_iter()
-		.map(|row| {
-			let (color, mut attributes) = row.into_parts();
-			set_paint_attribute(&mut attributes, ATTR_FILL, List::new_from_element(color));
+/// A color row: an empty vector carrying the color as its fill paint over the
+/// lane's attributes.
+fn color_paint_row(color: Color, mut attributes: core_types::list::ItemAttributeValues) -> Item<Vector> {
+	set_paint_attribute(&mut attributes, ATTR_FILL, List::new_from_element(color));
 
-			let mut element = Vector::default();
-			element.set_stroke_transform(DAffine2::IDENTITY);
+	let mut element = Vector::default();
+	element.set_stroke_transform(DAffine2::IDENTITY);
 
-			Item::from_parts(element, attributes)
-		})
-		.collect()
+	Item::from_parts(element, attributes)
 }
 
 /// A gradient row: an empty vector carrying the stops as its fill paint, the
 /// gradient keys moved onto the paint.
-fn gradient_paint_rows(gradient: &List<GradientStops>) -> Vec<Item<Vector>> {
-	gradient
-		.clone()
-		.into_iter()
-		.map(|row| {
-			let (stops, mut attributes) = row.into_parts();
+fn gradient_paint_row(stops: GradientStops, mut attributes: core_types::list::ItemAttributeValues) -> Item<Vector> {
+	let mut gradient_paint = List::new_from_element(Graphic::Gradient(stops));
+	if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
+		gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
+	}
+	if let Some(gradient_type) = attributes.remove::<GradientType>(ATTR_GRADIENT_TYPE) {
+		gradient_paint.set_attribute(ATTR_GRADIENT_TYPE, 0, gradient_type);
+	}
+	if let Some(spread_method) = attributes.remove::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
+		gradient_paint.set_attribute(ATTR_SPREAD_METHOD, 0, spread_method);
+	}
+	attributes.insert(ATTR_FILL, Some(gradient_paint));
 
-			let mut gradient_paint = List::new_from_element(stops);
-			if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
-				gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
-			}
-			if let Some(gradient_type) = attributes.remove::<GradientType>(ATTR_GRADIENT_TYPE) {
-				gradient_paint.set_attribute(ATTR_GRADIENT_TYPE, 0, gradient_type);
-			}
-			if let Some(spread_method) = attributes.remove::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-				gradient_paint.set_attribute(ATTR_SPREAD_METHOD, 0, spread_method);
-			}
-			set_paint_attribute(&mut attributes, ATTR_FILL, gradient_paint);
+	let mut element = Vector::default();
+	element.set_stroke_transform(DAffine2::IDENTITY);
 
-			let mut element = Vector::default();
-			element.set_stroke_transform(DAffine2::IDENTITY);
-
-			Item::from_parts(element, attributes)
-		})
-		.collect()
+	Item::from_parts(element, attributes)
 }
 
-/// A text row: the shaped glyph vectors under the composed transform.
+/// A text lane's rows: the shaped glyph vectors under the composed transform.
 fn text_rows(text: &List<String>, parent_transform: DAffine2) -> Vec<Item<Vector>> {
 	text_nodes::shape_text_list(text, false)
 		.into_iter()
@@ -378,9 +361,25 @@ fn push_rows(out: &mut List<Vector>, rows: Vec<Item<Vector>>) {
 	}
 }
 
-fn push_vector_rows(out: &mut List<Vector>, inner: &List<Vector>, composed: DAffine2, reach: PaintReach<'_>) {
-	for row in 0..inner.len() {
-		let Some(item) = inner.clone_item(row) else { continue };
+/// A de-tabled vector leaf as one row: the lane's attributes with the reach
+/// paint and the ancestor transform composed.
+fn push_leaf_vector_row(out: &mut List<Vector>, level: GraphicLevel<'_>, index: usize, vector: &Vector, ancestors: DAffine2, reach: PaintReach<'_>) {
+	let out_index = out.len();
+	out.push(Item::from_parts(vector.clone(), graphic_types::graphic::lane_attributes(level, index)));
+	if reach.applies() {
+		for (key, slot) in [(ATTR_FILL, reach.paint.fill), (ATTR_STROKE, reach.paint.stroke)] {
+			if let Some(paint) = slot {
+				set_paint_attribute_at(out, out_index, key, paint.clone());
+			}
+		}
+	}
+	let current: DAffine2 = out.attribute_cloned_or_default(ATTR_TRANSFORM, out_index);
+	out.set_attribute(ATTR_TRANSFORM, out_index, ancestors * current);
+}
+
+fn push_vector_rows(out: &mut List<Vector>, rows: &List<Vector>, composed: DAffine2, reach: PaintReach<'_>) {
+	for row in 0..rows.len() {
+		let Some(item) = rows.clone_item(row) else { continue };
 		let index = out.len();
 		out.push(item);
 		if reach.applies() {
@@ -401,30 +400,34 @@ fn push_union(out: &mut List<Vector>, flattened: List<Vector>) {
 	}
 }
 
-/// The native flatten over a graphic level: the legacy flatten's arms over a
-/// lane source, with lane paint threaded by [`PaintReach`] in place of the
-/// legacy pre-push, and native group runs walked directly.
-fn flatten_vector_run<'a, S: core_types::lane::LaneSource<Element = Graphic>>(source: &'a S, transform: DAffine2, inherited: PaintReach<'a>) -> List<Vector> {
+/// The native flatten over a graphic level: the legacy flatten's arms over
+/// either level storage, with lane paint threaded by [`PaintReach`], leaf
+/// attributes read from their lanes, and native group runs walked directly.
+fn flatten_vector_run(level: GraphicLevel<'_>, transform: DAffine2, inherited: PaintReach<'_>) -> List<Vector> {
 	let mut out = List::new();
-	flatten_vector_run_into(&mut out, source, transform, inherited);
+	flatten_vector_run_into(&mut out, level, transform, inherited);
 	out
 }
 
-fn flatten_vector_run_into<'a, S: core_types::lane::LaneSource<Element = Graphic>>(out: &mut List<Vector>, source: &'a S, transform: DAffine2, inherited: PaintReach<'a>) {
-	let columns = PaintColumns::new(source);
-	for index in 0..source.lane_count() {
-		let Some(element) = source.element(index) else { continue };
+fn flatten_vector_run_into<'a>(out: &mut List<Vector>, level: GraphicLevel<'a>, transform: DAffine2, inherited: PaintReach<'a>) {
+	use core_types::lane::{LaneSource, LeafLane};
+	let columns = PaintColumns::new(&level);
+	for index in 0..level.lane_count() {
+		let Some(element) = level.element(index) else { continue };
 		let reach = inherited.for_lane(&columns, index);
-		let composed = transform * source.attr::<TransformAttr>(index);
+		let composed = transform * level.attr::<TransformAttr>(index);
 		match element {
-			Graphic::Vector(inner) => push_vector_rows(out, inner, composed, reach),
-			Graphic::Graphic(children) => push_union(out, flatten_vector_run(children, composed, reach.nested())),
+			Graphic::Vector(vector) => push_leaf_vector_row(out, level, index, vector, transform, reach),
+			Graphic::Graphic(children) => push_union(out, flatten_vector_run(GraphicLevel::Legacy(children), composed, reach.nested())),
 			Graphic::Group(group) => flatten_group(out, group, composed, reach),
-			Graphic::RasterCPU(image) => push_rows(out, raster_stand_in_rows(image, composed)),
-			Graphic::RasterGPU(image) => push_rows(out, raster_stand_in_rows(image, composed)),
-			Graphic::Color(color) => push_rows(out, color_paint_rows(color)),
-			Graphic::Gradient(gradient) => push_rows(out, gradient_paint_rows(gradient)),
-			Graphic::Text(text) => push_rows(out, text_rows(text, composed)),
+			Graphic::RasterCPU(raster) => push_rows(out, raster_stand_in_rows(&LeafLane::new(&level, index, raster), transform)),
+			Graphic::RasterGPU(raster) => push_rows(out, raster_stand_in_rows(&LeafLane::new(&level, index, raster), transform)),
+			Graphic::Color(color) => push_rows(out, vec![color_paint_row(*color, graphic_types::graphic::lane_attributes(level, index))]),
+			Graphic::Gradient(gradient) => push_rows(out, vec![gradient_paint_row(gradient.clone(), graphic_types::graphic::lane_attributes(level, index))]),
+			Graphic::Text(text) => {
+				let one = List::new_from_item(Item::from_parts(text.clone(), graphic_types::graphic::lane_attributes(level, index)));
+				push_rows(out, text_rows(&one, composed));
+			}
 		}
 	}
 }
@@ -436,170 +439,24 @@ fn flatten_group(out: &mut List<Vector>, group: &core_types::record::Group, comp
 	let item = &group.content;
 	if let Some(rows) = graphic_types::graphic::run_to_list::<Vector>(item) {
 		push_vector_rows(out, &rows, composed, reach);
-	} else if let Some(run) = core_types::record::RunView::<Graphic>::new(item) {
-		push_union(out, flatten_vector_run(&run, composed, reach.into_group_graphics()));
+	} else if core_types::record::RunView::<Graphic>::new(item).is_some() {
+		push_union(out, flatten_vector_run(GraphicLevel::Run(item), composed, reach.into_group_graphics()));
 	} else if let Some(image) = graphic_types::graphic::run_to_list::<Raster<CPU>>(item) {
 		push_rows(out, raster_stand_in_rows(&image, composed));
 	} else if let Some(image) = graphic_types::graphic::run_to_list::<Raster<GPU>>(item) {
 		push_rows(out, raster_stand_in_rows(&image, composed));
 	} else if let Some(color) = graphic_types::graphic::run_to_list::<Color>(item) {
-		push_rows(out, color_paint_rows(&color));
+		push_rows(out, (0..color.len()).filter_map(|i| Some(color_paint_row(*color.element(i)?, color.clone_item_attributes(i)))).collect());
 	} else if let Some(gradient) = graphic_types::graphic::run_to_list::<GradientStops>(item) {
-		push_rows(out, gradient_paint_rows(&gradient));
+		push_rows(
+			out,
+			(0..gradient.len())
+				.filter_map(|i| Some(gradient_paint_row(gradient.element(i)?.clone(), gradient.clone_item_attributes(i))))
+				.collect(),
+		);
 	} else if let Some(text) = graphic_types::graphic::run_to_list::<String>(item) {
 		push_rows(out, text_rows(&text, composed));
 	}
-}
-
-/// The legacy baseline the flatten law compares against.
-#[cfg(test)]
-fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
-	(0..graphic_list.len())
-		.flat_map(|index| {
-			let graphic = graphic_list.element(index).unwrap();
-			match graphic.clone() {
-				Graphic::Group(_) => Vec::new(),
-				Graphic::Vector(vector) => {
-					// Apply the parent graphic's transform to each element of the `List<Vector>`
-					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					vector
-						.into_iter()
-						.map(|mut sub_vector| {
-							let current_transform: DAffine2 = sub_vector.attribute_cloned_or_default(ATTR_TRANSFORM);
-							*sub_vector.attribute_mut_or_insert_default(ATTR_TRANSFORM) = parent_transform * current_transform;
-							sub_vector
-						})
-						.collect::<Vec<_>>()
-				}
-				Graphic::RasterCPU(image) => {
-					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
-						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-						subpath.apply_transform(transform);
-
-						let element = Vector::from_subpath(subpath);
-
-						let mut item = Item::new_from_element(element)
-							.with_attribute(ATTR_BLEND_MODE, blend_mode)
-							.with_attribute(ATTR_OPACITY, opacity)
-							.with_attribute(ATTR_OPACITY_FILL, fill)
-							.with_attribute(ATTR_CLIPPING_MASK, clip)
-							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
-						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
-						item
-					};
-
-					// Apply the parent graphic's transform to each raster element, preserving each item's layer
-					// and alpha_blending so the boolean op downstream can route clicks (and inherit blending state)
-					// back to the originating raster layer
-					(0..image.len())
-						.map(|i| {
-							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let layer: Vec<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
-							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
-							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
-							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-							let clip: bool = image.attribute_cloned_or_default(ATTR_CLIPPING_MASK, i);
-							make_item(parent_transform * row_transform, layer, blend_mode, opacity, fill, clip)
-						})
-						.collect::<Vec<_>>()
-				}
-				Graphic::RasterGPU(image) => {
-					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
-						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-						subpath.apply_transform(transform);
-
-						let element = Vector::from_subpath(subpath);
-
-						let mut item = Item::new_from_element(element)
-							.with_attribute(ATTR_BLEND_MODE, blend_mode)
-							.with_attribute(ATTR_OPACITY, opacity)
-							.with_attribute(ATTR_OPACITY_FILL, fill)
-							.with_attribute(ATTR_CLIPPING_MASK, clip)
-							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
-						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
-						item
-					};
-
-					// Apply the parent graphic's transform to each raster element, preserving each item's layer
-					// and alpha_blending so the boolean op downstream can route clicks (and inherit blending state)
-					// back to the originating raster layer
-					(0..image.len())
-						.map(|i| {
-							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let layer: Vec<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
-							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
-							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
-							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-							let clip: bool = image.attribute_cloned_or_default(ATTR_CLIPPING_MASK, i);
-							make_item(parent_transform * row_transform, layer, blend_mode, opacity, fill, clip)
-						})
-						.collect::<Vec<_>>()
-				}
-				Graphic::Graphic(mut graphic) => {
-					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					// Apply the parent graphic's transform to each element of the inner `List`
-					for transform in graphic.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-						*transform = parent_transform * *transform;
-					}
-
-					// Recursively flatten the inner `List` into the output `List<Vector>`
-					let flattened = flatten_vector(&graphic);
-					let unioned = boolean_operation_on_vector_list(&flattened, BooleanOperation::Union);
-
-					unioned.into_iter().collect::<Vec<_>>()
-				}
-				Graphic::Color(color) => color
-					.into_iter()
-					.map(|row| {
-						let (color, mut attributes) = row.into_parts();
-						set_paint_attribute(&mut attributes, ATTR_FILL, List::new_from_element(color));
-
-						let mut element = Vector::default();
-						element.set_stroke_transform(DAffine2::IDENTITY);
-
-						Item::from_parts(element, attributes)
-					})
-					.collect::<Vec<_>>(),
-				Graphic::Gradient(gradient) => gradient
-					.into_iter()
-					.map(|row| {
-						let (stops, mut attributes) = row.into_parts();
-
-						let mut gradient_paint = List::new_from_element(stops);
-						if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
-							gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
-						}
-						if let Some(gradient_type) = attributes.remove::<GradientType>(ATTR_GRADIENT_TYPE) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_TYPE, 0, gradient_type);
-						}
-						if let Some(spread_method) = attributes.remove::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-							gradient_paint.set_attribute(ATTR_SPREAD_METHOD, 0, spread_method);
-						}
-						set_paint_attribute(&mut attributes, ATTR_FILL, gradient_paint);
-
-						let mut element = Vector::default();
-						element.set_stroke_transform(DAffine2::IDENTITY);
-
-						Item::from_parts(element, attributes)
-					})
-					.collect::<Vec<_>>(),
-				Graphic::Text(text) => {
-					// Shape the glyphs into vectors (each item's own transform is applied), then compose the parent's transform like the other arms
-					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					text_nodes::shape_text_list(&text, false)
-						.into_iter()
-						.map(|mut sub_vector| {
-							let current_transform: DAffine2 = sub_vector.attribute_cloned_or_default(ATTR_TRANSFORM);
-							*sub_vector.attribute_mut_or_insert_default(ATTR_TRANSFORM) = parent_transform * current_transform;
-							sub_vector
-						})
-						.collect::<Vec<_>>()
-				}
-			}
-		})
-		.collect()
 }
 
 // This quantization should potentially be removed since it's not conceptually necessary,
@@ -699,11 +556,11 @@ mod tests {
 	}
 
 	fn black_paint() -> List<Graphic> {
-		List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK)))
+		List::new_from_element(Graphic::Color(Color::BLACK))
 	}
 
 	#[test]
-	fn the_native_flatten_matches_the_legacy_flatten() {
+	fn the_native_flatten_reads_lanes_groups_and_reach() {
 		let inner_vector = square(DVec2::ZERO);
 		let inner_layout = core_types::record::Layout::default().with_writes(0, core_types::record::element_write_hashed::<Vector>(), &[]);
 		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
@@ -713,43 +570,32 @@ mod tests {
 		// SAFETY: `inner_bytes` holds one lane of `inner_layout` at its stride.
 		let inner_item = unsafe { core_types::record::GroupItem::from_resident(core_types::node::RecordBatch::new(inner_bytes.as_ptr(), 1, &inner_layout)) };
 
-		let mut painted = List::new();
-		painted.push(Item::new_from_element(square(DVec2::ZERO)));
-		painted.push(Item::new_from_element(square(DVec2::ONE)));
-		painted.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(1., 0.)));
-		set_paint_attribute_at(&mut painted, 1, ATTR_FILL, List::new_from_element(Graphic::Color(List::new_from_element(Color::WHITE))));
-
-		let mut nested_child = List::new();
-		nested_child.push(Item::new_from_element(square(DVec2::new(2., 2.))));
-		let mut nested = List::new_from_element(Graphic::Vector(nested_child));
-		nested.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_scale(DVec2::splat(2.)));
-
-		let mut colors = List::new_from_element(Color::BLACK);
-		colors.set_attribute(ATTR_OPACITY, 0, 0.5);
-
 		let mut top = List::new();
-		top.push(Item::new_from_element(Graphic::Vector(painted)));
-		top.push(Item::new_from_element(Graphic::Graphic(nested)));
-		top.push(Item::new_from_element(Graphic::Color(colors)));
+		top.push(Item::new_from_element(Graphic::Vector(square(DVec2::ZERO))));
+		top.push(Item::new_from_element(Graphic::Color(Color::BLACK)));
 		top.push(Item::new_from_element(Graphic::Group(Group { row: None, content: inner_item })));
 		top.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(5., 5.)));
 		set_paint_attribute_at(&mut top, 0, ATTR_FILL, black_paint());
-		top.set_attribute(ATTR_TRANSFORM, 3, DAffine2::from_scale(DVec2::splat(3.)));
+		top.set_attribute(ATTR_OPACITY, 1, 0.5);
+		top.set_attribute(ATTR_TRANSFORM, 2, DAffine2::from_scale(DVec2::splat(3.)));
 
-		let legacy = {
-			let mut prepared = top.clone();
-			// The legacy pre-push, written by hand: the painted lane's fill
-			// lands on every interior item.
-			if let Some(Graphic::Vector(inner)) = prepared.element_mut(0) {
-				for index in 0..inner.len() {
-					set_paint_attribute_at(inner, index, ATTR_FILL, black_paint());
-				}
-			}
-			if let Some(element) = prepared.element_mut(3) {
-				*element = graphic_types::graphic::map_groups_to_legacy(element);
-			}
-			flatten_vector(&prepared)
-		};
-		assert_eq!(flatten_vector_run(&top, DAffine2::IDENTITY, PaintReach::NONE), legacy);
+		let rows = flatten_vector_run(GraphicLevel::Legacy(&top), DAffine2::IDENTITY, PaintReach::NONE);
+		assert_eq!(rows.len(), 3);
+
+		// Lane 0: the leaf row keeps its lane attributes, with the lane fill
+		// present and the ancestor composition the identity.
+		assert_eq!(rows.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0), DAffine2::from_translation(DVec2::new(5., 5.)));
+		assert!(graphic_types::graphic::paint_graphics::<Fill, _>(&rows, 0).is_some());
+
+		// Lane 1: the color stand-in carries the lane opacity and the color as
+		// its fill.
+		assert_eq!(rows.attribute_cloned_or::<f64>(ATTR_OPACITY, 1, 1.), 0.5);
+		let fill = graphic_types::graphic::paint_graphics::<Fill, _>(&rows, 1).expect("the color row carries its fill");
+		assert!(matches!(fill.element(0), Some(Graphic::Color(color)) if *color == Color::BLACK));
+
+		// Lane 2: the group's vector run serves its row under the lane
+		// transform.
+		assert_eq!(rows.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 2), DAffine2::from_scale(DVec2::splat(3.)));
+		assert_eq!(rows.element(2).unwrap(), &inner_vector);
 	}
 }
