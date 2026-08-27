@@ -1572,7 +1572,24 @@ fn emit_legacy_lane<'e>(
 	))
 }
 
-/// The materialized level as the legacy graphic list the solidify body walks.
+/// The wrap the legacy list collapse applied to a vector level: the run as
+/// one group lane, lane 0's layer path stamped on the wrapper.
+fn wrap_vector_level(content: core_types::node::List<'_, Vector>) -> List<Graphic> {
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let layer_path: Vec<NodeId> = match content.len() > 0 {
+		true => content.lane(0).attr::<EditorLayerPath>().to_vec(),
+		false => Vec::new(),
+	};
+	let mut wrapper = List::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: item }));
+	if !layer_path.is_empty() {
+		wrapper.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+	}
+	wrapper
+}
+
+/// The materialized level as the legacy graphic list the editor-facing
+/// merged-layers snapshots carry.
 fn legacy_graphic_list_of<T: Clone + Send + Sync + 'static>(content: core_types::node::List<'_, T>) -> List<Graphic>
 where
 	List<T>: IntoGraphicList,
@@ -1645,18 +1662,7 @@ fn solidify_stroke_vector<'e>(
 	)>,
 	Interrupt,
 > {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	// The wrap the legacy list collapse applied: lane 0's layer path stamps
-	// every row.
-	let layer_path: Vec<NodeId> = match content.len() > 0 {
-		true => content.lane(0).attr::<EditorLayerPath>().to_vec(),
-		false => Vec::new(),
-	};
-	let mut wrapper = List::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: item }));
-	if !layer_path.is_empty() {
-		wrapper.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
-	}
+	let wrapper = wrap_vector_level(content);
 	solidify_native_lane(ctx.arena(), &wrapper, || legacy_graphic_list_of(content), ctx.index() as usize)
 }
 
@@ -1723,7 +1729,7 @@ fn separate_subpaths<'e>(
 	)>,
 	Interrupt,
 > {
-	let output = separate_subpaths_core(legacy_vector_list_of(content));
+	let output = separate_subpaths_core(vector_rows_of(content));
 	emit_legacy_lane(ctx.arena(), output, ctx.index() as usize)
 }
 
@@ -1784,7 +1790,7 @@ fn map_points<'e>(
 	// The pushed copy keeps the legacy convention: the running point index
 	// across all rows rides as a promotion for the mapped input.
 	let spilled = ctx.index_head();
-	let mut content = legacy_vector_list_of(content);
+	let mut content = vector_rows_of(content);
 	let mut index = 0;
 
 	for vector in content.iter_element_values_mut() {
@@ -1805,7 +1811,8 @@ fn map_points_extent(content: ListIn<'_, Vector>, _mapped: ExtentIn<'_>, level: 
 #[allow(clippy::type_complexity)]
 fn flatten_path_core<'e>(
 	arena: &'e core_types::arena::Arena,
-	graphic_list: List<Graphic>,
+	flattened: List<Vector>,
+	snapshot: List<Graphic>,
 ) -> Result<
 	(
 		Vector,
@@ -1817,8 +1824,6 @@ fn flatten_path_core<'e>(
 	),
 	Interrupt,
 > {
-	let flattened = graphic_list.clone().into_flattened_list::<Vector>();
-
 	let mut output = Vector::default();
 	let mut primary_source = None;
 
@@ -1877,7 +1882,7 @@ fn flatten_path_core<'e>(
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	// Snapshot the input layers so the renderer can recurse into them for
 	// editor click-target preservation, as the boolean operation does.
-	let merged_layers = arena.alloc(graphic_list).ok_or_else(exhausted)?.0;
+	let merged_layers = arena.alloc(snapshot).ok_or_else(exhausted)?.0;
 
 	Ok((output, Attr(DAffine2::IDENTITY), Attr(fill), Attr(stroke), Attr(layer_path.as_slice()), Attr(Some(merged_layers))))
 }
@@ -1900,8 +1905,10 @@ pub fn flatten_path<'e>(
 > {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	let content = graphic_types::graphic::run_to_render_list::<Graphic>(&item).expect("the run holds the row's element type");
-	flatten_path_core(ctx.arena(), content)
+	let run = core_types::record::RunView::<Graphic>::new(&item).expect("the run holds graphic lanes");
+	let flattened = graphic_types::graphic::flatten_vector_rows(&run);
+	let snapshot = graphic_types::graphic::run_to_render_list::<Graphic>(&item).expect("the run holds the row's element type");
+	flatten_path_core(ctx.arena(), flattened, snapshot)
 }
 
 /// The path flattening over a plain vector level, as [`flatten_path`].
@@ -1921,12 +1928,10 @@ pub fn flatten_path_vector<'e>(
 	),
 	Interrupt,
 > {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	let content = graphic_types::graphic::run_to_render_list::<Vector>(&item)
-		.expect("the run holds the row's element type")
-		.into_graphic_list();
-	flatten_path_core(ctx.arena(), content)
+	let wrapper = wrap_vector_level(content);
+	let flattened = graphic_types::graphic::flatten_vector_rows(&wrapper);
+	let snapshot = legacy_graphic_list_of(content);
+	flatten_path_core(ctx.arena(), flattened, snapshot)
 }
 
 pub use _flatten_path_vector_mod::flatten_path_vector_entries;
@@ -2169,11 +2174,12 @@ fn decimate(
 	(result, Attr(transform_attribute))
 }
 
-/// The materialized vector level as the legacy list the cross-lane cores walk.
-fn legacy_vector_list_of(content: core_types::node::List<'_, Vector>) -> List<Vector> {
+/// The materialized vector level as the owned rows the cross-lane cores walk,
+/// content kept native.
+fn vector_rows_of(content: core_types::node::List<'_, Vector>) -> List<Vector> {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	graphic_types::graphic::run_to_render_list::<Vector>(&item).expect("the run holds the row's element type")
+	graphic_types::graphic::run_to_list::<Vector>(&item).expect("the run holds vector lanes")
 }
 
 /// A count-preserving cross-lane node's extent: the subject's own counts.
@@ -2252,7 +2258,7 @@ fn cut_path<'e>(
 	)>,
 	Interrupt,
 > {
-	let output = cut_path_core(legacy_vector_list_of(content), progression, reverse, parameterized_distance);
+	let output = cut_path_core(vector_rows_of(content), progression, reverse, parameterized_distance);
 	emit_legacy_lane(ctx.arena(), output, ctx.index() as usize)
 }
 
@@ -2620,7 +2626,7 @@ fn offset_points(
 /// Interpolates the geometry, appearance, and transform between multiple vector layers, producing a single morphed vector shape.
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
-fn morph_core(content: List<Graphic>, progression: f64, reverse: bool, distribution: InterpolationDistribution, path: List<Vector>) -> List<Vector> {
+fn morph_core(flattened: List<Vector>, snapshot: List<Graphic>, progression: f64, reverse: bool, distribution: InterpolationDistribution, path: List<Vector>) -> List<Vector> {
 	/// Promotes a segment's handle pair to cubic-equivalent Bézier control points.
 	/// For linear segments (both None), handles are placed at their respective anchors (zero-length)
 	/// so that interpolation against another zero-length cubic doesn't introduce unwanted curvature.
@@ -2791,11 +2797,10 @@ fn morph_core(content: List<Graphic>, progression: f64, reverse: bool, distribut
 		graphic.map(List::new_from_element)
 	}
 
-	// Preserve original `List<Graphic>` as upstream data so this group layer's nested layers can be edited by the tools.
-	let mut graphic_list_content = content.clone();
+	// Preserve the original legacy snapshot as upstream data so this group layer's nested layers can be edited by the tools.
+	let mut graphic_list_content = snapshot;
 
-	// If the input isn't a List<Vector>, we convert it into one by flattening any List<Graphic> content.
-	let content = content.into_flattened_list::<Vector>();
+	let content = flattened;
 
 	// Not enough elements to interpolate between, so we return the input as-is
 	if content.len() <= 1 {
@@ -3252,7 +3257,8 @@ fn morph_core(content: List<Graphic>, progression: f64, reverse: bool, distribut
 #[allow(clippy::type_complexity)]
 fn morph_lane<'e>(
 	arena: &'e core_types::arena::Arena,
-	content: List<Graphic>,
+	flattened: List<Vector>,
+	snapshot: List<Graphic>,
 	progression: f64,
 	reverse: bool,
 	distribution: InterpolationDistribution,
@@ -3272,7 +3278,7 @@ fn morph_lane<'e>(
 	),
 	Interrupt,
 > {
-	let mut output = morph_core(content, progression, reverse, distribution, path);
+	let mut output = morph_core(flattened, snapshot, progression, reverse, distribution, path);
 	if output.is_empty() {
 		output = List::new_from_element(Vector::default());
 	}
@@ -3314,8 +3320,12 @@ fn morph<'e>(
 > {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let path_item = unsafe { core_types::record::GroupItem::from_resident(path.batch()) };
-	let path = graphic_types::graphic::run_to_render_list::<Vector>(&path_item).expect("the run holds the row's element type");
-	morph_lane(ctx.arena(), legacy_graphic_list_of(content), progression, reverse, distribution, path)
+	let path = graphic_types::graphic::run_to_list::<Vector>(&path_item).expect("the run holds vector lanes");
+	// SAFETY: a materialized input's frames are arena-resident.
+	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let run = core_types::record::RunView::<Graphic>::new(&item).expect("the run holds graphic lanes");
+	let flattened = graphic_types::graphic::flatten_vector_rows(&run);
+	morph_lane(ctx.arena(), flattened, legacy_graphic_list_of(content), progression, reverse, distribution, path)
 }
 
 /// The morph over a plain vector level, as [`morph`]. Registered under the
@@ -3345,8 +3355,10 @@ fn morph_vector<'e>(
 > {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let path_item = unsafe { core_types::record::GroupItem::from_resident(path.batch()) };
-	let path = graphic_types::graphic::run_to_render_list::<Vector>(&path_item).expect("the run holds the row's element type");
-	morph_lane(ctx.arena(), legacy_graphic_list_of(content), progression, reverse, distribution, path)
+	let path = graphic_types::graphic::run_to_list::<Vector>(&path_item).expect("the run holds vector lanes");
+	let wrapper = wrap_vector_level(content);
+	let flattened = graphic_types::graphic::flatten_vector_rows(&wrapper);
+	morph_lane(ctx.arena(), flattened, legacy_graphic_list_of(content), progression, reverse, distribution, path)
 }
 
 pub use _morph_vector_mod::morph_vector_entries;
@@ -3913,7 +3925,8 @@ mod test {
 		*second_rectangle.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM) *= DAffine2::from_translation((-100., -100.).into());
 		rectangles.push(second_rectangle);
 
-		let morphed = super::morph_core(rectangles.into_graphic_list(), 0.5, false, InterpolationDistribution::default(), List::default());
+		let snapshot = rectangles.into_graphic_list();
+		let morphed = super::morph_core(snapshot.clone().into_flattened_list(), snapshot, 0.5, false, InterpolationDistribution::default(), List::default());
 		let morphed_element = morphed.element(0).unwrap();
 		// Geometry stays in local space (original rectangle coordinates)
 		assert_eq!(
@@ -3942,7 +3955,8 @@ mod test {
 		let mut content = List::new_from_item(item_a);
 		content.push(item_b);
 
-		let morphed = super::morph_core(content.into_graphic_list(), 0.5, false, InterpolationDistribution::default(), List::default());
+		let snapshot = content.into_graphic_list();
+		let morphed = super::morph_core(snapshot.clone().into_flattened_list(), snapshot, 0.5, false, InterpolationDistribution::default(), List::default());
 
 		let fill = paint_graphics::<Fill, _>(&morphed, 0).expect("Morph should keep the fill paint at the midpoint");
 
