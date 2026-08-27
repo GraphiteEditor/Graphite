@@ -495,7 +495,7 @@ impl NodeRuntime {
 			let thumbnail_renders = &mut self.thumbnail_renders;
 			let vector_modify = &mut self.vector_modify;
 			let result = self.executor.introspect_with(monitor_node_path, |layout, batch, _arena| {
-				use graphene_std::core_types::record::{Group, GroupContent, GroupItem, RunView};
+				use graphene_std::core_types::record::{Group, GroupItem, RunView};
 				let type_id = layout.element.type_id;
 				// Graphic run: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
 				if type_id == std::any::TypeId::of::<Graphic>() {
@@ -505,7 +505,7 @@ impl NodeRuntime {
 						let bounds = graphene_std::renderer::graphic_list_bounding_box(&RunView::<Graphic>::new(&item)?, DAffine2::IDENTITY);
 						let group = Graphic::Group(Group {
 							row: None,
-							content: GroupContent::Run(item),
+							content: item,
 						});
 						Self::render_thumbnail(thumbnail_renders, parent_network_node_id, &group, bounds, responses)
 					}

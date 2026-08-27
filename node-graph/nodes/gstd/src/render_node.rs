@@ -76,25 +76,25 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 }
 
 /// The leveled form of `render_intermediate`: the wire's records materialize
-/// into a run and render through the legacy conversion.
+/// into a run, which renders directly.
 #[node_macro::node(category(""))]
 fn render_intermediate_leveled<T: Clone + Send + Sync + core_types::CacheHash + 'static>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractIndex + InjectIndex + Copy,
 	#[implementations(Artboard, Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] data: IList<T>,
 ) -> Result<RenderIntermediate, Interrupt>
 where
-	List<T>: Render,
+	for<'a> core_types::record::RunView<'a, T>: Render,
 {
 	// SAFETY: a materialized input's frames are arena-resident.
 	let item = unsafe { core_types::record::GroupItem::from_resident(data.batch()) };
-	let data = graphic_types::graphic::run_to_render_list::<T>(&item).expect("the run holds the row's element type");
+	let run = core_types::record::RunView::<T>::new(&item).expect("the run holds the row's element type");
 	let render_params = ctx
 		.vararg(0)
 		.expect("Did not find var args")
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
 
-	Ok(intermediate_of(&data, render_params))
+	Ok(intermediate_of(&run, render_params))
 }
 
 #[node_macro::node(category(""))]

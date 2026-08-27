@@ -13,40 +13,26 @@ use graphic_types::graphic::Graphic;
 use raster_types::{CPU, Raster};
 use vector_types::{GradientStop, GradientStops};
 
-/// Whether the walk can descend into a group: every run holds `Graphic`
+/// Whether the walk can descend into a group: the run holds `Graphic`
 /// elements.
 pub(crate) fn group_expands(group: &core_types::record::Group) -> bool {
-	match &group.content {
-		core_types::record::GroupContent::Run(item) => item.typed_lanes::<Graphic>().is_some(),
-		core_types::record::GroupContent::Stack(children) => children.iter().all(group_expands),
-	}
+	group.content.typed_lanes::<Graphic>().is_some()
 }
 
 pub(crate) fn group_leaf_count(group: &core_types::record::Group, fully_flatten: bool, depth: usize) -> usize {
-	match &group.content {
-		core_types::record::GroupContent::Run(item) => {
-			let lanes = item.typed_lanes::<Graphic>().expect("guarded by group_expands");
-			(0..lanes.len()).map(|lane| leaf_count(lanes.element_ref(lane), fully_flatten, depth + 1)).sum()
-		}
-		core_types::record::GroupContent::Stack(children) => children.iter().map(|child| group_leaf_count(child, fully_flatten, depth)).sum(),
-	}
+	let lanes = group.content.typed_lanes::<Graphic>().expect("guarded by group_expands");
+	(0..lanes.len()).map(|lane| leaf_count(lanes.element_ref(lane), fully_flatten, depth + 1)).sum()
 }
 
 pub(crate) fn group_locate(group: &core_types::record::Group, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic, DAffine2)> {
-	match &group.content {
-		core_types::record::GroupContent::Run(item) => {
-			let lanes = item.typed_lanes::<Graphic>().expect("guarded by group_expands");
-			let offset = item.layout().offset_of(ATTR_TRANSFORM, 0);
-			(0..lanes.len()).find_map(|lane| {
-				// SAFETY: the offset comes from the item's own layout.
-				let lane_transform = offset.map(|offset| unsafe { item.lanes().get(lane).rec().read::<DAffine2>(offset) }).unwrap_or(DAffine2::IDENTITY);
-				locate(lanes.element_ref(lane), transform * lane_transform, fully_flatten, depth + 1, remaining)
-			})
-		}
-		core_types::record::GroupContent::Stack(children) => children
-			.iter()
-			.find_map(|child| group_locate(child, transform * graphic_types::graphic::group_row_transform(child), fully_flatten, depth, remaining)),
-	}
+	let item = &group.content;
+	let lanes = item.typed_lanes::<Graphic>().expect("guarded by group_expands");
+	let offset = item.layout().offset_of(ATTR_TRANSFORM, 0);
+	(0..lanes.len()).find_map(|lane| {
+		// SAFETY: the offset comes from the item's own layout.
+		let lane_transform = offset.map(|offset| unsafe { item.lanes().get(lane).rec().read::<DAffine2>(offset) }).unwrap_or(DAffine2::IDENTITY);
+		locate(lanes.element_ref(lane), transform * lane_transform, fully_flatten, depth + 1, remaining)
+	})
 }
 
 /// Leaf rows a graphic expands to: its children's counts when the walk
@@ -120,7 +106,7 @@ fn wrap(_: impl Ctx, content: IList<Graphic>) -> Result<IList<Graphic>, Interrup
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	Ok(Graphic::Group(core_types::record::Group {
 		row: None,
-		content: core_types::record::GroupContent::Run(item),
+		content: item,
 	}))
 }
 
@@ -728,9 +714,7 @@ mod tests {
 			panic!("expected a group element");
 		};
 		assert!(group.row.is_none());
-		let record::GroupContent::Run(item) = &group.content else {
-			panic!("expected a single run");
-		};
+		let item = &group.content;
 		assert_eq!(item.len(), 2);
 		let lanes = item.typed_lanes::<Graphic>().expect("the run holds the adopted graphic lanes");
 		let offset = item.layout().offset_of(ATTR_TRANSFORM, 0).unwrap();
@@ -770,9 +754,7 @@ mod tests {
 		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(record::Rec::new(slot.as_ptr())) }) else {
 			panic!("the replay restores the group element");
 		};
-		let record::GroupContent::Run(item) = &group.content else {
-			panic!("expected a single run");
-		};
+		let item = &group.content;
 		assert_eq!(item.len(), 2);
 		let lanes = item.typed_lanes::<Graphic>().expect("the run holds the adopted graphic lanes");
 		let offset = item.layout().offset_of(ATTR_TRANSFORM, 0).unwrap();

@@ -12,7 +12,7 @@ use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::lane::LaneSource;
 use core_types::list::{Item, List};
-use core_types::record::{Group, GroupContent, RunView};
+use core_types::record::{Group, RunView};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -22,7 +22,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{LanePaint, PaintColumns, PaintOverlay, group_to_legacy_list, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
+use graphic_types::graphic::{LanePaint, PaintColumns, PaintOverlay, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
@@ -679,13 +679,10 @@ fn render_element_vello<'a>(element: &'a Graphic, reach: PaintReach<'a>, scene: 
 fn element_can_reduce_to_clip_path<'a>(element: &'a Graphic, reach: PaintReach<'a>) -> bool {
 	match element {
 		Graphic::Vector(inner) if reach.applies() => vector_can_reduce_to_clip_path(&PaintOverlay::new(inner, reach.paint)),
-		Graphic::Group(group) => match &group.content {
-			GroupContent::Run(item) => match RunView::<Vector>::new(item) {
-				Some(run) if reach.applies() => vector_can_reduce_to_clip_path(&PaintOverlay::new(&run, reach.paint)),
-				Some(run) => vector_can_reduce_to_clip_path(&run),
-				None => false,
-			},
-			GroupContent::Stack(_) => false,
+		Graphic::Group(group) => match RunView::<Vector>::new(&group.content) {
+			Some(run) if reach.applies() => vector_can_reduce_to_clip_path(&PaintOverlay::new(&run, reach.paint)),
+			Some(run) => vector_can_reduce_to_clip_path(&run),
+			None => false,
 		},
 		_ => element.can_reduce_to_clip_path(),
 	}
@@ -777,7 +774,7 @@ fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, elem
 		RunView::<T>::new(item).map(|run| run.attr::<Transform>(0))
 	}
 
-	let GroupContent::Run(item) = &group.content else { return };
+	let item = &group.content;
 	if group.row.is_some() || item.is_empty() || item.typed_lanes::<Graphic>().is_some() {
 		return;
 	}
@@ -822,13 +819,10 @@ fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintRe
 	}
 }
 
-/// The native group render: a run dispatches on its element type into the
-/// generic bodies. `Stack` has consumers but no constructor yet, so it and
-/// unknown element types keep the legacy conversion.
+/// The native group render: the run dispatches on its element type into the
+/// generic bodies; an unknown element type renders as nothing.
 fn render_group_svg<'a>(group: &'a Group, reach: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
-	let GroupContent::Run(item) = &group.content else {
-		return group_to_legacy_list(group).render_svg(render, render_params);
-	};
+	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
 		render_graphic_svg_with(&run, reach.into_group_graphics(), render, render_params)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
@@ -845,15 +839,11 @@ fn render_group_svg<'a>(group: &'a Group, reach: PaintReach<'a>, render: &mut Sv
 		render_gradient_svg(&run, render, render_params)
 	} else if let Some(run) = RunView::<String>::new(item) {
 		render_text_svg(&run, render, render_params)
-	} else {
-		group_to_legacy_list(group).render_svg(render, render_params)
 	}
 }
 
 fn render_group_vello<'a>(group: &'a Group, reach: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-	let GroupContent::Run(item) = &group.content else {
-		return group_to_legacy_list(group).render_to_vello(scene, transform, context, render_params);
-	};
+	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
 		render_graphic_vello_with(&run, reach.into_group_graphics(), scene, transform, context, render_params)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
@@ -871,8 +861,6 @@ fn render_group_vello<'a>(group: &'a Group, reach: PaintReach<'a>, scene: &mut S
 		render_gradient_vello(&run, scene, transform, render_params)
 	} else if let Some(run) = RunView::<String>::new(item) {
 		render_text_vello(&run, scene, transform, render_params)
-	} else {
-		group_to_legacy_list(group).render_to_vello(scene, transform, context, render_params)
 	}
 }
 
@@ -880,9 +868,7 @@ fn render_group_vello<'a>(group: &'a Group, reach: PaintReach<'a>, scene: &mut S
 /// typed variant the conversion produced, so a caller's element id passes
 /// through to the typed body unchanged.
 fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-	let GroupContent::Run(item) = &group.content else {
-		return group_to_legacy_list(group).collect_metadata(metadata, footprint, element_id);
-	};
+	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
 		collect_graphic_metadata_with(&run, reach.into_group_graphics(), metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
@@ -897,15 +883,11 @@ fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata:
 	} else if item.typed_lanes::<Color>().is_some() || item.typed_lanes::<GradientStops>().is_some() {
 	} else if let Some(run) = RunView::<String>::new(item) {
 		collect_text_metadata(&run, metadata, footprint, element_id)
-	} else {
-		group_to_legacy_list(group).collect_metadata(metadata, footprint, element_id)
 	}
 }
 
 fn add_group_upstream_click_targets<'a>(group: &'a Group, reach: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
-	let GroupContent::Run(item) = &group.content else {
-		return group_to_legacy_list(group).add_upstream_click_targets(click_targets);
-	};
+	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
 		add_graphic_upstream_click_targets_with(&run, reach.into_group_graphics(), click_targets)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
@@ -917,16 +899,11 @@ fn add_group_upstream_click_targets<'a>(group: &'a Group, reach: PaintReach<'a>,
 		add_raster_upstream_click_targets(click_targets)
 	} else if let Some(run) = RunView::<String>::new(item) {
 		add_text_upstream_click_targets(&run, click_targets)
-	} else if item.typed_lanes::<Color>().is_some() || item.typed_lanes::<GradientStops>().is_some() {
-	} else {
-		group_to_legacy_list(group).add_upstream_click_targets(click_targets)
 	}
 }
 
 fn add_group_upstream_outline_targets<'a>(group: &'a Group, reach: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
-	let GroupContent::Run(item) = &group.content else {
-		return group_to_legacy_list(group).add_upstream_outline_targets(outlines);
-	};
+	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
 		add_graphic_upstream_outline_targets_with(&run, reach.into_group_graphics(), outlines)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
@@ -938,9 +915,6 @@ fn add_group_upstream_outline_targets<'a>(group: &'a Group, reach: PaintReach<'a
 		add_raster_upstream_click_targets(outlines)
 	} else if let Some(run) = RunView::<String>::new(item) {
 		add_text_upstream_click_targets(&run, outlines)
-	} else if item.typed_lanes::<Color>().is_some() || item.typed_lanes::<GradientStops>().is_some() {
-	} else {
-		group_to_legacy_list(group).add_upstream_outline_targets(outlines)
 	}
 }
 
@@ -2966,6 +2940,92 @@ impl Render for List<String> {
 	}
 }
 
+impl Render for RunView<'_, Graphic> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		render_graphic_svg(self, render, render_params)
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+		render_graphic_vello(self, scene, transform, context, render_params)
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		collect_graphic_metadata(self, metadata, footprint, element_id)
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		add_graphic_upstream_click_targets(self, click_targets)
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		add_graphic_upstream_outline_targets(self, outlines)
+	}
+
+	fn contains_artboard(&self) -> bool {
+		graphic_contains_artboard(self)
+	}
+}
+
+impl Render for RunView<'_, Vector> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		render_vector_svg(self, render, render_params)
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+		render_vector_vello(self, scene, parent_transform, context, render_params)
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
+		collect_vector_metadata(self, metadata, footprint, caller_element_id)
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		add_vector_upstream_click_targets(self, click_targets)
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		add_vector_upstream_outline_targets(self, outlines)
+	}
+}
+
+impl Render for RunView<'_, Raster<CPU>> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		render_raster_cpu_svg(self, render, render_params)
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
+		render_raster_cpu_vello(self, scene, transform, render_params)
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		collect_raster_metadata(self, metadata, footprint, element_id)
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		add_raster_upstream_click_targets(click_targets)
+	}
+}
+
+impl Render for RunView<'_, Color> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		render_color_svg(self, render, render_params)
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		render_color_vello(self, scene, render_params)
+	}
+}
+
+impl Render for RunView<'_, GradientStops> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		render_gradient_svg(self, render, render_params)
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		render_gradient_vello(self, scene, parent_transform, render_params)
+	}
+}
+
 impl Render for RunView<'_, Artboard> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_artboard_svg(self, render, render_params)
@@ -3109,7 +3169,7 @@ mod group_walk_tests {
 		let bytes = unsafe { write_lanes::<Vector>(&layout, &[&vectors[0], &vectors[1]], &[Some(&paint), None]) };
 		// SAFETY: `bytes` holds two lanes of `layout` at its stride.
 		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 2, &layout)) };
-		let group = Group { row: None, content: GroupContent::Run(item) };
+		let group = Group { row: None, content: item };
 
 		let params = RenderParams::default();
 		let native = rendered_svg(|render| Graphic::Group(group.clone()).render_svg(render, &params));
@@ -3128,7 +3188,7 @@ mod group_walk_tests {
 		let bytes = unsafe { write_lanes::<Graphic>(&layout, &[&inner], &[Some(&paint)]) };
 		// SAFETY: `bytes` holds one lane of `layout` at its stride.
 		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
-		let group = Group { row: None, content: GroupContent::Run(item) };
+		let group = Group { row: None, content: item };
 
 		let params = RenderParams::default();
 		let native = rendered_svg(|render| Graphic::Group(group.clone()).render_svg(render, &params));
@@ -3147,7 +3207,7 @@ mod group_walk_tests {
 		let bytes = unsafe { write_lanes::<Vector>(&layout, &[&vectors[0]], &[Some(&paint)]) };
 		// SAFETY: `bytes` holds one lane of `layout` at its stride.
 		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
-		let group = Group { row: None, content: GroupContent::Run(item) };
+		let group = Group { row: None, content: item };
 
 		let footprint = Footprint::default();
 		let caller = NodeId(9);
@@ -3172,7 +3232,7 @@ mod group_walk_tests {
 		let bytes = unsafe { write_lanes::<Vector>(&layout, &[&vectors[0], &vectors[1]], &[Some(&paint), None]) };
 		// SAFETY: `bytes` holds two lanes of `layout` at its stride.
 		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 2, &layout)) };
-		let group = Group { row: None, content: GroupContent::Run(item) };
+		let group = Group { row: None, content: item };
 
 		let mut native = Vec::new();
 		Graphic::Group(group.clone()).add_upstream_click_targets(&mut native);

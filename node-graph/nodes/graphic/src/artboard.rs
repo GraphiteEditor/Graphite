@@ -39,7 +39,7 @@ pub fn create_artboard(
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	let content = core_types::list::List::new_from_element(Graphic::Group(core_types::record::Group {
 		row: None,
-		content: core_types::record::GroupContent::Run(item),
+		content: item,
 	}));
 
 	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input

@@ -10,7 +10,7 @@ use core_types::arena::Arena;
 use core_types::context::InjectIndex;
 use core_types::gpoll::{Finality, GraphError};
 use core_types::node::Node;
-use core_types::record::{Group, GroupContent, GroupItem, LevelStatus, RecordValue, materialize_level};
+use core_types::record::{Group, GroupItem, LevelStatus, RecordValue, materialize_level};
 use core_types::uuid::NodeId;
 use glam::{DAffine2, DVec2};
 use vector_types::GradientStops;
@@ -36,7 +36,7 @@ where
 			LevelGroup::Group(
 				Group {
 					row: None,
-					content: GroupContent::Run(item),
+					content: item,
 				},
 				finality,
 			)
@@ -82,7 +82,7 @@ pub fn batch_to_legacy(layout: &core_types::record::Layout, batch: core_types::n
 	if item.typed_lanes::<Graphic>().is_some() {
 		let group = Group {
 			row: None,
-			content: GroupContent::Run(item),
+			content: item,
 		};
 		return Some(Box::new(group_to_legacy_list(&group)));
 	}

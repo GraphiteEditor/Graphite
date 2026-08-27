@@ -671,55 +671,33 @@ impl RunAttrs {
 	}
 }
 
-pub fn group_row_transform(group: &core_types::record::Group) -> DAffine2 {
-	match &group.row {
-		Some(row) if !row.is_empty() => RunAttrs::read_or(row, RunAttrs::of(row).transform, 0, DAffine2::IDENTITY),
-		_ => DAffine2::IDENTITY,
-	}
-}
-
 pub fn group_is_empty(group: &core_types::record::Group) -> bool {
-	match &group.content {
-		core_types::record::GroupContent::Run(item) => item.is_empty(),
-		core_types::record::GroupContent::Stack(children) => children.iter().all(group_is_empty),
-	}
+	group.content.is_empty()
 }
 
 fn group_all_clipped(group: &core_types::record::Group) -> bool {
-	match &group.content {
-		core_types::record::GroupContent::Run(item) => {
-			let attrs = RunAttrs::of(item);
-			(0..item.len()).all(|lane| RunAttrs::read_or(item, attrs.clipping_mask, lane, false))
-		}
-		core_types::record::GroupContent::Stack(children) => children.iter().all(group_all_clipped),
-	}
+	let item = &group.content;
+	let attrs = RunAttrs::of(item);
+	(0..item.len()).all(|lane| RunAttrs::read_or(item, attrs.clipping_mask, lane, false))
 }
 
 fn group_is_opaque(group: &core_types::record::Group) -> bool {
-	match &group.content {
-		core_types::record::GroupContent::Run(item) => {
-			let attrs = RunAttrs::of(item);
-			let lanes = item.typed_lanes::<Graphic>();
-			!item.is_empty()
-				&& (0..item.len()).all(|lane| {
-					RunAttrs::read_or(item, attrs.opacity, lane, 1.) >= 1.
-						&& RunAttrs::read_or(item, attrs.opacity_fill, lane, 1.) >= 1.
-						&& lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_opaque())
-				})
-		}
-		core_types::record::GroupContent::Stack(children) => !children.is_empty() && children.iter().all(group_is_opaque),
-	}
+	let item = &group.content;
+	let attrs = RunAttrs::of(item);
+	let lanes = item.typed_lanes::<Graphic>();
+	!item.is_empty()
+		&& (0..item.len()).all(|lane| {
+			RunAttrs::read_or(item, attrs.opacity, lane, 1.) >= 1.
+				&& RunAttrs::read_or(item, attrs.opacity_fill, lane, 1.) >= 1.
+				&& lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_opaque())
+		})
 }
 
 fn group_is_fully_transparent(group: &core_types::record::Group) -> bool {
-	match &group.content {
-		core_types::record::GroupContent::Run(item) => {
-			let attrs = RunAttrs::of(item);
-			let lanes = item.typed_lanes::<Graphic>();
-			(0..item.len()).all(|lane| RunAttrs::read_or(item, attrs.opacity, lane, 1.) <= 0. || lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_fully_transparent()))
-		}
-		core_types::record::GroupContent::Stack(children) => children.iter().all(group_is_fully_transparent),
-	}
+	let item = &group.content;
+	let attrs = RunAttrs::of(item);
+	let lanes = item.typed_lanes::<Graphic>();
+	(0..item.len()).all(|lane| RunAttrs::read_or(item, attrs.opacity, lane, 1.) <= 0. || lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_fully_transparent()))
 }
 
 fn group_bounding_box(group: &core_types::record::Group, transform: DAffine2, include_stroke: bool, thumbnail: bool) -> RenderBoundingBox {
@@ -772,24 +750,7 @@ fn group_bounding_box(group: &core_types::record::Group, transform: DAffine2, in
 			.or_else(|| typed_run::<String>(item, transform, include_stroke, thumbnail))
 			.unwrap_or(RenderBoundingBox::Infinite)
 	}
-	match &group.content {
-		core_types::record::GroupContent::Run(item) => run_bounding_box(item, transform, include_stroke, thumbnail),
-		core_types::record::GroupContent::Stack(children) => {
-			let mut combined = None;
-			let mut any_infinite = false;
-			for child in children {
-				let bounds = group_bounding_box(child, transform * group_row_transform(child), include_stroke, thumbnail);
-				if let Some(short_circuit) = combine(&mut combined, &mut any_infinite, bounds, thumbnail) {
-					return short_circuit;
-				}
-			}
-			match (combined, any_infinite) {
-				(Some(bounds), _) => RenderBoundingBox::Rectangle(bounds),
-				(None, true) => RenderBoundingBox::Infinite,
-				(None, false) => RenderBoundingBox::None,
-			}
-		}
-	}
+	run_bounding_box(&group.content, transform, include_stroke, thumbnail)
 }
 
 /// One typed run as an owned list, elements cloned and every attribute copied
@@ -998,8 +959,8 @@ const _: () = {
 pub fn direct_vector_len(graphic: &Graphic) -> usize {
 	match graphic {
 		Graphic::Vector(list) => list.len(),
-		Graphic::Group(group) => match (&group.row, &group.content) {
-			(None, core_types::record::GroupContent::Run(item)) => item.typed_lanes::<Vector>().map_or(0, |lanes| lanes.len()),
+		Graphic::Group(group) => match &group.row {
+			None => group.content.typed_lanes::<Vector>().map_or(0, |lanes| lanes.len()),
 			_ => 0,
 		},
 		_ => 0,
@@ -1025,9 +986,8 @@ pub fn map_groups_to_legacy(graphic: &Graphic) -> Graphic {
 /// run keeps the run's typed variant, matching the `Into<Graphic>` the
 /// pre-flip wrap applied; everything else becomes the legacy group list.
 pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic {
-	if group.row.is_none()
-		&& let core_types::record::GroupContent::Run(item) = &group.content
-	{
+	if group.row.is_none() {
+		let item = &group.content;
 		let typed = None
 			.or_else(|| run_to_legacy_list::<Vector>(item).map(Graphic::Vector))
 			.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(Graphic::RasterCPU))
@@ -1043,49 +1003,26 @@ pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic {
 }
 
 /// The group as a legacy `List<Graphic>`: a `Graphic` run becomes the items,
-/// another typed run becomes one item holding its typed list, and stack
-/// segments become one item each with the segment's row attributes.
+/// another typed run becomes one item holding its typed list.
 pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic> {
-	match &group.content {
-		core_types::record::GroupContent::Run(item) => {
-			if let Some(mut list) = run_to_legacy_list::<Graphic>(item) {
-				for element in list.iter_element_values_mut() {
-					*element = map_groups_to_legacy(element);
-				}
-				push_lane_paint_into_interiors(&mut list);
-				return list;
-			}
-			let element = None
-				.or_else(|| run_to_legacy_list::<Vector>(item).map(Graphic::Vector))
-				.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(Graphic::RasterCPU))
-				.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(Graphic::RasterGPU))
-				.or_else(|| run_to_legacy_list::<Color>(item).map(Graphic::Color))
-				.or_else(|| run_to_legacy_list::<GradientStops>(item).map(Graphic::Gradient))
-				.or_else(|| run_to_legacy_list::<String>(item).map(Graphic::Text));
-			match element {
-				Some(element) => List::new_from_element(element),
-				None => List::new(),
-			}
+	let item = &group.content;
+	if let Some(mut list) = run_to_legacy_list::<Graphic>(item) {
+		for element in list.iter_element_values_mut() {
+			*element = map_groups_to_legacy(element);
 		}
-		core_types::record::GroupContent::Stack(children) => {
-			let mut list = List::new();
-			for child in children {
-				list.push(Item::new_from_element(group_to_legacy_graphic(child)));
-				let index = list.len() - 1;
-				if let Some(row) = &child.row {
-					if !row.is_empty() {
-						for field in &row.layout().fields {
-							// SAFETY: the offset comes from the row's own layout.
-							let value = unsafe { (field.read_erased)(row.lanes().get(0).rec().ptr().add(field.offset)) };
-							list.set_attribute_value_dyn(field.name, index, AttributeValueDyn(value));
-						}
-					}
-				}
-			}
-			map_paint_attrs_to_legacy(&mut list);
-			push_lane_paint_into_interiors(&mut list);
-			list
-		}
+		push_lane_paint_into_interiors(&mut list);
+		return list;
+	}
+	let element = None
+		.or_else(|| run_to_legacy_list::<Vector>(item).map(Graphic::Vector))
+		.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(Graphic::RasterCPU))
+		.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(Graphic::RasterGPU))
+		.or_else(|| run_to_legacy_list::<Color>(item).map(Graphic::Color))
+		.or_else(|| run_to_legacy_list::<GradientStops>(item).map(Graphic::Gradient))
+		.or_else(|| run_to_legacy_list::<String>(item).map(Graphic::Text));
+	match element {
+		Some(element) => List::new_from_element(element),
+		None => List::new(),
 	}
 }
 
@@ -1094,18 +1031,15 @@ fn group_render_complexity(group: &core_types::record::Group) -> usize {
 		let lanes = item.typed_lanes::<T>()?;
 		Some((0..lanes.len()).map(|lane| lanes.element_ref(lane).render_complexity()).sum())
 	}
-	match &group.content {
-		core_types::record::GroupContent::Run(item) => None
-			.or_else(|| typed_run::<Graphic>(item))
-			.or_else(|| typed_run::<Vector>(item))
-			.or_else(|| typed_run::<Raster<CPU>>(item))
-			.or_else(|| typed_run::<Raster<GPU>>(item))
-			.or_else(|| typed_run::<Color>(item))
-			.or_else(|| typed_run::<GradientStops>(item))
-			.or_else(|| typed_run::<String>(item))
-			.unwrap_or(item.len()),
-		core_types::record::GroupContent::Stack(children) => children.iter().map(group_render_complexity).sum(),
-	}
+	let item = &group.content;
+	None.or_else(|| typed_run::<Graphic>(item))
+		.or_else(|| typed_run::<Vector>(item))
+		.or_else(|| typed_run::<Raster<CPU>>(item))
+		.or_else(|| typed_run::<Raster<GPU>>(item))
+		.or_else(|| typed_run::<Color>(item))
+		.or_else(|| typed_run::<GradientStops>(item))
+		.or_else(|| typed_run::<String>(item))
+		.unwrap_or(item.len())
 }
 
 impl BoundingBox for Graphic {
@@ -1333,7 +1267,7 @@ mod run_tests {
 			let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
 			let group = core_types::record::Group {
 				row: None,
-				content: core_types::record::GroupContent::Run(item),
+				content: item,
 			};
 			let expected = group_to_legacy_list(&group);
 			(map_groups_to_owned(&Graphic::Group(group)), expected)
@@ -1358,7 +1292,7 @@ mod run_tests {
 		let inner_item = unsafe { GroupItem::from_resident(RecordBatch::new(inner_bytes.as_ptr(), 1, &inner_layout)) };
 		let nested = Graphic::Group(core_types::record::Group {
 			row: None,
-			content: core_types::record::GroupContent::Run(inner_item),
+			content: inner_item,
 		});
 
 		let outer_layout = Layout::default().with_writes(0, element_write_hashed::<Graphic>(), &[]);
@@ -1371,7 +1305,7 @@ mod run_tests {
 			let outer_item = unsafe { GroupItem::from_resident(RecordBatch::new(outer_bytes.as_ptr(), 1, &outer_layout)) };
 			let group = core_types::record::Group {
 				row: None,
-				content: core_types::record::GroupContent::Run(outer_item),
+				content: outer_item,
 			};
 			let expected = group_to_legacy_list(&group);
 			(map_groups_to_owned(&Graphic::Group(group)), expected)
@@ -1393,7 +1327,7 @@ mod run_tests {
 		let inner_item = unsafe { GroupItem::from_resident(RecordBatch::new(inner_bytes.as_ptr(), 1, inner_layout)) };
 		List::new_from_element(Graphic::Group(core_types::record::Group {
 			row: None,
-			content: core_types::record::GroupContent::Run(inner_item),
+			content: inner_item,
 		}))
 	}
 

@@ -462,7 +462,7 @@ pub fn wrap_graphic<T: Clone + Send + Sync + core_types::CacheHash + 'static>(
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	Ok(Graphic::Group(core_types::record::Group {
 		row: None,
-		content: core_types::record::GroupContent::Run(item),
+		content: item,
 	}))
 }
 
@@ -532,7 +532,7 @@ pub fn to_graphic_typed<T: Clone + Send + Sync + core_types::CacheHash + 'static
 	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
 	Ok(Graphic::Group(core_types::record::Group {
 		row: None,
-		content: core_types::record::GroupContent::Run(item),
+		content: item,
 	}))
 }
 

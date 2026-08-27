@@ -2015,48 +2015,36 @@ impl<T: crate::bounds::BoundingBox + 'static> crate::bounds::BoundingBox for Run
 	}
 }
 
-/// The records a group stores: a single homogeneous run, or a list of
-/// segments.
-#[derive(Clone, Debug)]
-pub enum GroupContent {
-	Run(GroupItem),
-	Stack(Vec<Group>),
-}
-
-/// Records nested inside one element. The `row` holds the group's own
-/// attribute record. A group that sits on a lane leaves it `None`, because
-/// that lane's record carries the attributes.
+/// Records nested inside one element: a single homogeneous run. The `row`
+/// holds the group's own attribute record. A group that sits on a lane leaves
+/// it `None`, because that lane's record carries the attributes. The typed
+/// segment stack returns when merge constructs segments.
 #[derive(Clone, Debug)]
 pub struct Group {
 	pub row: Option<GroupItem>,
-	pub content: GroupContent,
+	pub content: GroupItem,
 }
 
 impl Group {
 	/// The group deep-copied out of its evaluation, every run in owned form.
 	pub fn copy_out(&self) -> Group {
-		let content = match &self.content {
-			GroupContent::Run(item) => GroupContent::Run(item.copy_out()),
-			GroupContent::Stack(children) => GroupContent::Stack(children.iter().map(Group::copy_out).collect()),
-		};
 		Group {
 			row: self.row.as_ref().map(GroupItem::copy_out),
-			content,
+			content: self.content.copy_out(),
 		}
 	}
 
 	/// Re-parks an owned group's runs into `arena`; `None` reports arena
 	/// exhaustion.
 	pub fn replay(&self, arena: &crate::arena::Arena) -> Option<Group> {
-		let content = match &self.content {
-			GroupContent::Run(item) => GroupContent::Run(item.replay(arena)?),
-			GroupContent::Stack(children) => GroupContent::Stack(children.iter().map(|child| child.replay(arena)).collect::<Option<_>>()?),
-		};
 		let row = match &self.row {
 			Some(row) => Some(row.replay(arena)?),
 			None => None,
 		};
-		Some(Group { row, content })
+		Some(Group {
+			row,
+			content: self.content.replay(arena)?,
+		})
 	}
 }
 
@@ -2122,34 +2110,6 @@ impl graphene_hash::CacheHash for GroupItem {
 		for lane in 0..self.len {
 			// SAFETY: `adopt` filled `len` lanes of `layout`.
 			unsafe { record_content_hash(&self.layout, frames.add(lane * stride), state) };
-		}
-	}
-}
-
-impl PartialEq for GroupContent {
-	fn eq(&self, other: &Self) -> bool {
-		match (self, other) {
-			(GroupContent::Run(a), GroupContent::Run(b)) => a == b,
-			(GroupContent::Stack(a), GroupContent::Stack(b)) => a == b,
-			_ => false,
-		}
-	}
-}
-
-impl graphene_hash::CacheHash for GroupContent {
-	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		match self {
-			GroupContent::Run(item) => {
-				state.write_u8(0);
-				item.cache_hash(state);
-			}
-			GroupContent::Stack(children) => {
-				state.write_u8(1);
-				state.write_usize(children.len());
-				for child in children {
-					child.cache_hash(state);
-				}
-			}
 		}
 	}
 }
