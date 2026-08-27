@@ -12,9 +12,9 @@ fn run_once(c: &mut Criterion) {
 	bench_for_each_demo(&mut group, |name, g| {
 		let (_, network) = setup_network(name);
 		g.bench_function(name, |b| {
-			b.iter_batched(
+			b.iter_batched_ref(
 				|| DynamicExecutor::new(network.clone()).unwrap(),
-				|executor| Executor::execute(&&executor, std::hint::black_box(context)).unwrap(),
+				|executor| Executor::execute(&&*executor, std::hint::black_box(context)).unwrap(),
 				criterion::BatchSize::LargeInput,
 			)
 		});

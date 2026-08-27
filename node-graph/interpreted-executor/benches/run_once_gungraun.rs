@@ -14,12 +14,12 @@ fn setup_run_once(name: &str) -> DynamicExecutor {
 
 #[library_benchmark]
 #[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = setup_run_once)]
-pub fn run_once(executor: DynamicExecutor) -> DynamicExecutor {
+pub fn run_once(executor: DynamicExecutor) -> (DynamicExecutor, core_types::gpoll::GPoll<graph_craft::document::value::TaggedValue>) {
 	let context = application_io::RenderConfig::default();
-	black_box(Executor::execute(&&executor, black_box(context)).unwrap());
+	let result = black_box(Executor::execute(&&executor, black_box(context)).unwrap());
 
-	// Return the executor so its teardown happens outside the measured section
-	executor
+	// Return the executor and result so their teardown happens outside the measured section
+	(executor, result)
 }
 
 library_benchmark_group!(name = run_once_group; benchmarks = run_once);
