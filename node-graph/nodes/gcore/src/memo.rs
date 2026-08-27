@@ -274,11 +274,10 @@ mod tests {
 		let io = handle.serialize().expect("the eval landed a snapshot");
 		let snapshot = io.downcast_ref::<CtxSnapshot>().expect("the monitor serializes its context snapshot");
 		let ctx = snapshot.rehydrate(&scope).expect("the arena holds the chains");
-		let GPoll::Final(value) = edge.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&edge, &ctx) else {
 			panic!("expected a final record");
 		};
-		// SAFETY: the eval produced a live record of the edge's layout.
-		assert_eq!(unsafe { layout.rec(&value).element::<u32>() }, 11);
+		assert_eq!(served.element::<u32>(), 11);
 	}
 
 	#[test]

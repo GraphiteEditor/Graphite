@@ -395,7 +395,7 @@ mod tests {
 	use core_types::SourceId;
 	use core_types::arena::Arena;
 	use core_types::attribute::Attribute as AttributeMarker;
-	use core_types::context::{ContextImpl, EvalScope};
+	use core_types::context::{ContextImpl, EvalScope, ExtractArena};
 	use core_types::gpoll::GPoll;
 	use core_types::node::Node;
 	use core_types::record::{Layout, Rec, RecordSource, RecordValue, stack};
@@ -413,29 +413,20 @@ mod tests {
 	struct RecordSourceNode<E> {
 		layout: Layout,
 		element: E,
-		fields: Vec<(usize, f64)>,
+		fields: Vec<(&'static str, f64)>,
 		partial: bool,
 	}
 
-	impl<'e, E: Copy> Node<ContextImpl<'e>> for RecordSourceNode<E> {
+	impl<'e, E: Copy + Send + Sync + 'static> Node<ContextImpl<'e>> for RecordSourceNode<E> {
 		type Output = RecordValue<'e>;
 
-		fn eval(&self, _input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			let mut value = RecordValue::zeroed();
-			let dst = match self.layout.frame_bytes() {
-				0 => value.as_mut_ptr(),
-				bytes => stack::push(bytes),
-			};
-			unsafe {
-				dst.cast::<E>().write(self.element);
-				for (offset, field) in &self.fields {
-					dst.add(*offset).cast::<f64>().write(*field);
-				}
+		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			frame.element(self.element);
+			for (name, field) in &self.fields {
+				frame.field::<f64>(name, 0, *field);
 			}
-			if self.layout.frame_bytes() != 0 {
-				stack::pop(dst);
-				value = RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) });
-			}
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
 			match self.partial {
 				true => GPoll::Partial(value),
 				false => GPoll::Final(value),
@@ -446,7 +437,7 @@ mod tests {
 	struct LeveledSourceNode {
 		layout: Layout,
 		elements: Vec<f64>,
-		field: Option<(usize, f64)>,
+		field: Option<(&'static str, f64)>,
 	}
 
 	impl<'e> Node<ContextImpl<'e>> for LeveledSourceNode {
@@ -454,15 +445,13 @@ mod tests {
 
 		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
 			let element = self.elements[input.innermost_index() as usize % self.elements.len()];
-			let dst = stack::push(self.layout.frame_bytes());
-			unsafe {
-				dst.cast::<f64>().write(element);
-				if let Some((offset, value)) = self.field {
-					dst.add(offset).cast::<f64>().write(value);
-				}
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			frame.element(element);
+			if let Some((name, value)) = self.field {
+				frame.field::<f64>(name, 0, value);
 			}
-			stack::pop(dst);
-			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
+			GPoll::Final(value)
 		}
 
 		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
@@ -484,13 +473,11 @@ mod tests {
 
 		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
 			let (element, transform) = self.rows[input.innermost_index() as usize % self.rows.len()];
-			let dst = stack::push(self.layout.frame_bytes());
-			unsafe {
-				dst.cast::<f64>().write(element);
-				dst.add(self.layout.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()).cast::<DAffine2>().write(transform);
-			}
-			stack::pop(dst);
-			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			frame.element(element);
+			frame.attr::<Transform>(transform);
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
+			GPoll::Final(value)
 		}
 
 		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
@@ -517,10 +504,10 @@ mod tests {
 			if lane >= self.count as u64 {
 				return GPoll::past_end();
 			}
-			let dst = stack::push(self.layout.frame_bytes());
-			unsafe { dst.cast::<f64>().write(lane as f64) };
-			stack::pop(dst);
-			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			frame.element(lane as f64);
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
+			GPoll::Final(value)
 		}
 
 		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
@@ -543,16 +530,9 @@ mod tests {
 			// Depth-0 content varying per copy: the enclosing (pushed) level's
 			// index sits one link above the content's own innermost lane.
 			let element = input.try_index().and_then(|mut indices| indices.nth(1)).unwrap_or(0) as f64;
-			let mut value = RecordValue::zeroed();
-			let dst = match self.layout.frame_bytes() {
-				0 => value.as_mut_ptr(),
-				bytes => stack::push(bytes),
-			};
-			unsafe { dst.cast::<f64>().write(element) };
-			if self.layout.frame_bytes() != 0 {
-				stack::pop(dst);
-				value = RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) });
-			}
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			frame.element(element);
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
 			GPoll::Final(value)
 		}
 	}
@@ -570,6 +550,7 @@ mod tests {
 				level: 0,
 				size: 8,
 				align: 8,
+				type_id: std::any::TypeId::of::<f64>(),
 				read_erased: <Opacity as AttributeMarker>::read_erased,
 				repark: None,
 				content_hash: None,
@@ -587,6 +568,7 @@ mod tests {
 				level: 0,
 				size: 8,
 				align: 8,
+				type_id: std::any::TypeId::of::<f64>(),
 				read_erased: <Opacity as AttributeMarker>::read_erased,
 				repark: None,
 				content_hash: None,
@@ -660,13 +642,12 @@ mod tests {
 
 		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(8u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
 		assert_eq!(node.layout(), &leveled);
-		let GPoll::Final(value) = node.eval(&indexed) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &indexed) else {
 			panic!("expected a final record");
 		};
-		let rec = leveled.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 7.);
+		assert_eq!(served.element::<f64>(), 7.);
 		// The written opacity is this copy's own index (the head of the chain).
-		assert_eq!(unsafe { rec.read::<f64>(leveled.offset_of(Opacity::NAME, 0).unwrap()) }, 5.);
+		assert_eq!(served.attr::<Opacity>(), 5.);
 	}
 
 	#[test]
@@ -713,10 +694,10 @@ mod tests {
 		assert_eq!(leveled.depth, 1, "the IList return pushed one rank level above the depth-0 content");
 		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(core_types::gpoll::Extent::Exactly(3)));
 
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
-		assert_eq!(unsafe { leveled.rec(&value).element::<f64>() }, 7., "the opaque generic element forwarded unchanged");
+		assert_eq!(served.element::<f64>(), 7., "the opaque generic element forwarded unchanged");
 	}
 
 	#[test]
@@ -752,19 +733,14 @@ mod tests {
 			meta,
 			&[Some(&base)],
 		);
-		let leveled = Node::<ContextImpl>::layout(&repeat).clone();
-
 		let head = ctx.index_head();
 		for copy in 0..4 {
-			let mark = stack::sp();
 			let lane = ctx.promoted(&head, copy);
-			let GPoll::Final(value) = repeat.eval(&lane) else {
+			let GPoll::Final(served) = core_types::record::capture(&repeat, &lane) else {
 				panic!("expected a final record");
 			};
 			// The copy evaluated its content at its own pushed index.
-			assert_eq!(unsafe { leveled.rec(&value).element::<f64>() }, copy as f64);
-			// SAFETY: the copy's element was read out above, so no borrow into its frame remains.
-			unsafe { stack::rewind(mark) };
+			assert_eq!(served.element::<f64>(), copy as f64);
 		}
 	}
 
@@ -801,19 +777,14 @@ mod tests {
 			meta,
 			&[Some(&base)],
 		);
-		let leveled = Node::<ContextImpl>::layout(&repeat).clone();
-
 		let head = ctx.index_head();
 		for copy in 0..4u64 {
-			let mark = stack::sp();
 			let lane = ctx.promoted(&head, copy);
-			let GPoll::Final(value) = repeat.eval(&lane) else {
+			let GPoll::Final(served) = core_types::record::capture(&repeat, &lane) else {
 				panic!("expected a final record");
 			};
 			// Reversed: copy `j` evaluates its content at index `count - 1 - j`.
-			assert_eq!(unsafe { leveled.rec(&value).element::<f64>() }, (3 - copy) as f64);
-			// SAFETY: the copy's element was read out above, so no borrow into its frame remains.
-			unsafe { stack::rewind(mark) };
+			assert_eq!(served.element::<f64>(), (3 - copy) as f64);
 		}
 	}
 
@@ -859,18 +830,14 @@ mod tests {
 
 		let head = ctx.index_head();
 		for flat in 0..6u64 {
-			let mark = stack::sp();
 			let lane = ctx.promoted(&head, flat);
-			let GPoll::Final(value) = repeat.eval(&lane) else {
+			let GPoll::Final(served) = core_types::record::capture(&repeat, &lane) else {
 				panic!("expected a final record");
 			};
-			let rec = two_level.rec(&value);
-			assert_eq!(unsafe { rec.element::<f64>() }, 7.);
+			assert_eq!(served.element::<f64>(), 7.);
 			// The flat index decomposes: the content sees the remainder as its
 			// own innermost lane, so its per-lane opacity is `flat % 3`.
-			assert_eq!(unsafe { rec.read::<f64>(two_level.offset_of(Opacity::NAME, 0).unwrap()) }, (flat % 3) as f64);
-			// SAFETY: the element and attr were read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
+			assert_eq!(served.attr::<Opacity>(), (flat % 3) as f64);
 		}
 	}
 
@@ -882,11 +849,10 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let base = f64_layout(&[Opacity::NAME]);
-		let opacity_offset = base.offset_of(Opacity::NAME, 0).unwrap();
 		let content = RecordSourceNode {
 			layout: base.clone(),
 			element: 7.,
-			fields: vec![(opacity_offset, 0.5)],
+			fields: vec![(Opacity::NAME, 0.5)],
 			partial: false,
 		};
 		reserve_for(&[&base]);
@@ -902,17 +868,13 @@ mod tests {
 
 		let head = ctx.index_head();
 		for copy in 0..4u64 {
-			let mark = stack::sp();
 			let lane = ctx.promoted(&head, copy);
-			let GPoll::Final(value) = node.eval(&lane) else {
+			let GPoll::Final(served) = core_types::record::capture(&node, &lane) else {
 				panic!("expected a final record");
 			};
-			let rec = leveled.rec(&value);
 			// The content row's element forwards; its opacity re-scales per copy.
-			assert_eq!(unsafe { rec.element::<f64>() }, 7.);
-			assert_eq!(unsafe { rec.read::<f64>(leveled.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5 * (copy + 1) as f64);
-			// SAFETY: the element and attr were read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
+			assert_eq!(served.element::<f64>(), 7.);
+			assert_eq!(served.attr::<Opacity>(), 0.5 * (copy + 1) as f64);
 		}
 	}
 
@@ -931,12 +893,12 @@ mod tests {
 		let base = LeveledSourceNode {
 			layout: base_layout.clone(),
 			elements: vec![10., 11.],
-			field: Some((base_layout.offset_of(Opacity::NAME, 0).unwrap(), 0.5)),
+			field: Some((Opacity::NAME, 0.5)),
 		};
 		let new = LeveledSourceNode {
 			layout: new_layout.clone(),
 			elements: vec![100., 101., 102.],
-			field: Some((new_layout.offset_of(Length::NAME, 0).unwrap(), 7.)),
+			field: Some((Length::NAME, 7.)),
 		};
 		let meta = core_types::record::LayoutMeta {
 			sources: vec![0, 1],
@@ -959,23 +921,19 @@ mod tests {
 		let head = ctx.index_head();
 		let expected = [10., 11., 100., 101., 102.];
 		for (lane, &element) in expected.iter().enumerate() {
-			let mark = stack::sp();
 			let scoped = ctx.promoted(&head, lane as u64);
-			let GPoll::Final(value) = node.eval(&scoped) else {
+			let GPoll::Final(served) = core_types::record::capture(&node, &scoped) else {
 				panic!("expected a final record");
 			};
-			let rec = out.rec(&value);
-			assert_eq!(unsafe { rec.element::<f64>() }, element);
-			let opacity = unsafe { rec.read::<f64>(out.offset_of(Opacity::NAME, 0).unwrap()) };
-			let length = unsafe { rec.read::<f64>(out.offset_of(Length::NAME, 0).unwrap()) };
+			assert_eq!(served.element::<f64>(), element);
+			let opacity = served.attr::<Opacity>();
+			let length = served.attr::<Length>();
 			match lane < 2 {
 				// The base side wrote its opacity; length fills from the census.
 				true => assert_eq!((opacity, length), (0.5, 0.)),
 				// The new side wrote its length; opacity fills from the census.
 				false => assert_eq!((opacity, length), (1., 7.)),
 			}
-			// SAFETY: the element and attrs were read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -998,17 +956,17 @@ mod tests {
 		let a = || LeveledSourceNode {
 			layout: a_layout.clone(),
 			elements: vec![10., 11.],
-			field: Some((a_layout.offset_of(Opacity::NAME, 0).unwrap(), 0.5)),
+			field: Some((Opacity::NAME, 0.5)),
 		};
 		let b = || LeveledSourceNode {
 			layout: b_layout.clone(),
 			elements: vec![100., 101., 102.],
-			field: Some((b_layout.offset_of(Length::NAME, 0).unwrap(), 7.)),
+			field: Some((Length::NAME, 7.)),
 		};
 		let c = || LeveledSourceNode {
 			layout: c_layout.clone(),
 			elements: vec![1000.],
-			field: Some((c_layout.offset_of(Opacity::NAME, 0).unwrap(), 0.25)),
+			field: Some((Opacity::NAME, 0.25)),
 		};
 		let meta = || core_types::record::LayoutMeta {
 			sources: vec![0, 1],
@@ -1041,32 +999,23 @@ mod tests {
 			&[Some(&a_layout), Some(&bc)],
 		);
 
-		let left_out = Node::<ContextImpl>::layout(&left).clone();
-		let right_out = Node::<ContextImpl>::layout(&right).clone();
 		assert_eq!(left.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(6)));
 		assert_eq!(right.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(6)));
 
 		let head = ctx.index_head();
-		let check = |poll: GPoll<RecordValue>, out: &Layout, lane: usize, (element, opacity, length): (f64, f64, f64)| {
-			let GPoll::Final(value) = poll else {
+		let check = |poll: GPoll<core_types::record::ServedRecord>, lane: usize, (element, opacity, length): (f64, f64, f64)| {
+			let GPoll::Final(served) = poll else {
 				panic!("expected a final record at lane {lane}");
 			};
-			let rec = out.rec(&value);
-			assert_eq!(unsafe { rec.element::<f64>() }, element, "lane {lane}");
-			assert_eq!(unsafe { rec.read::<f64>(out.offset_of(Opacity::NAME, 0).unwrap()) }, opacity, "lane {lane}");
-			assert_eq!(unsafe { rec.read::<f64>(out.offset_of(Length::NAME, 0).unwrap()) }, length, "lane {lane}");
+			assert_eq!(served.element::<f64>(), element, "lane {lane}");
+			assert_eq!(served.attr::<Opacity>(), opacity, "lane {lane}");
+			assert_eq!(served.attr::<Length>(), length, "lane {lane}");
 		};
 		let expected = [(10., 0.5, 0.), (11., 0.5, 0.), (100., 1., 7.), (101., 1., 7.), (102., 1., 7.), (1000., 0.25, 0.)];
 		for (lane, &row) in expected.iter().enumerate() {
 			let scoped = ctx.promoted(&head, lane as u64);
-			let mark = stack::sp();
-			check(left.eval(&scoped), &left_out, lane, row);
-			// SAFETY: the element and attrs were read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
-			let mark = stack::sp();
-			check(right.eval(&scoped), &right_out, lane, row);
-			// SAFETY: as above.
-			unsafe { stack::rewind(mark) };
+			check(core_types::record::capture(&left, &scoped), lane, row);
+			check(core_types::record::capture(&right, &scoped), lane, row);
 		}
 	}
 
@@ -1086,12 +1035,12 @@ mod tests {
 		let base = LeveledSourceNode {
 			layout: base_layout.clone(),
 			elements: vec![10., 11.],
-			field: Some((base_layout.offset_of(Opacity::NAME, 0).unwrap(), 0.5)),
+			field: Some((Opacity::NAME, 0.5)),
 		};
 		let new = LeveledSourceNode {
 			layout: new_layout.clone(),
 			elements: vec![100., 101., 102.],
-			field: Some((new_layout.offset_of(Length::NAME, 0).unwrap(), 7.)),
+			field: Some((Length::NAME, 7.)),
 		};
 		let meta = core_types::record::LayoutMeta {
 			sources: vec![0, 1],
@@ -1112,23 +1061,19 @@ mod tests {
 		let head = ctx.index_head();
 		let per_lane: f64 = (0..5u64)
 			.map(|lane| {
-				let mark = stack::sp();
-				let GPoll::Final(value) = extend.eval(&ctx.promoted(&head, lane)) else {
+				let GPoll::Final(served) = core_types::record::capture(&extend, &ctx.promoted(&head, lane)) else {
 					panic!("expected a final record at lane {lane}");
 				};
-				let element = unsafe { wire.rec(&value).element::<f64>() };
-				// SAFETY: the element was read out above, so no borrow into this lane's frames remains.
-				unsafe { stack::rewind(mark) };
-				element
+				served.element::<f64>()
 			})
 			.sum();
 
 		let node = install_flip(SumNode::new(extend, &wire), &out);
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
 		// The fold's batch walks both sides of the seam in one range.
-		let folded = unsafe { out.rec(&value).element::<f64>() };
+		let folded = served.element::<f64>();
 		assert_eq!(folded, per_lane);
 		assert_eq!(folded, 324.);
 	}
@@ -1198,13 +1143,10 @@ mod tests {
 
 		let head = ctx.index_head();
 		for (lane, element) in [(0u64, 1.), (5, 3.), (6, 10.), (17, 30.)] {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane)) else {
+			let GPoll::Final(served) = core_types::record::capture(&node, &ctx.promoted(&head, lane)) else {
 				panic!("expected a final record at lane {lane}");
 			};
-			assert_eq!(unsafe { out.rec(&value).element::<f64>() }, element, "flat lane {lane}");
-			// SAFETY: the element was read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
+			assert_eq!(served.element::<f64>(), element, "flat lane {lane}");
 		}
 
 		// Mismatched inner extents: the top still sums, the inner query errors.
@@ -1256,14 +1198,11 @@ mod tests {
 			assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(expected.len())), "omit at {index}");
 			let head = ctx.index_head();
 			for (lane, &element) in expected.iter().enumerate() {
-				let mark = stack::sp();
 				let scoped = ctx.promoted(&head, lane as u64);
-				let GPoll::Final(value) = node.eval(&scoped) else {
+				let GPoll::Final(served) = core_types::record::capture(&node, &scoped) else {
 					panic!("expected a final record");
 				};
-				assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, element, "omit at {index}, lane {lane}");
-				// SAFETY: the element was read out above, so no borrow into this lane's frames remains.
-				unsafe { stack::rewind(mark) };
+				assert_eq!(served.element::<f64>(), element, "omit at {index}, lane {lane}");
 			}
 		}
 	}
@@ -1281,7 +1220,7 @@ mod tests {
 			let content = LeveledSourceNode {
 				layout: layout.clone(),
 				elements: vec![10., 11., 12.],
-				field: Some((layout.offset_of(Opacity::NAME, 0).unwrap(), 0.5)),
+				field: Some((Opacity::NAME, 0.5)),
 			};
 			let (index_edge, index_layout) = lifted_value(index);
 			let meta = core_types::record::LayoutMeta {
@@ -1305,17 +1244,13 @@ mod tests {
 			assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(expected.is_some() as usize)), "index {index}");
 			let Some(element) = expected else { continue };
 			let head = ctx.index_head();
-			let mark = stack::sp();
 			let scoped = ctx.promoted(&head, 0);
-			let GPoll::Final(value) = node.eval(&scoped) else {
+			let GPoll::Final(served) = core_types::record::capture(&node, &scoped) else {
 				panic!("expected a final record");
 			};
-			let rec = layout.rec(&value);
-			assert_eq!(unsafe { rec.element::<f64>() }, element);
+			assert_eq!(served.element::<f64>(), element);
 			// The selected item keeps its attributes.
-			assert_eq!(unsafe { rec.read::<f64>(layout.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
-			// SAFETY: the element and attr were read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
+			assert_eq!(served.attr::<Opacity>(), 0.5);
 		}
 	}
 
@@ -1338,10 +1273,10 @@ mod tests {
 			};
 			let (index_edge, index_layout) = lifted_value(index);
 			let node = install_flip(ExtractElementNode::new(RecordSource::new(content, &layout, &layout), index_edge, &layout, &index_layout), &out);
-			let GPoll::Final(value) = node.eval(&ctx) else {
+			let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 				panic!("expected a final record");
 			};
-			assert_eq!(unsafe { out.rec(&value).element::<f64>() }, expected, "extract at {index}");
+			assert_eq!(served.element::<f64>(), expected, "extract at {index}");
 		}
 	}
 
@@ -1375,25 +1310,21 @@ mod tests {
 		let expected = [(1., 10.), (2., 30.), (3., 20.), (1., 30.), (2., 10.), (3., 20.)];
 		let head = ctx.index_head();
 		for (lane, &(element, x)) in expected.iter().enumerate() {
-			let mark = stack::sp();
 			let scoped = ctx.promoted(&head, lane as u64);
-			let GPoll::Final(value) = kept.eval(&scoped) else {
+			let GPoll::Final(served) = core_types::record::capture(&kept, &scoped) else {
 				panic!("expected a final record");
 			};
-			let rec = out.rec(&value);
-			assert_eq!(unsafe { rec.element::<f64>() }, element, "lane {lane}");
-			let transform: DAffine2 = unsafe { rec.read(out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()) };
+			assert_eq!(served.element::<f64>(), element, "lane {lane}");
+			let transform: DAffine2 = served.attr::<Transform>();
 			assert_eq!(transform.translation.x, x, "lane {lane}");
-			// SAFETY: the element and transform were read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
 		}
 
 		let replaced = build(false);
 		assert_eq!(replaced.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(3)));
-		let GPoll::Final(value) = replaced.eval(&ctx.promoted(&head, 0)) else {
+		let GPoll::Final(served) = core_types::record::capture(&replaced, &ctx.promoted(&head, 0)) else {
 			panic!("expected a final record");
 		};
-		let transform: DAffine2 = unsafe { out.rec(&value).read(out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()) };
+		let transform: DAffine2 = served.attr::<Transform>();
 		assert_eq!(transform.translation.x, 30., "without originals every lane reflects");
 	}
 
@@ -1425,18 +1356,14 @@ mod tests {
 
 		let head = ctx.index_head();
 		for (lane, &(element, x)) in rows.iter().rev().enumerate() {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(served) = core_types::record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
 				panic!("expected a final record");
 			};
-			let rec = out.rec(&value);
-			assert_eq!(unsafe { rec.element::<f64>() }, element, "lane {lane} takes the gathered element");
-			let transform: DAffine2 = unsafe { rec.read(out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()) };
+			assert_eq!(served.element::<f64>(), element, "lane {lane} takes the gathered element");
+			let transform: DAffine2 = served.attr::<Transform>();
 			assert_eq!(transform.translation.x, x, "lane {lane} carries the gathered transform");
-			let opacity: f64 = unsafe { rec.read(out.offset_of(<Opacity as AttributeMarker>::NAME, 0).unwrap()) };
+			let opacity: f64 = served.attr::<Opacity>();
 			assert_eq!(opacity, 0.25, "lane {lane} takes the declared write");
-			// SAFETY: every field was read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -1470,17 +1397,13 @@ mod tests {
 		let batch = batch.into_shared();
 		assert_eq!(batch.len(), 6);
 		for lane in 0..6 {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(served) = core_types::record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
 				panic!("expected a final record");
 			};
-			let rec = out.rec(&value);
-			assert_eq!(unsafe { batch.get(lane).element::<f64>() }, unsafe { rec.element::<f64>() }, "lane {lane}");
+			assert_eq!(unsafe { batch.get(lane).element::<f64>() }, served.element::<f64>(), "lane {lane}");
 			let batched: DAffine2 = batch.get(lane).attr::<Transform>();
-			let single: DAffine2 = unsafe { rec.read(out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()) };
+			let single: DAffine2 = served.attr::<Transform>();
 			assert_eq!(batched, single, "lane {lane}");
-			// SAFETY: the lane was read out above, so no borrow into its frames remains.
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -1625,11 +1548,11 @@ mod tests {
 		let node = install(SumNode::new(nested, &two_level), sum_layout_meta(), &[Some(&two_level)]);
 		let out = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(out.depth, 0, "the fold consumes the whole wire");
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
 		// Two copies of three lanes, each lane the copy index: 0 * 3 + 1 * 3.
-		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 3.);
+		assert_eq!(served.element::<f64>(), 3.);
 	}
 
 	#[test]
@@ -1672,11 +1595,11 @@ mod tests {
 		assert_eq!(two_level.depth, 2);
 
 		let node = install_flip(SumNestedNode::new(nested, &two_level), &out);
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
 		// Two copies of three lanes of 7: the nested fold flattens 2 x 3.
-		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 42.);
+		assert_eq!(served.element::<f64>(), 42.);
 	}
 
 	#[test]
@@ -1702,12 +1625,10 @@ mod tests {
 
 		let head = base.index_head();
 		for (lane, expected) in [(0u64, Color::BLACK), (1, Color::WHITE)] {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&base.promoted(&head, lane)) else {
+			let GPoll::Final(served) = core_types::record::capture(&node, &base.promoted(&head, lane)) else {
 				panic!("expected a final record at lane {lane}");
 			};
-			assert_eq!(unsafe { out.rec(&value).element::<Color>() }, expected, "lane {lane}");
-			unsafe { stack::rewind(mark) };
+			assert_eq!(served.element::<Color>(), expected, "lane {lane}");
 		}
 	}
 
@@ -1787,21 +1708,19 @@ mod tests {
 		// flat index decomposes across both copies.
 		let head = ctx.index_head();
 		for (lane, expected) in [(0u64, 0.), (7, 2.), (9, 4.)] {
-			let mark = stack::sp();
-			let GPoll::Final(value) = repeat.eval(&ctx.promoted(&head, lane)) else {
+			let GPoll::Final(served) = core_types::record::capture(&repeat, &ctx.promoted(&head, lane)) else {
 				panic!("expected a final record at lane {lane}");
 			};
-			assert_eq!(unsafe { two_level.rec(&value).element::<f64>() }, expected, "lane {lane}");
-			unsafe { stack::rewind(mark) };
+			assert_eq!(served.element::<f64>(), expected, "lane {lane}");
 		}
 
 		// A full fold over the composite drains through the structure node;
 		// the partial fold stays excluded with M3.
 		let node = install_flip(SumNestedNode::new(repeat, &two_level), &out);
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
-		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 20.);
+		assert_eq!(served.element::<f64>(), 20.);
 	}
 
 	#[test]
@@ -1817,10 +1736,10 @@ mod tests {
 		reserve_for(&[&leveled, &out]);
 
 		let node = install_flip(SumNode::new(source, &leveled), &out);
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
-		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 7.5);
+		assert_eq!(served.element::<f64>(), 7.5);
 	}
 
 	#[test]
@@ -1839,11 +1758,11 @@ mod tests {
 		for count in [5usize, 20] {
 			let source = DrainSourceNode { layout: leveled.clone(), count };
 			let node = install_flip(SumNode::new(source, &leveled), &out);
-			let GPoll::Final(value) = node.eval(&ctx) else {
+			let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 				panic!("expected a final record at count {count}");
 			};
 			let expected = (count * (count - 1) / 2) as f64;
-			assert_eq!(unsafe { out.rec(&value).element::<f64>() }, expected, "count {count}");
+			assert_eq!(served.element::<f64>(), expected, "count {count}");
 		}
 	}
 
@@ -1863,11 +1782,11 @@ mod tests {
 		let node = install_flip(SumNode::new(repeat, &leveled), &out);
 		assert_eq!(node.layout().depth, 0, "the reducer collapsed the rank level");
 
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
 		// sum(repeat(3, 7)) folds three copies of the element back to a scalar.
-		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 21.);
+		assert_eq!(served.element::<f64>(), 21.);
 	}
 
 	#[test]
@@ -1907,12 +1826,12 @@ mod tests {
 		let leveled = Node::<ContextImpl>::layout(&repeat).clone();
 		let node = install_flip(SumNode::new(repeat, &leveled), &out);
 
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
 		// Every copy evaluates at its own index, so the lanes must be distinct
 		// storage: sum(0 + 1 + 2 + 3), not four aliases of the last copy.
-		assert_eq!(unsafe { out.rec(&value).element::<f64>() }, 6.);
+		assert_eq!(served.element::<f64>(), 6.);
 	}
 
 	#[test]
@@ -1955,12 +1874,11 @@ mod tests {
 			&[Some(&modified)],
 		);
 		assert_eq!(chain.layout(), &stacked);
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = stacked.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 2.);
-		assert_eq!(unsafe { rec.read::<f64>(stacked.offset_of(Opacity::NAME, 0).unwrap()) }, 0.25);
+		assert_eq!(served.element::<f64>(), 2.);
+		assert_eq!(served.attr::<Opacity>(), 0.25);
 	}
 
 	#[test]
@@ -1975,12 +1893,11 @@ mod tests {
 		reserve_for(&[&source_layout, &measured]);
 
 		let chain = install(MeasureNode::new(bare_source(&source_layout, -2.), &source_layout), measure_layout_meta(), &[Some(&source_layout)]);
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = measured.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, -2.);
-		assert_eq!(unsafe { rec.read::<f64>(measured.offset_of(Length::NAME, 0).unwrap()) }, 2.);
+		assert_eq!(served.element::<f64>(), -2.);
+		assert_eq!(served.attr::<Length>(), 2.);
 	}
 
 	#[test]
@@ -2007,12 +1924,11 @@ mod tests {
 			measure_layout_meta(),
 			&[Some(&modified)],
 		);
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = measured.rec(&value);
-		assert_eq!(unsafe { rec.read::<f64>(measured.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
-		assert_eq!(unsafe { rec.read::<f64>(measured.offset_of(Length::NAME, 0).unwrap()) }, 2.);
+		assert_eq!(served.attr::<Opacity>(), 0.5);
+		assert_eq!(served.attr::<Length>(), 2.);
 	}
 
 	#[test]
@@ -2028,10 +1944,10 @@ mod tests {
 		reserve_for(&[&source_layout, &modified, &shaded]);
 
 		let bare = install(ShadeNode::new(bare_source(&source_layout, 4.), &source_layout), shade_layout_meta(), &[Some(&source_layout)]);
-		let GPoll::Final(value) = bare.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&bare, &ctx) else {
 			panic!("expected a final record");
 		};
-		assert_eq!(unsafe { source_layout.rec(&value).element::<f64>() }, 4.);
+		assert_eq!(served.element::<f64>(), 4.);
 
 		let chain = install(
 			ShadeNode::new(
@@ -2045,12 +1961,11 @@ mod tests {
 			shade_layout_meta(),
 			&[Some(&modified)],
 		);
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = shaded.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 2.);
-		assert_eq!(unsafe { rec.read::<f64>(shaded.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
+		assert_eq!(served.element::<f64>(), 2.);
+		assert_eq!(served.attr::<Opacity>(), 0.5);
 	}
 
 	#[test]
@@ -2067,12 +1982,11 @@ mod tests {
 		reserve_for(&[&f64_source, &f64_faded, &u32_source, &u32_faded]);
 
 		let wide = install(FadeNode::new(bare_source(&f64_source, 8.), ValueNode(0.5), &f64_source), fade_layout_meta(), &[Some(&f64_source)]);
-		let GPoll::Final(value) = wide.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&wide, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = f64_faded.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 8.);
-		assert_eq!(unsafe { rec.read::<f64>(f64_faded.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
+		assert_eq!(served.element::<f64>(), 8.);
+		assert_eq!(served.attr::<Opacity>(), 0.5);
 
 		let narrow = install(
 			FadeNode::new(
@@ -2088,12 +2002,11 @@ mod tests {
 			fade_layout_meta(),
 			&[Some(&u32_source)],
 		);
-		let GPoll::Final(value) = narrow.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&narrow, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = u32_faded.rec(&value);
-		assert_eq!(unsafe { rec.element::<u32>() }, 7);
-		assert_eq!(unsafe { rec.read::<f64>(u32_faded.offset_of(Opacity::NAME, 0).unwrap()) }, 0.25);
+		assert_eq!(served.element::<u32>(), 7);
+		assert_eq!(served.attr::<Opacity>(), 0.25);
 	}
 
 	#[test]
@@ -2108,12 +2021,11 @@ mod tests {
 
 		let node = install(SourceOpacityNode::new(ValueNode(()), ValueNode(3.), ValueNode(0.25)), source_opacity_layout_meta(), &[]);
 		assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = layout.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 3.);
-		assert_eq!(unsafe { rec.read::<f64>(layout.offset_of(Opacity::NAME, 0).unwrap()) }, 0.25);
+		assert_eq!(served.element::<f64>(), 3.);
+		assert_eq!(served.attr::<Opacity>(), 0.25);
 	}
 
 	#[test]
@@ -2141,10 +2053,10 @@ mod tests {
 			multiply_opacity_layout_meta(),
 			&[Some(&source_layout)],
 		);
-		let GPoll::Partial(value) = chain.eval(&ctx) else {
+		let GPoll::Partial(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a partial record");
 		};
-		assert_eq!(unsafe { modified.rec(&value).read::<f64>(modified.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
+		assert_eq!(served.attr::<Opacity>(), 0.5);
 	}
 
 	#[test]
@@ -2163,10 +2075,10 @@ mod tests {
 			checked_multiply_opacity_layout_meta(),
 			&[Some(&source_layout)],
 		);
-		let GPoll::Final(value) = ok.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&ok, &ctx) else {
 			panic!("expected a final record");
 		};
-		assert_eq!(unsafe { modified.rec(&value).read::<f64>(modified.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
+		assert_eq!(served.attr::<Opacity>(), 0.5);
 
 		let failing = install(
 			CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(-1.), &source_layout),
@@ -2204,12 +2116,11 @@ mod tests {
 			scale_layout_meta(),
 			&[Some(&modified)],
 		);
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = scaled.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 6.);
-		assert_eq!(unsafe { rec.read::<f64>(scaled.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
+		assert_eq!(served.element::<f64>(), 6.);
+		assert_eq!(served.attr::<Opacity>(), 0.5);
 	}
 
 	#[test]
@@ -2226,25 +2137,24 @@ mod tests {
 
 		let chain = install(
 			TransferOpacityNode::new(
-				f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.5)]),
-				f64_record_source(&secondary_layout, 3., vec![(secondary_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+				f64_record_source(&carrier_layout, 2., vec![("opacity", 0.5)]),
+				f64_record_source(&secondary_layout, 3., vec![("opacity", 0.25)]),
 				&carrier_layout,
 				&secondary_layout,
 			),
 			transfer_opacity_layout_meta(),
 			&[Some(&carrier_layout), None],
 		);
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = transferred.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 5.);
-		assert_eq!(unsafe { rec.read::<f64>(transferred.offset_of(Opacity::NAME, 0).unwrap()) }, 0.125);
+		assert_eq!(served.element::<f64>(), 5.);
+		assert_eq!(served.attr::<Opacity>(), 0.125);
 
 		let bare_secondary = f64_layout(&[]);
 		let defaulted = install(
 			TransferOpacityNode::new(
-				f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.5)]),
+				f64_record_source(&carrier_layout, 2., vec![("opacity", 0.5)]),
 				bare_source(&bare_secondary, 3.),
 				&carrier_layout,
 				&bare_secondary,
@@ -2252,15 +2162,10 @@ mod tests {
 			transfer_opacity_layout_meta(),
 			&[Some(&carrier_layout), None],
 		);
-		let GPoll::Final(value) = defaulted.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&defaulted, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = transferred.rec(&value);
-		assert_eq!(
-			unsafe { rec.read::<f64>(transferred.offset_of(Opacity::NAME, 0).unwrap()) },
-			0.5,
-			"an absent secondary attribute reads its default"
-		);
+		assert_eq!(served.attr::<Opacity>(), 0.5, "an absent secondary attribute reads its default");
 	}
 
 	#[test]
@@ -2276,23 +2181,17 @@ mod tests {
 		reserve_for(&[&source_layout]);
 
 		let node = install(
-			BoostNode::new(
-				f64_record_source(&source_layout, 2., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
-				factor,
-				&source_layout,
-				&factor_layout,
-			),
+			BoostNode::new(f64_record_source(&source_layout, 2., vec![("opacity", 0.25)]), factor, &source_layout, &factor_layout),
 			boost_layout_meta(),
 			&[Some(&source_layout)],
 		);
 		let out_layout = Node::<ContextImpl>::layout(&node).clone();
-		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the primary input's fields pass through to the output");
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		out_layout.offset_of(Opacity::NAME, 0).expect("the primary input's fields pass through to the output");
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = out_layout.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 6.);
-		assert_eq!(unsafe { rec.read::<f64>(opacity_offset) }, 0.25);
+		assert_eq!(served.element::<f64>(), 6.);
+		assert_eq!(served.attr::<Opacity>(), 0.25);
 	}
 
 	#[test]
@@ -2307,23 +2206,17 @@ mod tests {
 		reserve_for(&[&source_layout]);
 
 		let node = install(
-			BoostPollNode::new(
-				f64_record_source(&source_layout, 2., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
-				factor,
-				&source_layout,
-				&factor_layout,
-			),
+			BoostPollNode::new(f64_record_source(&source_layout, 2., vec![("opacity", 0.25)]), factor, &source_layout, &factor_layout),
 			boost_poll_layout_meta(),
 			&[Some(&source_layout)],
 		);
 		let out_layout = Node::<ContextImpl>::layout(&node).clone();
-		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the primary input's fields pass through the poll kernel");
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		out_layout.offset_of(Opacity::NAME, 0).expect("the primary input's fields pass through the poll kernel");
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = out_layout.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 6.);
-		assert_eq!(unsafe { rec.read::<f64>(opacity_offset) }, 0.25);
+		assert_eq!(served.element::<f64>(), 6.);
+		assert_eq!(served.attr::<Opacity>(), 0.25);
 	}
 
 	#[test]
@@ -2340,7 +2233,7 @@ mod tests {
 
 		let node = install(
 			OffsetNode::new(
-				f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+				f64_record_source(&carrier_layout, 2., vec![("opacity", 0.25)]),
 				f64_record_source(&by_layout, 40., vec![]),
 				&carrier_layout,
 				&by_layout,
@@ -2348,13 +2241,11 @@ mod tests {
 			offset_layout_meta(),
 			&[Some(&carrier_layout)],
 		);
-		let out_layout = Node::<ContextImpl>::layout(&node).clone();
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = out_layout.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 42., "the parked borrow survives the carrier evaluation reusing its frame");
-		assert_eq!(unsafe { rec.read::<f64>(out_layout.offset_of(Opacity::NAME, 0).unwrap()) }, 0.25);
+		assert_eq!(served.element::<f64>(), 42., "the parked borrow survives the carrier evaluation reusing its frame");
+		assert_eq!(served.attr::<Opacity>(), 0.25);
 	}
 
 	struct InlineRuntime;
@@ -2381,7 +2272,7 @@ mod tests {
 
 		let node = install(
 			DoubleAsyncNode::new(
-				f64_record_source(&source_layout, 3., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+				f64_record_source(&source_layout, 3., vec![("opacity", 0.25)]),
 				runtime,
 				source_id,
 				&source_layout,
@@ -2392,21 +2283,19 @@ mod tests {
 			&[Some(&source_layout)],
 		);
 		let out_layout = Node::<ContextImpl>::layout(&node).clone();
-		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the carrier's fields pass through the async source");
+		out_layout.offset_of(Opacity::NAME, 0).expect("the carrier's fields pass through the async source");
 
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("an inline completion is final on the spawning eval");
 		};
-		let rec = out_layout.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 6.);
-		assert_eq!(unsafe { rec.read::<f64>(opacity_offset) }, 0.25);
+		assert_eq!(served.element::<f64>(), 6.);
+		assert_eq!(served.attr::<Opacity>(), 0.25);
 
-		let GPoll::Final(value) = node.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("a slot hit is final");
 		};
-		let rec = out_layout.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 6., "the slot hit replays the element");
-		assert_eq!(unsafe { rec.read::<f64>(opacity_offset) }, 0.25, "the fields re-carry on every eval");
+		assert_eq!(served.element::<f64>(), 6., "the slot hit replays the element");
+		assert_eq!(served.attr::<Opacity>(), 0.25, "the fields re-carry on every eval");
 	}
 
 	#[test]
@@ -2426,7 +2315,7 @@ mod tests {
 			let alternate = core_types::record::RecordLift::<f64, _>::new(CountingValue(evals.clone()));
 			let alternate_layout = Node::<ContextImpl>::layout(&alternate).clone();
 			let (content_layout, fields) = match opacity {
-				Some(value) => (content_layout.clone(), vec![(content_layout.offset_of("opacity", 0).unwrap(), value)]),
+				Some(value) => (content_layout.clone(), vec![("opacity", value)]),
 				None => (f64_layout(&[]), vec![]),
 			};
 			let node = FallbackNode::new(
@@ -2482,10 +2371,10 @@ mod tests {
 			shade_layout_meta(),
 			&[Some(&stripped)],
 		);
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
-		assert_eq!(unsafe { shaded.rec(&value).element::<f64>() }, 4., "a read after the removal yields the declared default");
+		assert_eq!(served.element::<f64>(), 4., "a read after the removal yields the declared default");
 	}
 
 	#[test]
@@ -2501,23 +2390,15 @@ mod tests {
 		reserve_for(&[&source_layout, &relengthed]);
 
 		let chain = install(
-			RelengthNode::new(
-				f64_record_source(
-					&source_layout,
-					3.,
-					vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25), (source_layout.offset_of("length", 0).unwrap(), 9.)],
-				),
-				&source_layout,
-			),
+			RelengthNode::new(f64_record_source(&source_layout, 3., vec![("opacity", 0.25), ("length", 9.)]), &source_layout),
 			relength_layout_meta(),
 			&[Some(&source_layout)],
 		);
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = relengthed.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 3.);
-		assert_eq!(unsafe { rec.read::<f64>(relengthed.offset_of(Length::NAME, 0).unwrap()) }, 6.);
+		assert_eq!(served.element::<f64>(), 3.);
+		assert_eq!(served.attr::<Length>(), 6.);
 	}
 
 	#[test]
@@ -2566,7 +2447,7 @@ mod tests {
 		assert_eq!(unsafe { translated.read::<&str>(labeled.offset_of(Label::NAME, 0).unwrap()) }, "");
 	}
 
-	fn f64_record_source(layout: &Layout, element: f64, fields: Vec<(usize, f64)>) -> RecordSourceNode<f64> {
+	fn f64_record_source(layout: &Layout, element: f64, fields: Vec<(&'static str, f64)>) -> RecordSourceNode<f64> {
 		RecordSourceNode {
 			layout: layout.clone(),
 			element,
@@ -2583,25 +2464,24 @@ mod tests {
 		let layout = f64_layout(&["opacity"]);
 		reserve_for(&[&layout, &layout]);
 
-		let monitor = crate::memo::MonitorNode::new(f64_record_source(&layout, 4., vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)]), &layout);
+		let monitor = crate::memo::MonitorNode::new(f64_record_source(&layout, 4., vec![("opacity", 0.25)]), &layout);
 		let scope = scope_fixture(&generations, &arena);
 		{
 			let ctx = ContextImpl::root(&scope);
-			let GPoll::Final(value) = monitor.eval(&ctx) else {
+			let GPoll::Final(served) = core_types::record::capture(&monitor, &ctx) else {
 				panic!("expected a final record");
 			};
-			assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, 4.);
+			assert_eq!(served.element::<f64>(), 4.);
 		}
 
 		let io = Node::<ContextImpl>::serialize(&monitor).unwrap();
 		let snapshot = io.downcast_ref::<core_types::context::CtxSnapshot>().expect("the monitor serializes its context snapshot");
 		let ctx = snapshot.rehydrate(&scope).expect("the arena holds the chains");
-		let GPoll::Final(value) = monitor.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&monitor, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = layout.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 4.);
-		assert_eq!(unsafe { rec.read::<f64>(layout.offset_of("opacity", 0).unwrap()) }, 0.25);
+		assert_eq!(served.element::<f64>(), 4.);
+		assert_eq!(served.field::<f64>("opacity", 0), 0.25);
 	}
 
 	#[test]
@@ -2620,28 +2500,26 @@ mod tests {
 			let (condition, condition_layout) = lifted_value(second);
 			PickNode::new(
 				condition,
-				RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
-				RecordSource::new(f64_record_source(&layout_b, 3., vec![(layout_b.offset_of("length", 0).unwrap(), 3.)]), &layout_b, &union),
+				RecordSource::new(f64_record_source(&layout_a, 1., vec![("opacity", 0.5)]), &layout_a, &union),
+				RecordSource::new(f64_record_source(&layout_b, 3., vec![("length", 3.)]), &layout_b, &union),
 				&union,
 				&condition_layout,
 			)
 		};
 
-		let GPoll::Final(value) = taken(false).eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&taken(false), &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = union.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 1.);
-		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("opacity", 0).unwrap()) }, 0.5);
-		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("length", 0).unwrap()) }, 0.);
+		assert_eq!(served.element::<f64>(), 1.);
+		assert_eq!(served.field::<f64>("opacity", 0), 0.5);
+		assert_eq!(served.field::<f64>("length", 0), 0.);
 
-		let GPoll::Final(value) = taken(true).eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&taken(true), &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = union.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 3.);
-		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("opacity", 0).unwrap()) }, 1.);
-		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("length", 0).unwrap()) }, 3.);
+		assert_eq!(served.element::<f64>(), 3.);
+		assert_eq!(served.field::<f64>("opacity", 0), 1.);
+		assert_eq!(served.field::<f64>("length", 0), 3.);
 	}
 
 	#[test]
@@ -2659,19 +2537,18 @@ mod tests {
 		let (condition, condition_layout) = lifted_value(false);
 		let chain = HoldFirstNode::new(
 			condition,
-			RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
-			RecordSource::new(f64_record_source(&layout_b, 3., vec![(layout_b.offset_of("length", 0).unwrap(), 3.)]), &layout_b, &union),
+			RecordSource::new(f64_record_source(&layout_a, 1., vec![("opacity", 0.5)]), &layout_a, &union),
+			RecordSource::new(f64_record_source(&layout_b, 3., vec![("length", 3.)]), &layout_b, &union),
 			&union,
 			&condition_layout,
 		);
 
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = union.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 1.);
-		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("opacity", 0).unwrap()) }, 0.5);
-		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("length", 0).unwrap()) }, 0.);
+		assert_eq!(served.element::<f64>(), 1.);
+		assert_eq!(served.field::<f64>("opacity", 0), 0.5);
+		assert_eq!(served.field::<f64>("length", 0), 0.);
 	}
 
 	struct RealTimeProbe {
@@ -2686,16 +2563,9 @@ mod tests {
 				Some(_) => 1.,
 				None => 0.,
 			};
-			let mut value = RecordValue::zeroed();
-			let dst = match self.layout.frame_bytes() {
-				0 => value.as_mut_ptr(),
-				bytes => stack::push(bytes),
-			};
-			unsafe { dst.cast::<f64>().write(element) };
-			if self.layout.frame_bytes() != 0 {
-				stack::pop(dst);
-				value = RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) });
-			}
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			frame.element(element);
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
 			GPoll::Final(value)
 		}
 	}
@@ -2716,10 +2586,10 @@ mod tests {
 			let (modification, modification_layout) = lifted_value(ContextModification::from_sources(features, &[]));
 			let node = crate::context_modification::ContextModificationNode::new(RealTimeProbe { layout: layout.clone() }, modification, &layout, &modification_layout);
 			assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
-			let GPoll::Final(value) = node.eval(&ctx) else {
+			let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 				panic!("expected a final record");
 			};
-			unsafe { layout.rec(&value).element::<f64>() }
+			served.element::<f64>()
 		};
 
 		assert_eq!(probed(ContextFeatures::all()), 1., "kept features stay readable under the modification");
@@ -2743,7 +2613,7 @@ mod tests {
 			RecordSourceNode {
 				layout: layout.clone(),
 				element: 4.,
-				fields: vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)],
+				fields: vec![("opacity", 0.25)],
 				partial: true,
 			},
 			modification,
@@ -2751,12 +2621,11 @@ mod tests {
 			&modification_layout,
 		);
 
-		let GPoll::Partial(value) = node.eval(&ctx) else {
+		let GPoll::Partial(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a partial record");
 		};
-		let rec = layout.rec(&value);
-		assert_eq!(unsafe { rec.element::<f64>() }, 4.);
-		assert_eq!(unsafe { rec.read::<f64>(layout.offset_of("opacity", 0).unwrap()) }, 0.25);
+		assert_eq!(served.element::<f64>(), 4.);
+		assert_eq!(served.field::<f64>("opacity", 0), 0.25);
 	}
 
 	#[test]
@@ -2788,10 +2657,7 @@ mod tests {
 		let base = stack::push(0);
 		stack::pop(base);
 
-		let chain = ForwardRecordNode::new(
-			RecordSource::new(f64_record_source(&layout, 4., vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)]), &layout, &layout.clone()),
-			&layout,
-		);
+		let chain = ForwardRecordNode::new(RecordSource::new(f64_record_source(&layout, 4., vec![("opacity", 0.25)]), &layout, &layout.clone()), &layout);
 
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
@@ -2826,10 +2692,10 @@ mod tests {
 			&layout,
 		);
 
-		let GPoll::Partial(value) = chain.eval(&ctx) else {
+		let GPoll::Partial(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a partial record");
 		};
-		assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, 4.);
+		assert_eq!(served.element::<f64>(), 4.);
 	}
 
 	struct CountingValue(std::sync::Arc<std::sync::atomic::AtomicU32>);
@@ -2855,14 +2721,14 @@ mod tests {
 		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		let memo = crate::memo::MemoizeNode::new(lift, &layout);
 
-		let GPoll::Final(value) = memo.eval(&ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&memo, &ctx) else {
 			panic!("expected a final record");
 		};
-		assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, 21.);
-		let GPoll::Final(value) = memo.eval(&ctx) else {
+		assert_eq!(served.element::<f64>(), 21.);
+		let GPoll::Final(served) = core_types::record::capture(&memo, &ctx) else {
 			panic!("expected a final record");
 		};
-		assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, 21.);
+		assert_eq!(served.element::<f64>(), 21.);
 		assert_eq!(evals.load(std::sync::atomic::Ordering::Relaxed), 1, "a context hit must not re-evaluate the edge");
 	}
 
@@ -2879,7 +2745,7 @@ mod tests {
 		let source = RecordSourceNode {
 			layout: layout.clone(),
 			element: 4.,
-			fields: vec![(layout.offset_of("opacity", 0).unwrap(), 0.5)],
+			fields: vec![("opacity", 0.5)],
 			partial: true,
 		};
 		let memo = crate::memo::MemoizeNode::new(source, &layout);
@@ -2887,10 +2753,10 @@ mod tests {
 		let GPoll::Partial(_) = memo.eval(&ctx) else {
 			panic!("expected a partial record");
 		};
-		let GPoll::Partial(value) = memo.eval(&ctx) else {
+		let GPoll::Partial(served) = core_types::record::capture(&memo, &ctx) else {
 			panic!("expected the replay to keep the partial finality");
 		};
-		assert_eq!(unsafe { layout.rec(&value).read::<f64>(layout.offset_of("opacity", 0).unwrap()) }, 0.5);
+		assert_eq!(served.field::<f64>("opacity", 0), 0.5);
 	}
 
 	#[test]

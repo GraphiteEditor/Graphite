@@ -226,7 +226,7 @@ mod tests {
 	use core_types::context::{ContextImpl, EvalScope, ExtractArena, ExtractIndices};
 	use core_types::list::{Item, List};
 	use core_types::node::Node;
-	use core_types::record::{self, Layout, Rec, RecordSource, RecordValue, stack};
+	use core_types::record::{self, Layout, RecordSource, RecordValue, stack};
 
 	struct ValueNode<T>(T);
 
@@ -248,15 +248,11 @@ mod tests {
 
 		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
 			let (graphic, transform) = &self.rows[input.innermost_index() as usize % self.rows.len()];
-			let dst = stack::push(self.layout.frame_bytes());
-			if unsafe { record::write_element(dst, graphic.clone(), input.arena()) }.is_none() {
-				return GPoll::arena_exhausted();
-			}
-			unsafe {
-				dst.add(self.layout.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()).cast::<DAffine2>().write(*transform);
-			}
-			stack::pop(dst);
-			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+			let mut frame = record::FrameBuilder::new(&self.layout, input.arena());
+			frame.element(graphic.clone());
+			frame.attr::<Transform>(*transform);
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
+			GPoll::Final(value)
 		}
 
 		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
@@ -380,15 +376,11 @@ mod tests {
 			let lane = input.innermost_index();
 			let graphic = text(&format!("{label}{lane}"));
 			let translated = DAffine2::from_translation(glam::DVec2::new(lane as f64, 0.));
-			let dst = stack::push(self.layout.frame_bytes());
-			if unsafe { record::write_element(dst, graphic, input.arena()) }.is_none() {
-				return GPoll::arena_exhausted();
-			}
-			unsafe {
-				dst.add(self.layout.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap()).cast::<DAffine2>().write(translated);
-			}
-			stack::pop(dst);
-			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+			let mut frame = record::FrameBuilder::new(&self.layout, input.arena());
+			frame.element(graphic);
+			frame.attr::<Transform>(translated);
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
+			GPoll::Final(value)
 		}
 
 		fn extent_at(&self, input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
@@ -453,17 +445,13 @@ mod tests {
 		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::AtLeast(0)));
 
 		let head = ctx.index_head();
-		let offset = out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
 		for (lane, &(label, x)) in RAGGED_FLAT.iter().enumerate() {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
 				panic!("expected a final record");
 			};
-			let rec = out.rec(&value);
-			assert_eq!(text_of(unsafe { record::borrow_element::<Graphic>(rec) }), label, "lane {lane}");
-			let transform: DAffine2 = unsafe { rec.read(offset) };
+			assert_eq!(text_of(&record.element::<Graphic>()), label, "lane {lane}");
+			let transform: DAffine2 = record.attr::<Transform>();
 			assert_eq!(transform.translation.x, x, "lane {lane}");
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -520,23 +508,20 @@ mod tests {
 		assert_eq!(composed.extent_at(&ctx, 0), GPoll::Final(Extent::AtLeast(0)));
 
 		let head = ctx.index_head();
-		let offset = flat_out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
 		for (lane, &(label, x)) in RAGGED_FLAT.iter().enumerate() {
-			let mark = stack::sp();
 			let scoped = ctx.promoted(&head, lane as u64);
-			let GPoll::Final(direct) = flat.eval(&scoped) else {
+			let GPoll::Final(direct) = record::capture(&flat, &scoped) else {
 				panic!("expected a final record from flat_map");
 			};
-			let direct_label = text_of(unsafe { record::borrow_element::<Graphic>(flat_out.rec(&direct)) }).to_string();
-			let direct_x: DAffine2 = unsafe { flat_out.rec(&direct).read(offset) };
-			let GPoll::Final(value) = composed.eval(&scoped) else {
+			let direct_label = text_of(&direct.element::<Graphic>()).to_string();
+			let direct_x: DAffine2 = direct.attr::<Transform>();
+			let GPoll::Final(value) = record::capture(&composed, &scoped) else {
 				panic!("expected a final record from flatten(map)");
 			};
-			assert_eq!(text_of(unsafe { record::borrow_element::<Graphic>(composed_out.rec(&value)) }), direct_label, "lane {lane}");
-			let composed_x: DAffine2 = unsafe { composed_out.rec(&value).read(offset) };
+			assert_eq!(text_of(&value.element::<Graphic>()), direct_label, "lane {lane}");
+			let composed_x: DAffine2 = value.attr::<Transform>();
 			assert_eq!(composed_x, direct_x, "lane {lane}");
 			assert_eq!((direct_label.as_str(), direct_x.translation.x), (label, x), "lane {lane}");
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -589,17 +574,14 @@ mod tests {
 		assert_eq!(batch.len(), 5);
 		let offset = out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
 		for lane in 0..5 {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
 				panic!("expected a final record");
 			};
-			let rec = out.rec(&value);
-			let single = text_of(unsafe { record::borrow_element::<Graphic>(rec) }).to_string();
+			let single = text_of(&record.element::<Graphic>()).to_string();
 			assert_eq!(text_of(unsafe { record::borrow_element::<Graphic>(batch.get(lane).rec()) }), single, "lane {lane}");
 			let batched: DAffine2 = unsafe { batch.get(lane).rec().read(offset) };
-			let direct: DAffine2 = unsafe { rec.read(offset) };
+			let direct: DAffine2 = record.attr::<Transform>();
 			assert_eq!(batched, direct, "lane {lane}");
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -617,27 +599,21 @@ mod tests {
 		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(3)));
 
 		let head = ctx.index_head();
-		let offset = out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
 		// Lane 2 is the unexpanded subgroup H, riding as a leaf at G's depth.
 		let expected: [(&str, f64); 2] = [("a", 1.), ("b", 20.5)];
 		for (lane, &(label, x)) in expected.iter().enumerate() {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
 				panic!("expected a final record");
 			};
-			let rec = out.rec(&value);
-			assert_eq!(text_of(unsafe { record::borrow_element::<Graphic>(rec) }), label, "lane {lane}");
-			let transform: DAffine2 = unsafe { rec.read(offset) };
+			assert_eq!(text_of(&record.element::<Graphic>()), label, "lane {lane}");
+			let transform: DAffine2 = record.attr::<Transform>();
 			assert_eq!(transform.translation.x, x, "lane {lane}");
-			unsafe { stack::rewind(mark) };
 		}
 
-		let mark = stack::sp();
-		let GPoll::Final(value) = node.eval(&ctx.promoted(&head, 2)) else {
+		let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, 2)) else {
 			panic!("expected a final record");
 		};
-		let rec = out.rec(&value);
-		let Graphic::Graphic(children) = (unsafe { record::borrow_element::<Graphic>(rec) }) else {
+		let Graphic::Graphic(children) = record.element::<Graphic>() else {
 			panic!("lane 2 keeps the subgroup element");
 		};
 		assert_eq!(children.len(), 1);
@@ -647,9 +623,8 @@ mod tests {
 			300.,
 			"embedded transforms ride untouched"
 		);
-		let transform: DAffine2 = unsafe { rec.read(offset) };
+		let transform: DAffine2 = record.attr::<Transform>();
 		assert_eq!(transform.translation.x, 4000.5);
-		unsafe { stack::rewind(mark) };
 	}
 
 	#[test]
@@ -777,10 +752,10 @@ mod tests {
 
 			fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
 				let color = self.colors[input.innermost_index() as usize];
-				let dst = stack::push(self.layout.frame_bytes());
-				unsafe { dst.cast::<Color>().write(color) };
-				stack::pop(dst);
-				GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+				let mut frame = record::FrameBuilder::new(&self.layout, input.arena());
+				frame.element(color);
+				let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
+				GPoll::Final(value)
 			}
 
 			fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
@@ -802,10 +777,10 @@ mod tests {
 		let build = |colors: Vec<Color>| install_flip(ToGradientNode::new(RecordSource::new(ColorSource { layout: layout.clone(), colors }, &layout, &layout), &layout), &out);
 		let stops_of = |colors: Vec<Color>| {
 			let node = build(colors);
-			let GPoll::Final(value) = node.eval(&ctx) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx) else {
 				panic!("expected a final record");
 			};
-			unsafe { record::borrow_element::<GradientStops>(out.rec(&value)) }.clone()
+			record.element::<GradientStops>()
 		};
 
 		let three = stops_of(vec![Color::BLACK, Color::WHITE, Color::BLACK]);
@@ -880,21 +855,16 @@ mod tests {
 		// One row holding the wrapped group flattens back to the lanes, the
 		// group's identity transform composed onto each child's.
 		let node = build!(layout, vec![(group, DAffine2::IDENTITY)], false);
-		let out = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(2)));
 
 		let head = ctx.index_head();
-		let offset = out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
 		for (lane, &(label, x)) in [("a", 1.), ("b", 2.)].iter().enumerate() {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
 				panic!("expected a final record");
 			};
-			let rec = out.rec(&value);
-			assert_eq!(text_of(unsafe { record::borrow_element::<Graphic>(rec) }), label, "lane {lane}");
-			let transform: DAffine2 = unsafe { rec.read(offset) };
+			assert_eq!(text_of(&record.element::<Graphic>()), label, "lane {lane}");
+			let transform: DAffine2 = record.attr::<Transform>();
 			assert_eq!(transform.translation.x, x, "lane {lane}");
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -909,22 +879,17 @@ mod tests {
 		rows.push((group(vec![]), translation(9.)));
 		let layout = graphic_layout();
 		let node = build!(layout, rows, true);
-		let out = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(3)), "the empty group contributes no leaves");
 
 		let head = ctx.index_head();
-		let offset = out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
 		let expected: [(&str, f64); 3] = [("a", 1.), ("b", 20.5), ("c", 4300.5)];
 		for (lane, &(label, x)) in expected.iter().enumerate() {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
 				panic!("expected a final record");
 			};
-			let rec = out.rec(&value);
-			assert_eq!(text_of(unsafe { record::borrow_element::<Graphic>(rec) }), label, "lane {lane}");
-			let transform: DAffine2 = unsafe { rec.read(offset) };
+			assert_eq!(text_of(&record.element::<Graphic>()), label, "lane {lane}");
+			let transform: DAffine2 = record.attr::<Transform>();
 			assert_eq!(transform.translation.x, x, "lane {lane}");
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -949,17 +914,14 @@ mod tests {
 		assert_eq!(batch.len(), 3);
 		let offset = out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
 		for lane in 0..3 {
-			let mark = stack::sp();
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
 				panic!("expected a final record");
 			};
-			let rec = out.rec(&value);
-			let single = text_of(unsafe { record::borrow_element::<Graphic>(rec) }).to_string();
+			let single = text_of(&record.element::<Graphic>()).to_string();
 			assert_eq!(text_of(unsafe { record::borrow_element::<Graphic>(batch.get(lane).rec()) }), single, "lane {lane}");
 			let batched: DAffine2 = unsafe { batch.get(lane).rec().read(offset) };
-			let direct: DAffine2 = unsafe { rec.read(offset) };
+			let direct: DAffine2 = record.attr::<Transform>();
 			assert_eq!(batched, direct, "lane {lane}");
-			unsafe { stack::rewind(mark) };
 		}
 	}
 }

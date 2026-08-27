@@ -1494,8 +1494,7 @@ mod run_tests {
 	use core_types::attribute::Attribute;
 	use core_types::bounds::BoundingBox;
 	use core_types::lane::LaneSource;
-	use core_types::node::RecordBatch;
-	use core_types::record::{FieldWrite, GroupItem, Layout, RunView, element_write_hashed};
+	use core_types::record::{FieldWrite, RunBuilder, RunView, element_write_hashed};
 	use glam::{DAffine2, DVec2};
 	use vector_types::subpath::Subpath;
 	use vector_types::vector::PointId;
@@ -1509,17 +1508,11 @@ mod run_tests {
 		let paint = List::new_from_element(Graphic::Color(Color::BLACK));
 		let vector = unit_square_at(DVec2::ZERO);
 
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
-		let mut bytes = vec![0u8; layout.lane_stride()];
-		// SAFETY: `bytes` is one lane of `layout`; a parked element stores its
-		// reference, and the fill field stores the marker's value form.
-		unsafe {
-			let base = bytes.as_mut_ptr();
-			base.cast::<&Vector>().write(&vector);
-			base.add(layout.offset_of(Fill::NAME, 0).unwrap()).cast::<Option<&List<Graphic>>>().write(Some(&paint));
-		}
-		// SAFETY: `bytes` holds one lane of `layout` at its stride.
-		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let lane = builder.push(vector.clone()).unwrap();
+		builder.attr::<Fill>(lane, Some(&paint));
+		let item = builder.finish();
 		let run = RunView::<Vector>::new(&item).expect("the run holds vector elements");
 
 		assert_eq!(run.attr::<Fill>(0), Some(&paint));
@@ -1535,26 +1528,17 @@ mod run_tests {
 		let paint = List::new_from_element(Graphic::Color(Color::BLACK));
 		let vector = unit_square_at(DVec2::ZERO);
 
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
-		let mut bytes = vec![0u8; layout.lane_stride()];
-		// SAFETY: `bytes` is one lane of `layout`; a parked element stores its
-		// reference, and the fill field stores the marker's value form.
-		unsafe {
-			let base = bytes.as_mut_ptr();
-			base.cast::<&Vector>().write(&vector);
-			base.add(layout.offset_of(Fill::NAME, 0).unwrap()).cast::<Option<&List<Graphic>>>().write(Some(&paint));
-		}
-		let (owned, expected) = {
-			// SAFETY: `bytes` holds one lane of `layout` at its stride.
-			let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
-			let group = core_types::record::Group {
-				row: None,
-				content: item,
-			};
-			let expected = group_to_legacy_list(&group);
-			(map_groups_to_owned(&Graphic::Group(group)), expected)
+		let source = core_types::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let lane = builder.push(vector.clone()).unwrap();
+		builder.attr::<Fill>(lane, Some(&paint));
+		let group = core_types::record::Group {
+			row: None,
+			content: builder.finish(),
 		};
-		bytes.fill(u8::MAX);
+		let expected = group_to_legacy_list(&group);
+		let owned = map_groups_to_owned(&Graphic::Group(group));
+		drop(source);
 
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		let resident = map_groups_to_resident(&owned, &arena).expect("the arena holds the replay");
@@ -1565,35 +1549,23 @@ mod run_tests {
 	#[test]
 	fn an_owned_group_replays_nested_groups_through_the_element_glue() {
 		let vector = unit_square_at(DVec2::ZERO);
-		let inner_layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[]);
-		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
-		// SAFETY: `inner_bytes` is one lane of `inner_layout`; a parked element
-		// stores its reference.
-		unsafe { inner_bytes.as_mut_ptr().cast::<&Vector>().write(&vector) };
-		// SAFETY: `inner_bytes` holds one lane of `inner_layout` at its stride.
-		let inner_item = unsafe { GroupItem::from_resident(RecordBatch::new(inner_bytes.as_ptr(), 1, &inner_layout)) };
+		let source = core_types::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[], 1).unwrap();
+		builder.push(vector.clone()).unwrap();
 		let nested = Graphic::Group(core_types::record::Group {
 			row: None,
-			content: inner_item,
+			content: builder.finish(),
 		});
 
-		let outer_layout = Layout::default().with_writes(0, element_write_hashed::<Graphic>(), &[]);
-		let mut outer_bytes = vec![0u8; outer_layout.lane_stride()];
-		// SAFETY: `outer_bytes` is one lane of `outer_layout`; a parked element
-		// stores its reference.
-		unsafe { outer_bytes.as_mut_ptr().cast::<&Graphic>().write(&nested) };
-		let (owned, expected) = {
-			// SAFETY: `outer_bytes` holds one lane of `outer_layout` at its stride.
-			let outer_item = unsafe { GroupItem::from_resident(RecordBatch::new(outer_bytes.as_ptr(), 1, &outer_layout)) };
-			let group = core_types::record::Group {
-				row: None,
-				content: outer_item,
-			};
-			let expected = group_to_legacy_list(&group);
-			(map_groups_to_owned(&Graphic::Group(group)), expected)
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Graphic>(), &[], 1).unwrap();
+		builder.push(nested).unwrap();
+		let group = core_types::record::Group {
+			row: None,
+			content: builder.finish(),
 		};
-		outer_bytes.fill(u8::MAX);
-		inner_bytes.fill(u8::MAX);
+		let expected = group_to_legacy_list(&group);
+		let owned = map_groups_to_owned(&Graphic::Group(group));
+		drop(source);
 
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		let resident = map_groups_to_resident(&owned, &arena).expect("the arena holds the replay");
@@ -1601,42 +1573,31 @@ mod run_tests {
 		assert_eq!(group_to_legacy_list(group), expected);
 	}
 
-	fn native_group_paint(vector: &Vector, inner_layout: &Layout, inner_bytes: &mut Vec<u8>) -> List<Graphic> {
-		// SAFETY: `inner_bytes` is one lane of `inner_layout`; a parked element
-		// stores its reference.
-		unsafe { inner_bytes.as_mut_ptr().cast::<&Vector>().write(vector) };
-		// SAFETY: `inner_bytes` holds one lane of `inner_layout` at its stride.
-		let inner_item = unsafe { GroupItem::from_resident(RecordBatch::new(inner_bytes.as_ptr(), 1, inner_layout)) };
+	fn native_group_paint(vector: &Vector, arena: &core_types::arena::Arena) -> List<Graphic> {
+		let mut builder = RunBuilder::new(arena, element_write_hashed::<Vector>(), &[], 1).unwrap();
+		builder.push(vector.clone()).unwrap();
 		List::new_from_element(Graphic::Group(core_types::record::Group {
 			row: None,
-			content: inner_item,
+			content: builder.finish(),
 		}))
 	}
 
 	#[test]
 	fn an_owned_run_deep_copies_graphic_list_fields() {
 		let inner_vector = unit_square_at(DVec2::ZERO);
-		let inner_layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[]);
-		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
-		let paint = native_group_paint(&inner_vector, &inner_layout, &mut inner_bytes);
+		let source = core_types::arena::Arena::new(1 << 16).unwrap();
+		let paint = native_group_paint(&inner_vector, &source);
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
-		let mut bytes = vec![0u8; layout.lane_stride()];
-		// SAFETY: `bytes` is one lane of `layout`; a parked element stores its
-		// reference, and the fill field stores the marker's value form.
-		unsafe {
-			bytes.as_mut_ptr().cast::<&Vector>().write(&vector);
-			bytes.as_mut_ptr().add(layout.offset_of(Fill::NAME, 0).unwrap()).cast::<Option<&List<Graphic>>>().write(Some(&paint));
-		}
-		let (owned, expected) = {
-			// SAFETY: `bytes` holds one lane of `layout` at its stride.
-			let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
-			(item.copy_out(), map_groups_to_legacy(paint.element(0).unwrap()))
-		};
-		bytes.fill(u8::MAX);
-		inner_bytes.fill(u8::MAX);
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let lane = builder.push(vector.clone()).unwrap();
+		builder.attr::<Fill>(lane, Some(&paint));
+		let item = builder.finish();
+		let owned = item.copy_out();
+		let expected = map_groups_to_legacy(paint.element(0).unwrap());
+		drop(item);
 		drop(paint);
+		drop(source);
 
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		let replayed = owned.replay(&arena).expect("the arena holds the replay");
@@ -1648,25 +1609,22 @@ mod run_tests {
 	#[test]
 	fn an_owned_record_deep_copies_graphic_list_fields() {
 		let inner_vector = unit_square_at(DVec2::ZERO);
-		let inner_layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[]);
-		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
-		let paint = native_group_paint(&inner_vector, &inner_layout, &mut inner_bytes);
+		let source = core_types::arena::Arena::new(1 << 16).unwrap();
+		let paint = native_group_paint(&inner_vector, &source);
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let lane = builder.push(vector.clone()).unwrap();
+		builder.attr::<Fill>(lane, Some(&paint));
+		let item = builder.finish();
+		let layout = item.layout().clone();
 		let offset = layout.offset_of(Fill::NAME, 0).unwrap();
-		let mut bytes = vec![0u8; layout.lane_stride()];
-		// SAFETY: as in the run test above.
-		unsafe {
-			bytes.as_mut_ptr().cast::<&Vector>().write(&vector);
-			bytes.as_mut_ptr().add(offset).cast::<Option<&List<Graphic>>>().write(Some(&paint));
-		}
-		// SAFETY: `bytes` is a live record of `layout`.
-		let owned = unsafe { core_types::record::OwnedRecord::copy_out(&layout, core_types::record::Rec::new(bytes.as_ptr())) };
+		// SAFETY: the item's lane is a live record of `layout`.
+		let owned = unsafe { core_types::record::OwnedRecord::copy_out(&layout, item.lanes().get(0).rec()) };
 		let expected = map_groups_to_legacy(paint.element(0).unwrap());
-		bytes.fill(u8::MAX);
-		inner_bytes.fill(u8::MAX);
+		drop(item);
 		drop(paint);
+		drop(source);
 
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		core_types::record::stack::reserve(layout.frame_bytes());
@@ -1679,28 +1637,19 @@ mod run_tests {
 	#[test]
 	fn a_legacy_list_owns_its_paint_attr_content() {
 		let inner_vector = unit_square_at(DVec2::ZERO);
-		let inner_layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[]);
-		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
-		let paint = native_group_paint(&inner_vector, &inner_layout, &mut inner_bytes);
+		let source = core_types::arena::Arena::new(1 << 16).unwrap();
+		let paint = native_group_paint(&inner_vector, &source);
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
-		let mut bytes = vec![0u8; layout.lane_stride()];
-		// SAFETY: `bytes` is one lane of `layout`; a parked element stores its
-		// reference, and the fill field stores the marker's value form.
-		unsafe {
-			bytes.as_mut_ptr().cast::<&Vector>().write(&vector);
-			bytes.as_mut_ptr().add(layout.offset_of(Fill::NAME, 0).unwrap()).cast::<Option<&List<Graphic>>>().write(Some(&paint));
-		}
-		let (legacy, expected) = {
-			// SAFETY: `bytes` holds one lane of `layout` at its stride.
-			let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
-			let legacy = run_to_legacy_list::<Vector>(&item).expect("the run lowers to a legacy vector list");
-			(legacy, map_groups_to_legacy(paint.element(0).unwrap()))
-		};
-		bytes.fill(u8::MAX);
-		inner_bytes.fill(u8::MAX);
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let lane = builder.push(vector.clone()).unwrap();
+		builder.attr::<Fill>(lane, Some(&paint));
+		let item = builder.finish();
+		let legacy = run_to_legacy_list::<Vector>(&item).expect("the run lowers to a legacy vector list");
+		let expected = map_groups_to_legacy(paint.element(0).unwrap());
+		drop(item);
 		drop(paint);
+		drop(source);
 
 		let served = legacy.attribute::<Option<List<Graphic>>>(Fill::NAME, 0).expect("the fill attribute rides the list");
 		let served = served.as_ref().expect("the fill is present");
@@ -1710,18 +1659,13 @@ mod run_tests {
 	#[test]
 	fn a_run_list_keeps_native_group_elements() {
 		let inner_vector = unit_square_at(DVec2::ZERO);
-		let inner_layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[]);
-		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
-		let content = native_group_paint(&inner_vector, &inner_layout, &mut inner_bytes);
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let content = native_group_paint(&inner_vector, &arena);
 		let element = content.element(0).unwrap();
 
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Graphic>(), &[]);
-		let mut bytes = vec![0u8; layout.lane_stride()];
-		// SAFETY: `bytes` is one lane of `layout`; a parked element stores its
-		// reference.
-		unsafe { bytes.as_mut_ptr().cast::<&Graphic>().write(element) };
-		// SAFETY: `bytes` holds one lane of `layout` at its stride.
-		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Graphic>(), &[], 1).unwrap();
+		builder.push(element.clone()).unwrap();
+		let item = builder.finish();
 		let list = run_to_list::<Graphic>(&item).expect("the run holds graphic lanes");
 		assert!(matches!(list.element(0), Some(Graphic::Group(_))), "the list keeps the native group form");
 	}
@@ -1729,13 +1673,10 @@ mod run_tests {
 	#[test]
 	fn the_vector_row_walk_matches_the_legacy_flatten() {
 		let inner_vector = unit_square_at(DVec2::ZERO);
-		let inner_layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[]);
-		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
-		// SAFETY: `inner_bytes` is one lane of `inner_layout`; a parked element
-		// stores its reference.
-		unsafe { inner_bytes.as_mut_ptr().cast::<&Vector>().write(&inner_vector) };
-		// SAFETY: `inner_bytes` holds one lane of `inner_layout` at its stride.
-		let inner_item = unsafe { GroupItem::from_resident(RecordBatch::new(inner_bytes.as_ptr(), 1, &inner_layout)) };
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[], 1).unwrap();
+		builder.push(inner_vector.clone()).unwrap();
+		let inner_item = builder.finish();
 
 		let mut painted = List::new();
 		painted.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO))));
@@ -1793,19 +1734,13 @@ mod run_tests {
 		let vectors = [unit_square_at(DVec2::ZERO), unit_square_at(DVec2::new(4., 4.))];
 		let transforms = [DAffine2::from_translation(DVec2::new(1., 2.)), DAffine2::from_scale(DVec2::splat(3.))];
 
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<core_types::attribute::Transform>(0)]);
-		let stride = layout.lane_stride();
-		let mut bytes = vec![0u8; stride * 2];
-		// SAFETY: `bytes` is `stride` per lane, and the offsets come from `layout`.
-		unsafe {
-			for lane in 0..2 {
-				let base = bytes.as_mut_ptr().add(lane * stride);
-				base.cast::<&Vector>().write(&vectors[lane]);
-				base.add(layout.offset_of(core_types::ATTR_TRANSFORM, 0).unwrap()).cast::<DAffine2>().write(transforms[lane]);
-			}
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<core_types::attribute::Transform>(0)], 2).unwrap();
+		for lane in 0..2 {
+			let lane = builder.push(vectors[lane].clone()).unwrap();
+			builder.attr::<core_types::attribute::Transform>(lane, transforms[lane]);
 		}
-		// SAFETY: `bytes` holds two lanes of `layout` at its stride.
-		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 2, &layout)) };
+		let item = builder.finish();
 		let run = RunView::<Vector>::new(&item).expect("the run holds vector elements");
 		let legacy = run_to_legacy_list::<Vector>(&item).expect("the run lowers to a legacy vector list");
 

@@ -181,10 +181,9 @@ mod test {
 	use super::*;
 	use core_types::SourceId;
 	use core_types::arena::Arena;
-	use core_types::attribute::Attribute as AttributeMarker;
 	use core_types::context::{ContextImpl, EvalScope};
 	use core_types::node::Node;
-	use core_types::record::{FieldWrite, Layout, Rec, RecordSource, RecordValue, element_write, stack};
+	use core_types::record::{FieldWrite, FrameBuilder, Layout, RecordSource, RecordValue, capture, element_write, stack};
 	use vector_types::subpath::Subpath;
 
 	struct ValueNode<T>(T);
@@ -206,14 +205,13 @@ mod test {
 	impl<'e> Node<ContextImpl<'e>> for TransformSource {
 		type Output = RecordValue<'e>;
 
-		fn eval(&self, _input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			let dst = stack::push(self.layout.frame_bytes());
-			unsafe {
-				dst.cast::<f64>().write(self.element);
-				dst.add(self.layout.offset_of(TransformAttr::NAME, 0).unwrap()).cast::<DAffine2>().write(self.transform);
-			}
-			stack::pop(dst);
-			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+			use core_types::context::ExtractArena;
+			let mut frame = FrameBuilder::new(&self.layout, input.arena());
+			frame.element(self.element);
+			frame.attr::<TransformAttr>(self.transform);
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
+			GPoll::Final(value)
 		}
 	}
 
@@ -233,16 +231,11 @@ mod test {
 		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
 			use core_types::context::{ExtractArena, ExtractIndices};
 			let (vector, transform) = &self.rows[input.innermost_index() as usize % self.rows.len()];
-			let dst = stack::push(self.layout.frame_bytes());
-			// SAFETY: dst is the claimed frame of this layout; offsets are the layout's own.
-			unsafe {
-				if core_types::record::write_element(dst, vector.clone(), input.arena()).is_none() {
-					return GPoll::Error(Box::new(core_types::gpoll::GraphError::new("arena exhausted")));
-				}
-				core_types::record::write_field(dst, self.layout.offset_of(<TransformAttr as AttributeMarker>::NAME, 0).unwrap(), *transform);
-			}
-			stack::pop(dst);
-			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+			let mut frame = FrameBuilder::new(&self.layout, input.arena());
+			frame.element(vector.clone());
+			frame.attr::<TransformAttr>(*transform);
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
+			GPoll::Final(value)
 		}
 
 		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
@@ -266,16 +259,13 @@ mod test {
 		type Output = RecordValue<'e>;
 
 		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			use core_types::context::ExtractPosition;
+			use core_types::context::{ExtractArena, ExtractPosition};
 			let position = input.try_position().and_then(|mut positions| positions.next()).unwrap_or(DVec2::ZERO);
-			let dst = stack::push(self.layout.frame_bytes());
-			// SAFETY: dst is the claimed frame of this layout; offsets are the layout's own.
-			unsafe {
-				dst.cast::<f64>().write(position.x);
-				core_types::record::write_field(dst, self.layout.offset_of(<TransformAttr as AttributeMarker>::NAME, 0).unwrap(), DAffine2::IDENTITY);
-			}
-			stack::pop(dst);
-			GPoll::Final(RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+			let mut frame = FrameBuilder::new(&self.layout, input.arena());
+			frame.element(position.x);
+			frame.attr::<TransformAttr>(DAffine2::IDENTITY);
+			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
+			GPoll::Final(value)
 		}
 
 		fn layout(&self) -> &Layout {
@@ -315,19 +305,15 @@ mod test {
 
 		let head = ctx.index_head();
 		for copy in 0..3u64 {
-			let mark = stack::sp();
 			let lane = ctx.promoted(&head, copy);
-			let GPoll::Final(value) = node.eval(&lane) else {
+			let GPoll::Final(record) = capture(&node, &lane) else {
 				panic!("expected a final record");
 			};
-			let rec = leveled.rec(&value);
-			assert_eq!(unsafe { rec.element::<f64>() }, 7.);
+			assert_eq!(record.element::<f64>(), 7.);
 			// Zero angle, direction (10, 0), count 3: copy `j` steps j * (5, 0)
 			// past the row's own (5, 5) translation.
-			let composed: DAffine2 = unsafe { rec.read(leveled.offset_of(TransformAttr::NAME, 0).unwrap()) };
+			let composed: DAffine2 = record.attr::<TransformAttr>();
 			assert_eq!(composed, DAffine2::from_translation(DVec2::new(5. + copy as f64 * 5., 5.)));
-			// SAFETY: the element and transform were read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -348,25 +334,20 @@ mod test {
 
 		let mut node = RepeatRadialNode::new(RecordSource::new(content, &layout, &layout), ValueNode(90.0f64), ValueNode(2.0f64), ValueNode(4u32), &layout);
 		Node::<ContextImpl>::set_layout(&mut node, repeat_radial_layout_meta().resolve(&[Some(&layout)]));
-		let leveled = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(4)));
 
 		let head = ctx.index_head();
 		for copy in 0..4u64 {
-			let mark = stack::sp();
 			let lane = ctx.promoted(&head, copy);
-			let GPoll::Final(value) = node.eval(&lane) else {
+			let GPoll::Final(record) = capture(&node, &lane) else {
 				panic!("expected a final record");
 			};
-			let rec = leveled.rec(&value);
-			assert_eq!(unsafe { rec.element::<f64>() }, 7.);
+			assert_eq!(record.element::<f64>(), 7.);
 			// The kernel's own formula, so the float operations match exactly.
 			let step = DAffine2::from_angle((TAU / 4.) * copy as f64 + 90.0f64.to_radians()) * DAffine2::from_translation(2. * DVec2::Y);
 			let expected = DAffine2::from_translation(local.translation) * step * DAffine2::from_mat2(local.matrix2);
-			let composed: DAffine2 = unsafe { rec.read(leveled.offset_of(TransformAttr::NAME, 0).unwrap()) };
+			let composed: DAffine2 = record.attr::<TransformAttr>();
 			assert_eq!(composed, expected);
-			// SAFETY: the element and transform were read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -400,18 +381,14 @@ mod test {
 
 		let head = ctx.index_head();
 		for (flat, &point) in expected.iter().enumerate() {
-			let mark = stack::sp();
 			let lane = ctx.promoted(&head, flat as u64);
-			let GPoll::Final(value) = node.eval(&lane) else {
+			let GPoll::Final(record) = capture(&node, &lane) else {
 				panic!("expected a final record");
 			};
-			let rec = leveled.rec(&value);
 			// The content saw the pushed position, and the output transform lands on it.
-			assert_eq!(unsafe { rec.element::<f64>() }, point.x);
-			let composed: DAffine2 = unsafe { rec.read(leveled.offset_of(<TransformAttr as AttributeMarker>::NAME, 0).unwrap()) };
+			assert_eq!(record.element::<f64>(), point.x);
+			let composed: DAffine2 = record.attr::<TransformAttr>();
 			assert_eq!(composed.translation, point);
-			// SAFETY: the element and transform were read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
 		}
 	}
 
@@ -432,21 +409,17 @@ mod test {
 
 		let mut node = RepeatOnPointsNode::new(RecordSource::new(content, &content_layout, &content_layout), points, ValueNode(true), &content_layout);
 		Node::<ContextImpl>::set_layout(&mut node, repeat_on_points_layout_meta().resolve(&[Some(&content_layout)]));
-		let leveled = Node::<ContextImpl>::layout(&node).clone();
 
 		let mut expected = positions.clone();
 		expected.reverse();
 		let head = ctx.index_head();
 		for (flat, &point) in expected.iter().enumerate() {
-			let mark = stack::sp();
 			let lane = ctx.promoted(&head, flat as u64);
-			let GPoll::Final(value) = node.eval(&lane) else {
+			let GPoll::Final(record) = capture(&node, &lane) else {
 				panic!("expected a final record");
 			};
-			let composed: DAffine2 = unsafe { leveled.rec(&value).read(leveled.offset_of(<TransformAttr as AttributeMarker>::NAME, 0).unwrap()) };
+			let composed: DAffine2 = record.attr::<TransformAttr>();
 			assert_eq!(composed.translation, point);
-			// SAFETY: the transform was read out above, so no borrow into this lane's frames remains.
-			unsafe { stack::rewind(mark) };
 		}
 	}
 }

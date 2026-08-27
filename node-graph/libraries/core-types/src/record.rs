@@ -2456,21 +2456,15 @@ mod tests {
 		use crate::lane::LaneSource;
 		use glam::DAffine2;
 
-		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[FieldWrite::of::<Transform>(0), FieldWrite::of::<Opacity>(0)]);
-		let stride = layout.lane_stride();
+		let arena = crate::arena::Arena::new(4096).unwrap();
 		let transform = DAffine2::from_translation((5., 6.).into());
-		let mut bytes = vec![0u8; stride * 2];
+		let mut builder = RunBuilder::new(&arena, element_write::<f64>(), &[FieldWrite::of::<Transform>(0), FieldWrite::of::<Opacity>(0)], 2).unwrap();
 		for lane in 0..2 {
-			// SAFETY: `bytes` is `stride` per lane, and the offsets come from `layout`.
-			unsafe {
-				let base = bytes.as_mut_ptr().add(lane * stride);
-				base.cast::<f64>().write(lane as f64);
-				base.add(layout.offset_of(Transform::NAME, 0).unwrap()).cast::<DAffine2>().write(transform);
-				base.add(layout.offset_of(Opacity::NAME, 0).unwrap()).cast::<f64>().write(0.25);
-			}
+			let lane = builder.push(lane as f64).unwrap();
+			builder.attr::<Transform>(lane, transform);
+			builder.attr::<Opacity>(lane, 0.25);
 		}
-		// SAFETY: `bytes` holds two lanes of `layout` at its stride.
-		let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr(), 2, &layout)) };
+		let item = builder.finish();
 		let run = RunView::<f64>::new(&item).expect("the run holds f64 elements");
 
 		let mut list = crate::list::List::new_from_element(0f64);
@@ -2493,10 +2487,10 @@ mod tests {
 		use crate::attribute::Opacity;
 		use crate::lane::LaneSource;
 
-		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[]);
-		let bytes = vec![0u8; layout.lane_stride()];
-		// SAFETY: `bytes` holds one lane of `layout` at its stride.
-		let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+		let arena = crate::arena::Arena::new(1024).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write::<f64>(), &[], 1).unwrap();
+		builder.push(0f64).unwrap();
+		let item = builder.finish();
 		let run = RunView::<f64>::new(&item).expect("the run holds f64 elements");
 
 		assert_eq!(run.attr::<Opacity>(0), 1.);
@@ -2708,6 +2702,8 @@ mod tests {
 
 	#[test]
 	fn a_run_builds_from_a_legacy_list_and_serves_its_rows() {
+		use crate::lane::LaneSource;
+
 		let mut list = crate::list::List::new_from_element(String::from("row 0"));
 		list.push(crate::list::Item::new_from_element(String::from("row 1")));
 		let transform = glam::DAffine2::from_translation(glam::DVec2::new(3., 4.));
@@ -2719,29 +2715,25 @@ mod tests {
 		let arena = crate::arena::Arena::new(1 << 16).unwrap();
 		let item = GroupItem::from_list(list, &arena).unwrap();
 		assert_eq!(item.len(), 2);
-		let layout = item.layout().clone();
-		let lanes = item.lanes();
+		let run = RunView::<String>::new(&item).expect("the run holds string elements");
 
-		let rec = lanes.get(0).rec();
-		assert_eq!(unsafe { read_element::<String>(rec) }, "row 0");
-		assert_eq!(unsafe { rec.read::<glam::DAffine2>(layout.offset_of(crate::ATTR_TRANSFORM, 0).unwrap()) }, transform);
-		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "first");
-		assert!(unsafe { rec.read::<&[crate::uuid::NodeId]>(layout.offset_of(crate::ATTR_EDITOR_LAYER_PATH, 0).unwrap()) }.is_empty());
+		assert_eq!(run.element(0).map(String::as_str), Some("row 0"));
+		assert_eq!(run.attr::<crate::attribute::Transform>(0), transform);
+		assert_eq!(run.attr::<crate::attribute::Name>(0), "first");
+		assert!(run.attr::<crate::attribute::EditorLayerPath>(0).is_empty());
 
-		let rec = lanes.get(1).rec();
-		assert_eq!(unsafe { read_element::<String>(rec) }, "row 1");
+		assert_eq!(run.element(1).map(String::as_str), Some("row 1"));
 		// A lane without the value reads the census default, not garbage.
-		assert_eq!(unsafe { rec.read::<glam::DAffine2>(layout.offset_of(crate::ATTR_TRANSFORM, 0).unwrap()) }, glam::DAffine2::IDENTITY);
-		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "");
-		assert_eq!(
-			unsafe { rec.read::<&[crate::uuid::NodeId]>(layout.offset_of(crate::ATTR_EDITOR_LAYER_PATH, 0).unwrap()) },
-			&[crate::uuid::NodeId(7), crate::uuid::NodeId(9)]
-		);
-		assert_eq!(unsafe { rec.read::<Option<f64>>(layout.offset_of("max_width", 0).unwrap()) }, Some(12.5));
+		assert_eq!(run.attr::<crate::attribute::Transform>(1), glam::DAffine2::IDENTITY);
+		assert_eq!(run.attr::<crate::attribute::Name>(1), "");
+		assert_eq!(run.attr::<crate::attribute::EditorLayerPath>(1), &[crate::uuid::NodeId(7), crate::uuid::NodeId(9)]);
+		assert_eq!(run.attr::<crate::attribute::MaxWidth>(1), Some(12.5));
 	}
 
 	#[test]
 	fn a_built_run_replays_after_the_source_dies() {
+		use crate::lane::LaneSource;
+
 		let owned = {
 			let arena = crate::arena::Arena::new(1 << 16).unwrap();
 			let mut list = crate::list::List::new_from_element(String::from("element"));
@@ -2752,25 +2744,25 @@ mod tests {
 
 		let arena = crate::arena::Arena::new(1 << 16).unwrap();
 		let replayed = owned.replay(&arena).unwrap();
-		let layout = replayed.layout().clone();
-		let rec = replayed.lanes().get(0).rec();
-		assert_eq!(unsafe { read_element::<String>(rec) }, "element");
-		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "label");
-		assert_eq!(unsafe { rec.read::<&[crate::uuid::NodeId]>(layout.offset_of(crate::ATTR_EDITOR_LAYER_PATH, 0).unwrap()) }, &[crate::uuid::NodeId(3)]);
+		let run = RunView::<String>::new(&replayed).expect("the run holds string elements");
+		assert_eq!(run.element(0).map(String::as_str), Some("element"));
+		assert_eq!(run.attr::<crate::attribute::Name>(0), "label");
+		assert_eq!(run.attr::<crate::attribute::EditorLayerPath>(0), &[crate::uuid::NodeId(3)]);
 	}
 
 	#[test]
 	fn a_wrong_typed_or_undeclared_column_leaves_the_default() {
+		use crate::lane::LaneSource;
+
 		let mut list = crate::list::List::new_from_element(String::from("element"));
 		list.set_attribute(crate::ATTR_OPACITY, 0, String::from("not an f64"));
 		list.set_attribute("never_declared", 0, 5u32);
 
 		let arena = crate::arena::Arena::new(1 << 16).unwrap();
 		let item = GroupItem::from_list(list, &arena).unwrap();
-		let layout = item.layout().clone();
-		assert!(layout.offset_of("never_declared", 0).is_none(), "an undeclared key has no field form");
-		let rec = item.lanes().get(0).rec();
-		assert_eq!(unsafe { rec.read::<f64>(layout.offset_of(crate::ATTR_OPACITY, 0).unwrap()) }, 1., "the wrong-typed value reads as absent");
+		assert!(item.layout().offset_of("never_declared", 0).is_none(), "an undeclared key has no field form");
+		let run = RunView::<String>::new(&item).expect("the run holds string elements");
+		assert_eq!(run.attr::<crate::attribute::Opacity>(0), 1., "the wrong-typed value reads as absent");
 	}
 
 	#[test]

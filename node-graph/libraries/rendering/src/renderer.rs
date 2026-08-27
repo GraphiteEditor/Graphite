@@ -3025,9 +3025,7 @@ impl SvgRenderAttrs<'_> {
 #[cfg(test)]
 mod group_walk_tests {
 	use super::*;
-	use core_types::attribute::Attribute;
-	use core_types::node::RecordBatch;
-	use core_types::record::{FieldWrite, GroupItem, Layout, element_write_hashed};
+	use core_types::record::{FieldWrite, RunBuilder, element_write_hashed};
 	use graphic_types::markers::Fill;
 	use graphic_types::vector_types::vector::PointId;
 
@@ -3046,31 +3044,16 @@ mod group_walk_tests {
 		(output.svg, output.svg_defs)
 	}
 
-	/// One run lane per element of `elements`, each with a fill field, under the given layout writes.
-	unsafe fn write_lanes<T>(layout: &Layout, elements: &[&T], fill: &[Option<&List<Graphic>>]) -> Vec<u8> {
-		let stride = layout.lane_stride();
-		let mut bytes = vec![0u8; stride * elements.len()];
-		for lane in 0..elements.len() {
-			// SAFETY: `bytes` is `stride` per lane; a parked element stores its
-			// reference, and the fill field stores the marker's value form.
-			unsafe {
-				let base = bytes.as_mut_ptr().add(lane * stride);
-				base.cast::<&T>().write(elements[lane]);
-				base.add(layout.offset_of(Fill::NAME, 0).unwrap()).cast::<Option<&List<Graphic>>>().write(fill[lane]);
-			}
-		}
-		bytes
-	}
-
 	#[test]
 	fn a_vector_run_group_renders_its_rows_without_layer_wrappers() {
 		let paint = color_paint();
 		let vectors = [unit_square_at(DVec2::ZERO), unit_square_at(DVec2::new(3., 1.))];
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
-		// SAFETY: the layout carries a parked vector element and the fill field.
-		let bytes = unsafe { write_lanes::<Vector>(&layout, &[&vectors[0], &vectors[1]], &[Some(&paint), None]) };
-		// SAFETY: `bytes` holds two lanes of `layout` at its stride.
-		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 2, &layout)) };
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 2).unwrap();
+		let lane = builder.push(vectors[0].clone()).unwrap();
+		builder.attr::<Fill>(lane, Some(&paint));
+		builder.push(vectors[1].clone()).unwrap();
+		let item = builder.finish();
 		let group = Group { row: None, content: item };
 
 		let params = RenderParams::default();
@@ -3084,11 +3067,11 @@ mod group_walk_tests {
 	fn lane_paint_on_a_graphic_run_reaches_vector_interiors() {
 		let paint = color_paint();
 		let inner = Graphic::Vector(unit_square_at(DVec2::ZERO));
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Graphic>(), &[FieldWrite::of::<Fill>(0)]);
-		// SAFETY: the layout carries a parked graphic element and the fill field.
-		let bytes = unsafe { write_lanes::<Graphic>(&layout, &[&inner], &[Some(&paint)]) };
-		// SAFETY: `bytes` holds one lane of `layout` at its stride.
-		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Graphic>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let lane = builder.push(inner.clone()).unwrap();
+		builder.attr::<Fill>(lane, Some(&paint));
+		let item = builder.finish();
 		let group = Group { row: None, content: item };
 
 		let params = RenderParams::default();
@@ -3103,11 +3086,11 @@ mod group_walk_tests {
 	fn a_group_collects_its_lane_metadata_for_the_caller() {
 		let paint = color_paint();
 		let vectors = [unit_square_at(DVec2::ZERO)];
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
-		// SAFETY: the layout carries a parked vector element and the fill field.
-		let bytes = unsafe { write_lanes::<Vector>(&layout, &[&vectors[0]], &[Some(&paint)]) };
-		// SAFETY: `bytes` holds one lane of `layout` at its stride.
-		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let lane = builder.push(vectors[0].clone()).unwrap();
+		builder.attr::<Fill>(lane, Some(&paint));
+		let item = builder.finish();
 		let group = Group { row: None, content: item };
 
 		let footprint = Footprint::default();
@@ -3128,11 +3111,12 @@ mod group_walk_tests {
 	fn a_group_serves_its_legacy_lowerings_click_targets() {
 		let paint = color_paint();
 		let vectors = [unit_square_at(DVec2::ZERO), unit_square_at(DVec2::new(2., 2.))];
-		let layout = Layout::default().with_writes(0, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)]);
-		// SAFETY: the layout carries a parked vector element and the fill field.
-		let bytes = unsafe { write_lanes::<Vector>(&layout, &[&vectors[0], &vectors[1]], &[Some(&paint), None]) };
-		// SAFETY: `bytes` holds two lanes of `layout` at its stride.
-		let item = unsafe { GroupItem::from_resident(RecordBatch::new(bytes.as_ptr(), 2, &layout)) };
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 2).unwrap();
+		let lane = builder.push(vectors[0].clone()).unwrap();
+		builder.attr::<Fill>(lane, Some(&paint));
+		builder.push(vectors[1].clone()).unwrap();
+		let item = builder.finish();
 		let group = Group { row: None, content: item };
 
 		let mut native = Vec::new();

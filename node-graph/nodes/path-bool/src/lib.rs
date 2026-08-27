@@ -562,13 +562,10 @@ mod tests {
 	#[test]
 	fn the_native_flatten_reads_lanes_groups_and_reach() {
 		let inner_vector = square(DVec2::ZERO);
-		let inner_layout = core_types::record::Layout::default().with_writes(0, core_types::record::element_write_hashed::<Vector>(), &[]);
-		let mut inner_bytes = vec![0u8; inner_layout.lane_stride()];
-		// SAFETY: `inner_bytes` is one lane of `inner_layout`; a parked element
-		// stores its reference.
-		unsafe { inner_bytes.as_mut_ptr().cast::<&Vector>().write(&inner_vector) };
-		// SAFETY: `inner_bytes` holds one lane of `inner_layout` at its stride.
-		let inner_item = unsafe { core_types::record::GroupItem::from_resident(core_types::node::RecordBatch::new(inner_bytes.as_ptr(), 1, &inner_layout)) };
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = core_types::record::RunBuilder::new(&arena, core_types::record::element_write_hashed::<Vector>(), &[], 1).unwrap();
+		builder.push(inner_vector.clone()).unwrap();
+		let inner_item = builder.finish();
 
 		let mut top = List::new();
 		top.push(Item::new_from_element(Graphic::Vector(square(DVec2::ZERO))));
