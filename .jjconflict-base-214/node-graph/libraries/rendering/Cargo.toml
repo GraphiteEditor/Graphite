@@ -8,12 +8,13 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
-serde = ["dep:serde", "core-types/serde", "vector-types/serde", "graphic-types/serde"]
+serde = ["dep:serde", "core-types/serde", "vector-types/serde", "graphic-types/serde", "brush-types/serde"]
 
 [dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
 core-types = { workspace = true }
+brush-types = { workspace = true }
 graphene-hash = { workspace = true }
 graphene-resource = { workspace = true }
 text-nodes = { workspace = true }

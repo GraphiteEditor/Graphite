@@ -268,6 +268,8 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 				// Rasters, colors, and gradients bound no region, so they contribute no operand
 				Graphic::None(_) | Graphic::NoneList(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) => Vec::new(),
 				Graphic::RasterCPUList(_) | Graphic::RasterGPUList(_) | Graphic::ColorList(_) | Graphic::GradientList(_) => Vec::new(),
+				// Strokes have no vector outline representation; a brush node renders them to rasters
+				Graphic::StrokeList(_) => Vec::new(),
 				// Normalized to GraphicList above
 				Graphic::Graphic(_) => Vec::new(),
 			}

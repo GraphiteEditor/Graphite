@@ -1066,6 +1066,7 @@ impl Render for Graphic {
 			Graphic::ColorList(list) => list.render_svg(render, render_params),
 			Graphic::GradientList(list) => list.render_svg(render, render_params),
 			Graphic::TextList(list) => list.render_svg(render, render_params),
+			Graphic::StrokeList(_) => (),
 		}
 	}
 
@@ -1093,6 +1094,7 @@ impl Render for Graphic {
 			Graphic::ColorList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::GradientList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::TextList(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::StrokeList(_) => (),
 		}
 	}
 
@@ -1168,6 +1170,14 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
+				Graphic::StrokeList(list) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than the first item
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					}
+				}
 			}
 		}
 
@@ -1187,6 +1197,7 @@ impl Render for Graphic {
 			Graphic::ColorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::GradientList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::TextList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::StrokeList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 		}
 	}
 
@@ -1207,6 +1218,7 @@ impl Render for Graphic {
 			Graphic::ColorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::GradientList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::TextList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::StrokeList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 		}
 	}
 
@@ -1227,6 +1239,7 @@ impl Render for Graphic {
 			Graphic::ColorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::GradientList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::TextList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::StrokeList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 		}
 	}
 
@@ -1836,7 +1849,8 @@ fn render_vector_item_to_vello(
 			| Graphic::RasterCPUList(_)
 			| Graphic::RasterGPUList(_)
 			| Graphic::GraphicList(_)
-			| Graphic::TextList(_) => {
+			| Graphic::TextList(_)
+			| Graphic::StrokeList(_) => {
 				scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 				paint.render_to_vello(scene, multiplied_transform, context, paint_render_params);
 				scene.pop_layer();
@@ -1928,7 +1942,8 @@ fn render_vector_item_to_vello(
 			| Graphic::RasterCPUList(_)
 			| Graphic::RasterGPUList(_)
 			| Graphic::GraphicList(_)
-			| Graphic::TextList(_) => {
+			| Graphic::TextList(_)
+			| Graphic::StrokeList(_) => {
 				let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 				scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
@@ -2555,6 +2570,12 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut S
 	if layer {
 		scene.pop_layer()
 	}
+}
+
+impl Render for List<brush_types::Stroke> {
+	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {}
+
+	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
 }
 
 // Since colors and gradients are technically infinitely big, we have to implement

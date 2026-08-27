@@ -2,6 +2,7 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
+use brush_nodes::Stroke;
 use brush_nodes::brush_stroke::{BrushStroke, BrushTrace};
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
@@ -97,6 +98,7 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
 			BrushStrokes(Vec<BrushStroke>),
+			Strokes(Vec<Stroke>),
 			// =======================
 			// AUTO-GENERATED VARIANTS
 			// =======================
@@ -140,6 +142,7 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => values.cache_hash(state),
 					Self::GradientRamp(ramp) => ramp.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
+					Self::Strokes(strokes) => strokes.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -203,6 +206,10 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => Box::new(Item::new_from_element(BoxCorners::from(values))),
 					Self::GradientRamp(ramp) => Box::new(Item::<Gradient>::from(ramp)),
 					Self::BrushStrokes(strokes) => Box::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
+					Self::Strokes(strokes) => {
+						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Box::new(list)
+					}
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -266,6 +273,10 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => Arc::new(Item::new_from_element(BoxCorners::from(values))),
 					Self::GradientRamp(ramp) => Arc::new(Item::<Gradient>::from(ramp)),
 					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
+					Self::Strokes(strokes) => {
+						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Arc::new(list)
+					}
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -295,6 +306,7 @@ macro_rules! tagged_value {
 					Self::BoxCorners(_) => item!(BoxCorners),
 					Self::GradientRamp(_) => item!(Gradient),
 					Self::BrushStrokes(_) => item!(BrushTrace),
+					Self::Strokes(_) => list!(Stroke),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -335,6 +347,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*downcast::<Item<Gradient>>(input).unwrap()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
 					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(downcast::<Item<BrushTrace>>(input).unwrap().into_element().0.iter_element_values().cloned().collect())),
+					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(downcast::<List<Stroke>>(input).unwrap().into_iter().map(Item::into_element).collect())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -369,6 +382,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Item<Gradient>>().unwrap()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
 					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Item<BrushTrace>>().unwrap().element().0.iter_element_values().cloned().collect())),
+					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(input.downcast_ref::<List<Stroke>>().unwrap().iter_element_values().cloned().collect())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -397,6 +411,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<BoxCorners>() { return Some(TaggedValue::BoxCorners(Vec::new())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<BrushTrace>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == std::any::type_name::<List<Stroke>>() { return Some(TaggedValue::Strokes(Vec::new())) }
 						// Unranked types without a variant route through `TypeDefault`, with `to_dynany`/`to_any` constructing the actual default at execution time
 						macro_rules! check_bare {
 							($type_default:ty) => {
@@ -422,6 +437,9 @@ macro_rules! tagged_value {
 					Type::List(element) => {
 						if **element == concrete!(f64) {
 							return Some(TaggedValue::F64Array(Vec::new()));
+						}
+						if **element == concrete!(Stroke) {
+							return Some(TaggedValue::Strokes(Vec::new()));
 						}
 						macro_rules! check {
 							($type_default:ty) => {
@@ -450,6 +468,7 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => format!("BoxCorners({values:?})"),
 					Self::GradientRamp(ramp) => format!("GradientRamp({ramp:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
+					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
