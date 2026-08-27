@@ -1275,6 +1275,42 @@ fn deep_element_glue(type_id: std::any::TypeId) -> Option<DeepElementGlue> {
 	DEEP_ELEMENT_CLONES.lock().unwrap().get(&type_id).copied()
 }
 
+/// Deep-copy overrides for field values whose content borrows the
+/// evaluation's arena (a graphic list holding native groups), keyed by the
+/// field's owned value form. Consulted at the persistence seams only:
+/// `read_erased` itself stays shallow, since introspection reads captures in
+/// generation. Both halves decline when the value already owns all of its
+/// content, so group-free values pay no extra clone: `copy_out` returns
+/// `None` for unchanged, `replay` returns `Some(None)` for unchanged and
+/// `None` for arena exhaustion.
+#[derive(Clone, Copy)]
+struct DeepFieldGlue {
+	copy_out: fn(&dyn crate::list::AnyAttributeValue) -> Option<Box<dyn crate::list::AnyAttributeValue>>,
+	replay: fn(&dyn crate::list::AnyAttributeValue, &crate::arena::Arena) -> Option<Option<Box<dyn crate::list::AnyAttributeValue>>>,
+}
+
+static DEEP_FIELD_VALUES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, DeepFieldGlue>>> = std::sync::LazyLock::new(Default::default);
+
+/// Registers the deep copy-out and replay pair for field values of `T`.
+/// Called at startup from the crate that owns the type.
+pub fn register_deep_field_value<T: 'static>(
+	copy_out: fn(&dyn crate::list::AnyAttributeValue) -> Option<Box<dyn crate::list::AnyAttributeValue>>,
+	replay: fn(&dyn crate::list::AnyAttributeValue, &crate::arena::Arena) -> Option<Option<Box<dyn crate::list::AnyAttributeValue>>>,
+) {
+	DEEP_FIELD_VALUES.lock().unwrap().insert(std::any::TypeId::of::<T>(), DeepFieldGlue { copy_out, replay });
+}
+
+fn deep_field_glue(type_id: std::any::TypeId) -> Option<DeepFieldGlue> {
+	DEEP_FIELD_VALUES.lock().unwrap().get(&type_id).copied()
+}
+
+fn deepen_field_value(value: Box<dyn crate::list::AnyAttributeValue>) -> Box<dyn crate::list::AnyAttributeValue> {
+	match deep_field_glue(value.as_any().type_id()) {
+		Some(glue) => (glue.copy_out)(&*value).unwrap_or(value),
+		None => value,
+	}
+}
+
 /// The element slot a record wire of `T` carries, its erased glue bound at
 /// the statically-known type.
 pub fn element_write<T: Clone + Send + Sync + 'static>() -> ElementWrite {
@@ -1635,7 +1671,7 @@ impl OwnedRecord {
 			.iter()
 			.enumerate()
 			.filter(|(_, field)| field.repark.is_some())
-			.map(|(index, field)| (index, unsafe { (field.read_erased)(rec.ptr().add(field.offset)) }))
+			.map(|(index, field)| (index, deepen_field_value(unsafe { (field.read_erased)(rec.ptr().add(field.offset)) })))
 			.collect();
 		OwnedRecord { bytes, element, fields }
 	}
@@ -1665,7 +1701,13 @@ impl OwnedRecord {
 		for (index, value) in &self.fields {
 			let field = &layout.fields[*index];
 			let repark = field.repark.expect("copied fields carry re-park glue");
-			unsafe { repark(&**value, dst.add(field.offset), arena) }?;
+			match deep_field_glue(value.as_any().type_id()) {
+				Some(glue) => match (glue.replay)(&**value, arena)? {
+					Some(resident) => unsafe { repark(&*resident, dst.add(field.offset), arena) }?,
+					None => unsafe { repark(&**value, dst.add(field.offset), arena) }?,
+				},
+				None => unsafe { repark(&**value, dst.add(field.offset), arena) }?,
+			}
 		}
 		Some(())
 	}
@@ -1925,7 +1967,14 @@ impl GroupItem {
 			.enumerate()
 			.filter(|(_, field)| field.repark.is_some())
 			.map(|(index, field)| {
-				let values = (0..self.len).map(|lane| unsafe { (field.read_erased)(frames.add(lane * stride + field.offset)) }).collect();
+				let mut values: Vec<_> = (0..self.len).map(|lane| unsafe { (field.read_erased)(frames.add(lane * stride + field.offset)) }).collect();
+				if let Some(glue) = values.first().and_then(|value| deep_field_glue(value.as_any().type_id())) {
+					for value in &mut values {
+						if let Some(deepened) = (glue.copy_out)(&**value) {
+							*value = deepened;
+						}
+					}
+				}
 				(index, values)
 			})
 			.collect();
@@ -1957,8 +2006,15 @@ impl GroupItem {
 		for (index, values) in &owned.fields {
 			let field = &self.layout.fields[*index];
 			let repark = field.repark.expect("copied fields carry re-park glue");
+			let glue = values.first().and_then(|value| deep_field_glue(value.as_any().type_id()));
 			for (lane, value) in values.iter().enumerate() {
-				unsafe { repark(&**value, frames.add(lane * stride + field.offset), arena) }?;
+				match glue {
+					Some(glue) => match (glue.replay)(&**value, arena)? {
+						Some(resident) => unsafe { repark(&*resident, frames.add(lane * stride + field.offset), arena) }?,
+						None => unsafe { repark(&**value, frames.add(lane * stride + field.offset), arena) }?,
+					},
+					None => unsafe { repark(&**value, frames.add(lane * stride + field.offset), arena) }?,
+				}
 			}
 		}
 		Some(GroupItem {
