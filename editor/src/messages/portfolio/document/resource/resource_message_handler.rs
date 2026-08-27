@@ -299,3 +299,47 @@ impl<'de> serde::Deserialize<'de> for ResourceMessageHandler {
 		deserializer.deserialize_map(EmbeddedResourcesVisitor { human_readable })
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use graph_craft::application_io::resource::ResourceStorage;
+
+	#[test]
+	fn resolve_all_refetches_resources_whose_bytes_are_missing() {
+		let mut handler = ResourceMessageHandler::default();
+		let storage = ResourceStorageMessageHandler::default();
+		let fonts = FontsMessageHandler::default();
+
+		let font = |style: &str| DataSource::Font {
+			family: "Lato".into(),
+			style: Some(style.into()),
+		};
+
+		let cached = ResourceId::from(1);
+		let cached_hash = storage.resources_mut().store(b"stored font bytes");
+		handler.registry.resolve(&cached, cached_hash);
+		handler.registry.push_source_back(&cached, font("Regular (400)"));
+
+		let evicted = ResourceId::from(2);
+		let evicted_hash = ResourceHash::from(b"evicted font bytes".as_slice());
+		handler.registry.resolve(&evicted, evicted_hash);
+		handler.registry.push_source_back(&evicted, font("Black (900)"));
+
+		let mut responses = VecDeque::new();
+		handler.process_message(
+			ResourceMessage::ResolveAll,
+			&mut responses,
+			ResourceMessageContext {
+				document_id: DocumentId(0),
+				fonts: &fonts,
+				resource_storage: &storage,
+			},
+		);
+
+		let resolve_requested = |id: ResourceId| responses.contains(&Message::from(ResourceMessage::Resolve { resource_id: id }));
+		assert!(resolve_requested(evicted), "a resource whose bytes are gone should be resolved again");
+		assert!(!resolve_requested(cached), "a resource whose bytes are in storage should be left alone");
+		assert_eq!(handler.registry.hash(&evicted), Some(evicted_hash), "the hash keeps naming the content");
+	}
+}
