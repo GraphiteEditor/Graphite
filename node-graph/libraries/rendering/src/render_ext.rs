@@ -234,7 +234,7 @@ impl RenderExt for Stroke {
 	}
 }
 
-impl RenderExt for List<Graphic> {
+impl RenderExt for List<Graphic<'_>> {
 	type Output = String;
 
 	fn render(

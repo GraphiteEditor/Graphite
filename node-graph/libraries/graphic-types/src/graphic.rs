@@ -19,18 +19,18 @@ pub use vector_types::Vector;
 /// lane. Multi-element content is a [`core_types::record::Group`] run, or
 /// transitionally the legacy `Graphic` list.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
-pub enum Graphic {
-	Graphic(List<Graphic>),
+pub enum Graphic<'e> {
+	Graphic(List<Graphic<'e>>),
 	Vector(Vector),
 	RasterCPU(Raster<CPU>),
 	RasterGPU(Raster<GPU>),
 	Color(Color),
 	Gradient(GradientStops),
 	Text(String),
-	Group(core_types::record::Group),
+	Group(core_types::record::Group<'e>),
 }
 
-impl Default for Graphic {
+impl Default for Graphic<'_> {
 	fn default() -> Self {
 		Self::Graphic(List::new())
 	}
@@ -38,7 +38,7 @@ impl Default for Graphic {
 
 /// A typed legacy list as a legacy graphic list: each item de-tables to a
 /// leaf element, keeping its attributes on the containing lane.
-fn detable_items<T: Clone + Send + Sync + 'static>(list: List<T>, leaf: fn(T) -> Graphic) -> List<Graphic> {
+fn detable_items<'e, T: Clone + Send + Sync + 'static>(list: List<T>, leaf: fn(T) -> Graphic<'e>) -> List<Graphic<'e>> {
 	let mut out = List::new();
 	for item in list.into_iter() {
 		let (element, attributes) = item.into_parts();
@@ -55,7 +55,10 @@ pub trait IntoGraphicElement: Clone + Send + Sync + CacheHash + 'static {
 	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic>;
 }
 
-fn list_group<T: Clone + Send + Sync + CacheHash + PartialEq + 'static>(list: List<T>, arena: &core_types::arena::Arena) -> Option<Graphic> {
+fn list_group<T: Clone + Send + Sync + CacheHash + PartialEq + dyn_any::StaticTypeSized>(list: List<T>, arena: &core_types::arena::Arena) -> Option<Graphic>
+where
+	T::Static: Clone + Send + Sync,
+{
 	Some(Graphic::Group(core_types::record::Group {
 		row: None,
 		content: core_types::record::GroupItem::from_list(list, arena)?,
@@ -89,41 +92,41 @@ into_graphic_element! {
 	Text: String;
 }
 
-impl IntoGraphicElement for Graphic {
+impl IntoGraphicElement for Graphic<'static> {
 	fn into_graphic_element(self, _arena: &core_types::arena::Arena) -> Option<Graphic> {
 		Some(self)
 	}
 }
 
-impl IntoGraphicElement for List<Graphic> {
+impl IntoGraphicElement for List<Graphic<'static>> {
 	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic> {
 		list_group(self, arena)
 	}
 }
 
 // Vector
-impl From<Vector> for Graphic {
+impl From<Vector> for Graphic<'_> {
 	fn from(vector: Vector) -> Self {
 		Graphic::Vector(vector)
 	}
 }
 
 // Raster<CPU>
-impl From<Raster<CPU>> for Graphic {
+impl From<Raster<CPU>> for Graphic<'_> {
 	fn from(raster: Raster<CPU>) -> Self {
 		Graphic::RasterCPU(raster)
 	}
 }
 
 // Raster<GPU>
-impl From<Raster<GPU>> for Graphic {
+impl From<Raster<GPU>> for Graphic<'_> {
 	fn from(raster: Raster<GPU>) -> Self {
 		Graphic::RasterGPU(raster)
 	}
 }
 
 // Color
-impl From<Color> for Graphic {
+impl From<Color> for Graphic<'_> {
 	fn from(color: Color) -> Self {
 		Graphic::Color(color)
 	}
@@ -131,14 +134,14 @@ impl From<Color> for Graphic {
 // Note: List<Color> -> Option<Color> is in gcore (Color is defined there)
 
 // GradientStops
-impl From<GradientStops> for Graphic {
+impl From<GradientStops> for Graphic<'_> {
 	fn from(gradient: GradientStops) -> Self {
 		Graphic::Gradient(gradient)
 	}
 }
 
 // String
-impl From<String> for Graphic {
+impl From<String> for Graphic<'_> {
 	fn from(text: String) -> Self {
 		Graphic::Text(text)
 	}
@@ -218,10 +221,10 @@ pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 }
 
 /// Look up the paint graphics stored under the marker `A`, in the canonical `List<Graphic>` form.
-pub fn paint_graphics<'a, A, S>(source: &'a S, index: usize) -> Option<&'a List<Graphic>>
+pub fn paint_graphics<'a, A, S>(source: &'a S, index: usize) -> Option<&'a List<Graphic<'static>>>
 where
 	S: LaneSource,
-	A: Attribute<Value<'a> = Option<&'a List<Graphic>>>,
+	A: Attribute<Value<'a> = Option<&'a List<Graphic<'static>>>>,
 {
 	source
 		.attr::<A>(index)
@@ -234,7 +237,7 @@ where
 pub fn has_paint<'a, A, S>(source: &'a S, index: usize) -> bool
 where
 	S: LaneSource,
-	A: Attribute<Value<'a> = Option<&'a List<Graphic>>>,
+	A: Attribute<Value<'a> = Option<&'a List<Graphic<'static>>>>,
 {
 	paint_graphics::<A, S>(source, index).is_some()
 }
@@ -259,8 +262,8 @@ pub fn vector_can_reduce_to_clip_path<S: LaneSource<Element = Vector>>(source: &
 /// [`PaintOverlay`] threads down.
 #[derive(Clone, Copy, Default)]
 pub struct LanePaint<'a> {
-	pub fill: Option<&'a List<Graphic>>,
-	pub stroke: Option<&'a List<Graphic>>,
+	pub fill: Option<&'a List<Graphic<'static>>>,
+	pub stroke: Option<&'a List<Graphic<'static>>>,
 }
 
 impl<'a> LanePaint<'a> {
@@ -287,7 +290,7 @@ impl<'a, S: LaneSource> PaintColumns<'a, S> {
 
 	/// The lane's present, non-blank paint.
 	pub fn read(&self, lane: usize) -> LanePaint<'a> {
-		let present = |value: Option<Option<&'a List<Graphic>>>| value.flatten().filter(|list| is_paint_present(list));
+		let present = |value: Option<Option<&'a List<Graphic<'static>>>>| value.flatten().filter(|list| is_paint_present(list));
 		LanePaint {
 			fill: present(self.fill.try_get(lane)),
 			stroke: present(self.stroke.try_get(lane)),
@@ -472,7 +475,7 @@ impl TryFromGraphic for String {
 
 // Local trait to convert types to List<Graphic> (avoids orphan rule issues)
 pub trait IntoGraphicList: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static {
-	fn into_graphic_list(self) -> List<Graphic>;
+	fn into_graphic_list(self) -> List<Graphic<'static>>;
 
 	/// Deeply flattens any content of type `T` within a `List<Graphic>`, discarding all other content, and returning a flat `List<T>`.
 	fn into_flattened_list<T: TryFromGraphic>(self) -> List<T>
@@ -483,70 +486,70 @@ pub trait IntoGraphicList: Clone + Send + Sync + Default + std::fmt::Debug + Par
 	}
 }
 
-impl IntoGraphicList for List<Graphic> {
-	fn into_graphic_list(self) -> List<Graphic> {
+impl IntoGraphicList for List<Graphic<'static>> {
+	fn into_graphic_list(self) -> List<Graphic<'static>> {
 		self
 	}
 }
 
 impl IntoGraphicList for List<Vector> {
-	fn into_graphic_list(self) -> List<Graphic> {
+	fn into_graphic_list(self) -> List<Graphic<'static>> {
 		detable_items(self, Graphic::Vector)
 	}
 }
 
 impl IntoGraphicList for List<Raster<CPU>> {
-	fn into_graphic_list(self) -> List<Graphic> {
+	fn into_graphic_list(self) -> List<Graphic<'static>> {
 		detable_items(self, Graphic::RasterCPU)
 	}
 }
 
 impl IntoGraphicList for List<Raster<GPU>> {
-	fn into_graphic_list(self) -> List<Graphic> {
+	fn into_graphic_list(self) -> List<Graphic<'static>> {
 		detable_items(self, Graphic::RasterGPU)
 	}
 }
 
 impl IntoGraphicList for List<Color> {
-	fn into_graphic_list(self) -> List<Graphic> {
+	fn into_graphic_list(self) -> List<Graphic<'static>> {
 		detable_items(self, Graphic::Color)
 	}
 }
 
 impl IntoGraphicList for List<GradientStops> {
-	fn into_graphic_list(self) -> List<Graphic> {
+	fn into_graphic_list(self) -> List<Graphic<'static>> {
 		detable_items(self, Graphic::Gradient)
 	}
 }
 
 impl IntoGraphicList for List<String> {
-	fn into_graphic_list(self) -> List<Graphic> {
+	fn into_graphic_list(self) -> List<Graphic<'static>> {
 		detable_items(self, Graphic::Text)
 	}
 }
 
 impl IntoGraphicList for DAffine2 {
-	fn into_graphic_list(self) -> List<Graphic> {
+	fn into_graphic_list(self) -> List<Graphic<'static>> {
 		List::new_from_element(Graphic::default())
 	}
 }
 
 // DAffine2
-impl From<DAffine2> for Graphic {
+impl From<DAffine2> for Graphic<'_> {
 	fn from(_: DAffine2) -> Self {
 		Graphic::default()
 	}
 }
 
 // DVec2
-impl From<DVec2> for Graphic {
+impl From<DVec2> for Graphic<'_> {
 	fn from(position: DVec2) -> Self {
 		Graphic::Vector(Vector::from_anchor_position(position))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
 
-impl Graphic {
+impl<'e> Graphic<'e> {
 	pub fn as_graphic(&self) -> Option<&List<Graphic>> {
 		match self {
 			Graphic::Graphic(graphic) => Some(graphic),
@@ -554,7 +557,7 @@ impl Graphic {
 		}
 	}
 
-	pub fn as_graphic_mut(&mut self) -> Option<&mut List<Graphic>> {
+	pub fn as_graphic_mut(&mut self) -> Option<&mut List<Graphic<'e>>> {
 		match self {
 			Graphic::Graphic(graphic) => Some(graphic),
 			_ => None,
@@ -726,7 +729,7 @@ fn group_bounding_box(group: &core_types::record::Group, transform: DAffine2, in
 			}
 		}
 	}
-	fn typed_run<T: 'static + BoundingBox>(item: &core_types::record::GroupItem, transform: DAffine2, include_stroke: bool, thumbnail: bool) -> Option<RenderBoundingBox> {
+	fn typed_run<T: dyn_any::StaticTypeSized + BoundingBox>(item: &core_types::record::GroupItem, transform: DAffine2, include_stroke: bool, thumbnail: bool) -> Option<RenderBoundingBox> {
 		let lanes = item.typed_lanes::<T>()?;
 		let transform_offset = RunAttrs::of(item).transform;
 		let mut combined = None;
@@ -764,7 +767,7 @@ fn group_bounding_box(group: &core_types::record::Group, transform: DAffine2, in
 /// One typed run as an owned list, elements cloned and every attribute copied
 /// through its erased read. Content keeps its native form; the legacy
 /// conversions layer their mapping on top.
-pub fn run_to_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::GroupItem) -> Option<List<T>> {
+pub fn run_to_list<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(item: &core_types::record::GroupItem) -> Option<List<T>> {
 	let lanes = item.typed_lanes::<T>()?;
 	let mut list = List::new();
 	for lane in 0..lanes.len() {
@@ -782,7 +785,7 @@ pub fn run_to_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::
 
 /// Converts the group content of the list's paint attribute values to legacy
 /// form, so a legacy product owns everything its attributes reach.
-pub fn map_paint_attrs_to_legacy<T: 'static>(list: &mut List<T>) {
+pub fn map_paint_attrs_to_legacy<T>(list: &mut List<T>) {
 	for key in [ATTR_FILL, ATTR_STROKE, crate::markers::ATTR_EDITOR_MERGED_LAYERS] {
 		let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(key) else { continue };
 		for value in values.flatten() {
@@ -795,7 +798,7 @@ pub fn map_paint_attrs_to_legacy<T: 'static>(list: &mut List<T>) {
 
 /// One typed run as a legacy list: [`run_to_list`] with the paint attribute
 /// contents converted to their legacy form.
-pub(crate) fn run_to_legacy_list<T: Clone + Send + Sync + 'static>(item: &core_types::record::GroupItem) -> Option<List<T>> {
+pub(crate) fn run_to_legacy_list<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(item: &core_types::record::GroupItem) -> Option<List<T>> {
 	let mut list = run_to_list::<T>(item)?;
 	map_paint_attrs_to_legacy(&mut list);
 	Some(list)
@@ -848,8 +851,8 @@ impl FlattenScale {
 /// A graphic level in either of its two storages, as one lane source.
 #[derive(Clone, Copy)]
 pub enum GraphicLevel<'a> {
-	Legacy(&'a List<Graphic>),
-	Run(&'a core_types::record::GroupItem),
+	Legacy(&'a List<Graphic<'a>>),
+	Run(&'a core_types::record::GroupItem<'a>),
 }
 
 pub enum GraphicLevelColumn<'a, A: Attribute> {
@@ -867,7 +870,7 @@ impl<'a, A: Attribute> core_types::lane::LaneColumn<'a, A> for GraphicLevelColum
 }
 
 impl<'a> LaneSource for GraphicLevel<'a> {
-	type Element = Graphic;
+	type Element = Graphic<'a>;
 	type Column<'b, A: Attribute>
 		= GraphicLevelColumn<'b, A>
 	where
@@ -880,7 +883,7 @@ impl<'a> LaneSource for GraphicLevel<'a> {
 		}
 	}
 
-	fn element(&self, lane: usize) -> Option<&Graphic> {
+	fn element(&self, lane: usize) -> Option<&Graphic<'a>> {
 		match self {
 			GraphicLevel::Legacy(list) => list.element(lane),
 			GraphicLevel::Run(item) => {
@@ -935,7 +938,7 @@ enum RowSourceRef<'w> {
 	/// A de-tabled vector leaf on a graphic lane: the lane is the row.
 	Lane(GraphicLevel<'w>, usize),
 	/// A lane of a vector run.
-	Run(&'w core_types::record::RunView<'w, Vector>, &'w core_types::record::GroupItem, usize),
+	Run(&'w core_types::record::RunView<'w, Vector>, &'w core_types::record::GroupItem<'w>, usize),
 }
 
 impl VectorRow<'_> {
@@ -1126,23 +1129,29 @@ fn push_lane_paint_into_interiors(list: &mut List<Graphic>) {
 /// The graphic with every `Group` deep-copied to its owned form, which
 /// survives the arena generation but cannot be read until
 /// [`map_groups_to_resident`] re-parks it into a serving arena.
-pub fn map_groups_to_owned(graphic: &Graphic) -> Graphic {
+pub fn map_groups_to_owned<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 	match graphic {
 		Graphic::Group(group) => Graphic::Group(group.copy_out()),
 		Graphic::Graphic(children) => {
-			let mut children = children.clone();
-			for child in children.iter_element_values_mut() {
-				*child = map_groups_to_owned(child);
+			let mut out = List::new();
+			for item in children.clone().into_iter() {
+				let (element, attributes) = item.into_parts();
+				out.push(Item::from_parts(map_groups_to_owned(&element), attributes));
 			}
-			Graphic::Graphic(children)
+			Graphic::Graphic(out)
 		}
-		other => other.clone(),
+		Graphic::Vector(vector) => Graphic::Vector(vector.clone()),
+		Graphic::RasterCPU(raster) => Graphic::RasterCPU(raster.clone()),
+		Graphic::RasterGPU(raster) => Graphic::RasterGPU(raster.clone()),
+		Graphic::Color(color) => Graphic::Color(*color),
+		Graphic::Gradient(gradient) => Graphic::Gradient(gradient.clone()),
+		Graphic::Text(text) => Graphic::Text(text.clone()),
 	}
 }
 
 /// The graphic with every owned `Group` re-parked into `arena`; `None`
 /// reports arena exhaustion.
-pub fn map_groups_to_resident(graphic: &Graphic, arena: &core_types::arena::Arena) -> Option<Graphic> {
+pub fn map_groups_to_resident<'a>(graphic: &Graphic<'a>, arena: &'a core_types::arena::Arena) -> Option<Graphic<'a>> {
 	match graphic {
 		Graphic::Group(group) => group.replay(arena).map(Graphic::Group),
 		Graphic::Graphic(children) => {
@@ -1216,6 +1225,7 @@ fn deep_repark_graphic_list(value: &dyn core_types::list::AnyAttributeValue, are
 	for element in list.iter_element_values_mut() {
 		*element = map_groups_to_resident(element, arena)?;
 	}
+	let list = unsafe { core_types::record::erase_static(list) };
 	Some(Some(Box::new(Some(list))))
 }
 
@@ -1253,25 +1263,31 @@ pub fn direct_vector_len(graphic: &Graphic) -> usize {
 	}
 }
 
-pub fn map_groups_to_legacy(graphic: &Graphic) -> Graphic {
+pub fn map_groups_to_legacy<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 	match graphic {
 		Graphic::Group(group) => group_to_legacy_graphic(group),
 		Graphic::Graphic(children) => {
-			let mut children = children.clone();
-			for child in children.iter_element_values_mut() {
-				*child = map_groups_to_legacy(child);
+			let mut out = List::new();
+			for item in children.clone().into_iter() {
+				let (element, attributes) = item.into_parts();
+				out.push(Item::from_parts(map_groups_to_legacy(&element), attributes));
 			}
-			map_paint_attrs_to_legacy(&mut children);
-			Graphic::Graphic(children)
+			map_paint_attrs_to_legacy(&mut out);
+			Graphic::Graphic(out)
 		}
-		other => other.clone(),
+		Graphic::Vector(vector) => Graphic::Vector(vector.clone()),
+		Graphic::RasterCPU(raster) => Graphic::RasterCPU(raster.clone()),
+		Graphic::RasterGPU(raster) => Graphic::RasterGPU(raster.clone()),
+		Graphic::Color(color) => Graphic::Color(*color),
+		Graphic::Gradient(gradient) => Graphic::Gradient(gradient.clone()),
+		Graphic::Text(text) => Graphic::Text(text.clone()),
 	}
 }
 
 /// The group as one legacy graphic. A bare (row-less) wrap of a single typed
 /// run keeps the run's typed variant, matching the `Into<Graphic>` the
 /// pre-flip wrap applied; everything else becomes the legacy group list.
-pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic {
+pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic<'static> {
 	if group.row.is_none() {
 		let item = &group.content;
 		let typed = None
@@ -1290,7 +1306,7 @@ pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic {
 
 /// The group as a legacy `List<Graphic>`: a `Graphic` run becomes the items,
 /// another typed run becomes one item holding its typed list.
-pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic> {
+pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic<'static>> {
 	let item = &group.content;
 	if let Some(mut list) = run_to_legacy_list::<Graphic>(item) {
 		for element in list.iter_element_values_mut() {
@@ -1309,7 +1325,7 @@ pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic> 
 }
 
 fn group_render_complexity(group: &core_types::record::Group) -> usize {
-	fn typed_run<T: 'static + RenderComplexity>(item: &core_types::record::GroupItem) -> Option<usize> {
+	fn typed_run<T: dyn_any::StaticTypeSized + RenderComplexity>(item: &core_types::record::GroupItem) -> Option<usize> {
 		let lanes = item.typed_lanes::<T>()?;
 		Some((0..lanes.len()).map(|lane| lanes.element_ref(lane).render_complexity()).sum())
 	}
@@ -1324,7 +1340,7 @@ fn group_render_complexity(group: &core_types::record::Group) -> usize {
 		.unwrap_or(item.len())
 }
 
-impl BoundingBox for Graphic {
+impl BoundingBox for Graphic<'_> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
 			Graphic::Vector(vector) => BoundingBox::bounding_box(vector, transform, include_stroke),
@@ -1352,23 +1368,23 @@ impl BoundingBox for Graphic {
 	}
 }
 
-impl ListConvert<Graphic> for Vector {
-	fn convert_item(self) -> Graphic {
+impl<'e> ListConvert<Graphic<'e>> for Vector {
+	fn convert_item(self) -> Graphic<'e> {
 		Graphic::Vector(self)
 	}
 }
-impl ListConvert<Graphic> for Raster<CPU> {
-	fn convert_item(self) -> Graphic {
+impl<'e> ListConvert<Graphic<'e>> for Raster<CPU> {
+	fn convert_item(self) -> Graphic<'e> {
 		Graphic::RasterCPU(self)
 	}
 }
-impl ListConvert<Graphic> for Raster<GPU> {
-	fn convert_item(self) -> Graphic {
+impl<'e> ListConvert<Graphic<'e>> for Raster<GPU> {
+	fn convert_item(self) -> Graphic<'e> {
 		Graphic::RasterGPU(self)
 	}
 }
 
-impl RenderComplexity for Graphic {
+impl RenderComplexity for Graphic<'_> {
 	fn render_complexity(&self) -> usize {
 		match self {
 			Self::Graphic(list) => list.render_complexity(),
@@ -1459,7 +1475,7 @@ mod tests {
 	use super::*;
 	use core_types::list::List;
 
-	fn vector_graphic() -> Graphic {
+	fn vector_graphic() -> Graphic<'static> {
 		Graphic::Vector(Vector::default())
 	}
 
@@ -1573,7 +1589,7 @@ mod run_tests {
 		assert_eq!(group_to_legacy_list(group), expected);
 	}
 
-	fn native_group_paint(vector: &Vector, arena: &core_types::arena::Arena) -> List<Graphic> {
+	fn native_group_paint<'a>(vector: &Vector, arena: &'a core_types::arena::Arena) -> List<Graphic<'a>> {
 		let mut builder = RunBuilder::new(arena, element_write_hashed::<Vector>(), &[], 1).unwrap();
 		builder.push(vector.clone()).unwrap();
 		List::new_from_element(Graphic::Group(core_types::record::Group {
@@ -1586,7 +1602,9 @@ mod run_tests {
 	fn an_owned_run_deep_copies_graphic_list_fields() {
 		let inner_vector = unit_square_at(DVec2::ZERO);
 		let source = core_types::arena::Arena::new(1 << 16).unwrap();
-		let paint = native_group_paint(&inner_vector, &source);
+		// SAFETY: the erased native list serves only while `source` is live; the
+		// deep glue under test replaces its borrows at the copy-out seam.
+		let paint = unsafe { core_types::record::erase_static(native_group_paint(&inner_vector, &source)) };
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
 		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
@@ -1610,7 +1628,9 @@ mod run_tests {
 	fn an_owned_record_deep_copies_graphic_list_fields() {
 		let inner_vector = unit_square_at(DVec2::ZERO);
 		let source = core_types::arena::Arena::new(1 << 16).unwrap();
-		let paint = native_group_paint(&inner_vector, &source);
+		// SAFETY: the erased native list serves only while `source` is live; the
+		// deep glue under test replaces its borrows at the copy-out seam.
+		let paint = unsafe { core_types::record::erase_static(native_group_paint(&inner_vector, &source)) };
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
 		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
@@ -1638,7 +1658,9 @@ mod run_tests {
 	fn a_legacy_list_owns_its_paint_attr_content() {
 		let inner_vector = unit_square_at(DVec2::ZERO);
 		let source = core_types::arena::Arena::new(1 << 16).unwrap();
-		let paint = native_group_paint(&inner_vector, &source);
+		// SAFETY: the erased native list serves only while `source` is live; the
+		// deep glue under test replaces its borrows at the copy-out seam.
+		let paint = unsafe { core_types::record::erase_static(native_group_paint(&inner_vector, &source)) };
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
 		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
@@ -1707,9 +1729,10 @@ mod run_tests {
 		set_paint_attribute_at(&mut top, 4, ATTR_FILL, List::new_from_element(Graphic::Color(Color::WHITE)));
 
 		let legacy = {
-			let mut list = top.clone();
-			for element in list.iter_element_values_mut() {
-				*element = map_groups_to_legacy(element);
+			let mut list = List::new();
+			for item in top.clone().into_iter() {
+				let (element, attributes) = item.into_parts();
+				list.push(Item::from_parts(map_groups_to_legacy(&element), attributes));
 			}
 			push_lane_paint_into_interiors(&mut list);
 			list.into_flattened_list::<Vector>()
@@ -1760,12 +1783,12 @@ mod graphic_is_opaque_tests {
 
 	use super::*;
 
-	fn color_graphic(alpha: f64) -> Graphic {
+	fn color_graphic(alpha: f64) -> Graphic<'static> {
 		let color = Color::from_rgbaf32(1., 0., 0., alpha as f32).unwrap();
 		Graphic::Color(color)
 	}
 
-	fn gradient_graphic(gradient: GradientStops) -> Graphic {
+	fn gradient_graphic(gradient: GradientStops) -> Graphic<'static> {
 		Graphic::Gradient(gradient)
 	}
 

@@ -12,10 +12,10 @@ use glam::DAffine2;
 /// enclosing `List<Artboard>`, not as fields here. This keeps `Artboard` a pure type-system boundary
 /// that prevents arbitrary `List<List<...<Graphic>>>` nesting.
 #[derive(Clone, Debug, Default, CacheHash, PartialEq, DynAny)]
-pub struct Artboard(List<Graphic>);
+pub struct Artboard<'e>(List<Graphic<'e>>);
 
-impl Artboard {
-	pub fn new(content: List<Graphic>) -> Self {
+impl<'e> Artboard<'e> {
+	pub fn new(content: List<Graphic<'e>>) -> Self {
 		Self(content)
 	}
 
@@ -23,17 +23,17 @@ impl Artboard {
 		&self.0
 	}
 
-	pub fn as_graphic_list_mut(&mut self) -> &mut List<Graphic> {
+	pub fn as_graphic_list_mut(&mut self) -> &mut List<Graphic<'e>> {
 		&mut self.0
 	}
 
-	pub fn into_graphic_list(self) -> List<Graphic> {
+	pub fn into_graphic_list(self) -> List<Graphic<'e>> {
 		self.0
 	}
 
 	/// The artboard with every content group converted to its legacy form, so
 	/// the value owns all of its content free of arena borrows.
-	pub fn with_legacy_groups(&self) -> Artboard {
+	pub fn with_legacy_groups(&self) -> Artboard<'e> {
 		let mut content = self.0.clone();
 		for element in content.iter_element_values_mut() {
 			*element = crate::graphic::map_groups_to_legacy(element);
@@ -87,19 +87,19 @@ const _: () = {
 	}
 };
 
-impl From<List<Graphic>> for Artboard {
-	fn from(content: List<Graphic>) -> Self {
+impl<'e> From<List<Graphic<'e>>> for Artboard<'e> {
+	fn from(content: List<Graphic<'e>>) -> Self {
 		Self(content)
 	}
 }
 
-impl From<Artboard> for List<Graphic> {
-	fn from(artboard: Artboard) -> Self {
+impl<'e> From<Artboard<'e>> for List<Graphic<'e>> {
+	fn from(artboard: Artboard<'e>) -> Self {
 		artboard.0
 	}
 }
 
-impl BoundingBox for Artboard {
+impl BoundingBox for Artboard<'_> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		self.0.bounding_box(transform, include_stroke)
 	}
@@ -109,7 +109,7 @@ impl BoundingBox for Artboard {
 	}
 }
 
-impl RenderComplexity for Artboard {
+impl RenderComplexity for Artboard<'_> {
 	fn render_complexity(&self) -> usize {
 		self.0.render_complexity()
 	}

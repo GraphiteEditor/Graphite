@@ -465,10 +465,10 @@ pub struct RenderMetadata {
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
 	/// Per-layer `ATTR_FILL` row attribute, exposed so message handlers can read it.
 	#[cfg_attr(feature = "serde", serde(skip))]
-	pub fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+	pub fill_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,
 	/// Per-layer `ATTR_STROKE` row attribute, exposed so message handlers can read it.
 	#[cfg_attr(feature = "serde", serde(skip))]
-	pub stroke_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+	pub stroke_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,
 	pub backgrounds: Vec<Background>,
 }
 
@@ -549,7 +549,7 @@ pub trait Render: BoundingBox + RenderComplexity {
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {}
 }
 
-impl Render for Graphic {
+impl Render for Graphic<'_> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			Graphic::Graphic(list) => list.render_svg(render, render_params),
@@ -676,7 +676,7 @@ fn collect_element_metadata<'a>(
 /// bare typed run serves its lane-0 transform (and source id for vectors) as
 /// the layer's local transform, matching the typed list the conversion made.
 fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, element_id: NodeId) {
-	fn lane_zero_transform<T: 'static>(item: &core_types::record::GroupItem) -> Option<DAffine2> {
+	fn lane_zero_transform<T: dyn_any::StaticTypeSized>(item: &core_types::record::GroupItem) -> Option<DAffine2> {
 		RunView::<T>::new(item).map(|run| run.attr::<Transform>(0))
 	}
 
@@ -833,7 +833,7 @@ fn read_artboard_attributes<S: LaneSource>(source: &S, index: usize) -> (DVec2, 
 	(location, dimensions, background, clip)
 }
 
-fn render_artboard_svg<S: LaneSource<Element = Artboard>>(source: &S, render: &mut SvgRender, render_params: &RenderParams) {
+fn render_artboard_svg<'a, S: LaneSource<Element = Artboard<'a>>>(source: &S, render: &mut SvgRender, render_params: &RenderParams) {
 	for index in 0..source.lane_count() {
 		let Some(content) = source.element(index).map(Artboard::as_graphic_list) else { continue };
 		let (location, dimensions, background, clip) = read_artboard_attributes(source, index);
@@ -889,7 +889,7 @@ fn render_artboard_svg<S: LaneSource<Element = Artboard>>(source: &S, render: &m
 	}
 }
 
-fn render_artboard_vello<S: LaneSource<Element = Artboard>>(source: &S, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+fn render_artboard_vello<'a, S: LaneSource<Element = Artboard<'a>>>(source: &S, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 	use vello::peniko;
 
 	for index in 0..source.lane_count() {
@@ -921,7 +921,7 @@ fn render_artboard_vello<S: LaneSource<Element = Artboard>>(source: &S, scene: &
 	}
 }
 
-fn collect_artboard_metadata<S: LaneSource<Element = Artboard>>(source: &S, metadata: &mut RenderMetadata, footprint: Footprint) {
+fn collect_artboard_metadata<'a, S: LaneSource<Element = Artboard<'a>>>(source: &S, metadata: &mut RenderMetadata, footprint: Footprint) {
 	for index in 0..source.lane_count() {
 		let Some(content) = source.element(index).map(Artboard::as_graphic_list) else { continue };
 		let (location, dimensions, _background, clip) = read_artboard_attributes(source, index);
@@ -947,7 +947,7 @@ fn collect_artboard_metadata<S: LaneSource<Element = Artboard>>(source: &S, meta
 	}
 }
 
-fn add_artboard_upstream_click_targets<S: LaneSource<Element = Artboard>>(source: &S, click_targets: &mut Vec<ClickTarget>) {
+fn add_artboard_upstream_click_targets<'a, S: LaneSource<Element = Artboard<'a>>>(source: &S, click_targets: &mut Vec<ClickTarget>) {
 	for index in 0..source.lane_count() {
 		let dimensions: DVec2 = source.attr::<Dimensions>(index);
 		let subpath_rectangle = Subpath::new_rectangle(DVec2::ZERO, dimensions);
@@ -955,7 +955,7 @@ fn add_artboard_upstream_click_targets<S: LaneSource<Element = Artboard>>(source
 	}
 }
 
-impl Render for List<Artboard> {
+impl Render for List<Artboard<'_>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_artboard_svg(self, render, render_params)
 	}
@@ -977,11 +977,11 @@ impl Render for List<Artboard> {
 	}
 }
 
-fn render_graphic_svg<S: LaneSource<Element = Graphic>>(source: &S, render: &mut SvgRender, render_params: &RenderParams) {
+fn render_graphic_svg<'e, S: LaneSource<Element = Graphic<'e>>>(source: &S, render: &mut SvgRender, render_params: &RenderParams) {
 	render_graphic_svg_with(source, PaintReach::NONE, render, render_params)
 }
 
-fn render_graphic_svg_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, inherited: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
+fn render_graphic_svg_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(source: &'a S, inherited: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
 	let paint_columns = PaintColumns::new(source);
 	let mut mask_state = None;
 
@@ -1039,11 +1039,11 @@ fn render_graphic_svg_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, 
 	}
 }
 
-fn render_graphic_vello<S: LaneSource<Element = Graphic>>(source: &S, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+fn render_graphic_vello<'e, S: LaneSource<Element = Graphic<'e>>>(source: &S, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 	render_graphic_vello_with(source, PaintReach::NONE, scene, transform, context, render_params)
 }
 
-fn render_graphic_vello_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, inherited: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+fn render_graphic_vello_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(source: &'a S, inherited: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 	let paint_columns = PaintColumns::new(source);
 	let mut mask_element_and_transform = None;
 
@@ -1123,11 +1123,11 @@ fn render_graphic_vello_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S
 	}
 }
 
-fn collect_graphic_metadata<S: LaneSource<Element = Graphic>>(source: &S, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+fn collect_graphic_metadata<'e, S: LaneSource<Element = Graphic<'e>>>(source: &S, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 	collect_graphic_metadata_with(source, PaintReach::NONE, metadata, footprint, element_id)
 }
 
-fn collect_graphic_metadata_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, inherited: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+fn collect_graphic_metadata_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(source: &'a S, inherited: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 	let paint_columns = PaintColumns::new(source);
 	for index in 0..source.lane_count() {
 		let item_transform: DAffine2 = source.attr::<Transform>(index);
@@ -1178,11 +1178,11 @@ fn collect_graphic_metadata_with<'a, S: LaneSource<Element = Graphic>>(source: &
 	}
 }
 
-fn add_graphic_upstream_click_targets<S: LaneSource<Element = Graphic>>(source: &S, click_targets: &mut Vec<ClickTarget>) {
+fn add_graphic_upstream_click_targets<'e, S: LaneSource<Element = Graphic<'e>>>(source: &S, click_targets: &mut Vec<ClickTarget>) {
 	add_graphic_upstream_click_targets_with(source, PaintReach::NONE, click_targets)
 }
 
-fn add_graphic_upstream_click_targets_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, inherited: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
+fn add_graphic_upstream_click_targets_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(source: &'a S, inherited: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
 	let paint_columns = PaintColumns::new(source);
 	for index in 0..source.lane_count() {
 		let item_transform: DAffine2 = source.attr::<Transform>(index);
@@ -1200,11 +1200,11 @@ fn add_graphic_upstream_click_targets_with<'a, S: LaneSource<Element = Graphic>>
 	}
 }
 
-fn add_graphic_upstream_outline_targets<S: LaneSource<Element = Graphic>>(source: &S, outlines: &mut Vec<ClickTarget>) {
+fn add_graphic_upstream_outline_targets<'e, S: LaneSource<Element = Graphic<'e>>>(source: &S, outlines: &mut Vec<ClickTarget>) {
 	add_graphic_upstream_outline_targets_with(source, PaintReach::NONE, outlines)
 }
 
-fn add_graphic_upstream_outline_targets_with<'a, S: LaneSource<Element = Graphic>>(source: &'a S, inherited: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
+fn add_graphic_upstream_outline_targets_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(source: &'a S, inherited: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
 	let paint_columns = PaintColumns::new(source);
 	for index in 0..source.lane_count() {
 		let item_transform: DAffine2 = source.attr::<Transform>(index);
@@ -1222,11 +1222,11 @@ fn add_graphic_upstream_outline_targets_with<'a, S: LaneSource<Element = Graphic
 	}
 }
 
-fn graphic_contains_artboard<S: LaneSource<Element = Graphic>>(source: &S) -> bool {
+fn graphic_contains_artboard<'e, S: LaneSource<Element = Graphic<'e>>>(source: &S) -> bool {
 	(0..source.lane_count()).any(|index| source.element(index).is_some_and(|element| element.contains_artboard()))
 }
 
-impl Render for List<Graphic> {
+impl Render for List<Graphic<'_>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_graphic_svg(self, render, render_params)
 	}
@@ -1794,10 +1794,10 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(source: &S, metadata
 			if let std::collections::hash_map::Entry::Vacant(e) = metadata.vector_data.entry(element_id) {
 				e.insert(Arc::new(element.clone()));
 
-				if let Some(fill_graphic) = paint_graphics::<Fill, _>(source, index) {
+				if let Some(fill_graphic) = source.attr::<Fill>(index).filter(|list| is_paint_present(list)) {
 					metadata.fill_attributes.insert(element_id, Arc::new(fill_graphic.clone()));
 				}
-				if let Some(stroke_graphic) = paint_graphics::<Stroke, _>(source, index) {
+				if let Some(stroke_graphic) = source.attr::<Stroke>(index).filter(|list| is_paint_present(list)) {
 					metadata.stroke_attributes.insert(element_id, Arc::new(stroke_graphic.clone()));
 				}
 			}
@@ -2594,7 +2594,7 @@ pub fn text_list_bounding_box<S: LaneSource<Element = String>>(source: &S, outer
 
 /// Like `List<Graphic>::thumbnail_bounding_box`, but lays out `Graphic::Text` items, which the `BoundingBox` trait reports as `None`.
 /// Used for layer thumbnails so text layers (whose content is a `List<Graphic>` wrapping the text) frame their content.
-pub fn graphic_list_bounding_box<S: LaneSource<Element = Graphic>>(source: &S, transform: DAffine2) -> RenderBoundingBox {
+pub fn graphic_list_bounding_box<'e, S: LaneSource<Element = Graphic<'e>>>(source: &S, transform: DAffine2) -> RenderBoundingBox {
 	let mut combined: Option<[DVec2; 2]> = None;
 	let mut any_infinite = false;
 
@@ -2843,7 +2843,7 @@ impl Render for List<String> {
 	}
 }
 
-impl Render for RunView<'_, Graphic> {
+impl Render for RunView<'_, Graphic<'_>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_graphic_svg(self, render, render_params)
 	}
@@ -2929,7 +2929,7 @@ impl Render for RunView<'_, GradientStops> {
 	}
 }
 
-impl Render for RunView<'_, Artboard> {
+impl Render for RunView<'_, Artboard<'_>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_artboard_svg(self, render, render_params)
 	}
@@ -3033,7 +3033,7 @@ mod group_walk_tests {
 		Vector::from_subpath(Subpath::<PointId>::new_rectangle(corner, corner + DVec2::ONE))
 	}
 
-	fn color_paint() -> List<Graphic> {
+	fn color_paint() -> List<Graphic<'static>> {
 		List::new_from_element(Graphic::Color(Color::from_rgbaf32(0.8, 0.2, 0.33, 1.).unwrap()))
 	}
 

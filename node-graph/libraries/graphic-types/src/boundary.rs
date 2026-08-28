@@ -16,15 +16,15 @@ use glam::{DAffine2, DVec2};
 use vector_types::GradientStops;
 
 /// The outcome of materializing a leveled wire into a group.
-pub enum LevelGroup {
-	Group(Group, Finality),
+pub enum LevelGroup<'e> {
+	Group(Group<'e>, Finality),
 	Pending,
 	Error(GraphError),
 }
 
 /// The renderer's flip form: the wire's whole extent materialized into a
 /// group over the level's records, ready for the group render bridge.
-pub fn materialize_group<'e, C, N>(node: &N, input: &C, arena: &Arena) -> LevelGroup
+pub fn materialize_group<'a, 'e, C, N>(node: &'a N, input: &'a C, arena: &'a Arena) -> LevelGroup<'a>
 where
 	C: InjectIndex + Copy,
 	N: Node<C, Output = RecordValue<'e>>,
@@ -76,7 +76,7 @@ pub fn batch_to_legacy(layout: &core_types::record::Layout, batch: core_types::n
 	}
 	// SAFETY: the caller's batch is resident for the read.
 	let item = unsafe { GroupItem::from_resident(batch) };
-	fn typed<T: Clone + Send + Sync + 'static>(item: &GroupItem) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+	fn typed<T: Clone + Send + Sync + dyn_any::StaticTypeSized + 'static>(item: &GroupItem) -> Option<Box<dyn std::any::Any + Send + Sync>> {
 		run_to_legacy_list::<T>(item).map(|list| Box::new(list) as Box<dyn std::any::Any + Send + Sync>)
 	}
 	if item.typed_lanes::<Graphic>().is_some() {

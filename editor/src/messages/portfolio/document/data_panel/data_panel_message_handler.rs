@@ -312,7 +312,7 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 	}
 }
 
-impl TableItemLayout for Artboard {
+impl TableItemLayout for Artboard<'_> {
 	fn type_name() -> &'static str {
 		"Artboard"
 	}
@@ -328,7 +328,7 @@ impl TableItemLayout for Artboard {
 	}
 }
 
-impl TableItemLayout for Graphic {
+impl TableItemLayout for Graphic<'_> {
 	fn type_name() -> &'static str {
 		"Graphic"
 	}

@@ -248,11 +248,11 @@ pub enum DocumentMessage {
 	// `UpdateFillAttributes` and `UpdateStrokeAttributes` are produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
 	#[serde(skip)]
 	UpdateFillAttributes {
-		fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+		fill_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,
 	},
 	#[serde(skip)]
 	UpdateStrokeAttributes {
-		stroke_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+		stroke_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,
 	},
 	Undo,
 	UngroupSelectedLayers,

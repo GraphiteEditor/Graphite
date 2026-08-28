@@ -618,7 +618,7 @@ impl NodeRuntime {
 
 /// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
 /// framing matches what's actually visible after clipping rather than the unclipped content extents.
-fn artboard_clip_bounds<S: graphene_std::core_types::lane::LaneSource<Element = Artboard>>(artboards: &S) -> RenderBoundingBox {
+fn artboard_clip_bounds<'a, S: graphene_std::core_types::lane::LaneSource<Element = Artboard<'a>>>(artboards: &S) -> RenderBoundingBox {
 	use graphene_std::core_types::attribute::{Dimensions, Location};
 	let mut combined: Option<[DVec2; 2]> = None;
 	for index in 0..artboards.lane_count() {

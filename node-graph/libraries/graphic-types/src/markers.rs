@@ -12,14 +12,14 @@ use core_types::list::List;
 core_types::attribute! {
 	/// Vector graphics object's filled area paint, a graphic list in the canonical paint form.
 	/// An absent value means no fill.
-	pub Fill("fill"): Option<&List<Graphic>>;
+	pub Fill("fill"): Option<&List<Graphic<'static>>>;
 	/// Vector graphics object's stroke paint, a graphic list in the canonical paint form.
 	/// An absent value means no stroke paint.
-	pub Stroke("stroke"): Option<&List<Graphic>>;
+	pub Stroke("stroke"): Option<&List<Graphic<'static>>>;
 	/// Snapshot of the upstream content that fed into a destructive merge (Boolean Operation,
 	/// Rasterize, etc.), so the editor can still surface click targets for the original child
 	/// layers after their content has been collapsed.
-	pub EditorMergedLayers("editor:merged_layers"): Option<&List<Graphic>>;
+	pub EditorMergedLayers("editor:merged_layers"): Option<&List<Graphic<'static>>>;
 }
 
 pub const ATTR_FILL: &str = Fill::NAME;
