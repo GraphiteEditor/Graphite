@@ -1044,8 +1044,8 @@ mod graphene_test {
 	}
 
 	fn reserve_for(layouts: &[&Layout]) {
-		stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12));
-	}
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12)); }	}
 
 	/// Lifts a plain-element test source onto a record wire, returned beside its
 	/// element-only layout for the generated node's constructor.

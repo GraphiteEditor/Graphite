@@ -267,8 +267,8 @@ mod tests {
 
 		let probe = core_types::record::RecordLift::<RenderOutput, _>::new(ProbeNode);
 		let layout = Node::<ContextImpl>::layout(&probe).clone();
-		core_types::record::stack::reserve(layout.frame_bytes().max(1 << 12));
-		let mut graph = CreateContextNode::new(probe, &layout);
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { core_types::record::stack::reserve(layout.frame_bytes().max(1 << 12)); }		let mut graph = CreateContextNode::new(probe, &layout);
 		// The executor resolves and installs the node's own layout at wiring;
 		// without it the flip tail writes through the default empty layout.
 		Node::<ContextImpl>::set_layout(

@@ -70,8 +70,8 @@ mod test {
 
 	#[test]
 	fn test_image_color_palette() {
-		core_types::record::stack::reserve(1 << 16);
-		let arena = core_types::arena::Arena::new(1 << 22).unwrap();
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { core_types::record::stack::reserve(1 << 16); }		let arena = core_types::arena::Arena::new(1 << 22).unwrap();
 		let generations = [];
 		let scope = core_types::context::EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = core_types::context::ContextImpl::root(&scope);

@@ -535,7 +535,9 @@ where
 	let mut hint = crate::gpoll::Extent::AtLeast(range.end as usize);
 	for lane in 0..len {
 		local.set_index(range.start + lane as u64);
-		let mark = stack::sp();
+		// SAFETY: the lane's record is copied out before the scope releases it,
+		// and valueless exits serve nothing above the entry.
+		let _lane_scope = unsafe { stack::ScopeGuard::enter() };
 		let value = match node.eval(&local) {
 			GPoll::Final(value) => value,
 			GPoll::Partial(value) => {
@@ -549,19 +551,13 @@ where
 			GPoll::Error(error) if error.kind == crate::gpoll::ErrorKind::PastEnd => {
 				filled = lane;
 				hint = crate::gpoll::Extent::Exactly(range.start as usize + lane);
-				// SAFETY: the failed lane produced no record, so nothing above
-				// its mark is live.
-				unsafe { stack::rewind(mark) };
 				break;
 			}
 			GPoll::Error(error) => return BatchStatus::Error(*error),
 		};
 		// SAFETY: the lane region is in-bounds by the scratch check, and the
-		// frame is fully copied out before the rewind releases it.
-		unsafe {
-			std::ptr::copy_nonoverlapping(layout.rec(&value).ptr(), base.add(lane * stride), stride);
-			stack::rewind(mark);
-		}
+		// frame is fully copied out before the lane scope releases it.
+		unsafe { std::ptr::copy_nonoverlapping(layout.rec(&value).ptr(), base.add(lane * stride), stride) };
 	}
 	// SAFETY: the first `filled` lanes were filled above with records of `layout`.
 	BatchStatus::Filled(unsafe { crate::node::RecordBatchMut::new(scratch, filled, layout) }, finality, hint)
@@ -771,14 +767,10 @@ impl<'a, Out, N> ElementEdge<'a, Out, N> {
 	where
 		N: Node<C, Output = RecordValue<'d>>,
 	{
-		let mark = stack::sp();
-		self.node.eval(ctx).map(|value| {
-			let out = unsafe { (self.read)(self.layout.rec(&value), self.reads) };
-			// SAFETY: the read copied out by value, so no record above `mark` (the
-			// edge's own frame) is live.
-			unsafe { stack::rewind(mark) };
-			out
-		})
+		// SAFETY: the read copies out by value, so no record above the entry
+		// (the edge's own frame) is live past the scope.
+		let _scope = unsafe { stack::ScopeGuard::enter() };
+		self.node.eval(ctx).map(|value| unsafe { (self.read)(self.layout.rec(&value), self.reads) })
 	}
 }
 
@@ -826,13 +818,12 @@ impl<'a, Out, N> ElementLazyInput<'a, Out, N> {
 	where
 		N: Node<C, Output = RecordValue<'d>>,
 	{
-		let mark = stack::sp();
+		// SAFETY: the read copies the element and declared attributes out by
+		// value, so no record above the entry (the edge's own frame) is live
+		// past the scope.
+		let _scope = unsafe { stack::ScopeGuard::enter() };
 		let value = self.cell.eval_input(self.input_index, self.node, ctx)?;
-		let out = unsafe { (self.read)(self.layout.rec(&value), self.reads) };
-		// SAFETY: the read copied the element and declared attributes out by value,
-		// so no record above `mark` (the edge's own frame) is live.
-		unsafe { stack::rewind(mark) };
-		Ok(out)
+		Ok(unsafe { (self.read)(self.layout.rec(&value), self.reads) })
 	}
 }
 
@@ -919,13 +910,12 @@ where
 	let cell = crate::node::StatusCell::new();
 	let mut count: u64 = 0;
 	loop {
-		let mark = stack::sp();
+		// SAFETY: the probed record is discarded, so nothing above the entry
+		// is live past the scope.
+		let _scope = unsafe { stack::ScopeGuard::enter() };
 		let mut frame = crate::context::IndexLink { index: 0, outer: None };
 		let probe = ctx.push_level(&mut frame, copy, count);
 		let result = node.eval_derived(&cell, input_index, &probe);
-		// SAFETY: the probed record is discarded, so nothing above the mark
-		// is live.
-		unsafe { stack::rewind(mark) };
 		match result {
 			Ok(_) => count += 1,
 			Err(crate::gpoll::Interrupt::Error(error)) if error.kind == crate::gpoll::ErrorKind::PastEnd => return Ok(count),
@@ -1036,7 +1026,11 @@ pub mod stack {
 	/// derived stack need, and resets the stack pointer. Called only between
 	/// evaluations, like the arena reset: nothing survives it, so frames
 	/// leaked by an interrupted evaluation are reclaimed here.
-	pub fn reserve(bytes: usize) {
+	///
+	/// # Safety
+	/// No record served on this thread's stack may be live: growth frees the
+	/// buffer and the reset releases every claimed frame.
+	pub unsafe fn reserve(bytes: usize) {
 		STACK.with(|stack| {
 			stack.sp.set(0);
 			if stack.capacity.get() >= bytes {
@@ -1106,6 +1100,45 @@ pub mod stack {
 			stack.sp.set(mark);
 		});
 	}
+
+	/// Rewinds to the entry stack pointer on drop, unwind included: the
+	/// structured form of a mark/rewind pair. A forgotten guard leaks its
+	/// region until the next reserve rather than releasing it.
+	pub struct ScopeGuard {
+		mark: usize,
+	}
+
+	impl ScopeGuard {
+		/// # Safety
+		/// No `Rec` or `RecordValue` served above the entry point may be used
+		/// after the guard drops; copy out everything that survives the scope.
+		pub unsafe fn enter() -> Self {
+			Self { mark: sp() }
+		}
+	}
+
+	impl Drop for ScopeGuard {
+		fn drop(&mut self) {
+			STACK.with(|stack| {
+				// An interrupt close may already have rewound below the entry;
+				// the scope only ever releases, never re-claims.
+				if self.mark < stack.sp.get() {
+					stack.sp.set(self.mark);
+				}
+			});
+		}
+	}
+
+	/// Runs `body` under a [`ScopeGuard`]: every frame it claims releases on
+	/// return.
+	///
+	/// # Safety
+	/// As [`ScopeGuard::enter`]: nothing served inside the scope may escape
+	/// it, through the return value or a captured location.
+	pub unsafe fn scoped<R>(body: impl FnOnce() -> R) -> R {
+		let _scope = unsafe { ScopeGuard::enter() };
+		body()
+	}
 }
 
 /// Reclaims the frames an inline node's inputs push. An inline node returns
@@ -1114,7 +1147,7 @@ pub mod stack {
 /// pointer and rewinds to it on drop instead. Inactive (a no-op) for spilled
 /// nodes, which release their inputs through their own frame.
 pub struct ReclaimGuard {
-	target: usize,
+	scope: Option<stack::ScopeGuard>,
 }
 
 impl ReclaimGuard {
@@ -1124,17 +1157,7 @@ impl ReclaimGuard {
 	/// returns and the guard rewinds.
 	pub unsafe fn new(active: bool) -> Self {
 		Self {
-			target: if active { stack::sp() } else { usize::MAX },
-		}
-	}
-}
-
-impl Drop for ReclaimGuard {
-	fn drop(&mut self) {
-		if self.target != usize::MAX {
-			// SAFETY: an inline node returns its output by value, so no record into
-			// the reclaimed region is live once its eval returns.
-			unsafe { stack::rewind(self.target) };
+			scope: active.then(|| unsafe { stack::ScopeGuard::enter() }),
 		}
 	}
 }
@@ -1814,18 +1837,16 @@ impl ServedRecord {
 /// stays claimed. Assertion scaffolding for law tests; production consumers
 /// read served records in place.
 pub fn capture<'e, C, N: Node<C, Output = RecordValue<'e>>>(node: &N, ctx: &C) -> GPoll<ServedRecord> {
-	let mark = stack::sp();
+	// SAFETY: any served record is deep-copied out inside the scope, so
+	// nothing served above the entry escapes it.
+	let _scope = unsafe { stack::ScopeGuard::enter() };
 	let layout = node.layout().clone();
-	let result = node.eval(ctx).map(|value| ServedRecord {
+	node.eval(ctx).map(|value| ServedRecord {
 		// SAFETY: the poll served `value` at the node's declared layout and
 		// nothing has claimed frames since.
 		record: unsafe { OwnedRecord::copy_out(&layout, layout.rec(&value)) },
 		layout: layout.clone(),
-	});
-	// SAFETY: any served record was deep-copied out above, so nothing above
-	// the mark is live.
-	unsafe { stack::rewind(mark) };
-	result
+	})
 }
 
 /// Law-test scaffolding: wraps an arbitrary plain node onto a record wire
@@ -1896,12 +1917,11 @@ where
 	type Output = El;
 
 	fn eval(&self, input: &C) -> GPoll<El> {
-		let mark = stack::sp();
-		let result = self.edge.eval(input).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) });
-		// SAFETY: the element copied out by value, so no record above the mark
-		// (the edge's frame) is live; a plain output claims no frame itself.
-		unsafe { stack::rewind(mark) };
-		result
+		// SAFETY: the element copies out by value, so no record above the
+		// entry (the edge's frame) is live past the scope; a plain output
+		// claims no frame itself.
+		let _scope = unsafe { stack::ScopeGuard::enter() };
+		self.edge.eval(input).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
 	}
 }
 
@@ -1915,16 +1935,14 @@ where
 		match &self.plan {
 			None => self.edge.eval(input),
 			Some(plan) if plan.union.frame_bytes() == 0 => {
-				let mark = stack::sp();
-				let result = self.edge.eval(input).map(|value| {
+				// SAFETY: the translation copies the record into the inline
+				// value, so no record above the entry is live past the scope.
+				let _scope = unsafe { stack::ScopeGuard::enter() };
+				self.edge.eval(input).map(|value| {
 					let mut out = RecordValue::zeroed();
 					unsafe { plan.translate(plan.source.rec(&value), out.as_mut_ptr()) };
 					out
-				});
-				// SAFETY: the translation copied the record into the inline
-				// value, so no record above the mark is live.
-				unsafe { stack::rewind(mark) };
-				result
+				})
 			}
 			Some(plan) => {
 				let dst = stack::push(plan.union.frame_bytes());
@@ -2720,8 +2738,8 @@ mod tests {
 		buffer.fill(u64::MAX);
 
 		let replay_arena = crate::arena::Arena::new(1024).unwrap();
-		stack::reserve(layout.frame_bytes());
-		let value = copy.replay(&layout, &replay_arena).unwrap();
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(layout.frame_bytes()); }		let value = copy.replay(&layout, &replay_arena).unwrap();
 		let rec = layout.rec(&value);
 		assert_eq!(unsafe { read_element::<String>(rec) }, "element");
 		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "field");
@@ -2858,8 +2876,8 @@ mod tests {
 
 	#[test]
 	fn stack_frames_nest_and_release() {
-		stack::reserve(64);
-		let outer = stack::push(24);
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(64); }		let outer = stack::push(24);
 		let inner = stack::push(8);
 		assert_eq!(inner as usize - outer as usize, 24);
 		stack::pop(outer);
@@ -2869,8 +2887,8 @@ mod tests {
 
 	#[test]
 	fn stack_rounds_frames_to_word_alignment() {
-		stack::reserve(64);
-		let first = stack::push(21);
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(64); }		let first = stack::push(21);
 		let second = stack::push(8);
 		assert_eq!(second as usize - first as usize, 24);
 		stack::pop(first);
@@ -2878,14 +2896,14 @@ mod tests {
 
 	#[test]
 	fn each_thread_gets_its_own_stack() {
-		stack::reserve(64);
-		let here = stack::push(8);
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(64); }		let here = stack::push(8);
 		let here_address = here as usize;
 		std::thread::scope(|scope| {
 			scope
 				.spawn(move || {
-					stack::reserve(64);
-					let there = stack::push(8);
+					// SAFETY: between evaluations, nothing served on the stack is live.
+					unsafe { stack::reserve(64); }					let there = stack::push(8);
 					assert_ne!(here_address, there as usize, "stacks are per thread");
 					stack::pop(there);
 				})
@@ -2923,8 +2941,8 @@ mod tests {
 		}
 
 		let layout = Layout::default().with_writes(0, element_write::<String>(), &[FieldWrite::of::<Transform>(0), FieldWrite::of::<Opacity>(0)]);
-		stack::reserve(1 << 10);
-		let arena = crate::arena::Arena::new(1024).unwrap();
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(1 << 10); }		let arena = crate::arena::Arena::new(1024).unwrap();
 		let mark = stack::sp();
 		let GPoll::Final(served) = capture(&Fixture { layout }, &&arena) else {
 			panic!("the fixture serves finally");
@@ -2938,8 +2956,8 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "the served element must match the layout's element type")]
 	fn a_mistyped_element_is_rejected_at_the_write() {
-		stack::reserve(1 << 10);
-		let arena = crate::arena::Arena::new(256).unwrap();
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(1 << 10); }		let arena = crate::arena::Arena::new(256).unwrap();
 		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[]);
 		FrameBuilder::new(&layout, &arena).element(1u32);
 	}

@@ -264,8 +264,8 @@ mod tests {
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
-		stack::reserve(1 << 16);
-		EvalScope::new(Some(0.5), None, None, generations, arena)
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(1 << 16); }		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
 	fn install<N: Node<ContextImpl<'static>>>(mut node: N, meta: record::LayoutMeta, inputs: &[Option<&Layout>]) -> N {
@@ -841,13 +841,13 @@ mod tests {
 		let wrap_out = Node::<ContextImpl>::layout(&wrapped).clone();
 		let head = ctx.index_head();
 		let group = {
-			let mark = stack::sp();
+			// SAFETY: the element is cloned out inside the scope, so no borrow
+			// into the frame escapes it.
+			let _scope = unsafe { stack::ScopeGuard::enter() };
 			let GPoll::Final(value) = wrapped.eval(&ctx.promoted(&head, 0)) else {
 				panic!("expected a final record");
 			};
 			let group = unsafe { record::borrow_element::<Graphic>(wrap_out.rec(&value)) }.clone();
-			// SAFETY: the element was cloned out above, so no borrow into the frame remains.
-			unsafe { stack::rewind(mark) };
 			group
 		};
 

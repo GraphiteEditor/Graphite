@@ -178,14 +178,16 @@ impl DynamicExecutor {
 			.and_then(EdgeHandle::record_edge)
 			.ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
-		core_types::record::stack::reserve(self.tree.stack_need());
-		let generations = self.runtime.snapshot();
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { core_types::record::stack::reserve(self.tree.stack_need()); }		let generations = self.runtime.snapshot();
 		let scope = EvalScope::new(snapshot.try_real_time(), snapshot.try_animation_time(), snapshot.try_pointer_position(), &generations, &arena);
 		let Some(ctx) = snapshot.rehydrate(&scope) else {
 			return Err(IntrospectError::NoData);
 		};
 		let layout = core_types::node::Node::<ContextImpl>::layout(&edge);
-		let mark = core_types::record::stack::sp();
+		// SAFETY: the read closure finishes inside the scope, so no record
+		// above the entry survives it.
+		let _scope = unsafe { core_types::record::stack::ScopeGuard::enter() };
 		let result = if layout.depth > 0 {
 			match core_types::record::materialize_level(&edge, &ctx, &arena) {
 				core_types::record::LevelStatus::Batch(batch, _) => read(layout, batch, &arena),
@@ -209,8 +211,6 @@ impl DynamicExecutor {
 				_ => None,
 			}
 		};
-		// SAFETY: the read finished, so no record above the mark is live.
-		unsafe { core_types::record::stack::rewind(mark) };
 		result.ok_or(IntrospectError::NoData)
 	}
 
@@ -246,8 +246,8 @@ where
 			return Err("Output node not found in executor".into());
 		};
 		let mut arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
-		core_types::record::stack::reserve(self.tree.stack_need());
-		let result = eval_root(&mut arena, &self.runtime, &input, |ctx| match TaggedValue::from_edge(handle.duplicate(), ctx) {
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { core_types::record::stack::reserve(self.tree.stack_need()); }		let result = eval_root(&mut arena, &self.runtime, &input, |ctx| match TaggedValue::from_edge(handle.duplicate(), ctx) {
 			Ok(poll) => poll.map(Ok),
 			Err(error) => GPoll::Final(Err(error)),
 		});
@@ -631,8 +631,8 @@ mod test {
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
-		core_types::record::stack::reserve(layout.frame_bytes());
-		let GPoll::Final(value) = edge.eval(&ctx) else {
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { core_types::record::stack::reserve(layout.frame_bytes()); }		let GPoll::Final(value) = edge.eval(&ctx) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { core_types::record::read_element::<u32>(layout.rec(&value)) }, 2);
@@ -676,8 +676,8 @@ mod test {
 		let handle = executor.tree().get(NodeId(1)).unwrap();
 		let layout = handle.layout().clone();
 		let edge = handle.duplicate().downcast_record::<f64>().unwrap();
-		core_types::record::stack::reserve(executor.tree().stack_need());
-		let GPoll::Final(value) = edge.eval(&ctx) else {
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { core_types::record::stack::reserve(executor.tree().stack_need()); }		let GPoll::Final(value) = edge.eval(&ctx) else {
 			panic!("the flipped clone must evaluate over record wires, got a non-final poll");
 		};
 		assert_eq!(unsafe { core_types::record::read_element::<f64>(layout.rec(&value)) }, 7.);
@@ -703,8 +703,8 @@ mod test {
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 		let edge = executor.tree().get(NodeId(2)).unwrap().downcast_record::<graphene_std::raster::color::Color>().unwrap();
-		core_types::record::stack::reserve(executor.tree().stack_need());
-		let result = edge.eval(&ctx);
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { core_types::record::stack::reserve(executor.tree().stack_need()); }		let result = edge.eval(&ctx);
 		// The empty raster level folds to an empty palette: past-end at lane 0.
 		assert!(
 			matches!(&result, GPoll::Error(error) if error.kind == core_types::gpoll::ErrorKind::PastEnd),

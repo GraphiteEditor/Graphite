@@ -538,8 +538,8 @@ mod tests {
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
-		stack::reserve(1 << 16);
-		EvalScope::new(Some(0.5), None, None, generations, arena)
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(1 << 16); }		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
 	fn f64_layout(names: &[&'static str]) -> Layout {
@@ -579,8 +579,8 @@ mod tests {
 	}
 
 	fn reserve_for(layouts: &[&Layout]) {
-		stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12));
-	}
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12)); }	}
 
 	fn install<N: Node<ContextImpl<'static>>>(mut node: N, meta: core_types::record::LayoutMeta, inputs: &[Option<&Layout>]) -> N {
 		// The fixtures wire constants into every eager input, which the compiler
@@ -1660,14 +1660,13 @@ mod tests {
 
 		let head = ctx.index_head();
 		for (lane, element) in [(0u64, 10.), (1, 11.)] {
-			let mark = stack::sp();
+			let _lane_scope = unsafe { stack::ScopeGuard::enter() };
 			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane)) else {
 				panic!("expected a final record at lane {lane}");
 			};
 			let rec = out.rec(&value);
 			assert_eq!(unsafe { rec.element::<f64>() }, element, "lane {lane}");
 			assert_eq!(unsafe { rec.read::<&[NodeId]>(offset) }, path.as_slice(), "lane {lane}");
-			unsafe { stack::rewind(mark) };
 		}
 	}
 

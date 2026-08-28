@@ -1546,13 +1546,11 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let slot = format_ident!("__in_{index}");
 						quote! {
 							let #query = || {
-								let __mark = #core_types::record::stack::sp();
-								let __result = #core_types::node::Node::eval(&self.#name, __input)
-									.map(|__value| unsafe { #core_types::record::read_element::<#ty>(self.#slot.rec(&__value)) });
-								// SAFETY: the element copied out by value; extent
+								// SAFETY: the element copies out by value; extent
 								// queries leave the record stack untouched.
-								unsafe { #core_types::record::stack::rewind(__mark) };
-								__result
+								let __scope = unsafe { #core_types::record::stack::ScopeGuard::enter() };
+								#core_types::node::Node::eval(&self.#name, __input)
+									.map(|__value| unsafe { #core_types::record::read_element::<#ty>(self.#slot.rec(&__value)) })
 							};
 							let #arg = #core_types::extent::ValueIn::new(&#query);
 						}
@@ -2117,11 +2115,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					match ir::value_binding(&node, index).reads_out() {
 						false => body,
 						true => {
-							let mark = format_ident!("__mark_{index}");
+							let mark = format_ident!("__scope_{index}");
 							quote! {
-								let #mark = #core_types::record::stack::sp();
+								// SAFETY: the bind copies its reads out by value; the
+								// drop point matches the old rewind.
+								let #mark = unsafe { #core_types::record::stack::ScopeGuard::enter() };
 								#body
-								unsafe { #core_types::record::stack::rewind(#mark) };
+								drop(#mark);
 							}
 						}
 					}
@@ -2198,8 +2198,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					for __lane in 0..__len {
 						#core_types::context::InjectIndex::set_index(&mut __lane_ctx, __range.start + __lane as u64);
 						let __input = &__lane_ctx;
-						let __lane_mark = #core_types::record::stack::sp();
-						let _entry_sp = __lane_mark;
+						// SAFETY: the lane's record is copied out before the scope
+						// releases it, and valueless exits serve nothing above it.
+						let __lane_scope = unsafe { #core_types::record::stack::ScopeGuard::enter() };
+						let _entry_sp = #core_types::record::stack::sp();
 						let __cell = __cell.snapshot();
 						#(#rebinds)*
 						#(#binds)*
@@ -2217,21 +2219,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							#core_types::gpoll::GPoll::Error(__error) if __error.kind == #core_types::gpoll::ErrorKind::PastEnd => {
 								__filled = __lane;
 								__hint = #core_types::gpoll::Extent::Exactly(__range.start as usize + __lane);
-								unsafe { #core_types::record::stack::rewind(__lane_mark) };
 								break;
 							}
 							#core_types::gpoll::GPoll::Error(__error) => return #core_types::node::BatchStatus::Error(*__error),
 						};
 						// SAFETY: the lane region is in-bounds by the scratch check,
-						// and the frame is fully copied out before the rewind.
-						unsafe {
-							::core::ptr::copy_nonoverlapping(__node_layout.rec(&__value).ptr(), __frames.add(__lane * __stride), __stride);
-							#core_types::record::stack::rewind(__lane_mark);
-						}
+						// and the frame is fully copied out before the lane scope
+						// releases it.
+						unsafe { ::core::ptr::copy_nonoverlapping(__node_layout.rec(&__value).ptr(), __frames.add(__lane * __stride), __stride) };
 					}
-					// SAFETY: every lane was copied into the caller's scratch, so
-					// nothing above the entry mark is live.
-					unsafe { #core_types::record::stack::rewind(__entry_mark) };
+					drop(__entry_scope);
 					// SAFETY: the first `__filled` lanes were filled above with
 					// records of the node's layout.
 					#core_types::node::BatchStatus::Filled(unsafe { #core_types::node::RecordBatchMut::new(__scratch, __filled, __node_layout) }, __finality, __hint)
@@ -2269,8 +2266,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					if __scratch.len() * 8 < __len * __stride {
 						return #core_types::node::BatchStatus::InvalidRange;
 					}
-					let __entry_mark = #core_types::record::stack::sp();
-					let _entry_sp = __entry_mark;
+					// SAFETY: every lane copies into the caller's scratch, so
+					// nothing served above the entry escapes the batch scope.
+					let __entry_scope = unsafe { #core_types::record::stack::ScopeGuard::enter() };
+					let _entry_sp = #core_types::record::stack::sp();
 					let __cell = #cell_constructor;
 					let __base_ctx = {
 						let mut __ctx = *__input;
@@ -2616,11 +2615,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			match reads_out {
 				false => body,
 				true => {
-					let mark = format_ident!("__mark_{index}");
+					let mark = format_ident!("__scope_{index}");
 					quote! {
-						let #mark = #core_types::record::stack::sp();
+						// SAFETY: the bind copies its reads out by value; the drop
+						// point matches the old rewind.
+						let #mark = unsafe { #core_types::record::stack::ScopeGuard::enter() };
 						#body
-						unsafe { #core_types::record::stack::rewind(#mark) };
+						drop(#mark);
 					}
 				}
 			}

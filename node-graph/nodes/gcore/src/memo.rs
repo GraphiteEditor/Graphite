@@ -246,8 +246,8 @@ mod tests {
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
-		core_types::record::stack::reserve(1 << 16);
-		EvalScope::new(Some(0.5), None, None, generations, arena)
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { core_types::record::stack::reserve(1 << 16); }		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
 	fn element_layout<T: Clone + Send + Sync + core_types::StaticTypeSized>() -> core_types::record::Layout

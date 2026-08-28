@@ -19,19 +19,11 @@ use raster_types::BitmapMut;
 use raster_types::Image;
 use raster_types::{CPU, Raster};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, dyn_any::DynAny)]
 pub struct BrushStampGenerator<P: Pixel + Alpha> {
 	color: P,
 	feather_exponent: f32,
 	transform: DAffine2,
-}
-
-// SAFETY: `Static` is `Self` with `P` at its own static projection.
-unsafe impl<P: Pixel + Alpha + dyn_any::StaticTypeSized> dyn_any::StaticType for BrushStampGenerator<P>
-where
-	P::Static: Pixel + Alpha,
-{
-	type Static = BrushStampGenerator<P::Static>;
 }
 
 impl<P: Pixel + Alpha> Transform for BrushStampGenerator<P> {

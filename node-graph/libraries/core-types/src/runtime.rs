@@ -276,8 +276,8 @@ mod tests {
 	where
 		El::Static: Clone + Send + Sync,
 	{
-		stack::reserve(1 << 12);
-		let layout = element_layout::<El>();
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(1 << 12); }		let layout = element_layout::<El>();
 		graph.set_layout(crate::record::RecordLayout {
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),

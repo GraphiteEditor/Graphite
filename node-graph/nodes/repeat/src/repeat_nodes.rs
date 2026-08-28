@@ -216,8 +216,8 @@ mod test {
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
-		stack::reserve(1 << 12);
-		EvalScope::new(Some(0.5), None, None, generations, arena)
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe { stack::reserve(1 << 12); }		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
 	struct VectorRows {
