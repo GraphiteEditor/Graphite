@@ -1074,6 +1074,7 @@ impl Render for Graphic {
 			Graphic::GradientList(list) => list.render_svg(render, render_params),
 			Graphic::MeshGradientList(list) => list.render_svg(render, render_params),
 			Graphic::TextList(list) => list.render_svg(render, render_params),
+			Graphic::StrokeList(_) => (),
 		}
 	}
 
@@ -1103,6 +1104,7 @@ impl Render for Graphic {
 			Graphic::GradientList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::MeshGradientList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::TextList(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::StrokeList(_) => (),
 		}
 	}
 
@@ -1187,6 +1189,14 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
+				Graphic::StrokeList(list) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than the first item
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					}
+				}
 			}
 		}
 
@@ -1208,6 +1218,7 @@ impl Render for Graphic {
 			Graphic::GradientList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::MeshGradientList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::TextList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::StrokeList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 		}
 	}
 
@@ -1230,6 +1241,7 @@ impl Render for Graphic {
 			Graphic::GradientList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::MeshGradientList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::TextList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::StrokeList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 		}
 	}
 
@@ -1252,6 +1264,7 @@ impl Render for Graphic {
 			Graphic::GradientList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::MeshGradientList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::TextList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::StrokeList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 		}
 	}
 
@@ -1864,7 +1877,8 @@ fn render_vector_item_to_vello(
 			| Graphic::GraphicList(_)
 			| Graphic::TextList(_)
 			| Graphic::MeshGradient(_)
-			| Graphic::MeshGradientList(_) => {
+			| Graphic::MeshGradientList(_)
+			| Graphic::StrokeList(_) => {
 				scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 				paint.render_to_vello(scene, multiplied_transform, context, paint_render_params);
 				scene.pop_layer();
@@ -1958,7 +1972,8 @@ fn render_vector_item_to_vello(
 			| Graphic::GraphicList(_)
 			| Graphic::TextList(_)
 			| Graphic::MeshGradient(_)
-			| Graphic::MeshGradientList(_) => {
+			| Graphic::MeshGradientList(_)
+			| Graphic::StrokeList(_) => {
 				let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 				scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
@@ -2429,7 +2444,7 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut S
 		height: image.height,
 		alpha_type: peniko::ImageAlphaType::Alpha,
 	})
-	.with_extend(peniko::Extend::Repeat);
+	.with_extend(peniko::Extend::Pad);
 
 	scene.draw_image(&image_brush, kurbo::Affine::new(image_transform.to_cols_array()));
 
@@ -2565,14 +2580,19 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut S
 
 	let width = raster.data().width();
 	let height = raster.data().height();
+
+	let resource_override_index = context.resource_overrides.len();
+	// Stable across frames so vello reuses the atlas slot; high bit avoids Blob::new counter ids.
+	let blob_id = (resource_override_index as u64) << 40 | (width as u64) << 20 | height as u64 | 1 << 63;
+	let blob = peniko::Blob::from_raw_parts(LAZY_ARC_VEC_ZERO_U8.deref().clone(), blob_id);
 	let image = peniko::ImageBrush::new(peniko::ImageData {
-		data: peniko::Blob::new(LAZY_ARC_VEC_ZERO_U8.deref().clone()),
+		data: blob,
 		format: peniko::ImageFormat::Rgba8,
 		width,
 		height,
 		alpha_type: peniko::ImageAlphaType::Alpha,
 	})
-	.with_extend(peniko::Extend::Repeat);
+	.with_extend(peniko::Extend::Pad);
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
 	scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
 	context.resource_overrides.push((image, raster.texture.clone()));
@@ -2580,6 +2600,12 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut S
 	if layer {
 		scene.pop_layer()
 	}
+}
+
+impl Render for List<brush_types::Stroke> {
+	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {}
+
+	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
 }
 
 // Since colors and gradients are technically infinitely big, we have to implement

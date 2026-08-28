@@ -123,11 +123,15 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
-	editor.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+
+	const coalesced = e.pointerType === "pen" && typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : [];
+	const samples = coalesced.length > 0 ? coalesced : [e];
+	for (const sample of samples) editor.onMouseMove(sample.clientX, sample.clientY, sample.buttons, modifiers, ...pointerAttributes(sample));
 }
 
 export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStore: DialogStore) {
 	potentiallyRestoreCanvasFocus(e);
+	potentiallyClearTextSelection(e);
 
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
 	const isTargetingCanvas = !inFloatingMenu && e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
@@ -152,7 +156,7 @@ export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStor
 
 	if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
+		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
 	}
 }
 
@@ -170,7 +174,7 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 	if (textToolInteractiveInputElement) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
+	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
 }
 
 // Mouse events
@@ -277,6 +281,12 @@ export function onFocusOut() {
 	canvasFocused = false;
 }
 
+function pointerAttributes(e: PointerEvent): [number, number | undefined, number | undefined, number | undefined, number | undefined, number | undefined, boolean] {
+	const isPen = e.pointerType === "pen";
+	const eraser = isPen && (e.buttons & 0b10_0000) !== 0; // Pen eraser end is reported as the 32 button bit
+	return [e.timeStamp, isPen ? e.pressure : undefined, isPen ? e.tiltX : undefined, isPen ? e.tiltY : undefined, isPen ? e.twist : undefined, isPen ? e.tangentialPressure : undefined, eraser];
+}
+
 function detectShake(e: PointerEvent | MouseEvent): boolean {
 	const SENSITIVITY_DIRECTION_CHANGES = 3;
 	const SENSITIVITY_DISTANCE_TO_DISPLACEMENT_RATIO = 0.1;
@@ -349,6 +359,20 @@ function targetIsTextField(target: EventTarget | HTMLElement | undefined): boole
 		target instanceof HTMLTextAreaElement ||
 		(target instanceof HTMLInputElement && ["text", "password", "email", "url", "tel", "search", "number", "date", "datetime-local", "month", "time", "week"].includes(target.type))
 	);
+}
+
+function potentiallyClearTextSelection(e: PointerEvent) {
+	const target = e.target instanceof Element ? e.target : undefined;
+	if (target && (targetIsTextField(target) || window.getComputedStyle(target).userSelect !== "none")) return;
+
+	// A text control's selection lives in its shadow tree, which the document's `Selection` reports as collapsed and cannot clear, so each control holding one is collapsed through its own API
+	const controls = window.document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("textarea, input[type='text']");
+	controls.forEach((control) => {
+		const caret = control.selectionStart;
+		if (typeof caret === "number" && caret !== control.selectionEnd) control.setSelectionRange(caret, caret);
+	});
+
+	window.getSelection()?.removeAllRanges();
 }
 
 function potentiallyRestoreCanvasFocus(e: Event) {

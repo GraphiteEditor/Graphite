@@ -5,7 +5,6 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TypesettingConfig};
@@ -121,9 +120,23 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		modification_type: VectorModificationType,
 	},
-	Brush {
+	NewBrushGroupLayer {
+		id: NodeId,
+		strokes_node_id: NodeId,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+		color: Color,
+		diameter: f64,
+		hardness: f64,
+		flow: f64,
+	},
+	NewBrushStrokesNode {
 		layer: LayerNodeIdentifier,
-		strokes: Vec<BrushStroke>,
+		strokes_node_id: NodeId,
+		color: Color,
+		diameter: f64,
+		hardness: f64,
+		flow: f64,
 	},
 	SetUpstreamToChain {
 		layer: LayerNodeIdentifier,

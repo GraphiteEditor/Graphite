@@ -1,3 +1,4 @@
+use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, SeedValue, SignedInteger};
@@ -870,6 +871,7 @@ pub async fn extend<T: 'n + Send + Clone>(
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
+		List<Stroke>,
 	)]
 	base: List<T>,
 	/// The list whose items will appear at the end of the extended list.
@@ -890,6 +892,7 @@ pub async fn extend<T: 'n + Send + Clone>(
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
+		List<Stroke>,
 	)]
 	new: List<T>,
 ) -> List<T> {
@@ -943,6 +946,7 @@ pub async fn into_group<T: Into<Graphic> + 'n>(
 		List<String>,
 		List<DVec2>,
 		Item<DAffine2>, // TODO: Remove this
+		List<Stroke>,
 	)]
 	content: T,
 ) -> Item<Graphic> {

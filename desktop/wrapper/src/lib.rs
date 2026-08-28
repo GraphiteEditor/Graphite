@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 pub use graph_craft::application_io::resource::MmapResourceStorage;
 pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
+pub use wgpu_executor::Texture;
 pub use wgpu_executor::WgpuBackends;
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;
@@ -55,14 +56,14 @@ impl DesktopWrapper {
 	pub async fn execute_node_graph() -> NodeGraphExecutionResult {
 		let result = graphite_editor::node_graph_executor::run_node_graph().await;
 		match result {
-			(true, texture) => NodeGraphExecutionResult::HasRun(texture.map(Into::into)),
+			(true, texture) => NodeGraphExecutionResult::HasRun(texture),
 			(false, _) => NodeGraphExecutionResult::NotRun,
 		}
 	}
 }
 
 pub enum NodeGraphExecutionResult {
-	HasRun(Option<std::sync::Arc<wgpu::Texture>>),
+	HasRun(Option<Texture>),
 	NotRun,
 }
 

@@ -299,7 +299,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				graph_operation_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::Resource(message) => {
-				let context = ResourceMessageContext { document_id, fonts };
+				let context = ResourceMessageContext { document_id, fonts, resource_storage };
 				self.resources.process_message(message, responses, context);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
@@ -1066,7 +1066,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						(true, Some(storage)) => storage
 							.export_to_bytes(
 								document_format::ExportFormat::Xz,
-								document_format::ExportOptions::default(),
+								document_format::ExportOptions {
+									include_history: false,
+									..Default::default()
+								},
 								export_load_handle.as_ref(),
 								Some(&legacy_document),
 							)

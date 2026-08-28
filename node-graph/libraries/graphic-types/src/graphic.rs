@@ -1,4 +1,5 @@
 use crate::appearance::{Appearance, Cover, Coverage};
+use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_APPEARANCE, ATTR_PAINT, Item, ItemAttributeValues, List, NodeIdPath};
@@ -36,6 +37,7 @@ pub enum Graphic {
 	GradientList(List<Gradient>),
 	MeshGradientList(List<MeshGradient>),
 	TextList(List<String>),
+	StrokeList(List<Stroke>),
 }
 
 impl Default for Graphic {
@@ -159,7 +161,19 @@ impl From<List<MeshGradient>> for Graphic {
 	}
 }
 
-// String
+// Stroke
+impl From<Stroke> for Graphic {
+	fn from(stroke: Stroke) -> Self {
+		Graphic::StrokeList(List::new_from_element(stroke))
+	}
+}
+impl From<List<Stroke>> for Graphic {
+	fn from(stroke: List<Stroke>) -> Self {
+		Graphic::StrokeList(stroke)
+	}
+}
+
+// Text
 impl From<String> for Graphic {
 	fn from(text: String) -> Self {
 		Graphic::Text(Item::new_from_element(text))
@@ -331,6 +345,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 			Graphic::GradientList(list) => bake_list_transform(list, transform),
 			Graphic::MeshGradientList(list) => bake_list_transform(list, transform),
 			Graphic::TextList(list) => bake_list_transform(list, transform),
+			Graphic::StrokeList(list) => bake_list_transform(list, transform),
 			// A color has no spatial extent, so there is no placement for a transform to move
 			Graphic::None(_) | Graphic::NoneList(_) | Graphic::Color(_) | Graphic::ColorList(_) => {}
 		}
@@ -401,6 +416,12 @@ impl TryFromGraphic for String {
 	}
 }
 
+impl TryFromGraphic for Stroke {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
+		if let Graphic::StrokeList(t) = graphic { Some(t) } else { None }
+	}
+}
+
 // Local trait to convert types to List<Graphic> (avoids orphan rule issues)
 pub trait IntoGraphicList: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static {
 	fn into_graphic_list(self) -> List<Graphic>;
@@ -455,6 +476,17 @@ impl IntoGraphicList for List<Gradient> {
 impl IntoGraphicList for List<MeshGradient> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::MeshGradientList(self))
+	}
+}
+
+impl IntoGraphicList for List<Stroke> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		let layer_path: NodeIdPath = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		let mut graphic_list = List::new_from_element(Graphic::StrokeList(self));
+		if !layer_path.0.is_empty() {
+			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+		}
+		graphic_list
 	}
 }
 
@@ -571,6 +603,7 @@ impl Graphic {
 			Graphic::GradientList(list) => all_clipped(list),
 			Graphic::MeshGradientList(list) => all_clipped(list),
 			Graphic::TextList(list) => all_clipped(list),
+			Graphic::StrokeList(list) => all_clipped(list),
 		}
 	}
 
@@ -626,6 +659,7 @@ impl Graphic {
 			Graphic::MeshGradient(item) => item_opacity_is_full(item) && item.element().corners().all(|corner| corner.color.is_opaque()),
 			Graphic::MeshGradientList(list) => !list.is_empty() && every_item_has_full_opacity(list) && list.iter_element_values().all(|mesh| mesh.corners().all(|corner| corner.color.is_opaque())),
 			Graphic::Text(_) | Graphic::TextList(_) => false,
+			Graphic::StrokeList(_) => false,
 		}
 	}
 
@@ -660,6 +694,7 @@ impl Graphic {
 			Graphic::RasterCPUList(list) => every_item_has_zero_opacity(list),
 			Graphic::RasterGPUList(list) => every_item_has_zero_opacity(list),
 			Graphic::TextList(list) => every_item_has_zero_opacity(list),
+			Graphic::StrokeList(list) => every_item_has_zero_opacity(list),
 		}
 	}
 
@@ -682,6 +717,7 @@ impl Graphic {
 			Graphic::RasterCPUList(list) => list.is_empty(),
 			Graphic::RasterGPUList(list) => list.is_empty(),
 			Graphic::TextList(list) => list.is_empty(),
+			Graphic::StrokeList(list) => list.is_empty(),
 		}
 	}
 }
@@ -838,6 +874,7 @@ impl BoundingBox for Graphic {
 			Graphic::GradientList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::MeshGradientList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::TextList(list) => list.bounding_box(transform, include_stroke),
+			Graphic::StrokeList(list) => list.bounding_box(transform, include_stroke),
 		}
 	}
 
@@ -860,6 +897,7 @@ impl BoundingBox for Graphic {
 			Graphic::GradientList(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::MeshGradientList(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::TextList(list) => list.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::StrokeList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 		}
 	}
 }
@@ -899,6 +937,7 @@ impl RenderComplexity for Graphic {
 			Self::GradientList(list) => list.render_complexity(),
 			Self::MeshGradientList(list) => list.render_complexity(),
 			Self::TextList(list) => list.render_complexity(),
+			Self::StrokeList(list) => list.render_complexity(),
 		}
 	}
 }

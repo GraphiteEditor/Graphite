@@ -64,6 +64,8 @@ pub struct TextLabel {
 	pub italic: bool,
 	pub monospace: bool,
 	pub multiline: bool,
+	pub enquote: bool,
+	pub selectable: bool,
 	#[serde(rename = "centerAlign")]
 	pub center_align: bool,
 	#[serde(rename = "tableAlign")]

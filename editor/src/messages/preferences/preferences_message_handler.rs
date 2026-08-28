@@ -93,6 +93,7 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 					zoom_with_scroll: self.zoom_with_scroll,
 				});
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
+				responses.add(ToolMessage::RefreshToolShelf);
 			}
 			PreferencesMessage::ResetToDefaults => {
 				responses.add(PreferencesMessage::Load { preferences: Self::default() });

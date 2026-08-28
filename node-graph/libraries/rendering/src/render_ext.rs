@@ -294,7 +294,8 @@ impl RenderExt for Graphic {
 			| Graphic::GraphicList(_)
 			| Graphic::GradientList(_)
 			| Graphic::TextList(_)
-			| Graphic::MeshGradientList(_) => {
+			| Graphic::MeshGradientList(_)
+			| Graphic::StrokeList(_) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };

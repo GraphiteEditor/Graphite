@@ -19,6 +19,8 @@
 	export let italic = false;
 	export let monospace = false;
 	export let multiline = false;
+	export let enquote = false;
+	export let selectable = false;
 	export let centerAlign = false;
 	export let tableAlign = false;
 	// Sizing
@@ -76,6 +78,8 @@
 	class:italic
 	class:monospace
 	class:multiline
+	class:enquote
+	class:selectable
 	class:center-align={centerAlign}
 	class:table-align={tableAlign}
 	style:min-width={minWidthCharacters ? `${minWidthCharacters}ch` : minWidth > 0 ? `${minWidth}px` : undefined}
@@ -123,6 +127,17 @@
 		&.multiline {
 			white-space: pre-wrap;
 			margin: 4px 0;
+		}
+
+		&.enquote::before,
+		&.enquote::after {
+			content: '"';
+			user-select: none;
+		}
+
+		&.selectable {
+			user-select: text;
+			cursor: text;
 		}
 
 		&.center-align {
