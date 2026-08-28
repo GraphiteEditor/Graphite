@@ -2320,13 +2320,16 @@ mod tests {
 				Some(value) => (content_layout.clone(), vec![("opacity", value)]),
 				None => (f64_layout(&[]), vec![]),
 			};
-			let node = FallbackNode::new(
-				core_types::record::RecordLift::<(), _>::new(ValueNode(())),
-				f64_record_source(&content_layout, 7., fields),
-				alternate,
-				&unit_layout,
-				&content_layout,
-				&alternate_layout,
+			let node = install_flip(
+				FallbackNode::new(
+					core_types::record::RecordLift::<(), _>::new(ValueNode(())),
+					f64_record_source(&content_layout, 7., fields),
+					alternate,
+					&unit_layout,
+					&content_layout,
+					&alternate_layout,
+				),
+				&f64_layout(&[]),
 			);
 			let GPoll::Final(value) = node.eval(&ctx) else {
 				panic!("expected a final record");

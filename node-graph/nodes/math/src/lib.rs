@@ -1064,6 +1064,23 @@ mod graphene_test {
 		unsafe { layout.rec(value).element::<T>() }
 	}
 
+	fn out_layout<T: Clone + Send + Sync + core_types::StaticTypeSized>() -> Layout
+	where
+		<T as core_types::StaticTypeSized>::Static: Clone + Send + Sync,
+	{
+		Layout::default().with_writes(0, core_types::record::element_write::<T>(), &[])
+	}
+
+	fn installed<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
+		node.set_layout(core_types::record::RecordLayout {
+			frame_bytes: layout.frame_bytes(),
+			plan: Vec::new(),
+			layout: layout.clone(),
+			lane_invariant: u32::MAX,
+		});
+		node
+	}
+
 	#[test]
 	fn generated_add_evaluates_through_the_node_path() {
 		let arena = Arena::new(64).unwrap();
@@ -1072,8 +1089,8 @@ mod graphene_test {
 
 		let (a, la) = lifted(SourceNode(1.0f64));
 		let (b, lb) = lifted(SourceNode(2.0f64));
-		let graph = AddNode::<_, _, f64, f64>::new(a, b, &la, &lb);
-		let out = Node::<ContextImpl>::layout(&graph).clone();
+		let out = out_layout::<f64>();
+		let graph = installed(AddNode::<_, _, f64, f64>::new(a, b, &la, &lb), &out);
 		reserve_for(&[&la, &lb, &out]);
 
 		let GPoll::Final(value) = Node::eval(&graph, &ctx) else {
@@ -1090,12 +1107,12 @@ mod graphene_test {
 
 		let (index, li) = lifted(IndexNode);
 		let (src, ls) = lifted(SourceNode(10.0f64));
-		let node = AddNode::<_, _, f64, f64>::new(index, src, &li, &ls);
-		let out = Node::<ContextImpl>::layout(&node).clone();
+		let out = out_layout::<f64>();
+		let node = installed(AddNode::<_, _, f64, f64>::new(index, src, &li, &ls), &out);
 		reserve_for(&[&li, &ls, &out]);
 
 		let erased: Box<ErasedRecordNode> = Box::new(node);
-		// One u64 word per lane: the uninstalled layout keeps the f64 inline.
+		// One u64 word per lane at the element-only layout.
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
 		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch));
 		let BatchStatus::Filled(batch, finality, _) = status else {
@@ -1114,8 +1131,14 @@ mod graphene_test {
 		let ctx = ContextImpl::root(&scope);
 
 		let entries = super::_logical_or_mod::logical_or_entries();
-		let wired = construct(&entries[0], vec![record_value_edge(true), record_value_edge(false)]).unwrap();
-		let layout = wired.layout().clone();
+		let mut wired = construct(&entries[0], vec![record_value_edge(true), record_value_edge(false)]).unwrap();
+		let layout = out_layout::<bool>();
+		wired.set_layout(core_types::record::RecordLayout {
+			frame_bytes: layout.frame_bytes(),
+			plan: Vec::new(),
+			layout: layout.clone(),
+			lane_invariant: u32::MAX,
+		});
 		let edge = wired.downcast_record::<bool>().unwrap();
 		reserve_for(&[&layout]);
 
@@ -1154,8 +1177,14 @@ mod graphene_test {
 		);
 		assert_eq!(entries[3].io.return_value, core_types::registry::record_type::<DVec2>());
 
-		let wired = construct(&entries[0], vec![record_value_edge(1.5f64), record_value_edge(2.5f64)]).unwrap();
-		let layout = wired.layout().clone();
+		let mut wired = construct(&entries[0], vec![record_value_edge(1.5f64), record_value_edge(2.5f64)]).unwrap();
+		let layout = out_layout::<f64>();
+		wired.set_layout(core_types::record::RecordLayout {
+			frame_bytes: layout.frame_bytes(),
+			plan: Vec::new(),
+			layout: layout.clone(),
+			lane_invariant: u32::MAX,
+		});
 		let edge = wired.downcast_record::<f64>().unwrap();
 		reserve_for(&[&layout]);
 
@@ -1306,8 +1335,8 @@ mod graphene_test {
 
 		let (fallback, lfb) = lifted(FallbackNode);
 		let (src, ls) = lifted(SourceNode(5.0f64));
-		let graph = AddNode::<_, _, f64, f64>::new(fallback, src, &lfb, &ls);
-		let out = Node::<ContextImpl>::layout(&graph).clone();
+		let out = out_layout::<f64>();
+		let graph = installed(AddNode::<_, _, f64, f64>::new(fallback, src, &lfb, &ls), &out);
 		reserve_for(&[&lfb, &ls, &out]);
 
 		let GPoll::Fallback(boxed) = Node::eval(&graph, &ctx) else {

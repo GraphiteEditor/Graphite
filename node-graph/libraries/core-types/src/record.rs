@@ -662,7 +662,7 @@ impl<'e, C, N: Node<C, Output = RecordValue<'e>>> RecordEdge<'e, C> for N {}
 /// Builds an element-only record from a kernel's poll: inline layouts land
 /// in the value, larger ones spill to the record stack, arena exhaustion of
 /// a parked element reports as an error poll.
-pub fn lift_poll<'e, T: Send + Sync>(poll: GPoll<T>, layout: &Layout, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
+pub(crate) fn lift_poll<'e, T: Send + Sync>(poll: GPoll<T>, layout: &Layout, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
 	let build = |element: T| {
 		if layout.frame_bytes() == 0 {
 			let mut value = RecordValue::zeroed();
@@ -1075,7 +1075,7 @@ pub mod stack {
 	/// Releases everything above `frame`'s `bytes`-sized region, keeping the
 	/// region itself. A node reclaims its inputs' frames on return but leaves
 	/// its own output readable for its consumer.
-	pub fn truncate_above(frame: *mut u8, bytes: usize) {
+	pub(crate) fn truncate_above(frame: *mut u8, bytes: usize) {
 		STACK.with(|stack| {
 			let top = frame as usize - stack.base.get() as usize + bytes.next_multiple_of(8);
 			debug_assert!(top <= stack.sp.get(), "truncate target must lie within the claimed stack");
@@ -1117,15 +1117,19 @@ pub mod stack {
 		}
 	}
 
+	/// Releases everything claimed above `mark`; a pointer already at or
+	/// below it stays.
+	pub(crate) fn release_above(mark: usize) {
+		STACK.with(|stack| {
+			if mark < stack.sp.get() {
+				stack.sp.set(mark);
+			}
+		});
+	}
+
 	impl Drop for ScopeGuard {
 		fn drop(&mut self) {
-			STACK.with(|stack| {
-				// An interrupt close may already have rewound below the entry;
-				// the scope only ever releases, never re-claims.
-				if self.mark < stack.sp.get() {
-					stack.sp.set(self.mark);
-				}
-			});
+			release_above(self.mark);
 		}
 	}
 
@@ -1138,27 +1142,6 @@ pub mod stack {
 	pub unsafe fn scoped<R>(body: impl FnOnce() -> R) -> R {
 		let _scope = unsafe { ScopeGuard::enter() };
 		body()
-	}
-}
-
-/// Reclaims the frames an inline node's inputs push. An inline node returns
-/// its output by value rather than on the stack, so it has no frame whose
-/// `truncate_above` would release its inputs; this guard captures the entry
-/// pointer and rewinds to it on drop instead. Inactive (a no-op) for spilled
-/// nodes, which release their inputs through their own frame.
-pub struct ReclaimGuard {
-	scope: Option<stack::ScopeGuard>,
-}
-
-impl ReclaimGuard {
-	/// # Safety
-	/// When `active`, the node must return its output by value, so that no
-	/// record into the region above the entry pointer is live once its eval
-	/// returns and the guard rewinds.
-	pub unsafe fn new(active: bool) -> Self {
-		Self {
-			scope: active.then(|| unsafe { stack::ScopeGuard::enter() }),
-		}
 	}
 }
 
@@ -1258,12 +1241,9 @@ impl<'l, 'e> FrameBuilder<'l, 'e> {
 	pub fn finish(mut self) -> Option<RecordValue<'e>> {
 		assert!(self.wrote_element || self.layout.element.size == 0, "the element serves before the frame closes");
 		let value = match self.frame.take() {
-			Some(frame) => {
-				stack::pop(frame);
-				// SAFETY: the frame was claimed for this layout and stays
-				// readable until the next claim.
-				RecordValue::spilled(unsafe { Rec::new(frame.cast_const()) })
-			}
+			// SAFETY: the frame was claimed for this layout and stays claimed,
+			// keeping the frame contract for the consumer's release.
+			Some(frame) => RecordValue::spilled(unsafe { Rec::new(frame.cast_const()) }),
 			None => std::mem::replace(&mut self.value, RecordValue::zeroed()),
 		};
 		match self.exhausted {
@@ -1274,11 +1254,7 @@ impl<'l, 'e> FrameBuilder<'l, 'e> {
 }
 
 impl Drop for FrameBuilder<'_, '_> {
-	fn drop(&mut self) {
-		if let Some(frame) = self.frame {
-			stack::pop(frame);
-		}
-	}
+	fn drop(&mut self) {}
 }
 
 /// Field-by-field carry from `from`'s layout into `to`'s, computed at
@@ -1320,7 +1296,7 @@ pub unsafe fn write_field<T>(dst: *mut u8, offset: usize, value: T) {
 /// `dst` must be the claimed frame (or inline scratch when `frame_bytes` is
 /// 0) of a record whose element is `T` and whose frame size is `frame_bytes`,
 /// with every carried field already written.
-pub unsafe fn lift_poll_into<'e, T: Send + Sync>(poll: GPoll<T>, dst: *mut u8, frame_bytes: usize, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
+pub(crate) unsafe fn lift_poll_into<'e, T: Send + Sync>(poll: GPoll<T>, dst: *mut u8, frame_bytes: usize, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
 	let release = || {
 		if frame_bytes != 0 {
 			stack::truncate_above(dst, frame_bytes);
@@ -1713,6 +1689,124 @@ pub fn claim_frame(layout: &Layout) {
 pub unsafe fn interrupt_frame(entry: usize, layout: &Layout) {
 	unsafe { stack::rewind(entry) };
 	claim_frame(layout);
+}
+
+/// A node's own output frame, claimed at eval entry: the one closing surface
+/// for every exit. Writes land through it, [`Self::lift`] and [`Self::finish`]
+/// serve the record, and its drop releases everything claimed above the frame
+/// while keeping the frame itself, so the frame contract holds on value,
+/// error, and pending exits alike with no per-exit ritual.
+pub struct FrameClaim<'l> {
+	layout: &'l Layout,
+	inline: RecordValue<'static>,
+	frame: Option<*mut u8>,
+	own_end: usize,
+}
+
+impl<'l> FrameClaim<'l> {
+	/// Claims the layout's frame at the stack pointer; an inline layout's
+	/// record builds in the value itself.
+	pub fn enter(layout: &'l Layout) -> Self {
+		let frame = match layout.frame_bytes() {
+			0 => None,
+			bytes => Some(stack::push(bytes)),
+		};
+		Self {
+			layout,
+			inline: RecordValue::zeroed(),
+			frame,
+			own_end: stack::sp(),
+		}
+	}
+
+	fn dst(&mut self) -> *mut u8 {
+		match self.frame {
+			Some(frame) => frame,
+			None => (&raw mut self.inline).cast(),
+		}
+	}
+
+	/// Asserts the served element matches the wired layout, so a node whose
+	/// layout never resolved (or resolved at another type) panics here
+	/// instead of writing past its frame.
+	fn check_element<T: dyn_any::StaticTypeSized>(&self) {
+		let (size, _) = element_dims::<T>();
+		assert!(
+			self.layout.element.size == size && self.layout.element.parked == element_parked::<T>() && self.layout.element.type_id == std::any::TypeId::of::<T::Static>(),
+			"the served element `{}` ({size} bytes) must match the wired layout ({} bytes)",
+			std::any::type_name::<T>(),
+			self.layout.element.size,
+		);
+	}
+
+	/// Carries the plan's fields from a source record into the frame.
+	///
+	/// # Safety
+	/// `src` must be a live record of the plan's source layout, and the plan
+	/// must be the wiring-resolved plan of this frame's layout.
+	pub unsafe fn carry(&mut self, src: Rec, plan: &[(usize, usize, usize)]) {
+		unsafe { apply_plan(src, self.dst(), plan) };
+	}
+
+	/// Writes a field at its wiring-resolved offset.
+	///
+	/// # Safety
+	/// `offset` must be this layout's resolved offset for a field of `T`.
+	pub unsafe fn attr_at<T>(&mut self, offset: usize, value: T) {
+		unsafe { write_field(self.dst(), offset, value) };
+	}
+
+	/// Writes the element; `None` reports arena exhaustion for a parked
+	/// element. Panics where the element does not match the wired layout.
+	pub fn element<T: Send + Sync + dyn_any::StaticTypeSized>(&mut self, value: T, arena: &crate::arena::Arena) -> Option<()> {
+		self.check_element::<T>();
+		// SAFETY: the frame is this layout's fresh claim and the element
+		// check pinned `T` to the layout's element slot.
+		unsafe { write_element(self.dst(), value, arena) }
+	}
+
+	/// Lifts a kernel's poll into the frame and closes it: the element
+	/// writes on value polls, every poll keeps the frame claimed, and arena
+	/// exhaustion of a parked element reports as an error poll. Panics where
+	/// the element does not match the wired layout.
+	pub fn lift<'e, T: Send + Sync + dyn_any::StaticTypeSized>(mut self, poll: GPoll<T>, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
+		self.check_element::<T>();
+		let frame_bytes = self.layout.frame_bytes();
+		let dst = self.dst();
+		// SAFETY: the frame is this layout's fresh claim, the element check
+		// pinned `T`, and the drop keeps the frame contract on every poll.
+		unsafe { lift_poll_into(poll, dst, frame_bytes, arena) }
+	}
+
+	/// Copies a complete record of this layout into the frame, for serving
+	/// cached or published bytes.
+	///
+	/// # Safety
+	/// `src` must point at a live record of this layout whose parked
+	/// references outlive the serving evaluation.
+	pub unsafe fn fill_copy(&mut self, src: *const u8) {
+		unsafe { std::ptr::copy_nonoverlapping(src, self.dst(), self.layout.size) };
+	}
+
+	/// The served record. The frame stays claimed for the consumer; the drop
+	/// releases only what was claimed above it.
+	///
+	/// # Safety
+	/// The frame must hold a complete record of the layout, written through
+	/// the carry, element, and field writes.
+	pub unsafe fn finish<'e>(mut self) -> RecordValue<'e> {
+		match self.frame {
+			Some(frame) => RecordValue::spilled(unsafe { Rec::new(frame.cast_const()) }),
+			// SAFETY: the inline record is the value's own bytes.
+			None => unsafe { (&raw mut self.inline).cast::<RecordValue<'e>>().read() },
+		}
+	}
+}
+
+impl Drop for FrameClaim<'_> {
+	fn drop(&mut self) {
+		stack::release_above(self.own_end);
+	}
 }
 
 /// A record deep-copied out of its evaluation: the packed bytes plus owned

@@ -1224,12 +1224,29 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.collect::<Vec<(usize, &AttributeRead)>>()
 	};
 
-	// Interrupt exits close the frame like every other exit: rewind to the
-	// scope's entry pointer (claimed frames above it are dead once the exit
-	// carries no value) and claim the node's own frame. `_entry_sp` is bound
-	// at the top of `eval` and per lane in the generated batch body.
-	let interrupt_close = quote! {
-		unsafe { #core_types::record::interrupt_frame(_entry_sp, <Self as #core_types::node::Node<#ctx_ident>>::layout(self)) };
+	// A serving node's interrupt exits close through the frame claim's drop;
+	// a forwarding node still closes by hand, since its kernel serves the
+	// record and a top-level claim would double the frame.
+	let claims_frame = flip || record_io;
+	let interrupt_close = match claims_frame {
+		true => quote!(),
+		false => quote! {
+			unsafe { #core_types::record::interrupt_frame(_entry_sp, <Self as #core_types::node::Node<#ctx_ident>>::layout(self)) };
+		},
+	};
+	let frame_entry = match claims_frame {
+		true => quote! {
+			#[allow(unused_mut, unused_variables)]
+			let mut __frame = #core_types::record::FrameClaim::enter(<Self as #core_types::node::Node<#ctx_ident>>::layout(self));
+		},
+		false => quote!(let _entry_sp = #core_types::record::stack::sp();),
+	};
+	let lane_frame_entry = match claims_frame {
+		true => quote! {
+			#[allow(unused_mut, unused_variables)]
+			let mut __frame = #core_types::record::FrameClaim::enter(__node_layout);
+		},
+		false => quote!(let _entry_sp = #core_types::record::stack::sp();),
 	};
 	let bind_body = |index: usize, field: &ParsedField, batch_mode: bool| {
 		let name = &field.pat_ident.ident;
@@ -1737,17 +1754,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		};
 		let clamp = clamp_tokens(field);
 		quote! {
-			let mut __carried = #core_types::record::RecordValue::zeroed();
-			let __dst = match self.__frame_bytes {
-				0 => __carried.as_mut_ptr(),
-				__bytes => #core_types::record::stack::push(__bytes),
-			};
 			let __src = match __cell.eval_input(0, &self.#name, __input) {
 				Ok(value) => value,
-				Err(interrupt) => { #interrupt_close return interrupt.into(); }
+				Err(interrupt) => return interrupt.into(),
 			};
 			let __src_rec = self.__in_0.rec(&__src);
-			unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
+			unsafe { __frame.carry(__src_rec, &self.__plan) };
 			#read
 			#clamp
 		}
@@ -1755,16 +1767,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// Async slots persist plain values across evaluations; a flipped source
 	// lifts the slot value onto its record wire at every merge point, into
 	// the carried frame when the node has a carrier.
-	let merge_lifted = |poll: TokenStream2| match (flip, carrier_flip) {
-		(true, true) => {
-			quote!(__cell.merge(unsafe { #core_types::record::lift_poll_into(#poll, __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) }))
-		}
-		(true, false) => quote!(__cell.merge(#core_types::record::lift_poll(#poll, &self.__layout, #core_types::context::ExtractArena::arena(__input)))),
-		(false, _) => quote!(__cell.merge(#poll)),
+	let merge_lifted = |poll: TokenStream2| match flip {
+		true => quote!(__cell.merge(__frame.lift(#poll, #core_types::context::ExtractArena::arena(__input)))),
+		false => quote!(__cell.merge(#poll)),
 	};
 	let pending_return = match flip && carrier_flip {
 		true => quote! {
-			unsafe { #core_types::record::lift_poll_into::<#slot_ty>(#core_types::gpoll::GPoll::Pending, __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) }
+			__frame.lift::<#slot_ty>(#core_types::gpoll::GPoll::Pending, #core_types::context::ExtractArena::arena(__input))
 		},
 		false => quote!({ #interrupt_close #core_types::gpoll::GPoll::Pending }),
 	};
@@ -1854,13 +1863,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let __src_rec = self.__carrier.rec(&__src);
 			}
 		});
-		let carry = (!skips_carrier && !lazy_carrier).then(|| quote!(unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };));
+		let carry = (!skips_carrier && !lazy_carrier).then(|| quote!(unsafe { __frame.carry(__src_rec, &self.__plan) };));
 		// A lazy carrier's source record is the token the kernel returned; its
-		// content frames sit above `__dst` and stay readable until the truncate.
+		// content frames sit above the claim and stay readable until its drop.
 		let lazy_carry = match lazy_carrier {
 			true => quote! {
 				let __src_rec = self.__carrier.rec(&__element);
-				unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
+				unsafe { __frame.carry(__src_rec, &self.__plan) };
 			},
 			false => TokenStream2::new(),
 		};
@@ -1868,7 +1877,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let gather_carry = match gather_carrier {
 			true => quote! {
 				let __src_rec = __element.rec();
-				unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
+				unsafe { __frame.carry(__src_rec, &self.__plan) };
 			},
 			false => TokenStream2::new(),
 		};
@@ -1918,7 +1927,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let element_store = element_write.map(|ty| {
 			let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'_");
 			quote! {
-				if unsafe { #core_types::record::write_element::<#ty>(__dst, __element, #core_types::context::ExtractArena::arena(__input)) }.is_none() {
+				if __frame.element::<#ty>(__element, #core_types::context::ExtractArena::arena(__input)).is_none() {
 					return #core_types::gpoll::Interrupt::from(#core_types::gpoll::GraphError {
 						kind: #core_types::gpoll::ErrorKind::ArenaExhausted,
 						trace: ::std::vec::Vec::new(),
@@ -1929,14 +1938,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		});
 		let attr_stores = attr_binders.iter().enumerate().map(|(index, binder)| {
 			let slot = format_ident!("__write_{index}");
-			quote!(unsafe { #core_types::record::write_field(__dst, self.#slot, #binder) };)
+			quote!(unsafe { __frame.attr_at(self.#slot, #binder) };)
 		});
 		quote! {
-			let mut __value = #core_types::record::RecordValue::zeroed();
-			let __dst = match self.__frame_bytes {
-				0 => __value.as_mut_ptr(),
-				__bytes => #core_types::record::stack::push(__bytes),
-			};
 			#carrier_eval
 			#carry
 			#(#carrier_read_bindings)*
@@ -1946,10 +1950,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#gather_carry
 			#element_store
 			#(#attr_stores)*
-			if self.__frame_bytes != 0 {
-				#core_types::record::stack::truncate_above(__dst, self.__frame_bytes);
-				__value = #core_types::record::RecordValue::spilled(unsafe { #core_types::record::Rec::new(__dst.cast_const()) });
-			}
+			// SAFETY: the carry and the writes above complete the record.
+			let __value = unsafe { __frame.finish() };
 		}
 	});
 	let record_tail = record_tail_core.clone().map(|core| {
@@ -1960,49 +1962,26 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	});
 	let flip_tail = flip.then(|| {
 		if matches!(*model, Dialect::Poll) {
-			return match &carried_prelude {
-				Some(prelude) => quote! {
-					#prelude
-					__cell.merge(unsafe { #core_types::record::lift_poll_into(#kernel_call, __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) })
-				},
-				None => quote! {
-					let mut __scratch = #core_types::record::RecordValue::zeroed();
-					let __dst = match self.__frame_bytes {
-						0 => __scratch.as_mut_ptr(),
-						__bytes => #core_types::record::stack::push(__bytes),
-					};
-					__cell.merge(unsafe { #core_types::record::lift_poll_into(#kernel_call, __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) })
-				},
+			let prelude = carried_prelude.clone().unwrap_or_default();
+			return quote! {
+				#prelude
+				__cell.merge(__frame.lift(#kernel_call, #core_types::context::ExtractArena::arena(__input)))
 			};
 		}
 		let kernel_value = match *model {
 			Dialect::Interrupt => quote! {
 				match #kernel_call {
 					Ok(value) => value,
-					Err(interrupt) => { #interrupt_close return interrupt.into(); }
+					Err(interrupt) => return interrupt.into(),
 				}
 			},
 			_ => quote!(#kernel_call),
 		};
-		match &carried_prelude {
-			// The carrier evaluates beyond the claimed frame, so the kernel
-			// runs after the push.
-			Some(prelude) => quote! {
-				#prelude
-				let __kernel_value = #kernel_value;
-				__cell.merge(unsafe {
-					#core_types::record::lift_poll_into(#core_types::gpoll::GPoll::Final(__kernel_value), __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input))
-				})
-			},
-			None => quote! {
-				let mut __scratch = #core_types::record::RecordValue::zeroed();
-				let __dst = match self.__frame_bytes {
-					0 => __scratch.as_mut_ptr(),
-					__bytes => #core_types::record::stack::push(__bytes),
-				};
-				let __kernel_value = #kernel_value;
-				__cell.merge(unsafe { #core_types::record::lift_poll_into(#core_types::gpoll::GPoll::Final(__kernel_value), __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) })
-			},
+		let prelude = carried_prelude.clone().unwrap_or_default();
+		quote! {
+			#prelude
+			let __kernel_value = #kernel_value;
+			__cell.merge(__frame.lift(#core_types::gpoll::GPoll::Final(__kernel_value), #core_types::context::ExtractArena::arena(__input)))
 		}
 	});
 	let tail_form = if async_fn {
@@ -2117,8 +2096,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						true => {
 							let mark = format_ident!("__scope_{index}");
 							quote! {
-								// SAFETY: the bind copies its reads out by value; the
-								// drop point matches the old rewind.
+								// SAFETY: the bind's reads copy out by value.
 								let #mark = unsafe { #core_types::record::stack::ScopeGuard::enter() };
 								#body
 								drop(#mark);
@@ -2198,10 +2176,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					for __lane in 0..__len {
 						#core_types::context::InjectIndex::set_index(&mut __lane_ctx, __range.start + __lane as u64);
 						let __input = &__lane_ctx;
-						// SAFETY: the lane's record is copied out before the scope
-						// releases it, and valueless exits serve nothing above it.
+						// SAFETY: the lane's record copies out before the scope
+						// releases it.
 						let __lane_scope = unsafe { #core_types::record::stack::ScopeGuard::enter() };
-						let _entry_sp = #core_types::record::stack::sp();
+						#lane_frame_entry
 						let __cell = __cell.snapshot();
 						#(#rebinds)*
 						#(#binds)*
@@ -2266,10 +2244,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					if __scratch.len() * 8 < __len * __stride {
 						return #core_types::node::BatchStatus::InvalidRange;
 					}
-					// SAFETY: every lane copies into the caller's scratch, so
-					// nothing served above the entry escapes the batch scope.
+					// SAFETY: every lane copies into the caller's scratch.
 					let __entry_scope = unsafe { #core_types::record::stack::ScopeGuard::enter() };
-					let _entry_sp = #core_types::record::stack::sp();
 					let __cell = #cell_constructor;
 					let __base_ctx = {
 						let mut __ctx = *__input;
@@ -2315,7 +2291,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 			// The element store parks droppable elements in the arena.
 			if let Some(ty) = element_write {
-				bounds.push({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static) });
+				bounds.push({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::marker::Send + ::core::marker::Sync + #core_types::StaticTypeSized + 'static) });
 			}
 		}
 		// A routing node's value elements copy out of their records.
@@ -2357,7 +2333,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				})
 				.collect();
 			let out = crate::codegen::classify::substitute_lifetimes(&slot_value_type(&parsed.output_type), "'static");
-			bounds.push(quote!(#out: ::core::marker::Send + ::core::marker::Sync + 'static));
+			bounds.push(quote!(#out: ::core::marker::Send + ::core::marker::Sync + #core_types::StaticTypeSized + 'static));
 			bounds
 		}
 		false => Vec::new(),
@@ -2571,27 +2547,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 
-	// An inline node only leaks if an input spilled a frame. Flip nodes store
-	// each input's layout, so gate precisely; inline record-io nodes are rare
-	// (attributes usually spill the output) and their value-input layouts are
-	// not all stored, so guard them whenever inline.
-	let reclaim_active = match flip {
-		true => {
-			let spilled_inputs = (0..regular_fields.len()).map(|index| {
-				let slot = format_ident!("__in_{index}");
-				quote!(self.#slot.frame_bytes() != 0)
-			});
-			quote!(self.__frame_bytes == 0 && (false #(|| #spilled_inputs)*))
-		}
-		false => quote!(self.__frame_bytes == 0),
-	};
-	let reclaim_guard = (flip || record_io).then(|| {
-		quote! {
-			// SAFETY: an inline node returns its output by value, so nothing above the entry pointer is live when the guard rewinds.
-			let __reclaim_guard = unsafe { #core_types::record::ReclaimGuard::new(#reclaim_active) };
-		}
-	});
-
 	// The eval body as an ordered step sequence: bind each input, clamp, then the
 	// tail. The record-stack mark/rewind of a read-out bind is applied here from
 	// the role, so the discipline is structural rather than per-arm.
@@ -2617,8 +2572,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				true => {
 					let mark = format_ident!("__scope_{index}");
 					quote! {
-						// SAFETY: the bind copies its reads out by value; the drop
-						// point matches the old rewind.
+						// SAFETY: the bind's reads copy out by value.
 						let #mark = unsafe { #core_types::record::stack::ScopeGuard::enter() };
 						#body
 						drop(#mark);
@@ -2665,9 +2619,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						false => None,
 					}
 				};
-				let _entry_sp = #core_types::record::stack::sp();
+				#frame_entry
 				let __cell = #cell_constructor;
-				#reclaim_guard
 				#(#eval_body)*
 			}
 
