@@ -230,9 +230,19 @@ impl<T> Copy for List<'_, T> {}
 
 impl<'a, T> List<'a, T> {
 	/// # Safety
-	/// `T` must be the batch's record element type, proven at the consumer's wiring.
+	/// `T` must be the batch's record element type, proven at the consumer's
+	/// wiring, and the batch's frames must stay valid for the evaluation:
+	/// arena-resident batches qualify, caller stack scratch does not.
 	pub unsafe fn new(batch: RecordBatch<'a>) -> Self {
 		Self { batch, _element: PhantomData }
+	}
+
+	/// The level as a group item over the same frames, without copying.
+	/// Panics where a parked element or field lacks content glue.
+	pub fn as_group_item(&self) -> crate::record::GroupItem<'a> {
+		// SAFETY: `List::new` established the frames stay valid for the
+		// evaluation.
+		unsafe { crate::record::GroupItem::from_resident(self.batch) }
 	}
 
 	pub fn len(&self) -> usize {

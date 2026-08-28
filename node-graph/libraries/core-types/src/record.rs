@@ -2034,26 +2034,30 @@ impl<'e> RunBuilder<'e> {
 
 	/// The finished run. Panics unless every lane was pushed, since an
 	/// unwritten parked element slot must never become readable.
-	pub fn finish(self) -> GroupItem {
+	pub fn finish(self) -> GroupItem<'e> {
 		assert_eq!(self.pushed, self.len, "every lane pushes before the run finishes");
 		GroupItem {
 			layout: self.layout,
 			storage: ItemStorage::Resident(self.frames.cast_const()),
 			len: self.len,
+			_arena: std::marker::PhantomData,
 		}
 	}
 }
 
 /// `len` records stored in the arena at `layout`'s stride. The layout is
-/// owned by the value and identifies the run's element type. The records are
-/// valid for the current evaluation, like every arena payload. An owned item
-/// ([`Self::copy_out`]) survives the generation instead, and must
-/// [`Self::replay`] into a serving arena before any read.
+/// owned by the value and identifies the run's element type. A resident item
+/// borrows the serving arena at `'e`, so it cannot outlive the evaluation. An
+/// owned item ([`Self::copy_out`]) is the `'static` form: it survives the
+/// generation, refuses lane reads, and re-enters a serving arena through
+/// [`Self::replay`]. Safe code cannot mint a resident `GroupItem<'static>`,
+/// so the lifetime instantiation is the resident/owned distinction.
 #[derive(Clone, Debug)]
-pub struct GroupItem {
+pub struct GroupItem<'e> {
 	layout: Layout,
 	storage: ItemStorage,
 	len: usize,
+	_arena: std::marker::PhantomData<&'e ()>,
 }
 
 #[derive(Clone)]
@@ -2083,16 +2087,16 @@ struct OwnedLanes {
 // SAFETY: the same argument as for `RecordValue`. The element bounds and the
 // parking discipline make the record bytes thread-safe, and their validity
 // is tied to the shared arena.
-unsafe impl Send for GroupItem {}
+unsafe impl Send for GroupItem<'_> {}
 // SAFETY: as `Send`.
-unsafe impl Sync for GroupItem {}
+unsafe impl Sync for GroupItem<'_> {}
 
-impl GroupItem {
+impl<'e> GroupItem<'e> {
 	/// Copies the batch's lanes into the arena and clones its layout.
 	/// Returns `None` when the arena is exhausted. Parked regions must carry
 	/// the content glue, so equality and hashing never fall back to pointer
 	/// bytes.
-	pub fn adopt(batch: crate::node::RecordBatch<'_>, arena: &crate::arena::Arena) -> Option<Self> {
+	pub fn adopt(batch: crate::node::RecordBatch<'_>, arena: &'e crate::arena::Arena) -> Option<Self> {
 		let layout = batch.layout().clone();
 		assert!(!layout.element.parked || layout.element.content_hash.is_some(), "a parked element adopts only with content glue");
 		for field in &layout.fields {
@@ -2109,6 +2113,7 @@ impl GroupItem {
 			layout,
 			storage: ItemStorage::Resident(frames.cast_const()),
 			len: batch.len(),
+			_arena: std::marker::PhantomData,
 		})
 	}
 
@@ -2117,7 +2122,10 @@ impl GroupItem {
 	/// form. An undeclared key has no field form and is dropped; a wrong-typed
 	/// stored value leaves its field's default, matching the legacy read.
 	/// `None` reports arena exhaustion.
-	pub fn from_list<T: Clone + Send + Sync + graphene_hash::CacheHash + PartialEq + 'static>(list: crate::list::List<T>, arena: &crate::arena::Arena) -> Option<GroupItem> {
+	pub fn from_list<T: Clone + Send + Sync + graphene_hash::CacheHash + PartialEq + dyn_any::StaticTypeSized>(list: crate::list::List<T>, arena: &'e crate::arena::Arena) -> Option<GroupItem<'e>>
+	where
+		T::Static: Clone + Send + Sync,
+	{
 		let declared: Vec<crate::attribute::AttributeInfo> = list.attribute_keys().filter_map(crate::attribute::info).collect();
 		let writes: Vec<FieldWrite> = declared.iter().map(|info| (info.field_write_at)(0)).collect();
 		let mut builder = RunBuilder::new(arena, element_write_hashed::<T>(), &writes, list.len())?;
@@ -2157,7 +2165,7 @@ impl GroupItem {
 	/// # Safety
 	/// The frames must stay valid for the evaluation. Arena-resident batches
 	/// qualify, caller stack scratch does not.
-	pub unsafe fn from_resident(batch: crate::node::RecordBatch<'_>) -> Self {
+	pub unsafe fn from_resident(batch: crate::node::RecordBatch<'e>) -> Self {
 		let layout = batch.layout().clone();
 		assert!(!layout.element.parked || layout.element.content_hash.is_some(), "a parked element adopts only with content glue");
 		for field in &layout.fields {
@@ -2167,6 +2175,7 @@ impl GroupItem {
 			storage: ItemStorage::Resident(batch.frames_ptr()),
 			len: batch.len(),
 			layout,
+			_arena: std::marker::PhantomData,
 		}
 	}
 
@@ -2181,9 +2190,14 @@ impl GroupItem {
 	/// The item deep-copied out of its evaluation: lane bytes plus owned
 	/// clones of every parked payload, for storage that outlives the arena
 	/// generation. An owned item cannot be read until it replays.
-	pub fn copy_out(&self) -> GroupItem {
+	pub fn copy_out(&self) -> GroupItem<'static> {
 		if let ItemStorage::Owned(_) = &self.storage {
-			return self.clone();
+			return GroupItem {
+				layout: self.layout.clone(),
+				storage: self.storage.clone(),
+				len: self.len,
+				_arena: std::marker::PhantomData,
+			};
 		}
 		let stride = self.layout.lane_stride();
 		let frames = self.frames();
@@ -2217,15 +2231,18 @@ impl GroupItem {
 			layout: self.layout.clone(),
 			storage: ItemStorage::Owned(std::sync::Arc::new(OwnedLanes { bytes, elements, fields })),
 			len: self.len,
+			_arena: std::marker::PhantomData,
 		}
 	}
 
 	/// Re-parks an owned item's lanes into `arena`, restoring the resident
 	/// form; `None` reports arena exhaustion. A resident item returns a plain
 	/// clone.
-	pub fn replay(&self, arena: &crate::arena::Arena) -> Option<GroupItem> {
+	pub fn replay<'a>(&self, arena: &'a crate::arena::Arena) -> Option<GroupItem<'a>> {
 		let ItemStorage::Owned(owned) = &self.storage else {
-			return Some(self.clone());
+			// A resident item re-serves at the target arena's own lifetime,
+			// so its lanes copy rather than relabeling the borrow.
+			return GroupItem::adopt(self.lanes(), arena);
 		};
 		let stride = self.layout.lane_stride();
 		let scratch = arena.alloc_scratch::<u64>((self.len * stride).div_ceil(8))?;
@@ -2256,13 +2273,14 @@ impl GroupItem {
 			layout: self.layout.clone(),
 			storage: ItemStorage::Resident(frames.cast_const()),
 			len: self.len,
+			_arena: std::marker::PhantomData,
 		})
 	}
 
 	/// A typed view over the stored records, checked against the layout's
 	/// element type.
-	pub fn typed_lanes<T: 'static>(&self) -> Option<crate::node::List<'_, T>> {
-		match self.layout.element.type_id == std::any::TypeId::of::<T>() {
+	pub fn typed_lanes<T: dyn_any::StaticTypeSized>(&self) -> Option<crate::node::List<'_, T>> {
+		match self.layout.element.type_id == std::any::TypeId::of::<T::Static>() {
 			// SAFETY: the layout records the element type the lanes hold.
 			true => Some(unsafe { crate::node::List::new(self.lanes()) }),
 			false => None,
@@ -2273,27 +2291,27 @@ impl GroupItem {
 /// A run read at its element type. Record fields hold each marker's value
 /// verbatim, so lane reads are plain typed reads at a hoisted offset.
 pub struct RunView<'a, T> {
-	item: &'a GroupItem,
+	item: &'a GroupItem<'a>,
 	lanes: crate::node::List<'a, T>,
 }
 
-impl<'a, T: 'static> RunView<'a, T> {
+impl<'a, T: dyn_any::StaticTypeSized> RunView<'a, T> {
 	/// `None` where the run holds another element type.
-	pub fn new(item: &'a GroupItem) -> Option<Self> {
+	pub fn new(item: &'a GroupItem<'a>) -> Option<Self> {
 		item.typed_lanes::<T>().map(|lanes| Self { item, lanes })
 	}
 }
 
 /// A marker's field on a run, its offset resolved once.
 pub struct RunColumn<'a, A: crate::attribute::Attribute> {
-	item: &'a GroupItem,
+	item: &'a GroupItem<'a>,
 	offset: Option<usize>,
 	marker: std::marker::PhantomData<A>,
 }
 
 impl<'a, A: crate::attribute::Attribute> RunColumn<'a, A> {
 	/// The marker's column on an item, its offset resolved once.
-	pub fn of(item: &'a GroupItem) -> Self {
+	pub fn of(item: &'a GroupItem<'a>) -> Self {
 		Self {
 			item,
 			offset: item.layout().offset_of(A::NAME, 0),
@@ -2310,7 +2328,7 @@ impl<'a, A: crate::attribute::Attribute> crate::lane::LaneColumn<'a, A> for RunC
 	}
 }
 
-impl<'a, T: 'static> crate::lane::LaneSource for RunView<'a, T> {
+impl<'a, T: dyn_any::StaticTypeSized> crate::lane::LaneSource for RunView<'a, T> {
 	type Element = T;
 	type Column<'b, A: crate::attribute::Attribute>
 		= RunColumn<'b, A>
@@ -2330,14 +2348,14 @@ impl<'a, T: 'static> crate::lane::LaneSource for RunView<'a, T> {
 	}
 }
 
-impl<T: crate::render_complexity::RenderComplexity + 'static> crate::render_complexity::RenderComplexity for RunView<'_, T> {
+impl<T: crate::render_complexity::RenderComplexity + dyn_any::StaticTypeSized> crate::render_complexity::RenderComplexity for RunView<'_, T> {
 	fn render_complexity(&self) -> usize {
 		use crate::lane::LaneSource;
 		(0..self.lane_count()).filter_map(|lane| self.element(lane)).map(crate::render_complexity::RenderComplexity::render_complexity).sum()
 	}
 }
 
-impl<T: crate::bounds::BoundingBox + 'static> crate::bounds::BoundingBox for RunView<'_, T> {
+impl<T: crate::bounds::BoundingBox + dyn_any::StaticTypeSized> crate::bounds::BoundingBox for RunView<'_, T> {
 	fn bounding_box(&self, transform: glam::DAffine2, include_stroke: bool) -> crate::bounds::RenderBoundingBox {
 		crate::bounds::lane_bounding_box(self, transform, include_stroke)
 	}
@@ -2352,14 +2370,14 @@ impl<T: crate::bounds::BoundingBox + 'static> crate::bounds::BoundingBox for Run
 /// it `None`, because that lane's record carries the attributes. The typed
 /// segment stack returns when merge constructs segments.
 #[derive(Clone, Debug)]
-pub struct Group {
-	pub row: Option<GroupItem>,
-	pub content: GroupItem,
+pub struct Group<'e> {
+	pub row: Option<GroupItem<'e>>,
+	pub content: GroupItem<'e>,
 }
 
-impl Group {
+impl<'e> Group<'e> {
 	/// The group deep-copied out of its evaluation, every run in owned form.
-	pub fn copy_out(&self) -> Group {
+	pub fn copy_out(&self) -> Group<'static> {
 		Group {
 			row: self.row.as_ref().map(GroupItem::copy_out),
 			content: self.content.copy_out(),
@@ -2368,7 +2386,7 @@ impl Group {
 
 	/// Re-parks an owned group's runs into `arena`; `None` reports arena
 	/// exhaustion.
-	pub fn replay(&self, arena: &crate::arena::Arena) -> Option<Group> {
+	pub fn replay<'a>(&self, arena: &'a crate::arena::Arena) -> Option<Group<'a>> {
 		let row = match &self.row {
 			Some(row) => Some(row.replay(arena)?),
 			None => None,
@@ -2421,7 +2439,7 @@ fn layout_shape_hash(layout: &Layout, state: &mut dyn core::hash::Hasher) {
 	}
 }
 
-impl PartialEq for GroupItem {
+impl PartialEq for GroupItem<'_> {
 	fn eq(&self, other: &Self) -> bool {
 		if self.layout != other.layout || self.len != other.len {
 			return false;
@@ -2433,7 +2451,7 @@ impl PartialEq for GroupItem {
 	}
 }
 
-impl graphene_hash::CacheHash for GroupItem {
+impl graphene_hash::CacheHash for GroupItem<'_> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		layout_shape_hash(&self.layout, state);
 		state.write_usize(self.len);
@@ -2446,13 +2464,13 @@ impl graphene_hash::CacheHash for GroupItem {
 	}
 }
 
-impl PartialEq for Group {
+impl PartialEq for Group<'_> {
 	fn eq(&self, other: &Self) -> bool {
 		self.row == other.row && self.content == other.content
 	}
 }
 
-impl graphene_hash::CacheHash for Group {
+impl graphene_hash::CacheHash for Group<'_> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		state.write_u8(self.row.is_some() as u8);
 		if let Some(row) = &self.row {
