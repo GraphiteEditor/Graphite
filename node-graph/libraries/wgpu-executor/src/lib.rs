@@ -61,7 +61,7 @@ impl std::fmt::Debug for WgpuExecutor {
 }
 
 /// Owned Arc handle carrying the executor as an ordinary wire value.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, dyn_any::DynAny)]
 pub struct WgpuExecutorHandle(pub std::sync::Arc<WgpuExecutor>);
 
 impl std::ops::Deref for WgpuExecutorHandle {

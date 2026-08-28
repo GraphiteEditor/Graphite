@@ -250,7 +250,10 @@ mod tests {
 		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
-	fn element_layout<T: Clone + Send + Sync + 'static>() -> core_types::record::Layout {
+	fn element_layout<T: Clone + Send + Sync + core_types::StaticTypeSized>() -> core_types::record::Layout
+	where
+		T::Static: Clone + Send + Sync,
+	{
 		core_types::record::Layout::default().with_writes(0, core_types::record::element_write::<T>(), &[])
 	}
 
@@ -312,6 +315,7 @@ mod tests {
 	#[test]
 	fn memo_copy_out_consults_the_deep_element_clone() {
 		#[derive(Clone, Debug, PartialEq)]
+		#[derive(dyn_any::DynAny)]
 		struct Payload(String, u32);
 		unsafe fn deep(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
 			let value = unsafe { core_types::record::borrow_element::<Payload>(core_types::record::Rec::new(ptr)) };

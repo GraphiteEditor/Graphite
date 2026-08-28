@@ -666,7 +666,7 @@ impl<'e, C, N: Node<C, Output = RecordValue<'e>>> RecordEdge<'e, C> for N {}
 /// Builds an element-only record from a kernel's poll: inline layouts land
 /// in the value, larger ones spill to the record stack, arena exhaustion of
 /// a parked element reports as an error poll.
-pub fn lift_poll<'e, T: Send + Sync + 'static>(poll: GPoll<T>, layout: &Layout, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
+pub fn lift_poll<'e, T: Send + Sync>(poll: GPoll<T>, layout: &Layout, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
 	let build = |element: T| {
 		if layout.frame_bytes() == 0 {
 			let mut value = RecordValue::zeroed();
@@ -1297,7 +1297,7 @@ pub unsafe fn write_field<T>(dst: *mut u8, offset: usize, value: T) {
 /// `dst` must be the claimed frame (or inline scratch when `frame_bytes` is
 /// 0) of a record whose element is `T` and whose frame size is `frame_bytes`,
 /// with every carried field already written.
-pub unsafe fn lift_poll_into<'e, T: Send + Sync + 'static>(poll: GPoll<T>, dst: *mut u8, frame_bytes: usize, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
+pub unsafe fn lift_poll_into<'e, T: Send + Sync>(poll: GPoll<T>, dst: *mut u8, frame_bytes: usize, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
 	let release = || {
 		if frame_bytes != 0 {
 			stack::truncate_above(dst, frame_bytes);
@@ -1367,15 +1367,30 @@ static DEEP_ELEMENT_CLONES: std::sync::LazyLock<std::sync::Mutex<std::collection
 
 /// Registers the deep copy-out and re-park pair for elements of `T`. Called
 /// at startup from the crate that owns the type.
-pub fn register_deep_element_clone<T: 'static>(
+pub fn register_deep_element_clone<T: dyn_any::StaticTypeSized>(
 	clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>,
 	repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
 ) {
-	DEEP_ELEMENT_CLONES.lock().unwrap().insert(std::any::TypeId::of::<T>(), DeepElementGlue { clone_out, repark });
+	DEEP_ELEMENT_CLONES.lock().unwrap().insert(std::any::TypeId::of::<T::Static>(), DeepElementGlue { clone_out, repark });
 }
 
 fn deep_element_glue(type_id: std::any::TypeId) -> Option<DeepElementGlue> {
 	DEEP_ELEMENT_CLONES.lock().unwrap().get(&type_id).copied()
+}
+
+/// The value with its lifetimes substituted by `'static`, for erased storage
+/// whose reads re-bind a live lifetime.
+///
+/// # Safety
+/// The erased value's borrows must not be used past their real lifetimes: the
+/// stored form may only be read through a surface that re-binds a lifetime no
+/// longer than the borrows' own, or after deep glue replaced every borrow with
+/// owned content.
+pub unsafe fn erase_static<T: dyn_any::StaticTypeSized>(value: T) -> T::Static {
+	let value = std::mem::ManuallyDrop::new(value);
+	// SAFETY: `Static` is `Self` with lifetimes substituted, layout-identical
+	// by `StaticTypeSized`'s contract.
+	unsafe { std::ptr::read((&raw const value).cast::<T::Static>()) }
 }
 
 /// Deep-copy overrides for field values whose content borrows the
@@ -1416,18 +1431,29 @@ fn deepen_field_value(value: Box<dyn crate::list::AnyAttributeValue>) -> Box<dyn
 
 /// The element slot a record wire of `T` carries, its erased glue bound at
 /// the statically-known type.
-pub fn element_write<T: Clone + Send + Sync + 'static>() -> ElementWrite {
-	unsafe fn clone_out<T: Clone + Send + Sync + 'static>(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
-		if let Some(deep) = deep_element_glue(std::any::TypeId::of::<T>()) {
+pub fn element_write<T: Clone + Send + Sync + dyn_any::StaticTypeSized>() -> ElementWrite
+where
+	T::Static: Clone + Send + Sync,
+{
+	unsafe fn clone_out<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync>
+	where
+		T::Static: Clone + Send + Sync,
+	{
+		if let Some(deep) = deep_element_glue(std::any::TypeId::of::<T::Static>()) {
 			return unsafe { (deep.clone_out)(ptr) };
 		}
-		Box::new(unsafe { read_element::<T>(Rec::new(ptr)) })
+		// SAFETY: a lifetime-carrying element type registers deep glue, so
+		// this shallow path only erases borrow-free values.
+		Box::new(unsafe { erase_static(read_element::<T>(Rec::new(ptr))) })
 	}
-	unsafe fn repark<T: Clone + Send + Sync + 'static>(value: &(dyn std::any::Any + Send + Sync), dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
-		if let Some(deep) = deep_element_glue(std::any::TypeId::of::<T>()) {
+	unsafe fn repark<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(value: &(dyn std::any::Any + Send + Sync), dst: *mut u8, arena: &crate::arena::Arena) -> Option<()>
+	where
+		T::Static: Clone + Send + Sync,
+	{
+		if let Some(deep) = deep_element_glue(std::any::TypeId::of::<T::Static>()) {
 			return unsafe { (deep.repark)(value, dst, arena) };
 		}
-		let value = value.downcast_ref::<T>().expect("an element replays at its own type");
+		let value = value.downcast_ref::<T::Static>().expect("an element replays at its own type");
 		unsafe { write_element(dst, value.clone(), arena) }
 	}
 	let (size, align) = element_dims::<T>();
@@ -1435,7 +1461,7 @@ pub fn element_write<T: Clone + Send + Sync + 'static>() -> ElementWrite {
 		size,
 		align,
 		parked: element_parked::<T>(),
-		type_id: std::any::TypeId::of::<T>(),
+		type_id: std::any::TypeId::of::<T::Static>(),
 		clone_out: clone_out::<T>,
 		repark: repark::<T>,
 		content_hash: None,
@@ -1445,7 +1471,10 @@ pub fn element_write<T: Clone + Send + Sync + 'static>() -> ElementWrite {
 
 /// [`element_write`] plus the content hashing and equality glue, for element
 /// types that support them.
-pub fn element_write_hashed<T: Clone + Send + Sync + graphene_hash::CacheHash + PartialEq + 'static>() -> ElementWrite {
+pub fn element_write_hashed<T: Clone + Send + Sync + graphene_hash::CacheHash + PartialEq + dyn_any::StaticTypeSized>() -> ElementWrite
+where
+	T::Static: Clone + Send + Sync,
+{
 	unsafe fn content_hash<T: graphene_hash::CacheHash>(ptr: *const u8, state: &mut dyn core::hash::Hasher) {
 		let mut state = state;
 		unsafe { borrow_element::<T>(Rec::new(ptr)) }.cache_hash(&mut state);
@@ -1470,7 +1499,10 @@ pub trait ElementWritePickHashed {
 	fn element_write(&self) -> ElementWrite;
 }
 
-impl<T: Clone + Send + Sync + graphene_hash::CacheHash + PartialEq + 'static> ElementWritePickHashed for ElementWritePick<T> {
+impl<T: Clone + Send + Sync + graphene_hash::CacheHash + PartialEq + dyn_any::StaticTypeSized> ElementWritePickHashed for ElementWritePick<T>
+where
+	T::Static: Clone + Send + Sync,
+{
 	fn element_write(&self) -> ElementWrite {
 		element_write_hashed::<T>()
 	}
@@ -1480,7 +1512,10 @@ pub trait ElementWritePickPlain {
 	fn element_write(&self) -> ElementWrite;
 }
 
-impl<T: Clone + Send + Sync + 'static> ElementWritePickPlain for &ElementWritePick<T> {
+impl<T: Clone + Send + Sync + dyn_any::StaticTypeSized> ElementWritePickPlain for &ElementWritePick<T>
+where
+	T::Static: Clone + Send + Sync,
+{
 	fn element_write(&self) -> ElementWrite {
 		element_write::<T>()
 	}
@@ -1505,7 +1540,7 @@ pub unsafe fn read_element<T: Clone>(rec: Rec) -> T {
 /// # Safety
 /// `dst` must be fresh element storage of a record whose element is `T`.
 /// `None` reports arena exhaustion for a parked element.
-pub unsafe fn write_element<T: Send + Sync + 'static>(dst: *mut u8, value: T, arena: &crate::arena::Arena) -> Option<()> {
+pub unsafe fn write_element<T: Send + Sync>(dst: *mut u8, value: T, arena: &crate::arena::Arena) -> Option<()> {
 	match element_parked::<T>() {
 		true => {
 			let (parked, _) = arena.alloc(value)?;
@@ -1803,7 +1838,10 @@ pub struct RecordLift<El, N> {
 	_marker: std::marker::PhantomData<fn() -> El>,
 }
 
-impl<El: Clone + Send + Sync + 'static, N> RecordLift<El, N> {
+impl<El: Clone + Send + Sync + dyn_any::StaticTypeSized, N> RecordLift<El, N>
+where
+	El::Static: Clone + Send + Sync,
+{
 	pub fn new(edge: N) -> Self {
 		Self {
 			edge,
@@ -1943,8 +1981,8 @@ impl<'e> RunBuilder<'e> {
 
 	/// Starts the next lane: moves its element in and default-fills its
 	/// fields. Returns the lane index; `None` reports arena exhaustion.
-	pub fn push<T: Send + Sync + 'static>(&mut self, element: T) -> Option<usize> {
-		assert_eq!(std::any::TypeId::of::<T>(), self.layout.element.type_id, "the pushed element must match the layout's element type");
+	pub fn push<T: Send + Sync + dyn_any::StaticTypeSized>(&mut self, element: T) -> Option<usize> {
+		assert_eq!(std::any::TypeId::of::<T::Static>(), self.layout.element.type_id, "the pushed element must match the layout's element type");
 		assert!(self.pushed < self.len, "the builder holds exactly its declared lane count");
 		let lane = self.pushed;
 		let stride = self.layout.lane_stride();
@@ -2558,7 +2596,7 @@ mod tests {
 	fn the_element_write_pick_selects_the_content_glue_by_type() {
 		use super::{ElementWritePickHashed as _, ElementWritePickPlain as _};
 
-		#[derive(Clone)]
+		#[derive(Clone, dyn_any::DynAny)]
 		struct Opaque;
 
 		let hashed = (&ElementWritePick::<String>(std::marker::PhantomData)).element_write();

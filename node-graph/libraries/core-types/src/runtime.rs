@@ -20,7 +20,7 @@ pub trait Runtime {
 	fn spawn(&self, source: SourceId, future: SourceFuture) -> bool;
 }
 
-#[derive(Clone)]
+#[derive(Clone, dyn_any::DynAny)]
 pub struct RuntimeHandle(pub Arc<DynRuntime>);
 
 // SAFETY: wasm is single threaded, so the handle never actually crosses a thread.
@@ -258,15 +258,24 @@ mod tests {
 		}
 	}
 
-	fn element_layout<T: Clone + Send + Sync + 'static>() -> Layout {
+	fn element_layout<T: Clone + Send + Sync + dyn_any::StaticTypeSized>() -> Layout
+	where
+		T::Static: Clone + Send + Sync,
+	{
 		Layout::default().with_writes(0, element_write::<T>(), &[])
 	}
 
-	fn lifted<T: Clone + Send + Sync + 'static>(value: T) -> RecordLift<T, SourceNode<T>> {
+	fn lifted<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(value: T) -> RecordLift<T, SourceNode<T>>
+	where
+		T::Static: Clone + Send + Sync,
+	{
 		RecordLift::new(SourceNode(value))
 	}
 
-	fn extract<El: Clone + Send + Sync + 'static, N: Node<ContextImpl<'static>>>(mut graph: N) -> RecordExtract<El, N> {
+	fn extract<El: Clone + Send + Sync + dyn_any::StaticTypeSized, N: Node<ContextImpl<'static>>>(mut graph: N) -> RecordExtract<El, N>
+	where
+		El::Static: Clone + Send + Sync,
+	{
 		stack::reserve(1 << 12);
 		let layout = element_layout::<El>();
 		graph.set_layout(crate::record::RecordLayout {

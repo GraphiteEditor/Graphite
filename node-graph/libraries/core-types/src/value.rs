@@ -20,7 +20,10 @@ pub struct ValueSource<T> {
 	layout: crate::record::Layout,
 }
 
-impl<T: Clone + Send + Sync + 'static> ValueSource<T> {
+impl<T: Clone + Send + Sync + dyn_any::StaticTypeSized> ValueSource<T>
+where
+	T::Static: Clone + Send + Sync,
+{
 	pub fn new(value: T) -> Self {
 		Self {
 			value,
@@ -46,7 +49,10 @@ where
 }
 
 /// The native record edge of a constant.
-pub fn record_value_edge<T: Clone + Send + Sync + 'static>(value: T) -> crate::registry::EdgeHandle {
+pub fn record_value_edge<T: Clone + Send + Sync + dyn_any::StaticTypeSized + 'static>(value: T) -> crate::registry::EdgeHandle
+where
+	T::Static: Clone + Send + Sync,
+{
 	crate::registry::EdgeHandle::new_record::<T>(std::sync::Arc::new(ValueSource::new(value)) as std::sync::Arc<crate::registry::ErasedRecordNode>)
 }
 
@@ -57,7 +63,10 @@ pub struct LeveledValueSource<T> {
 	layout: crate::record::Layout,
 }
 
-impl<T: Clone + Send + Sync + crate::CacheHash + PartialEq + 'static> LeveledValueSource<T> {
+impl<T: Clone + Send + Sync + crate::CacheHash + PartialEq + dyn_any::StaticTypeSized> LeveledValueSource<T>
+where
+	T::Static: Clone + Send + Sync,
+{
 	pub fn new(values: Vec<T>) -> Self {
 		Self {
 			values,
@@ -93,7 +102,10 @@ where
 }
 
 /// The native record edge of a constant level: the edge type is the element's.
-pub fn leveled_record_value_edge<T: Clone + Send + Sync + crate::CacheHash + PartialEq + 'static>(values: Vec<T>) -> crate::registry::EdgeHandle {
+pub fn leveled_record_value_edge<T: Clone + Send + Sync + crate::CacheHash + PartialEq + dyn_any::StaticTypeSized + 'static>(values: Vec<T>) -> crate::registry::EdgeHandle
+where
+	T::Static: Clone + Send + Sync,
+{
 	crate::registry::EdgeHandle::new_record::<T>(std::sync::Arc::new(LeveledValueSource::new(values)) as std::sync::Arc<crate::registry::ErasedRecordNode>)
 }
 

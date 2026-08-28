@@ -604,7 +604,10 @@ mod tests {
 		node
 	}
 
-	fn lifted_value<T: Clone + Send + Sync + 'static>(value: T) -> (core_types::record::RecordLift<T, ValueNode<T>>, Layout) {
+	fn lifted_value<T: Clone + Send + Sync + core_types::StaticTypeSized + 'static>(value: T) -> (core_types::record::RecordLift<T, ValueNode<T>>, Layout)
+	where
+		T::Static: Clone + Send + Sync,
+	{
 		let lift = core_types::record::RecordLift::<T, _>::new(ValueNode(value));
 		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		(lift, layout)

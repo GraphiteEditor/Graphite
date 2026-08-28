@@ -26,6 +26,14 @@ pub struct BrushStampGenerator<P: Pixel + Alpha> {
 	transform: DAffine2,
 }
 
+// SAFETY: `Static` is `Self` with `P` at its own static projection.
+unsafe impl<P: Pixel + Alpha + dyn_any::StaticTypeSized> dyn_any::StaticType for BrushStampGenerator<P>
+where
+	P::Static: Pixel + Alpha,
+{
+	type Static = BrushStampGenerator<P::Static>;
+}
+
 impl<P: Pixel + Alpha> Transform for BrushStampGenerator<P> {
 	fn transform(&self) -> DAffine2 {
 		self.transform

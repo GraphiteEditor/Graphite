@@ -1051,7 +1051,8 @@ mod graphene_test {
 	/// element-only layout for the generated node's constructor.
 	fn lifted<T, N>(node: N) -> (RecordLift<T, N>, Layout)
 	where
-		T: Clone + Send + Sync + 'static,
+		T: Clone + Send + Sync + core_types::StaticTypeSized + 'static,
+		<T as core_types::StaticTypeSized>::Static: Clone + Send + Sync,
 		N: for<'c> Node<ContextImpl<'c>, Output = T>,
 	{
 		let lift = RecordLift::<T, _>::new(node);
