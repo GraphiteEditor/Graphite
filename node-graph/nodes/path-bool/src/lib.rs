@@ -3,7 +3,7 @@ use core_types::list::{Item, List};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_transforms, set_paint_attribute, set_paint_attribute_at};
+use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_transforms, is_paint_present, set_paint_attribute, set_paint_attribute_at};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
@@ -27,7 +27,7 @@ pub use vector_types::vector::misc::BooleanOperation;
 fn boolean_core<'e>(
 	arena: &'e core_types::arena::Arena,
 	flattened: List<Vector>,
-	snapshot: List<Graphic>,
+	snapshot: List<Graphic<'static>>,
 	operation: BooleanOperation,
 ) -> Result<
 	(
@@ -67,7 +67,7 @@ fn boolean_core<'e>(
 			trace: Vec::new(),
 		})
 	};
-	let park_paint = |paint: Option<List<Graphic>>| -> Result<Option<&'e List<Graphic>>, core_types::gpoll::Interrupt> {
+	let park_paint = |paint: Option<List<Graphic<'static>>>| -> Result<Option<&'e List<Graphic>>, core_types::gpoll::Interrupt> {
 		match paint {
 			Some(list) => Ok(Some(arena.alloc(list).ok_or_else(exhausted)?.0)),
 			None => Ok(None),
@@ -75,8 +75,9 @@ fn boolean_core<'e>(
 	};
 
 	let element = result_vector_list.element(0).cloned().unwrap_or_default();
-	let fill = park_paint(graphic_types::graphic::paint_graphics::<Fill, _>(&result_vector_list, 0).cloned())?;
-	let stroke = park_paint(graphic_types::graphic::paint_graphics::<Stroke, _>(&result_vector_list, 0).cloned())?;
+	use core_types::lane::LaneSource;
+	let fill = park_paint(result_vector_list.attr::<Fill>(0).filter(|paint| is_paint_present(paint)).cloned())?;
+	let stroke = park_paint(result_vector_list.attr::<Stroke>(0).filter(|paint| is_paint_present(paint)).cloned())?;
 	let layer_path: Vec<NodeId> = result_vector_list.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, 0).map(|path| path.clone()).unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	// Snapshot the input layers so the renderer can recurse into them for
@@ -102,7 +103,7 @@ fn boolean_core<'e>(
 fn boolean_operation<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + core_types::InjectIndex + Copy,
 	/// The wire of vector paths to perform the boolean operation on. Nested groups are automatically flattened.
-	content: IList<Graphic>,
+	content: IList<Graphic<'static>>,
 	/// Which boolean operation to perform on the paths.
 	///
 	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
@@ -125,8 +126,7 @@ fn boolean_operation<'e>(
 	),
 	core_types::gpoll::Interrupt,
 > {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let item = content.as_group_item();
 	let flattened = flatten_vector_run(GraphicLevel::Run(&item), DAffine2::IDENTITY, PaintReach::NONE);
 	let snapshot = graphic_types::graphic::run_to_list::<Graphic>(&item)
 		.expect("the run holds the row's element type")
@@ -155,8 +155,7 @@ fn boolean_operation_vector<'e>(
 	),
 	core_types::gpoll::Interrupt,
 > {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let item = content.as_group_item();
 	let flattened = graphic_types::graphic::run_to_list::<Vector>(&item).expect("the run holds vector lanes");
 	let snapshot = graphic_types::graphic::run_to_list::<Vector>(&item)
 		.expect("the run holds the row's element type")
@@ -555,7 +554,7 @@ mod tests {
 		Vector::from_subpath(Subpath::<PointId>::new_rectangle(corner, corner + DVec2::ONE))
 	}
 
-	fn black_paint() -> List<Graphic> {
+	fn black_paint() -> List<Graphic<'static>> {
 		List::new_from_element(Graphic::Color(Color::BLACK))
 	}
 

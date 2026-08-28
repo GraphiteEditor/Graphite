@@ -8,7 +8,7 @@ use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> List<Graphic> {
+fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> List<Graphic<'static>> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -71,7 +71,7 @@ fn vararg_element<T: Clone + 'static>(ctx: &(impl ExtractVarArgs + ExtractIndex)
 
 /// Rank-model vararg source: the mapped row's items as lanes, elements only.
 #[node_macro::node(category("Test"), extent_raw(read_graphic_row_extent))]
-pub fn read_graphic_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<Graphic>, Interrupt> {
+pub fn read_graphic_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<Graphic<'static>>, Interrupt> {
 	vararg_element(ctx)
 }
 

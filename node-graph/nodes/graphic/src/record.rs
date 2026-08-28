@@ -24,7 +24,7 @@ pub(crate) fn group_leaf_count(group: &core_types::record::Group, fully_flatten:
 	(0..lanes.len()).map(|lane| leaf_count(lanes.element_ref(lane), fully_flatten, depth + 1)).sum()
 }
 
-pub(crate) fn group_locate(group: &core_types::record::Group, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic, DAffine2)> {
+pub(crate) fn group_locate<'e>(group: &core_types::record::Group<'e>, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic<'e>, DAffine2)> {
 	let item = &group.content;
 	let lanes = item.typed_lanes::<Graphic>().expect("guarded by group_expands");
 	let offset = item.layout().offset_of(ATTR_TRANSFORM, 0);
@@ -50,7 +50,7 @@ pub(crate) fn leaf_count(graphic: &Graphic, fully_flatten: bool, depth: usize) -
 
 /// The `remaining`-th leaf of `graphic` in walk order, with the transforms
 /// along its path composed onto `transform`.
-pub(crate) fn locate(graphic: &Graphic, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic, DAffine2)> {
+pub(crate) fn locate<'e>(graphic: &Graphic<'e>, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic<'e>, DAffine2)> {
 	match graphic {
 		Graphic::Graphic(children) if fully_flatten || depth == 0 => (0..children.len()).find_map(|index| {
 			let child = children.element(index)?;
@@ -70,7 +70,7 @@ pub(crate) fn locate(graphic: &Graphic, transform: DAffine2, fully_flatten: bool
 /// the transforms along its path composed; a group beyond the walk's depth
 /// rides as a leaf with its embedded transforms untouched.
 #[node_macro::node(category("Test"), extent(flatten_extent))]
-fn flatten(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>, fully_flatten: bool) -> Result<IList<(Graphic, Attr<Transform>)>, Interrupt> {
+fn flatten(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic<'static>>, fully_flatten: bool) -> Result<IList<(Graphic<'static>, Attr<Transform>)>, Interrupt> {
 	let mut remaining = ctx.index() as usize;
 	for row in 0..content.len() {
 		let graphic = content.element_ref(row);
@@ -101,9 +101,8 @@ fn flatten_extent(content: ListIn<'_, Graphic>, fully_flatten: ValueIn<'_, bool>
 /// Rank-model Wrap: the content level as one group element on a one-lane
 /// level, the inverse of flatten's one-level descent.
 #[node_macro::node(category("Test"), extent(wrap_extent))]
-fn wrap(_: impl Ctx, content: IList<Graphic>) -> Result<IList<Graphic>, Interrupt> {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+fn wrap<'e>(_: impl Ctx, content: IList<Graphic<'e>>) -> Result<IList<Graphic<'e>>, Interrupt> {
+	let item = content.as_group_item();
 	Ok(Graphic::Group(core_types::record::Group {
 		row: None,
 		content: item,
@@ -240,7 +239,7 @@ mod tests {
 
 	struct GraphicSource {
 		layout: Layout,
-		rows: Vec<(Graphic, DAffine2)>,
+		rows: Vec<(Graphic<'static>, DAffine2)>,
 	}
 
 	impl<'e> Node<ContextImpl<'e>> for GraphicSource {
@@ -295,11 +294,11 @@ mod tests {
 		Layout::default().with_writes(1, record::element_write_hashed::<Graphic>(), &[record::FieldWrite::of::<Transform>(0)])
 	}
 
-	fn text(label: &str) -> Graphic {
+	fn text(label: &str) -> Graphic<'static> {
 		Graphic::Text(label.to_string())
 	}
 
-	fn group(children: Vec<(Graphic, DAffine2)>) -> Graphic {
+	fn group(children: Vec<(Graphic<'static>, DAffine2)>) -> Graphic {
 		let mut list = List::new();
 		for (index, (child, transform)) in children.into_iter().enumerate() {
 			list.push(Item::new_from_element(child));
@@ -308,7 +307,7 @@ mod tests {
 		Graphic::Graphic(list)
 	}
 
-	fn text_of(graphic: &Graphic) -> &str {
+	fn text_of<'a>(graphic: &'a Graphic<'_>) -> &'a str {
 		let Graphic::Text(text) = graphic else {
 			panic!("expected a text leaf, got {graphic:?}");
 		};
@@ -321,7 +320,7 @@ mod tests {
 
 	/// [a, G[b, H[c]]] with translations picked so each composed path is a
 	/// distinct sum.
-	fn fixture_rows() -> Vec<(Graphic, DAffine2)> {
+	fn fixture_rows() -> Vec<(Graphic<'static>, DAffine2)> {
 		vec![
 			(text("a"), translation(1.)),
 			(
@@ -395,7 +394,7 @@ mod tests {
 		}
 	}
 
-	fn ragged_rows() -> Vec<(Graphic, DAffine2)> {
+	fn ragged_rows() -> Vec<(Graphic<'static>, DAffine2)> {
 		vec![(text("ab"), translation(10.)), (text("xyz"), translation(20.))]
 	}
 

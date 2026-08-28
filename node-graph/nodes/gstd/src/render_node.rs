@@ -52,7 +52,7 @@ fn intermediate_of<R: Render>(data: &R, render_params: &RenderParams) -> RenderI
 }
 
 #[node_macro::node(category(""))]
-fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
+fn render_intermediate<T: dyn_any::StaticTypeSized + 'static + Render + WasmNotSend + Send + Sync>(
 	ctx: impl Ctx + ExtractVarArgs + DeriveCtx,
 	#[implementations(
 		Context -> List<Artboard>,
@@ -78,15 +78,14 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 /// The leveled form of `render_intermediate`: the wire's records materialize
 /// into a run, which renders directly.
 #[node_macro::node(category(""))]
-fn render_intermediate_leveled<T: Clone + Send + Sync + core_types::CacheHash + 'static>(
+fn render_intermediate_leveled<T: Clone + Send + Sync + core_types::CacheHash + dyn_any::StaticTypeSized + 'static>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractIndex + InjectIndex + Copy,
 	#[implementations(Artboard, Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] data: IList<T>,
 ) -> Result<RenderIntermediate, Interrupt>
 where
 	for<'a> core_types::record::RunView<'a, T>: Render,
 {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(data.batch()) };
+	let item = data.as_group_item();
 	let run = core_types::record::RunView::<T>::new(&item).expect("the run holds the row's element type");
 	let render_params = ctx
 		.vararg(0)

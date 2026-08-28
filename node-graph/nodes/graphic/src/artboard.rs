@@ -21,10 +21,10 @@ fn translate_footprint_extent(content: ExtentIn<'_>, _offset: ValueIn<'_, DVec2>
 
 /// Constructs an artboard element with the given content and metadata stored as attributes.
 #[node_macro::node(category(""))]
-pub fn create_artboard(
+pub fn create_artboard<'e>(
 	_: impl Ctx,
 	/// Graphics to include within the artboard.
-	content: IList<Graphic>,
+	content: IList<Graphic<'e>>,
 	/// Coordinate of the top-left corner of the artboard within the document.
 	location: DVec2,
 	/// Width and height of the artboard within the document.
@@ -34,9 +34,8 @@ pub fn create_artboard(
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
 	clip: bool,
-) -> (Artboard, Attr<Location>, Attr<Dimensions>, Attr<Background>, Attr<Clip>) {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+) -> (Artboard<'e>, Attr<Location>, Attr<Dimensions>, Attr<Background>, Attr<Clip>) {
+	let item = content.as_group_item();
 	let content = core_types::list::List::new_from_element(Graphic::Group(core_types::record::Group {
 		row: None,
 		content: item,

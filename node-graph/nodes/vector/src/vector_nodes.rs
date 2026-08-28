@@ -106,7 +106,7 @@ fn assign_colors<'e>(
 		return Err(GraphError::past_end().into());
 	}
 	let element = content.element_ref(lane).clone();
-	let park_existing = |paint: Option<&List<Graphic>>| -> Result<Option<&'e List<Graphic>>, Interrupt> { paint.map(|paint| park_paint(ctx.arena(), paint.clone())).transpose() };
+	let park_existing = |paint: Option<&List<Graphic<'static>>>| -> Result<Option<&'e List<Graphic>>, Interrupt> { paint.map(|paint| park_paint(ctx.arena(), paint.clone())).transpose() };
 	let existing_fill = park_existing(content.lane(lane).attr::<Fill>())?;
 	let existing_stroke = park_existing(content.lane(lane).attr::<StrokeAttr>())?;
 	let carried = carried_lane_attrs(ctx.arena(), *content.lane(lane))?;
@@ -164,7 +164,7 @@ fn assign_colors_extent(
 #[node_macro::node(category(""), extent(assign_colors_graphic_extent))]
 fn assign_colors_graphic<'e>(
 	ctx: impl Ctx + CacheHash + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
-	content: IList<Graphic>,
+	content: IList<Graphic<'static>>,
 	#[data] lane_offsets: std::sync::Arc<std::sync::Mutex<Option<LaneOffsets>>>,
 	#[default(true)] fill: bool,
 	stroke: bool,
@@ -173,7 +173,7 @@ fn assign_colors_graphic<'e>(
 	randomize: bool,
 	seed: SeedValue,
 	repeat_every: u32,
-) -> Result<IList<(Graphic, Attr<'e, TransformAttr>, Attr<'e, EditorLayerPath>)>, Interrupt> {
+) -> Result<IList<(Graphic<'e>, Attr<'e, TransformAttr>, Attr<'e, EditorLayerPath>)>, Interrupt> {
 	let lane = ctx.index() as usize;
 	if lane >= content.len() {
 		return Err(GraphError::past_end().into());
@@ -276,7 +276,7 @@ fn assign_colors_graphic_extent(
 
 pub use _assign_colors_graphic_mod::assign_colors_graphic_entries;
 
-fn park_paint(arena: &core_types::arena::Arena, paint: List<Graphic>) -> Result<&List<Graphic>, Interrupt> {
+fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic<'static>>) -> Result<&'e List<Graphic<'static>>, Interrupt> {
 	let (parked, _) = arena.alloc(paint).ok_or(GraphError {
 		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
 		trace: Vec::new(),
@@ -319,9 +319,8 @@ fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>,
 
 /// The materialized paint level as the canonical owned paint list, content
 /// kept in its native form.
-fn paint_table(paint: core_types::node::List<'_, Graphic>) -> List<Graphic> {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(paint.batch()) };
+fn paint_table(paint: core_types::node::List<'_, Graphic<'_>>) -> List<Graphic<'static>> {
+	let item = paint.as_group_item();
 	graphic_types::graphic::run_to_list::<Graphic>(&item).expect("a paint level holds graphic lanes")
 }
 
@@ -331,10 +330,10 @@ fn paint_table(paint: core_types::node::List<'_, Graphic>) -> List<Graphic> {
 fn fill<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	/// The content with vector paths to apply the fill style to.
-	(element, _content_fill): (Vector, Attr<'e, Fill>),
+	(element, _content_fill): (Vector, Attr<Fill>),
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
-	fill: IList<Graphic>,
+	fill: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
 	_backup_gradient: IList<GradientStops>,
 	_gradient_type: GradientType,
@@ -353,14 +352,14 @@ fn fill<'e>(
 #[node_macro::node(category(""))]
 fn fill_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
-	(element, _content_fill): (Graphic, Attr<'e, Fill>),
-	#[default(Color::BLACK)] fill: IList<Graphic>,
+	(element, _content_fill): (Graphic<'static>, Attr<Fill>),
+	#[default(Color::BLACK)] fill: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
 	_backup_gradient: IList<GradientStops>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
-) -> Result<(Graphic, Attr<'e, Fill>), Interrupt> {
+) -> Result<(Graphic<'static>, Attr<'e, Fill>), Interrupt> {
 	let bounds = match BoundingBox::bounding_box(&element, DAffine2::IDENTITY, false) {
 		RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		_ => None,
@@ -379,7 +378,7 @@ fn stroke<'e>(
 	(element, content_transform): (Vector, Attr<TransformAttr>),
 	/// The stroke paint.
 	#[default(Color::BLACK)]
-	paint: IList<Graphic>,
+	paint: IList<Graphic<'static>>,
 	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
@@ -446,8 +445,8 @@ fn for_each_interior_vector_mut(element: &mut Graphic, mut f: impl FnMut(&mut Ve
 #[node_macro::node(category(""))]
 fn stroke_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
-	(element, content_transform): (Graphic, Attr<TransformAttr>),
-	#[default(Color::BLACK)] paint: IList<Graphic>,
+	(element, content_transform): (Graphic<'static>, Attr<TransformAttr>),
+	#[default(Color::BLACK)] paint: IList<Graphic<'static>>,
 	#[unit(" px")]
 	#[default(2.)]
 	weight: f64,
@@ -458,7 +457,7 @@ fn stroke_graphic_leveled<'e>(
 	paint_order: PaintOrder,
 	dash_lengths: IList<f64>,
 	#[unit(" px")] dash_offset: f64,
-) -> Result<(Graphic, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
+) -> Result<(Graphic<'static>, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
 	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
 	let stroke = Stroke {
 		weight,
@@ -1453,7 +1452,7 @@ fn solidify_rows(flattened: List<Vector>) -> List<Vector> {
 fn solidify_native_lane<'e>(
 	arena: &'e core_types::arena::Arena,
 	level: graphic_types::graphic::GraphicLevel<'_>,
-	snapshot: impl FnOnce() -> List<Graphic>,
+	snapshot: impl FnOnce() -> List<Graphic<'static>>,
 	lane: usize,
 ) -> Result<
 	(
@@ -1575,9 +1574,8 @@ fn emit_legacy_lane<'e>(
 
 /// The wrap the legacy list collapse applied to a vector level: the run as
 /// one group lane, lane 0's layer path stamped on the wrapper.
-fn wrap_vector_level(content: core_types::node::List<'_, Vector>) -> List<Graphic> {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+fn wrap_vector_level(content: core_types::node::List<'_, Vector>) -> List<Graphic<'_>> {
+	let item = content.as_group_item();
 	let layer_path: Vec<NodeId> = match content.len() > 0 {
 		true => content.lane(0).attr::<EditorLayerPath>().to_vec(),
 		false => Vec::new(),
@@ -1591,13 +1589,13 @@ fn wrap_vector_level(content: core_types::node::List<'_, Vector>) -> List<Graphi
 
 /// The materialized level as the legacy graphic list the editor-facing
 /// merged-layers snapshots carry.
-fn legacy_graphic_list_of<T: Clone + Send + Sync + 'static>(content: core_types::node::List<'_, T>) -> List<Graphic>
+fn legacy_graphic_list_of<T: dyn_any::StaticTypeSized>(content: core_types::node::List<'_, T>) -> List<Graphic<'static>>
 where
-	List<T>: IntoGraphicList,
+	T::Static: Clone + Send + Sync + dyn_any::StaticTypeSized,
+	List<T::Static>: IntoGraphicList,
 {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	graphic_types::graphic::run_to_list::<T>(&item)
+	let item = content.as_group_item();
+	graphic_types::graphic::run_to_list::<T::Static>(&item)
 		.expect("the run holds the row's element type")
 		.into_graphic_list()
 }
@@ -1605,7 +1603,7 @@ where
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), extent(solidify_stroke_extent))]
 fn solidify_stroke<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
-	content: IList<Graphic>,
+	content: IList<Graphic<'static>>,
 ) -> Result<
 	IList<(
 		Vector,
@@ -1621,8 +1619,7 @@ fn solidify_stroke<'e>(
 	)>,
 	Interrupt,
 > {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let item = content.as_group_item();
 	solidify_native_lane(ctx.arena(), graphic_types::graphic::GraphicLevel::Run(&item), || legacy_graphic_list_of(content), ctx.index() as usize)
 }
 
@@ -1812,7 +1809,7 @@ fn map_points_extent(content: ListIn<'_, Vector>, _mapped: ExtentIn<'_>, level: 
 fn flatten_path_core<'e>(
 	arena: &'e core_types::arena::Arena,
 	flattened: List<Vector>,
-	snapshot: List<Graphic>,
+	snapshot: List<Graphic<'static>>,
 ) -> Result<
 	(
 		Vector,
@@ -1891,7 +1888,7 @@ fn flatten_path_core<'e>(
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 pub fn flatten_path<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
-	content: IList<Graphic>,
+	content: IList<Graphic<'static>>,
 ) -> Result<
 	(
 		Vector,
@@ -1903,8 +1900,7 @@ pub fn flatten_path<'e>(
 	),
 	Interrupt,
 > {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let item = content.as_group_item();
 	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Run(&item));
 	let snapshot = graphic_types::graphic::run_to_list::<Graphic>(&item).expect("the run holds the row's element type");
 	flatten_path_core(ctx.arena(), flattened, snapshot)
@@ -2176,8 +2172,7 @@ fn decimate(
 /// The materialized vector level as the owned rows the cross-lane cores walk,
 /// content kept native.
 fn vector_rows_of(content: core_types::node::List<'_, Vector>) -> List<Vector> {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let item = content.as_group_item();
 	graphic_types::graphic::run_to_list::<Vector>(&item).expect("the run holds vector lanes")
 }
 
@@ -2625,7 +2620,8 @@ fn offset_points(
 /// Interpolates the geometry, appearance, and transform between multiple vector layers, producing a single morphed vector shape.
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
-fn morph_core(flattened: List<Vector>, snapshot: List<Graphic>, progression: f64, reverse: bool, distribution: InterpolationDistribution, path: List<Vector>) -> List<Vector> {
+fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progression: f64, reverse: bool, distribution: InterpolationDistribution, path: List<Vector>) -> List<Vector> {
+	use core_types::lane::LaneSource;
 	/// Promotes a segment's handle pair to cubic-equivalent Bézier control points.
 	/// For linear segments (both None), handles are placed at their respective anchors (zero-length)
 	/// so that interpolation against another zero-length cubic doesn't introduce unwanted curvature.
@@ -2740,7 +2736,7 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic>, progression: f64
 	}
 
 	// Lerp between two graphics. Solid color and gradient pairings interpolate; all other pairings step at the midpoint.
-	fn lerp_graphic(a: Option<&List<Graphic>>, b: Option<&List<Graphic>>, time: f64) -> Option<List<Graphic>> {
+	fn lerp_graphic(a: Option<&List<Graphic<'static>>>, b: Option<&List<Graphic<'static>>>, time: f64) -> Option<List<Graphic<'static>>> {
 		let transparent = List::new_from_element(Color::TRANSPARENT).into_graphic_list();
 
 		let a = a.filter(|graphic_list| is_paint_present(graphic_list));
@@ -3064,13 +3060,13 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic>, progression: f64
 	let mut vector = Vector { stroke, ..Default::default() };
 
 	let fill_paint = {
-		let source = paint_graphics::<Fill, _>(&content, source_index);
-		let target = paint_graphics::<Fill, _>(&content, target_index);
+		let source = content.attr::<Fill>(source_index).filter(|paint| is_paint_present(paint));
+		let target = content.attr::<Fill>(target_index).filter(|paint| is_paint_present(paint));
 		lerp_graphic(source, target, time)
 	};
 	let stroke_paint = {
-		let source = paint_graphics::<StrokeAttr, _>(&content, source_index);
-		let target = paint_graphics::<StrokeAttr, _>(&content, target_index);
+		let source = content.attr::<StrokeAttr>(source_index).filter(|paint| is_paint_present(paint));
+		let target = content.attr::<StrokeAttr>(target_index).filter(|paint| is_paint_present(paint));
 		lerp_graphic(source, target, time)
 	};
 
@@ -3247,7 +3243,7 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic>, progression: f64
 fn morph_lane<'e>(
 	arena: &'e core_types::arena::Arena,
 	flattened: List<Vector>,
-	snapshot: List<Graphic>,
+	snapshot: List<Graphic<'static>>,
 	progression: f64,
 	reverse: bool,
 	distribution: InterpolationDistribution,
@@ -3281,7 +3277,7 @@ fn morph_lane<'e>(
 fn morph<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
-	content: IList<Graphic>,
+	content: IList<Graphic<'static>>,
 	/// The fractional part `[0, 1)` traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
 	progression: Progression,
 	/// Swap the direction of the progression between objects or along the control path.
@@ -3307,11 +3303,9 @@ fn morph<'e>(
 	),
 	Interrupt,
 > {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let path_item = unsafe { core_types::record::GroupItem::from_resident(path.batch()) };
+	let path_item = path.as_group_item();
 	let path = graphic_types::graphic::run_to_list::<Vector>(&path_item).expect("the run holds vector lanes");
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+	let item = content.as_group_item();
 	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Run(&item));
 	morph_lane(ctx.arena(), flattened, legacy_graphic_list_of(content), progression, reverse, distribution, path)
 }
@@ -3341,8 +3335,7 @@ fn morph_vector<'e>(
 	),
 	Interrupt,
 > {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let path_item = unsafe { core_types::record::GroupItem::from_resident(path.batch()) };
+	let path_item = path.as_group_item();
 	let path = graphic_types::graphic::run_to_list::<Vector>(&path_item).expect("the run holds vector lanes");
 	let wrapper = wrap_vector_level(content);
 	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Legacy(&wrapper));

@@ -212,7 +212,7 @@ where
 			trace: Vec::new(),
 		})
 	};
-	let park_paint = |paint: Option<List<Graphic>>| -> Result<Option<&'e List<Graphic>>, Interrupt> {
+	let park_paint = |paint: Option<List<Graphic<'static>>>| -> Result<Option<&'e List<Graphic<'static>>>, Interrupt> {
 		match paint {
 			Some(paint) => Ok(Some(arena.alloc(paint).ok_or_else(exhausted)?.0)),
 			None => Ok(None),
@@ -243,16 +243,18 @@ where
 }
 
 /// The materialized level as its legacy list, content kept native.
-fn legacy_render_list_of<T: Clone + Send + Sync + 'static>(content: core_types::node::List<'_, T>) -> List<T> {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
-	graphic_types::graphic::run_to_list::<T>(&item).expect("the run holds the row's element type")
+fn legacy_render_list_of<T: dyn_any::StaticTypeSized>(content: core_types::node::List<'_, T>) -> List<T::Static>
+where
+	T::Static: Clone + Send + Sync + dyn_any::StaticTypeSized,
+{
+	let item = content.as_group_item();
+	graphic_types::graphic::run_to_list::<T::Static>(&item).expect("the run holds the row's element type")
 }
 
 #[node_macro::node(category("General"), extent(mirror_extent))]
 fn mirror<'e>(
 	ctx: impl Ctx + core_types::context::ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
-	content: IList<Graphic>,
+	content: IList<Graphic<'static>>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
 	#[range]
@@ -261,7 +263,7 @@ fn mirror<'e>(
 	#[default(true)] keep_original: bool,
 ) -> Result<
 	IList<(
-		Graphic,
+		Graphic<'static>,
 		Attr<'e, TransformAttr>,
 		Attr<'e, graphic_types::markers::Fill>,
 		Attr<'e, graphic_types::markers::Stroke>,
@@ -454,12 +456,11 @@ pub fn legacy_layer_extend<T: Send + Clone>(
 /// lower a wrapped vector level to the bare typed graphic the pre-flip wrap made.
 /// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"), extent(wrap_graphic_extent))]
-pub fn wrap_graphic<T: Clone + Send + Sync + core_types::CacheHash + 'static>(
+pub fn wrap_graphic<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
-) -> Result<IList<Graphic>, Interrupt> {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+) -> Result<IList<Graphic<'e>>, Interrupt> {
+	let item = content.as_group_item();
 	Ok(Graphic::Group(core_types::record::Group {
 		row: None,
 		content: item,
@@ -476,8 +477,8 @@ fn wrap_graphic_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Ext
 /// collapse (`to_graphic_typed` serves those rows). The legacy list rows accept an
 /// unconverted producer's list value as one element, built as a native group.
 #[node_macro::node(category("General"))]
-pub fn to_graphic<T: graphic_types::graphic::IntoGraphicElement>(
-	ctx: impl Ctx + core_types::context::BorrowArena,
+pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(
+	ctx: impl Ctx + core_types::context::ExtractArena<'e>,
 	#[implementations(
 		Graphic,
 		List<Graphic>,
@@ -489,16 +490,16 @@ pub fn to_graphic<T: graphic_types::graphic::IntoGraphicElement>(
 		List<String>,
 	)]
 	content: T,
-) -> Result<Graphic, Interrupt> {
-	content.into_graphic_element(ctx.borrow_arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
+) -> Result<Graphic<'e>, Interrupt> {
+	content.into_graphic_element(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
 }
 
 /// The elementwise `Graphic` coercion the compiler-inserted converts use: each
 /// lane's element converts on its own, so a typed wire feeds a graphic input
 /// without changing the level's shape. Registered under the convert identifier.
 #[node_macro::node(category(""))]
-pub fn to_graphic_element<T: graphic_types::graphic::IntoGraphicElement>(
-	ctx: impl Ctx + core_types::context::BorrowArena,
+pub fn to_graphic_element<'e, T: graphic_types::graphic::IntoGraphicElement>(
+	ctx: impl Ctx + core_types::context::ExtractArena<'e>,
 	#[implementations(
 		Graphic,
 		Vector,
@@ -516,20 +517,19 @@ pub fn to_graphic_element<T: graphic_types::graphic::IntoGraphicElement>(
 		List<String>,
 	)]
 	content: T,
-) -> Result<Graphic, Interrupt> {
-	content.into_graphic_element(ctx.borrow_arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
+) -> Result<Graphic<'e>, Interrupt> {
+	content.into_graphic_element(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
 }
 
 /// The typed-level conversion: the whole level nests as one graphic lane, as
 /// the pre-flip `Into<Graphic>` list collapse did. Registered under the to
 /// graphic identifier.
 #[node_macro::node(category(""), extent(wrap_graphic_extent))]
-pub fn to_graphic_typed<T: Clone + Send + Sync + core_types::CacheHash + 'static>(
+pub fn to_graphic_typed<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
 	#[implementations(Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
-) -> Result<IList<Graphic>, Interrupt> {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(content.batch()) };
+) -> Result<IList<Graphic<'e>>, Interrupt> {
+	let item = content.as_group_item();
 	Ok(Graphic::Group(core_types::record::Group {
 		row: None,
 		content: item,
@@ -539,7 +539,7 @@ pub fn to_graphic_typed<T: Clone + Send + Sync + core_types::CacheHash + 'static
 /// An unconnected content input carries the unit, which renders as nothing like
 /// the pre-flip empty list. Registered under the to graphic identifier.
 #[node_macro::node(category(""), extent(to_graphic_unit_extent))]
-pub fn to_graphic_unit(_: impl Ctx, _content: ()) -> Result<IList<Graphic>, Interrupt> {
+pub fn to_graphic_unit(_: impl Ctx, _content: ()) -> Result<IList<Graphic<'static>>, Interrupt> {
 	Err(core_types::gpoll::GraphError::past_end().into())
 }
 
@@ -552,13 +552,12 @@ fn to_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level:
 /// reads and content kept in its native form. Registered under the legacy
 /// convert identifiers; the rows die with the last legacy consumer.
 #[node_macro::node(category(""))]
-pub fn level_to_list<T: Clone + Send + Sync + CacheHash + 'static>(
+pub fn level_to_list<T: Clone + Send + Sync + CacheHash + dyn_any::StaticTypeSized>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] value: IList<T>,
 	_converter: (),
 ) -> List<T> {
-	// SAFETY: a materialized input's frames are arena-resident.
-	let item = unsafe { core_types::record::GroupItem::from_resident(value.batch()) };
+	let item = value.as_group_item();
 	graphic_types::graphic::run_to_list::<T>(&item).expect("the run holds the row's element type")
 }
 
@@ -569,7 +568,7 @@ pub use _to_graphic_unit_mod::to_graphic_unit_entries;
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"), extent(flatten_graphic_extent))]
-pub fn flatten_graphic(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic>, fully_flatten: bool) -> Result<IList<(Graphic, Attr<TransformAttr>)>, Interrupt> {
+pub fn flatten_graphic(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic<'static>>, fully_flatten: bool) -> Result<IList<(Graphic<'static>, Attr<TransformAttr>)>, Interrupt> {
 	let mut remaining = ctx.index() as usize;
 	for row in 0..content.len() {
 		let graphic = content.element_ref(row);
