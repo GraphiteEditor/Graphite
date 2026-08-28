@@ -40,11 +40,11 @@ export async function loadDemoArtwork(editor: EditorWrapper) {
 	if (!demoArtwork) return;
 
 	try {
-		const url = new URL(`/demo-artwork/${demoArtwork}.${editor.fileExtension()}`, document.location.href);
+		const url = new URL(`/demo-artwork/${demoArtwork}.graphite`, document.location.href);
 		const response = await fetch(url);
 		if (!response.ok) throw new Error();
 
-		const filename = url.pathname.split("/").pop() || `Untitled.${editor.fileExtension()}`;
+		const filename = url.pathname.split("/").pop() || "Untitled.graphite";
 		const content = await response.bytes();
 		editor.openFile(filename, content);
 

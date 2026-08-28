@@ -240,16 +240,6 @@ impl EditorWrapper {
 		cfg!(debug_assertions)
 	}
 
-	#[wasm_bindgen(js_name = fileExtension)]
-	pub fn file_extension(&self) -> String {
-		"graphite".into()
-	}
-
-	#[wasm_bindgen(js_name = gddFileExtension)]
-	pub fn gdd_file_extension(&self) -> String {
-		"gdd".into()
-	}
-
 	/// Load persisted browser storage state (web only; on desktop, persistence is handled natively and this is never triggered)
 	#[cfg(all(feature = "web", not(feature = "native")))]
 	#[wasm_bindgen(js_name = loadPersistedState)]
