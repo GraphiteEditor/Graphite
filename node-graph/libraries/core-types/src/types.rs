@@ -12,12 +12,21 @@ macro_rules! concrete {
 	};
 }
 
+/// The type's name with lifetime arguments stripped, so a lifetimed type
+/// keeps its pre-lifetime registry and document name.
+pub fn normalize_type_name<'a>(name: &'a str) -> std::borrow::Cow<'a, str> {
+	if !name.contains("<'") && !name.contains(", '") {
+		return std::borrow::Cow::Borrowed(name);
+	}
+	std::borrow::Cow::Owned(name.replace("<'_>", "").replace("<'_, ", "<").replace(", '_", ""))
+}
+
 #[macro_export]
 macro_rules! descriptor {
 	($type:ty) => {
 		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
+			name: $crate::normalize_type_name(std::any::type_name::<$type>()),
 			alias: None,
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
@@ -26,7 +35,7 @@ macro_rules! descriptor {
 	($type:ty, $name:ty) => {
 		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
+			name: $crate::normalize_type_name(std::any::type_name::<$type>()),
 			alias: Some($crate::Cow::Borrowed(stringify!($name))),
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
@@ -192,13 +201,13 @@ pub struct TypeDescriptor {
 
 impl std::hash::Hash for TypeDescriptor {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.name.hash(state);
+		normalize_type_name(&self.name).hash(state);
 	}
 }
 
 impl graphene_hash::CacheHash for TypeDescriptor {
 	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
-		graphene_hash::CacheHash::cache_hash(&self.name, state);
+		graphene_hash::CacheHash::cache_hash(&normalize_type_name(&self.name), state);
 	}
 }
 
@@ -216,7 +225,7 @@ impl PartialEq for TypeDescriptor {
 			_ => {
 				// TODO: Add a flag to disable this warning
 				// warn!("TypeDescriptor::eq: comparing types without ids based on name");
-				self.name == other.name
+				normalize_type_name(&self.name) == normalize_type_name(&other.name)
 			}
 		}
 	}
@@ -297,7 +306,7 @@ impl Type {
 	pub fn new<T: dyn_any::StaticType + Sized>() -> Self {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
-			name: Cow::Borrowed(std::any::type_name::<T::Static>()),
+			name: normalize_type_name(std::any::type_name::<T::Static>()),
 			alias: None,
 			size: size_of::<T>(),
 			align: align_of::<T>(),

@@ -147,7 +147,7 @@ macro_rules! tagged_value {
 						let name = td.name.as_ref();
 						macro_rules! check {
 							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Box::new(<$type_default>::default()); }
+								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Box::new(<$type_default>::default()); }
 							};
 						}
 						for_each_type_default!(check);
@@ -194,7 +194,7 @@ macro_rules! tagged_value {
 						let name = td.name.as_ref();
 						macro_rules! check {
 							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Arc::new(<$type_default>::default()); }
+								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Arc::new(<$type_default>::default()); }
 							};
 						}
 						for_each_type_default!(check);
@@ -240,11 +240,11 @@ macro_rules! tagged_value {
 					// `Type` axis, it rides the layout proven at wiring.
 					Self::TypeDefault(td) => {
 						let name = td.name.as_ref();
-						if name == std::any::type_name::<List<Graphic>>() { return concrete!(Graphic); }
-						if name == std::any::type_name::<List<Artboard>>() { return concrete!(Artboard); }
-						if name == std::any::type_name::<List<Raster<CPU>>>() { return concrete!(Raster<CPU>); }
-						if name == std::any::type_name::<List<Vector>>() { return concrete!(Vector); }
-						if name == std::any::type_name::<List<String>>() { return concrete!(String); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Graphic>>()) { return concrete!(Graphic); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Artboard>>()) { return concrete!(Artboard); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Raster<CPU>>>()) { return concrete!(Raster<CPU>); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) { return concrete!(Vector); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<String>>()) { return concrete!(String); }
 						Type::Concrete(td.clone())
 					}
 					Self::F64Array(_) => concrete!(f64),
@@ -271,23 +271,29 @@ macro_rules! tagged_value {
 			/// variants, element-only at rank 0 otherwise. `None` for a
 			/// [`Self::TypeDefault`] whose named type is outside `for_each_type_default!`.
 			pub fn value_layout(&self) -> Option<core_types::record::Layout> {
-				fn leveled<T: Clone + Send + Sync + CacheHash + PartialEq + 'static>() -> Option<core_types::record::Layout> {
+				fn leveled<T: Clone + Send + Sync + CacheHash + PartialEq + dyn_any::StaticTypeSized>() -> Option<core_types::record::Layout>
+				where
+					T::Static: Clone + Send + Sync,
+				{
 					Some(core_types::record::Layout::default().with_writes(1, core_types::record::element_write_hashed::<T>(), &[]))
 				}
-				fn scalar<T: Clone + Send + Sync + 'static>() -> Option<core_types::record::Layout> {
+				fn scalar<T: Clone + Send + Sync + dyn_any::StaticTypeSized>() -> Option<core_types::record::Layout>
+				where
+					T::Static: Clone + Send + Sync,
+				{
 					Some(core_types::record::Layout::default().with_writes(0, core_types::record::element_write::<T>(), &[]))
 				}
 				match self {
 					Self::None => scalar::<()>(),
 					Self::TypeDefault(td) => {
 						let name = td.name.as_ref();
-						if name == std::any::type_name::<List<Graphic>>() { return leveled::<Graphic>(); }
-						if name == std::any::type_name::<List<Artboard>>() { return leveled::<Artboard>(); }
-						if name == std::any::type_name::<List<Raster<CPU>>>() { return leveled::<Raster<CPU>>(); }
-						if name == std::any::type_name::<List<Vector>>() { return leveled::<Vector>(); }
-						if name == std::any::type_name::<List<String>>() { return leveled::<String>(); }
-						if name == std::any::type_name::<DocumentNode>() { return scalar::<DocumentNode>(); }
-						if name == std::any::type_name::<Resource>() { return scalar::<Resource>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Graphic>>()) { return leveled::<Graphic>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Artboard>>()) { return leveled::<Artboard>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Raster<CPU>>>()) { return leveled::<Raster<CPU>>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) { return leveled::<Vector>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<String>>()) { return leveled::<String>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<DocumentNode>()) { return scalar::<DocumentNode>(); }
+						if name == core_types::normalize_type_name(std::any::type_name::<Resource>()) { return scalar::<Resource>(); }
 						None
 					}
 					Self::F64Array(_) => leveled::<f64>(),
@@ -317,7 +323,7 @@ macro_rules! tagged_value {
 						// their default directly, mirroring `to_dynany`'s recursion guard.
 						macro_rules! check_level {
 							($list:ty, $element:ty) => {
-								if name == std::any::type_name::<$list>() {
+								if name == core_types::normalize_type_name(std::any::type_name::<$list>()) {
 									return Ok(leveled_record_value_edge(Vec::<$element>::new()));
 								}
 							};
@@ -327,10 +333,10 @@ macro_rules! tagged_value {
 						check_level!(List<Raster<CPU>>, Raster<CPU>);
 						// One default lane rather than an empty level: an unwired path input
 						// starts from a blank vector, as the legacy path modify synthesized itself.
-						if name == std::any::type_name::<List<Vector>>() { return Ok(leveled_record_value_edge(vec![Vector::default()])); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) { return Ok(leveled_record_value_edge(vec![Vector::default()])); }
 						check_level!(List<String>, String);
-						if name == std::any::type_name::<DocumentNode>() { return Ok(record_value_edge(DocumentNode::default())); }
-						if name == std::any::type_name::<Resource>() { return Ok(record_value_edge(Resource::default())); }
+						if name == core_types::normalize_type_name(std::any::type_name::<DocumentNode>()) { return Ok(record_value_edge(DocumentNode::default())); }
+						if name == core_types::normalize_type_name(std::any::type_name::<Resource>()) { return Ok(record_value_edge(Resource::default())); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_edge()
 					}
 					Self::F64Array(values) => Ok(leveled_record_value_edge(values)),
@@ -458,26 +464,26 @@ macro_rules! tagged_value {
 						let name = concrete_type.name.as_ref();
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
-						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
+						if name == core_types::normalize_type_name(std::any::type_name::<()>()) { return Some(TaggedValue::None) }
 						// List-wrapped types need a single-item default with the element's default, not an empty list
-						if name == std::any::type_name::<List<Color>>() { return Some(TaggedValue::Color(Some(Color::default()))) }
-						if name == std::any::type_name::<List<GradientStops>>() { return Some(TaggedValue::Gradient(GradientStops::default())) }
-						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
-						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
-						if name == std::any::type_name::<List<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Color>>()) { return Some(TaggedValue::Color(Some(Color::default()))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<GradientStops>>()) { return Some(TaggedValue::Gradient(GradientStops::default())) }
+						$( if name == core_types::normalize_type_name(std::any::type_name::<$ty>()) { return Some(TaggedValue::$identifier(Default::default())) } )*
+						if name == core_types::normalize_type_name(std::any::type_name::<List<f64>>()) { return Some(TaggedValue::F64Array(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<BrushStroke>>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						// Leveled wires type by their element; each element name maps to the
 						// same tagged default as its legacy list form.
-						if name == std::any::type_name::<Color>() { return Some(TaggedValue::Color(Some(Color::default()))) }
-						if name == std::any::type_name::<GradientStops>() { return Some(TaggedValue::Gradient(GradientStops::default())) }
-						if name == std::any::type_name::<BrushStroke>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
-						if name == std::any::type_name::<Graphic>() { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Graphic>))) }
-						if name == std::any::type_name::<Artboard>() { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Artboard>))) }
-						if name == std::any::type_name::<Raster<CPU>>() { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Raster<CPU>>))) }
-						if name == std::any::type_name::<Vector>() { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Vector>))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Color>()) { return Some(TaggedValue::Color(Some(Color::default()))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<GradientStops>()) { return Some(TaggedValue::Gradient(GradientStops::default())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<BrushStroke>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Graphic>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Graphic>))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Artboard>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Artboard>))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Raster<CPU>>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Raster<CPU>>))) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Vector>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Vector>))) }
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
 						macro_rules! check {
 							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())); }
+								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Some(TaggedValue::TypeDefault(concrete_type.clone())); }
 							};
 						}
 						for_each_type_default!(check);
@@ -917,7 +923,7 @@ mod typedefault_dispatch {
 					DynAny::type_id(&*dyn_value),
 					expected_type_id,
 					"`to_dynany(TypeDefault({0}))` did not produce a `{0}` — `for_each_type_default!` lists this type but the unwrap site doesn't handle it. Without a match, `to_dynany` falls back to `from_type_or_none`, which returns `TypeDefault({0})` again and recurses forever.",
-					std::any::type_name::<$type_default>(),
+					core_types::normalize_type_name(std::any::type_name::<$type_default>()),
 				);
 
 				let arc_value = TaggedValue::TypeDefault(descriptor).to_any();
@@ -925,7 +931,7 @@ mod typedefault_dispatch {
 					(*arc_value).type_id(),
 					expected_type_id,
 					"`to_any(TypeDefault({0}))` did not produce a `{0}` — same recursion hazard as above for the `to_any` path.",
-					std::any::type_name::<$type_default>(),
+					core_types::normalize_type_name(std::any::type_name::<$type_default>()),
 				);
 			}};
 		}
