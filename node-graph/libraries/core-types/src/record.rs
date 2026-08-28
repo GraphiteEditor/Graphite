@@ -1801,6 +1801,24 @@ impl<'l> FrameClaim<'l> {
 			None => unsafe { (&raw mut self.inline).cast::<RecordValue<'e>>().read() },
 		}
 	}
+
+	/// [`Self::lift`] with the proof-bearing return for [`Node::serve`].
+	pub fn lift_served<'e, T: Send + Sync + dyn_any::StaticTypeSized>(self, poll: GPoll<T>, arena: &'e crate::arena::Arena) -> GPoll<Served<'e>> {
+		self.lift(poll, arena).map(|value| Served { value })
+	}
+}
+
+/// The proof a record was served through a frame claim: mintable only by the
+/// claim's closing methods, so holding one means the record is of the
+/// claimed layout.
+pub struct Served<'e> {
+	value: RecordValue<'e>,
+}
+
+impl<'e> Served<'e> {
+	pub fn value(self) -> RecordValue<'e> {
+		self.value
+	}
 }
 
 impl Drop for FrameClaim<'_> {

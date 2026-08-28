@@ -314,10 +314,30 @@ impl<T: Copy> Iterator for ListIter<'_, T> {
 	}
 }
 
+/// The output marker of a node that serves records through the caller's
+/// frame claim instead of returning a plain value. It satisfies the lift
+/// bounds so [`Node::serve`] stays callable and overridable on the erased
+/// surface.
+#[derive(Clone, Copy, Debug, Default, PartialEq, dyn_any::DynAny)]
+pub struct Records;
+
 pub trait Node<Input> {
 	type Output;
 
 	fn eval(&self, input: &Input) -> GPoll<Self::Output>;
+
+	/// Serves the node's record through the caller's claim: the writes land
+	/// in the claim and the returned proof is mintable only by its closing
+	/// methods, so the served record is of the claimed layout by
+	/// construction. The default lifts a plain output's element; record
+	/// servers override it.
+	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'l>) -> GPoll<crate::record::Served<'e>>
+	where
+		Self::Output: Send + Sync + dyn_any::StaticTypeSized,
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
+		slot.lift_served(self.eval(input), input.arena())
+	}
 
 	/// The count of items at one absolute nesting level (innermost `0`). The
 	/// leveled primitive a structure node overrides to report a pushed level's
