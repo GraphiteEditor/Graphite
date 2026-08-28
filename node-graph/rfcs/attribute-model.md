@@ -189,7 +189,7 @@ per-copy values:
 
 ```rs
 /// Instances the content a number of times, spaced by the direction vector.
-#[node_macro::node(category("Repeat"), level_extent = count)]
+#[node_macro::node(category("Repeat"), extent = repat_extent)]
 fn repeat<T>(
 	ctx: impl Ctx + ExtractIndex,
 	(element, transform): (T, Attr<Transform>),
@@ -205,15 +205,8 @@ fn repeat<T>(
 ```
 
 The body is one lane of the declared list: the kernel reads its own copy
-index and produces that copy's values. `level_extent = count` declares
-the size of the new level, and the compiler derives the structural parts
-from that one declaration: the multiplication with the carrier's extent,
-and the index decomposition that routes an output lane to the right copy
-and content item. The `emit(...)` tail marks the one-lane form and
-doubles as the tuple constructor, and it is optional. A list return without
-a `level_extent` is the store form, whose body produces the whole level
-at once. That form is for nodes like string splitting, where the extent
-cannot be known without running.
+index and produces that copy's values. The `emit(...)` tail marks the one-lane form and
+doubles as the tuple constructor, and it is optional.
 
 ## Merging
 
@@ -260,7 +253,13 @@ two-line pattern rather than new node kinds. The branches may carry
 different attribute sets. The output carries their union, filled with
 defaults per branch. A lazy input with a concrete output type is an
 ordinary value input: its value flows, the attributes on its wire do
-not.
+not. The tuple form composes with laziness: a lazy input declared
+`Output = (T, Attr<A>)` yields the element and the declared reads at
+each evaluation, so a kernel can branch on another input's attribute
+without evaluating the branch it rejects. It is a read declaration
+only: the lazy input's fields do not pass through to the output, since
+the kernel controls whether and how often the edge is evaluated;
+forwarding a lazy input's attributes is routing.
 
 The rest of the authoring surface composes. Categories, per-parameter
 doc comments, `#[default]`, `#[hard]`, `#[expose]`, widget overrides, and
@@ -276,6 +275,20 @@ aligned to the widest field. Since the element comes first, a pointer to
 the record is also a valid pointer to the element. Element-only
 consumers are wired without adaptation, the wire keeps the element's type
 and colour, and the registry stays keyed on element types.
+
+```
+  byte  0       4       8      12      16      20      24      28   31
+        ┌───────────────┐
+  f64   │    element    │
+        └───────────────┘
+
+        ┌───────────────┬───────────────────────────────┬───────┬─┬───┐
+  +3    │    element    │      Attr<&str>  (ptr, len)   │  u32  │b│pad│
+        └───────────────┴───────────────────────────────┴───────┴─┴───┘
+
+  Canonical order (descending alignment, then size) leaves no interior
+  padding here; 3 bytes of tail round the record up to align 8.
+```
 
 A wire's layout is the set of all attributes written in its upstream
 cone and not removed since, in a canonical order (descending alignment,
@@ -359,25 +372,33 @@ that decomposition is hoisted per run.
 ## Runtime representation
 
 - Every node's per-lane output is an activation frame on a per-thread
-  record stack, the shape of an ordinary call stack: an evaluation
-  claims its frame at the stack pointer, evaluates its carrier beyond
-  it, and releases on completion, leaving the returned record readable
-  until the next claim. A node with several record sources lays their
-  regions side by side, so values held across sibling evaluations
-  survive. "Allocating" a result is pointer arithmetic; frames are
-  overwritten each lane, transients never touch the arena, and
-  publishing into a cache copies out of the stack.
+  record stack, callee-fills-then-reclaims discipline: an evaluation
+  claims its frame at the stack pointer, evaluates its inputs beyond it,
+  writes its result into the frame, and then reclaims everything above
+  the frame while keeping the frame itself for its consumer. So a node
+  advances the stack by exactly its own frame, and every already-
+  evaluated input stays live until the node returns, which makes values
+  held across sibling evaluations safe by construction. "Allocating" a
+  result is pointer arithmetic; transients never touch the arena, and
+  publishing into a cache copies out of the stack. An inline node
+  returns its output by value with no frame, so it reclaims its inputs
+  by rewinding to its entry pointer instead. A loop that re-evaluates a
+  subtree per iteration rewinds to a checkpoint each time, reusing the
+  slots.
 - No global slot assignment exists: a node's wiring state is its own
   frame size, so incremental recompiles and instance reuse cannot
   invalidate storage, and the stack belongs to whichever thread runs
   the evaluation, created lazily in thread-local storage, so worker
-  counts never enter wiring. The total stack bound is derived by the
-  wiring layer from the same layouts it computes (own frame plus
-  carrier need, maxed over value inputs, summed over sources) and
-  reserved once per evaluation.
-- This imposes one rule: a borrow of a released frame must not survive
-  the next claim. Consuming by copy is always fine, and the per-source
-  regions above make kernel-held record values safe by construction.
+  counts never enter wiring. The reserve is the peak of a per-path fold
+  over the graph (a node's need is its own frame plus its inputs' frames
+  plus the deepest input's peak), computed once at wiring; it exceeds
+  the plain sum of node frames because fan-out re-evaluation keeps
+  several copies of a shared node's frame live at once.
+- Held record values are safe without a guard: a frame keeps its output
+  until its consumer reclaims it, so no input is released while a later
+  sibling evaluates. This relies on stack records being single-consumer,
+  which the frame-memo insertion at fan-out points guarantees by copying
+  a shared value off the stack rather than holding it across consumers.
 - Batch results are per-field columns, each statically Varying (an
   array) or Uniform (a single value) per the residency analysis. A node
   that does not touch a column forwards the pointer, so bypass costs
@@ -385,6 +406,16 @@ that decomposition is hoisted per run.
   cost regardless of lane count. Both execution forms share one layout
   descriptor, and crossing from a batched producer to a per-lane consumer
   costs about 1.5ns per lane through a lane-view adapter.
+- A materialized level-N record carries its item count in one field at a
+  known offset in the layout, and each level-below column is a thin
+  pointer into the arena whose length is that count times the field
+  size. Erased consumers (the Data panel, capture, deep copy) read the
+  count off the record without reaching into the element type, and
+  Varying vs Uniform stays static in the layout, a Uniform column
+  addressing a single value. This is the same picture as a batch result,
+  so materializing a record and returning a batch are one format. Such
+  records spill: the count beside the element already fills the inline
+  budget, while scalar wires keep the two-word inline form.
 - Alignment padding only exists in the per-lane view. In a row, a `u8`
   element costs the same as a `u64`, while
   packed columns keep the cost proportional to the element size (2x
@@ -408,6 +439,7 @@ that decomposition is hoisted per run.
 | `keys: List<K>` | whole-extent input | wired edge, evaluated over its extent into a view |
 | plain parameters | wired value inputs | ordinary wired edges; attributes on their wires do not flow |
 | `impl Node<Context<'_>, Output = Concrete>` | lazy value input | the value flows, attributes do not |
+| `impl Node<Context<'_>, Output = (T, Attr<A>, ..)>` | lazy input with attribute reads | each eval yields the element plus the declared reads, offsets resolved against that edge's layout; a read declaration only, and no field pass-through |
 | `impl Node<Context<'_>, Output = T>` (unbounded) | source of an opaque record family | routing, see below |
 | `-> List<W>` with `level_extent =` | per-lane level production | structural skeleton emitted by the macro |
 | `-> List<W>` without | store form | whole-level body, node owns storage |
@@ -428,27 +460,37 @@ misalign them, and domain declarations stay with the extent system.
 ## Structure shapes
 
 A structure node pairs an extent composition with an index
-decomposition, and both come from one declaration:
+decomposition. The extent composition is an ordinary extent override:
+the node macro's `extent(fn)` attribute names a function with the trait
+method's signature (the node and the context to `GPoll<Extent>`), so
+multiplicative, additive, and data-dependent extents are one mechanism
+rather than a macro taxonomy, and the default stays the meet over the
+value inputs.
 
-- Multiplicative (Repeat, map/enter): the extent is the new level's
-  count times the carrier's. A flat index splits by division into the
-  copy index (pushed as a level) and the content index. Batches split
-  into maximal per-copy runs.
-- Additive (Merge): the extent is the sum of the inputs'. A flat index
-  range-splits into a segment and a local index, so per lane, merge is a
-  selector whose condition is the index, and the selector machinery
-  below is reused as-is. Item rows union with per-segment default fill.
-  Each input's top row is pushed down one level onto that input's items
-  via entries in the translation plan (a level remap computed at wiring;
-  no values are needed at compile time), composing by the declared
-  combine rule; the fallback is inner wins iff the inner level wrote
-  the name, resolved from the write sets at wiring. The merged top row
-  starts empty. An explicit Wrap node is how the user nests instead. An
-  input with unbounded (Free) extent contributes exactly one item, so
-  merge is an extent-forcing boundary, which is the scalar base case.
-  Batched merge forwards per-segment sub-ranges to its inputs, so
-  column uniformity survives concatenation per segment, and default
-  materialization is only paid on the per-lane and store paths.
+- Multiplicative (Repeat, map/enter): the extent override multiplies
+  the new level's count by the carrier's. A flat index splits by
+  division into the copy index (pushed as a level) and the content
+  index; the level push and the `emit` tail are the skeleton
+  declaration. Batches split into maximal per-copy runs.
+- Additive (Merge): an ordinary routing kernel whose selector condition
+  is the index. The kernel range-splits the flat index into a segment
+  and a local index through the shared split helper and evaluates that
+  input at the shifted index via the derived-context lowering; the
+  extent override sums the inputs' extents through `Extent::sum`. An
+  input with unbounded (Free) extent counts as exactly one item in the
+  sum, so merge is an extent-forcing boundary, which is the scalar base
+  case. Item rows union with per-segment default fill. Each input's top
+  row is pushed down one level onto that input's items via entries in
+  the translation plan (a level remap computed at wiring; no values are
+  needed at compile time), composing by the declared combine rule; the
+  fallback is inner wins iff the inner level wrote the name, resolved
+  from the write sets at wiring. The merged top row starts empty. An
+  explicit Wrap node is how the user nests instead; a marker on the
+  merge node enables the push-down plan variant. Batched merge forwards
+  per-segment sub-ranges derived from the same split helper, so column
+  uniformity survives concatenation per segment, default
+  materialization is only paid on the per-lane and store paths, and
+  per-lane vs batched agreement is law-bound.
 
 ## Opaque record values
 
@@ -635,10 +677,8 @@ from shading languages for residency.
 - Where and how the combine rule is declared on the attribute marker.
   Merge push-down and flatten both consume it, and inner-wins is the
   implemented fallback.
-- The macro spelling of the additive structure shape. Merge is
-  currently a hand-written reference lowering, and it has no domain
-  logic of its own, so it is not clear what a kernel for it would even
-  contain.
+- The spelling of the push-down marker on the merge node, the one part
+  of the additive shape the extent override cannot express.
 - The graph UX of the map/enter construct.
 - Naming: `Attribute` trait vs. `Attr` wrapper, and whether the
   authoring `List` sharing the wire type's name helps or confuses.
