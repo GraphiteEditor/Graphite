@@ -9,14 +9,15 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+	self, NodeGraphLayer, get_chain_source_gradient_settings, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+	replaceable_paint_chain, reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientType, GradientUI, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientForm, GradientInterpolation, GradientRamp, GradientSettings, GradientStop, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -27,8 +28,8 @@ pub struct GradientTool {
 
 #[derive(Default)]
 pub struct GradientOptions {
-	gradient_type: GradientType,
-	spread_method: GradientSpreadMethod,
+	gradient_form: GradientForm,
+	settings: GradientSettings,
 }
 
 #[impl_message(Message, ToolMessage, Gradient)]
@@ -53,17 +54,16 @@ pub enum GradientToolMessage {
 	CommitTransactionForColorStop,
 	CloseStopColorPicker,
 	UpdateStopColor { color: Color },
-	UpdateStops { stops: GradientUI },
+	UpdateRamp { ramp: GradientRamp<SRGBA8> },
 	UpdateOptions { options: GradientOptionsUpdate },
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum GradientOptionsUpdate {
-	Type(GradientType),
+	Form(GradientForm),
 	ReverseStops,
 	ReverseDirection,
-	SetSpreadMethod(GradientSpreadMethod),
 }
 
 impl ToolMetadata for GradientTool {
@@ -83,20 +83,26 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		match message {
 			ToolMessage::Gradient(GradientToolMessage::UpdateOptions { options }) => match options {
-				GradientOptionsUpdate::Type(gradient_type) => {
-					self.options.gradient_type = gradient_type;
+				GradientOptionsUpdate::Form(gradient_form) => {
+					self.options.gradient_form = gradient_form;
 					apply_gradient_update(
 						&mut self.data,
 						context,
 						responses,
-						|(_gradient, appearance)| appearance.gradient_type != gradient_type,
-						|(_gradient, appearance)| appearance.gradient_type = gradient_type,
+						|(_gradient, appearance)| appearance.gradient_form != gradient_form,
+						|(_gradient, appearance)| appearance.gradient_form = gradient_form,
 					);
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(ToolMessage::UpdateCursor);
 				}
 				GradientOptionsUpdate::ReverseStops => {
-					apply_gradient_update(&mut self.data, context, responses, |_| true, |(gradient, _appearance)| *gradient = gradient.reversed());
+					apply_gradient_update(
+						&mut self.data,
+						context,
+						responses,
+						|_| true,
+						|(gradient, appearance)| *gradient = gradient.reversed(appearance.settings.cyclic),
+					);
 				}
 				GradientOptionsUpdate::ReverseDirection => apply_gradient_update(
 					&mut self.data,
@@ -111,16 +117,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 						appearance.transform *= reverse;
 					},
 				),
-				GradientOptionsUpdate::SetSpreadMethod(spread_method) => {
-					self.options.spread_method = spread_method;
-					apply_gradient_update(
-						&mut self.data,
-						context,
-						responses,
-						|(_gradient, appearance)| appearance.spread_method != spread_method,
-						|(_gradient, appearance)| appearance.spread_method = spread_method,
-					);
-				}
 			},
 			ToolMessage::Gradient(GradientToolMessage::StartTransactionForColorStop) => {
 				if self.data.color_picker_transaction_open {
@@ -138,15 +134,17 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 			ToolMessage::Gradient(GradientToolMessage::UpdateStopColor { color }) => {
 				if let Some(stop_index) = self.data.color_picker_editing_color_stop
 					&& let Some(selected_gradient) = &mut self.data.selected_gradient
-					&& stop_index < selected_gradient.gradient.color.len()
+					&& stop_index < selected_gradient.gradient.len()
 				{
-					selected_gradient.gradient.color[stop_index] = color;
+					selected_gradient.gradient.set_color(stop_index, color);
 					selected_gradient.render_gradient(responses);
 					responses.add(PropertiesPanelMessage::Refresh);
 				}
 			}
-			ToolMessage::Gradient(GradientToolMessage::UpdateStops { stops }) => {
-				apply_stops_update(&mut self.data, context, responses, Gradient::from(&stops));
+			ToolMessage::Gradient(GradientToolMessage::UpdateRamp { ramp }) => {
+				let ramp = GradientRamp::from(&ramp);
+				self.options.settings = GradientSettings::from(&ramp);
+				apply_stops_update(&mut self.data, context, responses, Gradient::from(&ramp), self.options.settings);
 			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
@@ -176,12 +174,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 
 				let mut needs_refresh = false;
 				if let Some((_gradient, appearance)) = &current_gradient {
-					if self.options.gradient_type != appearance.gradient_type {
-						self.options.gradient_type = appearance.gradient_type;
+					if self.options.gradient_form != appearance.gradient_form {
+						self.options.gradient_form = appearance.gradient_form;
 						needs_refresh = true;
 					}
-					if self.options.spread_method != appearance.spread_method {
-						self.options.spread_method = appearance.spread_method;
+					if self.options.settings != appearance.settings {
+						self.options.settings = appearance.settings;
 						needs_refresh = true;
 					}
 				}
@@ -200,7 +198,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 
 				let new_orientation = match (current_layer, &current_gradient) {
 					(Some(layer), Some((_gradient, appearance))) => {
-						let transform = gradient_space_transform(layer, context.document) * appearance.transform;
+						let transform = gradient_to_viewport_transform(layer, context.document) * appearance.transform;
 						graph_modification_utils::gradient_orientation_rightward(transform)
 					}
 					_ => true,
@@ -239,52 +237,37 @@ impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let mut widgets: Vec<WidgetInstance> = Vec::new();
 
-		let gradient_type = RadioInput::new(vec![
-			RadioEntryData::new("Linear").label("Linear").tooltip_label("Linear Gradient").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::Type(GradientType::Linear),
-				}
-				.into()
-			}),
-			RadioEntryData::new("Radial").label("Radial").tooltip_label("Radial Gradient").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::Type(GradientType::Radial),
-				}
-				.into()
-			}),
-		])
-		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
-		.widget_instance();
+		let gradient_form_entries = RadioEntryData::list_from_choice_type(|gradient_form| {
+			GradientToolMessage::UpdateOptions {
+				options: GradientOptionsUpdate::Form(gradient_form),
+			}
+			.into()
+		});
+		let gradient_form = RadioInput::new(gradient_form_entries).selected_index(Some(self.options.gradient_form as u32)).widget_instance();
 
 		// Display priority: the selected layer's stops, then any user-customized tool default, then the working colors
-		let stops_value = self
-			.data
-			.current_gradient_stops
-			.clone()
-			.or_else(|| self.data.default_gradient_stops.clone())
-			.map(FillChoice::Gradient)
-			.unwrap_or_else(|| {
-				FillChoice::Gradient(Gradient::new([
-					GradientStop {
-						position: 0.,
-						midpoint: 0.5,
-						color: self.data.primary_color,
-					},
-					GradientStop {
-						position: 1.,
-						midpoint: 0.5,
-						color: self.data.secondary_color,
-					},
-				]))
-			});
-		let stops_widget = ColorInput::new(FillChoiceUI::from(&stops_value))
+		let stops_value = self.data.current_gradient_stops.clone().or_else(|| self.data.default_gradient_stops.clone()).unwrap_or_else(|| {
+			Gradient::new([
+				GradientStop {
+					position: 0.,
+					midpoint: 0.5,
+					color: self.data.primary_color,
+				},
+				GradientStop {
+					position: 1.,
+					midpoint: 0.5,
+					color: self.data.secondary_color,
+				},
+			])
+		});
+		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp::from(&stops_value).with_settings(self.options.settings)))
 			.allow_none(false)
 			.narrow(true)
 			.tooltip_label("Gradient Stops")
 			.tooltip_description("Edit the gradient's color stops.")
 			.on_update(|input: &ColorInput| {
-				let stops = input.value.as_gradient().cloned().unwrap_or_default();
-				GradientToolMessage::UpdateStops { stops }.into()
+				let ramp = input.value.as_gradient().cloned().unwrap_or_default();
+				GradientToolMessage::UpdateRamp { ramp }.into()
 			})
 			.on_commit(|_| DocumentMessage::AddTransaction.into())
 			.widget_instance();
@@ -301,29 +284,6 @@ impl LayoutHolder for GradientTool {
 			})
 			.widget_instance();
 
-		let spread_method = RadioInput::new(vec![
-			RadioEntryData::new("Pad").label("Pad").tooltip_label("Pad Spread Method").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Pad),
-				}
-				.into()
-			}),
-			RadioEntryData::new("Reflect").label("Reflect").tooltip_label("Reflect Spread Method").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
-				}
-				.into()
-			}),
-			RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat Spread Method").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
-				}
-				.into()
-			}),
-		])
-		.selected_index(Some(self.options.spread_method as u32))
-		.widget_instance();
-
 		let reverse_direction_icon = if self.data.gradient_orientation_rightward {
 			"ReverseRadialGradientToRight"
 		} else {
@@ -331,7 +291,7 @@ impl LayoutHolder for GradientTool {
 		};
 		let reverse_direction = IconButton::new(reverse_direction_icon, 24)
 			.tooltip_label("Reverse Direction")
-			.tooltip_description("Reverse which end the gradient radiates from.")
+			.tooltip_description(reverse_direction_tooltip_description(self.options.gradient_form))
 			.disabled(!self.data.has_selected_gradient)
 			.on_update(|_| {
 				GradientToolMessage::UpdateOptions {
@@ -346,9 +306,7 @@ impl LayoutHolder for GradientTool {
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			reverse_stops,
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			gradient_type,
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			spread_method,
+			gradient_form,
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			reverse_direction,
 		]);
@@ -373,8 +331,8 @@ impl Default for GradientToolFsmState {
 }
 
 /// Computes the transform from gradient space to viewport space.
-fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-	graph_modification_utils::gradient_space_transform(layer, &document.network_interface)
+fn gradient_to_viewport_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
+	graph_modification_utils::gradient_to_viewport_transform(layer, &document.network_interface)
 }
 
 /// Viewport positions of the gradient's start (unit param 0) and end (unit param 1) handles.
@@ -399,8 +357,8 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 			return Some((
 				gradient.stops,
 				GradientAppearance {
-					gradient_type: gradient.gradient_type,
-					spread_method: gradient.spread_method,
+					gradient_form: gradient.gradient_form,
+					settings: gradient.settings,
 					transform: gradient.transform,
 				},
 				GradientSource::Direct,
@@ -418,23 +376,20 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 #[derive(Clone, Copy, Debug, Default)]
 struct GradientAppearance {
 	transform: DAffine2,
-	gradient_type: GradientType,
-	spread_method: GradientSpreadMethod,
+	gradient_form: GradientForm,
+	settings: GradientSettings,
 }
 
-/// Resolve the gradient transform, type, and spread method by walking the chain feeding the layer. Transform composes all
-/// 'Transform' nodes. Type and spread method come from the closest-to-layer node of each kind, or the type default.
+/// Resolve the gradient transform, form, and spread by walking the chain feeding the layer.
 fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> GradientAppearance {
 	let target_input = gradient_chain_target_input(layer, network_interface);
 	let walk_from = network_interface.upstream_output_connector(&target_input, &[]).and_then(|out| out.node_id()).unwrap_or(layer.to_node());
 
 	let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
-	let gradient_type_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_type::IDENTIFIER);
-	let spread_method_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::spread_method::IDENTIFIER);
+	let gradient_form_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_form::IDENTIFIER);
 
 	let mut transforms_downstream_to_upstream: Vec<DAffine2> = Vec::new();
-	let mut gradient_type: Option<GradientType> = None;
-	let mut spread_method: Option<GradientSpreadMethod> = None;
+	let mut gradient_form: Option<GradientForm> = None;
 
 	for node_id in network_interface
 		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
@@ -448,16 +403,11 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 
 		if reference == transform_reference {
 			transforms_downstream_to_upstream.push(read_transform_node_value(&document_node.inputs));
-		} else if reference == gradient_type_reference
-			&& gradient_type.is_none()
-			&& let Some(TaggedValue::GradientType(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
+		} else if reference == gradient_form_reference
+			&& gradient_form.is_none()
+			&& let Some(TaggedValue::GradientForm(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
 		{
-			gradient_type = Some(*value);
-		} else if reference == spread_method_reference
-			&& spread_method.is_none()
-			&& let Some(TaggedValue::GradientSpreadMethod(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
-		{
-			spread_method = Some(*value);
+			gradient_form = Some(*value);
 		}
 	}
 
@@ -466,8 +416,8 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 
 	GradientAppearance {
 		transform: composed_transform,
-		gradient_type: gradient_type.unwrap_or_default(),
-		spread_method: spread_method.unwrap_or_default(),
+		gradient_form: gradient_form.unwrap_or_default(),
+		settings: get_chain_source_gradient_settings(layer, network_interface).unwrap_or_default(),
 	}
 }
 
@@ -504,6 +454,76 @@ fn midpoint_hidden_by_proximity(left_stop_pos: f64, right_stop_pos: f64, viewpor
 	(right_stop_pos - left_stop_pos) * viewport_line_length < GRADIENT_STOP_MIN_VIEWPORT_GAP * 2.
 }
 
+/// A cyclic gradient's wrapped interval as `(start, end)` along the gradient line, where `end` runs past 1 by however far
+/// the interval continues beyond the boundary to reach the first stop.
+fn wrapped_interval_span(gradient: &Gradient) -> (f64, f64) {
+	(gradient.position(gradient.len() - 1, true), gradient.position(0, true) + 1.)
+}
+
+/// The gradient's visible midpoint diamonds as `(owning stop index, position along the gradient line)`, omitting intervals
+/// whose stops are too closely packed. A cyclic gradient's wrapped interval adds a final diamond owned by the last stop.
+fn midpoint_diamonds(gradient: &Gradient, settings: GradientSettings, viewport_line_length: f64) -> Vec<(usize, f64)> {
+	// A stepped ramp jumps at its stops, so no midpoint has anything to bias
+	if settings.interpolation == GradientInterpolation::Stepped {
+		return Vec::new();
+	}
+
+	let gradient_cyclic = settings.cyclic;
+	let mut diamonds = Vec::with_capacity(gradient.len());
+
+	for index in 0..gradient.len().saturating_sub(1) {
+		let left = gradient.position(index, gradient_cyclic);
+		let right = gradient.position(index + 1, gradient_cyclic);
+		if midpoint_hidden_by_proximity(left, right, viewport_line_length) {
+			continue;
+		}
+
+		diamonds.push((index, left + gradient.midpoint(index) * (right - left)));
+	}
+
+	if gradient_cyclic && gradient.len() >= 2 {
+		let last = gradient.len() - 1;
+		let (left, right) = wrapped_interval_span(gradient);
+		if !midpoint_hidden_by_proximity(left, right, viewport_line_length) {
+			diamonds.push((last, (left + gradient.midpoint(last) * (right - left)).rem_euclid(1.)));
+		}
+	}
+
+	diamonds
+}
+
+/// Maps a pointer's unclamped position along the gradient line to a midpoint ratio within the interval owned by the
+/// stop at `index`, or `None` when that interval has no width. The wrapped interval continues past the line's end,
+/// so overdragging keeps tracking with the line's length as an offset.
+fn midpoint_ratio_at(gradient: &Gradient, index: usize, gradient_cyclic: bool, position_along_line: f64) -> Option<f64> {
+	let is_wrapped_interval = gradient_cyclic && index + 1 == gradient.len();
+	let (left, right) = if is_wrapped_interval {
+		wrapped_interval_span(gradient)
+	} else {
+		(gradient.position(index, gradient_cyclic), gradient.position(index + 1, gradient_cyclic))
+	};
+
+	let span = right - left;
+	if span <= 0. {
+		return None;
+	}
+
+	let first = gradient.position(0, gradient_cyclic);
+	let dead_zone_split = match (is_wrapped_interval, left >= 1., first > 0.) {
+		(true, true, _) => f64::INFINITY,
+		(true, false, true) => (first + left) / 2.,
+		_ => f64::NEG_INFINITY,
+	};
+
+	let local = if position_along_line < dead_zone_split {
+		position_along_line + 1. - left
+	} else {
+		position_along_line - left
+	};
+
+	Some((local / span).clamp(GRADIENT_MIDPOINT_MIN, GRADIENT_MIDPOINT_MAX))
+}
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub enum GradientDragTarget {
 	Start,
@@ -520,7 +540,7 @@ struct SelectedGradient {
 	layer: Option<LayerNodeIdentifier>,
 	dragging: GradientDragTarget,
 	/// Transform from the geometry's local gradient space to viewport space.
-	gradient_space_transform: DAffine2,
+	gradient_to_viewport_transform: DAffine2,
 	gradient: Gradient,
 	appearance: GradientAppearance,
 	initial_gradient: Gradient,
@@ -529,13 +549,14 @@ struct SelectedGradient {
 	is_gradient_chain: bool,
 }
 
-fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, mouse: DVec2) -> Option<f64> {
+fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, settings: GradientSettings, mouse: DVec2) -> Option<f64> {
+	let gradient_cyclic = settings.cyclic;
 	let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 	let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
 	if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
-		for stop in stops {
-			let stop_pos = start.lerp(end, stop.position);
+		for i in 0..stops.len() {
+			let stop_pos = start.lerp(end, stops.position(i, gradient_cyclic));
 			if stop_pos.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) {
 				return None;
 			}
@@ -546,16 +567,8 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, mouse: DVec2)
 
 		// Don't insert when clicking near a (currently visible) midpoint diamond
 		let line_length = start.distance(end);
-		for i in 0..stops.position.len().saturating_sub(1) {
-			let left = stops.position[i];
-			let right = stops.position[i + 1];
-
-			if midpoint_hidden_by_proximity(left, right, line_length) {
-				continue;
-			}
-
-			let midpoint_pos = left + stops.midpoint[i] * (right - left);
-			let midpoint_viewport = start.lerp(end, midpoint_pos);
+		for (_, midpoint_position) in midpoint_diamonds(stops, settings, line_length) {
+			let midpoint_viewport = start.lerp(end, midpoint_position);
 			if midpoint_viewport.distance_squared(mouse) < GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2) {
 				return None;
 			}
@@ -569,10 +582,10 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, mouse: DVec2)
 
 impl SelectedGradient {
 	pub fn new(gradient: Gradient, appearance: GradientAppearance, source: GradientSource, layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Self {
-		let gradient_space_transform = gradient_space_transform(layer, document);
+		let gradient_to_viewport_transform = gradient_to_viewport_transform(layer, document);
 		Self {
 			layer: Some(layer),
-			gradient_space_transform,
+			gradient_to_viewport_transform,
 			gradient: gradient.clone(),
 			appearance,
 			dragging: GradientDragTarget::End,
@@ -589,7 +602,7 @@ impl SelectedGradient {
 		responses: &mut VecDeque<Message>,
 		snap_rotate: bool,
 		lock_angle: bool,
-		gradient_type: GradientType,
+		gradient_form: GradientForm,
 		drag_start: DVec2,
 		snap_data: SnapData,
 		snap_manager: &mut SnapManager,
@@ -602,7 +615,7 @@ impl SelectedGradient {
 			return;
 		}
 
-		self.appearance.gradient_type = gradient_type;
+		self.appearance.gradient_form = gradient_form;
 
 		let anchor_point = || {
 			let (start, end) = self.viewport_handle_positions();
@@ -658,7 +671,7 @@ impl SelectedGradient {
 			snap_manager.update_indicator(snapped);
 		}
 
-		let local_mouse = self.gradient_space_transform.inverse().transform_point2(mouse);
+		let local_mouse = self.gradient_to_viewport_transform.inverse().transform_point2(mouse);
 		let local_start = self.appearance.transform.transform_point2(DVec2::ZERO);
 		let local_end = self.appearance.transform.transform_point2(DVec2::X);
 
@@ -673,9 +686,9 @@ impl SelectedGradient {
 				self.appearance.transform = create_new_gradient_transform(local_start, local_mouse);
 			}
 			GradientDragTarget::New => {
-				self.appearance.transform = create_new_gradient_transform(self.gradient_space_transform.inverse().transform_point2(drag_start), local_mouse);
+				self.appearance.transform = create_new_gradient_transform(self.gradient_to_viewport_transform.inverse().transform_point2(drag_start), local_mouse);
 			}
-			GradientDragTarget::Stop(s) => {
+			GradientDragTarget::Stop(stop) => {
 				let document_to_viewport = snap_data.document.metadata().document_to_viewport;
 
 				let (viewport_start, viewport_end) = self.viewport_handle_positions();
@@ -722,18 +735,19 @@ impl SelectedGradient {
 				let min_gap = GRADIENT_STOP_MIN_VIEWPORT_GAP / line_length;
 				let last_index = self.gradient.len() - 1;
 
-				let has_other_stop_at_zero = s != 0 && self.gradient.position.first().is_some_and(|&p| p.abs() < f64::EPSILON * 1000.);
-				let has_other_stop_at_one = s != last_index && self.gradient.position.last().is_some_and(|&p| (1. - p).abs() < f64::EPSILON * 1000.);
+				let gradient_cyclic = self.appearance.settings.cyclic;
+				let has_other_stop_at_zero = stop != 0 && !self.gradient.is_empty() && self.gradient.position(0, gradient_cyclic).abs() < f64::EPSILON * 1000.;
+				let has_other_stop_at_one = stop != last_index && !self.gradient.is_empty() && (1. - self.gradient.position(last_index, gradient_cyclic)).abs() < f64::EPSILON * 1000.;
 
 				let left_bound = if has_other_stop_at_zero { min_gap } else { 0. };
 				let right_bound = if has_other_stop_at_one { 1. - min_gap } else { 1. };
 
 				let clamped = new_pos.clamp(left_bound, right_bound);
-				self.gradient.position[s] = clamped;
-				let new_position = self.gradient.position[s];
-				let new_color = self.gradient.color[s];
+				self.gradient.set_position(stop, clamped, gradient_cyclic);
+				let new_position = clamped;
+				let new_color = self.gradient.color(stop).unwrap_or(Color::BLACK);
 
-				self.gradient.sort();
+				self.gradient.sort(gradient_cyclic);
 				if let Some(new_index) = self.gradient.iter().position(|s| s.position == new_position && s.color == new_color) {
 					self.dragging = GradientDragTarget::Stop(new_index);
 				}
@@ -780,13 +794,9 @@ impl SelectedGradient {
 					return;
 				}
 
-				// Convert to a midpoint ratio within the interval between the two surrounding stops
-				let left_stop = self.gradient.position[midpoint_index];
-				let right_stop = self.gradient.position[midpoint_index + 1];
-				let range = right_stop - left_stop;
-				if range > 0. {
-					let midpoint_ratio = ((full_pos - left_stop) / range).clamp(GRADIENT_MIDPOINT_MIN, GRADIENT_MIDPOINT_MAX);
-					self.gradient.midpoint[midpoint_index] = midpoint_ratio;
+				// Convert to a midpoint ratio within the interval owned by the dragged diamond's stop
+				if let Some(midpoint_ratio) = midpoint_ratio_at(&self.gradient, midpoint_index, self.appearance.settings.cyclic, full_pos) {
+					self.gradient.set_midpoint(midpoint_index, midpoint_ratio);
 				}
 			}
 		}
@@ -802,8 +812,8 @@ impl SelectedGradient {
 				responses.add(GraphOperationMessage::FillGradientSet {
 					layer,
 					gradient: self.gradient.clone(),
-					gradient_type: self.appearance.gradient_type,
-					spread_method: self.appearance.spread_method,
+					gradient_form: self.appearance.gradient_form,
+					gradient_settings: self.appearance.settings,
 					transform: self.appearance.transform,
 				});
 			}
@@ -811,7 +821,7 @@ impl SelectedGradient {
 	}
 
 	fn unit_to_viewport_transform(&self) -> DAffine2 {
-		self.gradient_space_transform * self.appearance.transform
+		self.gradient_to_viewport_transform * self.appearance.transform
 	}
 
 	fn viewport_handle_positions(&self) -> (DVec2, DVec2) {
@@ -819,27 +829,51 @@ impl SelectedGradient {
 	}
 }
 
-/// Send the four per-attribute graph operations that mirror the in-memory `Gradient` onto the chain feeding the layer.
+/// Send the per-attribute graph operations that mirror the in-memory `Gradient` onto the chain feeding the layer.
 fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradient, appearance: GradientAppearance, responses: &mut VecDeque<Message>) {
+	responses.add(GraphOperationMessage::GradientCyclicSet {
+		layer,
+		gradient_cyclic: appearance.settings.cyclic,
+	});
 	responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: gradient.clone() });
+	responses.add(GraphOperationMessage::GradientPositionsSet {
+		layer,
+		positions: gradient.nondefault_positions(appearance.settings.cyclic).unwrap_or_default(),
+	});
+	responses.add(GraphOperationMessage::GradientMidpointsSet {
+		layer,
+		midpoints: gradient.nondefault_midpoints().unwrap_or_default(),
+	});
 	responses.add(GraphOperationMessage::GradientTransformSet {
 		layer,
 		transform: appearance.transform,
 	});
-	responses.add(GraphOperationMessage::GradientTypeSet {
+	responses.add(GraphOperationMessage::GradientFormSet {
 		layer,
-		gradient_type: appearance.gradient_type,
+		gradient_form: appearance.gradient_form,
 	});
-	responses.add(GraphOperationMessage::GradientSpreadMethodSet {
+	responses.add(GraphOperationMessage::GradientSpreadSet {
 		layer,
-		spread_method: appearance.spread_method,
+		gradient_spread: appearance.settings.spread,
+	});
+	responses.add(GraphOperationMessage::GradientSpaceSet {
+		layer,
+		gradient_space: appearance.settings.space,
+	});
+	responses.add(GraphOperationMessage::GradientHueDirectionSet {
+		layer,
+		gradient_hue_direction: appearance.settings.hue_direction,
+	});
+	responses.add(GraphOperationMessage::GradientInterpolationSet {
+		layer,
+		gradient_interpolation: appearance.settings.interpolation,
 	});
 }
 
 impl GradientTool {
-	/// Get the gradient type of the selected gradient (if it exists)
-	pub fn selected_gradient(&self) -> Option<GradientType> {
-		self.data.selected_gradient.as_ref().map(|selected| selected.appearance.gradient_type)
+	/// Get the Gradient Form of the selected gradient (if it exists)
+	pub fn selected_gradient(&self) -> Option<GradientForm> {
+		self.data.selected_gradient.as_ref().map(|selected| selected.appearance.gradient_form)
 	}
 }
 
@@ -913,7 +947,7 @@ impl Fsm for GradientToolFsmState {
 					let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
-					let unit_to_viewport = gradient_space_transform(layer, document) * appearance.transform;
+					let unit_to_viewport = gradient_to_viewport_transform(layer, document) * appearance.transform;
 					let dragging = selected
 						.filter(|selected| selected.layer.is_some_and(|selected_layer| selected_layer == layer))
 						.map(|selected| selected.dragging);
@@ -929,16 +963,18 @@ impl Fsm for GradientToolFsmState {
 
 					let (start, end) = (unit_to_viewport.transform_point2(DVec2::ZERO), unit_to_viewport.transform_point2(DVec2::X));
 
-					fn color_to_hex(color: graphene_std::Color) -> String {
-						SRGBA8::from(color).to_css_hex()
+					fn color_to_opaque_hex(color: graphene_std::Color) -> String {
+						format!("#{}", SRGBA8::from(color).to_rgb_hex())
 					}
 
-					let start_hex = gradient.color.first().map(|&c| color_to_hex(c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
-					let end_hex = gradient.color.last().map(|&c| color_to_hex(c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
+					let start_hex = gradient.color(0).map(color_to_opaque_hex).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
+					let end_hex = gradient.color(gradient.len().saturating_sub(1)).map(color_to_opaque_hex).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
 
 					// Check if the first/last stops are at position ~0/~1 (rendered as the endpoint dots rather than as separate stops)
-					let first_at_start = gradient.position.first().is_some_and(|&p| p.abs() < f64::EPSILON * 1000.);
-					let last_at_end = gradient.position.last().is_some_and(|&p| (1. - p).abs() < f64::EPSILON * 1000.);
+					let settings = appearance.settings;
+					let gradient_cyclic = settings.cyclic;
+					let first_at_start = !gradient.is_empty() && gradient.position(0, gradient_cyclic).abs() < f64::EPSILON * 1000.;
+					let last_at_end = !gradient.is_empty() && (1. - gradient.position(gradient.len() - 1, gradient_cyclic)).abs() < f64::EPSILON * 1000.;
 
 					overlay_context.line(start, end, None, None);
 
@@ -963,11 +999,12 @@ impl Fsm for GradientToolFsmState {
 						};
 						check(start.distance_squared(mouse), StopId::Start);
 						check(end.distance_squared(mouse), StopId::End);
-						for (index, stop) in gradient.iter().enumerate() {
-							if stop.position.abs() < f64::EPSILON * 1000. || (1. - stop.position).abs() < f64::EPSILON * 1000. {
+						for index in 0..gradient.len() {
+							let position = gradient.position(index, gradient_cyclic);
+							if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 								continue;
 							}
-							check(start.lerp(end, stop.position).distance_squared(mouse), StopId::Middle(index));
+							check(start.lerp(end, position).distance_squared(mouse), StopId::Middle(index));
 						}
 						best.map(|(_, id)| id)
 					} else {
@@ -989,8 +1026,8 @@ impl Fsm for GradientToolFsmState {
 						StopId::Start => overlay_context.gradient_color_stop(start, emphasis, &start_hex, !first_at_start),
 						StopId::End => overlay_context.gradient_color_stop(end, emphasis, &end_hex, !last_at_end),
 						StopId::Middle(i) => {
-							if let Some(stop) = gradient.iter().nth(i) {
-								overlay_context.gradient_color_stop(start.lerp(end, stop.position), emphasis, &color_to_hex(stop.color), false);
+							if let Some(color) = gradient.color(i) {
+								overlay_context.gradient_color_stop(start.lerp(end, gradient.position(i, gradient_cyclic)), emphasis, &color_to_opaque_hex(color), false);
 							}
 						}
 					};
@@ -1002,8 +1039,9 @@ impl Fsm for GradientToolFsmState {
 					if !is_deferred(StopId::End) {
 						draw_stop(StopId::End, emphasis_for(StopId::End));
 					}
-					for (index, stop) in gradient.iter().enumerate() {
-						if stop.position.abs() < f64::EPSILON * 1000. || (1. - stop.position).abs() < f64::EPSILON * 1000. {
+					for index in 0..gradient.len() {
+						let position = gradient.position(index, gradient_cyclic);
+						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
 						let id = StopId::Middle(index);
@@ -1029,18 +1067,10 @@ impl Fsm for GradientToolFsmState {
 					let line_angle = (end - start).to_angle();
 					let line_length = start.distance(end);
 					let midpoint_tolerance = GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2);
-					for i in 0..gradient.position.len().saturating_sub(1) {
-						let left = gradient.position[i];
-						let right = gradient.position[i + 1];
+					for (index, midpoint_position) in midpoint_diamonds(gradient, settings, line_length) {
+						let midpoint_viewport = start.lerp(end, midpoint_position);
 
-						if midpoint_hidden_by_proximity(left, right, line_length) {
-							continue;
-						}
-
-						let midpoint_pos = left + gradient.midpoint[i] * (right - left);
-						let midpoint_viewport = start.lerp(end, midpoint_pos);
-
-						let emphasis = if dragging == Some(GradientDragTarget::Midpoint(i)) {
+						let emphasis = if dragging == Some(GradientDragTarget::Midpoint(index)) {
 							GizmoEmphasis::Active
 						} else if !matches!(self, GradientToolFsmState::Drawing { .. }) && midpoint_viewport.distance_squared(mouse) < midpoint_tolerance {
 							GizmoEmphasis::Hovered
@@ -1051,7 +1081,7 @@ impl Fsm for GradientToolFsmState {
 					}
 
 					if !matches!(self, GradientToolFsmState::Drawing { .. })
-						&& calculate_insertion(start, end, gradient, mouse).is_some()
+						&& calculate_insertion(start, end, gradient, settings, mouse).is_some()
 						&& let Some(dir) = (end - start).try_normalize()
 					{
 						let perp = dir.perp();
@@ -1095,12 +1125,12 @@ impl Fsm for GradientToolFsmState {
 					&& let Some(selected_gradient) = tool_data.selected_gradient.as_ref()
 					&& let Some(layer) = selected_gradient.layer
 				{
-					// The gradient space transform has be recalculated as the saved transform in SelectedGradient may become stale by panning/zooming during the rendering of the overlay.
-					let transform = gradient_space_transform(layer, document) * selected_gradient.appearance.transform;
+					// The gradient-to-viewport transform has to be recalculated as the saved transform in SelectedGradient may become stale by panning/zooming during the rendering of the overlay.
+					let transform = gradient_to_viewport_transform(layer, document) * selected_gradient.appearance.transform;
 					let gradient = &selected_gradient.gradient;
-					if stop_index < gradient.position.len() {
-						let color = gradient.color[stop_index];
-						let position = gradient.position[stop_index];
+					if stop_index < gradient.len() {
+						let color = gradient.color(stop_index).unwrap_or(Color::BLACK);
+						let position = gradient.position(stop_index, selected_gradient.appearance.settings.cyclic);
 						let start = transform.transform_point2(DVec2::ZERO);
 						let end = transform.transform_point2(DVec2::X);
 						let position = start.lerp(end, position).into();
@@ -1133,20 +1163,22 @@ impl Fsm for GradientToolFsmState {
 				{
 					match selected_gradient.dragging {
 						GradientDragTarget::Midpoint(index) => {
-							selected_gradient.gradient.midpoint[index] = 0.5;
+							selected_gradient.gradient.reset_midpoint(index);
 							selected_gradient.render_gradient(responses);
 							responses.add(PropertiesPanelMessage::Refresh);
 						}
 						GradientDragTarget::Start | GradientDragTarget::End | GradientDragTarget::Stop(_) => {
 							// Find the stop index from the drag target
+							let gradient = &selected_gradient.gradient;
+							let gradient_cyclic = selected_gradient.appearance.settings.cyclic;
 							let stop_index = match selected_gradient.dragging {
 								GradientDragTarget::Stop(i) => Some(i),
-								GradientDragTarget::Start => selected_gradient.gradient.position.iter().position(|&p| p.abs() < f64::EPSILON * 1000.),
-								GradientDragTarget::End => selected_gradient.gradient.position.iter().position(|&p| (1. - p).abs() < f64::EPSILON * 1000.),
+								GradientDragTarget::Start => (0..gradient.len()).position(|i| gradient.position(i, gradient_cyclic).abs() < f64::EPSILON * 1000.),
+								GradientDragTarget::End => (0..gradient.len()).position(|i| (1. - gradient.position(i, gradient_cyclic)).abs() < f64::EPSILON * 1000.),
 								_ => None,
 							};
 							if let Some(stop_index) = stop_index
-								&& stop_index < selected_gradient.gradient.color.len()
+								&& stop_index < selected_gradient.gradient.len()
 							{
 								// Dismiss any existing color picker first
 								if tool_data.color_picker_editing_color_stop.is_some() && tool_data.color_picker_transaction_open {
@@ -1154,11 +1186,11 @@ impl Fsm for GradientToolFsmState {
 									tool_data.color_picker_transaction_open = false;
 								}
 
-								let stop_pos = selected_gradient.gradient.position[stop_index];
+								let stop_pos = selected_gradient.gradient.position(stop_index, selected_gradient.appearance.settings.cyclic);
 								let (start, end) = selected_gradient.viewport_handle_positions();
 								let viewport_pos = start.lerp(end, stop_pos);
 								let position = viewport_pos.into();
-								let color = selected_gradient.gradient.color[stop_index];
+								let color = selected_gradient.gradient.color(stop_index).unwrap_or(Color::BLACK);
 								tool_data.color_picker_editing_color_stop = Some(stop_index);
 								responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color: color.into(), position });
 							}
@@ -1197,7 +1229,7 @@ impl Fsm for GradientToolFsmState {
 				match selected_gradient.dragging {
 					GradientDragTarget::Start => {
 						// Only delete if there's a real color stop at position ~0 (not the endpoint of the line which isn't itself a color stop)
-						if selected_gradient.gradient.position.first().is_some_and(|&p| p.abs() < f64::EPSILON * 1000.) {
+						if !selected_gradient.gradient.is_empty() && selected_gradient.gradient.position(0, selected_gradient.appearance.settings.cyclic).abs() < f64::EPSILON * 1000. {
 							selected_gradient.gradient.remove(0);
 						} else {
 							responses.add(DocumentMessage::AbortTransaction);
@@ -1206,7 +1238,9 @@ impl Fsm for GradientToolFsmState {
 					}
 					GradientDragTarget::End => {
 						// Only delete if there's a real color stop at position ~1 (not the endpoint of the line which isn't itself a color stop)
-						if selected_gradient.gradient.position.last().is_some_and(|&p| (1. - p).abs() < f64::EPSILON * 1000.) {
+						if !selected_gradient.gradient.is_empty()
+							&& (1. - selected_gradient.gradient.position(selected_gradient.gradient.len() - 1, selected_gradient.appearance.settings.cyclic)).abs() < f64::EPSILON * 1000.
+						{
 							let _ = selected_gradient.gradient.pop();
 						} else {
 							responses.add(DocumentMessage::AbortTransaction);
@@ -1221,7 +1255,7 @@ impl Fsm for GradientToolFsmState {
 						selected_gradient.gradient.remove(index);
 					}
 					GradientDragTarget::Midpoint(index) => {
-						selected_gradient.gradient.midpoint[index] = 0.5;
+						selected_gradient.gradient.reset_midpoint(index);
 						selected_gradient.render_gradient(responses);
 
 						responses.add(DocumentMessage::CommitTransaction);
@@ -1238,7 +1272,7 @@ impl Fsm for GradientToolFsmState {
 					} else if let Some(layer) = selected_gradient.layer {
 						responses.add(GraphOperationMessage::FillColorSet {
 							layer,
-							color: Some(selected_gradient.gradient.color[0]),
+							color: Some(selected_gradient.gradient.color(0).unwrap_or(Color::BLACK)),
 						});
 					}
 					responses.add(DocumentMessage::CommitTransaction);
@@ -1247,17 +1281,17 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				// Find the minimum and maximum positions
-				let min_position = selected_gradient.gradient.position.iter().copied().reduce(f64::min).expect("No min");
-				let max_position = selected_gradient.gradient.position.iter().copied().reduce(f64::max).expect("No max");
+				let positions = selected_gradient.gradient.positions(selected_gradient.appearance.settings.cyclic);
+				let min_position = positions.iter().copied().reduce(f64::min).expect("No min");
+				let max_position = positions.iter().copied().reduce(f64::max).expect("No max");
 
 				let gradient_transform = selected_gradient.appearance.transform;
 				let (local_start, local_end) = (gradient_transform.transform_point2(DVec2::ZERO), gradient_transform.transform_point2(DVec2::X));
 				selected_gradient.appearance.transform = build_transform_with_y_preservation(gradient_transform, local_start.lerp(local_end, min_position), local_start.lerp(local_end, max_position));
 
 				// Remap the positions
-				for position in selected_gradient.gradient.position.iter_mut() {
-					*position = (*position - min_position) / (max_position - min_position);
-				}
+				let remapped: Vec<f64> = positions.into_iter().map(|position| (position - min_position) / (max_position - min_position)).collect();
+				selected_gradient.gradient.set_positions(&remapped);
 
 				// Render the new gradient
 				selected_gradient.render_gradient(responses);
@@ -1273,7 +1307,7 @@ impl Fsm for GradientToolFsmState {
 						continue;
 					};
 					// TODO: This transform is incorrect. I think this is since it is based on the Footprint which has not been updated yet
-					let unit_to_viewport = gradient_space_transform(layer, document) * appearance.transform;
+					let unit_to_viewport = gradient_to_viewport_transform(layer, document) * appearance.transform;
 					let mouse = input.mouse.position;
 					let (start, end) = gradient_handle_positions(unit_to_viewport);
 
@@ -1283,7 +1317,7 @@ impl Fsm for GradientToolFsmState {
 					// If click is on the line then insert point
 					if distance < (SELECTION_THRESHOLD * 2.) {
 						// Try and insert the new stop
-						if let Some(index) = insert_stop_at_point(&mut gradient, mouse, unit_to_viewport) {
+						if let Some(index) = insert_stop_at_point(&mut gradient, mouse, unit_to_viewport, appearance.settings) {
 							responses.add(DocumentMessage::StartTransaction);
 
 							let mut selected_gradient = SelectedGradient::new(gradient, appearance, source, layer, document);
@@ -1327,8 +1361,8 @@ impl Fsm for GradientToolFsmState {
 					let Some((gradient, appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
-					let gradient_space_transform = gradient_space_transform(layer, document);
-					let unit_to_viewport = gradient_space_transform * appearance.transform;
+					let gradient_to_viewport_transform = gradient_to_viewport_transform(layer, document);
+					let unit_to_viewport = gradient_to_viewport_transform * appearance.transform;
 					let is_gradient_chain = source == GradientSource::Chain;
 					let (start, end) = gradient_handle_positions(unit_to_viewport);
 
@@ -1336,28 +1370,20 @@ impl Fsm for GradientToolFsmState {
 					if drag_hint.is_none() {
 						let line_length = start.distance(end);
 						let midpoint_tolerance = GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2);
-						for i in 0..gradient.position.len().saturating_sub(1) {
-							let left = gradient.position[i];
-							let right = gradient.position[i + 1];
-
-							if midpoint_hidden_by_proximity(left, right, line_length) {
-								continue;
-							}
-
-							let midpoint_pos = left + gradient.midpoint[i] * (right - left);
-							let midpoint_viewport = start.lerp(end, midpoint_pos);
+						for (index, midpoint_position) in midpoint_diamonds(&gradient, appearance.settings, line_length) {
+							let midpoint_viewport = start.lerp(end, midpoint_position);
 
 							if midpoint_viewport.distance_squared(mouse) < midpoint_tolerance {
-								let resettable = midpoint_is_resettable(gradient.midpoint[i]);
+								let resettable = midpoint_is_resettable(gradient.midpoint(index));
 								drag_hint = Some(GradientDragHintState::Midpoint { resettable });
 
 								tool_data.selected_gradient = Some(SelectedGradient {
 									layer: Some(layer),
-									gradient_space_transform,
+									gradient_to_viewport_transform,
 									gradient: gradient.clone(),
 									appearance,
 									initial_gradient_transform: appearance.transform,
-									dragging: GradientDragTarget::Midpoint(i),
+									dragging: GradientDragTarget::Midpoint(index),
 									initial_gradient: gradient.clone(),
 									is_gradient_chain,
 								});
@@ -1370,15 +1396,15 @@ impl Fsm for GradientToolFsmState {
 					// Check for dragging the closest stop to the mouse pointer
 					if drag_hint.is_none() {
 						let mut best: Option<(f64, usize)> = None;
-						for (index, stop) in gradient.iter().enumerate() {
-							let pos = start.lerp(end, stop.position);
+						for index in 0..gradient.len() {
+							let pos = start.lerp(end, gradient.position(index, appearance.settings.cyclic));
 							let dist_sq = pos.distance_squared(mouse);
 							if dist_sq < tolerance && best.as_ref().is_none_or(|&(best_dist, _)| dist_sq < best_dist) {
 								best = Some((dist_sq, index));
 							}
 						}
 						if let Some((_, index)) = best {
-							let stop_position = gradient.position[index];
+							let stop_position = gradient.position(index, appearance.settings.cyclic);
 							// Stops at position 0 or 1 are locked endpoints: dragging moves the
 							// gradient line endpoint geometry (start/end) instead of stop position
 							let drag_target = if stop_position.abs() < f64::EPSILON * 1000. {
@@ -1397,7 +1423,7 @@ impl Fsm for GradientToolFsmState {
 							tool_data.selected_gradient = Some(SelectedGradient {
 								layer: Some(layer),
 								dragging: drag_target,
-								gradient_space_transform,
+								gradient_to_viewport_transform,
 								gradient: gradient.clone(),
 								appearance,
 								initial_gradient: gradient.clone(),
@@ -1415,7 +1441,7 @@ impl Fsm for GradientToolFsmState {
 								tool_data.selected_gradient = Some(SelectedGradient {
 									layer: Some(layer),
 									dragging: dragging_target,
-									gradient_space_transform,
+									gradient_to_viewport_transform,
 									gradient: gradient.clone(),
 									appearance,
 									initial_gradient: gradient.clone(),
@@ -1433,7 +1459,7 @@ impl Fsm for GradientToolFsmState {
 
 						if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
 							let mut new_gradient = gradient.clone();
-							if let Some(index) = insert_stop_at_point(&mut new_gradient, mouse, unit_to_viewport) {
+							if let Some(index) = insert_stop_at_point(&mut new_gradient, mouse, unit_to_viewport, appearance.settings) {
 								responses.add(DocumentMessage::StartTransaction);
 								transaction_started = true;
 
@@ -1465,14 +1491,14 @@ impl Fsm for GradientToolFsmState {
 					GradientToolFsmState::Drawing { drag_hint: hint }
 				} else {
 					let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
-					// List-based gradients render no geometry, so a click on empty canvas yields no layer.
-					// Fall back to a selected gradient list layer so the user can drag a fresh gradient line anywhere.
+					// List-based gradients and blank layers render no geometry, so a click on empty canvas yields no layer.
+					// Fall back to a selected gradient list layer, or one blank enough to take a fresh whole-expanse gradient.
 					let selected_layer = document.click_based_on_position(document_mouse).or_else(|| {
 						document
 							.network_interface
 							.selected_nodes()
 							.selected_visible_layers(&document.network_interface)
-							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some())
+							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some() || replaceable_paint_chain(layer, &document.network_interface).is_some())
 					});
 
 					// Apply the gradient to the selected layer
@@ -1510,10 +1536,15 @@ impl Fsm for GradientToolFsmState {
 								]),
 								GradientAppearance {
 									transform: DAffine2::IDENTITY,
-									gradient_type: tool_options.gradient_type,
-									spread_method: tool_options.spread_method,
+									gradient_form: tool_options.gradient_form,
+									settings: tool_options.settings,
 								},
-								GradientSource::Direct,
+								// A blank layer, or one holding only the other tool's paint, starts a whole-expanse gradient chain; a layer with content gets its Fill painted
+								if replaceable_paint_chain(layer, &document.network_interface).is_some() {
+									GradientSource::Chain
+								} else {
+									GradientSource::Direct
+								},
 							),
 						};
 						let mut selected_gradient = SelectedGradient::new(gradient, appearance, source, layer, document);
@@ -1547,8 +1578,8 @@ impl Fsm for GradientToolFsmState {
 
 					// Recompute the gradient-to-viewport transform fresh each frame so zoom/pan mid-drag works correctly
 					if let Some(layer) = selected_gradient.layer {
-						selected_gradient.gradient_space_transform = gradient_space_transform(layer, document);
-						selected_gradient.gradient_space_transform.translation += tool_data.auto_pan_shift;
+						selected_gradient.gradient_to_viewport_transform = gradient_to_viewport_transform(layer, document);
+						selected_gradient.gradient_to_viewport_transform.translation += tool_data.auto_pan_shift;
 					}
 
 					// Convert drag_start from document space to effective viewport space
@@ -1561,7 +1592,7 @@ impl Fsm for GradientToolFsmState {
 						responses,
 						input.keyboard.get(constrain_axis as usize),
 						input.keyboard.get(lock_angle as usize),
-						selected_gradient.appearance.gradient_type,
+						selected_gradient.appearance.gradient_form,
 						drag_start_viewport,
 						snap_data,
 						&mut tool_data.snap_manager,
@@ -1603,9 +1634,11 @@ impl Fsm for GradientToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 
 				// Clear the selection if we were dragging an endpoint of the gradient which isn't a stop
-				if tool_data.selected_gradient.as_ref().is_some_and(|s| match s.dragging {
-					GradientDragTarget::Start => !s.gradient.position.first().is_some_and(|&p| p.abs() < f64::EPSILON * 1000.),
-					GradientDragTarget::End => !s.gradient.position.last().is_some_and(|&p| (1. - p).abs() < f64::EPSILON * 1000.),
+				if tool_data.selected_gradient.as_ref().is_some_and(|selected| match selected.dragging {
+					GradientDragTarget::Start => selected.gradient.is_empty() || selected.gradient.position(0, selected.appearance.settings.cyclic).abs() >= f64::EPSILON * 1000.,
+					GradientDragTarget::End => {
+						selected.gradient.is_empty() || (1. - selected.gradient.position(selected.gradient.len() - 1, selected.appearance.settings.cyclic)).abs() >= f64::EPSILON * 1000.
+					}
 					_ => false,
 				}) {
 					tool_data.selected_gradient = None;
@@ -1738,10 +1771,10 @@ impl Fsm for GradientToolFsmState {
 	}
 }
 
-fn insert_stop_at_point(gradient: &mut Gradient, point: DVec2, unit_to_viewport: DAffine2) -> Option<usize> {
+fn insert_stop_at_point(gradient: &mut Gradient, point: DVec2, unit_to_viewport: DAffine2, settings: GradientSettings) -> Option<usize> {
 	let (start, end) = gradient_handle_positions(unit_to_viewport);
 	let t = ((end - start).angle_to(point - start)).cos() * start.distance(point) / start.distance(end);
-	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t))
+	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t, settings))
 }
 
 fn dismiss_color_stop_color_picker(tool_data: &mut GradientToolData, responses: &mut VecDeque<Message>) {
@@ -1762,24 +1795,17 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 		let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
 			continue;
 		};
-		let gradient_space_transform = gradient_space_transform(layer, document);
-		let unit_to_viewport = gradient_space_transform * appearance.transform;
+		let gradient_to_viewport_transform = gradient_to_viewport_transform(layer, document);
+		let unit_to_viewport = gradient_to_viewport_transform * appearance.transform;
 		let (start, end) = gradient_handle_positions(unit_to_viewport);
 		let line_length = start.distance(end);
 
 		// Check midpoint diamonds first (smaller hit area, higher priority)
-		for i in 0..gradient.position.len().saturating_sub(1) {
-			let left = gradient.position[i];
-			let right = gradient.position[i + 1];
-			if midpoint_hidden_by_proximity(left, right, line_length) {
-				continue;
-			}
-
-			let midpoint_position = left + gradient.midpoint[i] * (right - left);
+		for (index, midpoint_position) in midpoint_diamonds(&gradient, appearance.settings, line_length) {
 			let midpoint_viewport = start.lerp(end, midpoint_position);
 
 			if midpoint_viewport.distance_squared(mouse) < midpoint_tolerance {
-				let resettable = midpoint_is_resettable(gradient.midpoint[i]);
+				let resettable = midpoint_is_resettable(gradient.midpoint(index));
 				return GradientHoverTarget::Midpoint { resettable };
 			}
 		}
@@ -1804,7 +1830,7 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 		}
 
 		// Check insertion point on line
-		if calculate_insertion(start, end, &gradient, mouse).is_some() {
+		if calculate_insertion(start, end, &gradient, appearance.settings, mouse).is_some() {
 			return GradientHoverTarget::InsertionPoint;
 		}
 	}
@@ -1820,7 +1846,7 @@ fn compute_selected_target(tool_data: &GradientToolData) -> GradientSelectedTarg
 	match selected_gradient.dragging {
 		GradientDragTarget::Stop(_) | GradientDragTarget::Start | GradientDragTarget::End => GradientSelectedTarget::Stop,
 		GradientDragTarget::Midpoint(i) => {
-			let resettable = selected_gradient.gradient.midpoint.get(i).is_some_and(|&midpoint_value| midpoint_is_resettable(midpoint_value));
+			let resettable = i < selected_gradient.gradient.len() && midpoint_is_resettable(selected_gradient.gradient.midpoint(i));
 			GradientSelectedTarget::Midpoint { resettable }
 		}
 		GradientDragTarget::New => GradientSelectedTarget::None,
@@ -1863,8 +1889,8 @@ fn apply_gradient_update(
 				responses.add(GraphOperationMessage::FillGradientSet {
 					layer,
 					gradient,
-					gradient_type: appearance.gradient_type,
-					spread_method: appearance.spread_method,
+					gradient_form: appearance.gradient_form,
+					gradient_settings: appearance.settings,
 					transform: appearance.transform,
 				});
 			}
@@ -1888,7 +1914,7 @@ fn apply_gradient_update(
 /// Set new gradient stops on every selected layer's gradient. Unlike `apply_gradient_update`, this doesn't open its own
 /// transaction so it can be called repeatedly during a color picker drag and have all the changes coalesced into a
 /// single undo entry by the surrounding 'on_commit' callback.
-fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: Gradient) {
+fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: Gradient, settings: GradientSettings) {
 	let selected_layers: Vec<_> = context
 		.document
 		.network_interface
@@ -1903,14 +1929,34 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 		}
 
 		if get_upstream_gradient_value_node_id(layer, &context.document.network_interface).is_some() {
+			responses.add(GraphOperationMessage::GradientCyclicSet {
+				layer,
+				gradient_cyclic: settings.cyclic,
+			});
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: new_gradient.clone() });
+			responses.add(GraphOperationMessage::GradientSpreadSet {
+				layer,
+				gradient_spread: settings.spread,
+			});
+			responses.add(GraphOperationMessage::GradientSpaceSet {
+				layer,
+				gradient_space: settings.space,
+			});
+			responses.add(GraphOperationMessage::GradientHueDirectionSet {
+				layer,
+				gradient_hue_direction: settings.hue_direction,
+			});
+			responses.add(GraphOperationMessage::GradientInterpolationSet {
+				layer,
+				gradient_interpolation: settings.interpolation,
+			});
 			updated_any_layer = true;
 		} else if let Some((_gradient, appearance, _source)) = resolve_gradient(layer, &context.document.network_interface) {
 			responses.add(GraphOperationMessage::FillGradientSet {
 				layer,
 				gradient: new_gradient.clone(),
-				gradient_type: appearance.gradient_type,
-				spread_method: appearance.spread_method,
+				gradient_form: appearance.gradient_form,
+				gradient_settings: settings,
 				transform: appearance.transform,
 			});
 			updated_any_layer = true;
@@ -1919,6 +1965,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 
 	if let Some(selected_gradient) = &mut data.selected_gradient {
 		selected_gradient.gradient = new_gradient.clone();
+		selected_gradient.appearance.settings = settings;
 	}
 
 	// When no selected layer had a gradient to update, the user is editing the tool's default gradient instead.
@@ -2002,8 +2049,9 @@ enum GradientDragHintState {
 
 #[cfg(test)]
 mod test_gradient {
-	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
-	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
+	use super::{gradient_to_viewport_transform, midpoint_diamonds, midpoint_ratio_at};
+	use crate::consts::{GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN};
+	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
@@ -2011,16 +2059,76 @@ mod test_gradient {
 	use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_gradient_value_node_id;
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
+	use graph_craft::document::NodeInput;
 	use graph_craft::document::value::TaggedValue;
+	use graphene_std::NodeParameter;
 	use graphene_std::color::SRGBA8;
-	use graphene_std::vector::style::{GradientSpreadMethod, build_transform_with_y_preservation};
-	use graphene_std::vector::{Gradient, GradientStop, fill};
+	use graphene_std::vector::style::{GradientForm, GradientSpread, build_transform_with_y_preservation};
+	use graphene_std::vector::style::{GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace};
+	use graphene_std::vector::{Gradient, GradientRamp, GradientStop, fill};
 
-	use super::gradient_space_transform;
+	/// A line long enough that no interval in these tests trips the closely-packed-stops hiding rule.
+	const UNCROWDED_LINE_LENGTH: f64 = 10_000.;
+
+	const CYCLIC_SETTINGS: GradientSettings = GradientSettings {
+		spread: GradientSpread::Pad,
+		cyclic: true,
+		space: GradientSpace::OkLab,
+		hue_direction: GradientHueDirection::Shorter,
+		interpolation: GradientInterpolation::Linear,
+	};
+
+	#[test]
+	fn cyclic_adds_a_wrap_diamond_owned_by_the_last_stop() {
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+
+		// The elided cyclic stops sit at 0 and 0.5, so the wrapped interval spans the other half and centers its diamond at 0.75
+		assert_eq!(midpoint_diamonds(&gradient, GradientSettings::default(), UNCROWDED_LINE_LENGTH), vec![(0, 0.5)]);
+		assert_eq!(midpoint_diamonds(&gradient, CYCLIC_SETTINGS, UNCROWDED_LINE_LENGTH), vec![(0, 0.25), (1, 0.75)]);
+
+		// A wrapped interval crossing the boundary places its diamond on whichever side the midpoint lands
+		let mut offset = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		offset.set_positions(&[0.25, 0.5]);
+		offset.set_midpoints(&[0.5, 0.9]);
+		let diamonds = midpoint_diamonds(&offset, CYCLIC_SETTINGS, UNCROWDED_LINE_LENGTH);
+		assert_eq!(diamonds[1].0, 1);
+		assert!((diamonds[1].1 - 0.175).abs() < 1e-9, "the late wrap midpoint should land past the boundary, got {}", diamonds[1].1);
+
+		// Stops pinned to both ends leave the wrapped interval no width, so it contributes no diamond
+		let mut spanning = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		spanning.set_positions(&[0., 1.]);
+		assert_eq!(midpoint_diamonds(&spanning, CYCLIC_SETTINGS, UNCROWDED_LINE_LENGTH), vec![(0, 0.5)]);
+	}
+
+	#[test]
+	fn wrap_midpoint_drag_tracks_past_the_ends_and_saturates_across_the_dead_zone() {
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		gradient.set_positions(&[0.25, 0.5]);
+
+		// Within the interval the ratio maps linearly, and overdragging past the line's end keeps tracking
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.875), Some(0.5));
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 1.0625), Some(0.75));
+
+		// The dead zone between the outermost stops splits at its midpoint (0.375), each half saturating against the nearer end
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.45), Some(GRADIENT_MIDPOINT_MIN));
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.3), Some(GRADIENT_MIDPOINT_MAX));
+
+		// A first stop at 0 leaves no room before the boundary, so the one-sided interval saturates like any other
+		let mut one_sided = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		one_sided.set_positions(&[0., 0.5]);
+		assert_eq!(midpoint_ratio_at(&one_sided, 1, true, 0.4), Some(GRADIENT_MIDPOINT_MIN));
+		assert_eq!(midpoint_ratio_at(&one_sided, 1, true, 0.75), Some(0.5));
+
+		// Ordinary intervals never wrap, and a zero-width interval has no ratio to give
+		assert_eq!(midpoint_ratio_at(&gradient, 0, true, 0.375), Some(0.5));
+		let mut degenerate = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		degenerate.set_positions(&[0.5, 0.5]);
+		assert_eq!(midpoint_ratio_at(&degenerate, 0, false, 0.5), None);
+	}
 
 	struct ResolvedGradient {
 		stops: Gradient,
-		spread_method: GradientSpreadMethod,
+		gradient_spread: GradientSpread,
 		transform: DAffine2,
 	}
 
@@ -2028,7 +2136,7 @@ mod test_gradient {
 		fn new(stops: Gradient, appearance: super::GradientAppearance) -> Self {
 			Self {
 				stops,
-				spread_method: appearance.spread_method,
+				gradient_spread: appearance.settings.spread,
 				transform: appearance.transform,
 			}
 		}
@@ -2056,14 +2164,9 @@ mod test_gradient {
 				let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
 				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-				let stops = match fill_node.input(fill::FillInput)?.as_value()? {
-					TaggedValue::Gradient(stops) => stops.clone(),
+				let (stops, gradient_spread) = match fill_node.input(fill::PaintInput)?.as_value()? {
+					TaggedValue::GradientRamp(ramp) => (Gradient::from(ramp), ramp.gradient_spread),
 					_ => return None,
-				};
-
-				let spread_method = match fill_node.input(fill::SpreadMethodInput).and_then(|input| input.as_value()) {
-					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-					_ => GradientSpreadMethod::default(),
 				};
 
 				let has_transform = matches!(fill_node.input(fill::HasTransformInput).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
@@ -2074,11 +2177,11 @@ mod test_gradient {
 
 				let gradient = ResolvedGradient {
 					stops,
-					spread_method,
+					gradient_spread,
 					transform: local_transform,
 				};
 
-				let transform = gradient_space_transform(layer, document);
+				let transform = gradient_to_viewport_transform(layer, document);
 				Some((gradient, transform))
 			})
 			.collect()
@@ -2095,7 +2198,7 @@ mod test_gradient {
 
 				let (gradient, appearance, _) = super::resolve_gradient(layer, &document.network_interface)?;
 				let gradient = ResolvedGradient::new(gradient, appearance);
-				let transform = gradient_space_transform(layer, document);
+				let transform = gradient_to_viewport_transform(layer, document);
 				Some((gradient, transform))
 			})
 			.collect()
@@ -2146,7 +2249,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(Gradient::new([
+				value: TaggedValue::GradientRamp(GradientRamp::from(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2157,12 +2260,38 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				]))
+				])))
 				.into(),
 			})
 			.await;
 
 		layer
+	}
+
+	// Locks the parameter-level `#[default(Color::BLACK, Color::WHITE)]` machinery, since `Gradient::default()` is the empty list
+	#[tokio::test]
+	async fn gradient_value_node_defaults_to_black_to_white() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let node_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)).await;
+
+		let document = editor.active_document();
+		let stops = document
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&node_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::gradient_value::GradientInput))
+			.and_then(|input| input.as_value())
+			.cloned();
+		let Some(TaggedValue::GradientRamp(ramp)) = stops else {
+			panic!("expected a gradient default, got {stops:?}")
+		};
+		assert_eq!(
+			Gradient::from(ramp).positions(false),
+			vec![0., 1.],
+			"the parameter default should be the black-to-white starting gradient"
+		);
 	}
 
 	async fn create_fill_gradient_chain_layer(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
@@ -2176,7 +2305,7 @@ mod test_gradient {
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
 				output_connector: OutputConnector::primary_output(gradient_node_id),
-				input_connector: InputConnector::node(fill_node_id, fill::FillInput),
+				input_connector: InputConnector::node(fill_node_id, fill::PaintInput),
 			})
 			.await;
 
@@ -2184,7 +2313,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(Gradient::new([
+				value: TaggedValue::GradientRamp(GradientRamp::from(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2195,7 +2324,7 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				]))
+				])))
 				.into(),
 			})
 			.await;
@@ -2395,10 +2524,10 @@ mod test_gradient {
 		editor.move_mouse(end_pos.x, end_pos.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: end_pos,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2438,21 +2567,21 @@ mod test_gradient {
 
 		// Verify initial stop positions and colors
 		let mut stops = initial_gradient.stops.clone();
-		stops.sort();
+		stops.sort(false);
 
 		let positions: Vec<f64> = stops.iter().map(|stop| stop.position).collect();
 		assert_stops_at_positions(&positions, &[0., 0.25, 1.], 0.1);
 
-		let middle_color = SRGBA8::from(stops.color[1]);
+		let middle_color = SRGBA8::from(stops.color(1).unwrap());
 
 		// Simulate dragging the middle stop to position 0.8
 		let click_position = DVec2::new(25., 0.);
 		editor
 			.mousedown(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: click_position,
 					mouse_keys: MouseKeys::LEFT,
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2463,10 +2592,10 @@ mod test_gradient {
 
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: drag_position,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2477,16 +2606,16 @@ mod test_gradient {
 
 		// Verify updated stop positions and colors
 		let mut updated_stops = updated_gradient.stops.clone();
-		updated_stops.sort();
+		updated_stops.sort(false);
 
 		// Check positions are now correctly ordered
 		let updated_positions: Vec<f64> = updated_stops.iter().map(|stop| stop.position).collect();
 		assert_stops_at_positions(&updated_positions, &[0., 0.8, 1.], 0.1);
 
 		// Colors should maintain their associations with the stop points
-		assert_eq!(SRGBA8::from(updated_stops.color[0]), SRGBA8::from(Color::GREEN));
-		assert_eq!(SRGBA8::from(updated_stops.color[1]), middle_color);
-		assert_eq!(SRGBA8::from(updated_stops.color[2]), SRGBA8::from(Color::BLUE));
+		assert_eq!(SRGBA8::from(updated_stops.color(0).unwrap()), SRGBA8::from(Color::GREEN));
+		assert_eq!(SRGBA8::from(updated_stops.color(1).unwrap()), middle_color);
+		assert_eq!(SRGBA8::from(updated_stops.color(2).unwrap()), SRGBA8::from(Color::BLUE));
 	}
 
 	#[tokio::test]
@@ -2528,10 +2657,10 @@ mod test_gradient {
 		editor.left_mousedown(position2.x, position2.y, ModifierKeys::empty()).await;
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: position2,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2582,69 +2711,153 @@ mod test_gradient {
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "Expected the layer to be deleted after drawing a gradient");
 	}
 
+	/// Build the JS-boundary ramp the stops swatch's picker would send when choosing a new gradient spread.
+	fn ramp_with_spread(stops: &Gradient, gradient_spread: GradientSpread) -> GradientRamp<SRGBA8> {
+		GradientRamp::<SRGBA8>::from(&GradientRamp {
+			gradient_spread,
+			..GradientRamp::from(stops)
+		})
+	}
+
 	#[tokio::test]
-	async fn change_spread_method() {
+	async fn change_gradient_spread() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		editor.drag_tool(ToolType::Gradient, 10., 10., 90., 90., ModifierKeys::empty()).await;
 
-		// Verify default spread method is Pad
+		// Verify default gradient spread is Pad
 		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Pad);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Pad);
 
-		// Update spread method to Repeat
+		// Update the gradient spread to Repeat
 		editor
-			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Repeat),
 			})
 			.await;
 
 		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Repeat);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Repeat);
 
-		// Update spread method to Reflect
+		// Update the gradient spread to Reflect
 		editor
-			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Reflect),
 			})
 			.await;
 
 		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Reflect);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Reflect);
 	}
 
 	#[tokio::test]
-	async fn change_spread_method_chain() {
+	async fn change_gradient_spread_chain() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		let layer = create_fill_gradient_chain_layer(&mut editor).await;
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 		editor.select_tool(ToolType::Gradient).await;
 
-		// Verify default spread method is Pad
+		// Verify default gradient spread is Pad
 		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Pad);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Pad);
 
-		// Update spread method to Repeat
+		// Update the gradient spread to Repeat
 		editor
-			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Repeat),
 			})
 			.await;
 
 		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Repeat);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Repeat);
 
-		// Update spread method to Reflect
+		// Update the gradient spread to Reflect
 		editor
-			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Reflect),
 			})
 			.await;
 
 		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Reflect);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Reflect);
+	}
+
+	#[tokio::test]
+	async fn spread_set_on_the_gradient_value_node_reaches_the_tool() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = create_fill_gradient_chain_layer(&mut editor).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.select_tool(ToolType::Gradient).await;
+
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		assert_eq!(gradient.gradient_spread, GradientSpread::Pad);
+
+		// Stamp the spread into the value node's ramp, the way the Properties panel's color picker writes it
+		let gradient_value_id = {
+			let network_interface = &editor.active_document().network_interface;
+			get_upstream_gradient_value_node_id(layer, network_interface).expect("the chain should have a gradient value node")
+		};
+		editor
+			.handle_message(NodeGraphMessage::SetInputValue {
+				node_id: gradient_value_id,
+				input_index: graphene_std::math_nodes::gradient_value::GradientInput::INDEX,
+				value: TaggedValue::GradientRamp(GradientRamp {
+					gradient_spread: GradientSpread::Repeat,
+					..GradientRamp::from(&gradient.stops)
+				})
+				.into(),
+			})
+			.await;
+
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		assert_eq!(gradient.gradient_spread, GradientSpread::Repeat, "the tool should read the spread baked into the value node");
+
+		// Editing the stops must carry that spread through rather than stamping the default back over it
+		editor
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Repeat),
+			})
+			.await;
+
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		assert_eq!(gradient.gradient_spread, GradientSpread::Repeat, "editing the stops should preserve the spread");
+	}
+
+	#[tokio::test]
+	async fn spread_set_from_the_tool_lands_on_the_gradient_value_node() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_chain_source_gradient_settings;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = create_fill_gradient_chain_layer(&mut editor).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.select_tool(ToolType::Gradient).await;
+
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		editor
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Reflect),
+			})
+			.await;
+
+		// The Properties panel reads the value node's own ramp, so the spread has to be stored there
+		let network_interface = &editor.active_document().network_interface;
+		assert_eq!(
+			get_chain_source_gradient_settings(layer, network_interface).map(|settings| settings.spread),
+			Some(GradientSpread::Reflect),
+			"the spread should be written into the gradient value's ramp"
+		);
+
+		let spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_spread::IDENTIFIER);
+		let inserted_spread_node = network_interface
+			.document_network()
+			.nodes
+			.keys()
+			.any(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&spread_reference));
+		assert!(!inserted_spread_node, "the tool should leave graph topology alone rather than authoring a 'Gradient Spread' node");
 	}
 
 	#[tokio::test]
@@ -2679,11 +2892,11 @@ mod test_gradient {
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 
 		let document = editor.active_document();
-		let space_transform = gradient_space_transform(layer, document);
+		let to_viewport_transform = gradient_to_viewport_transform(layer, document);
 		let (gradient, appearance, _) = super::resolve_gradient(layer, &document.network_interface).unwrap();
 		let gradient = ResolvedGradient::new(gradient, appearance);
-		let viewport_start = space_transform.transform_point2(gradient.start());
-		let viewport_end = space_transform.transform_point2(gradient.end());
+		let viewport_start = to_viewport_transform.transform_point2(gradient.start());
+		let viewport_end = to_viewport_transform.transform_point2(gradient.end());
 
 		// Drag target of the end point, move 80px down
 		let new_viewport_end = viewport_end + DVec2::new(0., 80.);
@@ -2693,10 +2906,10 @@ mod test_gradient {
 		editor.move_mouse(new_viewport_end.x, new_viewport_end.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: new_viewport_end,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2706,9 +2919,9 @@ mod test_gradient {
 		let document = editor.active_document();
 		let (updated, appearance, _) = super::resolve_gradient(layer, &document.network_interface).expect("Gradient should exist after drag");
 		let updated = ResolvedGradient::new(updated, appearance);
-		let updated_space_transform = gradient_space_transform(layer, document);
-		let updated_viewport_start = updated_space_transform.transform_point2(updated.start());
-		let updated_viewport_end = updated_space_transform.transform_point2(updated.end());
+		let updated_to_viewport_transform = gradient_to_viewport_transform(layer, document);
+		let updated_viewport_start = updated_to_viewport_transform.transform_point2(updated.start());
+		let updated_viewport_end = updated_to_viewport_transform.transform_point2(updated.end());
 
 		assert!(
 			updated_viewport_start.abs_diff_eq(viewport_start, 1.),
@@ -2757,10 +2970,10 @@ mod test_gradient {
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 
 		let document = editor.active_document();
-		let space_transform = gradient_space_transform(layer, document);
+		let to_viewport_transform = gradient_to_viewport_transform(layer, document);
 		let (gradient, appearance, _) = super::resolve_gradient(layer, &document.network_interface).unwrap();
 		let gradient = ResolvedGradient::new(gradient, appearance);
-		let viewport_end = space_transform.transform_point2(gradient.end());
+		let viewport_end = to_viewport_transform.transform_point2(gradient.end());
 
 		// Drag the end point 80px down
 		let new_viewport_end = viewport_end + DVec2::new(0., 80.);
@@ -2770,10 +2983,10 @@ mod test_gradient {
 		editor.move_mouse(new_viewport_end.x, new_viewport_end.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: new_viewport_end,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2785,10 +2998,10 @@ mod test_gradient {
 		let updated = ResolvedGradient::new(updated, appearance);
 
 		assert_eq!(updated.stops.len(), 3, "Stop count should be preserved");
-		assert_stops_at_positions(&updated.stops.position, &[0., 0.5, 1.], 1e-10);
-		assert_eq!(SRGBA8::from(updated.stops.color[0]), SRGBA8::from(Color::RED), "First stop color should be preserved");
-		assert_eq!(SRGBA8::from(updated.stops.color[1]), SRGBA8::from(Color::GREEN), "Middle stop color should be preserved");
-		assert_eq!(SRGBA8::from(updated.stops.color[2]), SRGBA8::from(Color::BLUE), "Last stop color should be preserved");
+		assert_stops_at_positions(&updated.stops.positions(false), &[0., 0.5, 1.], 1e-10);
+		assert_eq!(SRGBA8::from(updated.stops.color(0).unwrap()), SRGBA8::from(Color::RED), "First stop color should be preserved");
+		assert_eq!(SRGBA8::from(updated.stops.color(1).unwrap()), SRGBA8::from(Color::GREEN), "Middle stop color should be preserved");
+		assert_eq!(SRGBA8::from(updated.stops.color(2).unwrap()), SRGBA8::from(Color::BLUE), "Last stop color should be preserved");
 	}
 
 	// When the gradient chain feeds a 'Fill' node's secondary input it's an unencapsulated side-branch (no layer
@@ -2796,8 +3009,6 @@ mod test_gradient {
 	// graph space rather than stranded at the origin.
 	#[tokio::test]
 	async fn gradient_chain_node_on_fill_secondary_input_takes_feeder_slot() {
-		use graphene_std::vector::style::GradientSpreadMethod;
-
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Ellipse, 0., 0., 100., 100., ModifierKeys::empty()).await;
@@ -2821,14 +3032,14 @@ mod test_gradient {
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
 				output_connector: OutputConnector::primary_output(gradient_value_id),
-				input_connector: InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput),
+				input_connector: InputConnector::node(fill_node_id, graphene_std::vector::fill::PaintInput),
 			})
 			.await;
 		editor
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_value_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(Gradient::new([
+				value: TaggedValue::GradientRamp(GradientRamp::from(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2839,7 +3050,7 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				]))
+				])))
 				.into(),
 			})
 			.await;
@@ -2854,35 +3065,351 @@ mod test_gradient {
 			.await;
 		let feeder_position = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position");
 
-		// Set the spread method through the tool, which splices a 'Spread Method' node onto the Fill's fill input wire.
+		// Set the gradient form through the tool, which splices a 'Gradient Form' node onto the Fill's fill input wire.
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 		editor.select_tool(ToolType::Gradient).await;
 		editor
 			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+				options: super::GradientOptionsUpdate::Form(GradientForm::Radial),
 			})
 			.await;
 
-		let spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::spread_method::IDENTIFIER);
-		let spread_node_id = {
+		let form_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_form::IDENTIFIER);
+		let form_node_id = {
 			let network_interface = &editor.active_document().network_interface;
 			network_interface
 				.document_network()
 				.nodes
 				.keys()
 				.copied()
-				.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&spread_reference))
-				.expect("Spread Method node should have been inserted")
+				.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&form_reference))
+				.expect("Gradient Form node should have been inserted")
 		};
 
-		let spread_position = editor.active_document_mut().network_interface.position(&spread_node_id, &[]).expect("Spread Method position");
+		let form_position = editor.active_document_mut().network_interface.position(&form_node_id, &[]).expect("Gradient Form position");
 		let feeder_position_after = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position after");
 
-		assert_eq!(spread_position, feeder_position, "the inserted node should occupy the feeder's former slot, not the graph origin");
+		assert_eq!(form_position, feeder_position, "the inserted node should occupy the feeder's former slot, not the graph origin");
 		assert_eq!(
 			feeder_position_after,
 			feeder_position - glam::IVec2::new(crate::consts::NODE_CHAIN_WIDTH, 0),
 			"the feeder's branch should shift one chain-width left to make room"
+		);
+	}
+
+	#[tokio::test]
+	async fn whole_expanse_gradient_reports_control_geometry_outline_bounds() {
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// A gradient dragged across a blank layer paints its whole expanse via a 'Gradient Value' chain
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+		assert!(get_upstream_gradient_value_node_id(layer, &editor.active_document().network_interface).is_some());
+
+		editor.eval_graph().await.expect("graph should evaluate");
+		let bounds = editor.active_document().metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY);
+		assert_eq!(bounds, Some([DVec2::ZERO, DVec2::X]), "a linear expanse's local bounds should be its canonical gradient line");
+
+		// A linear's control line has no interior, so it registers as outline only
+		let click_targets = editor.active_document().metadata().click_targets(layer);
+		assert!(click_targets.is_none_or(|targets| targets.is_empty()), "a linear expanse should gain no click targets");
+
+		// Switching the form swaps the control geometry to the radial unit circle
+		editor
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: super::GradientOptionsUpdate::Form(GradientForm::Radial),
+			})
+			.await;
+		editor.eval_graph().await.expect("graph should evaluate");
+		let bounds = editor.active_document().metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY);
+		assert_eq!(bounds, Some([DVec2::splat(-1.), DVec2::splat(1.)]), "a radial expanse's local bounds should be its unit circle");
+
+		// A radial's main ellipse doubles as the layer's draggable handle regardless of spread
+		let click_targets = editor.active_document().metadata().click_targets(layer).expect("a radial expanse should be clickable");
+		assert!(
+			click_targets.iter().any(|target| target.intersect_point_no_stroke(DVec2::ZERO)),
+			"the ellipse interior should register a hit"
+		);
+	}
+
+	#[tokio::test]
+	async fn chain_stop_placement_composes_through_setter_nodes() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient_stops;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = create_gradient_list_layer(&mut editor).await;
+
+		let count_nodes = |editor: &mut EditorTestUtils, reference: &DefinitionIdentifier| {
+			let document = editor.active_document();
+			let network_interface = &document.network_interface;
+			network_interface
+				.document_network()
+				.nodes
+				.keys()
+				.filter(|&node_id| network_interface.reference(node_id, &[]).as_ref() == Some(reference))
+				.count()
+		};
+		let positions_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_positions::IDENTIFIER);
+
+		// Setter ops are update-only: without a user-authored setter node they are no-ops, since the stops value carries placement
+		editor.handle_message(GraphOperationMessage::GradientPositionsSet { layer, positions: vec![0., 0.25] }).await;
+		assert_eq!(count_nodes(&mut editor, &positions_reference), 0, "the op must not insert a Gradient Positions node");
+
+		// Wire Gradient Positions and Gradient Midpoints nodes into the chain like a user would
+		let gradient_value_id = {
+			let document = editor.active_document();
+			get_upstream_gradient_value_node_id(layer, &document.network_interface).expect("Gradient Value node should exist")
+		};
+		let positions_node_id = editor
+			.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_positions::IDENTIFIER))
+			.await;
+		let midpoints_node_id = editor
+			.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_midpoints::IDENTIFIER))
+			.await;
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::primary_output(gradient_value_id),
+				input_connector: InputConnector::node_at_index(positions_node_id, 0),
+			})
+			.await;
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::primary_output(positions_node_id),
+				input_connector: InputConnector::node_at_index(midpoints_node_id, 0),
+			})
+			.await;
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::primary_output(midpoints_node_id),
+				input_connector: InputConnector::layer_secondary_input(layer.to_node()),
+			})
+			.await;
+
+		// Now the ops update the existing nodes, and the chain read composes their attributes over the stops value
+		editor.handle_message(GraphOperationMessage::GradientPositionsSet { layer, positions: vec![0., 0.25] }).await;
+		editor.handle_message(GraphOperationMessage::GradientMidpointsSet { layer, midpoints: vec![0.7, 0.5] }).await;
+		let document = editor.active_document();
+		let stops = get_gradient_stops(layer, &document.network_interface).expect("the chain should resolve stops");
+		assert_stops_at_positions(&stops.positions(false), &[0., 0.25], 1e-10);
+		assert_eq!(stops.midpoints(), vec![0.7, 0.5]);
+
+		// An empty update restores the default placement, overriding the value's own explicit placement at runtime
+		editor.handle_message(GraphOperationMessage::GradientPositionsSet { layer, positions: vec![] }).await;
+		let document = editor.active_document();
+		let stops = get_gradient_stops(layer, &document.network_interface).expect("the chain should resolve stops");
+		assert_stops_at_positions(&stops.positions(false), &[0., 1.], 1e-10);
+		assert!(!stops.has_position_attribute(), "the empty setter value should clear the attribute");
+
+		// A wired setter input is procedural authorship, which the update must leave untouched rather than bake over
+		let number_node_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::number_value::IDENTIFIER)).await;
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::primary_output(number_node_id),
+				input_connector: InputConnector::node(positions_node_id, graphene_std::math_nodes::gradient_positions::PositionsInput),
+			})
+			.await;
+		editor.handle_message(GraphOperationMessage::GradientPositionsSet { layer, positions: vec![0., 0.5] }).await;
+		let document = editor.active_document();
+		let positions_input = document
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&positions_node_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::gradient_positions::PositionsInput))
+			.expect("the positions input should exist");
+		assert!(matches!(positions_input, NodeInput::Node { .. }), "the wired positions input must survive the baked write");
+	}
+
+	#[tokio::test]
+	async fn drag_on_blank_layer_starts_gradient_chain() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient_stops;
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		assert!(
+			get_upstream_gradient_value_node_id(layer, &document.network_interface).is_some(),
+			"the drag should start a gradient chain"
+		);
+		let stops = get_gradient_stops(layer, &document.network_interface).expect("the new chain should resolve stops");
+		assert_eq!(stops.len(), 2);
+	}
+
+	#[tokio::test]
+	async fn replaces_a_whole_expanse_color_with_a_gradient() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::{get_gradient_stops, get_upstream_color_value_node_id};
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// Nudging leaves a 'Transform' node that must survive the swap, and the fill paints the whole expanse
+		editor
+			.handle_message(DocumentMessage::NudgeSelectedLayers {
+				delta_x: 10.,
+				delta_y: 0.,
+				resize: Key::Shift,
+				resize_opposite: Key::Alt,
+			})
+			.await;
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+		assert!(get_upstream_color_value_node_id(layer, &editor.active_document().network_interface).is_some());
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		assert!(
+			get_upstream_gradient_value_node_id(layer, &document.network_interface).is_some(),
+			"the drag should start a gradient chain"
+		);
+		assert_eq!(get_gradient_stops(layer, &document.network_interface).expect("the new chain should resolve stops").len(), 2);
+		assert!(
+			get_upstream_color_value_node_id(layer, &document.network_interface).is_none(),
+			"the color it replaced should be gone from the chain"
+		);
+
+		// The layer's own placement is not the paint's, so nudging survives a swap
+		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let chain_transforms = document
+			.network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], super::FlowType::HorizontalFlow)
+			.filter(|node_id| document.network_interface.reference(node_id, &[]).as_ref() == Some(&transform_reference))
+			.count();
+		assert_eq!(chain_transforms, 1, "the layer's Transform node should survive the swap");
+	}
+
+	#[tokio::test]
+	async fn chain_started_past_a_transform_sits_beside_it() {
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer_id = NodeId::new();
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: layer_id,
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = LayerNodeIdentifier::new_unchecked(layer_id);
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_id] }).await;
+		// Sitting away from where fresh nodes are dropped, so the chain's placement can't coincide with it
+		editor.active_document_mut().network_interface.shift_node(&layer_id, IVec2::new(20, 4), &[]);
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+		let transform_id = editor
+			.active_document()
+			.network_interface
+			.upstream_output_connector(&InputConnector::layer_secondary_input(layer_id), &[])
+			.and_then(|output| output.node_id())
+			.expect("the drag's placement should leave a Transform node feeding the layer");
+
+		// Each chain node sits one chain width left of the one it feeds, so the new value node lands beside the Transform
+		let network_interface = &editor.active_document().network_interface;
+		let gradient_value_id = get_upstream_gradient_value_node_id(layer, network_interface).expect("the drag should start a gradient chain");
+		let layer_position = network_interface.position(&layer_id, &[]).expect("the layer should have a position");
+		assert_eq!(network_interface.position(&transform_id, &[]), Some(layer_position - IVec2::new(crate::consts::NODE_CHAIN_WIDTH, 0)));
+		assert_eq!(
+			network_interface.position(&gradient_value_id, &[]),
+			Some(layer_position - IVec2::new(2 * crate::consts::NODE_CHAIN_WIDTH, 0))
+		);
+		assert!(network_interface.is_chain(&gradient_value_id, &[]), "the value node should stay part of the layer's chain");
+	}
+
+	#[tokio::test]
+	async fn drag_on_nudged_blank_layer_reuses_its_transform() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient_stops;
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// Nudging an empty layer leaves a 'Transform' node in its chain, which the gradient then adopts as its placement
+		editor
+			.handle_message(DocumentMessage::NudgeSelectedLayers {
+				delta_x: 10.,
+				delta_y: 0.,
+				resize: Key::Shift,
+				resize_opposite: Key::Alt,
+			})
+			.await;
+		let layer_content_input = InputConnector::layer_secondary_input(layer.to_node());
+		let transform_id = editor
+			.active_document()
+			.network_interface
+			.upstream_output_connector(&layer_content_input, &[])
+			.and_then(|output| output.node_id())
+			.expect("the nudge should leave a Transform node feeding the layer");
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		let network_interface = &editor.active_document().network_interface;
+		let gradient_value_id = get_upstream_gradient_value_node_id(layer, network_interface).expect("the drag should start a gradient chain");
+		assert_eq!(get_gradient_stops(layer, network_interface).expect("the new chain should resolve stops").len(), 2);
+
+		// The gradient paints through the nudge's Transform node rather than adding a second one
+		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let chain_transforms = network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], super::FlowType::HorizontalFlow)
+			.filter(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&transform_reference))
+			.count();
+		assert_eq!(chain_transforms, 1, "the gradient should adopt the existing Transform node");
+		assert_eq!(
+			network_interface
+				.upstream_output_connector(&InputConnector::primary_input(transform_id), &[])
+				.and_then(|output| output.node_id()),
+			Some(gradient_value_id),
+			"the gradient should be painted through the preserved Transform node"
 		);
 	}
 }

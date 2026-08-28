@@ -1,7 +1,7 @@
 use super::IconName;
 use super::utility_types::{MouseCursorIcon, PersistedState};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, RasterizedImage};
+use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FileFilter, RasterizedImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -14,7 +14,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
 use graph_craft::document::NodeId;
 use graphene_std::color::SRGBA8;
-use graphene_std::vector::style::FillChoiceUI;
+use graphene_std::vector::style::FillChoice;
 use std::path::PathBuf;
 
 #[cfg(not(target_family = "wasm"))]
@@ -87,16 +87,24 @@ pub enum FrontendMessage {
 		commit_date: String,
 	},
 	TriggerDisplayThirdPartyLicensesDialog,
+	TriggerOpen {
+		filters: Vec<FileFilter>,
+	},
+	TriggerImport {
+		filters: Vec<FileFilter>,
+	},
 	TriggerSaveDocument {
 		document_id: DocumentId,
 		name: String,
 		path: Option<PathBuf>,
 		folder: Option<PathBuf>,
+		filters: Vec<FileFilter>,
 		content: serde_bytes::ByteBuf,
 	},
 	TriggerSaveFile {
 		name: String,
 		folder: Option<PathBuf>,
+		filters: Vec<FileFilter>,
 		content: serde_bytes::ByteBuf,
 	},
 	TriggerExportImage {
@@ -128,8 +136,6 @@ pub enum FrontendMessage {
 	},
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
-	TriggerOpen,
-	TriggerImport,
 	TriggerSavePreferences {
 		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
 		preferences: PreferencesMessageHandler,
@@ -165,7 +171,7 @@ pub enum FrontendMessage {
 	},
 	/// The Rust color picker handler picked a new color/gradient. The frontend `<ColorPicker />` forwards this as its `colorOrGradient` event.
 	ColorPickerColorChanged {
-		value: FillChoiceUI,
+		value: FillChoice<SRGBA8>,
 	},
 	/// The Rust color picker handler is starting an undo transaction. The frontend `<ColorPicker />` forwards this as its `startHistoryTransaction` event.
 	ColorPickerStartHistoryTransaction,

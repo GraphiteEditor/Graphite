@@ -4,7 +4,8 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::tool::tool_messages::tool_prelude::WidgetCallback;
 use derivative::*;
-use graphene_std::vector::style::FillChoiceUI;
+use graphene_std::color::SRGBA8;
+use graphene_std::vector::style::FillChoice;
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -191,9 +192,9 @@ pub struct ImageButton {
 pub struct ColorInput {
 	// Content
 	#[widget_builder(constructor)]
-	pub value: FillChoiceUI,
+	pub value: FillChoice<SRGBA8>,
 	/// CSS `linear-gradient(...)` (or solid-color stand-in) for the swatch's `background-image`. Auto-populated from `value` at layout-send time.
-	/// `None` when `value` is `FillChoiceUI::None`, in which case the frontend uses its "none" fallback styling.
+	/// `None` when `value` is `FillChoice::<SRGBA8>::None`, in which case the frontend uses its "none" fallback styling.
 	#[serde(rename = "chosenGradient")]
 	#[widget_builder(skip)]
 	pub chosen_gradient: Option<String>,
@@ -230,6 +231,24 @@ pub struct ColorInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
+}
+
+/// Shortens a breadcrumb label to fit the trail, replacing the tail with an ellipsis.
+/// Quotes delimit a string value, so a quoted label budgets only the text between them.
+pub fn truncate_breadcrumb_label(label: &str) -> String {
+	const MAX_CHARACTERS: usize = 40;
+
+	let quoted = label.len() >= 2 && label.starts_with('"') && label.ends_with('"');
+	let content = if quoted { &label[1..label.len() - 1] } else { label };
+
+	if content.chars().count() <= MAX_CHARACTERS {
+		return label.to_string();
+	}
+
+	let mut truncated: String = content.chars().take(MAX_CHARACTERS - 1).collect();
+	truncated.push('…');
+
+	if quoted { format!("\"{truncated}\"") } else { truncated }
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

@@ -1,16 +1,17 @@
+use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, SeedValue, SignedInteger};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{Graphic, IntoGraphicList};
+use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
 use graphic_types::{Artboard, Vector};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
-use vector_types::gradient::{GradientSpreadMethod, GradientType};
-use vector_types::{Gradient, GradientStop, ReferencePoint};
+use vector_types::gradient::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread};
+use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
@@ -567,8 +568,8 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<Gradient>,
 		List<Artboard>,
 		List<BlendMode>,
-		List<GradientType>,
-		List<GradientSpreadMethod>,
+		List<GradientForm>,
+		List<GradientSpread>,
 	)]
 	content: List<T>,
 	/// The attribute name (key) to write or replace.
@@ -713,35 +714,86 @@ fn read_attribute_blend_mode(
 	result
 }
 
-/// Reads a named `GradientType` attribute from the input list, outputting each value as an element of a new `GradientType[]`.
+/// Reads a named `GradientForm` attribute from the input list, outputting each value as an element of a new `GradientForm[]`.
 #[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_type(
+fn read_attribute_gradient_form(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: Item<String>,
-) -> List<GradientType> {
+) -> List<GradientForm> {
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
+		let Some(value) = content.attribute::<GradientForm>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
 }
 
-/// Reads a named `GradientSpreadMethod` attribute from the input list, outputting each value as an element of a new `GradientSpreadMethod[]`.
+/// Reads a named `GradientSpread` attribute from the input list, outputting each value as an element of a new `GradientSpread[]`.
 #[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_spread_method(
+fn read_attribute_gradient_spread(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: Item<String>,
-) -> List<GradientSpreadMethod> {
+) -> List<GradientSpread> {
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
+		let Some(value) = content.attribute::<GradientSpread>(&name, index) else { continue };
+		result.push(Item::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientSpace` attribute from the input list, outputting each value as an element of a new `GradientSpace[]`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_gradient_space(
+	_: impl Ctx,
+	content: ListDyn,
+	/// The attribute name (key) to read.
+	name: Item<String>,
+) -> List<GradientSpace> {
+	let name = name.into_element();
+	let mut result = List::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientSpace>(&name, index) else { continue };
+		result.push(Item::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientInterpolation` attribute from the input list, outputting each value as an element of a new `GradientInterpolation[]`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_gradient_interpolation(
+	_: impl Ctx,
+	content: ListDyn,
+	/// The attribute name (key) to read.
+	name: Item<String>,
+) -> List<GradientInterpolation> {
+	let name = name.into_element();
+	let mut result = List::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientInterpolation>(&name, index) else { continue };
+		result.push(Item::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientHueDirection` attribute from the input list, outputting each value as an element of a new `GradientHueDirection[]`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_gradient_hue_direction(
+	_: impl Ctx,
+	content: ListDyn,
+	/// The attribute name (key) to read.
+	name: Item<String>,
+) -> List<GradientHueDirection> {
+	let name = name.into_element();
+	let mut result = List::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientHueDirection>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -819,6 +871,7 @@ pub async fn extend<T: 'n + Send + Clone>(
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
+		List<Stroke>,
 	)]
 	base: List<T>,
 	/// The list whose items will appear at the end of the extended list.
@@ -839,6 +892,7 @@ pub async fn extend<T: 'n + Send + Clone>(
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
+		List<Stroke>,
 	)]
 	new: List<T>,
 ) -> List<T> {
@@ -876,31 +930,10 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	base
 }
 
-/// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.
+/// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
 /// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"))]
-pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
-	_: impl Ctx,
-	#[implementations(
-		List<Graphic>,
-	 	List<Vector>,
-		List<Raster<CPU>>,
-	 	List<Raster<GPU>>,
-	 	List<Color>,
-		List<Gradient>,
-		List<String>,
-		Item<DAffine2>,
-		Item<DVec2>,
-	)]
-	content: T,
-) -> Item<Graphic> {
-	Item::new_from_element(content.into())
-}
-
-/// Converts a list of graphical content into a `Graphic[]` by placing it into an element of a new wrapper `Graphic[]`.
-/// If it is already a `Graphic[]`, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
-#[node_macro::node(category("General"))]
-pub async fn to_graphic<T: IntoGraphicList>(
+pub async fn into_group<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
@@ -910,10 +943,20 @@ pub async fn to_graphic<T: IntoGraphicList>(
 		List<Color>,
 		List<Gradient>,
 		List<String>,
+		List<DVec2>,
+		Item<DAffine2>, // TODO: Remove this
+		List<Stroke>,
 	)]
 	content: T,
-) -> List<Graphic> {
-	content.into_graphic_list()
+) -> Item<Graphic> {
+	Item::new_from_element(content.into())
+}
+
+/// Type-asserts a value to be graphical content, converting each item of other content types into its matching form.
+/// Use the 'Into Group' node instead to collect the content into a single group.
+#[node_macro::node(category("General"))]
+pub async fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
+	value
 }
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
@@ -930,9 +973,15 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
+			// A boxed single graphic is the rank-0 spelling of the same nesting, so it flattens through the list path
+			let current_element = match current_element {
+				Graphic::Graphic(item) if recurse => Graphic::GraphicList(List::new_from_item(*item)),
+				element => element,
+			};
+
 			match current_element {
 				// If we're allowed to recurse, flatten any graphics we encounter
-				Graphic::Graphic(mut current_element) if recurse => {
+				Graphic::GraphicList(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
 					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 						*graphic_transform = current_transform * *graphic_transform;
@@ -940,7 +989,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 					flatten_list(output_graphic_list, current_element, fully_flatten, recursion_depth + 1);
 				}
-				// Push any leaf elements we encounter: either `Graphic::Graphic(...)` values beyond the recursion depth, or non-`Graphic::Graphic` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`, `Graphic::Text`)
+				// Push any leaf element: a group beyond the recursion depth, or any non-group variant
 				_ => {
 					let attributes = current_graphic_list.clone_item_attributes(index);
 					output_graphic_list.push(Item::from_parts(current_element, attributes));
@@ -957,9 +1006,8 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 /// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
-pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
-	let graphic_list = content.into_graphic_list();
-	let mut output: List<Vector> = graphic_list.clone().into_flattened_list();
+pub async fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
+	let mut output: List<Vector> = content.clone().into_flattened_list();
 
 	// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
 	// TODO: Flattening here erases the upstream `List<Graphic>` hierarchy that editor metadata collection walks
@@ -969,20 +1017,20 @@ pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(L
 	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
 	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Combine Paths,
 	// TODO: Morph, Rasterize) become unnecessary.
-	if !output.is_empty() {
+	if !output.is_empty() && !is_lone_anonymous_leaf(&content) {
 		// Item 0 carries a composed transform inherited from the flattened input, but the merged_layers
 		// already holds the original transforms; pre-compensate by item 0's inverse so the renderer's
 		// `upstream_footprint *= item_0_transform` recursion cancels out and leaves the originals intact.
-		let mut graphic_list = graphic_list;
+		let mut merged_layers = content;
 		let item_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		if item_0_transform.matrix2.determinant().abs() > f64::EPSILON {
 			let inverse = item_0_transform.inverse();
-			for transform in graphic_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			for transform in merged_layers.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 				*transform = inverse * *transform;
 			}
 		}
 
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
+		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, merged_layers);
 	}
 
 	output
@@ -990,64 +1038,32 @@ pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(L
 
 /// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Raster"))]
-pub async fn flatten_raster<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Raster<CPU>>)] content: T) -> List<Raster<CPU>> {
+pub async fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("General"))]
-pub async fn flatten_color<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] content: T) -> List<Color> {
+pub async fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
-pub async fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Gradient>)] content: T) -> List<Gradient> {
+pub async fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
 	content.into_flattened_list()
 }
 
-/// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
-#[node_macro::node(category("Color"), name("Colors to Gradient"))]
-fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> Item<Gradient> {
-	let colors = colors.into_flattened_list::<Color>();
-	let total_colors = colors.len();
+/// Constructs a gradient from a `Color[]`, where each color becomes a gradient stop. A `position` attribute on the colors places their stops along the ramp and a `midpoint` attribute skews each transition, while colors carrying neither are distributed evenly across the 0 to 1 range.
+#[node_macro::node(category("Gradient"), name("Colors to Gradient"))]
+fn colors_to_gradient(_: impl Ctx, colors: List<Graphic>) -> Item<Gradient> {
+	Item::new_from_element(Gradient::from(colors.into_flattened_list::<Color>()))
+}
 
-	if total_colors == 0 {
-		return Item::new_from_element(Gradient::new(vec![
-			GradientStop {
-				position: 0.,
-				midpoint: 0.5,
-				color: Color::BLACK,
-			},
-			GradientStop {
-				position: 1.,
-				midpoint: 0.5,
-				color: Color::BLACK,
-			},
-		]));
-	}
-
-	if let (1, Some(&single_color)) = (total_colors, colors.element(0)) {
-		return Item::new_from_element(Gradient::new(vec![
-			GradientStop {
-				position: 0.,
-				midpoint: 0.5,
-				color: single_color,
-			},
-			GradientStop {
-				position: 1.,
-				midpoint: 0.5,
-				color: single_color,
-			},
-		]));
-	}
-
-	let colors = colors.into_iter().enumerate().map(|(index, row)| GradientStop {
-		position: index as f64 / (total_colors - 1) as f64,
-		midpoint: 0.5,
-		color: row.into_element(),
-	});
-	Item::new_from_element(Gradient::new(colors))
+/// Unwraps a gradient into a `Color[]` of its stops, keeping any `position` and `midpoint` attributes that place them along the ramp. Attributes belonging to the gradient as a whole (like spread and interpolation), rather than its individual color stops, are not preserved.
+#[node_macro::node(category("Gradient"), name("Gradient to Colors"))]
+fn gradient_to_colors(_: impl Ctx, gradient: Item<Gradient>) -> List<Color> {
+	gradient.into_element().into_color_list()
 }
 
 #[cfg(test)]
@@ -1056,6 +1072,11 @@ mod test {
 
 	fn list_of<T>(elements: impl IntoIterator<Item = T>) -> List<T> {
 		elements.into_iter().map(Item::new_from_element).collect()
+	}
+
+	/// Stands in for the embedding adapter a compiled graph inserts ahead of a `List<Graphic>` connector.
+	fn embed_colors(colors: List<Color>) -> List<Graphic> {
+		colors.into_iter().map(|item| Item::new_from_element(Graphic::from(item))).collect()
 	}
 
 	fn elements<T: Clone>(list: &List<T>) -> Vec<T> {
@@ -1172,5 +1193,31 @@ mod test {
 	fn list_slice_yields_nothing_when_start_reaches_end() {
 		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(3.), Item::new_from_element(3.));
 		assert!(elements(&portion).is_empty());
+	}
+
+	#[test]
+	fn gradient_to_colors_round_trips_the_stops_with_their_placement() {
+		let mut gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
+		gradient.set_positions(&[0., 0.25, 1.]);
+		gradient.set_midpoints(&[0.3, 0.5, 0.5]);
+
+		let colors = gradient_to_colors((), Item::new_from_element(gradient.clone()));
+		assert_eq!(elements(&colors), [Color::RED, Color::GREEN, Color::BLUE], "every stop should come out as its color");
+
+		let restored = colors_to_gradient((), embed_colors(colors));
+		assert_eq!(
+			restored.element(),
+			&gradient,
+			"wrapping the stops back up should restore the uneven placement rather than redistributing them"
+		);
+	}
+
+	#[test]
+	fn gradient_to_colors_leaves_an_untouched_ramp_without_placement_attributes() {
+		let gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
+		assert!(!gradient.has_position_attribute(), "even spacing is stored as the attribute's absence");
+
+		let restored = colors_to_gradient((), embed_colors(gradient_to_colors((), Item::new_from_element(gradient.clone()))));
+		assert_eq!(restored.element(), &gradient, "a default ramp should round trip without gaining attributes it never had");
 	}
 }

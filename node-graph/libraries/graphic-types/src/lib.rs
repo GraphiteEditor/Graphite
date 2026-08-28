@@ -1,3 +1,4 @@
+pub mod appearance;
 pub mod artboard;
 pub mod graphic;
 
@@ -7,29 +8,34 @@ pub use raster_types;
 pub use vector_types;
 
 // Re-export commonly used types at the crate root
+pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
 pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 
 pub mod migrations {
 	use crate::Vector;
+	use core_types::Color;
+	use vector_types::gradient::GradientStops;
+	use vector_types::{Gradient, GradientRamp, GradientSpace};
 
 	// Storing legacy structs that are only used in document migration.
-	// TODO: Eventually remove this migration document upgrade code
+	// TODO: Eventually remove this document upgrade code
 	pub mod legacy {
 		use core_types::Color;
 		use dyn_any::DynAny;
 		use glam::{DAffine2, DVec2};
-		use vector_types::vector::{PointDomain, RegionDomain, SegmentDomain, misc::HandleId, style::Stroke};
-		use vector_types::{Gradient, Vector, vector};
+		use vector_types::vector::{PointDomain, SegmentDomain, misc::HandleId, style::Stroke};
+		use vector_types::{GradientRamp, Vector, vector};
 
 		#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 		pub struct LegacyGradient {
-			pub stops: Gradient,
-			pub gradient_type: vector::style::GradientType,
+			#[serde(deserialize_with = "crate::migrations::migrate_to_gradient_ramp")]
+			pub stops: GradientRamp,
+			pub gradient_type: vector::style::GradientForm,
 			pub start: DVec2,
 			pub end: DVec2,
 			#[serde(default)]
-			pub spread_method: vector::style::GradientSpreadMethod,
+			pub spread_method: vector::style::GradientSpread,
 			#[serde(default)]
 			pub absolute: bool,
 			#[serde(default)]
@@ -47,7 +53,7 @@ pub mod migrations {
 
 				// The legacy radial drew as a circle in the layer's own space; bake the adjustment that, composed with the
 				// endpoint frame, makes the new pipeline reproduce that circle through the (possibly non-uniform) layer transform.
-				let radial_invertible = self.gradient_type == vector::style::GradientType::Radial
+				let radial_invertible = self.gradient_type == vector::style::GradientForm::Radial
 					&& layer_transform.is_finite()
 					&& layer_transform.matrix2.determinant().recip().is_finite()
 					&& direction.length_squared() > 1e-20;
@@ -88,10 +94,11 @@ pub mod migrations {
 		}
 
 		/// The legacy `fill` field is intentionally omitted because vector payload migration only
-		/// recovers editable vector data. The fill/stroke paints are migrated from the node inputs.
+		/// recovers editable vector data. The stroke parses solely to validate the legacy shape.
 		#[derive(serde::Deserialize)]
 		#[cfg_attr(test, derive(Default, serde::Serialize))]
 		pub(super) struct PathStyle {
+			#[allow(dead_code)]
 			pub stroke: Option<Stroke>,
 		}
 
@@ -99,11 +106,11 @@ pub mod migrations {
 		#[derive(serde::Deserialize)]
 		#[cfg_attr(test, derive(Default, serde::Serialize))]
 		pub(super) struct VectorData {
+			#[allow(dead_code)]
 			pub style: PathStyle,
 			pub colinear_manipulators: Vec<[HandleId; 2]>,
 			pub point_domain: PointDomain,
 			pub segment_domain: SegmentDomain,
-			pub region_domain: RegionDomain,
 		}
 
 		#[derive(serde::Deserialize)]
@@ -113,7 +120,7 @@ pub mod migrations {
 		}
 	}
 
-	// TODO: Eventually remove this migration document upgrade code
+	// TODO: Eventually remove this document upgrade code
 	/// Returns the first `Vector` recovered from any of the legacy on-disk shapes (the legacy `VectorData` flat struct, a single `Vector`, or any of the historical `List<Vector>` variants).
 	pub fn migrate_to_optional_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Vector>, D::Error> {
 		use serde::Deserialize;
@@ -131,14 +138,47 @@ pub mod migrations {
 
 		Ok(match VectorFormat::deserialize(deserializer)? {
 			VectorFormat::OldVectorData(old) => Some(Vector {
-				stroke: old.style.stroke,
 				colinear_manipulators: old.colinear_manipulators,
 				point_domain: old.point_domain,
 				segment_domain: old.segment_domain,
-				region_domain: old.region_domain,
 			}),
 			VectorFormat::Vector(vector) => Some(vector),
 			VectorFormat::List(list) => list.element.into_iter().next(),
+		})
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Recovers a [`GradientRamp`] from any of its on-disk shapes: the current nested form, the flat stops struct
+	/// that preceded it, or the ancient position-color tuple list (whose even positions elide back to absence).
+	/// The pre-ramp shapes come from documents that rendered in gamma, so they carry that space explicitly.
+	pub fn migrate_to_gradient_ramp<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GradientRamp, D::Error> {
+		use serde::Deserialize;
+
+		#[derive(serde::Deserialize)]
+		#[serde(untagged)]
+		enum GradientRampFormat {
+			Ramp(GradientRamp),
+			FlatStops(GradientStops<Color>),
+			Tuples(Vec<(f64, Color)>),
+		}
+
+		Ok(match GradientRampFormat::deserialize(deserializer)? {
+			GradientRampFormat::Ramp(ramp) => ramp,
+			GradientRampFormat::FlatStops(stops) => GradientRamp {
+				gradient_space: GradientSpace::RgbGamma,
+				..GradientRamp::from(stops)
+			},
+			GradientRampFormat::Tuples(stops) => {
+				let position: Vec<f64> = stops.iter().map(|(position, _)| *position).collect();
+				let mut gradient = Gradient::from(stops.into_iter().map(|(_, color)| color).collect::<Vec<_>>());
+				gradient.set_positions(&position);
+				gradient.elide_default_attributes(false);
+
+				GradientRamp {
+					gradient_space: GradientSpace::RgbGamma,
+					..GradientRamp::from(gradient)
+				}
+			}
 		})
 	}
 
@@ -147,10 +187,15 @@ pub mod migrations {
 		use super::*;
 		use vector_types::vector::style::Stroke;
 
+		/// The legacy `style` payload (including its stroke) must still parse so the untagged format
+		/// disambiguation succeeds, even though the geometry is all that survives.
 		#[test]
-		fn preserves_stroke_from_old_vector_data_style() {
+		fn recovers_geometry_from_old_vector_data_with_style() {
+			use core_types::ops::FromAnchorPosition;
+
 			let old_vector = legacy::VectorData {
 				style: legacy::PathStyle { stroke: Some(Stroke::new(12.)) },
+				point_domain: Vector::from_anchor_position(glam::DVec2::new(3., 4.)).point_domain,
 				..Default::default()
 			};
 
@@ -163,22 +208,26 @@ pub mod migrations {
 				.as_object_mut()
 				.unwrap()
 				.insert("fill".into(), serde_json::to_value(legacy::LegacyFill::default()).unwrap());
-			let migrated = migrate_to_optional_vector(value).unwrap().unwrap();
 
-			assert_eq!(migrated.stroke.unwrap().weight, 12.);
+			let migrated = migrate_to_optional_vector(value).unwrap().expect("the legacy shape should parse into a vector");
+
+			assert_eq!(
+				migrated.point_domain.positions(),
+				[glam::DVec2::new(3., 4.)],
+				"the legacy geometry should survive alongside the discarded style"
+			);
 		}
 
 		#[test]
-		fn preserves_stroke_from_current_vector_data() {
-			let vector = Vector {
-				stroke: Some(Stroke::new(12.)),
-				..Default::default()
-			};
+		fn recovers_geometry_from_current_vector_data() {
+			use core_types::ops::FromAnchorPosition;
+
+			let vector = Vector::from_anchor_position(glam::DVec2::new(3., 4.));
 
 			let value = serde_json::to_value(&vector).unwrap();
 			let migrated = migrate_to_optional_vector(value).unwrap().unwrap();
 
-			assert_eq!(migrated.stroke.unwrap().weight, 12.);
+			assert_eq!(migrated.point_domain.positions(), [glam::DVec2::new(3., 4.)]);
 		}
 	}
 }

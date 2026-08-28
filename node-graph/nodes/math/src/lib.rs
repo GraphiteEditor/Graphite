@@ -714,21 +714,21 @@ fn random(
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Convert a number to an integer of the type u32, which may be the required type for certain node inputs.
-#[node_macro::node(name("As u32"), category("Debug"))]
+#[node_macro::node(name("As u32"), category("Type Assertion"))]
 fn as_u32(_: impl Ctx, value: Item<u32>) -> Item<u32> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Convert a number to an integer of the type u64, which may be the required type for certain node inputs.
-#[node_macro::node(name("As u64"), category("Debug"))]
+#[node_macro::node(name("As u64"), category("Type Assertion"))]
 fn as_u64(_: impl Ctx, value: Item<u64>) -> Item<u64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs.
-#[node_macro::node(name("As f64"), category("Debug"))]
+#[node_macro::node(name("As f64"), category("Type Assertion"))]
 fn as_f64(_: impl Ctx, value: Item<f64>) -> Item<f64> {
 	value
 }
@@ -1373,31 +1373,144 @@ fn hex_to_color(_: impl Ctx, hex_code: Item<String>) -> Item<Color> {
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: Item<Gradient>) -> Item<Gradient> {
+fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>) -> Item<Gradient> {
 	gradient
 }
 
-/// Sets the type (linear or radial) of each gradient in the input list.
-#[node_macro::node(category("Color"))]
-fn gradient_type(_: impl Ctx, gradient: Item<Gradient>, gradient_type: Item<vector_types::GradientType>) -> Item<Gradient> {
+/// Sets the form (linear or radial) of each gradient in the input list.
+#[node_macro::node(category("Gradient"))]
+fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vector_types::GradientForm>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_TYPE, *gradient_type.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_FORM, *gradient_form.element());
 	gradient
 }
 
-/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
-#[node_macro::node(category("Color"))]
-fn spread_method(_: impl Ctx, gradient: Item<Gradient>, spread_method: Item<vector_types::GradientSpreadMethod>) -> Item<Gradient> {
+/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, Repeat, or Clear.
+#[node_macro::node(category("Gradient"))]
+fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<vector_types::GradientSpread>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_SPREAD_METHOD, *spread_method.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_SPREAD, *gradient_spread.element());
 	gradient
 }
 
-/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+/// Sets the color space in which each gradient in the input list interpolates between its stops.
+#[node_macro::node(category("Gradient"))]
+fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientSpace>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_SPACE, *space.element());
+	gradient
+}
+
+/// Sets the path each gradient in the input list interpolates along, deciding whether it jumps, turns corners, or flows smoothly through its stops.
+#[node_macro::node(category("Gradient"))]
+fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, interpolation: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *interpolation.element());
+	gradient
+}
+
+/// Sets whether each gradient in the input list treats its stops as a cycle, interpolating from the last stop back around to the first.
+#[node_macro::node(category("Gradient"))]
+fn gradient_cyclic(_: impl Ctx, gradient: Item<Gradient>, cyclic: Item<bool>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_CYCLIC, *cyclic.element());
+	gradient
+}
+
+/// Sets which way around the hue wheel each gradient in the input list interpolates, for polar color spaces.
+#[node_macro::node(category("Gradient"))]
+fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: Item<vector_types::GradientHueDirection>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_HUE_DIRECTION, *hue_direction.element());
+	gradient
+}
+
+/// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
+///
+/// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
+#[node_macro::node(category("Gradient"))]
+fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	let positions: Vec<f64> = positions.iter_element_values().copied().collect();
+	gradient.element_mut().set_positions(&positions);
+	gradient
+}
+
+/// Skews how rapidly the color flows across each interval between color stops, bunching up the transition toward one end instead of progressing uniformly. Each value places the halfway color within its corresponding interval, measured as a fraction of the distance (0 to 1) between the adjacent stops. A 0.5 midpoint keeps a uniform transition rate through the interval.
+///
+/// Non-cyclic gradients have no interval following the last stop, meaning the midpoint is ignored in that position.
+///
+/// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
+#[node_macro::node(category("Gradient"))]
+fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	let midpoints: Vec<f64> = midpoints.iter_element_values().copied().collect();
+	gradient.element_mut().set_midpoints(&midpoints);
+	gradient
+}
+
+/// Reverses the order of each gradient's stops, moving the color at the start of the ramp to the end and vice versa.
+#[node_macro::node(category("Gradient"))]
+fn gradient_reverse(_: impl Ctx, gradient: Item<Gradient>) -> Item<Gradient> {
+	let settings = vector_types::GradientSettings::from(&gradient);
+	let mut gradient = gradient;
+	let reversed = gradient.element().reversed(settings.cyclic);
+	*gradient.element_mut() = reversed;
+	gradient
+}
+
+/// Shifts every stop along each gradient's ramp, sliding the colors within the gradient without moving the gradient itself.
+///
+/// The fraction is measured against the whole ramp. A cyclic gradient spins, wrapping past the end back around to the start so 1 is a full turn that lands where it began. A gradient that isn't cyclic has no loop to spin around, so its stops slide off the end and keep going, leaving the visible ramp to blend between whichever colors still span it.
+#[node_macro::node(category("Gradient"))]
+fn gradient_shift(
+	_: impl Ctx,
+	gradient: Item<Gradient>,
+	#[range]
+	#[soft(-1..1)]
+	fraction: Item<f64>,
+) -> Item<Gradient> {
+	let settings = vector_types::GradientSettings::from(&gradient);
+	let mut gradient = gradient;
+	gradient.element_mut().shift_positions(*fraction.element(), settings.cyclic);
+	gradient
+}
+
+/// Stretches or squeezes the spacing of each gradient's stops around a pivot, spreading the colors within the gradient without moving the gradient itself.
+///
+/// The factor multiplies every stop's distance from the pivot, so 2 spreads the ramp over twice its span while 0.5 packs it into half. A negative factor mirrors the stops across the pivot, reversing the order of the colors.
+///
+/// The pivot is the one point that stays put, measured against the whole ramp from 0 at the start to 1 at the end.
+#[node_macro::node(category("Gradient"))]
+fn gradient_stretch(
+	_: impl Ctx,
+	gradient: Item<Gradient>,
+	#[default(1.)]
+	#[unit("x")]
+	factor: Item<f64>,
+	#[default(0.5)]
+	#[range]
+	#[soft(0..1)]
+	pivot: Item<f64>,
+) -> Item<Gradient> {
+	let settings = vector_types::GradientSettings::from(&gradient);
+	let mut gradient = gradient;
+	gradient.element_mut().stretch_positions(*factor.element(), *pivot.element(), settings.cyclic);
+	gradient
+}
+
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
-	let position = position.element().clamp(0., 1.);
-	let color = gradient.element().evaluate(position);
+fn evaluate_gradient(
+	_: impl Ctx,
+	_primary: (),
+	#[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>,
+	#[range]
+	#[soft(0..1)]
+	position: Item<f64>,
+) -> Item<Color> {
+	let settings = vector_types::GradientSettings::from(&gradient);
+	let color = gradient.element().evaluate(*position.element(), settings);
 	Item::new_from_element(color)
 }
 

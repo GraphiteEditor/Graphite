@@ -38,9 +38,12 @@ impl NodeNetworkInterface {
 		let vector = self.upstream_path_node_vector(layer)?;
 
 		let mut targets = Vec::new();
-		let subpaths: Vec<Subpath<PointId>> = vector.stroke_bezier_paths().collect();
-		if !subpaths.is_empty() {
-			targets.push(ClickTargetType::CompoundPath(subpaths));
+		let mut combined = BezPath::new();
+		for bezpath in vector.stroke_bezpath_iter() {
+			combined.extend(bezpath.elements().iter().copied());
+		}
+		if !combined.is_empty() {
+			targets.push(ClickTargetType::Path(combined));
 		}
 
 		for &point_id in vector.point_domain.ids() {
@@ -183,13 +186,8 @@ impl NodeNetworkInterface {
 		self.document_metadata.layer_vector_data = new_layer_vector_data;
 	}
 
-	/// Update the per-layer `ATTR_FILL` snapshot.
-	pub fn update_fill_attributes(&mut self, new_layer_fill_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>) {
-		self.document_metadata.layer_fill_attributes = new_layer_fill_attributes;
-	}
-
-	/// Update the per-layer `ATTR_STROKE` snapshot.
-	pub fn update_stroke_attributes(&mut self, new_layer_stroke_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>) {
-		self.document_metadata.layer_stroke_attributes = new_layer_stroke_attributes;
+	/// Update the per-layer `ATTR_APPEARANCE` snapshot.
+	pub fn update_appearance_attributes(&mut self, new_layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>) {
+		self.document_metadata.layer_appearance_attributes = new_layer_appearance_attributes;
 	}
 }

@@ -1,19 +1,20 @@
 use super::transform_utils;
-use super::utility_types::ModifyInputsContext;
+use super::utility_types::{ModifyInputsContext, set_stroke_paint_order};
 use crate::consts::{LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::BLEND_PATH_INPUT_INDEX;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{BLEND_PATH_INPUT_INDEX, DefinitionIdentifier, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use glam::{DAffine2, DVec2, IVec2};
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Gradient, GradientSpreadMethod, GradientStop, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -39,15 +40,20 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.fill_color_set(color);
 				}
 			}
+			GraphOperationMessage::ColorValueSet { layer, color } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.color_value_set(color);
+				}
+			}
 			GraphOperationMessage::FillGradientSet {
 				layer,
 				gradient,
-				gradient_type,
-				spread_method,
+				gradient_form,
+				gradient_settings,
 				transform,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_settings, transform);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -60,19 +66,49 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.gradient_stops_set(stops);
 				}
 			}
+			GraphOperationMessage::GradientPositionsSet { layer, positions } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_positions_set(positions);
+				}
+			}
+			GraphOperationMessage::GradientMidpointsSet { layer, midpoints } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_midpoints_set(midpoints);
+				}
+			}
 			GraphOperationMessage::GradientTransformSet { layer, transform } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.gradient_transform_set(transform);
 				}
 			}
-			GraphOperationMessage::GradientTypeSet { layer, gradient_type } => {
+			GraphOperationMessage::GradientFormSet { layer, gradient_form } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_type_set(gradient_type);
+					modify_inputs.gradient_form_set(gradient_form);
 				}
 			}
-			GraphOperationMessage::GradientSpreadMethodSet { layer, spread_method } => {
+			GraphOperationMessage::GradientSpreadSet { layer, gradient_spread } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_spread_method_set(spread_method);
+					modify_inputs.gradient_spread_set(gradient_spread);
+				}
+			}
+			GraphOperationMessage::GradientSpaceSet { layer, gradient_space } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_space_set(gradient_space);
+				}
+			}
+			GraphOperationMessage::GradientCyclicSet { layer, gradient_cyclic } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_cyclic_set(gradient_cyclic);
+				}
+			}
+			GraphOperationMessage::GradientHueDirectionSet { layer, gradient_hue_direction } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_hue_direction_set(gradient_hue_direction);
+				}
+			}
+			GraphOperationMessage::GradientInterpolationSet { layer, gradient_interpolation } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_interpolation_set(gradient_interpolation);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
@@ -94,6 +130,17 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::StrokeSet { layer, color, stroke } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.stroke_set(color, stroke);
+				}
+			}
+			GraphOperationMessage::StrokeOrderSet { layer, paint_order } => {
+				let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+				let Some(stroke_node_id) = ModifyInputsContext::locate_node_in_layer_chain(&stroke_reference, layer, network_interface) else {
+					return;
+				};
+				if set_stroke_paint_order(network_interface, &[], stroke_node_id, paint_order) {
+					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(NodeGraphMessage::SendGraph);
 				}
 			}
 			GraphOperationMessage::TransformChange {
@@ -126,10 +173,35 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.vector_modify(modification_type);
 				}
 			}
-			GraphOperationMessage::Brush { layer, strokes } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.brush_modify(strokes);
-				}
+			GraphOperationMessage::NewBrushGroupLayer {
+				id,
+				strokes_node_id,
+				parent,
+				insert_index,
+				color,
+				diameter,
+				hardness,
+				flow,
+			} => {
+				let layer = ModifyInputsContext::new(network_interface, responses).create_layer(id);
+				insert_brush_strokes_chain(network_interface, layer, strokes_node_id, color, diameter, hardness, flow);
+
+				responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
+				responses.add(GraphOperationMessage::SetUpstreamToChain { layer });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			GraphOperationMessage::NewBrushStrokesNode {
+				layer,
+				strokes_node_id,
+				color,
+				diameter,
+				hardness,
+				flow,
+			} => {
+				insert_brush_strokes_chain(network_interface, layer, strokes_node_id, color, diameter, hardness, flow);
+
+				responses.add(GraphOperationMessage::SetUpstreamToChain { layer });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::SetUpstreamToChain { layer } => {
 				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::layer_secondary_input(layer.to_node()), &[]) else {
@@ -313,14 +385,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::NewColorFillLayer { node_id, color, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(node_id);
-				modify_inputs.insert_color_value(color, layer);
-				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
-			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id);
-				modify_inputs.insert_vector(subpaths, layer, true, true, true);
+				modify_inputs.insert_color_value(color, layer, InputConnector::layer_secondary_input(layer.to_node()));
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -465,18 +530,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				};
 				placement_transform.translation = placement_transform.translation.round();
 
-				let graphite_gradient_stops = extract_graphite_gradient_stops(&svg);
+				let gradient_info = SvgGradientInfo {
+					graphite_stops: extract_graphite_gradient_stops(&svg),
+					spaces: extract_gradient_spaces(&svg),
+				};
 
 				// Pass identity so each leaf layer receives only its SVG-native transform from `abs_transform`.
 				// The placement offset is then applied once to the root group layer below.
-				import_usvg_node(
-					&mut modify_inputs,
-					&usvg::Node::Group(Box::new(tree.root().clone())),
-					id,
-					parent,
-					insert_index,
-					&graphite_gradient_stops,
-				);
+				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root().clone())), id, parent, insert_index, &gradient_info);
 
 				// After import, `layer_node` is set to the root group. Apply the placement transform to it
 				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
@@ -507,6 +568,131 @@ fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 }
 
 const GRAPHITE_NAMESPACE: &str = "https://graphite.art";
+
+/// Gradient information pre-parsed from the raw SVG XML, carrying what usvg's simplified tree drops.
+struct SvgGradientInfo {
+	/// Real stops, keyed by gradient element `id`, for gradients Graphite exported with midpoint curve data.
+	graphite_stops: HashMap<String, Gradient>,
+	/// Gradient spaces, keyed by gradient element `id`, resolved from the `color-interpolation` property.
+	spaces: HashMap<String, GradientSpace>,
+}
+
+/// Pre-parses the raw SVG XML to resolve each gradient's inherited `color-interpolation` property, which usvg's
+/// tree does not carry. Only `linearRGB` selects the linear space; `auto` and `sRGB` (browsers treat the
+/// user-agent-defined `auto` as `sRGB`) mean gamma, as does any unrecognized value.
+fn extract_gradient_spaces(svg: &str) -> HashMap<String, GradientSpace> {
+	let mut result = HashMap::new();
+
+	// Quick check: gradients in an SVG that never mentions `color-interpolation` all take the sRGB default
+	if !svg.contains("color-interpolation") {
+		return result;
+	}
+
+	let doc = match usvg::roxmltree::Document::parse(svg) {
+		Ok(doc) => doc,
+		Err(_) => return result,
+	};
+
+	// The document's `<style>` blocks apply to every element, so parse them once up front
+	let mut stylesheet = simplecss::StyleSheet::new();
+	for style_element in doc.descendants().filter(|node| node.tag_name().name() == "style") {
+		if !matches!(style_element.attribute("type"), None | Some("") | Some("text/css")) {
+			continue;
+		}
+		for text in style_element.children().filter(|child| child.is_text()).filter_map(|child| child.text()) {
+			stylesheet.parse_more(text);
+		}
+	}
+
+	for node in doc.descendants() {
+		match node.tag_name().name() {
+			"linearGradient" | "radialGradient" => {}
+			_ => continue,
+		}
+
+		if let Some(gradient_id) = node.attribute("id")
+			&& let Some(gradient_space) = resolve_color_interpolation(node, &stylesheet)
+		{
+			result.insert(gradient_id.to_string(), gradient_space);
+		}
+	}
+
+	result
+}
+
+/// The `color-interpolation` in effect for an element: the nearest self-or-ancestor declaration, taking each
+/// element's own winning declaration per [`declared_color_interpolation`]'s cascade order.
+fn resolve_color_interpolation(element: usvg::roxmltree::Node, stylesheet: &simplecss::StyleSheet) -> Option<GradientSpace> {
+	let mut next = Some(element);
+
+	while let Some(element) = next {
+		match declared_color_interpolation(element, stylesheet) {
+			Some("linearRGB") => return Some(GradientSpace::RgbLinear),
+			// `inherit` defers to the ancestors like an undeclared element
+			Some("inherit") | None => {}
+			Some(_) => return Some(GradientSpace::RgbGamma),
+		}
+
+		next = element.parent_element();
+	}
+
+	None
+}
+
+/// The winning `color-interpolation` declaration on a single element per the CSS cascade: `!important` declarations
+/// beat normal ones, the inline `style` beats the `<style>` rules (already specificity-sorted, so their last match
+/// wins), and the presentation attribute yields to them all. Later declarations win priority ties.
+fn declared_color_interpolation<'a>(element: usvg::roxmltree::Node<'a, '_>, stylesheet: &simplecss::StyleSheet<'a>) -> Option<&'a str> {
+	let mut winner: Option<(u8, &'a str)> = None;
+	let mut consider = |priority: u8, value: &'a str| {
+		if winner.is_none_or(|(existing, _)| priority >= existing) {
+			winner = Some((priority, value));
+		}
+	};
+
+	if let Some(value) = element.attribute("color-interpolation") {
+		consider(0, value.trim());
+	}
+
+	for rule in stylesheet.rules.iter().filter(|rule| rule.selector.matches(&CssElement(element))) {
+		for declaration in rule.declarations.iter().filter(|declaration| declaration.name == "color-interpolation") {
+			consider(if declaration.important { 3 } else { 1 }, declaration.value);
+		}
+	}
+
+	if let Some(style) = element.attribute("style") {
+		for declaration in simplecss::DeclarationTokenizer::from(style).filter(|declaration| declaration.name == "color-interpolation") {
+			consider(if declaration.important { 4 } else { 2 }, declaration.value);
+		}
+	}
+
+	winner.map(|(_, value)| value)
+}
+
+/// Adapts a roxmltree element to simplecss's selector-matching interface.
+struct CssElement<'a, 'input>(usvg::roxmltree::Node<'a, 'input>);
+
+impl simplecss::Element for CssElement<'_, '_> {
+	fn parent_element(&self) -> Option<Self> {
+		self.0.parent_element().map(CssElement)
+	}
+
+	fn prev_sibling_element(&self) -> Option<Self> {
+		self.0.prev_sibling_element().map(CssElement)
+	}
+
+	fn has_local_name(&self, local_name: &str) -> bool {
+		self.0.tag_name().name() == local_name
+	}
+
+	fn attribute_matches(&self, local_name: &str, operator: simplecss::AttributeOperator) -> bool {
+		self.0.attribute(local_name).is_some_and(|value| operator.matches(value))
+	}
+
+	fn pseudo_class_matches(&self, class: simplecss::PseudoClass) -> bool {
+		matches!(class, simplecss::PseudoClass::FirstChild) && self.0.prev_sibling_element().is_none()
+	}
+}
 
 /// Pre-parses the raw SVG XML to extract gradient stops that have `graphite:midpoint` attributes.
 /// Graphite exports gradients with midpoint curve data by writing interpolated approximation stops
@@ -573,7 +759,7 @@ fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 	let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.;
 	let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.;
 	let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.;
-	Some(Color::from_rgbaf32_unchecked(r, g, b, opacity))
+	Some(Color::from_gamma_srgb_channels(r, g, b, opacity))
 }
 
 /// Import a usvg node as the root of an SVG import operation.
@@ -582,7 +768,7 @@ fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 /// interact with any existing layers in the parent stack. All descendant layers use a lightweight
 /// O(n) import path that skips collision detection and instead calculates positions directly from
 /// the known tree structure.
-fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize, graphite_gradient_stops: &HashMap<String, Gradient>) {
+fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize, gradient_info: &SvgGradientInfo) {
 	let layer = modify_inputs.create_layer(id);
 
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
@@ -602,7 +788,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			modify_inputs.import = true;
 
 			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, &mut group_extents_map);
+				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, gradient_info, &mut group_extents_map);
 				child_extents_svg_order.push(extent);
 			}
 
@@ -621,7 +807,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			modify_inputs.network_interface.unload_all_nodes_bounding_box(&[]);
 		}
 		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
+			import_usvg_path(modify_inputs, node, path, layer, gradient_info);
 		}
 		usvg::Node::Image(_image) => {
 			warn!("Skip image");
@@ -645,7 +831,7 @@ fn import_usvg_node_inner(
 	id: NodeId,
 	parent: LayerNodeIdentifier,
 	insert_index: usize,
-	graphite_gradient_stops: &HashMap<String, Gradient>,
+	gradient_info: &SvgGradientInfo,
 	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
 ) -> u32 {
 	let layer = modify_inputs.create_layer(id);
@@ -656,7 +842,7 @@ fn import_usvg_node_inner(
 		usvg::Node::Group(group) => {
 			let mut child_extents: Vec<u32> = Vec::new();
 			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, group_extents_map);
+				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, gradient_info, group_extents_map);
 				child_extents.push(extent);
 			}
 			modify_inputs.layer_node = Some(layer);
@@ -671,7 +857,7 @@ fn import_usvg_node_inner(
 			total_extent
 		}
 		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
+			import_usvg_path(modify_inputs, node, path, layer, gradient_info);
 			0
 		}
 		usvg::Node::Image(_image) => {
@@ -687,22 +873,38 @@ fn import_usvg_node_inner(
 	}
 }
 
+fn insert_brush_strokes_chain(network_interface: &mut NodeNetworkInterface, layer: LayerNodeIdentifier, strokes_node_id: NodeId, color: Color, diameter: f64, hardness: f64, flow: f64) {
+	let Some(strokes_node_type) = resolve_proto_node_type(graphene_std::brush::brush_strokes::IDENTIFIER) else {
+		log::error!("Brush strokes node does not exist");
+		return;
+	};
+	let strokes_node = strokes_node_type.node_template_input_override([
+		Some(NodeInput::value(TaggedValue::Strokes(Vec::new()), false)),
+		Some(NodeInput::value(TaggedValue::Color(color), false)),
+		Some(NodeInput::value(TaggedValue::F64(diameter), false)),
+		Some(NodeInput::value(TaggedValue::F64(hardness), false)),
+		Some(NodeInput::value(TaggedValue::F64(flow), false)),
+	]);
+	network_interface.insert_node(strokes_node_id, strokes_node, &[]);
+	network_interface.set_input(&InputConnector::node_at_index(layer.to_node(), 1), NodeInput::node(strokes_node_id, 0), &[]);
+}
+
 /// Helper to apply path data (vector geometry, fill, stroke, transform) to a layer.
-fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, path: &usvg::Path, layer: LayerNodeIdentifier, graphite_gradient_stops: &HashMap<String, Gradient>) {
-	let subpaths = convert_usvg_path(path);
+fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, path: &usvg::Path, layer: LayerNodeIdentifier, gradient_info: &SvgGradientInfo) {
+	let bezpath = convert_usvg_path(path);
 
 	// Skip creating a Transform node entirely when the SVG-native transform is identity.
 	let node_transform = usvg_transform(node.abs_transform());
 	let has_transform = node_transform != DAffine2::IDENTITY;
 
-	modify_inputs.insert_vector(subpaths, layer, has_transform, path.fill().is_some(), path.stroke().is_some());
+	modify_inputs.insert_vector(bezpath, layer, has_transform, path.fill().is_some(), path.stroke().is_some());
 
 	if has_transform && let Some(transform_node_id) = modify_inputs.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) {
 		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, node_transform);
 	}
 
 	if let Some(fill) = path.fill() {
-		apply_usvg_fill(fill, modify_inputs, graphite_gradient_stops);
+		apply_usvg_fill(fill, modify_inputs, gradient_info);
 	}
 	if let Some(stroke) = path.stroke() {
 		apply_usvg_stroke(stroke, modify_inputs, node_transform);
@@ -788,22 +990,21 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 				},
 				join_miter_limit: stroke.miterlimit().get() as f64,
 				align: StrokeAlign::Center,
-				paint_order: PaintOrder::StrokeAbove,
 				transform,
 			},
 		)
 	}
 }
 
-fn convert_spread_method(spread_method: usvg::SpreadMethod) -> GradientSpreadMethod {
+fn convert_gradient_spread(spread_method: usvg::SpreadMethod) -> GradientSpread {
 	match spread_method {
-		usvg::SpreadMethod::Pad => GradientSpreadMethod::Pad,
-		usvg::SpreadMethod::Reflect => GradientSpreadMethod::Reflect,
-		usvg::SpreadMethod::Repeat => GradientSpreadMethod::Repeat,
+		usvg::SpreadMethod::Pad => GradientSpread::Pad,
+		usvg::SpreadMethod::Reflect => GradientSpread::Reflect,
+		usvg::SpreadMethod::Repeat => GradientSpread::Repeat,
 	}
 }
 
-fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, graphite_gradient_stops: &HashMap<String, Gradient>) {
+fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, gradient_info: &SvgGradientInfo) {
 	match &fill.paint() {
 		usvg::Paint::Color(color) => modify_inputs.fill_color_set(Some(usvg_color(*color, fill.opacity().get()))),
 		usvg::Paint::LinearGradient(linear) => {
@@ -813,9 +1014,9 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			let direction = end - start;
 			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
-			let gradient_type = GradientType::Linear;
+			let gradient_form = GradientForm::Linear;
 
-			let gradient = match graphite_gradient_stops.get(linear.id()) {
+			let gradient = match gradient_info.graphite_stops.get(linear.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
 				None => {
 					let stops = linear.stops().iter().map(|stop| GradientStop {
@@ -826,8 +1027,13 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 					Gradient::new(stops)
 				}
 			};
-			let spread_method = convert_spread_method(linear.spread_method());
-			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+			// SVG interpolates between stops in gamma sRGB unless `color-interpolation` opts into linearRGB, carried explicitly rather than as the linear default
+			let settings = GradientSettings {
+				spread: convert_gradient_spread(linear.spread_method()),
+				space: gradient_info.spaces.get(linear.id()).copied().unwrap_or(GradientSpace::RgbGamma),
+				..Default::default()
+			};
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -837,9 +1043,9 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			let direction = end - start;
 			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
-			let gradient_type = GradientType::Radial;
+			let gradient_form = GradientForm::Radial;
 
-			let gradient = match graphite_gradient_stops.get(radial.id()) {
+			let gradient = match gradient_info.graphite_stops.get(radial.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
 				None => {
 					let stops = radial.stops().iter().map(|stop| GradientStop {
@@ -850,10 +1056,210 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 					Gradient::new(stops)
 				}
 			};
-			let spread_method = convert_spread_method(radial.spread_method());
-
-			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+			let settings = GradientSettings {
+				spread: convert_gradient_spread(radial.spread_method()),
+				space: gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma),
+				..Default::default()
+			};
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[tokio::test]
+	async fn stroke_order_set_reorders_the_fill_and_stroke_nodes() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_stroke_paint_order;
+		use crate::test_utils::test_prelude::*;
+		use graphene_std::vector::style::PaintOrder;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		let paint_order = get_stroke_paint_order(layer, &document.network_interface);
+		assert_eq!(paint_order, PaintOrder::StrokeAbove, "a fresh shape should stroke above its fill");
+
+		editor
+			.handle_message(GraphOperationMessage::StrokeOrderSet {
+				layer,
+				paint_order: PaintOrder::StrokeBelow,
+			})
+			.await;
+		let paint_order = get_stroke_paint_order(layer, &editor.active_document().network_interface);
+		assert_eq!(paint_order, PaintOrder::StrokeBelow, "the rewrite should move the stroke downstream of the fill");
+
+		editor
+			.handle_message(GraphOperationMessage::StrokeOrderSet {
+				layer,
+				paint_order: PaintOrder::StrokeAbove,
+			})
+			.await;
+		let paint_order = get_stroke_paint_order(layer, &editor.active_document().network_interface);
+		assert_eq!(paint_order, PaintOrder::StrokeAbove, "the rewrite should move the stroke back upstream of the fill");
+	}
+
+	#[tokio::test]
+	async fn a_node_inserted_between_the_fill_and_stroke_makes_the_order_swap_inapplicable() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+		use crate::messages::tool::common_functionality::graph_modification_utils::stroke_paint_order_applicable;
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		assert!(
+			stroke_paint_order_applicable(layer, &editor.active_document().network_interface),
+			"a fresh shape's adjacent Fill and Stroke pair should be swappable"
+		);
+
+		let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+		let stroke_node_id = ModifyInputsContext::locate_node_in_layer_chain(&stroke_reference, layer, &editor.active_document().network_interface).unwrap();
+
+		let node_template = Box::new(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).unwrap().default_node_template());
+		let passthrough_node_id = NodeId::new();
+		editor
+			.handle_message(NodeGraphMessage::InsertNode {
+				node_id: passthrough_node_id,
+				node_template,
+			})
+			.await;
+		editor
+			.handle_message(NodeGraphMessage::InsertNodeBetween {
+				node_id: passthrough_node_id,
+				input_connector: InputConnector::node_at_index(stroke_node_id, 0),
+				insert_node_input_index: 0,
+			})
+			.await;
+
+		assert!(
+			!stroke_paint_order_applicable(layer, &editor.active_document().network_interface),
+			"a node between the pair should gray the order radio out"
+		);
+	}
+
+	#[test]
+	fn color_interpolation_resolves_per_gradient_with_inheritance_and_style_priority() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" color-interpolation="linearRGB">
+			<defs>
+				<linearGradient id="inherited"/>
+				<linearGradient id="attribute" color-interpolation="sRGB"/>
+				<linearGradient id="styled" color-interpolation="sRGB" style="fill: red; color-interpolation: linearRGB"/>
+				<radialGradient id="auto" color-interpolation="auto"/>
+			</defs>
+		</svg>"##;
+
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(spaces.get("inherited"), Some(&GradientSpace::RgbLinear), "an undeclared gradient should inherit from its ancestors");
+		assert_eq!(spaces.get("attribute"), Some(&GradientSpace::RgbGamma), "an sRGB declaration should beat the inherited linearRGB");
+		assert_eq!(spaces.get("styled"), Some(&GradientSpace::RgbLinear), "the inline style should beat the presentation attribute");
+		assert_eq!(
+			spaces.get("auto"),
+			Some(&GradientSpace::RgbGamma),
+			"auto should mean gamma like browsers treat it, not defer to ancestors"
+		);
+	}
+
+	#[test]
+	fn graphite_stop_extraction_keeps_real_stops_and_linearizes_their_colors() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art">
+			<defs>
+				<linearGradient id="ramp">
+					<stop stop-color="#000000" graphite:midpoint="0.3" />
+					<stop offset="0.25" stop-color="#404040" />
+					<stop offset="0.5" stop-color="#808080" stop-opacity="0.5" graphite:midpoint="0.5" />
+					<stop offset="1" stop-color="#ffffff" graphite:midpoint="0.5" />
+				</linearGradient>
+			</defs>
+		</svg>"##;
+
+		let stops = extract_graphite_gradient_stops(svg);
+		let gradient = stops.get("ramp").expect("the tagged gradient should be recovered");
+
+		// The untagged stop is baked approximation residue, not authored data
+		assert_eq!(gradient.len(), 3, "only stops tagged with a midpoint should survive");
+		assert_eq!(gradient.positions(false), vec![0., 0.5, 1.]);
+		assert_eq!(gradient.midpoints(), vec![0.3, 0.5, 0.5]);
+
+		// Hex stop bytes are gamma-encoded, so the recovered color must lift them to linear light
+		assert_eq!(gradient.color(1), Some(Color::from_gamma_srgb_channels(128. / 255., 128. / 255., 128. / 255., 0.5)));
+	}
+
+	#[test]
+	fn color_interpolation_reads_style_blocks_with_selector_specificity() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+			<style>
+				linearGradient { color-interpolation: linearRGB }
+				.classy { color-interpolation: sRGB }
+				#exact { color-interpolation: linearRGB }
+			</style>
+			<defs>
+				<linearGradient id="from-type-rule"/>
+				<linearGradient id="from-class-rule" class="classy"/>
+				<linearGradient id="exact" class="classy"/>
+				<linearGradient id="inline-beats-rules" class="classy" style="color-interpolation: linearRGB"/>
+				<linearGradient id="rule-beats-attribute" class="classy" color-interpolation="linearRGB"/>
+			</defs>
+		</svg>"##;
+
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(spaces.get("from-type-rule"), Some(&GradientSpace::RgbLinear), "a type rule in a style block should reach the gradient");
+		assert_eq!(
+			spaces.get("from-class-rule"),
+			Some(&GradientSpace::RgbGamma),
+			"the class rule should outrank the type rule by specificity"
+		);
+		assert_eq!(spaces.get("exact"), Some(&GradientSpace::RgbLinear), "the ID rule should outrank the class rule");
+		assert_eq!(spaces.get("inline-beats-rules"), Some(&GradientSpace::RgbLinear), "the inline style should beat every style block rule");
+		assert_eq!(
+			spaces.get("rule-beats-attribute"),
+			Some(&GradientSpace::RgbGamma),
+			"a style block rule should beat the presentation attribute"
+		);
+	}
+
+	#[test]
+	fn repeated_and_important_declarations_resolve_by_cascade_order() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+			<style>.forced { color-interpolation: linearRGB !important }</style>
+			<linearGradient id="last-declaration-wins" style="color-interpolation: sRGB; color-interpolation: linearRGB"/>
+			<linearGradient id="important-beats-later" style="color-interpolation: linearRGB !important; color-interpolation: sRGB"/>
+			<linearGradient id="important-rule-beats-inline" class="forced" style="color-interpolation: sRGB"/>
+		</svg>"##;
+
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(
+			spaces.get("last-declaration-wins"),
+			Some(&GradientSpace::RgbLinear),
+			"the last of repeated inline declarations should win"
+		);
+		assert_eq!(
+			spaces.get("important-beats-later"),
+			Some(&GradientSpace::RgbLinear),
+			"an `!important` declaration should beat a later normal one"
+		);
+		assert_eq!(
+			spaces.get("important-rule-beats-inline"),
+			Some(&GradientSpace::RgbLinear),
+			"an `!important` style block rule should beat the inline style"
+		);
+	}
+
+	#[test]
+	fn color_interpolation_yields_nothing_when_never_declared() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><linearGradient id="plain"/></svg>"##;
+
+		assert!(
+			extract_gradient_spaces(svg).is_empty(),
+			"gradients without any declaration should fall back to the caller's gamma default"
+		);
+	}
 }

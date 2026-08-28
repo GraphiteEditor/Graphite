@@ -5,13 +5,11 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
-use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
-use graphene_std::vector::{Gradient, PointId, VectorModificationType};
+use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
+use graphene_std::vector::{Gradient, VectorModificationType};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -20,11 +18,16 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		color: Option<Color>,
 	},
+	ColorValueSet {
+		layer: LayerNodeIdentifier,
+		color: Color,
+	},
 	FillGradientSet {
 		layer: LayerNodeIdentifier,
+		#[serde(skip)]
 		gradient: Gradient,
-		gradient_type: GradientType,
-		spread_method: GradientSpreadMethod,
+		gradient_form: GradientForm,
+		gradient_settings: GradientSettings,
 		transform: DAffine2,
 	},
 	BlendingFillSet {
@@ -33,19 +36,44 @@ pub enum GraphOperationMessage {
 	},
 	GradientStopsSet {
 		layer: LayerNodeIdentifier,
+		#[serde(skip)]
 		stops: Gradient,
+	},
+	GradientPositionsSet {
+		layer: LayerNodeIdentifier,
+		positions: Vec<f64>,
+	},
+	GradientMidpointsSet {
+		layer: LayerNodeIdentifier,
+		midpoints: Vec<f64>,
 	},
 	GradientTransformSet {
 		layer: LayerNodeIdentifier,
 		transform: DAffine2,
 	},
-	GradientTypeSet {
+	GradientFormSet {
 		layer: LayerNodeIdentifier,
-		gradient_type: GradientType,
+		gradient_form: GradientForm,
 	},
-	GradientSpreadMethodSet {
+	GradientSpreadSet {
 		layer: LayerNodeIdentifier,
-		spread_method: GradientSpreadMethod,
+		gradient_spread: GradientSpread,
+	},
+	GradientSpaceSet {
+		layer: LayerNodeIdentifier,
+		gradient_space: GradientSpace,
+	},
+	GradientCyclicSet {
+		layer: LayerNodeIdentifier,
+		gradient_cyclic: bool,
+	},
+	GradientHueDirectionSet {
+		layer: LayerNodeIdentifier,
+		gradient_hue_direction: GradientHueDirection,
+	},
+	GradientInterpolationSet {
+		layer: LayerNodeIdentifier,
+		gradient_interpolation: GradientInterpolation,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
@@ -63,6 +91,10 @@ pub enum GraphOperationMessage {
 		color: Option<Color>,
 		stroke: Stroke,
 	},
+	StrokeOrderSet {
+		layer: LayerNodeIdentifier,
+		paint_order: PaintOrder,
+	},
 	TransformChange {
 		layer: LayerNodeIdentifier,
 		transform: DAffine2,
@@ -79,9 +111,23 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		modification_type: VectorModificationType,
 	},
-	Brush {
+	NewBrushGroupLayer {
+		id: NodeId,
+		strokes_node_id: NodeId,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+		color: Color,
+		diameter: f64,
+		hardness: f64,
+		flow: f64,
+	},
+	NewBrushStrokesNode {
 		layer: LayerNodeIdentifier,
-		strokes: Vec<BrushStroke>,
+		strokes_node_id: NodeId,
+		color: Color,
+		diameter: f64,
+		hardness: f64,
+		flow: f64,
 	},
 	SetUpstreamToChain {
 		layer: LayerNodeIdentifier,
@@ -125,12 +171,6 @@ pub enum GraphOperationMessage {
 	NewColorFillLayer {
 		node_id: NodeId,
 		color: Color,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
-	},
-	NewVectorLayer {
-		id: NodeId,
-		subpaths: Vec<Subpath<PointId>>,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

@@ -15,8 +15,8 @@ use wasm_bindgen::prelude::*;
 mod editor_commands {
 	use crate::helpers::translate_key;
 	use editor::messages::clipboard::utility_types::ClipboardContentRaw;
-	use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
-	use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
+	use editor::messages::input_mapper::utility_types::keyboard::ModifierKeys;
+	use editor::messages::input_mapper::utility_types::pointer::{EditorPointerState, ScrollDelta};
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
@@ -299,44 +299,113 @@ mod editor_commands {
 	}
 
 	/// Mouse movement within the screenspace bounds of the viewport
-	fn on_mouse_move(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Message {
-		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+	fn on_mouse_move(
+		x: f64,
+		y: f64,
+		mouse_keys: u8,
+		modifiers: u8,
+		time: Option<f64>,
+		pressure: Option<f64>,
+		tilt_x: Option<f64>,
+		tilt_y: Option<f64>,
+		twist: Option<f64>,
+		tangential: Option<f64>,
+		eraser: bool,
+	) -> Message {
+		let editor_mouse_state = EditorPointerState {
+			time,
+			pressure,
+			tilt: match (tilt_x, tilt_y) {
+				(Some(tilt_x), Some(tilt_y)) => Some((tilt_x, tilt_y).into()),
+				_ => None,
+			},
+			twist,
+			wheel: tangential,
+			eraser,
+			..EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into())
+		};
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 		InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys }.into()
 	}
 
 	/// Mouse scrolling within the screenspace bounds of the viewport
 	fn on_wheel_scroll(x: f64, y: f64, mouse_keys: u8, wheel_delta_x: f64, wheel_delta_y: f64, wheel_delta_z: f64, modifiers: u8) -> Message {
-		let mut editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let mut editor_mouse_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 		editor_mouse_state.scroll_delta = ScrollDelta::new(wheel_delta_x, wheel_delta_y, wheel_delta_z);
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 		InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys }.into()
 	}
 
 	/// A mouse button depressed within screenspace the bounds of the viewport
-	fn on_mouse_down(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Message {
-		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+	fn on_mouse_down(
+		x: f64,
+		y: f64,
+		mouse_keys: u8,
+		modifiers: u8,
+		time: Option<f64>,
+		pressure: Option<f64>,
+		tilt_x: Option<f64>,
+		tilt_y: Option<f64>,
+		twist: Option<f64>,
+		tangential: Option<f64>,
+		eraser: bool,
+	) -> Message {
+		let editor_mouse_state = EditorPointerState {
+			time,
+			pressure,
+			tilt: match (tilt_x, tilt_y) {
+				(Some(tilt_x), Some(tilt_y)) => Some((tilt_x, tilt_y).into()),
+				_ => None,
+			},
+			twist,
+			wheel: tangential,
+			eraser,
+			..EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into())
+		};
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 		InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys }.into()
 	}
 
 	/// A mouse button released
-	fn on_mouse_up(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Message {
-		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+	fn on_mouse_up(
+		x: f64,
+		y: f64,
+		mouse_keys: u8,
+		modifiers: u8,
+		time: Option<f64>,
+		pressure: Option<f64>,
+		tilt_x: Option<f64>,
+		tilt_y: Option<f64>,
+		twist: Option<f64>,
+		tangential: Option<f64>,
+		eraser: bool,
+	) -> Message {
+		let editor_mouse_state = EditorPointerState {
+			time,
+			pressure,
+			tilt: match (tilt_x, tilt_y) {
+				(Some(tilt_x), Some(tilt_y)) => Some((tilt_x, tilt_y).into()),
+				_ => None,
+			},
+			twist,
+			wheel: tangential,
+			eraser,
+			..EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into())
+		};
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 		InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys }.into()
 	}
 
 	/// Mouse shaken
 	fn on_mouse_shake(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Message {
-		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let editor_mouse_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 		InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys }.into()
 	}
 
 	/// Mouse double clicked
 	fn on_double_click(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Message {
-		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let editor_mouse_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 		InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys }.into()
 	}
@@ -391,9 +460,9 @@ mod editor_commands {
 	}
 
 	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker />` opens).
-	fn open_color_picker(initial_value: FillChoiceUI, allow_none: bool, disabled: bool) -> Message {
+	fn open_color_picker(initial_value: FillChoiceSRGBA8, allow_none: bool, disabled: bool) -> Message {
 		ColorPickerMessage::Open {
-			initial_value: FillChoice::from(&initial_value),
+			initial_value: FillChoice::from(&initial_value.0),
 			allow_none,
 			disabled,
 		}
@@ -660,6 +729,17 @@ mod editor_commands {
 	}
 }
 
+#[cfg(feature = "editor")]
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(from_wasm_abi)]
+pub struct FillChoiceSRGBA8(
+	/// Concrete wasm boundary form of the generic [`FillChoice`], since a `#[wasm_bindgen]` argument's TS declaration names its type without the generic's argument.
+	#[tsify(type = "FillChoice<SRGBA8>")]
+	pub graphene_std::vector::style::FillChoice<graphene_std::color::SRGBA8>,
+);
+#[cfg(not(feature = "editor"))]
+pub type FillChoiceSRGBA8 = Any;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
 pub struct Any(#[tsify(type = "any")] serde_json::Value);
@@ -686,5 +766,4 @@ editor_proxy_types! {
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
 	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;
 	SRGBA8 = graphene_std::color::SRGBA8;
-	FillChoiceUI = graphene_std::vector::style::FillChoiceUI;
 }

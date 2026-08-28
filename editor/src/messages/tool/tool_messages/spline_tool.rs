@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
-use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -233,6 +233,7 @@ impl ToolTransition for SplineTool {
 			canvas_transformed: Some(SplineToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(SplineToolMessage::Abort.into()),
 			selection_changed: Some(SplineToolMessage::SelectionChanged.into()),
+			graph_changed: Some(SplineToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(SplineToolMessage::WorkingColorChanged.into()),
 		}
 	}
@@ -407,8 +408,9 @@ impl Fsm for SplineToolFsmState {
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
 				tool_options.drawing.fill.apply_fill(layer, responses);
+				tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
+				tool_options.drawing.apply_stroke_order_to_new_layer(layer, responses);
 				tool_data.current_layer = Some(layer);
 				tool_data.new_layer_viewport_start = Some(viewport_vec);
 

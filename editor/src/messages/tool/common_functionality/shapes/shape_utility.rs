@@ -16,7 +16,8 @@ use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::subpath::{self, Subpath};
+use graphene_std::math::float_noise::round_away_float_noise;
+use graphene_std::vector::algorithms::shapes::{arc_bezpath, regular_polygon_bezpath, star_polygon_bezpath};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
@@ -442,12 +443,9 @@ pub fn star_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessa
 	let viewport = document.metadata().transform_to_viewport(layer);
 
 	let points = sides as u64;
-	let diameter: f64 = radius1 * 2.;
-	let inner_diameter = radius2 * 2.;
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(star_polygon_bezpath(DVec2::ZERO, points, radius1, radius2))];
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))];
-
-	overlay_context.outline(subpath.iter(), viewport, None);
+	overlay_context.outline(targets.iter(), viewport, None);
 }
 
 /// Outlines the geometric shape made by polygon-node
@@ -460,11 +458,9 @@ pub fn polygon_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMe
 	let viewport = document.metadata().transform_to_viewport(layer);
 
 	let points = sides as u64;
-	let radius: f64 = radius * 2.;
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(regular_polygon_bezpath(DVec2::ZERO, points, radius))];
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))];
-
-	overlay_context.outline(subpath.iter(), viewport, None);
+	overlay_context.outline(targets.iter(), viewport, None);
 }
 
 /// Outlines the geometric shape made by an Arc node
@@ -475,19 +471,11 @@ pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessag
 		return;
 	};
 
-	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_arc(
-		radius,
-		start_angle / 360. * std::f64::consts::TAU,
-		sweep_angle / 360. * std::f64::consts::TAU,
-		match arc_type {
-			ArcType::Open => subpath::ArcType::Open,
-			ArcType::Closed => subpath::ArcType::Closed,
-			ArcType::PieSlice => subpath::ArcType::PieSlice,
-		},
-	))];
+	let arc = arc_bezpath(radius, start_angle / 360. * std::f64::consts::TAU, sweep_angle / 360. * std::f64::consts::TAU, arc_type);
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(arc)];
 	let viewport = document.metadata().transform_to_viewport(layer);
 
-	overlay_context.outline(subpath.iter(), viewport, None);
+	overlay_context.outline(targets.iter(), viewport, None);
 }
 
 /// Check if the the cursor is inside the geometric star shape made by the Star node without any upstream node modifications
@@ -583,26 +571,6 @@ pub fn format_rounded(value: f64, precision: usize) -> String {
 	}
 }
 
-/// Recovers the intended number from floating point imprecision noise when that can be done reliably, e.g. 0.30000000000000004 -> 0.3.
-/// Rounding to each significant digit count from 1 to 12, the first candidate within a relative 1e-13 of the original is accepted.
-/// Actual high-precision values (like 0.3333333333333333) never pass the tolerance and are returned unchanged.
-pub fn round_away_float_noise(value: f64) -> f64 {
-	if value == 0. || !value.is_finite() {
-		return if value == 0. { 0. } else { value };
-	}
-
-	let exponent = value.abs().log10().floor() as i32;
-	for significant_digits in 1..=12 {
-		let scale = 10_f64.powi(significant_digits - 1 - exponent);
-		let rounded = (value * scale).round() / scale;
-		if ((rounded - value) / value).abs() < 1e-13 {
-			return rounded;
-		}
-	}
-
-	value
-}
-
 /// Gives the approximated angle to display in degrees, given an angle in degrees.
 pub fn calculate_display_angle(angle: f64) -> f64 {
 	if angle.is_sign_positive() {
@@ -646,37 +614,6 @@ pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMe
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	#[test]
-	fn round_away_float_noise_snaps_noisy_values() {
-		assert_eq!(round_away_float_noise(0.1 + 0.2), 0.3);
-		assert_eq!(round_away_float_noise(0.3000000000000012), 0.3);
-		assert_eq!(round_away_float_noise(2.99999999999993), 3.);
-		assert_eq!(round_away_float_noise(45.00000000000001), 45.);
-	}
-
-	#[test]
-	fn round_away_float_noise_keeps_honest_values() {
-		assert_eq!(round_away_float_noise(1. / 3.), 1. / 3.);
-		assert_eq!(round_away_float_noise(0.2394023940209349), 0.2394023940209349);
-		assert_eq!(round_away_float_noise(0.25), 0.25);
-		assert_eq!(round_away_float_noise(-17.5), -17.5);
-	}
-
-	#[test]
-	fn round_away_float_noise_keeps_deliberate_values_with_zero_runs() {
-		assert_eq!(round_away_float_noise(0.30000005), 0.30000005);
-		assert_eq!(round_away_float_noise(0.3000000000001), 0.3000000000001);
-		assert_eq!(round_away_float_noise(1.00000001), 1.00000001);
-		assert_eq!(round_away_float_noise(2.9999993), 2.9999993);
-	}
-
-	#[test]
-	fn round_away_float_noise_normalizes_zero() {
-		let result = round_away_float_noise(-0.);
-		assert_eq!(result, 0.);
-		assert!(result.is_sign_positive());
-	}
 
 	#[test]
 	fn format_rounded_trims_trailing_zeros_when_exact() {

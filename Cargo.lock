@@ -370,15 +370,31 @@ dependencies = [
 name = "brush-nodes"
 version = "0.1.0"
 dependencies = [
+ "brush-types",
+ "bytemuck",
  "core-types",
  "dyn-any",
  "glam",
  "graphene-hash",
+ "graphic-types",
+ "half",
  "node-macro",
- "raster-nodes",
  "raster-types",
  "serde",
  "tokio",
+ "wgpu",
+ "wgpu-executor",
+]
+
+[[package]]
+name = "brush-types"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphene-hash",
+ "serde",
 ]
 
 [[package]]
@@ -959,7 +975,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
- "skrifa",
+ "skrifa 0.42.1",
  "tinyvec",
  "tokio",
  "tsify",
@@ -1375,7 +1391,8 @@ dependencies = [
 [[package]]
 name = "dpi"
 version = "0.1.2"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 dependencies = [
  "serde",
 ]
@@ -1670,6 +1687,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "font-types"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75382bc7392ef10aad10935f92fc3db36d2d4dad0e5d96d8d65e04f89a07ec39"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
 name = "fontconfig-parser"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1702,7 +1728,7 @@ dependencies = [
  "linebender_resource_handle",
  "memmap2 0.9.10",
  "parlance",
- "read-fonts",
+ "read-fonts 0.39.2",
  "smallvec",
 ]
 
@@ -2198,6 +2224,7 @@ dependencies = [
 name = "graphic-nodes"
 version = "0.1.0"
 dependencies = [
+ "brush-types",
  "core-types",
  "dyn-any",
  "glam",
@@ -2213,6 +2240,7 @@ dependencies = [
 name = "graphic-types"
 version = "0.1.0"
 dependencies = [
+ "brush-types",
  "core-types",
  "dyn-any",
  "glam",
@@ -2355,6 +2383,7 @@ dependencies = [
  "base64",
  "bitflags 2.11.0",
  "color",
+ "core-types",
  "derivative",
  "document-container",
  "document-format",
@@ -2373,6 +2402,7 @@ dependencies = [
  "kurbo",
  "log",
  "math-parser",
+ "node-macro",
  "num_enum",
  "once_cell",
  "preprocessor",
@@ -2380,6 +2410,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
+ "simplecss",
  "spin",
  "thiserror 2.0.18",
  "tokio",
@@ -2516,7 +2547,7 @@ dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
  "core_maths",
- "read-fonts",
+ "read-fonts 0.39.2",
  "smallvec",
 ]
 
@@ -3978,9 +4009,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.21.3"
+version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
+checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "once_cell_polyfill"
@@ -4107,7 +4138,7 @@ dependencies = [
  "linebender_resource_handle",
  "parlance",
  "parley_data",
- "skrifa",
+ "skrifa 0.42.1",
 ]
 
 [[package]]
@@ -4763,7 +4794,18 @@ checksum = "c4ed38b89c2c77ff968c524145ad65fb010f38af5c7a224b53b81d47ac2daa81"
 dependencies = [
  "bytemuck",
  "core_maths",
- "font-types",
+ "font-types 0.11.3",
+]
+
+[[package]]
+name = "read-fonts"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "046a7d674daf459825b32f5062056d6882db0d2f5a479fbd76ccfc870ac18709"
+dependencies = [
+ "bytemuck",
+ "font-types 0.12.3",
+ "once_cell",
 ]
 
 [[package]]
@@ -4849,6 +4891,7 @@ name = "rendering"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "brush-types",
  "core-types",
  "dyn-any",
  "glam",
@@ -4860,7 +4903,7 @@ dependencies = [
  "num-traits",
  "parley",
  "serde",
- "skrifa",
+ "skrifa 0.42.1",
  "text-nodes",
  "usvg",
  "vector-types",
@@ -5533,7 +5576,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c34617370ae968efb7161bb2beb517d9084659aae19e24b89e3db25b46e4564"
 dependencies = [
  "bytemuck",
- "read-fonts",
+ "read-fonts 0.39.2",
+]
+
+[[package]]
+name = "skrifa"
+version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "819ab7d62b1d3e72d9d9dea5650bac30424f9111364bb94928dbf5ecad1baa68"
+dependencies = [
+ "bytemuck",
+ "read-fonts 0.41.0",
 ]
 
 [[package]]
@@ -5925,7 +5978,7 @@ dependencies = [
  "raster-types",
  "serde",
  "serde_json",
- "skrifa",
+ "skrifa 0.42.1",
  "titlecase",
  "tsify",
  "unicode-segmentation",
@@ -6598,6 +6651,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
+ "color",
  "core-types",
  "dyn-any",
  "fixedbitset",
@@ -6612,6 +6666,7 @@ dependencies = [
  "polycool",
  "rustc-hash 2.1.1",
  "serde",
+ "serde_json",
  "tinyvec",
  "tsify",
  "wasm-bindgen",
@@ -6619,16 +6674,16 @@ dependencies = [
 
 [[package]]
 name = "vello"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "261359dbef879f8110ef7e1c442246c838d33d3d91cb05e0ea9288d432760c9f"
+checksum = "af76ceb17b2869be23598baef40a9c8db4de86b87c60510c3bc245559275a617"
 dependencies = [
  "bytemuck",
  "futures-intrusive",
  "log",
  "peniko",
  "png 0.18.1",
- "skrifa",
+ "skrifa 0.44.0",
  "static_assertions",
  "thiserror 2.0.18",
  "vello_encoding",
@@ -6638,22 +6693,22 @@ dependencies = [
 
 [[package]]
 name = "vello_encoding"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2346f5f0d7dccb3582fcd397b4a57b43165209f1424e0d76e85dd814db164af7"
+checksum = "1e31cd622201690d8dfe9fd8fea8d1ae59db1bfeea414856a617d1d03438418c"
 dependencies = [
  "bytemuck",
  "guillotiere",
  "peniko",
- "skrifa",
+ "skrifa 0.44.0",
  "smallvec",
 ]
 
 [[package]]
 name = "vello_shaders"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dd38937516fa4b47423d9255bb5e4a65e839ec9d57c38c4af6189ce56bf46b7"
+checksum = "abf943bd2920bfd22928a9c1bad39866f7ffcc1109b6ed924ab52773e3868a83"
 dependencies = [
  "bytemuck",
  "log",
@@ -7637,8 +7692,9 @@ checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
 
 [[package]]
 name = "winit"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2879d2854d1a43e48f67322d4bd097afcb6eb8f8f775c8de0260a71aea1df1aa"
 dependencies = [
  "bitflags 2.11.0",
  "cfg_aliases",
@@ -7664,8 +7720,9 @@ dependencies = [
 
 [[package]]
 name = "winit-android"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51d9c0d2cd93efec3a9f9ad819cfaf0834782403af7c0d248c784ec0c61761df"
 dependencies = [
  "android-activity",
  "bitflags 2.11.0",
@@ -7679,8 +7736,9 @@ dependencies = [
 
 [[package]]
 name = "winit-appkit"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21310ca07851a49c348e0c2cc768e36b52ca65afda2c2354d78ed4b90074d8aa"
 dependencies = [
  "bitflags 2.11.0",
  "block2 0.6.2",
@@ -7701,8 +7759,9 @@ dependencies = [
 
 [[package]]
 name = "winit-common"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45375fbac4cbb77260d83a30b1f9d8105880dbac99a9ae97f56656694680ff69"
 dependencies = [
  "memmap2 0.9.10",
  "objc2 0.6.3",
@@ -7716,8 +7775,9 @@ dependencies = [
 
 [[package]]
 name = "winit-core"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4f0ccd7abb43740e2c6124ac7cae7d865ecec74eec63783e8922577ac232583"
 dependencies = [
  "bitflags 2.11.0",
  "cursor-icon",
@@ -7731,8 +7791,9 @@ dependencies = [
 
 [[package]]
 name = "winit-orbital"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51ea1fb262e7209f265f12bd0cc792c399b14355675e65531e9c8a87db287d46"
 dependencies = [
  "bitflags 2.11.0",
  "dpi",
@@ -7746,8 +7807,9 @@ dependencies = [
 
 [[package]]
 name = "winit-uikit"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "680a356e798837d8eb274d4556e83bceaf81698194e31aafc5cfb8a9f2fab643"
 dependencies = [
  "bitflags 2.11.0",
  "block2 0.6.2",
@@ -7767,8 +7829,9 @@ dependencies = [
 
 [[package]]
 name = "winit-wayland"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ce5afb2ba07da603f84b722c95f9f9396d2cedae3944fb6c0cda4a6f88de545"
 dependencies = [
  "ahash",
  "bitflags 2.11.0",
@@ -7793,8 +7856,9 @@ dependencies = [
 
 [[package]]
 name = "winit-web"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c2490a953fb776fbbd5e295d54f1c3847f4f15b6c3929ec53c09acda6487a92"
 dependencies = [
  "atomic-waker",
  "bitflags 2.11.0",
@@ -7815,8 +7879,9 @@ dependencies = [
 
 [[package]]
 name = "winit-win32"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "644ea78af0e858aa3b092e5d1c67c41995a98220c81813f1353b28bc8bb91eaa"
 dependencies = [
  "bitflags 2.11.0",
  "cursor-icon",
@@ -7831,8 +7896,9 @@ dependencies = [
 
 [[package]]
 name = "winit-x11"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa5b600756534c7041aa93cd0d244d44b09fca1b89e202bd1cd80dd9f3636c46"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",

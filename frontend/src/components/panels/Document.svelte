@@ -13,7 +13,7 @@
 	import type { DocumentStore } from "/src/stores/document";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
-	import { fillChoiceUIColor, createSRgba8 } from "/src/utility-functions/colors";
+	import { fillChoiceColor, createSRgba8 } from "/src/utility-functions/colors";
 	import { pasteFile } from "/src/utility-functions/files";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
@@ -109,12 +109,10 @@
 		let totalSeparators = 0;
 		let totalToolRowsFor1Columns = 0;
 		let totalToolRowsFor2Columns = 0;
-		let totalToolRowsFor3Columns = 0;
 
 		const tally = () => {
 			totalToolRowsFor1Columns += toolsInCurrentGroup;
 			totalToolRowsFor2Columns += Math.ceil(toolsInCurrentGroup / 2);
-			totalToolRowsFor3Columns += Math.ceil(toolsInCurrentGroup / 3);
 			toolsInCurrentGroup = 0;
 		};
 
@@ -133,7 +131,6 @@
 			totalSeparators,
 			totalToolRowsFor1Columns,
 			totalToolRowsFor2Columns,
-			totalToolRowsFor3Columns,
 		};
 	})($document.toolShelfLayout[0]);
 
@@ -600,7 +597,6 @@
 			"--total-separators": toolShelfTotalToolsAndSeparators.totalSeparators,
 			"--total-tool-rows-for-1-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor1Columns,
 			"--total-tool-rows-for-2-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor2Columns,
-			"--total-tool-rows-for-3-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor3Columns,
 		}}
 	>
 		<LayoutCol class="tool-shelf">
@@ -680,7 +676,7 @@
 							}}
 							colorOrGradient={{ Solid: gradientStopPickerColor || createSRgba8(0, 0, 0, 255) }}
 							on:colorOrGradient={({ detail }) => {
-								const color = fillChoiceUIColor(detail);
+								const color = fillChoiceColor(detail);
 								if (color) editor.updateGradientStopColor(color);
 							}}
 							on:startHistoryTransaction={() => editor.startGradientStopColorTransaction()}
@@ -810,36 +806,12 @@
 				.tools {
 					flex: 0 1 auto;
 
-					// Disabled because Firefox appears to have switched to using overlay scrollbars which float atop the content and don't affect the layout (as of FF 135 on Windows).
-					// We'll keep this here in case it's needed in the future.
-					//
-					// Firefox-specific workaround for this bug causing the scrollbar to cover up the toolbar instead of widening to accommodate the scrollbar:
-					// <https://bugzilla.mozilla.org/show_bug.cgi?id=764076>
-					// <https://stackoverflow.com/questions/63278303/firefox-does-not-take-vertical-scrollbar-width-into-account-when-calculating-par>
-					// Remove this when the Firefox bug is fixed.
-					// @-moz-document url-prefix() {
-					// 	--available-height-plus-1: calc(var(--available-height) + 1px);
-					// 	--3-col-required-height: calc(var(--total-tool-rows-for-3-columns) * calc(var(--tool-width) * 1px) + var(--total-separators) * var(--height-of-separator));
-					// 	--overflows-with-3-columns: calc(1px - clamp(0px, calc((var(--available-height-plus-1) - Min(var(--available-height-plus-1), var(--3-col-required-height))) * 1000000), 1px));
-					// 	--firefox-scrollbar-width-space-occupied: 2; // Might change someday, or on different platforms, but this is the value in FF 120 on Windows
-					// 	padding-right: calc(var(--firefox-scrollbar-width-space-occupied) * var(--overflows-with-3-columns));
-					// }
-
 					.widget-span {
 						flex-wrap: wrap;
 						width: var(--columns-width);
 
 						.icon-button {
 							margin: 0;
-
-							// &[data-tooltip-description^="Coming soon."] {
-							// 	opacity: 0.25;
-							// 	transition: opacity 0.1s;
-
-							// 	&:hover {
-							// 		opacity: 1;
-							// 	}
-							// }
 
 							&:not(.emphasized) {
 								.color-general {

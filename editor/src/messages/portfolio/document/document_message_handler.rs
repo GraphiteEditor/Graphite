@@ -10,6 +10,7 @@ use crate::consts::{
 	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
 	VIEWPORT_ROTATE_SNAP_INTERVAL,
 };
+use crate::messages::frontend::utility_types::FileFilter;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
@@ -37,16 +38,16 @@ use graph_craft::application_io::wgpu_available;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graph_craft::list;
-use graphene_std::graphic::is_paint_present;
+use graphene_std::Cover;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::subpath::Subpath;
+use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::graphic_types;
 use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::vector::{PointId, graphic_types};
-use kurbo::{Affine, BezPath, Line, PathSeg};
+use kurbo::{Affine, BezPath, Line, PathSeg, Shape};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -103,6 +104,7 @@ pub struct DocumentMessageHandler {
 	pub properties_panel_collapsed_sections: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
+	#[serde(skip_deserializing, default)]
 	pub commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
 	pub document_ptz: PTZ,
@@ -298,7 +300,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				graph_operation_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::Resource(message) => {
-				let context = ResourceMessageContext { document_id, fonts };
+				let context = ResourceMessageContext { document_id, fonts, resource_storage };
 				self.resources.process_message(message, responses, context);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
@@ -1065,7 +1067,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						(true, Some(storage)) => storage
 							.export_to_bytes(
 								document_format::ExportFormat::Xz,
-								document_format::ExportOptions::default(),
+								document_format::ExportOptions {
+									include_history: false,
+									..Default::default()
+								},
 								export_load_handle.as_ref(),
 								Some(&legacy_document),
 							)
@@ -1085,6 +1090,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						name,
 						path,
 						folder,
+						filters: vec![FileFilter {
+							name: "Graphite Document".into(),
+							extensions: vec![extension.into()],
+						}],
 						content: content.into(),
 					})
 				});
@@ -1502,9 +1511,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_vector_data(layer_vector_data);
 			}
-			DocumentMessage::UpdateFillAttributes { fill_attributes } => {
+			DocumentMessage::UpdateAppearanceAttributes { appearance_attributes } => {
 				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
-				let layer_fill_attributes = fill_attributes
+				let layer_appearance_attributes = appearance_attributes
 					.into_iter()
 					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
 					.filter_map(|(node_id, attrs)| {
@@ -1514,21 +1523,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						})
 					})
 					.collect();
-				self.network_interface.update_fill_attributes(layer_fill_attributes);
-			}
-			DocumentMessage::UpdateStrokeAttributes { stroke_attributes } => {
-				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
-				let layer_stroke_attributes = stroke_attributes
-					.into_iter()
-					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
-					.filter_map(|(node_id, attrs)| {
-						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
-							(layer, attrs)
-						})
-					})
-					.collect();
-				self.network_interface.update_stroke_attributes(layer_stroke_attributes);
+				self.network_interface.update_appearance_attributes(layer_appearance_attributes);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -1844,16 +1839,16 @@ impl DocumentMessageHandler {
 		self.intersect_quad(viewport_quad, viewport).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
-	/// Runs an intersection test with all layers and a viewport space subpath
-	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	/// Runs an intersection test with all layers and a viewport space polygon path
+	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: BezPath, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		viewport_polygon.apply_transform(document_to_viewport.inverse());
+		viewport_polygon.apply_affine(Affine::new(document_to_viewport.inverse().to_cols_array()));
 
-		ClickXRayIter::new(&self.network_interface, XRayTarget::Polygon(viewport_polygon))
+		ClickXRayIter::new(&self.network_interface, XRayTarget::Path(viewport_polygon))
 	}
 
-	/// Runs an intersection test with all layers and a viewport space subpath; ignoring artboards
-	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	/// Runs an intersection test with all layers and a viewport space polygon path; ignoring artboards
+	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: BezPath, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.intersect_polygon(viewport_polygon, viewport)
 			.filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
@@ -1881,29 +1876,24 @@ impl DocumentMessageHandler {
 		layer_left >= quad_left && layer_right <= quad_right && layer_top <= quad_top && layer_bottom >= quad_bottom
 	}
 
-	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, viewport: &ViewportMessageHandler, mut viewport_polygon: Subpath<PointId>) -> bool {
+	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, viewport: &ViewportMessageHandler, mut viewport_polygon: BezPath) -> bool {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		viewport_polygon.apply_transform(document_to_viewport.inverse());
+		viewport_polygon.apply_affine(Affine::new(document_to_viewport.inverse().to_cols_array()));
 
 		let layer_click_targets = self.network_interface.document_metadata().click_targets(*layer);
 		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
 
 		layer_click_targets.is_some_and(|targets| {
 			targets.iter().all(|target| match target.target_type() {
-				ClickTargetType::Subpath(subpath) => {
-					let mut subpath = subpath.clone();
-					subpath.apply_transform(layer_transform);
-					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				ClickTargetType::Path(path) => {
+					let mut path = path.clone();
+					path.apply_affine(Affine::new(layer_transform.to_cols_array()));
+					bezpath_is_inside_bezpath(&path, &viewport_polygon, None, None)
 				}
-				ClickTargetType::CompoundPath(subpaths) => subpaths.iter().all(|subpath| {
-					let mut subpath = subpath.clone();
-					subpath.apply_transform(layer_transform);
-					subpath.is_inside_subpath(&viewport_polygon, None, None)
-				}),
 				ClickTargetType::FreePoint(point) => {
 					let mut point = *point;
 					point.apply_transform(layer_transform);
-					viewport_polygon.contains_point(point.position)
+					viewport_polygon.contains(dvec2_to_point(point.position))
 				}
 			})
 		})
@@ -2763,20 +2753,19 @@ impl DocumentMessageHandler {
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
 		for layer in selected_layers {
-			let Some(vector_data) = self.network_interface.document_metadata().layer_vector_data.get(&layer) else {
+			if !self.network_interface.document_metadata().layer_vector_data.contains_key(&layer) {
 				resulting_layers.push(layer.to_node());
 				continue;
-			};
-			let stroke = vector_data.stroke.as_ref();
+			}
 
-			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
-			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
+			let appearance = self.network_interface.document_metadata().layer_appearance_attributes.get(&layer);
 
-			let has_fill = fill_graphic_list.is_some_and(|list| is_paint_present(list));
-			// `Vector.stroke` captures stroke geometry, even with weight 0 or transparent paint.
-			// So stroke visibility must be checked from `ATTR_STROKE`, the paint source of truth.
-			let stroke_visible = stroke_graphic_list.is_some_and(|list| list.element(0).is_some_and(|g| !g.is_fully_transparent()));
-			let has_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
+			let has_fill = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
+			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
+			let has_stroke = appearance.is_some_and(|appearance| {
+				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
+					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_guaranteed_fully_transparent())
+			});
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
 			if !has_stroke {
@@ -3409,6 +3398,11 @@ impl DocumentMessageHandler {
 		let selected_nodes = self.network_interface.selected_nodes();
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
 
+		// A layer whose chain cannot carry blending nodes has nowhere to put the value, so it disqualifies the whole selection
+		let all_layers_support_blending = selected_nodes
+			.selected_layers_except_artboards(&self.network_interface)
+			.all(|layer| self.network_interface.layer_hosts_blending_nodes(&layer.to_node(), &[]));
+
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
 		let mut blending_options = selected_layers_except_artboards.map(|layer| {
 			(
@@ -3420,8 +3414,8 @@ impl DocumentMessageHandler {
 		let first_blending_options = blending_options.next();
 		let result_blending_options = blending_options;
 
-		// If there are no selected layers, disable the opacity and blend mode widgets.
-		let disabled = first_blending_options.is_none();
+		// If there are no selected layers, or any of them cannot host the nodes, disable the opacity and blend mode widgets.
+		let disabled = first_blending_options.is_none() || !all_layers_support_blending;
 
 		// Amongst the selected layers, check if the opacities and blend modes are identical across all layers.
 		// The result is setting `option` and `blend_mode` to Some value if all their values are identical, or None if they are not.
@@ -3800,7 +3794,6 @@ enum XRayTarget {
 	Point(DVec2),
 	Quad(Quad),
 	Path(BezPath),
-	Polygon(Subpath<PointId>),
 }
 
 /// The result for the [`ClickXRayIter`] on the layer
@@ -3823,13 +3816,7 @@ fn quad_to_kurbo(quad: Quad) -> BezPath {
 
 fn click_targets_to_kurbo<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> BezPath {
 	let segments = click_targets
-		.filter_map(|target| {
-			if let ClickTargetType::Subpath(subpath) = target.target_type() {
-				Some(subpath.iter())
-			} else {
-				None
-			}
-		})
+		.filter_map(|target| if let ClickTargetType::Path(path) = target.target_type() { Some(path.segments()) } else { None })
 		.flatten()
 		.map(|bezier| Affine::new(transform.to_cols_array()) * bezier);
 	BezPath::from_path_segments(segments)
@@ -3900,10 +3887,6 @@ impl<'a> ClickXRayIter<'a> {
 			}
 			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_kurbo(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
-			XRayTarget::Polygon(polygon) => {
-				let polygon = BezPath::from_path_segments(polygon.iter_closed());
-				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
-			}
 		}
 	}
 }
@@ -4336,7 +4319,7 @@ mod document_message_handler_tests {
 
 		let instrumented = editor.eval_graph().await.unwrap();
 
-		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass vacuously
+		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass without checking anything
 		let base_lengths: Vec<usize> = instrumented
 			.grab_all_input::<graphene_std::graphic::extend::BaseInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
 			.map(|base| base.len())
@@ -4351,7 +4334,7 @@ mod document_message_handler_tests {
 		let phantom_count = news
 			.iter()
 			.flat_map(|new| new.iter_element_values())
-			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None))
+			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None(_)))
 			.count();
 		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
 	}

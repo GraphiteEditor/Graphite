@@ -11,7 +11,7 @@ use core_types::math::bbox::Bbox;
 use core_types::ops::Convert;
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
-use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, WasmNotSend};
+use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM};
 use core_types::{Color, Ctx};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
@@ -20,14 +20,8 @@ pub use graph_craft::document::value::RenderOutputType;
 pub use graphene_canvas_utils as canvas_utils;
 #[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
-#[cfg(target_family = "wasm")]
-use graphic_types::IntoGraphicList;
-#[cfg(target_family = "wasm")]
-use graphic_types::Vector;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-#[cfg(target_family = "wasm")]
-use graphic_types::vector_types::gradient::Gradient;
 #[cfg(target_family = "wasm")]
 use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 
@@ -202,22 +196,7 @@ async fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn rasterize<T: WasmNotSend + Clone + 'n>(
-	_: impl Ctx,
-	#[implementations(
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Graphic>,
-		List<Color>,
-		List<Gradient>,
-	)]
-	data: List<T>,
-	footprint: Item<Footprint>,
-	canvas: Item<CanvasHandle>,
-) -> List<Raster<CPU>>
-where
-	List<T>: Render + Clone + graphic_types::IntoGraphicList,
-{
+async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, canvas: Item<CanvasHandle>) -> List<Raster<CPU>> {
 	let mut data = data;
 	let mut canvas = canvas.into_element();
 	use glam::{DAffine2, DVec2};
@@ -231,7 +210,7 @@ where
 
 	// Snapshot the input as a List<Graphic> so the renderer can recurse into the original child layers
 	// when collecting metadata, exposing their click targets to editor tools (same mechanism as Boolean Operation).
-	let upstream_graphic_list = data.clone().into_graphic_list();
+	let upstream_graphic_list = data.clone();
 
 	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
@@ -290,8 +269,19 @@ pub async fn resource<'a: 'n>(
 	hash: Item<ResourceHash>,
 ) -> Item<Resource> {
 	let hash = hash.into_element();
-	let application_io = editor_api.into_element().application_io.as_ref().expect("ApplicationIo must be available when using resources");
-	let resource = application_io.load_resource(hash).await.unwrap_or_else(|| panic!("Resource {hash} not found"));
+	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
+
+	let Some(application_io) = editor_api.into_element().application_io.as_ref() else {
+		log::error!("Resource {hash} is unavailable because the platform's application IO is missing");
+		return placeholder();
+	};
+
+	// Stored bytes go missing when the browser evicts its storage or a write is interrupted
+	let Some(resource) = application_io.load_resource(hash).await else {
+		log::error!("Resource {hash} was not found in storage");
+		return placeholder();
+	};
+
 	Item::new_from_element(resource)
 }
 

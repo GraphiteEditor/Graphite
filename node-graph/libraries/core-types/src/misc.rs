@@ -89,7 +89,7 @@ struct LegacyTable<T> {
 	element: Vec<T>,
 }
 
-// TODO: Eventually remove this migration document upgrade code
+// TODO: Eventually remove this document upgrade code
 pub fn migrate_to_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<no_std_types::color::Color, D::Error> {
 	use no_std_types::color::Color;
 	use serde::Deserialize;
@@ -107,7 +107,7 @@ pub fn migrate_to_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 	})
 }
 
-// TODO: Eventually remove this migration document upgrade code
+// TODO: Eventually remove this document upgrade code
 pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<f64>, D::Error> {
 	use serde::Deserialize;
 
@@ -122,6 +122,11 @@ pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -
 		F64ArrayFormat::Array(values) => values,
 		F64ArrayFormat::List(list) => list.element,
 	})
+}
+
+/// Parses a comma or space separated list of numbers, skipping any pieces that fail to parse.
+pub fn parse_f64_list(text: &str) -> Vec<f64> {
+	text.split([',', ' ']).filter(|piece| !piece.is_empty()).filter_map(|piece| piece.parse::<f64>().ok()).collect()
 }
 
 /// Parse a CSS color string (named color, hex, `rgb(...)`, `hsl(...)`, etc.) into a linear-light [`Color`] using the `color` crate's CSS Color 4 parser.

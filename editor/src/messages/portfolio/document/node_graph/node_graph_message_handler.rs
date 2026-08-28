@@ -1509,7 +1509,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::ShakeNode => {
-				let Some(drag_start) = &self.drag_start else {
+				let Some((drag_start, _)) = &mut self.drag_start else {
 					log::error!("Drag start should be initialized when shaking a node");
 					return;
 				};
@@ -1527,7 +1527,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.transform_point2(viewport_location);
 
 				// Collect the distance to move the shaken nodes after the undo
-				let graph_delta = IVec2::new(((point.x - drag_start.0.start_x) / 24.).round() as i32, ((point.y - drag_start.0.start_y) / 24.).round() as i32);
+				let graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
+
+				// Keep the incremental rounding baseline in sync with the total shift reapplied below
+				drag_start.round_x = graph_delta.x;
+				drag_start.round_y = graph_delta.y;
 
 				// Undo to the state of the graph before shaking
 				responses.add(DocumentMessage::AbortTransaction);
@@ -1730,6 +1734,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(EventMessage::GraphChanged);
 				if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
 					self.frontend_nodes = nodes.iter().map(|node| node.id).collect();
@@ -1757,7 +1762,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let is_text_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER));
 				let is_stroke_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER));
 				let is_fill_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER));
-				let is_fill_input = is_fill_node && input_index == graphene_std::vector::fill::FillInput::INDEX;
+				let is_fill_input = is_fill_node && input_index == graphene_std::vector::fill::PaintInput::INDEX;
 				let is_shape_generator_node = reference.as_ref().is_some_and(|r| {
 					[regular_polygon::IDENTIFIER, star::IDENTIFIER, arc::IDENTIFIER, spiral::IDENTIFIER, grid::IDENTIFIER, arrow::IDENTIFIER]
 						.into_iter()
@@ -2424,7 +2429,7 @@ impl NodeGraphMessageHandler {
 		if subgraph_path_names_length >= 2 {
 			widgets.extend([
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				BreadcrumbTrailButtons::new(subgraph_path_names)
+				BreadcrumbTrailButtons::new(subgraph_path_names.iter().map(|name| truncate_breadcrumb_label(name)).collect())
 					.on_update(move |index| {
 						DocumentMessage::ExitNestedNetwork {
 							steps_back: subgraph_path_names_length - (*index as usize) - 1,
@@ -2848,7 +2853,7 @@ impl NodeGraphMessageHandler {
 								}))
 						);
 
-				let clippable = layer.can_be_clipped(network_interface.document_metadata());
+				let clippable = layer.can_be_clipped(network_interface.document_metadata()) && network_interface.layer_hosts_blending_nodes(&node_id, &[]);
 
 				let data = LayerPanelEntry {
 					id: node_id,

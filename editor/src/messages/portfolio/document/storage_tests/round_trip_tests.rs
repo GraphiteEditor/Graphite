@@ -725,7 +725,7 @@ fn find_fill_node(document: &DocumentMessageHandler) -> (Vec<graph_craft::docume
 fn fill_paint_value(document: &DocumentMessageHandler) -> graph_craft::document::value::TaggedValue {
 	let (network_path, node_id) = find_fill_node(document);
 	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
-	let input = network.nodes[&node_id].input(graphene_std::vector::fill::FillInput).expect("Fill should have a paint input");
+	let input = network.nodes[&node_id].input(graphene_std::vector::fill::PaintInput).expect("Fill should have a paint input");
 	input.as_value().expect("the paint input should hold a value").clone()
 }
 
@@ -740,7 +740,7 @@ async fn none_fill_survives_document_reopen() {
 	editor
 		.handle_message(NodeGraphMessage::SetInputValue {
 			node_id: fill_node_id,
-			input_index: graphene_std::vector::fill::FillInput::INDEX,
+			input_index: graphene_std::vector::fill::PaintInput::INDEX,
 			value: graph_craft::document::value::TaggedValue::no_paint().into(),
 		})
 		.await;
@@ -784,8 +784,8 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
 	let fill_node = &network.nodes[&node_id];
 
-	assert_eq!(fill_node.inputs.len(), 8, "the legacy Fill should upgrade to the 8-input shape");
-	let paint = fill_node.input(graphene_std::vector::fill::FillInput);
+	assert_eq!(fill_node.inputs.len(), 7, "the legacy Fill should upgrade to the 7-input shape");
+	let paint = fill_node.input(graphene_std::vector::fill::PaintInput);
 	assert!(
 		matches!(paint, Some(graph_craft::document::NodeInput::Node { .. })),
 		"the wired legacy fill should keep its connection, but became {paint:?}"
@@ -799,5 +799,81 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 	assert!(
 		matches!(transform, Some(TaggedValue::DAffine2(_))),
 		"the transform input should hold a matrix, but became {transform:?}"
+	);
+
+	// The Evaluate Gradient parameter held the tuple-form stops, which parse as the ramp value with even positions elided
+	let evaluate_gradient_node = &network.nodes[&graph_craft::document::NodeId(2)];
+	let stops = evaluate_gradient_node.input_value(graphene_std::math_nodes::evaluate_gradient::GradientInput);
+	let Some(TaggedValue::GradientRamp(ramp)) = stops else {
+		panic!("the legacy stops parameter should become a gradient ramp value, but became {stops:?}");
+	};
+	assert_eq!(
+		ramp.gradient_space,
+		graphene_std::vector::style::GradientSpace::RgbGamma,
+		"a legacy document's ramps should deserialize with the explicit gamma interpolation"
+	);
+	let stops = graphene_std::vector::Gradient::from(ramp);
+	assert_eq!(stops.len(), 2);
+	assert!(!stops.has_position_attribute(), "even legacy tuple positions should elide rather than materialize");
+}
+
+#[tokio::test]
+async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
+	use graph_craft::document::value::TaggedValue;
+	use graphene_std::vector::style::GradientSpread;
+
+	// A minimal document from the era when the gradient spread was the Fill node's own sixth input (tagged `GradientSpreadMethod`), here set to Repeat
+	const EIGHT_INPUT_DOCUMENT: &str = r#"{"network_interface":{"network":{"exports":[{"Node":{"node_id":1,"output_index":0,"lambda":false}}],"nodes":[[1,{"inputs":[{"Value":{"tagged_value":{"GraphicGroup":{"instance":[],"transform":[],"alpha_blending":[],"source_node_id":[]}},"exposed":true}},{"Value":{"tagged_value":{"GradientRamp":{"stops":{"color":[{"red":0.0,"green":0.0,"blue":0.0,"alpha":1.0},{"red":1.0,"green":1.0,"blue":1.0,"alpha":1.0}]}}},"exposed":false}},{"Value":{"tagged_value":{"Color":{"red":0.0,"green":0.0,"blue":0.0,"alpha":1.0}},"exposed":false}},{"Value":{"tagged_value":{"GradientRamp":{"stops":{"color":[{"red":0.0,"green":0.0,"blue":0.0,"alpha":1.0},{"red":1.0,"green":1.0,"blue":1.0,"alpha":1.0}]}}},"exposed":false}},{"Value":{"tagged_value":{"GradientType":"Linear"},"exposed":false}},{"Value":{"tagged_value":{"GradientSpreadMethod":"Repeat"},"exposed":false}},{"Value":{"tagged_value":{"Bool":false},"exposed":false}},{"Value":{"tagged_value":{"DAffine2":[1.0,0.0,0.0,1.0,0.0,0.0]},"exposed":false}}],"manual_composition":{"Concrete":{"name":"core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>","alias":null}},"implementation":{"ProtoNode":{"name":"graphene_core::vector::FillNode"}},"visible":true,"skip_deduplication":false}]],"scope_injections":[]},"network_metadata":{"persistent_metadata":{"node_metadata":[[1,{"persistent_metadata":{"reference":"Fill","display_name":"","input_properties":[{"input_data":{"input_name":"Content"},"widget_override":null},{"input_data":{"input_name":"Fill"},"widget_override":null},{"input_data":{"input_name":"Backup Color"},"widget_override":null},{"input_data":{"input_name":"Backup Gradient"},"widget_override":null},{"input_data":{"input_name":"Gradient Type"},"widget_override":null},{"input_data":{"input_name":"Spread Method"},"widget_override":null},{"input_data":{"input_name":"Has Transform"},"widget_override":null},{"input_data":{"input_name":"Transform"},"widget_override":null}],"output_names":[""],"has_primary_output":true,"locked":false,"pinned":false,"node_type_metadata":{"Node":{"position":{"Absolute":[0,0]}}},"network_metadata":null}}]],"previewing":"No","navigation_metadata":{"node_graph_ptz":{"pan":[0.0,0.0],"tilt":0.0,"zoom":1.0,"flip":false},"node_graph_to_viewport":[1.0,0.0,0.0,1.0,0.0,0.0],"node_graph_top_right":[0.0,0.0]},"selection_undo_history":[],"selection_redo_history":[]}}},"collapsed":[],"name":"eight_input_fill.graphite","commit_hash":"0000000000000000000000000000000000000000","document_ptz":{"pan":[0.0,0.0],"tilt":0.0,"zoom":1.0,"flip":false},"document_mode":"DesignMode","view_mode":"Normal","overlays_visibility_settings":{"all":true,"artboard_name":true,"compass_rose":true,"quick_measurement":true,"transform_measurement":true,"transform_cage":true,"hover_outline":true,"selection_outline":true,"pivot":true,"path":true,"anchors":true,"handles":true},"rulers_visible":true,"snapping_state":{"snapping_enabled":true,"grid_snapping":false,"artboards":true,"tolerance":8.0,"bounding_box":{"center_point":true,"corner_point":true,"edge_midpoint":true,"align_with_edges":true,"distribute_evenly":true},"path":{"anchor_point":true,"line_midpoint":true,"along_path":true,"normal_to_path":true,"tangent_to_path":true,"path_intersection_point":true,"align_with_anchor_point":true,"perpendicular_from_endpoint":true},"grid":{"origin":[0.0,0.0],"grid_type":{"Rectangular":{"spacing":[1.0,1.0]}},"grid_color":{"red":0.6,"green":0.6,"blue":0.6,"alpha":1.0},"dot_display":false}},"graph_view_overlay_open":false,"graph_fade_artwork_percentage":80.0}"#;
+
+	// Deserializing alone must succeed, so a failure below is attributable to the migrations
+	DocumentMessageHandler::deserialize_document(EIGHT_INPUT_DOCUMENT).expect("the eight-input document should deserialize");
+
+	let mut editor = EditorTestUtils::create();
+	editor
+		.handle_message(PortfolioMessage::OpenDocumentFile {
+			document_name: None,
+			document_path: None,
+			document_serialized_content: EIGHT_INPUT_DOCUMENT.to_string(),
+		})
+		.await;
+
+	let document = editor.active_document();
+	let (network_path, node_id) = find_fill_node(document);
+	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
+	let fill_node = &network.nodes[&node_id];
+
+	assert_eq!(fill_node.inputs.len(), 7, "the eight-input Fill should fold down to the 7-input shape");
+
+	let paint = fill_node.input_value(graphene_std::vector::fill::PaintInput);
+	let Some(TaggedValue::GradientRamp(ramp)) = paint else {
+		panic!("the fill input should keep its gradient ramp value, but became {paint:?}");
+	};
+	assert_eq!(ramp.gradient_spread, GradientSpread::Repeat, "the spread input's value should fold into the fill ramp");
+	assert_eq!(
+		ramp.gradient_space,
+		graphene_std::vector::style::GradientSpace::RgbGamma,
+		"a legacy document's ramps should deserialize with the explicit gamma interpolation"
+	);
+
+	let backup = fill_node.input_value(graphene_std::vector::fill::BackupGradientInput);
+	let Some(TaggedValue::GradientRamp(backup_ramp)) = backup else {
+		panic!("the backup gradient input should keep its gradient ramp value, but became {backup:?}");
+	};
+	assert_eq!(backup_ramp.gradient_spread, GradientSpread::Repeat, "the spread input's value should fold into the backup ramp");
+	assert_eq!(
+		backup_ramp.gradient_space,
+		graphene_std::vector::style::GradientSpace::RgbGamma,
+		"the backup ramp should carry the explicit gamma interpolation too"
+	);
+
+	let has_transform = fill_node.input_value(graphene_std::vector::fill::HasTransformInput);
+	assert!(
+		matches!(has_transform, Some(TaggedValue::Bool(false))),
+		"the has-transform input should shift down intact, but became {has_transform:?}"
+	);
+	let transform = fill_node.input_value(graphene_std::vector::fill::TransformInput);
+	assert!(
+		matches!(transform, Some(TaggedValue::DAffine2(_))),
+		"the transform input should shift down intact, but became {transform:?}"
 	);
 }

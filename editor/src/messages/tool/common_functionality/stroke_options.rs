@@ -64,7 +64,9 @@ where
 	if has_dash {
 		rows.push(LayoutGroup::row(dash_offset_row(drawing.dash_offset, to_message.clone())));
 	}
-	rows.push(LayoutGroup::row(enum_radio_row::<PaintOrder, _>("Order", drawing.paint_order, false, {
+	// An inapplicable order (no Fill/Stroke pair to reorder) grays out and highlights no entry, since the synced value is only a fallback
+	let paint_order = drawing.paint_order.filter(|_| drawing.paint_order_applicable);
+	rows.push(LayoutGroup::row(enum_radio_row::<PaintOrder, _>("Order", paint_order, !drawing.paint_order_applicable, {
 		let to_message = to_message.clone();
 		move |value| to_message(StrokeOptionsUpdate::PaintOrder(value))
 	})));
@@ -123,19 +125,9 @@ where
 	E: ChoiceTypeStatic + 'static,
 	F: Fn(E) -> Message + 'static + Send + Sync + Clone,
 {
-	let entries = E::list()
-		.iter()
-		.flat_map(|section| section.iter())
-		.map(|(value, meta)| {
-			let to_message = to_message.clone();
-			let value = *value;
-			let entry = RadioEntryData::new(meta.name)
-				.tooltip_label(meta.label)
-				.tooltip_description(meta.description.unwrap_or_default())
-				.on_update(move |_| to_message(value))
-				.on_commit(|_| DocumentMessage::StartTransaction.into());
-			if let Some(icon) = meta.icon { entry.icon(icon) } else { entry.label(meta.label) }
-		})
+	let entries = RadioEntryData::list_from_choice_type(to_message)
+		.into_iter()
+		.map(|entry| entry.on_commit(|_| DocumentMessage::StartTransaction.into()))
 		.collect();
 	vec![
 		TextLabel::new(label_text).table_align(true).widget_instance(),
@@ -208,12 +200,17 @@ pub fn apply_miter_limit(drawing: &mut DrawingToolState, limit: f64, document: &
 
 pub fn apply_paint_order(drawing: &mut DrawingToolState, order: PaintOrder, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.paint_order = Some(order);
-	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::PaintOrderInput, TaggedValue::PaintOrder(order), responses);
+	// A mixed selection only grays the radio out when no layer can take the swap, so skip the ones that can't
+	for layer in graph_modification_utils::paintable_selected_layers(document) {
+		if graph_modification_utils::stroke_paint_order_applicable(layer, &document.network_interface) {
+			responses.add(GraphOperationMessage::StrokeOrderSet { layer, paint_order: order });
+		}
+	}
 }
 
 pub fn apply_dash_lengths(drawing: &mut DrawingToolState, lengths: Vec<f64>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.dash_lengths = Some(lengths.clone());
-	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::DashPatternInput, TaggedValue::DashPattern(lengths.into()), responses);
+	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::DashPatternInput, TaggedValue::DashPattern(lengths), responses);
 }
 
 pub fn apply_dash_offset(drawing: &mut DrawingToolState, offset: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {

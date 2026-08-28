@@ -84,7 +84,7 @@
 				bottom: 0;
 				left: -40px;
 				width: 40px;
-				background: linear-gradient(to right, rgba(var(--color-2-mildblack-rgb), 0) 0%, rgba(var(--color-2-mildblack-rgb), 1) 100%);
+				background: linear-gradient(to right, rgb(from var(--color-2-mildblack) r g b / 0) 0%, var(--color-2-mildblack) 100%);
 			}
 		}
 

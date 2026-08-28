@@ -6,7 +6,7 @@ use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::any::DynAnyNode;
-use graphene_std::brush::brush_stroke::BrushTrace;
+use graphene_std::brush::Stroke;
 use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{AttributeValueDyn, Bundle, Item, List, ListDyn, NodeIdPath};
@@ -24,7 +24,7 @@ use graphene_std::transform::{Footprint, ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
-use graphene_std::vector::style::{DashPattern, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{DashPattern, GradientForm, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector, VectorModification};
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::async_node;
@@ -74,11 +74,14 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<bool>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<DAffine2>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<BlendMode>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientType>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientSpreadMethod>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientForm>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientSpread>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientSpace>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientHueDirection>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientInterpolation>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ListDyn]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<BrushTrace>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<graphene_std::brush::Stroke>]),
 		// Context nullification
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<&PlatformEditorApi>, Context => Item<graphene_std::ContextFeatures>]),
@@ -108,8 +111,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<bool>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<DAffine2>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<BlendMode>]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientType>]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientSpreadMethod>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientForm>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientSpread>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientSpace>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientHueDirection>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientInterpolation>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Artboard>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Graphic>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Vector>]),
@@ -138,7 +144,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<&PlatformEditorApi>]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<Raster<GPU>>]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<BrushTrace>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<graphene_std::brush::Stroke>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<RenderIntermediate>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<&wgpu_executor::WgpuExecutor>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Option<&wgpu_executor::WgpuExecutor>>]),
@@ -330,9 +336,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				StrokeJoin,
 				StrokeAlign,
 				StrokeCap,
-				PaintOrder,
-				GradientType,
-				GradientSpreadMethod,
+				GradientForm,
+				GradientSpread,
+				GradientSpace,
+				GradientHueDirection,
+				GradientInterpolation,
 				DashPattern,
 				BoxCorners,
 				MergeByDistanceAlgorithm,
@@ -344,7 +352,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				RedGreenBlueAlpha,
 				RelativeAbsolute,
 				SelectiveColorChoice,
-				BrushTrace,
+				Stroke,
 				XY,
 				ScaleType,
 				ReferencePoint,
@@ -420,8 +428,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		DVec2,
 		DAffine2,
 		BlendMode,
-		GradientType,
-		GradientSpreadMethod
+		GradientForm,
+		GradientSpread,
+		GradientSpace,
+		GradientHueDirection,
+		GradientInterpolation
 	));
 	#[cfg(feature = "gpu")]
 	node_types.extend(list_dyn_rows!(Raster<GPU>));
@@ -488,6 +499,26 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	node_types.extend(input_adapter_row!(from_element: String, element: BoxCorners));
 	// A number wire may feed the ranked `Item<BoxCorners>` connector, each number becoming a uniform radius for all four corners
 	node_types.extend(input_adapter_row!(from_element: f64, element: BoxCorners));
+	// The embedding counterpart of `input_adapter_row!`, for element types like `Graphic` whose variants embed/wrap whole ranked values.
+	// Each item moves inside its matching variant, attributes and all, rather than mapping only its element.
+	macro_rules! embed_adapter_row {
+		(from_element: $from:ty, element: $element:ty) => {{
+			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+				input_adapter_row!(node: EmbedItemNode, from: Item<$from>, to: Item<$element>, element: $element),
+				input_adapter_row!(node: EmbedListNode, from: List<$from>, to: List<$element>, element: $element),
+			];
+			entries
+		}};
+	}
+	// Any paintable wire may feed a ranked `Item<Graphic>` connector, each item embedding as its matching `Graphic` variant.
+	// This is what lets a paint list zip element-wise against the content it paints.
+	node_types.extend(embed_adapter_row!(from_element: Color, element: Graphic));
+	node_types.extend(embed_adapter_row!(from_element: Gradient, element: Graphic));
+	node_types.extend(embed_adapter_row!(from_element: String, element: Graphic));
+	node_types.extend(embed_adapter_row!(from_element: Vector, element: Graphic));
+	node_types.extend(embed_adapter_row!(from_element: Raster<CPU>, element: Graphic));
+	#[cfg(feature = "gpu")]
+	node_types.extend(embed_adapter_row!(from_element: Raster<GPU>, element: Graphic));
 	// The `Convert`-based counterpart of `input_adapter_row!`, for casts the std `Into` trait cannot express
 	macro_rules! convert_adapter_node {
 		(from_element: $from:ty, element: $element:ty) => {{
@@ -535,8 +566,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		attribute_value_node!(Item<DAffine2>),
 		attribute_value_node!(Item<Color>),
 		attribute_value_node!(Item<BlendMode>),
-		attribute_value_node!(Item<GradientType>),
-		attribute_value_node!(Item<GradientSpreadMethod>),
+		attribute_value_node!(Item<GradientForm>),
+		attribute_value_node!(Item<GradientSpread>),
+		attribute_value_node!(Item<GradientSpace>),
+		attribute_value_node!(Item<GradientHueDirection>),
+		attribute_value_node!(Item<GradientInterpolation>),
 		attribute_value_node!(Item<NodeIdPath>),
 		attribute_value_node!(List<String>),
 		attribute_value_node!(List<Color>),
