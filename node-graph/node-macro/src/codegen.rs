@@ -275,7 +275,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	}));
 
 	let async_source = parsed.injects_async_source_fields();
-	let slot_value_type = slot_value_type(output_type);
+	let slot_value_type = crate::codegen::classify::substitute_lifetimes(&slot_value_type(output_type), "'static");
 	let slot_field = async_source
 		.then(|| quote! { pub(super) slot: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, Option<gcore::gpoll::GPoll<#slot_value_type>>>>> })
 		.into_iter();
@@ -886,6 +886,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.iter()
 		.filter(|param| match param {
 			GenericParam::Type(type_param) => Some(&type_param.ident) != routing_generic.as_ref() && Some(&type_param.ident) != record_token.as_ref(),
+			// A serving lifetime stays only while the ctx bound constrains it
+			// (`ExtractArena<'e>`); wire types substitute its erased
+			// projection, which would leave it unconstrained. A flipped
+			// kernel's serving lifetime rebinds to the record lifetime, so
+			// the impl drops it entirely.
+			GenericParam::Lifetime(lifetime_param) => !flip && ctx_param.is_some_and(|ctx| quote!(#ctx).to_string().contains(&lifetime_param.lifetime.to_string())),
 			_ => true,
 		})
 		.map(&generic_tokens)
@@ -896,6 +902,21 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	}
 	if routing_generic.is_some() || record_io || flip {
 		impl_generics.insert(0, quote!('__record));
+	}
+	// A flipped kernel's serving lifetime is the record lifetime at the impl:
+	// the ctx bound rebinds under the impl's own name.
+	if flip {
+		let serving_names: Vec<String> = parsed
+			.fn_generics
+			.iter()
+			.filter_map(|param| match param {
+				GenericParam::Lifetime(lifetime_param) => Some(lifetime_param.lifetime.ident.to_string()),
+				_ => None,
+			})
+			.collect();
+		if !serving_names.is_empty() {
+			impl_generics = impl_generics.into_iter().map(|tokens| crate::codegen::classify::rename_lifetimes_to_record(tokens, &serving_names)).collect();
+		}
 	}
 	let lazy_carrier = record_io && carrier_present && matches!(parsed.fields.iter().find(|field| !field.is_data_field).map(|field| &field.ty), Some(ParsedFieldType::Node(_)));
 	if derive_routing || (lazy_carrier && derives) {
@@ -1027,10 +1048,30 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if ir::materialized_levels(&node, index) > 0 => {
 				// The gathered lane borrows this list, so both take the kernel's
-				// own subject lifetime.
-				match ir::gathered_subject(&node) == Some(index) {
-					true => quote!(#pat: #core_types::node::List<'__lane, #ty>),
-					false => quote!(#pat: #core_types::node::List<'_, #ty>),
+				// own subject lifetime. An element type naming a serving
+				// lifetime ties the view to the same region; a fn-declared
+				// serving lifetime binds a generic subject's view, so the
+				// output can borrow the materialized level.
+				let declared = || {
+					let mut lifetimes = parsed.fn_generics.iter().filter_map(|param| match param {
+						GenericParam::Lifetime(lifetime_param) => Some(lifetime_param.lifetime.clone()),
+						_ => None,
+					});
+					lifetimes
+						.next()
+						.filter(|_| lifetimes.next().is_none())
+						.filter(|lifetime| match &node.output.shape.element {
+							ir::Element::Concrete(element) => crate::codegen::classify::named_serving_lifetime(element).as_ref() == Some(lifetime),
+							_ => false,
+						})
+						// An arena-bound lifetime serves the output from the
+						// arena, not from the subject's batch view.
+						.filter(|lifetime| !ctx_param.is_some_and(|ctx| quote!(#ctx).to_string().contains(&lifetime.to_string())))
+				};
+				match (crate::codegen::classify::named_serving_lifetime(ty).or_else(declared), ir::gathered_subject(&node) == Some(index)) {
+					(Some(lifetime), _) => quote!(#pat: #core_types::node::List<#lifetime, #ty>),
+					(None, true) => quote!(#pat: #core_types::node::List<'__lane, #ty>),
+					(None, false) => quote!(#pat: #core_types::node::List<'_, #ty>),
 				}
 			}
 			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
@@ -1214,6 +1255,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ValueBinding::Carrier => quote!(),
 				ValueBinding::Materialized => {
 					let fn_name = &parsed.fn_name;
+					let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'_");
 					let cache_slot = format_ident!("__mat_cache_{index}");
 					let non_exact = fail(quote!(#core_types::gpoll::GraphError::new(::std::concat!("reduce over a non-exact extent in ", ::std::stringify!(#fn_name)))));
 					let batch_error = fail(quote!(__error));
@@ -1479,6 +1521,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					// span, as in eval), so a data-dependent extent can walk
 					// its lanes.
 					ValueBinding::Materialized => {
+						let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'_");
 						quote! {
 							let #query = || {
 								let __arena = #core_types::context::ExtractArena::arena(__input);
@@ -1875,6 +1918,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		};
 		// A droppable element parks in the arena and rides as a reference.
 		let element_store = element_write.map(|ty| {
+			let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'_");
 			quote! {
 				if unsafe { #core_types::record::write_element::<#ty>(__dst, __element, #core_types::context::ExtractArena::arena(__input)) }.is_none() {
 					return #core_types::gpoll::Interrupt::from(#core_types::gpoll::GraphError {
@@ -2043,6 +2087,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}),
 		Tail::Forward if routing_generic.is_some() => Some(quote!(let __poll = #lift;)),
 		_ => None,
+	};
+	// A serving-lifetime element rides the per-lane fill loop: the hoisted
+	// batch fill cannot yet carry an arena-lifetimed element through the
+	// caller's scratch.
+	let hoisted_lane_poll = match &node.output.shape.element {
+		ir::Element::Concrete(element) if crate::codegen::classify::named_serving_lifetime(element).is_some() => None,
+		_ => hoisted_lane_poll,
 	};
 	let hoisted_batch = parsed.attributes.batch.is_none() && produces_records && hoisted_lane_poll.is_some();
 	let batch_impl = match (&parsed.attributes.batch, produces_records, hoisted_lane_poll) {
@@ -2256,22 +2307,22 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				reading_secondary_indices(&regular_fields, skips_carrier)
 					.into_iter()
 					.filter_map(|index| match &regular_fields[index].ty {
-						ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),
+						ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::clone::Clone) }),
 						_ => None,
 					}),
 			);
 			if let Some(ty) = carrier_read_ty {
-				bounds.push(quote!(#ty: ::core::clone::Clone));
+				bounds.push({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::clone::Clone) });
 			}
 			// The element store parks droppable elements in the arena.
 			if let Some(ty) = element_write {
-				bounds.push(quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static));
+				bounds.push({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static) });
 			}
 		}
 		// A routing node's value elements copy out of their records.
 		if let Some(generic) = &routing_generic {
 			bounds.extend(routing_value_indices(&regular_fields, generic).into_iter().filter_map(|index| match &regular_fields[index].ty {
-				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::clone::Clone) }),
 				_ => None,
 			}));
 		}
@@ -2281,7 +2332,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ParsedFieldType::Regular(RegularParsedField { ty, .. })
 					if !node.inputs[index].subject && matches!(ir::value_binding(&node, index), ValueBinding::Plain | ValueBinding::ReadingSecondary | ValueBinding::RecordElement) =>
 				{
-					Some(quote!(#ty: ::core::clone::Clone))
+					Some({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::clone::Clone) })
 				}
 				_ => None,
 			}));
@@ -2301,12 +2352,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.filter(|(index, _)| ir::materialized_levels(&node, *index) == 0)
 				.filter_map(|(_, field)| match &field.ty {
 					// The conditional arena-park moves a lend element once.
-					ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => Some(quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static)),
-					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),
-					ParsedFieldType::Node(NodeParsedField { output_type, .. }) => Some(quote!(#output_type: ::core::clone::Clone)),
+					ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => Some({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static) }),
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::clone::Clone) }),
+					ParsedFieldType::Node(NodeParsedField { output_type, .. }) => Some({ let output_type = &crate::codegen::classify::substitute_lifetimes(output_type, "'static"); quote!(#output_type: ::core::clone::Clone) }),
 				})
 				.collect();
-			let out = slot_value_type(&parsed.output_type);
+			let out = crate::codegen::classify::substitute_lifetimes(&slot_value_type(&parsed.output_type), "'static");
 			bounds.push(quote!(#out: ::core::marker::Send + ::core::marker::Sync + 'static));
 			bounds
 		}
@@ -2363,7 +2414,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let flip_layout_meta_fn = flip_meta_concrete.then(|| {
 		let layout_meta_fn = format_ident!("{}_layout_meta", fn_name);
 		let element_spec = match element_write {
-			Some(ty) => quote!(#core_types::record::ElementSpec::Concrete({ use #core_types::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&#core_types::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() })),
+			Some(ty) => {
+				let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
+				quote!(#core_types::record::ElementSpec::Concrete({ use #core_types::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&#core_types::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() }))
+			}
 			None => quote!(#core_types::record::ElementSpec::Carried),
 		};
 		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, core_types);
@@ -2392,7 +2446,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.collect();
 		let subtraction = (!remove_pairs.is_empty()).then(|| quote!(.without(&[#(#remove_pairs),*])));
 		let element = match element_write {
-			Some(ty) => quote!({ use #core_types::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&#core_types::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() }),
+			Some(ty) => {
+				let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
+				quote!({ use #core_types::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&#core_types::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() })
+			}
 			None => quote!(__carrier.element),
 		};
 		// A gather carrier's base is the gathered subject's layout, so its free
@@ -2411,7 +2468,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		};
 		let layout_meta_fn = format_ident!("{}_layout_meta", fn_name);
 		let element_spec = match element_write {
-			Some(ty) => quote!(#core_types::record::ElementSpec::Concrete({ use #core_types::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&#core_types::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() })),
+			Some(ty) => {
+				let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
+				quote!(#core_types::record::ElementSpec::Concrete({ use #core_types::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&#core_types::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() }))
+			}
 			None => quote!(#core_types::record::ElementSpec::Carried),
 		};
 		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, core_types);

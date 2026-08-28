@@ -21,6 +21,7 @@ pub(crate) fn generate_node_input_references(
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => crate::codegen::ir::strip_ilist(output_type).0,
 			};
+			let mut ty = crate::codegen::classify::substitute_lifetimes(&ty, "'static");
 
 			// We only want the necessary generics.
 			let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);

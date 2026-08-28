@@ -425,7 +425,7 @@ pub(crate) fn has_materialized_input(parsed: &ParsedNodeFn) -> bool {
 }
 
 pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
-	if record_shape(parsed).is_some() || has_record_io(parsed) || routing_io(parsed).is_some() {
+	if record_shape(parsed).is_some() || has_record_io(parsed) || routing_io(parsed).is_some() || record_opaque(parsed) {
 		return false;
 	}
 	// Shader nodes flip like any value node: the kernel doubles as the
@@ -457,7 +457,10 @@ pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 					return false;
 				}
 			}
-			GenericParam::Lifetime(_) | GenericParam::Const(_) => return false,
+			// A named lifetime is the serving lifetime: wire types substitute
+			// its erased projection in registry and layout contexts.
+			GenericParam::Lifetime(_) => {}
+			GenericParam::Const(_) => return false,
 		}
 	}
 	true
@@ -683,10 +686,6 @@ pub(crate) fn type_disqualifies(ty: &Type) -> bool {
 		fn visit_type_impl_trait(&mut self, _: &'ast syn::TypeImplTrait) {
 			self.found = true;
 		}
-
-		fn visit_lifetime(&mut self, _: &'ast Lifetime) {
-			self.found = true;
-		}
 	}
 
 	let mut visitor = Disqualifier { found: false };
@@ -694,7 +693,91 @@ pub(crate) fn type_disqualifies(ty: &Type) -> bool {
 	visitor.found
 }
 
+/// The wire type with every named serving lifetime replaced: `'static` for
+/// registry, layout, and declaration contexts (the erased projection shares
+/// its type id and layout), `'_` for eval bindings, where inference recovers
+/// the serving lifetime.
+pub(crate) fn substitute_lifetimes(ty: &Type, replacement: &str) -> Type {
+	struct Subst {
+		replacement: &'static str,
+	}
+
+	impl VisitMut for Subst {
+		fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
+			if lifetime.ident != "static" {
+				*lifetime = Lifetime::new(self.replacement, lifetime.span());
+			}
+		}
+	}
+
+	let replacement = match replacement {
+		"'static" => "'static",
+		_ => "'_",
+	};
+	let mut ty = ty.clone();
+	Subst { replacement }.visit_type_mut(&mut ty);
+	ty
+}
+
+/// The serving lifetime a wire type names, so a materialized binding can tie
+/// the list view to the element's own region.
+pub(crate) fn named_serving_lifetime(ty: &Type) -> Option<Lifetime> {
+	struct Find {
+		found: Option<Lifetime>,
+	}
+
+	impl<'ast> Visit<'ast> for Find {
+		fn visit_lifetime(&mut self, lifetime: &'ast Lifetime) {
+			if self.found.is_none() && lifetime.ident != "static" {
+				self.found = Some(lifetime.clone());
+			}
+		}
+	}
+
+	let mut visitor = Find { found: None };
+	visitor.visit_type(ty);
+	visitor.found
+}
+
 pub(crate) fn desugar_extract_lifetime(bound: &TypeParamBound, core_types: &TokenStream2) -> TokenStream2 {
+	desugar_extract_lifetime_at(bound, core_types, None)
+}
+
+/// Renames every occurrence of the named lifetimes to `'__record` in a token
+/// stream: a flipped kernel's serving lifetime is the record lifetime at the
+/// impl, under whichever name the author picked.
+pub(crate) fn rename_lifetimes_to_record(stream: TokenStream2, names: &[String]) -> TokenStream2 {
+	use proc_macro2::{Group, TokenTree};
+	let mut out = Vec::new();
+	let mut tokens = stream.into_iter().peekable();
+	while let Some(token) = tokens.next() {
+		match token {
+			TokenTree::Group(group) => {
+				let renamed = rename_lifetimes_to_record(group.stream(), names);
+				let mut fresh = Group::new(group.delimiter(), renamed);
+				fresh.set_span(group.span());
+				out.push(TokenTree::Group(fresh));
+			}
+			TokenTree::Punct(punct) if punct.as_char() == '\'' => {
+				match tokens.peek() {
+					Some(TokenTree::Ident(ident)) if names.iter().any(|name| ident == name) => {
+						let span = ident.span();
+						tokens.next();
+						out.push(TokenTree::Punct(punct));
+						out.push(TokenTree::Ident(proc_macro2::Ident::new("__record", span)));
+					}
+					_ => out.push(TokenTree::Punct(punct)),
+				}
+			}
+			token => out.push(token),
+		}
+	}
+	out.into_iter().collect()
+}
+
+/// As [`desugar_extract_lifetime`], with the arena lifetime overridden: a
+/// flipped kernel's serving lifetime is the record lifetime at the impl.
+pub(crate) fn desugar_extract_lifetime_at(bound: &TypeParamBound, core_types: &TokenStream2, at: Option<TokenStream2>) -> TokenStream2 {
 	let TypeParamBound::Trait(trait_bound) = bound else {
 		return quote!(#bound);
 	};
@@ -713,5 +796,18 @@ pub(crate) fn desugar_extract_lifetime(bound: &TypeParamBound, core_types: &Toke
 	let Some(GenericArgument::Lifetime(lifetime)) = args.args.first() else {
 		return quote!(#bound);
 	};
+	let lifetime = at.unwrap_or_else(|| quote!(#lifetime));
 	quote!(#core_types::context::ExtractArena<ArenaRef = &#lifetime #core_types::arena::Arena>)
+}
+
+#[cfg(test)]
+mod lifetime_subst_tests {
+	use super::*;
+
+	#[test]
+	fn named_lifetimes_erase_to_static() {
+		let ty: Type = syn::parse_quote!(Graphic<'e>);
+		let erased = substitute_lifetimes(&ty, "'static");
+		assert_eq!(quote::quote!(#erased).to_string(), "Graphic < 'static >");
+	}
 }

@@ -24,7 +24,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 	if rows.is_empty() {
 		return quote!();
 	}
-	let output = slot_value_type(&parsed.output_type);
+	let output = substitute_lifetimes(&slot_value_type(&parsed.output_type), "'static");
 
 	let field_type = |field: &ParsedField| match &field.ty {
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
@@ -111,6 +111,8 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 			.iter()
 			.map(|(generic, index)| generic_assignment(&field_type(regular_fields[*index]), &row[*index], generic).map(|assigned| (generic.clone(), assigned)))
 			.collect::<Option<_>>()?;
+		let row: Vec<Type> = row.iter().map(|ty| substitute_lifetimes(ty, "'static")).collect();
+		let assignments: Vec<(Ident, Type)> = assignments.into_iter().map(|(generic, ty)| (generic, substitute_lifetimes(&ty, "'static"))).collect();
 		if type_disqualifies(&substitute_ident_types(&output, &assignments)) {
 			return None;
 		}
@@ -313,12 +315,12 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 				.iter()
 				.map(|slot| match slot {
 					SlotKind::BaseGeneric(name) => SlotKind::BaseGeneric(name.clone()),
-					SlotKind::BaseConcrete(ty) => SlotKind::BaseConcrete(substitute_ident_types(ty, assignments)),
-					SlotKind::Value(ty) => SlotKind::Value(substitute_ident_types(ty, assignments)),
-					SlotKind::Extracted(ty) => SlotKind::Extracted(substitute_ident_types(ty, assignments)),
-					SlotKind::Ranked(ty) => SlotKind::Ranked(substitute_ident_types(ty, assignments)),
-					SlotKind::Plain(ty) => SlotKind::Plain(substitute_ident_types(ty, assignments)),
-					SlotKind::Lazy(ty) => SlotKind::Lazy(substitute_ident_types(ty, assignments)),
+					SlotKind::BaseConcrete(ty) => SlotKind::BaseConcrete(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
+					SlotKind::Value(ty) => SlotKind::Value(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
+					SlotKind::Extracted(ty) => SlotKind::Extracted(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
+					SlotKind::Ranked(ty) => SlotKind::Ranked(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
+					SlotKind::Plain(ty) => SlotKind::Plain(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
+					SlotKind::Lazy(ty) => SlotKind::Lazy(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
 				})
 				.collect();
 
@@ -390,6 +392,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 				ir::Element::Generic(ident) => assignments.iter().find(|(generic, _)| generic == ident).map(|(_, ty)| ty.clone()),
 				ir::Element::Opaque => None,
 			};
+			let output_element = output_element.map(|element| substitute_lifetimes(&element, "'static"));
 			let (io_output, wrap) = match &output_element {
 				Some(element) => (
 					quote!(gcore::registry::record_type::<#element>()),
