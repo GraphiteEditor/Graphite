@@ -816,6 +816,9 @@ pub struct EvalScope<'a> {
 	pointer_position: Option<DVec2>,
 	generations: &'a [(SourceId, u64)],
 	arena: &'a Arena,
+	/// The region no evaluation resets, borrowed for the whole evaluation so
+	/// the flush's `&mut` cannot land while a value promoted into it is live.
+	persistent: &'a Arena,
 	hash: u64,
 }
 
@@ -827,10 +830,17 @@ impl<'a> EvalScope<'a> {
 			pointer_position,
 			generations,
 			arena,
+			persistent: arena,
 			hash: 0,
 		};
 		scope.hash = scope.compute_hash(|_| true);
 		scope
+	}
+
+	/// Names the region memo levels are promoted into. A scope that names none
+	/// promotes into its own arena, so its memos live exactly one generation.
+	pub fn with_persistent(&self, persistent: &'a Arena) -> EvalScope<'a> {
+		EvalScope { persistent, ..*self }
 	}
 
 	pub fn with_real_time(&self, real_time: Option<f64>) -> EvalScope<'a> {
@@ -891,6 +901,10 @@ impl<'a> EvalScope<'a> {
 
 	pub fn arena(&self) -> &'a Arena {
 		self.arena
+	}
+
+	pub fn persistent(&self) -> &'a Arena {
+		self.persistent
 	}
 }
 
