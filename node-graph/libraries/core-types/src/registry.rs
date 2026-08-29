@@ -124,6 +124,13 @@ impl<N: ?Sized> SharedEdge<N> {
 	pub fn share(&self) -> Self {
 		Self { ptr: self.ptr, own: self.own.clone() }
 	}
+
+	/// Re-derives the cached pointer from the owned payload. An exclusive
+	/// re-borrow of the payload invalidates the pointer taken before it, so
+	/// every mutation through `own` ends here.
+	pub fn rederive(&mut self) {
+		self.ptr = std::ptr::NonNull::from(&*self.own);
+	}
 }
 
 // SAFETY: `ptr` is derived from the owned Arc and never mutated through, so the edge is exactly as
@@ -222,6 +229,7 @@ impl EdgeHandle {
 				let shared = edge.downcast_mut::<SharedEdge<N>>().expect("set_layout hook matches the stored edge type");
 				let node = std::sync::Arc::get_mut(&mut shared.own).expect("layout is installed before the node is shared");
 				Node::<ContextImpl>::set_layout(node, layout);
+				shared.rederive();
 			},
 			ty,
 		}

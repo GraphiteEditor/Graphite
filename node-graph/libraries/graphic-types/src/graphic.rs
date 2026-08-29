@@ -378,9 +378,21 @@ fn forced_paint<'a, A: Attribute>(paint: LanePaint<'a>) -> Option<A::Value<'a>> 
 		name if name == Stroke::NAME => paint.stroke,
 		_ => None,
 	}?;
+	assert_eq!(
+		std::any::TypeId::of::<A::Value<'static>>(),
+		std::any::TypeId::of::<Option<&'static List<Graphic<'static>>>>(),
+		"attribute `{}` is declared at another value type than this crate's paint form",
+		A::NAME
+	);
+	assert_eq!(
+		size_of::<A::Value<'a>>(),
+		size_of::<Option<&'a List<Graphic<'a>>>>(),
+		"the paint value form must span the marker's value"
+	);
 	// SAFETY: the census admits one value type per attribute name and panics on
-	// a conflict at registration, so a marker named `fill` or `stroke` carries
-	// this crate's `Option<&List<Graphic>>` value form.
+	// a conflict at registration, and the asserts above re-check it, so a marker
+	// named `fill` or `stroke` carries this crate's `Option<&List<Graphic>>`
+	// value form at the same size.
 	Some(unsafe { std::mem::transmute_copy::<Option<&'a List<Graphic>>, A::Value<'a>>(&Some(slot)) })
 }
 
