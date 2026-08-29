@@ -16,8 +16,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 const ARENA_CAPACITY: usize = 1 << 27;
 
-fn new_arena() -> Arena {
-	Arena::new(ARENA_CAPACITY).unwrap_or_else(|| {
+const PERSISTENT_CAPACITY: usize = 1 << 26;
+
+fn new_arena(capacity: usize) -> Arena {
+	Arena::new(capacity).unwrap_or_else(|| {
 		log::error!("arena generations exhausted; continuing without frame caching");
 		Arena::parked()
 	})
@@ -33,6 +35,9 @@ pub struct DynamicExecutor {
 	// This allows us to keep the nodes around for one more frame which is used for introspection
 	orphaned_nodes: HashSet<NodeId>,
 	arena: Mutex<Arena>,
+	/// The region memo levels are promoted into: reset only between
+	/// evaluations, and only once a promote has been refused.
+	persistent: Mutex<Arena>,
 	/// The record frame space, grow-only across evaluations and lent to the
 	/// root by `&mut`.
 	frames: Mutex<core_types::record::FrameArena>,
@@ -51,7 +56,8 @@ impl Default for DynamicExecutor {
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
 			orphaned_nodes: HashSet::new(),
-			arena: Mutex::new(new_arena()),
+			arena: Mutex::new(new_arena(ARENA_CAPACITY)),
+			persistent: Mutex::new(new_arena(PERSISTENT_CAPACITY)),
 			frames: Mutex::new(core_types::record::FrameArena::new()),
 			runtime: noop_runtime(),
 			live_sources: Vec::new(),
@@ -88,7 +94,8 @@ impl DynamicExecutor {
 			output,
 			typing_context,
 			orphaned_nodes: HashSet::new(),
-			arena: Mutex::new(new_arena()),
+			arena: Mutex::new(new_arena(ARENA_CAPACITY)),
+			persistent: Mutex::new(new_arena(PERSISTENT_CAPACITY)),
 			frames: Mutex::new(core_types::record::FrameArena::new()),
 			runtime,
 			live_sources: sources,
@@ -178,11 +185,12 @@ impl DynamicExecutor {
 			.and_then(EdgeHandle::record_edge)
 			.ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
+		let persistent = self.persistent.lock().unwrap_or_else(PoisonError::into_inner);
 		let mut buffer = self.frames.lock().unwrap_or_else(PoisonError::into_inner);
 		buffer.reserve(self.tree.stack_need());
 		let frames = buffer.frames();
 		let generations = self.runtime.snapshot();
-		let scope = EvalScope::new(snapshot.try_real_time(), snapshot.try_animation_time(), snapshot.try_pointer_position(), &generations, &arena);
+		let scope = EvalScope::new(snapshot.try_real_time(), snapshot.try_animation_time(), snapshot.try_pointer_position(), &generations, &arena).with_persistent(&persistent);
 		let Some(ctx) = snapshot.rehydrate(&scope) else {
 			return Err(IntrospectError::NoData);
 		};
@@ -248,9 +256,15 @@ where
 			return Err("Output node not found in executor".into());
 		};
 		let mut arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
+		let mut persistent = self.persistent.lock().unwrap_or_else(PoisonError::into_inner);
+		// A refused promote leaves the region with no room for the next one, so
+		// it is flushed whole between evaluations and the memos re-promote.
+		if persistent.exhausted() {
+			persistent.reset();
+		}
 		let mut buffer = self.frames.lock().unwrap_or_else(PoisonError::into_inner);
 		buffer.reserve(self.tree.stack_need());
-		let result = eval_root(&mut arena, &mut buffer, &self.runtime, &input, |ctx, frames| {
+		let result = eval_root(&mut arena, &persistent, &mut buffer, &self.runtime, &input, |ctx, frames| {
 			match TaggedValue::from_edge(handle.duplicate(), ctx, frames) {
 				Ok(poll) => poll.map(Ok),
 				Err(error) => GPoll::Final(Err(error)),
@@ -271,9 +285,11 @@ where
 /// One evaluation over the arena and the frame buffer, which the caller sized
 /// to the graph's frame need: both are the evaluation's lifetime, so a record
 /// served anywhere in the cone lives exactly as long as the arena it may
-/// reference.
+/// reference. The persistent region is borrowed shared for the same span, so
+/// no flush can land while a value promoted into it is readable.
 pub fn eval_root<S, T>(
 	arena: &mut Arena,
+	persistent: &Arena,
 	buffer: &mut core_types::record::FrameArena,
 	runtime: &GraphRuntime<S>,
 	call_argument: DynSlot,
@@ -281,7 +297,7 @@ pub fn eval_root<S, T>(
 ) -> GPoll<T> {
 	arena.reset();
 	let generations = runtime.snapshot();
-	let scope = EvalScope::new(None, None, None, &generations, arena);
+	let scope = EvalScope::new(None, None, None, &generations, arena).with_persistent(persistent);
 	let root = ContextImpl::root(&scope);
 	let link = VarArgLink {
 		args: VarArgSlots::Single(call_argument),
@@ -582,10 +598,11 @@ mod test {
 	#[test]
 	fn eval_root_builds_the_bare_root_with_the_call_argument_as_vararg_0() {
 		let mut arena = Arena::new(64).unwrap();
+		let persistent = Arena::new(64).unwrap();
 		let mut buffer = core_types::record::FrameArena::new();
 		let runtime = GraphRuntime::new(InertSpawner);
 		let argument = 21.5f64;
-		let result = eval_root(&mut arena, &mut buffer, &runtime, &argument, |ctx, _frames| {
+		let result = eval_root(&mut arena, &persistent, &mut buffer, &runtime, &argument, |ctx, _frames| {
 			assert!(ctx.try_footprint().is_none(), "the bare root carries no axes");
 			GPoll::Final(ctx.vararg(0).ok().and_then(|slot| slot.downcast_ref::<f64>()).copied().unwrap_or(0.))
 		});
@@ -595,16 +612,17 @@ mod test {
 	#[test]
 	fn eval_root_resets_the_arena_at_eval_start() {
 		let mut arena = Arena::new(64).unwrap();
+		let persistent = Arena::new(64).unwrap();
 		let mut buffer = core_types::record::FrameArena::new();
 		let runtime = GraphRuntime::new(InertSpawner);
 		let cell = ArenaCell::new();
-		eval_root(&mut arena, &mut buffer, &runtime, &(), |ctx, _frames| {
+		eval_root(&mut arena, &persistent, &mut buffer, &runtime, &(), |ctx, _frames| {
 			let (_, weak) = ctx.scope().arena().alloc(5u32).unwrap();
 			cell.store(weak);
 			GPoll::Final(())
 		});
 		assert!(cell.load(&arena).is_some(), "the introspection window spans until the next eval");
-		eval_root(&mut arena, &mut buffer, &runtime, &(), |ctx, _frames| {
+		eval_root(&mut arena, &persistent, &mut buffer, &runtime, &(), |ctx, _frames| {
 			assert!(cell.load(ctx.scope().arena()).is_none(), "the reset at eval start reclaims the previous frame");
 			GPoll::Final(())
 		});
@@ -613,17 +631,18 @@ mod test {
 	#[test]
 	fn a_panicking_eval_reports_the_error_and_resets_the_arena() {
 		let mut arena = Arena::new(64).unwrap();
+		let persistent = Arena::new(64).unwrap();
 		let mut buffer = core_types::record::FrameArena::new();
 		let runtime = GraphRuntime::new(InertSpawner);
 		let cell = ArenaCell::new();
-		let result: GPoll<()> = eval_root(&mut arena, &mut buffer, &runtime, &(), |ctx, _frames| {
+		let result: GPoll<()> = eval_root(&mut arena, &persistent, &mut buffer, &runtime, &(), |ctx, _frames| {
 			let (_, weak) = ctx.scope().arena().alloc(5u32).unwrap();
 			cell.store(weak);
 			panic!("mid-eval");
 		});
 		assert_eq!(result, GPoll::panicked());
 		assert!(cell.load(&arena).is_none(), "reset-on-panic leaves no stale records");
-		assert_eq!(eval_root(&mut arena, &mut buffer, &runtime, &(), |_, _| GPoll::Final(7u32)), GPoll::Final(7));
+		assert_eq!(eval_root(&mut arena, &persistent, &mut buffer, &runtime, &(), |_, _| GPoll::Final(7u32)), GPoll::Final(7));
 	}
 
 	#[test]
