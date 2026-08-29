@@ -8,6 +8,10 @@ js = ["/js/page/donate.js"]
 
 <section>
 
+<div id="donation-thanks"><strong>Thank you for your donation!</strong> Your receipt is on its way by email, and your support goes straight into building Graphite.</div>
+
+<div id="membership-welcome"><strong>Welcome, and thank you for becoming a member!</strong> Your receipt is on its way by email. We're fulfilling membership rewards by hand for now, so please forward that receipt to <a href="mailto:contact@graphite.art">contact<wbr />@graphite<wbr />.art</a> with your Discord username, the name you'd like in the credits, and/or any other details pertinent to your membership level.</div>
+
 <div class="diptych donate-hero">
 <div class="block">
 
@@ -15,7 +19,7 @@ js = ["/js/page/donate.js"]
 
 **Own your tools. Own your art.** Graphite is 100% built and funded by our community. Invest in a sustainable, independent future for high-quality creative software that cannot ever be taken away.
 
-<div class="statistics" data-statistics>
+<div class="statistics">
 	<div class="statistic">
 		<span class="value" data-statistics-recurring></span>
 		<span class="label">In memberships</span>
