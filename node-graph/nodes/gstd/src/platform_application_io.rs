@@ -276,7 +276,6 @@ pub async fn resource<'a: 'n>(
 		return placeholder();
 	};
 
-	// Stored bytes go missing when the browser evicts its storage or a write is interrupted
 	let Some(resource) = application_io.load_resource(hash).await else {
 		log::error!("Resource {hash} was not found in storage");
 		return placeholder();
