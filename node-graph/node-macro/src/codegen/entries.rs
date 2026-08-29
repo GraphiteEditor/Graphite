@@ -1,6 +1,8 @@
 use super::*;
 use proc_macro2::TokenStream as TokenStream2;
+use proc_macro_error2::emit_error;
 use quote::{format_ident, quote};
+use syn::spanned::Spanned;
 use syn::{GenericParam, Ident, Type};
 
 pub(crate) fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic_idents: &[Ident], regular_fields: &[&ParsedField]) -> TokenStream2 {
@@ -179,7 +181,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 
 /// Which record wire an input claims and how its value is recovered. Base slots
 /// are the record edges whose layouts form the output; value slots are record
-/// edges read for their layout; plain and lazy slots are ordinary edges.
+/// edges read for their layout.
 enum SlotKind {
 	/// A generic record edge whose element is only known at runtime; the runtime
 	/// type is captured for the output wrap or the union.
@@ -192,10 +194,6 @@ enum SlotKind {
 	Extracted(Type),
 	/// A ranked record edge consumed whole; no layout rides to the constructor.
 	Ranked(Type),
-	/// A plain value edge.
-	Plain(Type),
-	/// A lazy node edge.
-	Lazy(Type),
 }
 
 impl SlotKind {
@@ -215,18 +213,18 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 	let lend = |field: &ParsedField| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }));
 
 	// A subject is its record edge (concrete carrier or erased generic); a
-	// non-subject value rides a record edge when it reads its layout, else plain.
-	let slots: Vec<SlotKind> = regular_fields
+	// non-subject value rides a record edge when it reads its layout.
+	let slots: Option<Vec<SlotKind>> = regular_fields
 		.iter()
 		.enumerate()
 		.map(|(index, field)| {
 			let input = &node.inputs[index];
 			if input.subject {
-				return match &input.shape.element {
+				return Some(match &input.shape.element {
 					ir::Element::Concrete(ty) => SlotKind::BaseConcrete(ty.clone()),
 					ir::Element::Generic(ident) => SlotKind::BaseGeneric(ident.to_string()),
 					ir::Element::Opaque => SlotKind::BaseGeneric("T".to_string()),
-				};
+				});
 			}
 			match &field.ty {
 				// An element-consuming lazy secondary of a record node rides a
@@ -234,20 +232,29 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 				ParsedFieldType::Node(NodeParsedField { output_type, .. })
 					if matches!(ir::node_kind(&node), ir::NodeKind::RecordIo) && matches!(ir::lazy_binding(&node, index), ir::LazyBinding::Element) =>
 				{
-					SlotKind::Value(output_type.clone())
+					Some(SlotKind::Value(output_type.clone()))
 				}
-				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => SlotKind::Lazy(output_type.clone()),
+				ParsedFieldType::Node(_) => {
+					emit_error!(field.pat_ident.span(), "plain (non-record) io is unsupported: this lazy input needs a record edge");
+					None
+				}
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match ir::value_binding(&node, index) {
-					ir::ValueBinding::Materialized => SlotKind::Ranked(ty.clone()),
-					ir::ValueBinding::ReadingSecondary | ir::ValueBinding::RecordElement => SlotKind::Value(ty.clone()),
+					ir::ValueBinding::Materialized => Some(SlotKind::Ranked(ty.clone())),
+					ir::ValueBinding::ReadingSecondary | ir::ValueBinding::RecordElement => Some(SlotKind::Value(ty.clone())),
 					// One wire kind: a record node's plain value still rides a
 					// record edge, extracted to its element at construction.
-					_ if matches!(ir::node_kind(&node), ir::NodeKind::RecordIo) => SlotKind::Extracted(ty.clone()),
-					_ => SlotKind::Plain(ty.clone()),
+					_ if matches!(ir::node_kind(&node), ir::NodeKind::RecordIo) => Some(SlotKind::Extracted(ty.clone())),
+					_ => {
+						emit_error!(field.pat_ident.span(), "plain (non-record) io is unsupported: this value input needs a record edge");
+						None
+					}
 				},
 			}
 		})
 		.collect();
+	let Some(slots) = slots else {
+		return quote!();
+	};
 
 	// A ranked input's element generic monomorphizes the kernel, so its
 	// implementations expand to one registry row each; every other slot
@@ -319,17 +326,13 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 					SlotKind::Value(ty) => SlotKind::Value(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
 					SlotKind::Extracted(ty) => SlotKind::Extracted(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
 					SlotKind::Ranked(ty) => SlotKind::Ranked(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
-					SlotKind::Plain(ty) => SlotKind::Plain(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
-					SlotKind::Lazy(ty) => SlotKind::Lazy(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
 				})
 				.collect();
 
-			// Every non-base value/plain/lazy input must be concrete.
+			// Every non-base value input must be concrete.
 			let values_concrete = regular_fields.iter().zip(&slots).all(|(field, slot)| match slot {
 				SlotKind::BaseGeneric(_) | SlotKind::BaseConcrete(_) => true,
-				SlotKind::Value(ty) | SlotKind::Extracted(ty) | SlotKind::Ranked(ty) | SlotKind::Plain(ty) | SlotKind::Lazy(ty) => {
-					!contains_open_generic(parsed, ty) && (lend(field) || !type_disqualifies(ty))
-				}
+				SlotKind::Value(ty) | SlotKind::Extracted(ty) | SlotKind::Ranked(ty) => !contains_open_generic(parsed, ty) && (lend(field) || !type_disqualifies(ty)),
 			});
 			if !values_concrete {
 				return None;
@@ -338,7 +341,6 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 			let input_types = slots.iter().map(|slot| match slot {
 				SlotKind::BaseGeneric(name) => quote!(gcore::registry::generic_record_edge_type(#name)),
 				SlotKind::BaseConcrete(ty) | SlotKind::Value(ty) | SlotKind::Extracted(ty) | SlotKind::Ranked(ty) => quote!(gcore::registry::record_edge_type::<#ty>()),
-				SlotKind::Plain(ty) | SlotKind::Lazy(ty) => quote!(gcore::registry::edge_type::<#ty>()),
 			});
 
 			let downcasts = names.iter().zip(&slots).enumerate().map(|(index, (name, slot))| {
@@ -365,7 +367,6 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 					SlotKind::Ranked(value_ty) => quote! {
 						let #name = inputs.next().unwrap().downcast_record::<#value_ty>()?;
 					},
-					SlotKind::Plain(value_ty) | SlotKind::Lazy(value_ty) => quote!(let #name = inputs.next().unwrap().downcast::<#value_ty>()?;),
 				}
 			});
 

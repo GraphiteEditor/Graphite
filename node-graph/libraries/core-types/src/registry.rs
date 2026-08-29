@@ -72,11 +72,6 @@ pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetada
 
 pub use crate::NodeIOTypes;
 
-#[cfg(not(target_family = "wasm"))]
-pub type ErasedNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = T> + Send + Sync;
-#[cfg(target_family = "wasm")]
-pub type ErasedNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = T>;
-
 /// Element-independent by erasure; the wire's `Type::Record(El)` keeps element reads proven at wiring.
 #[cfg(not(target_family = "wasm"))]
 pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>, Output = crate::record::RecordValue<'c>> + Send + Sync;
@@ -87,10 +82,6 @@ pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>, Output = crate::re
 type DynEdge = dyn std::any::Any + Send + Sync;
 #[cfg(target_family = "wasm")]
 type DynEdge = dyn std::any::Any;
-
-pub fn edge_type<T: 'static>() -> Type {
-	Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(T)))
-}
 
 pub fn record_type<T: 'static>() -> Type {
 	Type::Record(Box::new(concrete!(T)))
@@ -241,10 +232,6 @@ unsafe impl Send for EdgeHandle {}
 unsafe impl Sync for EdgeHandle {}
 
 impl EdgeHandle {
-	pub fn new<T: 'static>(node: std::sync::Arc<ErasedNode<T>>) -> Self {
-		Self::new_erased(node, edge_type::<T>())
-	}
-
 	pub fn new_record<T: 'static>(node: std::sync::Arc<ErasedRecordNode>) -> Self {
 		Self::new_erased(node, record_edge_type::<T>())
 	}
@@ -295,16 +282,12 @@ impl EdgeHandle {
 		(self.set_layout)(&mut *self.node, layout);
 	}
 
-	pub fn downcast<T: 'static>(self) -> Result<SharedEdge<ErasedNode<T>>, ConstructionError> {
-		self.downcast_erased(edge_type::<T>())
-	}
-
 	pub fn downcast_record<T: 'static>(self) -> Result<SharedEdge<ErasedRecordNode>, ConstructionError> {
 		self.downcast_erased(record_edge_type::<T>())
 	}
 
 	/// The erased record edge, for callers that dispatch on the layout rather
-	/// than a static element type. `None` for a plain (non-record) edge.
+	/// than a static element type. `None` for an edge erased to another node type.
 	pub fn record_edge(self) -> Option<SharedEdge<ErasedRecordNode>> {
 		self.node.downcast::<SharedEdge<ErasedRecordNode>>().ok().map(|edge| *edge)
 	}
@@ -370,16 +353,6 @@ mod tests {
 
 		fn eval(&self, _input: &Input) -> GPoll<u32> {
 			GPoll::Final(self.0.fetch_add(1, Ordering::Relaxed) + 1)
-		}
-	}
-
-	struct ValueNode<T>(T);
-
-	impl<T: Clone, Input> Node<Input> for ValueNode<T> {
-		type Output = T;
-
-		fn eval(&self, _input: &Input) -> GPoll<T> {
-			GPoll::Final(self.0.clone())
 		}
 	}
 
@@ -485,14 +458,21 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let nested = RepeatNode {
+		let nested = crate::record::RecordLift::<Vec<Vec<Vec<usize>>>, _>::new(RepeatNode {
 			content: RepeatNode { content: LevelsNode },
-		};
-		let erased: Box<ErasedNode<Vec<Vec<Vec<usize>>>>> = Box::new(nested);
+		});
+		let layout = Node::<ContextImpl>::layout(&nested).clone();
+		let erased: Box<ErasedRecordNode> = Box::new(nested);
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe {
+			crate::record::stack::reserve(1 << 12);
+		}
 
-		let GPoll::Final(outer) = erased.eval(&ctx) else {
+		let GPoll::Final(value) = erased.eval(&ctx) else {
 			panic!("nested repeat must evaluate");
 		};
+		// SAFETY: the record was served at `layout`, whose element is the output.
+		let outer = unsafe { crate::record::read_element::<Vec<Vec<Vec<usize>>>>(layout.rec(&value)) };
 		assert_eq!(outer.len(), 3);
 		assert_eq!(outer[2][1], vec![1, 2, 0]);
 		assert_eq!(outer[0][0], vec![0, 0, 0]);
@@ -537,9 +517,9 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let graph: Box<ErasedNode<u32>> = Box::new(ShiftFootprintNode {
+		let graph = ShiftFootprintNode {
 			content: ShiftFootprintNode { content: ResolutionNode },
-		});
+		};
 		assert_eq!(graph.eval(&ctx), GPoll::Final(Footprint::DEFAULT.resolution.x + 14));
 	}
 
@@ -547,27 +527,27 @@ mod tests {
 	fn construct_checks_arity_and_types() {
 		fn construct_strlen(args: Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError> {
 			let mut args = args.into_iter();
-			let value = args.next().ok_or(ConstructionError::Arity { expected: 1, got: 0 })?.downcast::<String>()?;
+			let value = args.next().ok_or(ConstructionError::Arity { expected: 1, got: 0 })?.downcast_record::<String>()?;
 			drop(value);
-			Ok(EdgeHandle::new(Arc::new(ValueNode(0u32)) as Arc<ErasedNode<u32>>))
+			Ok(crate::value::record_value_edge(0u32))
 		}
 		let entry = RegistryEntry {
 			layout_meta: None,
-			io: NodeIOTypes::new(concrete!(Context), concrete!(u32), vec![edge_type::<String>()]),
+			io: NodeIOTypes::new(concrete!(Context), record_type::<u32>(), vec![record_edge_type::<String>()]),
 			constructor: construct_strlen,
 		};
 
-		let owned = EdgeHandle::new(Arc::new(ValueNode("typed".to_string())) as Arc<ErasedNode<String>>);
+		let owned = crate::value::record_value_edge("typed".to_string());
 		assert!(construct(&entry, vec![owned]).is_ok());
 
 		assert_eq!(construct(&entry, vec![]).unwrap_err(), ConstructionError::Arity { expected: 1, got: 0 });
 
-		let mistyped = EdgeHandle::new(Arc::new(ValueNode(1.0f64)) as Arc<ErasedNode<f64>>);
+		let mistyped = crate::value::record_value_edge(1.0f64);
 		assert_eq!(
 			construct(&entry, vec![mistyped]).unwrap_err(),
 			ConstructionError::Type {
-				expected: Box::new(edge_type::<String>()),
-				found: Box::new(edge_type::<f64>()),
+				expected: Box::new(record_edge_type::<String>()),
+				found: Box::new(record_edge_type::<f64>()),
 			}
 		);
 	}
@@ -579,16 +559,24 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let handle = EdgeHandle::new(Arc::new(CountingNode(AtomicU32::new(0))) as Arc<ErasedNode<u32>>);
+		let counting = crate::record::RecordLift::<u32, _>::new(CountingNode(AtomicU32::new(0)));
+		let layout = Node::<ContextImpl>::layout(&counting).clone();
+		let handle = EdgeHandle::new_record::<u32>(Arc::new(counting) as Arc<ErasedRecordNode>);
 		let duplicate = handle.duplicate();
-		assert_eq!(*duplicate.ty(), edge_type::<u32>());
+		assert_eq!(*duplicate.ty(), record_edge_type::<u32>());
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe {
+			crate::record::stack::reserve(1 << 12);
+		}
 
-		let first = handle.downcast::<u32>().unwrap();
-		let second = duplicate.downcast::<u32>().unwrap();
-		assert_eq!(first.eval(&ctx), GPoll::Final(1));
-		assert_eq!(second.eval(&ctx), GPoll::Final(2));
+		let first = handle.downcast_record::<u32>().unwrap();
+		let second = duplicate.downcast_record::<u32>().unwrap();
+		// SAFETY: each record was served at `layout`, whose element is the count.
+		let count = |value| unsafe { layout.rec(&value).element::<u32>() };
+		assert_eq!(first.eval(&ctx).map(count), GPoll::Final(1));
+		assert_eq!(second.eval(&ctx).map(count), GPoll::Final(2));
 
 		drop(first);
-		assert_eq!(second.eval(&ctx), GPoll::Final(3));
+		assert_eq!(second.eval(&ctx).map(count), GPoll::Final(3));
 	}
 }

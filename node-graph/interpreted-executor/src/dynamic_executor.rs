@@ -2,8 +2,7 @@ use crate::node_registry;
 use core_types::arena::Arena;
 use core_types::context::{ContextImpl, DynSlot, EvalScope, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, VarArg, VarArgLink, VarArgSlots};
 use core_types::gpoll::GPoll;
-use core_types::node::Node;
-use core_types::registry::{EdgeHandle, ErasedNode};
+use core_types::registry::EdgeHandle;
 use core_types::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner};
 use graph_craft::Type;
 use graph_craft::document::NodeId;
@@ -384,16 +383,6 @@ impl BorrowTree {
 	pub fn get_by_path(&self, node_path: &[NodeId]) -> Option<EdgeHandle> {
 		let (id, _) = self.source_map.get(node_path)?;
 		self.get(*id)
-	}
-
-	/// Evaluate a node of the [`BorrowTree`], downcasting its edge to the expected output type.
-	pub fn eval<I, T: 'static>(&self, id: NodeId, input: &I) -> Option<GPoll<T>>
-	where
-		ErasedNode<T>: Node<I, Output = T>,
-	{
-		let (node, _path) = self.nodes.get(&id)?;
-		let edge = node.duplicate().downcast::<T>().ok()?;
-		Some(edge.eval(input))
 	}
 
 	/// Removes a node from the [`BorrowTree`] and returns its associated path.

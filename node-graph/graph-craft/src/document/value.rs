@@ -8,7 +8,7 @@ use core_types::context::Context;
 use core_types::gpoll::GPoll;
 use core_types::list::List;
 use core_types::node::Node;
-use core_types::registry::{EdgeHandle, edge_type};
+use core_types::registry::EdgeHandle;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::value::{leveled_record_value_edge, record_value_edge};
@@ -310,7 +310,7 @@ macro_rules! tagged_value {
 				}
 			}
 
-			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a `ClonedNode` edge typed by [`Self::ty`].
+			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a value edge typed by [`Self::ty`].
 			pub fn to_edge(self) -> Result<EdgeHandle, String> {
 				match self {
 					// ===============
@@ -362,26 +362,6 @@ macro_rules! tagged_value {
 			/// Evaluates a typed edge and converts the landed value into a tagged value, with the coverage of [`Self::try_from_any`].
 			pub fn from_edge(handle: EdgeHandle, ctx: &Context) -> Result<GPoll<Self>, String> {
 				let ty = handle.ty().clone();
-				// ===============
-				// MANUAL VARIANTS
-				// ===============
-				if ty == edge_type::<()>() {
-					return Ok(handle.downcast::<()>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(|_| TaggedValue::None));
-				}
-				// =======================
-				// AUTO-GENERATED VARIANTS
-				// =======================
-				$(
-					if ty == edge_type::<$ty>() {
-						return Ok(handle.downcast::<$ty>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(TaggedValue::$identifier));
-					}
-				)*
-				// =======================
-				// NON-SERIALIZED VARIANTS
-				// =======================
-				if ty == edge_type::<RenderOutput>() {
-					return Ok(handle.downcast::<RenderOutput>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(TaggedValue::RenderOutput));
-				}
 				// =======================
 				// RECORD WIRES, WHICH LAND AS THEIR ELEMENT
 				// =======================
