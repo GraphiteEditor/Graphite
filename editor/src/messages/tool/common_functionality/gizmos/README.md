@@ -28,7 +28,6 @@ const HEART_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
     min: Some(0.),
     max: None,
     behavior: GizmoBehavior::NONE,
-    position_hint: PositionHint::ParameterDerived,
 }];
 ```
 
@@ -140,8 +139,8 @@ transform is the one exception, and it moves the layer rather than the geometry.
   through, which is meaningless for a fraction-of-the-radius parameter.
 - **The transform cage sits on top of the obvious grab points.** Its corner and edge handles land where a
   circle's radius or an arc's endpoint invites the cursor, and it wins the press. Test away from them.
-- **The bounding-box `PositionHint` variants are inert.** Every shape so far derives its handle from a
-  parameter, so `BoundingBoxCenter` and friends fall through to the +X axis.
+- **Handles go on the +X axis unless you say otherwise.** There is no bounding-box anchoring; a handle that
+  belongs somewhere else needs `handle_positions`.
 - **Two overlapping handles are not ranked by distance alone.** A gizmo grabbed along a region reports how
   far the cursor is from that region, which is near zero everywhere along it; a point handle reports its
   real distance. Comparing those two numbers gives the region every grab. Mark the region one

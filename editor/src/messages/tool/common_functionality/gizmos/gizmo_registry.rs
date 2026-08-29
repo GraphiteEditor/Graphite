@@ -30,21 +30,6 @@ pub enum GizmoType {
 	Angle,
 }
 
-/// Where a gizmo's handle is anchored relative to its layer. The registry declares the intent and the
-/// generic gizmos do the math.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PositionHint {
-	/// Anchor at the center of the layer's bounding box.
-	BoundingBoxCenter,
-	/// Anchor on the right/middle edge of the layer's bounding box.
-	BoundingBoxEdge,
-	/// Anchor at the top-right corner of the layer's bounding box.
-	BoundingBoxCorner,
-	/// Derive the anchor from the parameter's own value (e.g. a radius handle sits at distance
-	/// `value` from the layer origin). The most precise option for length-like parameters.
-	ParameterDerived,
-}
-
 /// How the user is currently engaging a gizmo. Hooks receive it so a shape can draw one thing at rest and
 /// another mid-drag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -201,7 +186,6 @@ pub struct GizmoInfo {
 	pub name: &'static str,
 	pub min: Option<f64>,
 	pub max: Option<f64>,
-	pub position_hint: PositionHint,
 	pub behavior: GizmoBehavior,
 }
 
@@ -212,7 +196,6 @@ const CIRCLE_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	min: Some(0.),
 	max: None,
 	behavior: gizmo_behaviors::CIRCULAR_RADIUS,
-	position_hint: PositionHint::ParameterDerived,
 }];
 
 // The radius is grabbable at every corner rather than at a single `(radius, 0)` handle, which would land
@@ -225,7 +208,6 @@ const POLYGON_GIZMOS: &[GizmoInfo] = &[
 		min: Some(3.),
 		max: None,
 		behavior: gizmo_behaviors::POLYGON_SIDES,
-		position_hint: PositionHint::BoundingBoxCenter,
 	},
 	GizmoInfo {
 		parameter_index: regular_polygon::RadiusInput::INDEX,
@@ -234,7 +216,6 @@ const POLYGON_GIZMOS: &[GizmoInfo] = &[
 		min: Some(0.),
 		max: None,
 		behavior: gizmo_behaviors::POLYGON_RADIUS,
-		position_hint: PositionHint::ParameterDerived,
 	},
 ];
 
@@ -246,7 +227,6 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		min: Some(3.),
 		max: None,
 		behavior: gizmo_behaviors::STAR_SIDES,
-		position_hint: PositionHint::BoundingBoxCenter,
 	},
 	GizmoInfo {
 		parameter_index: star::Radius1Input::INDEX,
@@ -255,7 +235,6 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		min: Some(0.),
 		max: None,
 		behavior: gizmo_behaviors::STAR_RADIUS,
-		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
 		parameter_index: star::Radius2Input::INDEX,
@@ -264,7 +243,6 @@ const STAR_GIZMOS: &[GizmoInfo] = &[
 		min: Some(0.),
 		max: None,
 		behavior: gizmo_behaviors::STAR_RADIUS,
-		position_hint: PositionHint::ParameterDerived,
 	},
 ];
 
@@ -276,7 +254,6 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 		min: Some(0.),
 		max: None,
 		behavior: gizmo_behaviors::CIRCULAR_RADIUS,
-		position_hint: PositionHint::ParameterDerived,
 	},
 	// One entry, not two: either endpoint can move the start angle and the sweep together, so a separate
 	// start-angle gizmo would be a second control over the same gesture.
@@ -287,7 +264,6 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 		min: Some(0.),
 		max: Some(360.),
 		behavior: gizmo_behaviors::ARC_SWEEP,
-		position_hint: PositionHint::ParameterDerived,
 	},
 ];
 
@@ -301,7 +277,6 @@ const SPIRAL_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	min: Some(0.),
 	max: None,
 	behavior: gizmo_behaviors::SPIRAL_TURNS,
-	position_hint: PositionHint::ParameterDerived,
 }];
 
 // Three of the heart's eleven parameters: the ones with an obvious place to grab on the shape. The rest
@@ -314,7 +289,6 @@ const HEART_GIZMOS: &[GizmoInfo] = &[
 		min: Some(0.),
 		max: None,
 		behavior: GizmoBehavior::NONE,
-		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
 		parameter_index: heart::CleavageDepthInput::INDEX,
@@ -323,7 +297,6 @@ const HEART_GIZMOS: &[GizmoInfo] = &[
 		min: Some(0.),
 		max: Some(0.6),
 		behavior: gizmo_behaviors::HEART_CLEAVAGE,
-		position_hint: PositionHint::ParameterDerived,
 	},
 	GizmoInfo {
 		parameter_index: heart::ShoulderWidthInput::INDEX,
@@ -332,7 +305,6 @@ const HEART_GIZMOS: &[GizmoInfo] = &[
 		min: Some(0.),
 		max: Some(1.4),
 		behavior: gizmo_behaviors::HEART_SHOULDER,
-		position_hint: PositionHint::ParameterDerived,
 	},
 ];
 
@@ -346,7 +318,6 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 		min: Some(1.),
 		max: None,
 		behavior: gizmo_behaviors::GRID_COLUMNS,
-		position_hint: PositionHint::BoundingBoxCorner,
 	},
 	GizmoInfo {
 		parameter_index: grid::RowsInput::INDEX,
@@ -355,7 +326,6 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 		min: Some(1.),
 		max: None,
 		behavior: gizmo_behaviors::GRID_ROWS,
-		position_hint: PositionHint::BoundingBoxCorner,
 	},
 ];
 
@@ -395,7 +365,6 @@ mod tests {
 		assert_eq!(infos[0].parameter_index, 1);
 		assert_eq!(infos[0].gizmo_type, GizmoType::Slider);
 		assert_eq!(infos[0].min, Some(0.));
-		assert_eq!(infos[0].position_hint, PositionHint::ParameterDerived);
 	}
 
 	#[test]
@@ -442,9 +411,27 @@ mod tests {
 	}
 
 	#[test]
-	fn all_existing_shapes_are_registered() {
-		assert_eq!(registered_gizmo_nodes().len(), 7);
-		for (_, infos) in registered_gizmo_nodes() {
+	fn every_shape_with_gizmos_is_registered() {
+		let expected = [
+			generator_nodes::circle::IDENTIFIER,
+			generator_nodes::regular_polygon::IDENTIFIER,
+			generator_nodes::star::IDENTIFIER,
+			generator_nodes::arc::IDENTIFIER,
+			generator_nodes::spiral::IDENTIFIER,
+			generator_nodes::grid::IDENTIFIER,
+			generator_nodes::heart::IDENTIFIER,
+		];
+
+		for identifier in &expected {
+			assert!(!get_gizmo_info(identifier).is_empty(), "{} declares no gizmos", identifier.as_str());
+		}
+
+		for (identifier, infos) in registered_gizmo_nodes() {
+			assert!(
+				expected.iter().any(|expected| expected.as_str() == identifier.as_str()),
+				"{} is registered but not covered by this test",
+				identifier.as_str()
+			);
 			assert!(!infos.is_empty(), "every registered node must declare at least one gizmo");
 		}
 	}
