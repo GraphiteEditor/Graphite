@@ -174,13 +174,27 @@ impl<'a> RecordLane<'a> {
 		unsafe { self.rec.element::<U>() }
 	}
 
+	/// Attribute `A` through a token, `None` where the token was minted against
+	/// another layout than this lane's.
+	pub fn try_attr_at<A: crate::attribute::Attribute>(&self, field: crate::record::FieldOffset<A>) -> Option<A::Value<'a>> {
+		let offset = field.resolve(self.layout)?;
+		// SAFETY: resolving against this lane's own layout pins the offset and
+		// the field's value type, and the batch's contract makes the lane a live
+		// record of that layout.
+		Some(unsafe { self.rec.read::<A::Value<'a>>(offset) })
+	}
+
+	/// Attribute `A` through a token, or its census default where the token is
+	/// absent or names another layout.
+	pub fn attr_at<A: crate::attribute::Attribute>(&self, field: Option<crate::record::FieldOffset<A>>) -> A::Value<'a> {
+		field.and_then(|field| self.try_attr_at(field)).unwrap_or_else(A::default)
+	}
+
 	/// Attribute `A` at the record's top level, or its census default when the
-	/// layout does not carry it.
+	/// layout does not carry it. Mints a token per call; lane loops hoist the
+	/// mint instead.
 	pub fn attr<A: crate::attribute::Attribute>(&self) -> A::Value<'a> {
-		match self.layout.offset_of(A::NAME, 0) {
-			Some(offset) => unsafe { self.rec.read::<A::Value<'a>>(offset) },
-			None => A::default(),
-		}
+		self.attr_at(crate::record::FieldOffset::<A>::of(self.layout, 0))
 	}
 }
 

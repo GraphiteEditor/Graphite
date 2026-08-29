@@ -263,6 +263,61 @@ impl Layout {
 	}
 }
 
+/// A field handle minted once against a layout: the marker's (name, level)
+/// resolved to a field index and offset, with the marker-to-type proof taken
+/// there. Resolving it against a layout re-checks that one index instead of
+/// scanning names, so a token paired with any other layout resolves to
+/// nothing rather than to the wrong bytes.
+pub struct FieldOffset<A: attribute::Attribute> {
+	index: usize,
+	offset: usize,
+	level: u8,
+	marker: std::marker::PhantomData<fn() -> A>,
+}
+
+impl<A: attribute::Attribute> Clone for FieldOffset<A> {
+	fn clone(&self) -> Self {
+		*self
+	}
+}
+
+impl<A: attribute::Attribute> Copy for FieldOffset<A> {}
+
+impl<A: attribute::Attribute> std::fmt::Debug for FieldOffset<A> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("FieldOffset").field("name", &A::NAME).field("offset", &self.offset).field("level", &self.level).finish()
+	}
+}
+
+impl<A: attribute::Attribute> FieldOffset<A> {
+	/// The marker's field at `level`, `None` where the layout does not carry
+	/// it. Panics where the layout declares the name at another value type,
+	/// which the census forbids.
+	pub fn of(layout: &Layout, level: u8) -> Option<Self> {
+		let (index, field) = layout.fields.iter().enumerate().find(|(_, field)| field.name == A::NAME && field.level == level)?;
+		assert_eq!(field.type_id, std::any::TypeId::of::<A::Value<'static>>(), "attribute `{}` is declared at another value type", A::NAME);
+		Some(Self {
+			index,
+			offset: field.offset,
+			level,
+			marker: std::marker::PhantomData,
+		})
+	}
+
+	pub fn offset(self) -> usize {
+		self.offset
+	}
+
+	/// The offset this token names in `layout`, `None` unless `layout` is the
+	/// one it was minted against. The field's value type is re-checked, so a
+	/// resolved offset carries the marker-to-type proof into `layout`.
+	pub fn resolve(self, layout: &Layout) -> Option<usize> {
+		let field = layout.fields.get(self.index)?;
+		let same = field.offset == self.offset && field.level == self.level && field.name == A::NAME && field.type_id == std::any::TypeId::of::<A::Value<'static>>();
+		same.then_some(self.offset)
+	}
+}
+
 /// The stand-in fed to a kernel's unbounded `element: T` parameter. The type
 /// system forces the kernel to route it to the element position of its return
 /// tuple, so the passthrough is explicit in the signature while the lowering
@@ -2411,8 +2466,7 @@ impl<'a, T: dyn_any::StaticTypeSized> RunView<'a, T> {
 /// A marker's field on a run, its offset resolved once.
 pub struct RunColumn<'a, A: crate::attribute::Attribute> {
 	item: &'a GroupItem<'a>,
-	offset: Option<usize>,
-	marker: std::marker::PhantomData<A>,
+	field: Option<FieldOffset<A>>,
 }
 
 impl<'a, A: crate::attribute::Attribute> RunColumn<'a, A> {
@@ -2420,17 +2474,14 @@ impl<'a, A: crate::attribute::Attribute> RunColumn<'a, A> {
 	pub fn of(item: &'a GroupItem<'a>) -> Self {
 		Self {
 			item,
-			offset: item.layout().offset_of(A::NAME, 0),
-			marker: std::marker::PhantomData,
+			field: FieldOffset::of(item.layout(), 0),
 		}
 	}
 }
 
 impl<'a, A: crate::attribute::Attribute> crate::lane::LaneColumn<'a, A> for RunColumn<'a, A> {
 	fn try_get(&self, lane: usize) -> Option<A::Value<'a>> {
-		// SAFETY: the offset comes from the item's own layout, whose field at
-		// this name holds this marker's value type by census registration.
-		self.offset.map(|offset| unsafe { self.item.lanes().get(lane).rec().ptr().add(offset).cast::<A::Value<'a>>().read() })
+		self.item.lanes().get(lane).try_attr_at(self.field?)
 	}
 }
 
@@ -2678,6 +2729,19 @@ mod tests {
 		conflicting.type_id = std::any::TypeId::of::<u64>();
 		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity")]);
 		layout.with_writes(0, element_write::<f64>(), &[conflicting]);
+	}
+
+	#[test]
+	fn a_token_resolves_only_in_the_layout_it_was_minted_against() {
+		use crate::attribute::{Attribute, Opacity, Transform};
+
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[FieldWrite::of::<Opacity>(0)]);
+		let token = FieldOffset::<Opacity>::of(&layout, 0).expect("the layout carries the marker");
+		assert_eq!(token.resolve(&layout), layout.offset_of(Opacity::NAME, 0));
+
+		let shifted = Layout::default().with_writes(0, element_write::<f64>(), &[FieldWrite::of::<Transform>(0), FieldWrite::of::<Opacity>(0)]);
+		assert_eq!(FieldOffset::<Opacity>::of(&shifted, 0).and_then(|token| token.resolve(&layout)), None);
+		assert!(FieldOffset::<Opacity>::of(&Layout::default(), 0).is_none());
 	}
 
 	#[test]

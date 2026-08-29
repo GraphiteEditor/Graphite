@@ -26,7 +26,9 @@ pub trait Attribute: 'static {
 	const NAME: &'static str;
 	/// The value type every read and write of this name shares. The lifetime
 	/// is the evaluation the value flows in; non-reference values ignore it.
-	type Value<'e>: Copy + Default + std::fmt::Debug;
+	/// The value outlives that evaluation, so its `'static` instantiation is
+	/// the one the census registers and layouts stamp their type id from.
+	type Value<'e>: Copy + Default + std::fmt::Debug + 'e;
 	/// The name-specific default, filled where an item lacks the attribute.
 	/// Producing a value for any `'e` from no inputs, reference defaults can
 	/// only point at `'static` data, which is what lets the census fill them

@@ -1,10 +1,11 @@
 use crate::markers::{ATTR_FILL, ATTR_STROKE, Fill, Stroke};
-use core_types::attribute::{Attribute, EditorLayerPath, Opacity, OpacityFill, Transform};
+use core_types::attribute::{Attribute, ClippingMask, EditorLayerPath, Opacity, OpacityFill, Transform};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::lane::{LaneColumn, LaneSource};
 use core_types::list::{AttributeValueDyn, Item, ItemAttributeValues, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
+use core_types::record::FieldOffset;
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
@@ -654,29 +655,28 @@ impl<'e> Graphic<'e> {
 	}
 }
 
-/// One run's attribute offsets, resolved once so the lane loops read raw.
+/// One run's attribute tokens, minted once so the lane loops read at an offset.
 struct RunAttrs {
-	transform: Option<usize>,
-	opacity: Option<usize>,
-	opacity_fill: Option<usize>,
-	clipping_mask: Option<usize>,
+	transform: Option<FieldOffset<Transform>>,
+	opacity: Option<FieldOffset<Opacity>>,
+	opacity_fill: Option<FieldOffset<OpacityFill>>,
+	clipping_mask: Option<FieldOffset<ClippingMask>>,
 }
 
 impl RunAttrs {
 	fn of(item: &core_types::record::GroupItem) -> Self {
 		let layout = item.layout();
 		Self {
-			transform: layout.offset_of(ATTR_TRANSFORM, 0),
-			opacity: layout.offset_of(ATTR_OPACITY, 0),
-			opacity_fill: layout.offset_of(ATTR_OPACITY_FILL, 0),
-			clipping_mask: layout.offset_of(ATTR_CLIPPING_MASK, 0),
+			transform: FieldOffset::of(layout, 0),
+			opacity: FieldOffset::of(layout, 0),
+			opacity_fill: FieldOffset::of(layout, 0),
+			clipping_mask: FieldOffset::of(layout, 0),
 		}
 	}
 
-	fn read_or<T: Copy>(item: &core_types::record::GroupItem, offset: Option<usize>, lane: usize, default: T) -> T {
-		match offset {
-			// SAFETY: the offset comes from the item's own layout.
-			Some(offset) => unsafe { item.lanes().get(lane).rec().read(offset) },
+	fn read_or<'i, A: Attribute>(item: &'i core_types::record::GroupItem, field: Option<FieldOffset<A>>, lane: usize, default: A::Value<'i>) -> A::Value<'i> {
+		match field.and_then(|field| item.lanes().get(lane).try_attr_at(field)) {
+			Some(value) => value,
 			None => default,
 		}
 	}

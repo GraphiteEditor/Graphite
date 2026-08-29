@@ -27,10 +27,9 @@ pub(crate) fn group_leaf_count(group: &core_types::record::Group, fully_flatten:
 pub(crate) fn group_locate<'e>(group: &core_types::record::Group<'e>, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic<'e>, DAffine2)> {
 	let item = &group.content;
 	let lanes = item.typed_lanes::<Graphic>().expect("guarded by group_expands");
-	let offset = item.layout().offset_of(ATTR_TRANSFORM, 0);
+	let field = core_types::record::FieldOffset::<Transform>::of(item.layout(), 0);
 	(0..lanes.len()).find_map(|lane| {
-		// SAFETY: the offset comes from the item's own layout.
-		let lane_transform = offset.map(|offset| unsafe { item.lanes().get(lane).rec().read::<DAffine2>(offset) }).unwrap_or(DAffine2::IDENTITY);
+		let lane_transform = item.lanes().get(lane).attr_at(field);
 		locate(lanes.element_ref(lane), transform * lane_transform, fully_flatten, depth + 1, remaining)
 	})
 }
