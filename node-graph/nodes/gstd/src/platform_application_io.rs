@@ -269,8 +269,18 @@ pub async fn resource<'a: 'n>(
 	hash: Item<ResourceHash>,
 ) -> Item<Resource> {
 	let hash = hash.into_element();
-	let application_io = editor_api.into_element().application_io.as_ref().expect("ApplicationIo must be available when using resources");
-	let resource = application_io.load_resource(hash).await.unwrap_or_else(|| panic!("Resource {hash} not found"));
+	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
+
+	let Some(application_io) = editor_api.into_element().application_io.as_ref() else {
+		log::error!("Resource {hash} is unavailable because the platform's application IO is missing");
+		return placeholder();
+	};
+
+	let Some(resource) = application_io.load_resource(hash).await else {
+		log::error!("Resource {hash} was not found in storage");
+		return placeholder();
+	};
+
 	Item::new_from_element(resource)
 }
 

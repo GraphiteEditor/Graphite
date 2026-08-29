@@ -3,7 +3,7 @@ use crate::messages::portfolio::{document::resource::utility_types::EmbeddedReso
 use crate::messages::prelude::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry};
+use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry, ResourceStorage};
 use graphene_std::text::Font;
 use std::sync::Arc;
 use url::Url;
@@ -12,6 +12,7 @@ use url::Url;
 pub struct ResourceMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub fonts: &'a FontsMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, ExtractField)]
@@ -25,7 +26,7 @@ pub struct ResourceMessageHandler {
 #[message_handler_data]
 impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMessageHandler {
 	fn process_message(&mut self, message: ResourceMessage, responses: &mut VecDeque<Message>, context: ResourceMessageContext) {
-		let ResourceMessageContext { document_id, fonts } = context;
+		let ResourceMessageContext { document_id, fonts, resource_storage } = context;
 
 		match message {
 			ResourceMessage::StoreEmbedded { resource_id, data } => {
@@ -48,8 +49,9 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				responses.add(ResourceMessage::Resolve { resource_id });
 			}
 			ResourceMessage::ResolveAll => {
-				let unresolved_ids: Vec<ResourceId> = self.registry.unresolved().map(|info| info.id).collect();
-				for id in unresolved_ids {
+				let storage = resource_storage.resources_mut();
+				let ids: Vec<ResourceId> = self.registry.ids().filter(|id| !self.registry.hash(id).is_some_and(|hash| storage.contains(&hash))).collect();
+				for id in ids {
 					if self.pending_resolves.contains(&id) {
 						continue;
 					}
@@ -65,7 +67,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					log::error!("Resolve for {resource_id}: no registry entry");
 					return;
 				};
-				if info.hash.is_some() {
+				if info.hash.is_some_and(|hash| resource_storage.resources_mut().contains(hash)) {
 					log::warn!("Resource {resource_id} already resolved");
 					return;
 				}
@@ -295,5 +297,49 @@ impl<'de> serde::Deserialize<'de> for ResourceMessageHandler {
 
 		let human_readable = deserializer.is_human_readable();
 		deserializer.deserialize_map(EmbeddedResourcesVisitor { human_readable })
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use graph_craft::application_io::resource::ResourceStorage;
+
+	#[test]
+	fn resolve_all_refetches_resources_whose_bytes_are_missing() {
+		let mut handler = ResourceMessageHandler::default();
+		let storage = ResourceStorageMessageHandler::default();
+		let fonts = FontsMessageHandler::default();
+
+		let font = |style: &str| DataSource::Font {
+			family: "Lato".into(),
+			style: Some(style.into()),
+		};
+
+		let cached = ResourceId::from(1);
+		let cached_hash = storage.resources_mut().store(b"stored font bytes");
+		handler.registry.resolve(&cached, cached_hash);
+		handler.registry.push_source_back(&cached, font("Regular (400)"));
+
+		let evicted = ResourceId::from(2);
+		let evicted_hash = ResourceHash::from(b"evicted font bytes".as_slice());
+		handler.registry.resolve(&evicted, evicted_hash);
+		handler.registry.push_source_back(&evicted, font("Black (900)"));
+
+		let mut responses = VecDeque::new();
+		handler.process_message(
+			ResourceMessage::ResolveAll,
+			&mut responses,
+			ResourceMessageContext {
+				document_id: DocumentId(0),
+				fonts: &fonts,
+				resource_storage: &storage,
+			},
+		);
+
+		let resolve_requested = |id: ResourceId| responses.contains(&Message::from(ResourceMessage::Resolve { resource_id: id }));
+		assert!(resolve_requested(evicted), "a resource whose bytes are gone should be resolved again");
+		assert!(!resolve_requested(cached), "a resource whose bytes are in storage should be left alone");
+		assert_eq!(handler.registry.hash(&evicted), Some(evicted_hash), "the hash keeps naming the content");
 	}
 }

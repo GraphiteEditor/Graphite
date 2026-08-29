@@ -1,3 +1,4 @@
+mod buffer;
 mod context;
 mod pipeline;
 pub mod shader_runtime;
@@ -12,16 +13,18 @@ use core_types::color::SRGBA8;
 use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi};
-use raster_types::Texture;
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
+use wgpu::util::DeviceExt;
 use wgpu::{Origin3d, TextureAspect};
 
+pub use buffer::Buffer;
 pub use context::Context as WgpuContext;
 pub use context::ContextBuilder as WgpuContextBuilder;
 pub use pipeline::AsyncPipeline as AsyncWgpuPipeline;
 pub use pipeline::Pipeline as WgpuPipeline;
 pub use pipeline::PipelineCache as WgpuPipelineCache;
+pub use raster_types::Texture;
 pub use rendering::RenderContext;
 pub use wgpu::Backends as WgpuBackends;
 pub use wgpu::Features as WgpuFeatures;
@@ -30,7 +33,10 @@ pub use wgpu_sync::Instance as WgpuInstance;
 pub use wgpu_sync::Queue as WgpuQueue;
 pub use wgpu_sync::Surface as WgpuSurface;
 
-const TEXTURE_CACHE_SIZE: u64 = 256 * 1024 * 1024; // 256 MiB
+#[cfg(not(target_family = "wasm"))]
+const TEXTURE_CACHE_SIZE: u64 = 1024 * 1024 * 1024; // 1GB
+#[cfg(target_family = "wasm")]
+const TEXTURE_CACHE_SIZE: u64 = 512 * 1024 * 1024; // 512MB
 
 #[derive(dyn_any::DynAny, Clone)]
 pub struct WgpuExecutor {
@@ -41,16 +47,12 @@ impl WgpuExecutor {
 	pub fn context(&self) -> &WgpuContext {
 		&self.inner.context
 	}
-
-	pub fn shader_runtime(&self) -> &ShaderRuntime {
-		&self.inner.shader_runtime
-	}
 }
 
 #[derive(dyn_any::DynAny)]
 pub struct WgpuExecutorInner {
 	context: WgpuContext,
-	texture_cache: Mutex<TextureCache>,
+	texture_cache: std::sync::Mutex<TextureCache>,
 	vello_renderer: Mutex<Renderer>,
 	shader_runtime: ShaderRuntime,
 }
@@ -69,7 +71,7 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 
 impl WgpuExecutor {
 	pub async fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Texture> {
-		let texture = self.request_texture(size).await;
+		let texture = self.request_texture(size);
 
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -109,8 +111,20 @@ impl WgpuExecutor {
 		pipeline.init::<P>(self);
 	}
 
-	pub async fn request_texture(&self, size: UVec2) -> Texture {
-		self.inner.texture_cache.lock().await.request_texture(&self.context().device, size)
+	pub fn request_texture(&self, size: UVec2) -> Texture {
+		self.request_texture_with_format(size, wgpu::TextureFormat::Rgba8Unorm)
+	}
+
+	pub fn request_texture_with_format(&self, size: UVec2, format: wgpu::TextureFormat) -> Texture {
+		self.inner.texture_cache.lock().unwrap().request_texture(&self.context().device, size, format)
+	}
+
+	pub fn create_buffer(&self, desc: &wgpu::BufferDescriptor) -> Buffer {
+		self.context().device.create_buffer(desc).into()
+	}
+
+	pub fn create_buffer_init(&self, desc: &wgpu::util::BufferInitDescriptor) -> Buffer {
+		self.context().device.create_buffer_init(desc).into()
 	}
 }
 
@@ -134,7 +148,7 @@ impl WgpuExecutor {
 
 		let texture_cache = TextureCache::new(TEXTURE_CACHE_SIZE);
 
-		let shader_runtime = ShaderRuntime::new(&context);
+		let shader_runtime = ShaderRuntime::default();
 
 		Some(Self {
 			inner: Arc::new(WgpuExecutorInner {
