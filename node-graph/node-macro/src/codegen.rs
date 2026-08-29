@@ -1243,10 +1243,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let marker = &read.marker;
 		let slot = format_ident!("__read_{slot}");
 		quote! {
-			let #pat = #core_types::attribute::Attr::<#marker>(match self.#slot {
-				Some(__offset) => unsafe { #rec.read(__offset) },
-				None => <#marker as #core_types::attribute::Attribute>::default(),
-			});
+			let #pat = unsafe { #core_types::record::read_at::<#marker>(#rec, self.#slot) };
 		}
 	};
 	let reads_of = |field_index: usize| {
@@ -2705,12 +2702,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.collect();
 			let attr_slots = field.attribute_reads.iter().enumerate().map(|(slot, read)| {
 				let marker = &read.marker;
-				quote! {
-					#core_types::attribute::Attr::<#marker>(match __reads[#slot] {
-						Some(__offset) => unsafe { __rec.read(__offset) },
-						None => <#marker as #core_types::attribute::Attribute>::default(),
-					})
-				}
+				quote!(unsafe { #core_types::record::read_at::<#marker>(__rec, __reads[#slot]) })
 			});
 			let attr_tys = field.attribute_reads.iter().map(|read| {
 				let marker = &read.marker;

@@ -318,6 +318,25 @@ impl<A: attribute::Attribute> FieldOffset<A> {
 	}
 }
 
+/// Reads a declared attribute out of a record at a wiring-resolved offset,
+/// falling back to the marker's census default where the layout does not carry
+/// the name.
+///
+/// # Safety
+/// `rec` must be a live record of the layout `offset` was resolved against,
+/// and `offset`, where present, must be that layout's offset for `A` at the
+/// read's level. The census admits one value type per attribute name and
+/// panics on a conflicting declaration, so that field's bytes are a value of
+/// `A::Value`, differing from the read type only in `'e`, which must not
+/// outlive the evaluation a parked payload is arena-resident for.
+pub unsafe fn read_at<'e, A: attribute::Attribute>(rec: Rec<'_>, offset: Option<usize>) -> attribute::Attr<'e, A> {
+	attribute::Attr(match offset {
+		// SAFETY: the caller's contract.
+		Some(offset) => unsafe { rec.read::<A::Value<'e>>(offset) },
+		None => A::default(),
+	})
+}
+
 /// The stand-in fed to a kernel's unbounded `element: T` parameter. The type
 /// system forces the kernel to route it to the element position of its return
 /// tuple, so the passthrough is explicit in the signature while the lowering
