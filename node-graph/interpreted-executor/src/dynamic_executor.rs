@@ -33,6 +33,9 @@ pub struct DynamicExecutor {
 	// This allows us to keep the nodes around for one more frame which is used for introspection
 	orphaned_nodes: HashSet<NodeId>,
 	arena: Mutex<Arena>,
+	/// The record frame space, grow-only across evaluations and lent to the
+	/// root by `&mut`.
+	frames: Mutex<core_types::record::FrameArena>,
 	runtime: Arc<DynGraphRuntime>,
 	live_sources: Vec<core_types::SourceId>,
 }
@@ -49,6 +52,7 @@ impl Default for DynamicExecutor {
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
 			orphaned_nodes: HashSet::new(),
 			arena: Mutex::new(new_arena()),
+			frames: Mutex::new(core_types::record::FrameArena::new()),
 			runtime: noop_runtime(),
 			live_sources: Vec::new(),
 		}
@@ -85,6 +89,7 @@ impl DynamicExecutor {
 			typing_context,
 			orphaned_nodes: HashSet::new(),
 			arena: Mutex::new(new_arena()),
+			frames: Mutex::new(core_types::record::FrameArena::new()),
 			runtime,
 			live_sources: sources,
 		})
@@ -177,26 +182,25 @@ impl DynamicExecutor {
 			.and_then(EdgeHandle::record_edge)
 			.ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe {
-			core_types::record::stack::reserve(self.tree.stack_need());
-		}
+		let mut buffer = self.frames.lock().unwrap_or_else(PoisonError::into_inner);
+		buffer.reserve(self.tree.stack_need());
+		let frames = buffer.frames();
 		let generations = self.runtime.snapshot();
 		let scope = EvalScope::new(snapshot.try_real_time(), snapshot.try_animation_time(), snapshot.try_pointer_position(), &generations, &arena);
 		let Some(ctx) = snapshot.rehydrate(&scope) else {
 			return Err(IntrospectError::NoData);
 		};
 		let layout = core_types::node::Node::<ContextImpl>::layout(&edge);
-		// SAFETY: the read closure finishes inside the scope, so no record
-		// above the entry survives it.
-		let _scope = unsafe { core_types::record::stack::ScopeGuard::enter() };
+		// The batch borrows the frames the read closure is handed, so the read
+		// cannot outlive the scope that owns them.
+		let frames = frames.scope();
 		let result = if layout.depth > 0 {
-			match core_types::record::materialize_level(&edge, &ctx, &arena) {
+			match core_types::record::materialize_level(&edge, &ctx, &arena, &frames) {
 				core_types::record::LevelStatus::Batch(batch, _) => read(layout, batch, &arena),
 				_ => None,
 			}
 		} else {
-			match core_types::record::serve_edge(&edge, &ctx) {
+			match core_types::record::serve_edge(&edge, &ctx, &frames) {
 				GPoll::Final(value) | GPoll::Partial(value) => {
 					let rec = layout.rec(&value);
 					// SAFETY: the serve produced one live record of the edge's layout.
@@ -248,10 +252,13 @@ where
 			return Err("Output node not found in executor".into());
 		};
 		let mut arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { core_types::record::stack::reserve(self.tree.stack_need()); }		let result = eval_root(&mut arena, &self.runtime, &input, |ctx| match TaggedValue::from_edge(handle.duplicate(), ctx) {
-			Ok(poll) => poll.map(Ok),
-			Err(error) => GPoll::Final(Err(error)),
+		let mut buffer = self.frames.lock().unwrap_or_else(PoisonError::into_inner);
+		buffer.reserve(self.tree.stack_need());
+		let result = eval_root(&mut arena, &mut buffer, &self.runtime, &input, |ctx, frames| {
+			match TaggedValue::from_edge(handle.duplicate(), ctx, frames) {
+				Ok(poll) => poll.map(Ok),
+				Err(error) => GPoll::Final(Err(error)),
+			}
 		});
 		match result {
 			GPoll::Final(value) => Ok(GPoll::Final(value?)),
@@ -265,7 +272,17 @@ where
 		}
 	}
 }
-pub fn eval_root<S, T>(arena: &mut Arena, runtime: &GraphRuntime<S>, call_argument: DynSlot, eval: impl FnOnce(&ContextImpl) -> GPoll<T>) -> GPoll<T> {
+/// One evaluation over the arena and the frame buffer, which the caller sized
+/// to the graph's frame need: both are the evaluation's lifetime, so a record
+/// served anywhere in the cone lives exactly as long as the arena it may
+/// reference.
+pub fn eval_root<S, T>(
+	arena: &mut Arena,
+	buffer: &mut core_types::record::FrameArena,
+	runtime: &GraphRuntime<S>,
+	call_argument: DynSlot,
+	eval: impl for<'e> FnOnce(&ContextImpl<'e>, &core_types::record::Frames<'e>) -> GPoll<T>,
+) -> GPoll<T> {
 	arena.reset();
 	let generations = runtime.snapshot();
 	let scope = EvalScope::new(None, None, None, &generations, arena);
@@ -275,7 +292,8 @@ pub fn eval_root<S, T>(arena: &mut Arena, runtime: &GraphRuntime<S>, call_argume
 		outer: None,
 	};
 	let ctx = root.with_varargs(&link);
-	match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| eval(&ctx))) {
+	let frames = buffer.frames();
+	match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| eval(&ctx, &frames))) {
 		Ok(result) => result,
 		Err(_) => {
 			arena.reset();
@@ -568,9 +586,10 @@ mod test {
 	#[test]
 	fn eval_root_builds_the_bare_root_with_the_call_argument_as_vararg_0() {
 		let mut arena = Arena::new(64).unwrap();
+		let mut buffer = core_types::record::FrameArena::new();
 		let runtime = GraphRuntime::new(InertSpawner);
 		let argument = 21.5f64;
-		let result = eval_root(&mut arena, &runtime, &argument, |ctx| {
+		let result = eval_root(&mut arena, &mut buffer, &runtime, &argument, |ctx, _frames| {
 			assert!(ctx.try_footprint().is_none(), "the bare root carries no axes");
 			GPoll::Final(ctx.vararg(0).ok().and_then(|slot| slot.downcast_ref::<f64>()).copied().unwrap_or(0.))
 		});
@@ -580,15 +599,16 @@ mod test {
 	#[test]
 	fn eval_root_resets_the_arena_at_eval_start() {
 		let mut arena = Arena::new(64).unwrap();
+		let mut buffer = core_types::record::FrameArena::new();
 		let runtime = GraphRuntime::new(InertSpawner);
 		let cell = ArenaCell::new();
-		eval_root(&mut arena, &runtime, &(), |ctx| {
+		eval_root(&mut arena, &mut buffer, &runtime, &(), |ctx, _frames| {
 			let (_, weak) = ctx.scope().arena().alloc(5u32).unwrap();
 			cell.store(weak);
 			GPoll::Final(())
 		});
 		assert!(cell.load(&arena).is_some(), "the introspection window spans until the next eval");
-		eval_root(&mut arena, &runtime, &(), |ctx| {
+		eval_root(&mut arena, &mut buffer, &runtime, &(), |ctx, _frames| {
 			assert!(cell.load(ctx.scope().arena()).is_none(), "the reset at eval start reclaims the previous frame");
 			GPoll::Final(())
 		});
@@ -597,16 +617,17 @@ mod test {
 	#[test]
 	fn a_panicking_eval_reports_the_error_and_resets_the_arena() {
 		let mut arena = Arena::new(64).unwrap();
+		let mut buffer = core_types::record::FrameArena::new();
 		let runtime = GraphRuntime::new(InertSpawner);
 		let cell = ArenaCell::new();
-		let result: GPoll<()> = eval_root(&mut arena, &runtime, &(), |ctx| {
+		let result: GPoll<()> = eval_root(&mut arena, &mut buffer, &runtime, &(), |ctx, _frames| {
 			let (_, weak) = ctx.scope().arena().alloc(5u32).unwrap();
 			cell.store(weak);
 			panic!("mid-eval");
 		});
 		assert_eq!(result, GPoll::panicked());
 		assert!(cell.load(&arena).is_none(), "reset-on-panic leaves no stale records");
-		assert_eq!(eval_root(&mut arena, &runtime, &(), |_| GPoll::Final(7u32)), GPoll::Final(7));
+		assert_eq!(eval_root(&mut arena, &mut buffer, &runtime, &(), |_, _| GPoll::Final(7u32)), GPoll::Final(7));
 	}
 
 	#[test]
@@ -623,11 +644,8 @@ mod test {
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe {
-			core_types::record::stack::reserve(layout.frame_bytes());
-		}
-		let GPoll::Final(value) = core_types::record::serve_edge(&edge, &ctx) else {
+		let frames = core_types::record::test_frames(layout.frame_bytes());
+		let GPoll::Final(value) = core_types::record::serve_edge(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { core_types::record::read_element::<u32>(layout.rec(&value)) }, 2);
@@ -671,11 +689,8 @@ mod test {
 		let handle = executor.tree().get(NodeId(1)).unwrap();
 		let layout = handle.layout().clone();
 		let edge = handle.duplicate().downcast_record::<f64>().unwrap();
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe {
-			core_types::record::stack::reserve(executor.tree().stack_need());
-		}
-		let GPoll::Final(value) = core_types::record::serve_edge(&edge, &ctx) else {
+		let frames = core_types::record::test_frames(executor.tree().stack_need());
+		let GPoll::Final(value) = core_types::record::serve_edge(&edge, &ctx, &frames) else {
 			panic!("the flipped clone must evaluate over record wires, got a non-final poll");
 		};
 		assert_eq!(unsafe { core_types::record::read_element::<f64>(layout.rec(&value)) }, 7.);
@@ -701,11 +716,8 @@ mod test {
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 		let edge = executor.tree().get(NodeId(2)).unwrap().downcast_record::<graphene_std::raster::color::Color>().unwrap();
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe {
-			core_types::record::stack::reserve(executor.tree().stack_need());
-		}
-		let result = core_types::record::serve_edge(&edge, &ctx);
+		let frames = core_types::record::test_frames(executor.tree().stack_need());
+		let result = core_types::record::serve_edge(&edge, &ctx, &frames);
 		// The empty raster level folds to an empty palette: past-end at lane 0.
 		assert!(
 			matches!(&result, GPoll::Error(error) if error.kind == core_types::gpoll::ErrorKind::PastEnd),

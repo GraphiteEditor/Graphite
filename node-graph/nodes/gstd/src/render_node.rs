@@ -261,10 +261,7 @@ mod tests {
 
 		let probe = core_types::record::LiftedSource::<RenderOutput, _>::new(probe);
 		let layout = Node::<ContextImpl>::layout(&probe).clone();
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe {
-			core_types::record::stack::reserve(layout.frame_bytes().max(1 << 12));
-		}
+		let frames = core_types::record::test_frames(layout.frame_bytes().max(1 << 12));
 		let mut graph = CreateContextNode::new(probe, &layout);
 		// The executor resolves and installs the node's own layout at wiring;
 		// without it the flip tail writes through the default empty layout.
@@ -277,7 +274,7 @@ mod tests {
 				lane_invariant: u32::MAX,
 			},
 		);
-		let GPoll::Final(result) = core_types::record::serve_edge(&graph, &ctx) else {
+		let GPoll::Final(result) = core_types::record::serve_edge(&graph, &ctx, &frames) else {
 			panic!("create_context must complete synchronously");
 		};
 		let output: &RenderOutput = unsafe { core_types::record::borrow_element(layout.rec(&result)) };

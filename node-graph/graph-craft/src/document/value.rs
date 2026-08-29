@@ -359,27 +359,27 @@ macro_rules! tagged_value {
 			}
 
 			/// Evaluates a typed edge and converts the landed value into a tagged value, with the coverage of [`Self::try_from_any`].
-			pub fn from_edge(handle: EdgeHandle, ctx: &Context) -> Result<GPoll<Self>, String> {
+			pub fn from_edge<'f>(handle: EdgeHandle, ctx: &Context<'f>, frames: &core_types::record::Frames<'f>) -> Result<GPoll<Self>, String> {
 				let ty = handle.ty().clone();
 				// =======================
 				// RECORD WIRES, WHICH LAND AS THEIR ELEMENT
 				// =======================
 				if ty == core_types::registry::record_edge_type::<()>() {
 					let edge = handle.downcast_record::<()>().map_err(|e| format!("{e:?}"))?;
-					return Ok(core_types::record::serve_edge(&edge, ctx).map(|_| TaggedValue::None));
+					return Ok(core_types::record::serve_edge(&edge, ctx, frames).map(|_| TaggedValue::None));
 				}
 				$(
 					if ty == core_types::registry::record_edge_type::<$ty>() {
 						let layout = handle.layout().clone();
 						let edge = handle.downcast_record::<$ty>().map_err(|e| format!("{e:?}"))?;
-						return Ok(core_types::record::serve_edge(&edge, ctx)
+						return Ok(core_types::record::serve_edge(&edge, ctx, frames)
 							.map(|value| TaggedValue::$identifier(unsafe { core_types::record::read_element::<$ty>(layout.rec(&value)) })));
 					}
 				)*
 				if ty == core_types::registry::record_edge_type::<RenderOutput>() {
 					let layout = handle.layout().clone();
 					let edge = handle.downcast_record::<RenderOutput>().map_err(|e| format!("{e:?}"))?;
-					return Ok(core_types::record::serve_edge(&edge, ctx)
+					return Ok(core_types::record::serve_edge(&edge, ctx, frames)
 						.map(|value| TaggedValue::RenderOutput(unsafe { core_types::record::read_element::<RenderOutput>(layout.rec(&value)) })));
 				}
 				Err(format!("Cannot convert edge of type {ty} to TaggedValue"))

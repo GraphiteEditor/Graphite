@@ -1647,8 +1647,11 @@ mod run_tests {
 		drop(source);
 
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { core_types::record::stack::reserve(layout.frame_bytes()); }		let value = owned.replay(&layout, &arena).expect("the arena holds the replay");
+		let frames = core_types::record::test_frames(layout.frame_bytes());
+		let mut slot = frames.claim(&layout);
+		owned.replay_into(&mut slot, &arena).expect("the arena holds the replay");
+		// SAFETY: the replay completes the record in the claimed frame.
+		let value = unsafe { slot.finish() };
 		// SAFETY: the replay wrote a record of `layout`.
 		let served = unsafe { layout.rec(&value).read::<Option<&List<Graphic>>>(offset) }.expect("the fill replays present");
 		assert_eq!(map_groups_to_legacy(served.element(0).unwrap()), expected);

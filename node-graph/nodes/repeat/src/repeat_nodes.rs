@@ -183,7 +183,7 @@ mod test {
 	use core_types::arena::Arena;
 	use core_types::context::{ContextImpl, EvalScope, ExtractArena};
 	use core_types::node::Node;
-	use core_types::record::{FieldWrite, FrameBuilder, FrameClaim, Layout, RecordSource, Served, capture, element_write, stack};
+	use core_types::record::{FieldWrite, FrameClaim, Layout, RecordSource, Served, capture, element_write};
 	use core_types::value::ValueSource;
 	use vector_types::subpath::Subpath;
 
@@ -194,16 +194,18 @@ mod test {
 	}
 
 	impl<C: ExtractIndex> Node<C> for TransformSource {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 		where
 			C: ExtractArena<ArenaRef = &'e Arena>,
 		{
-			let mut frame = FrameBuilder::new(&self.layout, ExtractArena::arena(input));
-			frame.element(self.element);
-			frame.attr::<TransformAttr>(self.transform);
-			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			// SAFETY: the builder served a record of this node's layout.
-			GPoll::Final(unsafe { slot.forward(&value) })
+			let mut frame = slot;
+			let arena = ExtractArena::arena(input);
+			if frame.element(self.element, arena).is_none() {
+				return GPoll::arena_exhausted();
+			}
+			write_attr_at::<TransformAttr>(&mut frame, &self.layout, self.transform);
+			// SAFETY: the writes above complete the record of this layout.
+			GPoll::Final(unsafe { frame.finish_served() })
 		}
 
 		fn layout(&self) -> &Layout {
@@ -211,9 +213,28 @@ mod test {
 		}
 	}
 
+	/// Writes a field at the layout's resolved offset, the wiring-proven pairing
+	/// a generated node performs.
+	fn write_field_at<T: Copy + 'static>(frame: &mut FrameClaim<'_, '_>, layout: &Layout, name: &str, level: u8, value: T) {
+		let field = layout
+			.fields
+			.iter()
+			.find(|field| field.name == name && field.level == level)
+			.expect("the layout carries the written field");
+		assert_eq!(field.type_id, std::any::TypeId::of::<T>(), "the field was declared at this value type");
+		// SAFETY: the offset is this layout's own, at the field's declared type.
+		unsafe { frame.attr_at(field.offset, value) };
+	}
+
+	/// [`write_field_at`] for a census marker at level 0.
+	fn write_attr_at<A: core_types::attribute::Attribute>(frame: &mut FrameClaim<'_, '_>, layout: &Layout, value: A::Value<'static>)
+	where
+		A::Value<'static>: Copy + 'static,
+	{
+		write_field_at(frame, layout, A::NAME, 0, value);
+	}
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(1 << 12); }		EvalScope::new(Some(0.5), None, None, generations, arena)
+		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
 	struct VectorRows {
@@ -222,20 +243,22 @@ mod test {
 	}
 
 	impl<C: ExtractIndex> Node<C> for VectorRows {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 		where
 			C: ExtractArena<ArenaRef = &'e Arena>,
 		{
 			let (vector, transform) = &self.rows[input.innermost_index() as usize % self.rows.len()];
-			let mut frame = FrameBuilder::new(&self.layout, ExtractArena::arena(input));
-			frame.element(vector.clone());
-			frame.attr::<TransformAttr>(*transform);
-			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			// SAFETY: the builder served a record of this node's layout.
-			GPoll::Final(unsafe { slot.forward(&value) })
+			let mut frame = slot;
+			let arena = ExtractArena::arena(input);
+			if frame.element(vector.clone(), arena).is_none() {
+				return GPoll::arena_exhausted();
+			}
+			write_attr_at::<TransformAttr>(&mut frame, &self.layout, *transform);
+			// SAFETY: the writes above complete the record of this layout.
+			GPoll::Final(unsafe { frame.finish_served() })
 		}
 
-		fn extent_at<'x>(&self, _input: &C, _level: u8) -> GPoll<Extent>
+		fn extent_at<'x>(&self, _input: &C, _level: u8, _frames: &core_types::record::Frames<'x>) -> GPoll<Extent>
 		where
 			C: ExtractArena<ArenaRef = &'x Arena>,
 		{
@@ -256,17 +279,19 @@ mod test {
 	}
 
 	impl<C: ExtractIndex + core_types::context::ExtractPosition> Node<C> for PositionProbe {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 		where
 			C: ExtractArena<ArenaRef = &'e Arena>,
 		{
 			let position = input.try_position().and_then(|mut positions| positions.next()).unwrap_or(DVec2::ZERO);
-			let mut frame = FrameBuilder::new(&self.layout, ExtractArena::arena(input));
-			frame.element(position.x);
-			frame.attr::<TransformAttr>(DAffine2::IDENTITY);
-			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			// SAFETY: the builder served a record of this node's layout.
-			GPoll::Final(unsafe { slot.forward(&value) })
+			let mut frame = slot;
+			let arena = ExtractArena::arena(input);
+			if frame.element(position.x, arena).is_none() {
+				return GPoll::arena_exhausted();
+			}
+			write_attr_at::<TransformAttr>(&mut frame, &self.layout, DAffine2::IDENTITY);
+			// SAFETY: the writes above complete the record of this layout.
+			GPoll::Final(unsafe { frame.finish_served() })
 		}
 
 		fn layout(&self) -> &Layout {
@@ -280,6 +305,7 @@ mod test {
 
 	#[test]
 	fn repeat_array_composes_the_step_onto_each_copys_transform() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -302,12 +328,12 @@ mod test {
 		Node::<ContextImpl>::set_layout(&mut node, repeat_array_layout_meta().resolve(&[Some(&layout)]));
 		let leveled = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(leveled.depth, 1, "the IList return pushed one rank level above the content");
-		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(3)));
+		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(3)));
 
 		let head = ctx.index_head();
 		for copy in 0..3u64 {
 			let lane = ctx.promoted(&head, copy);
-			let GPoll::Final(record) = capture(&node, &lane) else {
+			let GPoll::Final(record) = capture(&node, &lane, &frames) else {
 				panic!("expected a final record");
 			};
 			assert_eq!(record.element::<f64>(), 7.);
@@ -320,6 +346,7 @@ mod test {
 
 	#[test]
 	fn repeat_radial_rotates_each_copy_around_the_center() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -335,12 +362,12 @@ mod test {
 
 		let mut node = RepeatRadialNode::new(RecordSource::new(content, &layout, &layout), ValueSource::new(90.0f64), ValueSource::new(2.0f64), ValueSource::new(4u32), &layout);
 		Node::<ContextImpl>::set_layout(&mut node, repeat_radial_layout_meta().resolve(&[Some(&layout)]));
-		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(4)));
+		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(4)));
 
 		let head = ctx.index_head();
 		for copy in 0..4u64 {
 			let lane = ctx.promoted(&head, copy);
-			let GPoll::Final(record) = capture(&node, &lane) else {
+			let GPoll::Final(record) = capture(&node, &lane, &frames) else {
 				panic!("expected a final record");
 			};
 			assert_eq!(record.element::<f64>(), 7.);
@@ -354,6 +381,7 @@ mod test {
 
 	#[test]
 	fn repeat_on_points_lands_each_copy_on_its_transformed_point() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -376,14 +404,18 @@ mod test {
 		Node::<ContextImpl>::set_layout(&mut node, repeat_on_points_layout_meta().resolve(&[Some(&content_layout)]));
 		let leveled = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(leveled.depth, 1);
-		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(5)), "the pushed level flattens both rows' points");
+		assert_eq!(
+			node.extent_at(&ctx, 0, &frames.reborrow()),
+			GPoll::Final(Extent::Exactly(5)),
+			"the pushed level flattens both rows' points"
+		);
 
 		let expected: Vec<DVec2> = row0.iter().map(|&point| row0_transform.transform_point2(point)).chain(row1.iter().copied()).collect();
 
 		let head = ctx.index_head();
 		for (flat, &point) in expected.iter().enumerate() {
 			let lane = ctx.promoted(&head, flat as u64);
-			let GPoll::Final(record) = capture(&node, &lane) else {
+			let GPoll::Final(record) = capture(&node, &lane, &frames) else {
 				panic!("expected a final record");
 			};
 			// The content saw the pushed position, and the output transform lands on it.
@@ -395,6 +427,7 @@ mod test {
 
 	#[test]
 	fn repeat_on_points_reverse_flips_each_rows_points() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -416,7 +449,7 @@ mod test {
 		let head = ctx.index_head();
 		for (flat, &point) in expected.iter().enumerate() {
 			let lane = ctx.promoted(&head, flat as u64);
-			let GPoll::Final(record) = capture(&node, &lane) else {
+			let GPoll::Final(record) = capture(&node, &lane, &frames) else {
 				panic!("expected a final record");
 			};
 			let composed: DAffine2 = record.attr::<TransformAttr>();

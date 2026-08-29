@@ -70,8 +70,8 @@ mod test {
 
 	#[test]
 	fn test_image_color_palette() {
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { core_types::record::stack::reserve(1 << 16); }		let arena = core_types::arena::Arena::new(1 << 22).unwrap();
+		let frames = core_types::record::test_frames(1 << 16);
+		let arena = core_types::arena::Arena::new(1 << 22).unwrap();
 		let generations = [];
 		let scope = core_types::context::EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = core_types::context::ContextImpl::root(&scope);
@@ -83,7 +83,7 @@ mod test {
 			base64_string: None,
 		});
 		let source = core_types::value::LeveledValueSource::new(vec![raster]);
-		let core_types::record::LevelStatus::Batch(batch, _) = core_types::record::materialize_level(&source, &ctx, &arena) else {
+		let core_types::record::LevelStatus::Batch(batch, _) = core_types::record::materialize_level(&source, &ctx, &arena, &frames) else {
 			panic!("materialize failed")
 		};
 		let image = unsafe { core_types::node::List::<Raster<CPU>>::new(batch) };

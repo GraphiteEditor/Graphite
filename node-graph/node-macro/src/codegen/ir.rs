@@ -771,7 +771,7 @@ mod tests {
 		assert_bridge(
 			quote!(category("")),
 			quote! {
-				fn memo<'e, 'l>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>>, slot: FrameClaim<'l>) -> GPoll<Served<'e>> { content.serve(&(), slot) }
+				fn memo<'e, 'l>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>>, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>> { content.serve(&(), slot) }
 			},
 		);
 	}
@@ -1013,7 +1013,7 @@ mod tests {
 		assert_bindings(
 			quote!(category("")),
 			quote!(
-				fn memo<'e, 'l>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>>, slot: FrameClaim<'l>) -> GPoll<Served<'e>> {
+				fn memo<'e, 'l>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>>, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>> {
 					content.serve(&(), slot)
 				}
 			),

@@ -21,6 +21,22 @@ use metadata::generate_node_input_references;
 
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
+/// Binds in evaluation order with the lazy wrappers last: a wrapper takes the
+/// free space as it stands when it is built, so every input whose record the
+/// kernel still holds must have claimed its frame by then.
+fn lazy_last<'a>(binds: impl Iterator<Item = (&'a &'a ParsedField, TokenStream2)>, lazy_entry: &TokenStream2) -> Vec<TokenStream2> {
+	let mut ordered: Vec<(bool, TokenStream2)> = binds.map(|(field, body)| (matches!(field.ty, ParsedFieldType::Node(_)), body)).collect();
+	ordered.sort_by_key(|(lazy, _)| *lazy);
+	let mut declared = false;
+	ordered
+		.into_iter()
+		.map(|(lazy, body)| match lazy && !std::mem::replace(&mut declared, true) {
+			true => quote!(#lazy_entry #body),
+			false => body,
+		})
+		.collect()
+}
+
 /// The regular inputs that materialize whole in the eval prologue, which is
 /// where the per-node batch cache slots attach.
 fn materialized_indices(regular_fields: &[&ParsedField], node: &ir::Node) -> Vec<usize> {
@@ -271,7 +287,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// per-lane evals share one materialization.
 	record_state_fields.extend(materialized_indices(&struct_regular_fields, &node).into_iter().map(|index| {
 		let slot = format_ident!("__mat_cache_{index}");
-		quote!(pub(super) #slot: ::std::sync::Arc<::std::sync::Mutex<::core::option::Option<(u64, u64, usize, usize)>>>)
+		quote!(pub(super) #slot: ::std::sync::Arc<::std::sync::Mutex<::core::option::Option<(u64, #core_types::record::MaterializedSpan)>>>)
 	}));
 
 	let async_source = parsed.injects_async_source_fields();
@@ -866,6 +882,25 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let wants_record_lifetime = routing_generic.is_some() || ((record_io || flip) && kernel_lazy);
 	let ctx_declares_arena = ctx_param.is_some_and(|ctx_param| ctx_param.bounds.iter().any(extracts_arena));
 	let bind_record_arena = wants_record_lifetime && !ctx_declares_arena;
+	// The lifetime a lazy wrapper's frame space is named at: the kernel's own
+	// arena lifetime, since the records it hands back live in that space.
+	let declared_arena_lifetime = ctx_param.and_then(|ctx_param| {
+		ctx_param.bounds.iter().find_map(|bound| match bound {
+			TypeParamBound::Trait(trait_bound) if extracts_arena(bound) => match &trait_bound.path.segments.last().expect("checked by the predicate").arguments {
+				PathArguments::AngleBracketed(args) => args.args.iter().find_map(|arg| match arg {
+					GenericArgument::Lifetime(lifetime) => Some(lifetime.clone()),
+					_ => None,
+				}),
+				_ => None,
+			},
+			_ => None,
+		})
+	});
+	let frames_lifetime = match (&declared_arena_lifetime, wants_record_lifetime) {
+		(Some(lifetime), _) => quote!(#lifetime),
+		(None, true) => quote!('__record),
+		(None, false) => quote!('_),
+	};
 	if bind_record_arena {
 		ctx_bounds.push(quote!(#core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>));
 	}
@@ -1089,19 +1124,19 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
 				let source_generic = format_ident!("__Source{index}");
 				match (ir::lazy_binding(&node, index), raw_lazy) {
-					(LazyBinding::DeriveRouting, _) => quote!(#pat: #core_types::record::RecordLazyInput<'_, '__record, #source_generic>),
+					(LazyBinding::DeriveRouting, _) => quote!(#pat: #core_types::record::RecordLazyInput<'_, #frames_lifetime, #source_generic>),
 					(LazyBinding::DeriveCarrier, _) => {
 						let out = lazy_read_out(field, output_type);
-						quote!(#pat: #core_types::record::DerivedLazyInput<'_, '__record, #out, #source_generic>)
+						quote!(#pat: #core_types::record::DerivedLazyInput<'_, #frames_lifetime, #out, #source_generic>)
 					}
-					(LazyBinding::OpaqueRecord, _) => quote!(#pat: &#core_types::record::RecordEdgeInput<'_, #source_generic>),
+					(LazyBinding::OpaqueRecord, _) => quote!(#pat: &#core_types::record::RecordEdgeInput<'_, #frames_lifetime, #source_generic>),
 					(LazyBinding::Element, true) => {
 						let out = lazy_read_out(field, output_type);
-						quote!(#pat: &#core_types::record::ElementEdge<'_, #out, #source_generic>)
+						quote!(#pat: &#core_types::record::ElementEdge<'_, #frames_lifetime, #out, #source_generic>)
 					}
 					(LazyBinding::Element, false) => {
 						let out = lazy_read_out(field, output_type);
-						quote!(#pat: #core_types::record::ElementLazyInput<'_, #out, #source_generic>)
+						quote!(#pat: #core_types::record::ElementLazyInput<'_, #frames_lifetime, #out, #source_generic>)
 					}
 					(LazyBinding::Generic, true) => {
 						let bound = lazy_bound();
@@ -1109,7 +1144,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 					(LazyBinding::Generic, false) => {
 						let bound = lazy_bound();
-						quote!(#pat: #core_types::node::LazyInput<'_, impl #bound>)
+						quote!(#pat: #core_types::node::LazyInput<'_, #frames_lifetime, impl #bound>)
 					}
 				}
 			}
@@ -1218,33 +1253,35 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.collect::<Vec<(usize, &AttributeRead)>>()
 	};
 
-	// Every exit closes through the frame claim's drop, so no exit path
-	// reclaims by hand.
-	let interrupt_close = quote!();
 	let frame_entry = quote! {
 		#[allow(unused_mut, unused_variables)]
 		let mut __frame = __slot;
 	};
-	// The batch loop is not a serve, so each lane claims its own frame.
+	// The batch loop is not a serve: the lane's own frame is its region of the
+	// run's slab, so it serves in place.
 	let lane_frame_entry = quote! {
 		#[allow(unused_mut, unused_variables)]
-		let mut __frame = #core_types::record::FrameClaim::enter(__node_layout);
+		let mut __frame = __run.slot(__lane, &__lane_frames);
 	};
-	let bind_body = |index: usize, field: &ParsedField, batch_mode: bool| {
+	// A lazy edge claims beyond every input frame this node holds, and its
+	// cursor is shared, so the edges a kernel drives claim past each other.
+	let lazy_frames_entry = quote! {
+		let __lazy_frames = __frame.frames().reborrow();
+	};
+	let bind_body = |index: usize, field: &ParsedField, batch_mode: bool, frames: &TokenStream2| {
 		let name = &field.pat_ident.ident;
 		// The bind's failure exits return through the enclosing fn: `GPoll` in
 		// `eval`, `BatchStatus` in the generated `eval_batch`.
-		let close = interrupt_close.clone();
 		let pending = match batch_mode {
-			false => quote!({ #close return #core_types::gpoll::GPoll::Pending; }),
+			false => quote!(return #core_types::gpoll::GPoll::Pending),
 			true => quote!(return #core_types::node::BatchStatus::Pending),
 		};
 		let fail = |error: TokenStream2| match batch_mode {
-			false => quote!({ #close return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#error)); }),
+			false => quote!(return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#error))),
 			true => quote!(return #core_types::node::BatchStatus::Error(#error)),
 		};
 		let interrupt_return = match batch_mode {
-			false => quote!({ #close return interrupt.into(); }),
+			false => quote!(return interrupt.into()),
 			true => quote!(return interrupt.into()),
 		};
 		match &field.ty {
@@ -1273,19 +1310,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							#core_types::context::InjectIndex::set_index(&mut __keyed, 0);
 							#core_types::registry::cache_key(&__keyed)
 						};
-						let __mat_generation = __arena.generation();
 						let __mat_hit = match *self.#cache_slot.lock().unwrap() {
-							::core::option::Option::Some((__key, __generation, __base, __len)) if __key == __mat_key && __generation == __mat_generation => {
-								::core::option::Option::Some((__base, __len))
-							}
+							::core::option::Option::Some((__key, __span)) if __key == __mat_key => __span.batch(__arena, #core_types::node::Node::<#ctx_ident>::layout(&self.#name)),
 							_ => ::core::option::Option::None,
 						};
 						let __batch = match __mat_hit {
-							// SAFETY: within the generation the cached batch stays
-							// live, immutable, and of this edge's layout.
-							::core::option::Option::Some((__base, __len)) => unsafe { #core_types::node::RecordBatch::new(__base as *const u8, __len, #core_types::node::Node::<#ctx_ident>::layout(&self.#name)) },
+							::core::option::Option::Some(__batch) => __batch,
 							::core::option::Option::None => {
-								let __sized = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total) {
+								let __sized = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total, #frames) {
 									#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => ::core::result::Result::Ok(__count),
 									#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::AtLeast(__bound)) => ::core::result::Result::Err(__bound),
 									#core_types::gpoll::GPoll::Pending => #pending,
@@ -1294,7 +1326,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								let __fresh = match __sized {
 									::core::result::Result::Ok(__count) => {
 										let __start: u64 = 0;
-										match #core_types::record::materialize_batch(&self.#name, __input, __start..__start + __count as u64, __arena) {
+										match #core_types::record::materialize_batch(&self.#name, __input, __start..__start + __count as u64, __arena, #frames) {
 											#core_types::node::BatchStatus::Lent(__batch, ..) => __batch,
 											#core_types::node::BatchStatus::Filled(__batch, ..) => __batch.into_shared(),
 											#core_types::node::BatchStatus::Pending => #pending,
@@ -1308,7 +1340,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 									::core::result::Result::Err(__bound) => {
 										let mut __guess = __bound.max(16);
 										loop {
-											let (__batch, __hint) = match #core_types::record::materialize_batch(&self.#name, __input, 0..__guess as u64, __arena) {
+											let (__batch, __hint) = match #core_types::record::materialize_batch(&self.#name, __input, 0..__guess as u64, __arena, #frames) {
 												#core_types::node::BatchStatus::Lent(__batch, _, __hint) => (__batch, __hint),
 												#core_types::node::BatchStatus::Filled(__batch, _, __hint) => (__batch.into_shared(), __hint),
 												#core_types::node::BatchStatus::Pending => #pending,
@@ -1328,11 +1360,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 										}
 									}
 								};
-								let __base = match __fresh.len() {
-									0 => 0usize,
-									_ => __fresh.get(0).rec().ptr() as usize,
-								};
-								*self.#cache_slot.lock().unwrap() = ::core::option::Option::Some((__mat_key, __mat_generation, __base, __fresh.len()));
+								if let ::core::option::Option::Some(__span) = #core_types::record::MaterializedSpan::of(&__fresh, __arena) {
+									*self.#cache_slot.lock().unwrap() = ::core::option::Option::Some((__mat_key, __span));
+								}
 								__fresh
 							}
 						};
@@ -1340,14 +1370,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 				}
 				// A reading secondary input claims a record edge: the element and
-				// the declared reads copy out right after its eval, before any
-				// later sibling eval can reuse the record stack.
+				// the declared reads copy out right after its eval.
 				ValueBinding::ReadingSecondary => {
 					let slot = format_ident!("__in_{index}");
 					let rec_local = format_ident!("__rec_{index}");
 					let bindings: Vec<TokenStream2> = reads_of(index).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(#rec_local))).collect();
 					quote! {
-						let #name = match __cell.eval_input(#index, &self.#name, __input) {
+						let #name = match __cell.eval_input(#index, &self.#name, __input, #frames) {
 							Ok(value) => value,
 							Err(interrupt) => #interrupt_return,
 						};
@@ -1356,13 +1385,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let #name: #ty = unsafe { #core_types::record::read_element(#rec_local) };
 					}
 				}
-				// The lend input's frame survives on the record stack until this
-				// node's frame is reclaimed, so the borrow stays valid in place.
+				// The lend input's frame is claimed out of this node's own claim and
+				// lives as long as it does, so the borrow stays valid in place.
 				ValueBinding::Lend => {
 					let slot = format_ident!("__in_{index}");
 					let record_local = format_ident!("__record_{index}");
 					quote! {
-						let #record_local = match __cell.eval_input(#index, &self.#name, __input) {
+						let #record_local = match __cell.eval_input(#index, &self.#name, __input, #frames) {
 							Ok(value) => value,
 							Err(interrupt) => #interrupt_return,
 						};
@@ -1375,7 +1404,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ValueBinding::RecordElement => {
 					let slot = format_ident!("__in_{index}");
 					quote! {
-						let #name = match __cell.eval_input(#index, &self.#name, __input) {
+						let #name = match __cell.eval_input(#index, &self.#name, __input, #frames) {
 							Ok(value) => value,
 							Err(interrupt) => #interrupt_return,
 						};
@@ -1394,7 +1423,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						}
 					});
 					quote! {
-						let #name = match __cell.eval_input(#index, &self.#name, __input) {
+						let #name = match __cell.eval_input(#index, &self.#name, __input, #frames) {
 							Ok(value) => value,
 							Err(interrupt) => #interrupt_return,
 						};
@@ -1406,20 +1435,20 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				// A raw poll edge is threaded straight through, so it does not bind here.
 				(LazyBinding::Generic, true) => quote!(),
 				(LazyBinding::DeriveRouting, _) => quote! {
-					let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels));
+					let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels), &__lazy_frames);
 				},
 				(LazyBinding::DeriveCarrier, _) => {
 					let reads = reads_of(index);
 					let read_fn = format_ident!("__{}_read_{}", fn_name, index);
 					match reads.is_empty() {
 						true => quote! {
-							let #name = #core_types::record::DerivedLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels), &[], #core_types::record::token_only);
+							let #name = #core_types::record::DerivedLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels), &[], #core_types::record::token_only, &__lazy_frames);
 						},
 						false => {
 							let slot_idents: Vec<Ident> = reads.iter().map(|(slot, _)| format_ident!("__read_{slot}")).collect();
 							quote! {
 								let __carrier_reads = [#(self.#slot_idents),*];
-								let #name = #core_types::record::DerivedLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels), &__carrier_reads, self::#read_fn);
+								let #name = #core_types::record::DerivedLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels), &__carrier_reads, self::#read_fn, &__lazy_frames);
 							}
 						}
 					}
@@ -1428,13 +1457,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let slot = format_ident!("__in_{index}");
 					match field.attribute_reads.is_empty() {
 						true => quote! {
-							let #name = #core_types::record::ElementEdge::<#output_type, _>::new(&self.#name, &self.#slot);
+							let #name = #core_types::record::ElementEdge::<#output_type, _>::new(&self.#name, &self.#slot, &__lazy_frames);
 						},
 						false => {
 							let arr = format_ident!("__reads_{index}");
 							let read_fn = format_ident!("__{}_read_{}", fn_name, index);
 							quote! {
-								let #name = #core_types::record::ElementEdge::with_reads(&self.#name, &self.#slot, &self.#arr, self::#read_fn);
+								let #name = #core_types::record::ElementEdge::with_reads(&self.#name, &self.#slot, &self.#arr, self::#read_fn, &__lazy_frames);
 							}
 						}
 					}
@@ -1443,22 +1472,22 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let slot = format_ident!("__in_{index}");
 					match field.attribute_reads.is_empty() {
 						true => quote! {
-							let #name = #core_types::record::ElementLazyInput::<#output_type, _>::new(&self.#name, &__cell, #index, &self.#slot);
+							let #name = #core_types::record::ElementLazyInput::<#output_type, _>::new(&self.#name, &__cell, #index, &self.#slot, &__lazy_frames);
 						},
 						false => {
 							let arr = format_ident!("__reads_{index}");
 							let read_fn = format_ident!("__{}_read_{}", fn_name, index);
 							quote! {
-								let #name = #core_types::record::ElementLazyInput::with_reads(&self.#name, &__cell, #index, &self.#slot, &self.#arr, self::#read_fn);
+								let #name = #core_types::record::ElementLazyInput::with_reads(&self.#name, &__cell, #index, &self.#slot, &self.#arr, self::#read_fn, &__lazy_frames);
 							}
 						}
 					}
 				}
 				(LazyBinding::OpaqueRecord, _) => quote! {
-					let #name = #core_types::record::RecordEdgeInput::new(&self.#name, &self.__layout);
+					let #name = #core_types::record::RecordEdgeInput::new(&self.#name, &self.__layout, &__lazy_frames);
 				},
 				(LazyBinding::Generic, false) => quote! {
-					let #name = #core_types::node::LazyInput::new(&self.#name, &__cell, #index);
+					let #name = #core_types::node::LazyInput::new(&self.#name, &__cell, #index, &__lazy_frames);
 				},
 			},
 		}
@@ -1466,7 +1495,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	// A bind whose element copies out reclaims the edge's frame; a forwarded
 	// record must outlive the bind, so its frame stays.
-	let reads_out_at = |index: usize| match &regular_fields[index].ty {
+	let _reads_out_at = |index: usize| match &regular_fields[index].ty {
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => !routing_source(ty) && ir::value_binding(&node, index).reads_out(),
 		ParsedFieldType::Node(_) => false,
 	};
@@ -1519,7 +1548,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let query = format_ident!("__extent_query_{index}");
 			let extent_edge = |query: &Ident, arg: &Ident| {
 				quote! {
-					let #query = |_: u64, __lvl: u8| #core_types::node::Node::extent_at(&self.#name, __input, __lvl);
+					let #query = |_: u64, __lvl: u8| #core_types::node::Node::extent_at(&self.#name, __input, __lvl, &__frames.scope());
 					let #arg = #core_types::extent::ExtentIn::new(&#query);
 				}
 			};
@@ -1529,7 +1558,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let #query = |__copy: u64, __lvl: u8| {
 							let mut __frame = #core_types::context::IndexLink { index: 0, outer: None };
 							let __derived = #core_types::context::DeriveCtx::push_level(__input, &mut __frame, __copy, 0);
-							#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &__derived, __lvl)
+							#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &__derived, __lvl, &__frames.scope())
 						};
 						let #arg = #core_types::extent::ExtentIn::new(&#query);
 					},
@@ -1544,12 +1573,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						quote! {
 							let #query = || {
 								let __arena = #core_types::context::ExtractArena::arena(__input);
-								let __count = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total) {
+								let __count = match #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total, &__frames.scope()) {
 									#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => __count,
 									#core_types::gpoll::GPoll::Pending => return #core_types::gpoll::GPoll::Pending,
 									_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("extent over a non-exact ranked input"))),
 								};
-								match #core_types::record::materialize_batch(&self.#name, __input, 0..__count as u64, __arena) {
+								match #core_types::record::materialize_batch(&self.#name, __input, 0..__count as u64, __arena, __frames) {
 									#core_types::node::BatchStatus::Lent(__batch, ..) => #core_types::gpoll::GPoll::Final(unsafe { #core_types::node::List::<#ty>::new(__batch) }),
 									#core_types::node::BatchStatus::Filled(__batch, ..) => #core_types::gpoll::GPoll::Final(unsafe { #core_types::node::List::<#ty>::new(__batch.into_shared()) }),
 									#core_types::node::BatchStatus::Pending => #core_types::gpoll::GPoll::Pending,
@@ -1557,7 +1586,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 									_ => #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("extent could not materialize a ranked input"))),
 								}
 							};
-							let __total = || #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total);
+							let __total = || #core_types::node::Node::extent(&self.#name, __input, #core_types::gpoll::Level::Total, &__frames.scope());
 							let #arg = #core_types::extent::ListIn::new(&#query, &__total);
 						}
 					}
@@ -1574,10 +1603,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						};
 						quote! {
 							let #query = || {
-								// SAFETY: the element copies out by value; extent
-								// queries leave the record stack untouched.
-								let __scope = unsafe { #core_types::record::stack::ScopeGuard::enter() };
-								#core_types::record::serve_edge(&self.#name, __input)
+								// The element copies out by value, so the edge's
+								// claim dies with the query.
+								let __scope = __frames.scope();
+								#core_types::record::serve_edge(&self.#name, __input, &__scope)
 									.map(|__value| unsafe { #core_types::record::read_element::<#ty>(#layout.rec(&__value)) })
 							};
 							let #arg = #core_types::extent::ValueIn::new(&#query);
@@ -1592,7 +1621,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			arg_names.push(arg);
 		}
 		quote! {
-			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
+			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8, __frames: &#core_types::record::Frames<'__serve>) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
 				where
 					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 				{
@@ -1603,7 +1632,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	} else if let Some(path) = &parsed.attributes.extent_raw {
 		quote! {
-			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
+			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8, _: &#core_types::record::Frames<'__serve>) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
 				where
 					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 				{
@@ -1621,19 +1650,19 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let __query = |_: u64, __lvl: u8| {
 						let __head = #core_types::context::DeriveCtx::index_head(__input);
 						let __derived = #core_types::context::DeriveCtx::replaced(__input, __head.index);
-						#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &__derived, __lvl)
+						#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &__derived, __lvl, &__frames.scope())
 					};
 				},
 				_ => quote! {
-					let __query = |_: u64, __lvl: u8| #core_types::node::Node::extent_at(&self.#name, __input, __lvl);
+					let __query = |_: u64, __lvl: u8| #core_types::node::Node::extent_at(&self.#name, __input, __lvl, &__frames.scope());
 				},
 			},
 			ParsedFieldType::Regular(_) => quote! {
-				let __query = |_: u64, __lvl: u8| #core_types::node::Node::extent_at(&self.#name, __input, __lvl);
+				let __query = |_: u64, __lvl: u8| #core_types::node::Node::extent_at(&self.#name, __input, __lvl, &__frames.scope());
 			},
 		};
 		quote! {
-			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
+			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8, __frames: &#core_types::record::Frames<'__serve>) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
 				where
 					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 				{
@@ -1647,7 +1676,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		// A leveled output without an extent fn reports a lower bound;
 		// consumers size it by draining to the past-end signal.
 		quote! {
-			fn extent_at<'__serve>(&self, _: &#ctx_ident, _: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
+			fn extent_at<'__serve>(&self, _: &#ctx_ident, _: u8, _: &#core_types::record::Frames<'__serve>) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
 				where
 					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 				{
@@ -1676,6 +1705,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			__input: &'__batch #ctx_ident,
 			__range: ::std::ops::Range<u64>,
 			__scratch: Option<&'__batch mut [::std::mem::MaybeUninit<u64>]>,
+			__frames: &#core_types::record::Frames<'__serve>,
 		) -> #core_types::node::BatchStatus<'__batch>
 		where
 			#ctx_ident: #core_types::context::InjectIndex + Copy + #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
@@ -1758,7 +1788,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote! {
 				match #kernel_call {
 					Ok(value) => __cell.finish(#served),
-					Err(interrupt) => { #interrupt_close interrupt.into() }
+					Err(interrupt) => interrupt.into()
 				}
 			}
 		}
@@ -1793,7 +1823,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		};
 		let clamp = clamp_tokens(field);
 		quote! {
-			let __src = match __cell.eval_input(0, &self.#name, __input) {
+			let __src = match __cell.eval_input(0, &self.#name, __input, __frame.frames()) {
 				Ok(value) => value,
 				Err(interrupt) => return interrupt.into(),
 			};
@@ -1889,9 +1919,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let carrier_eval = (!skips_carrier && !lazy_carrier).then(|| {
 			let name = &regular_fields[0].pat_ident.ident;
 			quote! {
-				let __src = match __cell.eval_input(0, &self.#name, __input) {
+				let __src = match __cell.eval_input(0, &self.#name, __input, __frame.frames()) {
 					Ok(value) => value,
-					Err(interrupt) => { #interrupt_close return interrupt.into(); }
+					Err(interrupt) => return interrupt.into()
 				};
 				let __src_rec = self.__carrier.rec(&__src);
 			}
@@ -1922,7 +1952,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			Dialect::Interrupt => quote! {
 				match #record_kernel_call {
 					Ok(__value) => __value,
-					Err(__interrupt) => { #interrupt_close return __interrupt.into(); }
+					Err(__interrupt) => return __interrupt.into()
 				}
 			},
 			_ => quote!(#record_kernel_call),
@@ -2062,7 +2092,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				Dialect::FutureInterrupt => quote! {
 					let __future = match #kernel_call {
 						Ok(future) => future,
-						Err(interrupt) => { #interrupt_close return interrupt.into(); }
+						Err(interrupt) => return interrupt.into()
 					};
 				},
 				_ => quote!(let __future = #kernel_call;),
@@ -2088,16 +2118,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// base lane, so the per-lane loop runs only the kernel and the carrier;
 	// eager inputs are batch-invariant by contract (per-lane variance rides
 	// lazy carriers).
-	// The fill loop copies each lane's frame out, so it needs the record, not
-	// the serving proof.
+	// Each lane serves in place into its own region of the run, so the loop
+	// collects the serving proofs.
 	let hoisted_lane_poll = match tail_form {
 		Tail::Record => record_tail_core.clone().map(|core| {
 			quote! {
 				#core
-				let __poll = __cell.finish(__value).map(#core_types::record::Served::value);
+				let __poll = __cell.finish(__value);
 			}
 		}),
-		Tail::Forward if routing_generic.is_some() => Some(quote!(let __poll = #lift.map(#core_types::record::Served::value);)),
+		Tail::Forward if routing_generic.is_some() => Some(quote!(let __poll = #lift;)),
 		_ => None,
 	};
 	// A serving-lifetime element rides the per-lane fill loop: the hoisted
@@ -2112,7 +2142,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(Some(path), ..) => quote! {
 			#batch_signature
 			{
-				#path(self, __input, __range, __scratch)
+				#path(self, __input, __range, __scratch, __frames)
 			}
 		},
 		(None, true, Some(lane_poll)) => {
@@ -2124,21 +2154,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.iter()
 				.enumerate()
 				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index))
-				.map(|(index, field)| {
-					let body = bind_body(index, field, true);
-					match reads_out_at(index) {
-						false => body,
-						true => {
-							let mark = format_ident!("__scope_{index}");
-							quote! {
-								// SAFETY: the bind's reads copy out by value.
-								let #mark = unsafe { #core_types::record::stack::ScopeGuard::enter() };
-								#body
-								drop(#mark);
-							}
-						}
-					}
-				})
+				.map(|(index, field)| bind_body(index, field, true, &quote!((&*__frames))))
 				.collect();
 			let hoisted_clamps: Vec<TokenStream2> = regular_fields
 				.iter()
@@ -2146,34 +2162,38 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index))
 				.filter_map(|(_, field)| clamp_tokens(field))
 				.collect();
-			let lane_binds: Vec<TokenStream2> = regular_fields
-				.iter()
-				.enumerate()
-				.filter(|(index, field)| match field.ty {
-					ParsedFieldType::Node(_) => true,
-					ParsedFieldType::Regular(_) => !hoists(*index) && !matches!(ir::value_binding(&node, *index), ValueBinding::Carrier),
-				})
-				.map(|(index, field)| {
-					let body = bind_body(index, field, true);
-					let clamp = clamp_tokens(field);
-					quote!(#body #clamp)
-				})
-				.collect();
+			let lane_binds: Vec<TokenStream2> = lazy_last(
+				regular_fields
+					.iter()
+					.enumerate()
+					.filter(|(index, field)| match field.ty {
+						ParsedFieldType::Node(_) => true,
+						ParsedFieldType::Regular(_) => !hoists(*index) && !matches!(ir::value_binding(&node, *index), ValueBinding::Carrier),
+					})
+					.map(|(index, field)| {
+						let body = bind_body(index, field, true, &quote!(__frame.frames()));
+						let clamp = clamp_tokens(field);
+						(field, quote!(#body #clamp))
+					}),
+				&lazy_frames_entry,
+			);
 			// The rebind path with nothing hoisted: every non-carrier input binds
 			// fresh per lane, so an index-dependent edge reaches its own lane.
-			let rebound_lane_binds: Vec<TokenStream2> = regular_fields
-				.iter()
-				.enumerate()
-				.filter(|(index, field)| match field.ty {
-					ParsedFieldType::Node(_) => true,
-					ParsedFieldType::Regular(_) => !matches!(ir::value_binding(&node, *index), ValueBinding::Carrier),
-				})
-				.map(|(index, field)| {
-					let body = bind_body(index, field, true);
-					let clamp = clamp_tokens(field);
-					quote!(#body #clamp)
-				})
-				.collect();
+			let rebound_lane_binds: Vec<TokenStream2> = lazy_last(
+				regular_fields
+					.iter()
+					.enumerate()
+					.filter(|(index, field)| match field.ty {
+						ParsedFieldType::Node(_) => true,
+						ParsedFieldType::Regular(_) => !matches!(ir::value_binding(&node, *index), ValueBinding::Carrier),
+					})
+					.map(|(index, field)| {
+						let body = bind_body(index, field, true, &quote!(__frame.frames()));
+						let clamp = clamp_tokens(field);
+						(field, quote!(#body #clamp))
+					}),
+				&lazy_frames_entry,
+			);
 			// A hoisted value is moved into every lane's kernel call, so each
 			// lane consumes a clone; view and borrow binds copy freely.
 			let lane_rebinds: Vec<TokenStream2> = regular_fields
@@ -2203,23 +2223,24 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				quote! {
 					#(#hoisted)*
 					#(#clamps)*
-					let __frames = __scratch.as_mut_ptr().cast::<u8>();
+					let ::core::option::Option::Some(mut __run) = __frames.run(__scratch, __len, __node_layout) else {
+						return #core_types::node::BatchStatus::InvalidRange;
+					};
 					let mut __finality = #core_types::gpoll::Finality::AllFinal;
-					let mut __filled = __len;
 					let mut __hint = #core_types::gpoll::Extent::AtLeast(__range.end as usize);
 					let mut __lane_ctx = __base_ctx;
 					for __lane in 0..__len {
 						#core_types::context::InjectIndex::set_index(&mut __lane_ctx, __range.start + __lane as u64);
 						let __input = &__lane_ctx;
-						// SAFETY: the lane's record copies out before the scope
-						// releases it.
-						let __lane_scope = unsafe { #core_types::record::stack::ScopeGuard::enter() };
+						// The lane's inputs claim beyond its slab region, and their
+						// space is free again at the next lane.
+						let __lane_frames = __frames.scope();
 						#lane_frame_entry
 						let __cell = __cell.snapshot();
 						#(#rebinds)*
 						#(#binds)*
 						#lane_poll
-						let __value = match __poll {
+						let __served = match __poll {
 							#core_types::gpoll::GPoll::Final(__value) => __value,
 							#core_types::gpoll::GPoll::Partial(__value) => {
 								__finality = #core_types::gpoll::Finality::Partial;
@@ -2230,21 +2251,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							// A lane past a lower-bound level ends the data: the fill
 							// comes back short and the hint turns exact.
 							#core_types::gpoll::GPoll::Error(__error) if __error.kind == #core_types::gpoll::ErrorKind::PastEnd => {
-								__filled = __lane;
 								__hint = #core_types::gpoll::Extent::Exactly(__range.start as usize + __lane);
 								break;
 							}
 							#core_types::gpoll::GPoll::Error(__error) => return #core_types::node::BatchStatus::Error(*__error),
 						};
-						// SAFETY: the lane region is in-bounds by the scratch check,
-						// and the frame is fully copied out before the lane scope
-						// releases it.
-						unsafe { ::core::ptr::copy_nonoverlapping(__node_layout.rec(&__value).ptr(), __frames.add(__lane * __stride), __stride) };
+						__run.served(__lane, &__served);
 					}
-					drop(__entry_scope);
-					// SAFETY: the first `__filled` lanes were filled above with
-					// records of the node's layout.
-					#core_types::node::BatchStatus::Filled(unsafe { #core_types::node::RecordBatchMut::new(__scratch, __filled, __node_layout) }, __finality, __hint)
+					#core_types::node::BatchStatus::Filled(__run.finish(), __finality, __hint)
 				}
 			};
 			let hoisted_fill = fill_loop(hoisted_binds, hoisted_clamps, lane_rebinds, lane_binds);
@@ -2275,12 +2289,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						return #core_types::node::BatchStatus::InvalidRange;
 					};
 					let __node_layout = <Self as #core_types::node::Node<#ctx_ident>>::layout(self);
-					let __stride = __node_layout.lane_stride();
-					if __scratch.len() * 8 < __len * __stride {
-						return #core_types::node::BatchStatus::InvalidRange;
-					}
-					// SAFETY: every lane copies into the caller's scratch.
-					let __entry_scope = unsafe { #core_types::record::stack::ScopeGuard::enter() };
+					// The batch's own claims are free again when it returns, so
+					// the caller's free space comes back as it was lent.
+					let __frames = __frames.scope();
 					let __cell = #cell_constructor;
 					let __base_ctx = {
 						let mut __ctx = *__input;
@@ -2297,7 +2308,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(None, true, None) => quote! {
 			#batch_signature
 			{
-				#core_types::record::fill_frames(self, __input, __range, __scratch)
+				#core_types::record::fill_frames(self, __input, __range, __scratch, __frames)
 			}
 		},
 		(None, false, _) => quote!(),
@@ -2580,12 +2591,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	});
 
 	// The eval body as an ordered step sequence: bind each input, clamp, then the
-	// tail. The record-stack mark/rewind of a read-out bind is applied here from
-	// the role, so the discipline is structural rather than per-arm.
-	let eval_steps: Vec<EvalStep> = regular_fields
+	// tail. Every input's frame is claimed out of this node's own claim and
+	// stays claimed until it dies, which is the sizing the wiring layer derives.
+	let mut bind_order: Vec<(bool, usize, &&ParsedField)> = regular_fields
 		.iter()
 		.enumerate()
-		.map(|(index, field)| EvalStep::Bind(index, field))
+		.map(|(index, field)| (matches!(field.ty, ParsedFieldType::Node(_)), index, field))
+		.collect();
+	bind_order.sort_by_key(|(lazy, ..)| *lazy);
+	let eval_steps: Vec<EvalStep> = bind_order
+		.iter()
+		.map(|(_, index, field)| EvalStep::Bind(*index, field))
 		.chain(
 			regular_fields
 				.iter()
@@ -2595,26 +2611,21 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		)
 		.chain(std::iter::once(EvalStep::Tail(tail_form)))
 		.collect();
-	let eval_body = eval_steps.iter().map(|step| match step {
-		EvalStep::Bind(index, field) => {
-			let body = bind_body(*index, field, false);
-			let reads_out = reads_out_at(*index);
-			match reads_out {
-				false => body,
-				true => {
-					let mark = format_ident!("__scope_{index}");
-					quote! {
-						// SAFETY: the bind's reads copy out by value.
-						let #mark = unsafe { #core_types::record::stack::ScopeGuard::enter() };
-						#body
-						drop(#mark);
-					}
+	let mut lazy_declared = false;
+	let eval_body: Vec<TokenStream2> = eval_steps
+		.iter()
+		.map(|step| match step {
+			EvalStep::Bind(index, field) => {
+				let body = bind_body(*index, field, false, &quote!(__frame.frames()));
+				match matches!(field.ty, ParsedFieldType::Node(_)) && !std::mem::replace(&mut lazy_declared, true) {
+					true => quote!(#lazy_frames_entry #body),
+					false => body,
 				}
 			}
-		}
-		EvalStep::Clamp(field) => clamp_tokens(field).unwrap_or_default(),
-		EvalStep::Tail(form) => lower_tail(*form),
-	});
+			EvalStep::Clamp(field) => clamp_tokens(field).unwrap_or_default(),
+			EvalStep::Tail(form) => lower_tail(*form),
+		})
+		.collect();
 
 	let top_level = quote! {
 		#cfg
@@ -2629,29 +2640,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#(#flip_bounds,)*
 			#(#where_predicates,)*
 		{
-			fn serve<'__serve, '__slot>(&self, __input: &#ctx_ident, __slot: #core_types::record::FrameClaim<'__slot>) -> #core_types::gpoll::GPoll<#core_types::record::Served<'__serve>>
+			fn serve<'__serve, '__slot>(&self, __input: &#ctx_ident, __slot: #core_types::record::FrameClaim<'__serve, '__slot>) -> #core_types::gpoll::GPoll<#core_types::record::Served<'__serve>>
 			where
 				#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 			{
-				// The exit trace rides a guard so early returns report too, which
-				// is what pins a frame leak to its node.
-				#[cfg(debug_assertions)]
-				let __sp_trace = {
-					static __SP_TRACE: ::std::sync::OnceLock<bool> = ::std::sync::OnceLock::new();
-					struct __SpTrace(&'static str, usize);
-					impl ::core::ops::Drop for __SpTrace {
-						fn drop(&mut self) {
-							::std::eprintln!("node> {} exit sp {} -> {}", self.0, self.1, #core_types::record::stack::sp());
-						}
-					}
-					match *__SP_TRACE.get_or_init(|| ::std::env::var_os("GRAPHENE_SP_DEBUG").is_some()) {
-						true => {
-							::std::eprintln!("node> {} enter sp {}", ::std::stringify!(#fn_name), #core_types::record::stack::sp());
-							Some(__SpTrace(::std::stringify!(#fn_name), #core_types::record::stack::sp()))
-						}
-						false => None,
-					}
-				};
 				#frame_entry
 				let __cell = #cell_constructor;
 				#(#eval_body)*

@@ -21,7 +21,7 @@ impl<C, T> crate::node::Node<C> for ValueSource<T>
 where
 	T: Clone + Send + Sync + dyn_any::StaticTypeSized,
 {
-	fn serve<'e, 'l>(&self, input: &C, slot: crate::record::FrameClaim<'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
+	fn serve<'e, 'l>(&self, input: &C, slot: crate::record::FrameClaim<'e, 'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
 	where
 		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
@@ -65,7 +65,7 @@ where
 	C: crate::context::ExtractIndex,
 	T: Clone + Send + Sync + dyn_any::StaticTypeSized,
 {
-	fn serve<'e, 'l>(&self, input: &C, slot: crate::record::FrameClaim<'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
+	fn serve<'e, 'l>(&self, input: &C, slot: crate::record::FrameClaim<'e, 'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
 	where
 		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
@@ -75,7 +75,7 @@ where
 		slot.lift_served(crate::gpoll::GPoll::Final(value.clone()), input.arena())
 	}
 
-	fn extent_at<'x>(&self, _input: &C, level: u8) -> crate::gpoll::GPoll<crate::gpoll::Extent>
+	fn extent_at<'x>(&self, _input: &C, level: u8, _frames: &crate::record::Frames<'x>) -> crate::gpoll::GPoll<crate::gpoll::Extent>
 	where
 		C: crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
 	{

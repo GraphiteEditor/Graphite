@@ -2,8 +2,9 @@
 //! plus one field per written attribute; its [`Layout`] is computed at
 //! wiring from the upstream write set and never serialized. Records of
 //! inline layouts live in the [`RecordValue`] itself; larger ones live as
-//! per-lane views on the per-thread record [`stack`], claimed per
-//! evaluation. Kernels route them as opaque [`RecordValue`]s that carry
+//! per-lane views on the evaluation's [`Frames`], which the root owns and
+//! every node claims its own frame out of. Kernels route them as opaque
+//! [`RecordValue`]s that carry
 //! their provenance. Only generated or wiring code touches offsets, so a
 //! safe kernel cannot misalign a field.
 
@@ -428,7 +429,7 @@ impl Rec {
 	}
 }
 
-/// An opaque record value: every non-empty record spills to the record stack
+/// An opaque record value: every non-empty record spills to a claimed frame
 /// and the value carries its pointer, while an empty record carries nothing.
 /// Only [`Layout::rec`] reads it, against the wiring-proven layout.
 #[derive(Clone, Copy)]
@@ -473,8 +474,12 @@ impl<'e> RecordValue<'e> {
 		}
 	}
 
-	/// Rebinds the eval lifetime; validity stays stack and arena discipline,
-	/// which derived scopes share with their parent evaluation.
+	/// Rebinds the eval lifetime, lengthening a derived scope's record back
+	/// onto the outer evaluation's. Sound only because the record's bytes live
+	/// in the outer caller's slot region: a derived context shortens the
+	/// caller's frame space rather than owning any, so the frame the record
+	/// sits in outlives the derivation, exactly as it outlives the arena
+	/// borrow the derived context carries.
 	fn rebind<'a>(self) -> RecordValue<'a> {
 		RecordValue {
 			ptr: self.ptr,
@@ -489,11 +494,8 @@ impl<'e> RecordValue<'e> {
 /// is at `'d`: the equality binding `ExtractArena<ArenaRef = &'d Arena>` is an
 /// unconstrained position under a higher rank.
 pub trait DerivedRecordEdge<'derived, C> {
-	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt>;
-	/// [`serve_edge`] at the derived context, for poll kernels that carry the
-	/// status themselves.
-	fn serve_derived(&self, ctx: &C) -> GPoll<RecordValue<'derived>>;
-	fn extent_at_derived(&self, ctx: &C, level: u8) -> GPoll<crate::gpoll::Extent>;
+	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C, frames: &Frames<'derived>) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt>;
+	fn extent_at_derived(&self, ctx: &C, level: u8, frames: &Frames<'derived>) -> GPoll<crate::gpoll::Extent>;
 }
 
 impl<'derived, C, N> DerivedRecordEdge<'derived, C> for N
@@ -501,24 +503,20 @@ where
 	N: Node<C>,
 	C: crate::context::ExtractArena<ArenaRef = &'derived crate::arena::Arena>,
 {
-	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt> {
-		cell.eval_input(input_index, self, ctx)
+	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C, frames: &Frames<'derived>) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt> {
+		cell.eval_input(input_index, self, ctx, frames)
 	}
 
-	fn serve_derived(&self, ctx: &C) -> GPoll<RecordValue<'derived>> {
-		serve_edge(self, ctx)
-	}
-
-	fn extent_at_derived(&self, ctx: &C, level: u8) -> GPoll<crate::gpoll::Extent> {
-		self.extent_at(ctx, level)
+	fn extent_at_derived(&self, ctx: &C, level: u8, frames: &Frames<'derived>) -> GPoll<crate::gpoll::Extent> {
+		self.extent_at(ctx, level, frames)
 	}
 }
 
-/// Fills caller scratch with one frame per lane of `range`: the edge
-/// evaluates at each index, the record's frame copies out, and the stack
-/// rewinds, so the stack peak stays at one lane's need and every lane's bytes
-/// are distinct. Frame bytes carry no drop glue, so the copy is a move.
-pub fn fill_frames<'a, 'e, C, N>(node: &'a N, input: &C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>) -> crate::node::BatchStatus<'a>
+/// Fills caller scratch with one frame per lane of `range`: the edge serves
+/// into the lane's own region of the slab, and the lane's own frame space is
+/// free again at the next lane, so the frame peak stays at one lane's need and
+/// every lane's bytes are distinct.
+pub fn fill_frames<'a, 'e, C, N>(node: &'a N, input: &C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'e>) -> crate::node::BatchStatus<'a>
 where
 	C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	N: Node<C>,
@@ -530,50 +528,41 @@ where
 	let Some(len) = range.end.checked_sub(range.start).and_then(|len| usize::try_from(len).ok()) else {
 		return BatchStatus::InvalidRange;
 	};
-	let layout = node.layout();
-	let stride = layout.lane_stride();
-	if scratch.len() * 8 < len * stride {
+	let Some(mut run) = frames.run(scratch, len, node.layout()) else {
 		return BatchStatus::InvalidRange;
-	}
-	let base = scratch.as_mut_ptr().cast::<u8>();
+	};
 	let mut local = *input;
 	let mut finality = crate::gpoll::Finality::AllFinal;
-	let mut filled = len;
 	let mut hint = crate::gpoll::Extent::AtLeast(range.end as usize);
 	for lane in 0..len {
 		local.set_index(range.start + lane as u64);
-		// SAFETY: the lane's record is copied out before the scope releases it,
-		// and valueless exits serve nothing above the entry.
-		let _lane_scope = unsafe { stack::ScopeGuard::enter() };
-		let value = match serve_edge(node, &local) {
-			GPoll::Final(value) => value,
-			GPoll::Partial(value) => {
+		let lane_frames = frames.scope();
+		let slot = run.slot(lane, &lane_frames);
+		let served = match node.serve(&local, slot) {
+			GPoll::Final(served) => served,
+			GPoll::Partial(served) => {
 				finality = crate::gpoll::Finality::Partial;
-				value
+				served
 			}
 			GPoll::Pending => return BatchStatus::Pending,
 			GPoll::Fallback(boxed) => return BatchStatus::Error(boxed.1),
 			// A lane past a lower-bound level ends the data: the fill comes
 			// back short and the hint turns exact.
 			GPoll::Error(error) if error.kind == crate::gpoll::ErrorKind::PastEnd => {
-				filled = lane;
 				hint = crate::gpoll::Extent::Exactly(range.start as usize + lane);
 				break;
 			}
 			GPoll::Error(error) => return BatchStatus::Error(*error),
 		};
-		// SAFETY: the lane region is in-bounds by the scratch check, and the
-		// frame is fully copied out before the lane scope releases it.
-		unsafe { std::ptr::copy_nonoverlapping(layout.rec(&value).ptr(), base.add(lane * stride), stride) };
+		run.served(lane, &served);
 	}
-	// SAFETY: the first `filled` lanes were filled above with records of `layout`.
-	BatchStatus::Filled(unsafe { crate::node::RecordBatchMut::new(scratch, filled, layout) }, finality, hint)
+	BatchStatus::Filled(run.finish(), finality, hint)
 }
 
 /// The driver a consumer runs on a record edge: a resident batch returns with
 /// no allocation, a node's own batch impl gets `n * frame_bytes` of arena
 /// scratch, and an unbatched edge falls back to the [`fill_frames`] loop.
-pub fn materialize_batch<'a, 'e, C, N>(node: &'a N, input: &'a C, range: std::ops::Range<u64>, arena: &'a crate::arena::Arena) -> crate::node::BatchStatus<'a>
+pub fn materialize_batch<'a, 'e, C, N>(node: &'a N, input: &'a C, range: std::ops::Range<u64>, arena: &'a crate::arena::Arena, frames: &Frames<'e>) -> crate::node::BatchStatus<'a>
 where
 	C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	N: Node<C>,
@@ -589,13 +578,13 @@ where
 			trace: Vec::new(),
 		})
 	};
-	match node.eval_batch(input, range.clone(), None) {
+	match node.eval_batch(input, range.clone(), None, frames) {
 		BatchStatus::Unbatched => match arena.alloc_scratch::<u64>(words) {
-			Some(scratch) => fill_frames(node, input, range, Some(scratch)),
+			Some(scratch) => fill_frames(node, input, range, Some(scratch), frames),
 			None => exhausted(),
 		},
 		BatchStatus::NeedBuffer => match arena.alloc_scratch::<u64>(words) {
-			Some(scratch) => node.eval_batch(input, range, Some(scratch)),
+			Some(scratch) => node.eval_batch(input, range, Some(scratch), frames),
 			None => exhausted(),
 		},
 		status => status,
@@ -613,21 +602,21 @@ pub enum LevelStatus<'a> {
 /// fills once, a lower bound drains by guess-and-double until a short fill,
 /// each reply's hint seeding the next guess. The boundary consumers' driver;
 /// reducers inline the same protocol with their span offsets.
-pub fn materialize_level<'a, 'e, C, N>(node: &'a N, input: &'a C, arena: &'a crate::arena::Arena) -> LevelStatus<'a>
+pub fn materialize_level<'a, 'e, C, N>(node: &'a N, input: &'a C, arena: &'a crate::arena::Arena, frames: &Frames<'e>) -> LevelStatus<'a>
 where
 	C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	N: Node<C>,
 {
 	use crate::gpoll::{Extent, GraphError, Level};
 	use crate::node::BatchStatus;
-	let sized = match node.extent(input, Level::Total) {
+	let sized = match node.extent(input, Level::Total, frames) {
 		GPoll::Final(Extent::Exactly(count)) => Ok(count),
 		GPoll::Final(Extent::AtLeast(bound)) => Err(bound),
 		GPoll::Pending => return LevelStatus::Pending,
 		_ => return LevelStatus::Error(GraphError::new("materialize over a non-exact extent")),
 	};
 	match sized {
-		Ok(count) => match materialize_batch(node, input, 0..count as u64, arena) {
+		Ok(count) => match materialize_batch(node, input, 0..count as u64, arena, frames) {
 			BatchStatus::Lent(batch, finality, _) => LevelStatus::Batch(batch, finality),
 			BatchStatus::Filled(batch, finality, _) => LevelStatus::Batch(batch.into_shared(), finality),
 			BatchStatus::Pending => LevelStatus::Pending,
@@ -637,7 +626,7 @@ where
 		Err(bound) => {
 			let mut guess = bound.max(16);
 			loop {
-				let (batch, finality, hint) = match materialize_batch(node, input, 0..guess as u64, arena) {
+				let (batch, finality, hint) = match materialize_batch(node, input, 0..guess as u64, arena, frames) {
 					BatchStatus::Lent(batch, finality, hint) => (batch, finality, hint),
 					BatchStatus::Filled(batch, finality, hint) => (batch.into_shared(), finality, hint),
 					BatchStatus::Pending => return LevelStatus::Pending,
@@ -663,14 +652,15 @@ where
 /// its wiring-proven layout, the pairing the kernel's unsafe record
 /// operations rely on. The kernel must only pair the layout with values this
 /// edge produced.
-pub struct RecordEdgeInput<'a, N> {
+pub struct RecordEdgeInput<'a, 'e, N> {
 	node: &'a N,
 	layout: &'a Layout,
+	frames: &'a Frames<'e>,
 }
 
-impl<'a, N> RecordEdgeInput<'a, N> {
-	pub fn new(node: &'a N, layout: &'a Layout) -> Self {
-		Self { node, layout }
+impl<'a, 'e, N> RecordEdgeInput<'a, 'e, N> {
+	pub fn new(node: &'a N, layout: &'a Layout, frames: &'a Frames<'e>) -> Self {
+		Self { node, layout, frames }
 	}
 
 	pub fn layout(&self) -> &Layout {
@@ -679,7 +669,7 @@ impl<'a, N> RecordEdgeInput<'a, N> {
 
 	/// Serves the edge through the kernel's own claim: the kernel's output
 	/// layout is the edge's, so the claim it was handed is the edge's frame.
-	pub fn serve<'e, 'l, C>(&self, ctx: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+	pub fn serve<'l, C>(&self, ctx: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 	where
 		N: Node<C>,
 		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
@@ -689,12 +679,12 @@ impl<'a, N> RecordEdgeInput<'a, N> {
 
 	/// [`materialize_level`] over the edge: the wire's whole flat span as one
 	/// batch.
-	pub fn materialize_level<'e, 'b, C>(&'b self, ctx: &'b C, arena: &'b crate::arena::Arena) -> LevelStatus<'b>
+	pub fn materialize_level<'b, C>(&'b self, ctx: &'b C, arena: &'b crate::arena::Arena) -> LevelStatus<'b>
 	where
 		N: Node<C>,
 		C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
-		materialize_level(self.node, ctx, arena)
+		materialize_level(self.node, ctx, arena, self.frames)
 	}
 }
 
@@ -707,39 +697,48 @@ unsafe fn element_only<El: Clone>(rec: Rec, _reads: &[Option<usize>]) -> El {
 	unsafe { read_element::<El>(rec) }
 }
 
-pub struct ElementEdge<'a, Out, N> {
+pub struct ElementEdge<'a, 'e, Out, N> {
 	node: &'a N,
 	layout: &'a Layout,
 	reads: &'a [Option<usize>],
 	read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+	frames: &'a Frames<'e>,
 }
 
-impl<'a, El: Clone, N> ElementEdge<'a, El, N> {
-	pub fn new(node: &'a N, layout: &'a Layout) -> Self {
+impl<'a, 'e, El: Clone, N> ElementEdge<'a, 'e, El, N> {
+	pub fn new(node: &'a N, layout: &'a Layout, frames: &'a Frames<'e>) -> Self {
 		Self {
 			node,
 			layout,
 			reads: &[],
 			read: element_only::<El>,
+			frames,
 		}
 	}
 }
 
-impl<'a, Out, N> ElementEdge<'a, Out, N> {
+impl<'a, 'e, Out, N> ElementEdge<'a, 'e, Out, N> {
 	/// `read` must be sound against the layout the offsets in `reads` were
 	/// resolved from; the macro proves both at wiring.
-	pub fn with_reads(node: &'a N, layout: &'a Layout, reads: &'a [Option<usize>], read: unsafe fn(Rec, &[Option<usize>]) -> Out) -> Self {
-		Self { node, layout, reads, read }
+	pub fn with_reads(node: &'a N, layout: &'a Layout, reads: &'a [Option<usize>], read: unsafe fn(Rec, &[Option<usize>]) -> Out, frames: &'a Frames<'e>) -> Self {
+		Self { node, layout, reads, read, frames }
 	}
 
+	/// The edge's element at `ctx`, read out of a record claimed beyond the
+	/// kernel's own frame; the claim dies with the call, so the record is free
+	/// again at the next one.
 	pub fn eval<'d, C>(&self, ctx: &C) -> GPoll<Out>
 	where
 		N: DerivedRecordEdge<'d, C>,
+		'e: 'd,
 	{
-		// SAFETY: the read copies out by value, so no record above the entry
-		// (the edge's own frame) is live past the scope.
-		let _scope = unsafe { stack::ScopeGuard::enter() };
-		self.node.serve_derived(ctx).map(|value| unsafe { (self.read)(self.layout.rec(&value), self.reads) })
+		let cell = crate::node::StatusCell::new();
+		let scope = self.frames.scope();
+		match self.node.eval_derived(&cell, 0, ctx, &scope) {
+			// SAFETY: the read copies out by value against the edge's own layout.
+			Ok(value) => cell.finish(unsafe { (self.read)(self.layout.rec(&value), self.reads) }),
+			Err(interrupt) => interrupt.into(),
+		}
 	}
 }
 
@@ -747,17 +746,18 @@ impl<'a, Out, N> ElementEdge<'a, Out, N> {
 /// the kernel consumes the plain element, or the element beside its declared
 /// attribute reads.
 #[derive(Clone, Copy)]
-pub struct ElementLazyInput<'a, Out, N> {
+pub struct ElementLazyInput<'a, 'e, Out, N> {
 	node: &'a N,
 	cell: &'a crate::node::StatusCell,
 	input_index: usize,
 	layout: &'a Layout,
 	reads: &'a [Option<usize>],
 	read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+	frames: &'a Frames<'e>,
 }
 
-impl<'a, El: Clone, N> ElementLazyInput<'a, El, N> {
-	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, layout: &'a Layout) -> Self {
+impl<'a, 'e, El: Clone, N> ElementLazyInput<'a, 'e, El, N> {
+	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, layout: &'a Layout, frames: &'a Frames<'e>) -> Self {
 		Self {
 			node,
 			cell,
@@ -765,14 +765,23 @@ impl<'a, El: Clone, N> ElementLazyInput<'a, El, N> {
 			layout,
 			reads: &[],
 			read: element_only::<El>,
+			frames,
 		}
 	}
 }
 
-impl<'a, Out, N> ElementLazyInput<'a, Out, N> {
+impl<'a, 'e, Out, N> ElementLazyInput<'a, 'e, Out, N> {
 	/// `read` must be sound against the layout the offsets in `reads` were
 	/// resolved from; the macro proves both at wiring.
-	pub fn with_reads(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, layout: &'a Layout, reads: &'a [Option<usize>], read: unsafe fn(Rec, &[Option<usize>]) -> Out) -> Self {
+	pub fn with_reads(
+		node: &'a N,
+		cell: &'a crate::node::StatusCell,
+		input_index: usize,
+		layout: &'a Layout,
+		reads: &'a [Option<usize>],
+		read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+		frames: &'a Frames<'e>,
+	) -> Self {
 		Self {
 			node,
 			cell,
@@ -780,18 +789,20 @@ impl<'a, Out, N> ElementLazyInput<'a, Out, N> {
 			layout,
 			reads,
 			read,
+			frames,
 		}
 	}
 
+	/// The read copies the element and declared attributes out by value, so
+	/// the record's claim dies with the call.
 	pub fn eval<'d, C>(&self, ctx: &C) -> Result<Out, crate::gpoll::Interrupt>
 	where
 		N: DerivedRecordEdge<'d, C>,
+		'e: 'd,
 	{
-		// SAFETY: the read copies the element and declared attributes out by
-		// value, so no record above the entry (the edge's own frame) is live
-		// past the scope.
-		let _scope = unsafe { stack::ScopeGuard::enter() };
-		let value = self.node.eval_derived(self.cell, self.input_index, ctx)?;
+		let scope = self.frames.scope();
+		let value = self.node.eval_derived(self.cell, self.input_index, ctx, &scope)?;
+		// SAFETY: the reads are the edge's own layout's, resolved at wiring.
 		Ok(unsafe { (self.read)(self.layout.rec(&value), self.reads) })
 	}
 }
@@ -805,25 +816,26 @@ pub struct RecordLazyInput<'a, 'e, N> {
 	cell: &'a crate::node::StatusCell,
 	input_index: usize,
 	inner_levels: u8,
-	_lifetime: std::marker::PhantomData<fn() -> RecordValue<'e>>,
+	frames: &'a Frames<'e>,
 }
 
 impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
-	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, inner_levels: u8) -> Self {
+	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, inner_levels: u8, frames: &'a Frames<'e>) -> Self {
 		Self {
 			node,
 			cell,
 			input_index,
 			inner_levels,
-			_lifetime: std::marker::PhantomData,
+			frames,
 		}
 	}
 
 	pub fn eval<'d, C>(&self, ctx: &C) -> Result<RecordValue<'e>, crate::gpoll::Interrupt>
 	where
 		N: DerivedRecordEdge<'d, C>,
+		'e: 'd,
 	{
-		Ok(self.node.eval_derived(self.cell, self.input_index, ctx)?.rebind())
+		Ok(self.node.eval_derived(self.cell, self.input_index, ctx, self.frames)?.rebind())
 	}
 
 	/// The flat lane count of one copy: the product of the edge's inner-level
@@ -834,7 +846,7 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 		B: crate::context::DeriveCtx,
 		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
 	{
-		inner_extent_of(self.node, ctx, 0, self.inner_levels, self.input_index)
+		inner_extent_of(self.node, ctx, 0, self.inner_levels, self.input_index, self.frames)
 	}
 
 	/// The flat lane count of the copy at `copy`, for edges whose inner
@@ -844,12 +856,12 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 		B: crate::context::DeriveCtx,
 		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
 	{
-		inner_extent_of(self.node, ctx, copy, self.inner_levels, self.input_index)
+		inner_extent_of(self.node, ctx, copy, self.inner_levels, self.input_index, self.frames)
 	}
 }
 
 /// See [`RecordLazyInput::inner_extent`].
-fn inner_extent_of<B, N>(node: &N, ctx: &B, copy: u64, levels: u8, input_index: usize) -> Result<u64, crate::gpoll::Interrupt>
+fn inner_extent_of<B, N>(node: &N, ctx: &B, copy: u64, levels: u8, input_index: usize, frames: &Frames<'_>) -> Result<u64, crate::gpoll::Interrupt>
 where
 	B: crate::context::DeriveCtx,
 	N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
@@ -858,9 +870,9 @@ where
 	let derived = ctx.push_level(&mut frame, copy, 0);
 	let mut inner: u64 = 1;
 	for level in 0..levels {
-		match node.extent_at_derived(&derived, level) {
+		match node.extent_at_derived(&derived, level, frames) {
 			GPoll::Final(crate::gpoll::Extent::Exactly(count)) => inner *= count as u64,
-			GPoll::Final(crate::gpoll::Extent::AtLeast(_)) => return probed_inner(node, ctx, copy, input_index),
+			GPoll::Final(crate::gpoll::Extent::AtLeast(_)) => return probed_inner(node, ctx, copy, input_index, frames),
 			GPoll::Pending => return Err(crate::gpoll::Interrupt::Pending),
 			_ => return Err(crate::gpoll::GraphError::new("structure decomposition over a non-exact extent").into()),
 		}
@@ -871,7 +883,7 @@ where
 /// The flat lane count of one copy of a lower-bound edge, probed by
 /// evaluating lanes to the past-end signal. The probed records are
 /// discarded, and their statuses land in a scratch cell.
-fn probed_inner<B, N>(node: &N, ctx: &B, copy: u64, input_index: usize) -> Result<u64, crate::gpoll::Interrupt>
+fn probed_inner<B, N>(node: &N, ctx: &B, copy: u64, input_index: usize, frames: &Frames<'_>) -> Result<u64, crate::gpoll::Interrupt>
 where
 	B: crate::context::DeriveCtx,
 	N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
@@ -879,12 +891,12 @@ where
 	let cell = crate::node::StatusCell::new();
 	let mut count: u64 = 0;
 	loop {
-		// SAFETY: the probed record is discarded, so nothing above the entry
-		// is live past the scope.
-		let _scope = unsafe { stack::ScopeGuard::enter() };
+		// The probed record is discarded, so the probe's claim is free again
+		// at the next iteration.
+		let probe_frames = frames.scope();
 		let mut frame = crate::context::IndexLink { index: 0, outer: None };
 		let probe = ctx.push_level(&mut frame, copy, count);
-		let result = node.eval_derived(&cell, input_index, &probe);
+		let result = node.eval_derived(&cell, input_index, &probe, &probe_frames);
 		match result {
 			Ok(_) => count += 1,
 			Err(crate::gpoll::Interrupt::Error(error)) if error.kind == crate::gpoll::ErrorKind::PastEnd => return Ok(count),
@@ -905,13 +917,21 @@ pub struct DerivedLazyInput<'a, 'e, Out, N> {
 	inner_levels: u8,
 	reads: &'a [Option<usize>],
 	read: unsafe fn(Rec, &[Option<usize>]) -> Out,
-	_lifetime: std::marker::PhantomData<fn() -> RecordValue<'e>>,
+	frames: &'a Frames<'e>,
 }
 
 impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
 	/// `read` must be sound against the layout the offsets in `reads` were
 	/// resolved from; the macro proves both at wiring.
-	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, inner_levels: u8, reads: &'a [Option<usize>], read: unsafe fn(Rec, &[Option<usize>]) -> Out) -> Self {
+	pub fn new(
+		node: &'a N,
+		cell: &'a crate::node::StatusCell,
+		input_index: usize,
+		inner_levels: u8,
+		reads: &'a [Option<usize>],
+		read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+		frames: &'a Frames<'e>,
+	) -> Self {
 		Self {
 			node,
 			cell,
@@ -919,7 +939,7 @@ impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
 			inner_levels,
 			reads,
 			read,
-			_lifetime: std::marker::PhantomData,
+			frames,
 		}
 	}
 
@@ -929,14 +949,15 @@ impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
 		B: crate::context::DeriveCtx,
 		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
 	{
-		inner_extent_of(self.node, ctx, 0, self.inner_levels, self.input_index)
+		inner_extent_of(self.node, ctx, 0, self.inner_levels, self.input_index, self.frames)
 	}
 
 	pub fn eval<'d, C>(&self, ctx: &C) -> Result<Out, crate::gpoll::Interrupt>
 	where
 		N: DerivedRecordEdge<'d, C>,
+		'e: 'd,
 	{
-		let value: RecordValue<'e> = self.node.eval_derived(self.cell, self.input_index, ctx)?.rebind();
+		let value: RecordValue<'e> = self.node.eval_derived(self.cell, self.input_index, ctx, self.frames)?.rebind();
 		// SAFETY: declared reads imply a non-empty layout, so the record is
 		// spilled and its pointer is the frame the offsets index into.
 		Ok(unsafe { (self.read)(Rec::new(value.ptr), self.reads) })
@@ -951,279 +972,212 @@ pub unsafe fn token_only<'e>(rec: Rec, _reads: &[Option<usize>]) -> RecordValue<
 	RecordValue::spilled(rec)
 }
 
-/// The per-thread record stack: every record evaluation claims its activation
-/// frame at the stack pointer and evaluates its carrier beyond it, so slot
-/// addresses are a property of the evaluating thread and no global assignment
-/// exists. Thread-local by construction, so access is single-threaded without
-/// claims or gates. Records are overwritten per lane and never touch the
-/// arena.
-pub mod stack {
-	use std::cell::Cell;
+/// The evaluation's record frame space: a grow-only buffer the executor owns
+/// and lends by `&mut`, sized by the wiring-derived frame need, so exhaustion
+/// is an accounting failure the debug assertion catches rather than a hot-path
+/// branch. Frame bytes carry no drop glue, so growth and reuse are plain
+/// buffer operations.
+#[derive(Debug, Default)]
+pub struct FrameArena {
+	buf: Vec<u64>,
+}
 
-	struct Stack {
-		base: Cell<*mut u8>,
-		capacity: Cell<usize>,
-		sp: Cell<usize>,
+impl FrameArena {
+	pub fn new() -> Self {
+		Self { buf: Vec::new() }
 	}
 
-	impl Stack {
-		fn free(&self) {
-			let base = self.base.get();
-			if !base.is_null() {
-				drop(unsafe { Vec::from_raw_parts(base.cast::<u64>(), 0, self.capacity.get() / 8) });
-			}
+	/// Grows the buffer to hold `bytes`, the root's wiring-derived frame need.
+	/// Grow-only, so repeated evaluations reuse one allocation.
+	pub fn reserve(&mut self, bytes: usize) {
+		let words = bytes.div_ceil(8).max(1);
+		if self.buf.len() < words {
+			self.buf.resize(words, 0);
 		}
 	}
 
-	impl Drop for Stack {
-		fn drop(&mut self) {
-			self.free();
+	/// The whole buffer as free space, for one evaluation.
+	pub fn frames(&mut self) -> Frames<'_> {
+		Frames {
+			base: std::cell::Cell::new(self.buf.as_mut_ptr().cast::<u8>()),
+			words: std::cell::Cell::new(self.buf.len()),
+			_lifetime: std::marker::PhantomData,
 		}
-	}
-
-	thread_local! {
-		static STACK: Stack = const {
-			Stack {
-				base: Cell::new(std::ptr::null_mut()),
-				capacity: Cell::new(0),
-				sp: Cell::new(0),
-			}
-		};
-	}
-
-	/// Ensures the calling thread's stack holds `bytes`, the root's wiring-
-	/// derived stack need, and resets the stack pointer. Called only between
-	/// evaluations, like the arena reset: nothing survives it, so frames
-	/// leaked by an interrupted evaluation are reclaimed here.
-	///
-	/// # Safety
-	/// No record served on this thread's stack may be live: growth frees the
-	/// buffer and the reset releases every claimed frame.
-	pub unsafe fn reserve(bytes: usize) {
-		STACK.with(|stack| {
-			stack.sp.set(0);
-			if stack.capacity.get() >= bytes {
-				return;
-			}
-			let words = bytes.div_ceil(8).max(1);
-			let mut memory = vec![0u64; words];
-			let base = memory.as_mut_ptr().cast::<u8>();
-			std::mem::forget(memory);
-			stack.free();
-			stack.base.set(base);
-			stack.capacity.set(words * 8);
-		});
-	}
-
-	/// Claims `bytes` (rounded to word alignment) at the stack pointer and
-	/// advances past them. The region stays claimed until [`pop`], and stays
-	/// readable until the next `push`. `reserve` derived from the root's
-	/// stack need makes the capacity bound exact, so overflow is a debug
-	/// assertion, not a hot-path branch.
-	pub fn push(bytes: usize) -> *mut u8 {
-		STACK.with(|stack| {
-			let sp = stack.sp.get();
-			let next = sp + bytes.next_multiple_of(8);
-			debug_assert!(next <= stack.capacity.get(), "record stack overflow: reserve() must cover the root's stack need");
-			stack.sp.set(next);
-			unsafe { stack.base.get().add(sp) }
-		})
-	}
-
-	/// Returns the stack pointer to `frame`, a pointer earlier returned by
-	/// [`push`] on this thread, releasing it and everything above it. Resets to
-	/// a checkpoint between repeated evaluations.
-	pub fn pop(frame: *mut u8) {
-		STACK.with(|stack| {
-			let offset = frame as usize - stack.base.get() as usize;
-			debug_assert!(offset <= stack.sp.get(), "pop target must lie within the claimed stack");
-			stack.sp.set(offset);
-		});
-	}
-
-	/// Releases everything above `frame`'s `bytes`-sized region, keeping the
-	/// region itself. A node reclaims its inputs' frames on return but leaves
-	/// its own output readable for its consumer.
-	pub(crate) fn truncate_above(frame: *mut u8, bytes: usize) {
-		STACK.with(|stack| {
-			let top = frame as usize - stack.base.get() as usize + bytes.next_multiple_of(8);
-			debug_assert!(top <= stack.sp.get(), "truncate target must lie within the claimed stack");
-			stack.sp.set(top);
-		});
-	}
-
-	/// The current stack pointer, a checkpoint to [`rewind`] to.
-	pub fn sp() -> usize {
-		STACK.with(|stack| stack.sp.get())
-	}
-
-	/// Resets the stack pointer to an earlier [`sp`] checkpoint, so a loop that
-	/// evaluates a subtree per iteration reuses the same slots each time.
-	///
-	/// # Safety
-	/// No `Rec` or `RecordValue` into the region above `mark` may be used after
-	/// this call. The caller must have copied out everything it still needs.
-	pub unsafe fn rewind(mark: usize) {
-		STACK.with(|stack| {
-			debug_assert!(mark <= stack.sp.get(), "rewind target above the stack pointer");
-			stack.sp.set(mark);
-		});
-	}
-
-	/// Rewinds to the entry stack pointer on drop, unwind included: the
-	/// structured form of a mark/rewind pair. A forgotten guard leaks its
-	/// region until the next reserve rather than releasing it.
-	pub struct ScopeGuard {
-		mark: usize,
-	}
-
-	impl ScopeGuard {
-		/// # Safety
-		/// No `Rec` or `RecordValue` served above the entry point may be used
-		/// after the guard drops; copy out everything that survives the scope.
-		pub unsafe fn enter() -> Self {
-			Self { mark: sp() }
-		}
-	}
-
-	/// Releases everything claimed above `mark`; a pointer already at or
-	/// below it stays.
-	pub(crate) fn release_above(mark: usize) {
-		STACK.with(|stack| {
-			if mark < stack.sp.get() {
-				stack.sp.set(mark);
-			}
-		});
-	}
-
-	impl Drop for ScopeGuard {
-		fn drop(&mut self) {
-			release_above(self.mark);
-		}
-	}
-
-	/// Runs `body` under a [`ScopeGuard`]: every frame it claims releases on
-	/// return.
-	///
-	/// # Safety
-	/// As [`ScopeGuard::enter`]: nothing served inside the scope may escape
-	/// it, through the return value or a captured location.
-	pub unsafe fn scoped<R>(body: impl FnOnce() -> R) -> R {
-		let _scope = unsafe { ScopeGuard::enter() };
-		body()
 	}
 }
 
-/// Serves one record of a layout: claims the frame, takes type-checked
-/// element and attribute writes, and closes into the served [`RecordValue`].
-/// Unwritten fields serve their census defaults. The single-record sibling
-/// of [`RunBuilder`], for sources that spell their own serving.
-pub struct FrameBuilder<'l, 'e> {
-	layout: &'l Layout,
-	arena: &'e crate::arena::Arena,
-	value: RecordValue<'e>,
-	frame: Option<*mut u8>,
-	wrote_element: bool,
-	exhausted: bool,
+/// The free frame space at one point of an evaluation. [`Self::claim`] splits
+/// a node's own frame off the front and the claim carries the remainder, so a
+/// node's inputs claim beyond its frame, one after another, and the space they
+/// used is free again once the claim dies: the release is the claim's
+/// lifetime, not a rewind contract. The cursor is shared through `&self` so
+/// the lazy edges a kernel holds claim beyond each other rather than over each
+/// other. Covariant in `'e`, so a claim minted at the evaluation shortens onto
+/// a derived context's arena lifetime.
+pub struct Frames<'e> {
+	base: std::cell::Cell<*mut u8>,
+	words: std::cell::Cell<usize>,
+	_lifetime: std::marker::PhantomData<&'e ()>,
 }
 
-impl<'l, 'e> FrameBuilder<'l, 'e> {
-	/// Claims the layout's frame and default-fills its fields.
-	pub fn new(layout: &'l Layout, arena: &'e crate::arena::Arena) -> Self {
+impl std::fmt::Debug for Frames<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Frames").field("free_words", &self.words.get()).finish()
+	}
+}
+
+impl<'e> Frames<'e> {
+	/// An independent cursor over the same free space: claims made through it
+	/// are free again when it dies, so a repeated evaluation reuses one region.
+	/// Two live cursors hand out the same region, so only one may be claimed
+	/// from at a time.
+	pub fn reborrow(&self) -> Frames<'e> {
+		Frames {
+			base: std::cell::Cell::new(self.base.get()),
+			words: std::cell::Cell::new(self.words.get()),
+			_lifetime: std::marker::PhantomData,
+		}
+	}
+
+	/// Runs claims against this space and gives it back on the guard's drop, so
+	/// a loop that evaluates a subtree per iteration reuses the same region.
+	pub fn scope(&self) -> FrameScope<'_, 'e> {
+		FrameScope {
+			frames: self,
+			base: self.base.get(),
+			words: self.words.get(),
+		}
+	}
+
+	/// The words still free, the observable the frame accounting asserts on.
+	pub fn free_words(&self) -> usize {
+		self.words.get()
+	}
+
+	/// Claims `layout`'s frame at the front of the free space; the claim
+	/// carries the remainder, and an inline layout's record builds in the
+	/// claim itself.
+	pub fn claim<'l>(&self, layout: &'l Layout) -> FrameClaim<'e, 'l> {
 		let frame = match layout.frame_bytes() {
 			0 => None,
-			bytes => Some(stack::push(bytes)),
+			bytes => Some(self.split(bytes)),
 		};
-		if let Some(frame) = frame {
-			// SAFETY: the frame was just claimed for this layout, and each
-			// field's region lies within it.
-			let bytes = unsafe { std::slice::from_raw_parts_mut(frame, layout.frame_bytes()) };
-			bytes.fill(0);
-			for field in &layout.fields {
-				if let Some(info) = crate::attribute::info(field.name)
-					&& info.size == field.size
-				{
-					(info.write_default_bytes)(&mut bytes[field.offset..field.offset + field.size]);
-				}
-			}
-		}
-		Self {
+		FrameClaim {
 			layout,
-			arena,
-			value: RecordValue::zeroed(),
+			inline: RecordValue::zeroed(),
 			frame,
-			wrote_element: false,
-			exhausted: false,
+			free: self.reborrow(),
 		}
 	}
 
-	fn dst(&mut self) -> *mut u8 {
-		match self.frame {
-			Some(frame) => frame,
-			None => self.value.as_mut_ptr(),
-		}
+	/// Splits `bytes` (rounded to word alignment) off the front.
+	fn split(&self, bytes: usize) -> *mut u8 {
+		let words = bytes.div_ceil(8);
+		debug_assert!(words <= self.words.get(), "record frame space exhausted: the root buffer must cover the graph's frame need");
+		let frame = self.base.get();
+		// SAFETY: the buffer covers the wiring-derived need, so the advanced
+		// cursor stays within it.
+		self.base.set(unsafe { frame.add(words * 8) });
+		self.words.set(self.words.get() - words);
+		frame
 	}
 
-	/// Moves the element in, parking a droppable payload. Arena exhaustion
-	/// surfaces at [`Self::finish`].
-	pub fn element<T: Send + Sync + 'static>(&mut self, element: T) {
-		assert_eq!(std::any::TypeId::of::<T>(), self.layout.element.type_id, "the served element must match the layout's element type");
-		assert!(!self.wrote_element, "the element serves once");
-		self.wrote_element = true;
-		let dst = self.dst();
-		// SAFETY: dst is this record's own element slot and the type matches
-		// the layout's element.
-		if unsafe { write_element(dst, element, self.arena) }.is_none() {
-			self.exhausted = true;
-		}
-	}
-
-	/// Writes the marker's value. The layout must carry the marker among its
-	/// level-0 fields, declared at the marker's value type.
-	pub fn attr<A: crate::attribute::Attribute>(&mut self, value: A::Value<'e>)
-	where
-		A::Value<'static>: 'static,
-	{
-		let layout = self.layout;
-		let field = layout.fields.iter().find(|field| field.name == A::NAME && field.level == 0).expect("the layout carries the written marker");
-		assert_eq!(field.type_id, std::any::TypeId::of::<A::Value<'static>>(), "the field was declared at the marker's value type");
-		let dst = self.dst();
-		// SAFETY: the offset is the builder's own layout's and the value type
-		// matches the field's declared type.
-		unsafe { write_field(dst, field.offset, value) };
-	}
-
-	/// Writes a field by name and level, for layouts whose fields are not
-	/// census markers. The field must be declared at this value type.
-	pub fn field<T: Copy + 'static>(&mut self, name: &str, level: u8, value: T) {
-		let layout = self.layout;
-		let field = layout.fields.iter().find(|field| field.name == name && field.level == level).expect("the layout carries the written field");
-		assert_eq!(field.type_id, std::any::TypeId::of::<T>(), "the field was declared at this value type");
-		let dst = self.dst();
-		// SAFETY: as for [`Self::attr`].
-		unsafe { write_field(dst, field.offset, value) };
-	}
-
-	/// The served record. Panics unless the element was written, since an
-	/// unwritten parked slot must never become readable; `None` reports arena
-	/// exhaustion, with the frame released either way.
-	pub fn finish(mut self) -> Option<RecordValue<'e>> {
-		assert!(self.wrote_element || self.layout.element.size == 0, "the element serves before the frame closes");
-		let value = match self.frame.take() {
-			// SAFETY: the frame was claimed for this layout and stays claimed,
-			// keeping the frame contract for the consumer's release.
-			Some(frame) => RecordValue::spilled(unsafe { Rec::new(frame.cast_const()) }),
-			None => std::mem::replace(&mut self.value, RecordValue::zeroed()),
-		};
-		match self.exhausted {
-			true => None,
-			false => Some(value),
-		}
+	/// A run of same-layout slots over caller scratch: lanes serve in place,
+	/// each backed by its own region of the slab, and the collected proofs
+	/// certify the filled prefix. `None` where the scratch cannot hold `len`
+	/// lanes.
+	pub fn run<'a>(&self, scratch: &'a mut [std::mem::MaybeUninit<u64>], len: usize, layout: &'a Layout) -> Option<SlotRun<'a>> {
+		SlotRun::new(scratch, len, layout)
 	}
 }
 
-impl Drop for FrameBuilder<'_, '_> {
-	fn drop(&mut self) {}
+/// Law-test scaffolding: a frame space of `bytes`, leaked so a fixture holds
+/// it for the whole test without threading the buffer's own borrow. Production
+/// roots own their buffer and lend it by `&mut`.
+#[doc(hidden)]
+pub fn test_frames(bytes: usize) -> Frames<'static> {
+	let arena: &'static mut FrameArena = Box::leak(Box::new(FrameArena::new()));
+	arena.reserve(bytes);
+	arena.frames()
+}
+
+/// See [`Frames::scope`]. A forgotten guard leaks its region until the frame
+/// space itself dies, rather than releasing it.
+pub struct FrameScope<'s, 'e> {
+	frames: &'s Frames<'e>,
+	base: *mut u8,
+	words: usize,
+}
+
+impl<'e> std::ops::Deref for FrameScope<'_, 'e> {
+	type Target = Frames<'e>;
+
+	fn deref(&self) -> &Frames<'e> {
+		self.frames
+	}
+}
+
+impl Drop for FrameScope<'_, '_> {
+	fn drop(&mut self) {
+		self.frames.base.set(self.base);
+		self.frames.words.set(self.words);
+	}
+}
+
+/// A claimed run of same-layout slots over the caller's scratch: [`Self::slot`]
+/// backs an ordinary claim's own region by the lane's region of the slab, so a
+/// lane serves in place with no staging copy, and [`Self::served`] records the
+/// proof. The filled prefix is the only readable part, which is what makes
+/// [`Self::finish`] safe.
+pub struct SlotRun<'a> {
+	scratch: &'a mut [std::mem::MaybeUninit<u64>],
+	layout: &'a Layout,
+	len: usize,
+	filled: usize,
+}
+
+impl<'a> SlotRun<'a> {
+	fn new(scratch: &'a mut [std::mem::MaybeUninit<u64>], len: usize, layout: &'a Layout) -> Option<SlotRun<'a>> {
+		(scratch.len() * 8 >= len * layout.lane_stride()).then_some(SlotRun { scratch, layout, len, filled: 0 })
+	}
+
+	pub fn layout(&self) -> &'a Layout {
+		self.layout
+	}
+
+	/// Lane `lane`'s claim: its own frame is the lane's region of the slab and
+	/// its free space is `frames`, so the lane's inputs claim beyond it.
+	pub fn slot<'e>(&mut self, lane: usize, frames: &Frames<'e>) -> FrameClaim<'e, 'a> {
+		assert!(lane < self.len, "lane {lane} out of bounds for a run of {}", self.len);
+		let stride = self.layout.lane_stride();
+		// SAFETY: in-bounds by the assert against the capacity check `new` made.
+		let frame = unsafe { self.scratch.as_mut_ptr().cast::<u8>().add(lane * stride) };
+
+		FrameClaim {
+			layout: self.layout,
+			inline: RecordValue::zeroed(),
+			frame: (self.layout.frame_bytes() != 0).then_some(frame),
+			free: frames.reborrow(),
+		}
+	}
+
+	/// Records lane `lane` as served; the proof came from that lane's slot. An
+	/// inline record rides the value's own storage, so it takes the one copy
+	/// the run makes.
+	pub fn served(&mut self, lane: usize, proof: &Served<'_>) {
+		if self.layout.size == 0 {
+			let stride = self.layout.lane_stride();
+			// SAFETY: in-bounds by the capacity check `new` made, and the lane
+			// takes the whole inline record.
+			unsafe { std::ptr::copy_nonoverlapping(self.layout.rec(proof.record()).ptr(), self.scratch.as_mut_ptr().cast::<u8>().add(lane * stride), stride) };
+		}
+		self.filled = self.filled.max(lane + 1);
+	}
+
+	/// The served lanes as the caller's exclusive batch.
+	pub fn finish(self) -> crate::node::RecordBatchMut<'a> {
+		crate::node::RecordBatchMut::new(self.scratch, self.filled, self.layout)
+	}
 }
 
 /// Field-by-field carry from `from`'s layout into `to`'s, computed at
@@ -1257,23 +1211,16 @@ pub unsafe fn write_field<T>(dst: *mut u8, offset: usize, value: T) {
 }
 
 /// Finishes a carried record frame: the element lands beside the fields
-/// already carried into `dst`, inline frames copy out of the scratch bytes,
-/// and the frame releases in every branch, so the frame lifecycle closes
-/// here. Arena exhaustion of a parked element reports as an error poll.
+/// already carried into `dst`, and inline frames copy out of the scratch
+/// bytes. Arena exhaustion of a parked element reports as an error poll.
 ///
 /// # Safety
 /// `dst` must be the claimed frame (or inline scratch when `frame_bytes` is
 /// 0) of a record whose element is `T` and whose frame size is `frame_bytes`,
 /// with every carried field already written.
 pub(crate) unsafe fn lift_poll_into<'e, T: Send + Sync>(poll: GPoll<T>, dst: *mut u8, frame_bytes: usize, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
-	let release = || {
-		if frame_bytes != 0 {
-			stack::truncate_above(dst, frame_bytes);
-		}
-	};
 	let build = |element: T| {
 		let written = unsafe { write_element(dst, element, arena) };
-		release();
 		written.map(|()| match frame_bytes {
 			0 => unsafe { dst.cast::<RecordValue>().read() },
 			_ => RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }),
@@ -1292,14 +1239,8 @@ pub(crate) unsafe fn lift_poll_into<'e, T: Send + Sync>(poll: GPoll<T>, dst: *mu
 			let (element, error) = *boxed;
 			build(element).map_or_else(exhausted, |value| GPoll::Fallback(Box::new((value, error))))
 		}
-		GPoll::Pending => {
-			release();
-			GPoll::Pending
-		}
-		GPoll::Error(error) => {
-			release();
-			GPoll::Error(error)
-		}
+		GPoll::Pending => GPoll::Pending,
+		GPoll::Error(error) => GPoll::Error(error),
 	}
 }
 
@@ -1591,10 +1532,9 @@ impl SourcePlan {
 /// Evaluating it yields the source's record translated to the union layout
 /// (or forwarded untouched when the layouts already agree), so the kernel
 /// holds and returns record values without ever seeing the representation.
-/// A translation claims its landing region from the record stack without
-/// popping, so the value survives sibling evaluations; the region is
-/// released with the enclosing frame, which bounds claims at one per source
-/// evaluation the kernel performs.
+/// A translation lands in the claim the caller minted, so the value survives
+/// sibling evaluations and its region is free again with that claim, which
+/// bounds claims at one per source evaluation the kernel performs.
 pub struct RecordSource<N> {
 	edge: N,
 	plan: Option<SourcePlan>,
@@ -1617,32 +1557,24 @@ pub unsafe fn copy_record_bytes(layout: &Layout, rec: Rec) -> Box<[u8]> {
 	unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into()
 }
 
-/// A node's own output frame, claimed at eval entry: the one closing surface
-/// for every exit. Writes land through it, [`Self::lift`] and [`Self::finish`]
-/// serve the record, and its drop releases everything claimed above the frame
-/// while keeping the frame itself, so the frame contract holds on value,
-/// error, and pending exits alike with no per-exit ritual.
-pub struct FrameClaim<'l> {
+/// A node's own output frame, minted by its caller from the caller's frame
+/// space: the one closing surface for every exit. Writes land through it,
+/// [`Self::lift`] and [`Self::finish`] serve the record, and it carries the
+/// free space beyond the frame, so a node's inputs claim past it and their
+/// space is free again when the claim dies, on value, error, and pending exits
+/// alike with no per-exit ritual.
+pub struct FrameClaim<'e, 'l> {
 	layout: &'l Layout,
 	inline: RecordValue<'static>,
 	frame: Option<*mut u8>,
-	own_end: usize,
+	free: Frames<'e>,
 }
 
-impl<'l> FrameClaim<'l> {
-	/// Claims the layout's frame at the stack pointer; an inline layout's
-	/// record builds in the value itself.
-	pub fn enter(layout: &'l Layout) -> Self {
-		let frame = match layout.frame_bytes() {
-			0 => None,
-			bytes => Some(stack::push(bytes)),
-		};
-		Self {
-			layout,
-			inline: RecordValue::zeroed(),
-			frame,
-			own_end: stack::sp(),
-		}
+impl<'e, 'l> FrameClaim<'e, 'l> {
+	/// The free space beyond this claim's frame, which the node's own inputs
+	/// claim from.
+	pub fn frames(&mut self) -> &Frames<'e> {
+		&mut self.free
 	}
 
 	fn dst(&mut self) -> *mut u8 {
@@ -1695,7 +1627,7 @@ impl<'l> FrameClaim<'l> {
 	/// writes on value polls, every poll keeps the frame claimed, and arena
 	/// exhaustion of a parked element reports as an error poll. Panics where
 	/// the element does not match the wired layout.
-	pub fn lift<'e, T: Send + Sync + dyn_any::StaticTypeSized>(mut self, poll: GPoll<T>, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
+	pub fn lift<T: Send + Sync + dyn_any::StaticTypeSized>(mut self, poll: GPoll<T>, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
 		self.check_element::<T>();
 		let frame_bytes = self.layout.frame_bytes();
 		let dst = self.dst();
@@ -1720,7 +1652,7 @@ impl<'l> FrameClaim<'l> {
 	/// # Safety
 	/// The frame must hold a complete record of the layout, written through
 	/// the carry, element, and field writes.
-	pub unsafe fn finish<'e>(mut self) -> RecordValue<'e> {
+	pub unsafe fn finish(mut self) -> RecordValue<'e> {
 		match self.frame {
 			Some(frame) => RecordValue::spilled(unsafe { Rec::new(frame.cast_const()) }),
 			// SAFETY: the inline record is the value's own bytes.
@@ -1729,7 +1661,7 @@ impl<'l> FrameClaim<'l> {
 	}
 
 	/// [`Self::lift`] with the proof-bearing return for [`Node::serve`].
-	pub fn lift_served<'e, T: Send + Sync + dyn_any::StaticTypeSized>(self, poll: GPoll<T>, arena: &'e crate::arena::Arena) -> GPoll<Served<'e>> {
+	pub fn lift_served<T: Send + Sync + dyn_any::StaticTypeSized>(self, poll: GPoll<T>, arena: &'e crate::arena::Arena) -> GPoll<Served<'e>> {
 		self.lift(poll, arena).map(|value| Served { value })
 	}
 
@@ -1737,7 +1669,7 @@ impl<'l> FrameClaim<'l> {
 	///
 	/// # Safety
 	/// As [`Self::finish`].
-	pub unsafe fn finish_served<'e>(self) -> Served<'e> {
+	pub unsafe fn finish_served(self) -> Served<'e> {
 		Served { value: unsafe { self.finish() } }
 	}
 
@@ -1747,7 +1679,7 @@ impl<'l> FrameClaim<'l> {
 	///
 	/// # Safety
 	/// `value` must be a live record of this frame's layout.
-	pub unsafe fn forward<'e>(mut self, value: &RecordValue<'_>) -> Served<'e> {
+	pub unsafe fn forward(mut self, value: &RecordValue<'_>) -> Served<'e> {
 		let src = self.layout.rec(value).ptr();
 		unsafe {
 			self.fill_copy(src);
@@ -1762,6 +1694,61 @@ impl<'l> FrameClaim<'l> {
 	/// translate into this frame's layout.
 	pub unsafe fn translate(&mut self, src: Rec, plan: &SourcePlan) {
 		unsafe { plan.translate(src, self.dst()) };
+	}
+}
+
+/// A materialized run of lanes as the arena region its frames live in: the
+/// handle keeps the provenance the region was allocated with and carries the
+/// generation, so resolving it re-checks liveness where an address would have
+/// been trusted. The layout stays with the holder, which proved it at wiring.
+#[derive(Clone, Copy)]
+pub struct MaterializedSpan {
+	base: crate::arena::ArenaWeak<u8>,
+	len: usize,
+}
+
+impl std::fmt::Debug for MaterializedSpan {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("MaterializedSpan").field("len", &self.len).finish()
+	}
+}
+
+impl MaterializedSpan {
+	/// `None` where the batch's frames are not this arena's, which is the
+	/// caller's cue to re-materialize rather than cache.
+	pub fn of(batch: &crate::node::RecordBatch<'_>, arena: &crate::arena::Arena) -> Option<MaterializedSpan> {
+		match batch.len() {
+			0 => Some(MaterializedSpan {
+				base: crate::arena::ArenaWeak::NULL,
+				len: 0,
+			}),
+			len => Some(MaterializedSpan {
+				base: arena.handle_at(batch.get(0).rec().ptr())?,
+				len,
+			}),
+		}
+	}
+
+	/// The span's lanes at `layout`, or `None` once the generation moved on.
+	pub fn batch<'a>(&self, arena: &'a crate::arena::Arena, layout: &'a Layout) -> Option<crate::node::RecordBatch<'a>> {
+		let base: *const u8 = match self.len {
+			0 => std::ptr::NonNull::<u8>::dangling().as_ptr(),
+			_ => self.base.upgrade(arena)?,
+		};
+		// SAFETY: the handle resolved in generation, so the region still holds
+		// the lanes it was published with, packed at the layout's stride; an
+		// empty span reads no lane.
+		Some(unsafe { crate::node::RecordBatch::new(base, self.len, layout) })
+	}
+
+	/// Lane `lane`'s record, or `None` past the span or once the generation
+	/// moved on.
+	pub fn lane(&self, arena: &crate::arena::Arena, lane: usize, layout: &Layout) -> Option<*const u8> {
+		(lane < self.len).then_some(())?;
+		let base: *const u8 = self.base.upgrade(arena)?;
+		// SAFETY: in-bounds by the length check, at the layout the span was
+		// published under.
+		Some(unsafe { base.add(lane * layout.lane_stride()) })
 	}
 }
 
@@ -1784,21 +1771,22 @@ impl<'e> Served<'e> {
 	}
 }
 
-/// Claims `node`'s own frame and serves through it: the caller-side half of
-/// [`Node::serve`], for drivers that want the record rather than the proof.
-pub fn serve_edge<'e, C, N>(node: &N, input: &C) -> GPoll<RecordValue<'e>>
+/// Claims `node`'s own frame from `frames` and serves through it: the
+/// caller-side half of [`Node::serve`], for drivers that want the record
+/// rather than the proof.
+pub fn serve_edge<'e, C, N>(node: &N, input: &C, frames: &Frames<'e>) -> GPoll<RecordValue<'e>>
 where
 	N: Node<C> + ?Sized,
 	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 {
-	let slot = FrameClaim::enter(node.layout());
+	let slot = frames.claim(node.layout());
 	node.serve(input, slot).map(Served::value)
 }
 
-impl Drop for FrameClaim<'_> {
-	fn drop(&mut self) {
-		stack::release_above(self.own_end);
-	}
+/// A claim shortens onto a derived context's arena lifetime.
+#[cfg(test)]
+fn claim_shortens<'long: 'short, 'short, 'l>(claim: FrameClaim<'long, 'l>) -> FrameClaim<'short, 'l> {
+	claim
 }
 
 /// A record deep-copied out of its evaluation: the packed bytes plus owned
@@ -1833,26 +1821,10 @@ impl OwnedRecord {
 		OwnedRecord { bytes, element, fields }
 	}
 
-	/// Replays the copy into fresh storage of `layout`, the layout it was
-	/// copied out under, re-parking droppable payloads against `arena`;
-	/// `None` reports arena exhaustion.
-	pub fn replay<'e>(&self, layout: &Layout, arena: &'e crate::arena::Arena) -> Option<RecordValue<'e>> {
-		let mut value = RecordValue::zeroed();
-		let dst = match layout.frame_bytes() {
-			0 => value.as_mut_ptr(),
-			bytes => stack::push(bytes),
-		};
-		let written = self.write_into(layout, dst, arena);
-		if layout.frame_bytes() != 0 {
-			stack::truncate_above(dst, layout.frame_bytes());
-			value = RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) });
-		}
-		written.map(|()| value)
-	}
-
-	/// [`Self::replay`] into a caller's claim rather than a fresh frame; the
-	/// claim's layout is the one the copy was taken at.
-	pub fn replay_into(&self, slot: &mut FrameClaim<'_>, arena: &crate::arena::Arena) -> Option<()> {
+	/// Replays the copy into a caller's claim, re-parking droppable payloads
+	/// against `arena`; the claim's layout is the one the copy was taken at,
+	/// and `None` reports arena exhaustion.
+	pub fn replay_into(&self, slot: &mut FrameClaim<'_, '_>, arena: &crate::arena::Arena) -> Option<()> {
 		let layout = slot.layout;
 		self.write_into(layout, slot.dst(), arena)
 	}
@@ -1925,20 +1897,18 @@ impl ServedRecord {
 }
 
 /// Polls `node` once and captures any served record: the record is
-/// deep-copied at the node's own declared layout, then the record stack
-/// rewinds to its entry state, so the result is owned and no stack slot
-/// stays claimed. Assertion scaffolding for law tests; production consumers
-/// read served records in place.
-pub fn capture<'e, C, N>(node: &N, ctx: &C) -> GPoll<ServedRecord>
+/// deep-copied at the node's own declared layout inside a frame scope, so the
+/// result is owned and every claimed frame is free again. Assertion
+/// scaffolding for law tests; production consumers read served records in
+/// place.
+pub fn capture<'e, C, N>(node: &N, ctx: &C, frames: &Frames<'e>) -> GPoll<ServedRecord>
 where
 	N: Node<C> + ?Sized,
 	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 {
-	// SAFETY: any served record is deep-copied out inside the scope, so
-	// nothing served above the entry escapes it.
-	let _scope = unsafe { stack::ScopeGuard::enter() };
+	let scope = frames.scope();
 	let layout = node.layout().clone();
-	serve_edge(node, ctx).map(|value| ServedRecord {
+	serve_edge(node, ctx, &scope).map(|value| ServedRecord {
 		// SAFETY: the poll served `value` at the node's declared layout and
 		// nothing has claimed frames since.
 		record: unsafe { OwnedRecord::copy_out(&layout, layout.rec(&value)) },
@@ -1974,7 +1944,7 @@ where
 	El: Send + Sync + dyn_any::StaticTypeSized,
 	F: Fn(&C) -> GPoll<El>,
 {
-	fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+	fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 	where
 		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
@@ -2008,15 +1978,15 @@ impl<El, N> RecordExtract<El, N> {
 
 impl<El: Clone + 'static, N> RecordExtract<El, N> {
 	/// The edge's element, copied out of its record.
-	pub fn eval<'e, C>(&self, input: &C) -> GPoll<El>
+	pub fn eval<'e, C>(&self, input: &C, frames: &Frames<'e>) -> GPoll<El>
 	where
 		N: Node<C>,
 		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
-		// SAFETY: the element copies out by value, so no record above the
-		// entry (the edge's frame) is live past the scope.
-		let _scope = unsafe { stack::ScopeGuard::enter() };
-		serve_edge(&self.edge, input).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
+		// The element copies out by value, so the edge's claim dies with
+		// the scope.
+		let scope = frames.scope();
+		serve_edge(&self.edge, input, &scope).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
 	}
 }
 
@@ -2024,16 +1994,16 @@ impl<C, N> Node<C> for RecordSource<N>
 where
 	N: Node<C>,
 {
-	fn serve<'e, 'l>(&self, input: &C, mut slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+	fn serve<'e, 'l>(&self, input: &C, mut slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 	where
 		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
-		// The source's frame is claimed above this one and dies with the
-		// claim's drop; the translated union record stays.
+		// The source's frame is claimed beyond this one and dies with the
+		// claim; the translated union record stays.
 		let Some(plan) = &self.plan else {
 			return self.edge.serve(input, slot);
 		};
-		match serve_edge(&self.edge, input) {
+		match serve_edge(&self.edge, input, &mut slot.frames().reborrow()) {
 			GPoll::Final(value) => {
 				// SAFETY: the value came from this edge, so it carries the
 				// plan's source layout.
@@ -2059,11 +2029,11 @@ where
 		}
 	}
 
-	fn extent_at<'x>(&self, input: &C, level: u8) -> GPoll<crate::gpoll::Extent>
+	fn extent_at<'x>(&self, input: &C, level: u8, frames: &Frames<'x>) -> GPoll<crate::gpoll::Extent>
 	where
 		C: crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
 	{
-		self.edge.extent_at(input, level)
+		self.edge.extent_at(input, level, frames)
 	}
 
 	fn layout(&self) -> &Layout {
@@ -2844,8 +2814,13 @@ mod tests {
 		buffer.fill(u64::MAX);
 
 		let replay_arena = crate::arena::Arena::new(1024).unwrap();
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(layout.frame_bytes()); }		let value = copy.replay(&layout, &replay_arena).unwrap();
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(layout.frame_bytes());
+		let frames = frame_arena.frames();
+		let mut slot = frames.claim(&layout);
+		copy.replay_into(&mut slot, &replay_arena).unwrap();
+		// SAFETY: the replay completes the record in the claimed frame.
+		let value = unsafe { slot.finish() };
 		let rec = layout.rec(&value);
 		assert_eq!(unsafe { read_element::<String>(rec) }, "element");
 		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "field");
@@ -2981,47 +2956,8 @@ mod tests {
 	}
 
 	#[test]
-	fn stack_frames_nest_and_release() {
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(64); }		let outer = stack::push(24);
-		let inner = stack::push(8);
-		assert_eq!(inner as usize - outer as usize, 24);
-		stack::pop(outer);
-		assert_eq!(stack::push(8), outer);
-		stack::pop(outer);
-	}
-
-	#[test]
-	fn stack_rounds_frames_to_word_alignment() {
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(64); }		let first = stack::push(21);
-		let second = stack::push(8);
-		assert_eq!(second as usize - first as usize, 24);
-		stack::pop(first);
-	}
-
-	#[test]
-	fn each_thread_gets_its_own_stack() {
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(64); }		let here = stack::push(8);
-		let here_address = here as usize;
-		std::thread::scope(|scope| {
-			scope
-				.spawn(move || {
-					// SAFETY: between evaluations, nothing served on the stack is live.
-					unsafe { stack::reserve(64); }					let there = stack::push(8);
-					assert_ne!(here_address, there as usize, "stacks are per thread");
-					stack::pop(there);
-				})
-				.join()
-				.unwrap();
-		});
-		stack::pop(here);
-	}
-
-	#[test]
-	fn a_captured_frame_serves_its_writes_and_defaults() {
-		use crate::attribute::{Opacity, Transform};
+	fn a_captured_frame_serves_its_writes() {
+		use crate::attribute::{Attribute, Transform};
 		use glam::{DAffine2, DVec2};
 
 		struct Fixture {
@@ -3029,16 +2965,18 @@ mod tests {
 		}
 
 		impl<C> Node<C> for Fixture {
-			fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+			fn serve<'e, 'l>(&self, input: &C, mut slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 			where
 				C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 			{
-				let mut frame = FrameBuilder::new(&self.layout, crate::context::ExtractArena::arena(input));
-				frame.element(String::from("parked"));
-				frame.attr::<Transform>(DAffine2::from_translation(DVec2::new(3., 4.)));
-				let Some(value) = frame.finish() else { return GPoll::error("arena exhausted") };
-				// SAFETY: the builder served a record of this node's layout.
-				GPoll::Final(unsafe { slot.forward(&value) })
+				let offset = self.layout.offset_of(Transform::NAME, 0).expect("the fixture's layout carries the transform");
+				if slot.element(String::from("parked"), crate::context::ExtractArena::arena(input)).is_none() {
+					return GPoll::error("arena exhausted");
+				}
+				// SAFETY: the offset is this layout's own, at the marker's value type.
+				unsafe { slot.attr_at(offset, DAffine2::from_translation(DVec2::new(3., 4.))) };
+				// SAFETY: the writes above complete the record.
+				GPoll::Final(unsafe { slot.finish_served() })
 			}
 
 			fn layout(&self) -> &Layout {
@@ -3046,31 +2984,63 @@ mod tests {
 			}
 		}
 
-		let layout = Layout::default().with_writes(0, element_write::<String>(), &[FieldWrite::of::<Transform>(0), FieldWrite::of::<Opacity>(0)]);
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe {
-			stack::reserve(1 << 10);
-		}
+		let layout = Layout::default().with_writes(0, element_write::<String>(), &[FieldWrite::of::<Transform>(0)]);
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(1 << 10);
+		let frames = frame_arena.frames();
 		let arena = crate::arena::Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = crate::context::EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = crate::context::ContextImpl::root(&scope);
-		let mark = stack::sp();
-		let GPoll::Final(served) = capture(&Fixture { layout }, &ctx) else {
+		let free = frames.free_words();
+		let GPoll::Final(served) = capture(&Fixture { layout }, &ctx, &frames) else {
 			panic!("the fixture serves finally");
 		};
-		assert_eq!(stack::sp(), mark, "capture returns every claimed slot");
+		assert_eq!(frames.free_words(), free, "capture returns every claimed slot");
 		assert_eq!(served.element::<String>(), "parked");
 		assert_eq!(served.attr::<Transform>(), DAffine2::from_translation(DVec2::new(3., 4.)));
-		assert_eq!(served.attr::<Opacity>(), 1., "an unwritten field serves its census default");
 	}
 
 	#[test]
-	#[should_panic(expected = "the served element must match the layout's element type")]
+	#[should_panic(expected = "must match the wired layout")]
 	fn a_mistyped_element_is_rejected_at_the_write() {
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(1 << 10); }		let arena = crate::arena::Arena::new(256).unwrap();
+		let arena = crate::arena::Arena::new(256).unwrap();
 		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[]);
-		FrameBuilder::new(&layout, &arena).element(1u32);
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(1 << 10);
+		let frames = frame_arena.frames();
+		frames.claim(&layout).element(1u32, &arena);
+	}
+
+	#[test]
+	fn a_scope_releases_and_reuses_its_frames() {
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity")]);
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(1 << 10);
+		let frames = frame_arena.frames();
+		let free = frames.free_words();
+		let mut addresses = Vec::new();
+		for _ in 0..3 {
+			let scope = frames.scope();
+			let mut claim = scope.claim(&layout);
+			addresses.push(claim.dst() as usize);
+			drop(claim);
+			drop(scope);
+			assert_eq!(frames.free_words(), free, "the scope returns its claims");
+		}
+		assert!(addresses.windows(2).all(|pair| pair[0] == pair[1]), "each claim reuses the same region");
+	}
+
+	#[test]
+	fn a_claim_shortens_onto_a_derived_lifetime() {
+		fn shorten<'long: 'short, 'short, 'l>(claim: FrameClaim<'long, 'l>) -> FrameClaim<'short, 'l> {
+			claim_shortens(claim)
+		}
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[]);
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(64);
+		let frames = frame_arena.frames();
+		let claim = shorten(frames.claim(&layout));
+		assert_eq!(claim.layout, &layout);
 	}
 }

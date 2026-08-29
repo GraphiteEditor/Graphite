@@ -171,7 +171,7 @@ mod tests {
 	use crate::context::{ContextImpl, Ctx, EvalScope, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots};
 	use crate::gpoll::GPoll;
 	use crate::node::Node;
-	use crate::record::{Layout, LiftedSource, RecordExtract, element_write, stack};
+	use crate::record::{Layout, LiftedSource, RecordExtract, element_write};
 	use crate::transform::Footprint;
 	use std::sync::Mutex;
 	use std::sync::atomic::{AtomicU32, Ordering};
@@ -266,10 +266,6 @@ mod tests {
 	where
 		El::Static: Clone + Send + Sync,
 	{
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe {
-			stack::reserve(1 << 12);
-		}
 		let layout = element_layout::<El>();
 		graph.set_layout(crate::record::RecordLayout {
 			frame_bytes: layout.frame_bytes(),
@@ -339,6 +335,7 @@ mod tests {
 
 	#[test]
 	fn async_source_spawns_once_and_lands_via_the_slot() {
+		let frames = crate::record::test_frames(1 << 16);
 		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -354,18 +351,19 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(graph.eval(&ctx), GPoll::Pending);
-		assert_eq!(graph.eval(&ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Pending);
 		assert_eq!(SLOW_DOUBLE_RUNS.load(Ordering::Relaxed), 0);
 		assert_eq!(runtime.drain(), vec![7]);
 		assert_eq!(SLOW_DOUBLE_RUNS.load(Ordering::Relaxed), 1);
-		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
-		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Final(42.0));
 		assert_eq!(SLOW_DOUBLE_RUNS.load(Ordering::Relaxed), 1);
 	}
 
 	#[test]
 	fn async_source_reports_the_placeholder_while_in_flight() {
+		let frames = crate::record::test_frames(1 << 16);
 		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -381,13 +379,14 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(graph.eval(&ctx), GPoll::Partial(-1.0));
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Partial(-1.0));
 		runtime.drain();
-		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Final(42.0));
 	}
 
 	#[test]
 	fn no_partial_maps_the_placeholder_frame_to_pending() {
+		let frames = crate::record::test_frames(1 << 16);
 		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -403,13 +402,14 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(graph.eval(&ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Pending);
 		runtime.drain();
-		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Final(42.0));
 	}
 
 	#[test]
 	fn prologue_runs_sync_and_spawns_once() {
+		let frames = crate::record::test_frames(1 << 16);
 		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -425,17 +425,18 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(graph.eval(&ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Pending);
 		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1, "the prologue runs synchronously on the miss");
-		assert_eq!(graph.eval(&ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Pending);
 		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1, "in flight must not rerun the prologue");
 		assert_eq!(runtime.drain(), vec![8]);
-		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Final(42.0));
 		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1);
 	}
 
 	#[test]
 	fn prologue_interrupt_defers_the_spawn() {
+		let frames = crate::record::test_frames(1 << 16);
 		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -454,16 +455,17 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(graph.eval(&ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Pending);
 		assert_eq!(runtime.drain(), Vec::<SourceId>::new(), "an interrupted prologue must not spawn or claim the slot");
 		gate.store(true, Ordering::Relaxed);
-		assert_eq!(graph.eval(&ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Pending);
 		assert_eq!(runtime.drain(), vec![9]);
-		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Final(42.0));
 	}
 
 	#[test]
 	fn async_kernels_read_captured_varargs() {
+		let frames = crate::record::test_frames(1 << 16);
 		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -485,13 +487,14 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(graph.eval(&ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Pending);
 		runtime.drain();
-		assert_eq!(graph.eval(&ctx), GPoll::Final(21.5));
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Final(21.5));
 	}
 
 	#[test]
 	fn async_kernels_read_the_captured_context_snapshot() {
+		let frames = crate::record::test_frames(1 << 16);
 		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -509,9 +512,9 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(graph.eval(&ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Pending);
 		runtime.drain();
-		assert_eq!(graph.eval(&ctx), GPoll::Final(Footprint::DEFAULT.resolution.x));
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Final(Footprint::DEFAULT.resolution.x));
 	}
 
 	#[test]
@@ -610,6 +613,7 @@ mod tests {
 
 	#[test]
 	fn an_immediately_ready_kernel_returns_final_on_the_first_eval() {
+		let frames = crate::record::test_frames(1 << 16);
 		let arena = Arena::new(64).unwrap();
 		let runtime = Arc::new(GraphRuntime::new(CollectSpawner::default()));
 		runtime.retain_sources(&[13]);
@@ -625,7 +629,7 @@ mod tests {
 		let snapshot = runtime.snapshot();
 		let scope = EvalScope::new(None, None, None, &snapshot, &arena);
 		let ctx = ContextImpl::root(&scope);
-		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Final(42.0));
 		assert!(!runtime.take_dirty());
 		assert_eq!(runtime.snapshot(), vec![(13, 0)]);
 		assert_eq!(runtime.spawner().drain(), 0);
@@ -633,6 +637,7 @@ mod tests {
 
 	#[test]
 	fn a_source_slot_lands_through_the_runtime_while_downstream_keys_invalidate() {
+		let frames = crate::record::test_frames(1 << 16);
 		let arena = Arena::new(64).unwrap();
 		let runtime = Arc::new(GraphRuntime::new(CollectSpawner::default()));
 		runtime.retain_sources(&[11]);
@@ -648,7 +653,7 @@ mod tests {
 		let snapshot = runtime.snapshot();
 		let scope = EvalScope::new(None, None, None, &snapshot, &arena);
 		let ctx = ContextImpl::root(&scope);
-		assert_eq!(graph.eval(&ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx, &frames), GPoll::Pending);
 		assert!(!runtime.take_dirty());
 
 		assert_eq!(runtime.spawner().drain(), 1);
@@ -658,7 +663,7 @@ mod tests {
 
 		let bumped_scope = EvalScope::new(None, None, None, &bumped, &arena);
 		let bumped_ctx = ContextImpl::root(&bumped_scope);
-		assert_eq!(graph.eval(&bumped_ctx), GPoll::Final(42.0), "the own-generation-excluded key replays the landed slot");
+		assert_eq!(graph.eval(&bumped_ctx, &frames), GPoll::Final(42.0), "the own-generation-excluded key replays the landed slot");
 		assert_eq!(runtime.spawner().drain(), 0, "a slot hit must not respawn");
 
 		let downstream_key = crate::registry::cache_key(&ContextImpl::root(&scope));

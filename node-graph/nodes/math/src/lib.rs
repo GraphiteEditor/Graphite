@@ -1014,7 +1014,7 @@ mod graphene_test {
 	use core_types::context::{ContextImpl, EvalScope};
 	use core_types::gpoll::{Finality, GPoll};
 	use core_types::node::{BatchStatus, Node};
-	use core_types::record::{Layout, LiftedSource, RecordValue, serve_edge, stack};
+	use core_types::record::{Layout, LiftedSource, RecordValue, serve_edge};
 	use core_types::registry::{ErasedRecordNode, construct};
 	use core_types::value::record_value_edge;
 	use std::mem::MaybeUninit;
@@ -1023,9 +1023,9 @@ mod graphene_test {
 		EvalScope::new(None, None, None, &[], arena)
 	}
 
-	fn reserve_for(layouts: &[&Layout]) {
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12)); }	}
+	fn frames_for(layouts: &[&Layout]) -> core_types::record::Frames<'static> {
+		core_types::record::test_frames(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12))
+	}
 
 	/// Lifts a plain-element test source onto a record wire, returned beside its
 	/// element-only layout for the generated node's constructor.
@@ -1071,9 +1071,9 @@ mod graphene_test {
 		let (b, lb) = lifted(|_: &ContextImpl| GPoll::Final(2.0f64));
 		let out = out_layout::<f64>();
 		let graph = installed(AddNode::<_, _, f64, f64>::new(a, b, &la, &lb), &out);
-		reserve_for(&[&la, &lb, &out]);
+		let frames = frames_for(&[&la, &lb, &out]);
 
-		let GPoll::Final(value) = serve_edge(&graph, &ctx) else {
+		let GPoll::Final(value) = serve_edge(&graph, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(element::<f64>(&out, &value), 3.0);
@@ -1089,12 +1089,12 @@ mod graphene_test {
 		let (src, ls) = lifted(|_: &ContextImpl| GPoll::Final(10.0f64));
 		let out = out_layout::<f64>();
 		let node = installed(AddNode::<_, _, f64, f64>::new(index, src, &li, &ls), &out);
-		reserve_for(&[&li, &ls, &out]);
+		let frames = frames_for(&[&li, &ls, &out]);
 
 		let erased: Box<ErasedRecordNode> = Box::new(node);
 		// One u64 word per lane at the element-only layout.
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
-		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch));
+		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch), &frames);
 		let BatchStatus::Filled(batch, finality, _) = status else {
 			panic!("expected filled, got {status:?}");
 		};
@@ -1120,9 +1120,9 @@ mod graphene_test {
 			lane_invariant: u32::MAX,
 		});
 		let edge = wired.downcast_record::<bool>().unwrap();
-		reserve_for(&[&layout]);
+		let frames = frames_for(&[&layout]);
 
-		let GPoll::Final(value) = serve_edge(&edge, &ctx) else {
+		let GPoll::Final(value) = serve_edge(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert!(element::<bool>(&layout, &value));
@@ -1166,9 +1166,9 @@ mod graphene_test {
 			lane_invariant: u32::MAX,
 		});
 		let edge = wired.downcast_record::<f64>().unwrap();
-		reserve_for(&[&layout]);
+		let frames = frames_for(&[&layout]);
 
-		let GPoll::Final(value) = serve_edge(&edge, &ctx) else {
+		let GPoll::Final(value) = serve_edge(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(element::<f64>(&layout, &value), 4.0);
@@ -1213,9 +1213,9 @@ mod graphene_test {
 		let union = core_types::record::Layout::union(&[&lt, &lf]);
 		let graph = SwitchNode::new(cond, if_true, if_false, &union, &lc);
 		let out = Node::<ContextImpl>::layout(&graph).clone();
-		reserve_for(&[&lc, &lt, &lf, &out]);
+		let frames = frames_for(&[&lc, &lt, &lf, &out]);
 
-		let GPoll::Final(value) = serve_edge(&graph, &ctx) else {
+		let GPoll::Final(value) = serve_edge(&graph, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(element::<f64>(&out, &value), 1.0);
@@ -1239,10 +1239,10 @@ mod graphene_test {
 		let (pa2, lpa2) = lifted(|_: &ContextImpl| GPoll::Partial(7.0f64));
 		let partial = SwitchNode::new(c2, p2, pa2, &core_types::record::Layout::union(&[&lp2, &lpa2]), &lc2);
 		let out = Node::<ContextImpl>::layout(&partial).clone();
-		reserve_for(&[&lc1, &lp1, &lpa1, &lc2, &lp2, &lpa2, &out]);
+		let frames = frames_for(&[&lc1, &lp1, &lpa1, &lc2, &lp2, &lpa2, &out]);
 
-		assert!(matches!(serve_edge(&pending, &ctx), GPoll::Pending));
-		let GPoll::Partial(value) = serve_edge(&partial, &ctx) else {
+		assert!(matches!(serve_edge(&pending, &ctx, &frames), GPoll::Pending));
+		let GPoll::Partial(value) = serve_edge(&partial, &ctx, &frames) else {
 			panic!("expected a partial record");
 		};
 		assert_eq!(element::<f64>(&out, &value), 7.0);
@@ -1260,9 +1260,9 @@ mod graphene_test {
 		let union = core_types::record::Layout::union(&[&lt, &lf]);
 		let graph = SwitchNode::new(cond, if_true, if_false, &union, &lc);
 		let out = Node::<ContextImpl>::layout(&graph).clone();
-		reserve_for(&[&lc, &lt, &lf, &out]);
+		let frames = frames_for(&[&lc, &lt, &lf, &out]);
 
-		let GPoll::Partial(value) = serve_edge(&graph, &ctx) else {
+		let GPoll::Partial(value) = serve_edge(&graph, &ctx, &frames) else {
 			panic!("expected a partial record");
 		};
 		assert_eq!(element::<f64>(&out, &value), 1.0);
@@ -1278,9 +1278,9 @@ mod graphene_test {
 		let (src, ls) = lifted(|_: &ContextImpl| GPoll::Final(5.0f64));
 		let out = out_layout::<f64>();
 		let graph = installed(AddNode::<_, _, f64, f64>::new(fallback, src, &lfb, &ls), &out);
-		reserve_for(&[&lfb, &ls, &out]);
+		let frames = frames_for(&[&lfb, &ls, &out]);
 
-		let GPoll::Fallback(boxed) = serve_edge(&graph, &ctx) else {
+		let GPoll::Fallback(boxed) = serve_edge(&graph, &ctx, &frames) else {
 			panic!("fallback must propagate with the computed stand-in");
 		};
 		assert_eq!(element::<f64>(&out, &boxed.0), 5.0);

@@ -225,7 +225,7 @@ mod tests {
 	use core_types::context::{ContextImpl, EvalScope, ExtractArena};
 	use core_types::list::{Item, List};
 	use core_types::node::Node;
-	use core_types::record::{self, FrameClaim, Layout, RecordSource, Served, stack};
+	use core_types::record::{self, FrameClaim, Layout, RecordSource, Served};
 	use core_types::value::ValueSource;
 
 	struct GraphicSource {
@@ -234,20 +234,22 @@ mod tests {
 	}
 
 	impl<C: ExtractIndex> Node<C> for GraphicSource {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 		where
 			C: ExtractArena<ArenaRef = &'e Arena>,
 		{
 			let (graphic, transform) = &self.rows[input.innermost_index() as usize % self.rows.len()];
-			let mut frame = record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
-			frame.element(graphic.clone());
-			frame.attr::<Transform>(*transform);
-			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			// SAFETY: the builder served a record of this node's layout.
-			GPoll::Final(unsafe { slot.forward(&value) })
+			let mut frame = slot;
+			let arena = ExtractArena::arena(input);
+			if frame.element(graphic.clone(), arena).is_none() {
+				return GPoll::arena_exhausted();
+			}
+			write_attr_at::<Transform>(&mut frame, &self.layout, *transform);
+			// SAFETY: the writes above complete the record of this layout.
+			GPoll::Final(unsafe { frame.finish_served() })
 		}
 
-		fn extent_at<'x>(&self, _input: &C, _level: u8) -> GPoll<Extent>
+		fn extent_at<'x>(&self, _input: &C, _level: u8, _frames: &core_types::record::Frames<'x>) -> GPoll<Extent>
 		where
 			C: ExtractArena<ArenaRef = &'x Arena>,
 		{
@@ -259,9 +261,28 @@ mod tests {
 		}
 	}
 
+	/// Writes a field at the layout's resolved offset, the wiring-proven pairing
+	/// a generated node performs.
+	fn write_field_at<T: Copy + 'static>(frame: &mut FrameClaim<'_, '_>, layout: &Layout, name: &str, level: u8, value: T) {
+		let field = layout
+			.fields
+			.iter()
+			.find(|field| field.name == name && field.level == level)
+			.expect("the layout carries the written field");
+		assert_eq!(field.type_id, std::any::TypeId::of::<T>(), "the field was declared at this value type");
+		// SAFETY: the offset is this layout's own, at the field's declared type.
+		unsafe { frame.attr_at(field.offset, value) };
+	}
+
+	/// [`write_field_at`] for a census marker at level 0.
+	fn write_attr_at<A: core_types::attribute::Attribute>(frame: &mut FrameClaim<'_, '_>, layout: &Layout, value: A::Value<'static>)
+	where
+		A::Value<'static>: Copy + 'static,
+	{
+		write_field_at(frame, layout, A::NAME, 0, value);
+	}
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(1 << 16); }		EvalScope::new(Some(0.5), None, None, generations, arena)
+		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
 	fn install<N: Node<ContextImpl<'static>>>(mut node: N, meta: record::LayoutMeta, inputs: &[Option<&Layout>]) -> N {
@@ -294,7 +315,7 @@ mod tests {
 		Graphic::Text(label.to_string())
 	}
 
-	fn group(children: Vec<(Graphic<'static>, DAffine2)>) -> Graphic {
+	fn group(children: Vec<(Graphic<'static>, DAffine2)>) -> Graphic<'static> {
 		let mut list = List::new();
 		for (index, (child, transform)) in children.into_iter().enumerate() {
 			list.push(Item::new_from_element(child));
@@ -362,7 +383,7 @@ mod tests {
 	}
 
 	impl<C: ExtractIndex + core_types::ExtractVarArgs> Node<C> for PerRowSource {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 		where
 			C: ExtractArena<ArenaRef = &'e Arena>,
 		{
@@ -372,15 +393,17 @@ mod tests {
 			let lane = input.innermost_index();
 			let graphic = text(&format!("{label}{lane}"));
 			let translated = DAffine2::from_translation(glam::DVec2::new(lane as f64, 0.));
-			let mut frame = record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
-			frame.element(graphic);
-			frame.attr::<Transform>(translated);
-			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			// SAFETY: the builder served a record of this node's layout.
-			GPoll::Final(unsafe { slot.forward(&value) })
+			let mut frame = slot;
+			let arena = ExtractArena::arena(input);
+			if frame.element(graphic, arena).is_none() {
+				return GPoll::arena_exhausted();
+			}
+			write_attr_at::<Transform>(&mut frame, &self.layout, translated);
+			// SAFETY: the writes above complete the record of this layout.
+			GPoll::Final(unsafe { frame.finish_served() })
 		}
 
-		fn extent_at<'x>(&self, input: &C, _level: u8) -> GPoll<Extent>
+		fn extent_at<'x>(&self, input: &C, _level: u8, _frames: &core_types::record::Frames<'x>) -> GPoll<Extent>
 		where
 			C: ExtractArena<ArenaRef = &'x Arena>,
 		{
@@ -415,6 +438,7 @@ mod tests {
 
 	#[test]
 	fn map_scans_ragged_rows() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -441,12 +465,12 @@ mod tests {
 		assert_eq!(out.depth, 2);
 		// The extent-fn-less levels report a lower bound; addressing below
 		// proves the lanes are all reachable regardless.
-		assert_eq!(node.extent_at(&ctx, 1), GPoll::Final(Extent::AtLeast(0)));
-		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::AtLeast(0)));
+		assert_eq!(node.extent_at(&ctx, 1, &frames.reborrow()), GPoll::Final(Extent::AtLeast(0)));
+		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::AtLeast(0)));
 
 		let head = ctx.index_head();
 		for (lane, &(label, x)) in RAGGED_FLAT.iter().enumerate() {
-			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64), &frames) else {
 				panic!("expected a final record");
 			};
 			assert_eq!(text_of(&record.element::<Graphic>()), label, "lane {lane}");
@@ -457,6 +481,7 @@ mod tests {
 
 	#[test]
 	fn flat_map_matches_flatten_of_map() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -504,18 +529,18 @@ mod tests {
 		assert_eq!(composed_out.depth, 1);
 		// Both spellings report the same lower bound; the lane loop below is
 		// the law.
-		assert_eq!(flat.extent_at(&ctx, 0), GPoll::Final(Extent::AtLeast(0)));
-		assert_eq!(composed.extent_at(&ctx, 0), GPoll::Final(Extent::AtLeast(0)));
+		assert_eq!(flat.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::AtLeast(0)));
+		assert_eq!(composed.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::AtLeast(0)));
 
 		let head = ctx.index_head();
 		for (lane, &(label, x)) in RAGGED_FLAT.iter().enumerate() {
 			let scoped = ctx.promoted(&head, lane as u64);
-			let GPoll::Final(direct) = record::capture(&flat, &scoped) else {
+			let GPoll::Final(direct) = record::capture(&flat, &scoped, &frames) else {
 				panic!("expected a final record from flat_map");
 			};
 			let direct_label = text_of(&direct.element::<Graphic>()).to_string();
 			let direct_x: DAffine2 = direct.attr::<Transform>();
-			let GPoll::Final(value) = record::capture(&composed, &scoped) else {
+			let GPoll::Final(value) = record::capture(&composed, &scoped, &frames) else {
 				panic!("expected a final record from flatten(map)");
 			};
 			assert_eq!(text_of(&value.element::<Graphic>()), direct_label, "lane {lane}");
@@ -540,6 +565,7 @@ mod tests {
 
 	#[test]
 	fn flat_map_batch_matches_per_lane_eval() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -567,14 +593,14 @@ mod tests {
 		let scoped = ctx.promoted(&head, 0);
 
 		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 5 * out.lane_stride() / 8];
-		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..5, Some(&mut scratch)) else {
+		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..5, Some(&mut scratch), &frames) else {
 			panic!("expected a filled batch");
 		};
 		let batch = batch.into_shared();
 		assert_eq!(batch.len(), 5);
 		let offset = out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
 		for lane in 0..5 {
-			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64), &frames) else {
 				panic!("expected a final record");
 			};
 			let single = text_of(&record.element::<Graphic>()).to_string();
@@ -587,6 +613,7 @@ mod tests {
 
 	#[test]
 	fn flatten_expands_one_level() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -596,13 +623,13 @@ mod tests {
 		let node = build!(layout, fixture_rows(), false);
 		let out = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(out.depth, 1);
-		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(3)));
+		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(3)));
 
 		let head = ctx.index_head();
 		// Lane 2 is the unexpanded subgroup H, riding as a leaf at G's depth.
 		let expected: [(&str, f64); 2] = [("a", 1.), ("b", 20.5)];
 		for (lane, &(label, x)) in expected.iter().enumerate() {
-			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64), &frames) else {
 				panic!("expected a final record");
 			};
 			assert_eq!(text_of(&record.element::<Graphic>()), label, "lane {lane}");
@@ -610,7 +637,7 @@ mod tests {
 			assert_eq!(transform.translation.x, x, "lane {lane}");
 		}
 
-		let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, 2)) else {
+		let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, 2), &frames) else {
 			panic!("expected a final record");
 		};
 		let Graphic::Graphic(children) = record.element::<Graphic>() else {
@@ -629,13 +656,14 @@ mod tests {
 
 	#[test]
 	fn a_wire_materializes_into_a_group_for_the_renderer() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
 		let source = core_types::value::LeveledValueSource::new(vec![text("a"), text("b")]);
-		match graphic_types::boundary::materialize_group(&source, &ctx, &arena) {
+		match graphic_types::boundary::materialize_group(&source, &ctx, &arena, &frames) {
 			graphic_types::boundary::LevelGroup::Group(group, _) => {
 				let list = graphic_types::graphic::group_to_legacy_list(&group);
 				assert_eq!(list.len(), 2);
@@ -646,6 +674,7 @@ mod tests {
 
 	#[test]
 	fn a_level_batch_converts_to_its_legacy_list() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -653,7 +682,7 @@ mod tests {
 
 		let source = core_types::value::LeveledValueSource::new(vec![1.5f64, 2.5]);
 		let layout = Node::<ContextImpl>::layout(&source).clone();
-		let record::LevelStatus::Batch(batch, _) = record::materialize_level(&source, &ctx, &arena) else {
+		let record::LevelStatus::Batch(batch, _) = record::materialize_level(&source, &ctx, &arena, &frames) else {
 			panic!("expected a batch");
 		};
 		let legacy = graphic_types::boundary::batch_to_legacy(&layout, batch, &arena).expect("f64 is in the legacy vocabulary");
@@ -665,6 +694,7 @@ mod tests {
 
 	#[test]
 	fn wrap_collects_the_level_into_a_group() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -679,10 +709,10 @@ mod tests {
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(out.depth, 1);
-		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(1)), "the group is the level's single lane");
+		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(1)), "the group is the level's single lane");
 
 		let head = ctx.index_head();
-		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0)) else {
+		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0), &frames) else {
 			panic!("expected a final record");
 		};
 		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(out.rec(&value)) }) else {
@@ -702,6 +732,7 @@ mod tests {
 
 	#[test]
 	fn a_group_element_deep_copies_to_its_owned_form_and_replays() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -717,7 +748,7 @@ mod tests {
 		let out = Node::<ContextImpl>::layout(&node).clone();
 
 		let head = ctx.index_head();
-		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0)) else {
+		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0), &frames) else {
 			panic!("expected a final record");
 		};
 		let copy = unsafe { (out.element.clone_out)(out.rec(&value).ptr()) };
@@ -742,25 +773,28 @@ mod tests {
 
 	#[test]
 	fn colors_fold_into_evenly_spaced_stops() {
+		let frames = core_types::record::test_frames(1 << 16);
 		struct ColorSource {
 			layout: Layout,
 			colors: Vec<Color>,
 		}
 
 		impl<C: ExtractIndex> Node<C> for ColorSource {
-			fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+			fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 			where
 				C: ExtractArena<ArenaRef = &'e Arena>,
 			{
 				let color = self.colors[input.innermost_index() as usize];
-				let mut frame = record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
-				frame.element(color);
-				let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-				// SAFETY: the builder served a record of this node's layout.
-				GPoll::Final(unsafe { slot.forward(&value) })
+				let mut frame = slot;
+				let arena = ExtractArena::arena(input);
+				if frame.element(color, arena).is_none() {
+					return GPoll::arena_exhausted();
+				}
+				// SAFETY: the writes above complete the record of this layout.
+				GPoll::Final(unsafe { frame.finish_served() })
 			}
 
-			fn extent_at<'x>(&self, _input: &C, _level: u8) -> GPoll<Extent>
+			fn extent_at<'x>(&self, _input: &C, _level: u8, _frames: &core_types::record::Frames<'x>) -> GPoll<Extent>
 			where
 				C: ExtractArena<ArenaRef = &'x Arena>,
 			{
@@ -782,7 +816,7 @@ mod tests {
 		let build = |colors: Vec<Color>| install_flip(ToGradientNode::new(RecordSource::new(ColorSource { layout: layout.clone(), colors }, &layout, &layout), &layout), &out);
 		let stops_of = |colors: Vec<Color>| {
 			let node = build(colors);
-			let GPoll::Final(record) = record::capture(&node, &ctx) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx, &frames) else {
 				panic!("expected a final record");
 			};
 			record.element::<GradientStops>()
@@ -801,6 +835,7 @@ mod tests {
 
 	#[test]
 	fn a_group_converts_to_its_legacy_list() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -815,7 +850,7 @@ mod tests {
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
 		let head = ctx.index_head();
-		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0)) else {
+		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0), &frames) else {
 			panic!("expected a final record");
 		};
 		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(out.rec(&value)) }) else {
@@ -832,6 +867,7 @@ mod tests {
 
 	#[test]
 	fn flatten_reverses_wrap() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -849,8 +885,8 @@ mod tests {
 		let group = {
 			// SAFETY: the element is cloned out inside the scope, so no borrow
 			// into the frame escapes it.
-			let _scope = unsafe { stack::ScopeGuard::enter() };
-			let GPoll::Final(value) = record::serve_edge(&wrapped, &ctx.promoted(&head, 0)) else {
+			let scope = frames.scope();
+			let GPoll::Final(value) = record::serve_edge(&wrapped, &ctx.promoted(&head, 0), &scope) else {
 				panic!("expected a final record");
 			};
 			let group = unsafe { record::borrow_element::<Graphic>(wrap_out.rec(&value)) }.clone();
@@ -860,11 +896,11 @@ mod tests {
 		// One row holding the wrapped group flattens back to the lanes, the
 		// group's identity transform composed onto each child's.
 		let node = build!(layout, vec![(group, DAffine2::IDENTITY)], false);
-		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(2)));
+		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(2)));
 
 		let head = ctx.index_head();
 		for (lane, &(label, x)) in [("a", 1.), ("b", 2.)].iter().enumerate() {
-			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64), &frames) else {
 				panic!("expected a final record");
 			};
 			assert_eq!(text_of(&record.element::<Graphic>()), label, "lane {lane}");
@@ -875,6 +911,7 @@ mod tests {
 
 	#[test]
 	fn flatten_fully_composes_the_path() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -884,12 +921,12 @@ mod tests {
 		rows.push((group(vec![]), translation(9.)));
 		let layout = graphic_layout();
 		let node = build!(layout, rows, true);
-		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(3)), "the empty group contributes no leaves");
+		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(3)), "the empty group contributes no leaves");
 
 		let head = ctx.index_head();
 		let expected: [(&str, f64); 3] = [("a", 1.), ("b", 20.5), ("c", 4300.5)];
 		for (lane, &(label, x)) in expected.iter().enumerate() {
-			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64), &frames) else {
 				panic!("expected a final record");
 			};
 			assert_eq!(text_of(&record.element::<Graphic>()), label, "lane {lane}");
@@ -900,6 +937,7 @@ mod tests {
 
 	#[test]
 	fn flatten_batch_matches_per_lane_eval() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 16).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -912,14 +950,14 @@ mod tests {
 		let scoped = ctx.promoted(&head, 0);
 
 		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 3 * out.lane_stride() / 8];
-		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..3, Some(&mut scratch)) else {
+		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..3, Some(&mut scratch), &frames) else {
 			panic!("expected a filled batch");
 		};
 		let batch = batch.into_shared();
 		assert_eq!(batch.len(), 3);
 		let offset = out.offset_of(<Transform as AttributeMarker>::NAME, 0).unwrap();
 		for lane in 0..3 {
-			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64)) else {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64), &frames) else {
 				panic!("expected a final record");
 			};
 			let single = text_of(&record.element::<Graphic>()).to_string();

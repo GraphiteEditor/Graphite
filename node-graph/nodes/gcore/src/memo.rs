@@ -3,7 +3,7 @@ use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ModifyIndex};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
-use core_types::record::{FrameClaim, LevelStatus, OwnedRecord, Served, copy_record_bytes};
+use core_types::record::{FrameClaim, LevelStatus, MaterializedSpan, OwnedRecord, Served, copy_record_bytes};
 use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -14,9 +14,9 @@ use std::sync::Mutex;
 #[derive(Debug)]
 pub struct MemoLevel {
 	key: u64,
-	generation: u64,
-	frames: usize,
-	stride: usize,
+	/// The arena region the level materialized into, resolvable only while its
+	/// generation is live.
+	span: Option<MaterializedSpan>,
 	lanes: Vec<OwnedRecord>,
 	finality: Finality,
 }
@@ -33,7 +33,7 @@ fn memoize<'e, 'l>(
 	ctx: impl Ctx + CacheHash + DeriveCtx + ExtractArena<'e> + ModifyIndex + Copy,
 	#[data] cache: Arc<Mutex<Option<MemoLevel>>>,
 	content: impl Node<Context<'_>>,
-	slot: FrameClaim<'l>,
+	slot: FrameClaim<'e, 'l>,
 ) -> GPoll<Served<'e>> {
 	// A scalar wire's value may depend on the consuming lane (index readers),
 	// so only a leveled wire, whose level covers every lane by construction,
@@ -57,15 +57,17 @@ fn memoize<'e, 'l>(
 	};
 	// The claim is this node's output frame: a hit fills it from the cached
 	// bytes, and every valueless exit drops it with the frame still claimed.
-	let serve = |entry: &MemoLevel, mut slot: FrameClaim<'l>| {
+	let serve = |entry: &MemoLevel, mut slot: FrameClaim<'e, 'l>| {
 		if lane >= entry.lanes.len() {
 			// The cached level ends here; the past-end signal serves drains.
 			return GPoll::Error(Box::new(core_types::gpoll::GraphError::past_end()));
 		}
-		if entry.generation == ctx.arena().generation() {
-			// SAFETY: within the generation the materialized batch stays live,
-			// immutable, and laid out at the recorded stride.
-			unsafe { slot.fill_copy((entry.frames + lane * entry.stride) as *const u8) };
+		if let Some(span) = entry.span
+			&& let Some(src) = span.lane(ctx.arena(), lane, content.layout())
+		{
+			// SAFETY: the span resolved in generation, so the lane is live and
+			// immutable at the layout it was materialized under.
+			unsafe { slot.fill_copy(src) };
 			// SAFETY: the copy images a complete record of this layout.
 			return finalized(unsafe { slot.finish_served() }, &entry.finality);
 		}
@@ -88,12 +90,7 @@ fn memoize<'e, 'l>(
 				let lanes: Vec<OwnedRecord> = (0..batch.len()).map(|index| unsafe { OwnedRecord::copy_out(layout, batch.get(index).rec()) }).collect();
 				let entry = MemoLevel {
 					key,
-					generation: ctx.arena().generation(),
-					frames: match batch.len() {
-						0 => 0,
-						_ => batch.get(0).rec().ptr() as usize,
-					},
-					stride: layout.lane_stride(),
+					span: MaterializedSpan::of(&batch, ctx.arena()),
 					lanes,
 					finality,
 				};
@@ -119,9 +116,7 @@ fn memoize<'e, 'l>(
 			key,
 			// A scalar record replays from the deep copy; the value the serve
 			// returned already lives in this frame.
-			generation: u64::MAX,
-			frames: 0,
-			stride: 0,
+			span: None,
 			lanes: vec![copy],
 			finality,
 		});
@@ -134,7 +129,7 @@ fn frame_memo<'e, 'l>(
 	ctx: impl Ctx + CacheHash + ExtractArena<'e>,
 	#[data] cell: ArenaCell<FrameTable<Box<[u8]>, 32>>,
 	content: impl Node<Context<'_>>,
-	frame: FrameClaim<'l>,
+	frame: FrameClaim<'e, 'l>,
 ) -> GPoll<Served<'e>> {
 	let arena = ctx.arena();
 	let table = match cell.load(arena) {
@@ -150,7 +145,7 @@ fn frame_memo<'e, 'l>(
 	// SAFETY: published bytes are same-frame copies of this edge's records,
 	// so they carry the edge's layout with live parked references, and the
 	// claim is that layout's frame.
-	let revive = |mut frame: FrameClaim<'l>, bytes: &Box<[u8]>| unsafe {
+	let revive = |mut frame: FrameClaim<'e, 'l>, bytes: &Box<[u8]>| unsafe {
 		frame.fill_copy(bytes.as_ptr());
 		frame.finish_served()
 	};
@@ -191,7 +186,7 @@ fn monitor<'e, 'l>(
 	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + ModifyIndex + Copy,
 	#[data] io: MonitorValue,
 	content: impl Node<Context<'_>>,
-	slot: FrameClaim<'l>,
+	slot: FrameClaim<'e, 'l>,
 ) -> GPoll<Served<'e>> {
 	if ctx.index() == 0 {
 		*io.lock().unwrap() = Some(CtxSnapshot::capture(ctx));
@@ -233,10 +228,6 @@ mod tests {
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
-		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe {
-			core_types::record::stack::reserve(1 << 16);
-		}
 		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
@@ -249,6 +240,7 @@ mod tests {
 
 	#[test]
 	fn monitor_serialize_recreates_the_value_from_its_snapshot() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -260,14 +252,14 @@ mod tests {
 		assert!(handle.serialize().is_none(), "no snapshot before the first eval");
 
 		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
-		let GPoll::Final(_) = core_types::record::serve_edge(&edge, &ctx) else {
+		let GPoll::Final(_) = core_types::record::serve_edge(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 
 		let io = handle.serialize().expect("the eval landed a snapshot");
 		let snapshot = io.downcast_ref::<CtxSnapshot>().expect("the monitor serializes its context snapshot");
 		let ctx = snapshot.rehydrate(&scope).expect("the arena holds the chains");
-		let GPoll::Final(served) = core_types::record::capture(&edge, &ctx) else {
+		let GPoll::Final(served) = core_types::record::capture(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(served.element::<u32>(), 11);
@@ -275,6 +267,7 @@ mod tests {
 
 	#[test]
 	fn a_leveled_monitor_recreates_the_whole_extent() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1 << 12).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -286,14 +279,14 @@ mod tests {
 		let handle = EdgeHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
 
 		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
-		let GPoll::Final(_) = core_types::record::serve_edge(&edge, &ctx) else {
+		let GPoll::Final(_) = core_types::record::serve_edge(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 
 		let io = handle.serialize().expect("the eval landed a snapshot");
 		let snapshot = io.downcast_ref::<CtxSnapshot>().expect("the monitor serializes its context snapshot");
 		let ctx = snapshot.rehydrate(&scope).expect("the arena holds the chains");
-		let LevelStatus::Batch(batch, _) = core_types::record::materialize_level(&edge, &ctx, &arena) else {
+		let LevelStatus::Batch(batch, _) = core_types::record::materialize_level(&edge, &ctx, &arena, &frames) else {
 			panic!("expected a materialized level");
 		};
 		assert_eq!(batch.len(), 3, "the recreation holds the whole extent, not the addressed lane");
@@ -304,8 +297,8 @@ mod tests {
 
 	#[test]
 	fn memo_copy_out_consults_the_deep_element_clone() {
-		#[derive(Clone, Debug, PartialEq)]
-		#[derive(dyn_any::DynAny)]
+		let frames = core_types::record::test_frames(1 << 16);
+		#[derive(Clone, Debug, PartialEq, dyn_any::DynAny)]
 		struct Payload(String, u32);
 		unsafe fn deep(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
 			let value = unsafe { core_types::record::borrow_element::<Payload>(core_types::record::Rec::new(ptr)) };
@@ -326,12 +319,17 @@ mod tests {
 		let memoized = MemoizeNode::new(lifted::<Payload>(Payload("deep".to_string(), 0)), &layout);
 		let memoized = core_types::record::RecordExtract::<Payload, _>::new(memoized, &layout);
 
-		assert_eq!(memoized.eval(&ctx), GPoll::Final(Payload("deep".to_string(), 0)), "the miss serves the live value");
-		assert_eq!(memoized.eval(&ctx), GPoll::Final(Payload("deep".to_string(), 2)), "the hit replays through both halves of the deep glue");
+		assert_eq!(memoized.eval(&ctx, &frames), GPoll::Final(Payload("deep".to_string(), 0)), "the miss serves the live value");
+		assert_eq!(
+			memoized.eval(&ctx, &frames),
+			GPoll::Final(Payload("deep".to_string(), 2)),
+			"the hit replays through both halves of the deep glue"
+		);
 	}
 
 	#[test]
 	fn memoize_caches_across_evals() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -341,12 +339,13 @@ mod tests {
 		let memoized = MemoizeNode::new(counting(), &layout);
 		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
 
-		assert_eq!(memoized.eval(&ctx), GPoll::Final(1));
-		assert_eq!(memoized.eval(&ctx), GPoll::Final(1));
+		assert_eq!(memoized.eval(&ctx, &frames), GPoll::Final(1));
+		assert_eq!(memoized.eval(&ctx, &frames), GPoll::Final(1));
 	}
 
 	#[test]
 	fn memo_invalidates_on_generation_bump() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1024).unwrap();
 		let source: SourceId = 7;
 		let before = [(source, 1)];
@@ -358,13 +357,14 @@ mod tests {
 		let memoized = MemoizeNode::new(counting(), &layout);
 		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
 
-		assert_eq!(memoized.eval(&ContextImpl::root(&scope_before)), GPoll::Final(1));
-		assert_eq!(memoized.eval(&ContextImpl::root(&scope_before)), GPoll::Final(1));
-		assert_eq!(memoized.eval(&ContextImpl::root(&scope_after)), GPoll::Final(2));
+		assert_eq!(memoized.eval(&ContextImpl::root(&scope_before), &frames), GPoll::Final(1));
+		assert_eq!(memoized.eval(&ContextImpl::root(&scope_before), &frames), GPoll::Final(1));
+		assert_eq!(memoized.eval(&ContextImpl::root(&scope_after), &frames), GPoll::Final(2));
 	}
 
 	#[test]
 	fn memo_replays_partiality_on_hit() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -374,12 +374,13 @@ mod tests {
 		let memoized = MemoizeNode::new(partial_counting(), &layout);
 		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
 
-		assert_eq!(memoized.eval(&ctx), GPoll::Partial(1));
-		assert_eq!(memoized.eval(&ctx), GPoll::Partial(1));
+		assert_eq!(memoized.eval(&ctx, &frames), GPoll::Partial(1));
+		assert_eq!(memoized.eval(&ctx, &frames), GPoll::Partial(1));
 	}
 
 	#[test]
 	fn memoized_edges_stack_and_rewire() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -391,12 +392,13 @@ mod tests {
 		let stacked = MemoizeNode::new(memoized.downcast_record::<u32>().unwrap(), &layout);
 		let stacked = core_types::record::RecordExtract::<u32, _>::new(stacked, &layout);
 
-		assert_eq!(stacked.eval(&ctx), GPoll::Final(1));
-		assert_eq!(stacked.eval(&ctx), GPoll::Final(1));
+		assert_eq!(stacked.eval(&ctx, &frames), GPoll::Final(1));
+		assert_eq!(stacked.eval(&ctx, &frames), GPoll::Final(1));
 	}
 
 	#[test]
 	fn frame_memo_shares_one_record_copy_per_frame() {
+		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(4096).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
@@ -405,10 +407,10 @@ mod tests {
 		let layout = element_layout::<String>();
 		let memo = FrameMemoNode::new(lifted::<String>("lent out".to_string()), &layout);
 
-		let GPoll::Final(first) = core_types::record::serve_edge(&memo, &ctx) else {
+		let GPoll::Final(first) = core_types::record::serve_edge(&memo, &ctx, &frames) else {
 			panic!("the miss must fill the frame table");
 		};
-		let GPoll::Final(second) = core_types::record::serve_edge(&memo, &ctx) else {
+		let GPoll::Final(second) = core_types::record::serve_edge(&memo, &ctx, &frames) else {
 			panic!("the hit must revive the published record");
 		};
 		let first: &String = unsafe { core_types::record::borrow_element(layout.rec(&first)) };

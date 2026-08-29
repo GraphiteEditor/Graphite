@@ -175,6 +175,15 @@ impl Arena {
 		Some(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
 	}
 
+	/// The generation-checked handle for a region this arena holds, `None` for
+	/// a pointer from anywhere else. The handle keeps the region's provenance,
+	/// so a cache stores one where it would otherwise launder an address.
+	pub fn handle_at(&self, ptr: *const u8) -> Option<ArenaWeak<u8>> {
+		let offset = (ptr as usize).checked_sub(self.base() as usize)?;
+		(offset < self.buf.len()).then_some(())?;
+		ArenaWeak::new(self.generation(), offset)
+	}
+
 	/// `false` once generations are exhausted, parking the arena on [`PARKED_GENERATION`]
 	/// where every handle misses and further allocation is refused.
 	pub fn reset(&mut self) -> bool {
