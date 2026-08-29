@@ -129,7 +129,7 @@ pub trait ShapeGizmoHandler {
 	/// Called every frame to update the gizmo's interaction state based on the mouse position and selection.
 	///
 	/// This includes detecting hover states and preparing interaction flags or visual feedback (e.g., highlighting a hovered handle).
-	fn handle_state(&mut self, selected_shape_layers: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>);
+	fn handle_state(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>);
 
 	/// Called when a mouse click occurs over the canvas and a gizmo handle is hovered.
 	///

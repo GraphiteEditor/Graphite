@@ -24,26 +24,35 @@ impl GizmoManager {
 		self.active_shape_handler.is_some()
 	}
 
-	/// Called every frame to refresh the handler of each selected layer and pick out the hovered one.
-	pub fn handle_actions(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let mut layer_handlers = Vec::new();
+	/// Rebuild the handler of each selected layer.
+	///
+	/// [`handle_actions`](Self::handle_actions) does this as part of its pass. A caller that draws overlays
+	/// from a state where it does not run, such as while a shape is still being dragged out, has to ask for
+	/// it here or it draws the previous selection.
+	pub fn refresh_handlers(&mut self, document: &DocumentMessageHandler) {
+		self.layer_handlers = document
+			.network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(&document.network_interface)
+			.filter_map(|layer| GenericGizmoManager::detect_gizmos(layer, document))
+			.collect();
+	}
 
-		for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
-			let Some(mut handler) = GenericGizmoManager::detect_gizmos(layer, document) else { continue };
-			handler.handle_state(layer, mouse_position, document, responses);
+	/// Called every frame to refresh the handlers and pick out the hovered one.
+	pub fn handle_actions(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		self.refresh_handlers(document);
+		self.active_shape_handler = None;
+
+		for index in 0..self.layer_handlers.len() {
+			self.layer_handlers[index].handle_state(mouse_position, document, responses);
 
 			// A hovered gizmo takes the whole interaction, so the other layers stop drawing overlays entirely.
-			if handler.is_any_gizmo_hovered() {
+			if self.layer_handlers[index].is_any_gizmo_hovered() {
+				self.active_shape_handler = Some(self.layer_handlers.remove(index));
 				self.layer_handlers.clear();
-				self.active_shape_handler = Some(handler);
 				return;
 			}
-
-			layer_handlers.push(handler);
 		}
-
-		self.layer_handlers = layer_handlers;
-		self.active_shape_handler = None;
 	}
 
 	/// Handles click interactions if a gizmo is active. Returns `true` if a gizmo handled the click.

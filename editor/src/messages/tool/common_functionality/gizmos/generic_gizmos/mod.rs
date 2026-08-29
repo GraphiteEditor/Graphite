@@ -201,7 +201,7 @@ impl ShapeGizmoHandler for GenericGizmoManager {
 		self.gizmos.iter().any(GenericGizmo::is_hovered)
 	}
 
-	fn handle_state(&mut self, _selected_shape_layers: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_state(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		// The gizmo being dragged keeps the cursor until it is let go.
 		if self.gizmos.iter().any(GenericGizmo::is_dragging) {
 			return;

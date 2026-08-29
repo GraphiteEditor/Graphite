@@ -949,6 +949,9 @@ impl Fsm for ShapeToolFsmState {
 					Arrow::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
 
 					if tool_options.shape_type == ShapeType::Circle {
+						// The layer being dragged out was created after the last `handle_actions` pass, which only
+						// runs while the tool is ready, so its handler has to be built here.
+						tool_data.gizmo_manager.refresh_handlers(document);
 						tool_data.gizmo_manager.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
 					}
 				}
