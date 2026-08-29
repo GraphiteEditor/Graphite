@@ -44,8 +44,9 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		return;
 	}
 
-	if parsed.is_async || crate::codegen::is_source_kernel(&parsed.output_type) {
-		emit_error!(parsed.output_type.span(), "attribute io is not supported on async source kernels");
+	let async_source = crate::codegen::classify::is_async_source(parsed);
+	if async_source && has_reads {
+		emit_error!(parsed.fn_name.span(), "attribute reads are not supported on async source kernels, only writes");
 	}
 	if crate::codegen::is_poll_kernel(&parsed.output_type) {
 		emit_error!(parsed.output_type.span(), "attribute io needs a plain or `Result<_, Interrupt>` kernel, not a `GPoll` one");
@@ -125,6 +126,9 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		(false, ParsedFieldType::Node(NodeParsedField { output_type, .. })) if lazy_carrier => crate::codegen::unbounded_generic(parsed, output_type),
 		_ => None,
 	};
+	if async_source && token.is_some() {
+		emit_error!(carrier.pat_ident.span(), "an async source's element crosses the future boundary as a value; a passthrough generic element has none");
+	}
 	let element = writes.as_ref().map(|writes| &writes.element).unwrap_or(&value);
 	match &token {
 		Some(token) => {

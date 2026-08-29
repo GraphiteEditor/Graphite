@@ -206,18 +206,19 @@ pub(crate) fn substitute_routing_record(output: &Type, generic: &Ident, core_typ
 	ty
 }
 
-pub(crate) fn inject_attr_lifetimes(output: &Type) -> Option<Type> {
-	struct Injector {
+pub(crate) fn inject_attr_lifetimes(output: &Type, lifetime: &str) -> Option<Type> {
+	struct Injector<'a> {
 		changed: bool,
+		lifetime: &'a str,
 	}
 
-	impl VisitMut for Injector {
+	impl VisitMut for Injector<'_> {
 		fn visit_path_segment_mut(&mut self, segment: &mut syn::PathSegment) {
 			if segment.ident == "Attr"
 				&& let PathArguments::AngleBracketed(args) = &mut segment.arguments
 				&& !args.args.iter().any(|arg| matches!(arg, GenericArgument::Lifetime(_)))
 			{
-				args.args.insert(0, GenericArgument::Lifetime(Lifetime::new("'__attr", proc_macro2::Span::call_site())));
+				args.args.insert(0, GenericArgument::Lifetime(Lifetime::new(self.lifetime, proc_macro2::Span::call_site())));
 				self.changed = true;
 			}
 			syn::visit_mut::visit_path_segment_mut(self, segment);
@@ -225,7 +226,7 @@ pub(crate) fn inject_attr_lifetimes(output: &Type) -> Option<Type> {
 	}
 
 	let mut ty = output.clone();
-	let mut injector = Injector { changed: false };
+	let mut injector = Injector { changed: false, lifetime };
 	injector.visit_type_mut(&mut ty);
 	injector.changed.then_some(ty)
 }
@@ -281,9 +282,11 @@ pub(crate) fn unbounded_generic(parsed: &ParsedNodeFn, ty: &Type) -> Option<Iden
 }
 
 pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
+	let source = is_async_source(parsed);
 	let value = match kernel_kind(&parsed.output_type) {
 		KernelKind::Plain => parsed.output_type.clone(),
 		KernelKind::Interrupt(inner) => inner,
+		_ if source => slot_value_type(&parsed.output_type),
 		_ => return None,
 	};
 	let writes = record_writes(&value);
@@ -291,7 +294,9 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 	if !has_reads && writes.is_none() {
 		return None;
 	}
-	if parsed.is_async {
+	// An async source's slot stores the kernel's plain tuple; the per-eval lift
+	// writes it through the claim, and the reads have no wire to bind against.
+	if source && (has_reads || writes.is_none()) {
 		return None;
 	}
 	let carrier_field = parsed.fields.first()?;
@@ -369,6 +374,11 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 		}
 	}
 	if matches!(carrier, RecordCarrier::None) && !removes.is_empty() {
+		return None;
+	}
+	// The byte-carried token never becomes a value, so it cannot cross a
+	// future boundary.
+	if source && matches!(carrier, RecordCarrier::Token) {
 		return None;
 	}
 	Some(RecordShape { carrier })
@@ -603,6 +613,24 @@ pub(crate) fn slot_value_type(output: &Type) -> Type {
 
 pub(crate) fn is_source_kernel(output: &Type) -> bool {
 	matches!(kernel_kind(output), KernelKind::Future(_) | KernelKind::FutureInterrupt(_))
+}
+
+/// A kernel whose value completes off the evaluation: an `async fn` or a
+/// `SourceFuture` return. Its slot persists a plain value across evaluations,
+/// so nothing it returns may borrow the arena.
+pub(crate) fn is_async_source(parsed: &ParsedNodeFn) -> bool {
+	parsed.is_async || is_source_kernel(&parsed.output_type)
+}
+
+/// The type an async source's slot persists. A writing source's value outlives
+/// the evaluation, so every lifetime it names, including a bare `Attr<M>`'s
+/// elided one, is `'static`.
+pub(crate) fn slot_static_type(output: &Type) -> Type {
+	let value = slot_value_type(output);
+	match record_writes(&value).is_some() {
+		true => substitute_lifetimes(&inject_attr_lifetimes(&value, "'static").unwrap_or_else(|| value.clone()), "'static"),
+		false => value,
+	}
 }
 
 pub(crate) enum KernelKind {

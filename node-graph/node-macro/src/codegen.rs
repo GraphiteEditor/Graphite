@@ -291,7 +291,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	}));
 
 	let async_source = parsed.injects_async_source_fields();
-	let slot_value_type = crate::codegen::classify::substitute_lifetimes(&slot_value_type(output_type), "'static");
+	let slot_value_type = crate::codegen::classify::substitute_lifetimes(&crate::codegen::classify::slot_static_type(output_type), "'static");
 	let slot_field = async_source
 		.then(|| quote! { pub(super) slot: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, Option<gcore::gpoll::GPoll<#slot_value_type>>>>> })
 		.into_iter();
@@ -1206,7 +1206,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	// The slot persists the plain value even on record wires, so the Clone
 	// bound targets the slot type, not the (possibly lifted) trait output.
-	let slot_ty = slot_value_type(&parsed.output_type);
+	let slot_ty = crate::codegen::classify::slot_static_type(&parsed.output_type);
 	let mut async_bounds = match (async_fn, future_kernel) {
 		(false, false) => Vec::new(),
 		(false, true) => vec![quote!(#slot_ty: Clone)],
@@ -1721,9 +1721,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let kernel_fields: Vec<&&ParsedField> = regular_fields.iter().filter(|field| !injected_name(&field.pat_ident.ident)).collect();
 	// A bare `Attr<M>` in the return type cannot elide its lifetime, so the
 	// kernel gets a fresh one; reference-valued writes name their real
-	// lifetime explicitly and pass through untouched.
-	let attr_injected = record_io.then(|| inject_attr_lifetimes(&parsed.output_type)).flatten();
-	let attr_lifetime = attr_injected.is_some().then(|| quote!('__attr,));
+	// lifetime explicitly and pass through untouched. An async source's value
+	// outlives the evaluation, so its writes are `'static` instead.
+	let attr_injected = record_io.then(|| inject_attr_lifetimes(&parsed.output_type, if async_source { "'static" } else { "'__attr" })).flatten();
+	let attr_lifetime = (attr_injected.is_some() && !async_source).then(|| quote!('__attr,));
 	let lane_injected = gather_carrier
 		.then(|| crate::codegen::classify::inject_lane_lifetime(attr_injected.as_ref().unwrap_or(&parsed.output_type)))
 		.flatten();
@@ -1767,7 +1768,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let params = snapshot_param.chain(data_kernel_params).chain(value_kernel_params);
 			quote! {
 				#[allow(clippy::too_many_arguments, clippy::type_complexity)]
-				#vis async fn #fn_name<#(#kernel_generics,)*>(#(#params),*) -> #output_type #fn_where #body
+				#vis async fn #fn_name<#(#kernel_generics,)*>(#(#params),*) -> #kernel_output #fn_where #body
 			}
 		}
 	};
@@ -1835,10 +1836,47 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#clamp
 		}
 	});
+	// A writing source's carrier is its record-io carrier, so the fields it
+	// passes through ride the record plan rather than the flip one.
+	let carried_prelude = carried_prelude.or_else(|| {
+		(record_io && async_source && !skips_carrier).then(|| {
+			let field = regular_fields[0];
+			let name = &field.pat_ident.ident;
+			let ty = carrier_read_ty.expect("a carrying record source reads a concrete element");
+			quote! {
+				let __src = match __cell.eval_input(0, &self.#name, __input, __frame.frames()) {
+					Ok(value) => value,
+					Err(interrupt) => return interrupt.into(),
+				};
+				let __src_rec = self.__carrier.rec(&__src);
+				unsafe { __frame.carry(__src_rec, &self.__plan) };
+				let #name: #ty = unsafe { #core_types::record::read_element(__src_rec) };
+			}
+		})
+	});
 	// Async slots persist plain values across evaluations; the source lifts
 	// the slot value onto its record wire at every merge point, into the
 	// carried frame when the node has a carrier.
-	let merge_lifted = |poll: TokenStream2| quote!(__cell.merge(__frame.lift_served(#poll, #core_types::context::ExtractArena::arena(__input))));
+	// A writing source stores the kernel's whole tuple as that plain value:
+	// the lift writes the attributes through the claim, then lifts the
+	// element, the shape the sync record tail closes with.
+	let source_writes = (record_io && async_source && !write_markers.is_empty()).then(|| {
+		let binders: Vec<Ident> = (0..write_markers.len()).map(|index| format_ident!("__attr_{index}")).collect();
+		let slots: Vec<Ident> = (0..write_markers.len()).map(|index| format_ident!("__write_{index}")).collect();
+		quote! {
+			.map(|(__element #(, #core_types::attribute::Attr(#binders))*)| {
+				#(unsafe { __frame.attr_at(self.#slots, #binders) };)*
+				__element
+			})
+		}
+	});
+	let merge_lifted = |poll: TokenStream2| match &source_writes {
+		None => quote!(__cell.merge(__frame.lift_served(#poll, #core_types::context::ExtractArena::arena(__input)))),
+		Some(writes) => quote! {{
+			let __lifted = (#poll) #writes;
+			__cell.merge(__frame.lift_served(__lifted, #core_types::context::ExtractArena::arena(__input)))
+		}},
+	};
 	// The claim drops with the frame still claimed, so a valueless exit needs
 	// no closing of its own.
 	let pending_return = quote!(#core_types::gpoll::GPoll::Pending);
@@ -2568,6 +2606,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let slot = format_ident!("__mat_cache_{index}");
 			quote!(#slot: ::core::default::Default::default(),)
 		});
+		let slot_default = async_source.then(|| quote!(slot: ::core::default::Default::default(),)).into_iter();
 		// A ranked input's element generic rides the struct as a phantom
 		// parameter, so the constructor declares and initializes it too.
 		let carried_type_params: Vec<&Ident> = struct_type_params
@@ -2610,6 +2649,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#(#read_names)*
 						#(#write_defaults)*
 						#(#mat_cache_defaults)*
+						#(#slot_default)*
 					}
 				}
 			}

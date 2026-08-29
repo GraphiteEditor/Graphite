@@ -755,6 +755,49 @@ mod tests {
 	}
 
 	#[test]
+	fn bridge_record_write_async_source() {
+		let node = assert_bridge(
+			quote!(category("")),
+			quote!(
+				async fn set_opacity_async(_: impl Ctx, val: f64) -> (f64, Attr<Opacity>) {
+					(val, Attr(1.))
+				}
+			),
+		);
+		assert!(matches!(node_kind(&node), NodeKind::RecordIo), "a writing async source takes the record tail");
+		assert!(matches!(node.effect, Effect::AsyncSource), "the writes do not change the effect axis");
+	}
+
+	#[test]
+	fn bridge_record_fresh_async_source() {
+		assert_bridge(
+			quote!(category("")),
+			quote!(
+				async fn make_async(_: impl Ctx, _: (), fill: f64) -> (f64, Attr<Opacity>) {
+					(fill, Attr(1.))
+				}
+			),
+		);
+	}
+
+	/// An async source's element is the value its slot stores, so a byte-carried
+	/// generic token has no form here.
+	#[test]
+	fn a_generic_token_carrier_has_no_async_source_form() {
+		let mut parsed = parse_node_fn(
+			quote!(category("")),
+			quote!(
+				async fn tag<T>(_: impl Ctx, val: T) -> (T, Attr<Opacity>) {
+					(val, Attr(1.))
+				}
+			),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+		assert!(record_shape(&parsed).is_none());
+	}
+
+	#[test]
 	fn bridge_routing() {
 		assert_bridge(
 			quote!(category("")),

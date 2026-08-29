@@ -366,6 +366,19 @@ async fn double_async(_: impl Ctx, element: f64) -> f64 {
 	element * 2.
 }
 
+/// Test-only writing async source over a carrier: the slot stores the kernel's
+/// whole tuple and the per-eval lift writes it through the claim.
+#[node_macro::node(category("Test"))]
+async fn fade_async(_: impl Ctx, element: f64, opacity: f64) -> (f64, Attr<Opacity>) {
+	(element * 2., Attr(opacity))
+}
+
+/// Test-only writing async source without a carrier: a fresh record per eval.
+#[node_macro::node(category("Test"))]
+async fn measure_async(_: impl Ctx, _: (), element: f64) -> (f64, Attr<Length>) {
+	(element, Attr(element.abs()))
+}
+
 #[node_macro::node(category("Test"))]
 fn fallback(ctx: impl Ctx, _: (), #[expose] content: impl Node<Context<'_>, Output = (f64, Attr<Opacity>)>, #[expose] alternate: impl Node<Context<'_>, Output = f64>) -> Result<f64, Interrupt> {
 	let (element, opacity) = content.eval(ctx)?;
@@ -2371,6 +2384,72 @@ mod tests {
 		};
 		assert_eq!(served.element::<f64>(), 6., "the slot hit replays the element");
 		assert_eq!(served.attr::<Opacity>(), 0.25, "the fields re-carry on every eval");
+	}
+
+	#[test]
+	fn a_writing_async_source_lifts_its_slot_tuple_through_the_claim() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source_layout = f64_layout(&["length"]);
+		let (runtime, _) = lifted_value(core_types::runtime::RuntimeHandle(std::sync::Arc::new(InlineRuntime)));
+		let (source_id, _) = lifted_value(7 as SourceId);
+		let frames = frames_for(&[&source_layout]);
+
+		let node = install(
+			FadeAsyncNode::new(
+				f64_record_source(&source_layout, 3., vec![("length", 9.)]),
+				ValueSource::new(0.5),
+				runtime,
+				source_id,
+				&source_layout,
+			),
+			fade_async_layout_meta(),
+			&[Some(&source_layout)],
+		);
+		assert_eq!(Node::<ContextImpl>::layout(&node), &fade_async_layout(&source_layout));
+
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx, &frames) else {
+			panic!("an inline completion is final on the spawning eval");
+		};
+		assert_eq!(served.element::<f64>(), 6.);
+		assert_eq!(served.attr::<Opacity>(), 0.5, "the write lands through the claim, not the future");
+		assert_eq!(served.attr::<Length>(), 9., "the carrier's other fields still pass through");
+
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx, &frames) else {
+			panic!("a slot hit is final");
+		};
+		assert_eq!(served.element::<f64>(), 6., "the slot hit replays the element");
+		assert_eq!(served.attr::<Opacity>(), 0.5, "the slot hit replays the write");
+		assert_eq!(served.attr::<Length>(), 9.);
+	}
+
+	#[test]
+	fn a_writing_async_source_without_a_carrier_writes_a_fresh_record() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let (runtime, _) = lifted_value(core_types::runtime::RuntimeHandle(std::sync::Arc::new(InlineRuntime)));
+		let (source_id, _) = lifted_value(7 as SourceId);
+		let layout = measure_async_layout();
+		let frames = frames_for(&[&layout]);
+
+		let node = install(
+			MeasureAsyncNode::new(ValueSource::new(()), ValueSource::new(-4.), runtime, source_id),
+			measure_async_layout_meta(),
+			&[],
+		);
+		assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
+
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx, &frames) else {
+			panic!("an inline completion is final on the spawning eval");
+		};
+		assert_eq!(served.element::<f64>(), -4.);
+		assert_eq!(served.attr::<Length>(), 4.);
 	}
 
 	#[test]
