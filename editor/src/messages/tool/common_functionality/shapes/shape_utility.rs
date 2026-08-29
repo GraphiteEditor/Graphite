@@ -145,15 +145,7 @@ pub trait ShapeGizmoHandler {
 	/// Draws the static or hover-dependent overlays associated with the gizmo.
 	///
 	/// These overlays include visual indicators like shape outlines, control points, and hover highlights.
-	fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		selected_shape_layers: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	);
+	fn overlays(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_editor: &mut &mut ShapeState, mouse_position: DVec2, overlay_context: &mut OverlayContext);
 
 	/// Draws overlays specifically during a drag operation.
 	///

@@ -1,17 +1,8 @@
-//! # Generic Gizmos
+//! The gizmo controls, parameterized by a [gizmo registry](super::gizmo_registry) entry rather than by the
+//! node they edit: a slider for an `f64` parameter and a dial for a `u32` one.
 //!
-//! Data-driven, reusable gizmo components that any node can opt into via the
-//! [gizmo registry](super::gizmo_registry). Where a hand-written handler used to hand-code a
-//! shape's interaction, the generic gizmos here are parameterized purely by `(node_id,
-//! parameter_index, GizmoInfo)` and therefore work for any node that registers them.
-//!
-//! - [`GenericSliderGizmo`](generic_slider_gizmo::GenericSliderGizmo) edits an `f64` parameter.
-//! - [`GenericDialGizmo`](generic_dial_gizmo::GenericDialGizmo) edits a `u32` parameter.
-//!
-//! [`GenericGizmoHandler`] ties them together behind the existing
-//! [`ShapeGizmoHandler`](crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler)
-//! trait, so the [`GizmoManager`](super::gizmo_manager::GizmoManager) can drive them with no
-//! knowledge of the underlying node.
+//! [`GenericGizmoManager`] holds the gizmos of one layer and implements [`ShapeGizmoHandler`], so the
+//! [`GizmoManager`](super::gizmo_manager::GizmoManager) drives them without knowing the node.
 
 pub mod generic_dial_gizmo;
 pub mod generic_slider_gizmo;
@@ -33,10 +24,8 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
 
-/// Read a node input as a number, whichever numeric type it is stored as.
-///
-/// The generic gizmos use this for hit-testing and overlays, where all that matters is how large the value
-/// is. Writing still goes through the parameter's own type, so a count stays a count.
+/// Read a node input as a number, whichever numeric type it is stored as. Hit-testing and overlays only care
+/// how large the value is; writing still goes through the parameter's own type, so a count stays a count.
 pub fn read_number_input(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, identifier: &ProtoNodeIdentifier, index: usize) -> Option<f64> {
 	let inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(identifier.clone()))?;
 	match inputs.get(index)?.as_value()? {
@@ -46,7 +35,7 @@ pub fn read_number_input(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	}
 }
 
-/// Read a `u32` node input value by node identifier and parameter index.
+/// Read a node input that must be a `u32`.
 pub fn read_u32_input(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, identifier: &ProtoNodeIdentifier, index: usize) -> Option<u32> {
 	let inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(identifier.clone()))?;
 	match inputs.get(index)?.as_value()? {
@@ -55,7 +44,7 @@ pub fn read_u32_input(layer: LayerNodeIdentifier, document: &DocumentMessageHand
 	}
 }
 
-/// A single generic gizmo instance, dispatching over the supported control types.
+/// One gizmo, dispatching over the supported control types.
 #[derive(Clone, Debug)]
 enum GenericGizmo {
 	Slider(GenericSliderGizmo),
@@ -143,22 +132,17 @@ impl GenericGizmo {
 	}
 }
 
-/// A registry-driven gizmo manager. On construction it looks up the selected layer's generator
-/// node in the [gizmo registry](super::gizmo_registry) and instantiates the appropriate generic
-/// gizmos, so it can stand in for a hand-written `ShapeGizmoHandler` with no node-specific code.
+/// The gizmos of one layer, built from its generator node's [registry](super::gizmo_registry) entry.
 ///
-/// It owns a `Vec<GenericGizmo>` and routes all interaction events to them, resolving priority
-/// when multiple handles overlap (the handle closest to the cursor wins the hover).
+/// It routes every interaction event to them and arbitrates when two handles overlap.
 #[derive(Clone, Debug, Default)]
 pub struct GenericGizmoManager {
-	layer: LayerNodeIdentifier,
 	gizmos: Vec<GenericGizmo>,
 }
 
 impl GenericGizmoManager {
-	/// Query the registry for `layer`'s node and instantiate its gizmos. Returns `None` when the
-	/// layer has no registry entry (so callers can fall through to legacy shape-specific handlers)
-	/// or when none of its registered parameters use a currently-supported gizmo type.
+	/// Build the gizmos declared for `layer`'s generator node. Returns `None` when the layer has no registry
+	/// entry, or when none of its declarations use a supported gizmo type.
 	pub fn detect_gizmos(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<Self> {
 		let node_graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
 
@@ -169,35 +153,28 @@ impl GenericGizmoManager {
 
 			let mut gizmos = Vec::new();
 			for info in infos {
-				// `GenericSliderGizmo` is the general hook-driven handle: it carries the grab points, the
-				// hover test, and the drag, any of which a shape can replace. `GenericDialGizmo` is the
-				// narrower one, a count stepped by horizontal drag with no hooks of its own. So a
-				// declaration that brings its own drag is hosted by the general one whatever it declares,
-				// and only a dial relying on the default gets the dial.
+				// The dial only knows how to step a count by horizontal drag, so it takes a declaration that
+				// relies on that. Everything else goes to the slider, which is the hook-driven handle: an angle
+				// runs on the same machinery as a length and only the drag differs.
 				let brings_own_drag = info.behavior.drag.is_some();
 
 				match info.gizmo_type {
 					GizmoType::Dial if !brings_own_drag => gizmos.push(GenericGizmo::Dial(GenericDialGizmo::new(layer, node_id, identifier.clone(), *info))),
-					// An angle runs on the same handle machinery as a length; what differs is the drag.
 					GizmoType::Slider | GizmoType::Angle | GizmoType::Dial => gizmos.push(GenericGizmo::Slider(GenericSliderGizmo::new(layer, node_id, identifier.clone(), *info))),
-					// Position gizmos are not yet implemented; they are skipped so a partially-migrated node
-					// still gets its other controls.
+					// Not implemented yet. Skipped so a node declaring one still gets its other gizmos.
 					GizmoType::Position => {}
 				}
 			}
 
 			if !gizmos.is_empty() {
-				return Some(Self { layer, gizmos });
+				return Some(Self { gizmos });
 			}
 		}
 
 		None
 	}
 
-	/// Index of the gizmo winning the hover among all candidates.
-	///
-	/// This is the priority rule for overlapping handles: a point target beats a region target, and
-	/// between two of the same kind the nearer one wins. Ties go to the earlier registry declaration.
+	/// Index of the gizmo that wins the hover: see [`rank_candidates`].
 	fn closest_hover_candidate(&self, mouse_position: DVec2, document: &DocumentMessageHandler) -> Option<usize> {
 		self.gizmos
 			.iter()
@@ -210,11 +187,11 @@ impl GenericGizmoManager {
 
 /// Orders two hover candidates, each given as `(is_extended_target, distance)`.
 ///
-/// A point target wins outright over a region target, whatever the two distances say, because the numbers
-/// are not the same measurement: a region reports distance *to the region*, which along a circle's
-/// circumference is near zero everywhere, while a point reports distance to that one point. An arc's sweep
-/// endpoints sit on its circumference, so comparing the two directly hands every grab to the radius. Only
-/// once the kinds match does distance decide.
+/// A point target beats a region target whatever the distances say, because the two are not the same
+/// measurement: a region reports distance to the region, near zero everywhere along a circumference, while a
+/// point reports distance to that one point. An arc's sweep endpoints sit on the circumference its radius is
+/// grabbed along, so comparing the numbers directly would hand every grab to the radius. Distance decides
+/// only between candidates of the same kind, and ties go to the earlier registry declaration.
 fn rank_candidates(a: (bool, f64), b: (bool, f64)) -> std::cmp::Ordering {
 	a.0.cmp(&b.0).then_with(|| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
 }
@@ -225,13 +202,12 @@ impl ShapeGizmoHandler for GenericGizmoManager {
 	}
 
 	fn handle_state(&mut self, _selected_shape_layers: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		// Don't recompute hover while a drag is in progress: the dragging gizmo keeps ownership.
+		// The gizmo being dragged keeps the cursor until it is let go.
 		if self.gizmos.iter().any(GenericGizmo::is_dragging) {
 			return;
 		}
 
-		// Resolve priority centrally so two overlapping handles never highlight at once: only the
-		// closest candidate enters the hover state; every other gizmo leaves it.
+		// Exactly one gizmo may be hovered, so every other one is taken out of the hover state.
 		let winner = self.closest_hover_candidate(mouse_position, document);
 		for (index, gizmo) in self.gizmos.iter_mut().enumerate() {
 			if Some(index) == winner {
@@ -256,30 +232,7 @@ impl ShapeGizmoHandler for GenericGizmoManager {
 		}
 	}
 
-	fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		selected_shape_layers: Option<LayerNodeIdentifier>,
-		_input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
-		// The gizmos held here are bound to `self.layer`. When the manager is asked to draw for a
-		// different selected layer -- which happens whenever several layers are selected at once -- it has
-		// to resolve that layer's own gizmos instead, or it draws this layer's handles a second time and
-		// the other layer gets none.
-		if let Some(layer) = selected_shape_layers
-			&& layer != self.layer
-		{
-			if let Some(manager) = Self::detect_gizmos(layer, document) {
-				for gizmo in &manager.gizmos {
-					gizmo.overlays(document, mouse_position, Some(shape_editor), overlay_context);
-				}
-			}
-			return;
-		}
-
+	fn overlays(&self, document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler, shape_editor: &mut &mut ShapeState, mouse_position: DVec2, overlay_context: &mut OverlayContext) {
 		for gizmo in &self.gizmos {
 			gizmo.overlays(document, mouse_position, Some(shape_editor), overlay_context);
 		}
@@ -321,8 +274,8 @@ mod tests {
 
 	#[test]
 	fn point_target_beats_region_target_however_far_it_is() {
-		// The arc case: the radius band reads ~0 all along the circumference while the sweep endpoint
-		// sitting on that circumference reads its real distance. The endpoint still has to win.
+		// The arc case: the radius band reads ~0 anywhere on the circumference, while the sweep endpoint
+		// sitting on it reads its real distance. The endpoint still has to win.
 		assert_eq!(rank_candidates((POINT, 7.9), (REGION, 0.01)), Ordering::Less);
 		assert_eq!(rank_candidates((REGION, 0.01), (POINT, 7.9)), Ordering::Greater);
 	}
@@ -335,7 +288,7 @@ mod tests {
 
 	#[test]
 	fn equal_candidates_tie_so_declaration_order_wins() {
-		// `min_by` keeps the first of equal elements, which is the earlier registry entry.
+		// `min_by` keeps the first of equal elements, so the earlier registry entry wins.
 		assert_eq!(rank_candidates((POINT, 3.), (POINT, 3.)), Ordering::Equal);
 	}
 }

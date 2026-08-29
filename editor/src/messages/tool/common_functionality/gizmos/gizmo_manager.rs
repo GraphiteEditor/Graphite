@@ -1,211 +1,48 @@
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler};
 use crate::messages::tool::common_functionality::gizmos::generic_gizmos::GenericGizmoManager;
-use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use glam::DVec2;
 use std::collections::VecDeque;
 
-/// A unified enum wrapper around all available shape-specific gizmo handlers.
+/// Coordinates the gizmo handlers of every selected layer.
 ///
-/// This abstraction allows `GizmoManager` to interact with different shape gizmos (like Arc or Grid)
-/// using a common interface without needing to know the specific shape type at compile time.
-///
-/// Each variant stores a concrete handler (e.g., `ArcGizmoHandler`) that implements the shape-specific
-/// logic for rendering overlays, responding to input, and modifying shape parameters. Shapes whose
-/// gizmos have been migrated to the registry-driven system (polygon, circle, heart, star) use the `Generic` variant.
-#[derive(Clone, Debug, Default)]
-pub enum ShapeGizmoHandlers {
-	#[default]
-	None,
-	/// Registry-driven generic handler. Used for nodes that declare their gizmos in the
-	/// [gizmo registry](super::gizmo_registry) rather than via a hand-written handler.
-	Generic(GenericGizmoManager),
-}
-
-impl ShapeGizmoHandlers {
-	/// Returns the kind of shape the handler is managing, such as `"star"` or `"polygon"`.
-	/// Used for grouping logic and distinguishing between handler types at runtime.
-	pub fn kind(&self) -> &'static str {
-		match self {
-			Self::Generic(_) => "generic",
-			Self::None => "none",
-		}
-	}
-
-	/// Dispatches interaction state updates to the corresponding shape-specific handler.
-	pub fn handle_state(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		match self {
-			Self::Generic(h) => h.handle_state(layer, mouse_position, document, responses),
-			Self::None => {}
-		}
-	}
-
-	/// Checks if any interactive part of the gizmo is currently hovered.
-	pub fn is_any_gizmo_hovered(&self) -> bool {
-		match self {
-			Self::Generic(h) => h.is_any_gizmo_hovered(),
-			Self::None => false,
-		}
-	}
-
-	/// Passes the click interaction to the appropriate gizmo handler if one is hovered.
-	pub fn handle_click(&mut self) {
-		match self {
-			Self::Generic(h) => h.handle_click(),
-			Self::None => {}
-		}
-	}
-
-	/// Updates the gizmo state while the user is dragging a handle (e.g., adjusting radius).
-	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		match self {
-			Self::Generic(h) => h.handle_update(drag_start, document, input, responses),
-			Self::None => {}
-		}
-	}
-
-	/// Cleans up any state used by the gizmo handler.
-	pub fn cleanup(&mut self) {
-		match self {
-			Self::Generic(h) => h.cleanup(),
-			Self::None => {}
-		}
-	}
-
-	/// Draws overlays like control points or outlines for the shape handled by this gizmo.
-	pub fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		layer: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
-		match self {
-			Self::Generic(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
-			Self::None => {}
-		}
-	}
-
-	/// Draws live-updating overlays during drag interactions for the shape handled by this gizmo.
-	pub fn dragging_overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
-		match self {
-			Self::Generic(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
-			Self::None => {}
-		}
-	}
-
-	pub fn gizmo_cursor_icon(&self) -> Option<MouseCursorIcon> {
-		match self {
-			Self::Generic(h) => h.mouse_cursor_icon(),
-			Self::None => None,
-		}
-	}
-}
-
-/// Central manager that coordinates shape gizmo handlers for interactive editing on the canvas.
-///
-/// The `GizmoManager` is responsible for detecting which shapes are selected, activating the appropriate
-/// shape-specific gizmo, and routing user interactions (hover, click, drag) to the correct handler.
-/// It allows editing multiple shapes of the same type or focusing on a single active shape when a gizmo is hovered.
-///
-/// ## Responsibilities:
-/// - Detect which selected layers support shape gizmos (e.g., stars, polygons)
-/// - Activate the correct handler and manage state between frames
-/// - Route click, hover, and drag events to the proper shape gizmo
-/// - Render overlays and dragging visuals
+/// While a gizmo is hovered it becomes the active handler and receives every click and drag. Otherwise the
+/// manager keeps one handler per selected layer, so all of them draw their overlays.
 #[derive(Clone, Debug, Default)]
 pub struct GizmoManager {
-	active_shape_handler: Option<ShapeGizmoHandlers>,
-	layers_handlers: Vec<(ShapeGizmoHandlers, Vec<LayerNodeIdentifier>)>,
+	active_shape_handler: Option<GenericGizmoManager>,
+	layer_handlers: Vec<GenericGizmoManager>,
 }
 
 impl GizmoManager {
-	/// Detects and returns a shape gizmo handler based on the layer type (e.g., star, polygon).
-	///
-	/// Returns `None` if the given layer does not represent a shape with a registered gizmo.
-	pub fn detect_shape_handler(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<ShapeGizmoHandlers> {
-		// Star
-		// Star — migrated to the generic, registry-driven gizmo system (sides dial, two radius handle sets).
-		if graph_modification_utils::get_star_id(layer, &document.network_interface).is_some() {
-			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
-		}
-		// Polygon — migrated to the generic, registry-driven gizmo system (sides dial).
-		if graph_modification_utils::get_polygon_id(layer, &document.network_interface).is_some() {
-			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
-		}
-		// Arc
-		// Arc — migrated to the generic, registry-driven gizmo system (radius slider, sweep from either endpoint).
-		if graph_modification_utils::get_arc_id(layer, &document.network_interface).is_some() {
-			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
-		}
-		// Circle — migrated to the generic, registry-driven gizmo system (radius slider).
-		if graph_modification_utils::get_circle_id(layer, &document.network_interface).is_some() {
-			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
-		}
-		// Grid
-		// Grid — migrated to the generic, registry-driven gizmo system (rows and columns by edge).
-		if graph_modification_utils::get_grid_id(layer, &document.network_interface).is_some() {
-			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
-		}
-		// Spiral
-		// Spiral — migrated to the generic, registry-driven gizmo system (winding from either endpoint).
-		if graph_modification_utils::get_spiral_id(layer, &document.network_interface).is_some() {
-			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
-		}
-		// Heart — migrated to the generic, registry-driven gizmo system (radius slider).
-		if graph_modification_utils::get_heart_id(layer, &document.network_interface).is_some() {
-			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
-		}
-
-		None
-	}
-
 	/// Returns `true` if a gizmo is currently active (hovered or being interacted with).
 	pub fn hovering_over_gizmo(&self) -> bool {
 		self.active_shape_handler.is_some()
 	}
 
-	/// Called every frame to check selected layers and update the active shape gizmo, if hovered.
-	///
-	/// Also groups all shape layers with the same kind of gizmo to support overlays for multi-shape editing.
+	/// Called every frame to refresh the handler of each selected layer and pick out the hovered one.
 	pub fn handle_actions(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let mut handlers_layer: Vec<(ShapeGizmoHandlers, Vec<LayerNodeIdentifier>)> = Vec::new();
+		let mut layer_handlers = Vec::new();
 
 		for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
-			if let Some(mut handler) = Self::detect_shape_handler(layer, document) {
-				handler.handle_state(layer, mouse_position, document, responses);
-				let is_hovered = handler.is_any_gizmo_hovered();
+			let Some(mut handler) = GenericGizmoManager::detect_gizmos(layer, document) else { continue };
+			handler.handle_state(layer, mouse_position, document, responses);
 
-				if is_hovered {
-					self.layers_handlers.clear();
-					self.active_shape_handler = Some(handler);
-					return;
-				}
-
-				// Try to group this handler with others of the same type
-				if let Some((_, layers)) = handlers_layer.iter_mut().find(|(existing_handler, _)| existing_handler.kind() == handler.kind()) {
-					layers.push(layer);
-				} else {
-					handlers_layer.push((handler, vec![layer]));
-				}
+			// A hovered gizmo takes the whole interaction, so the other layers stop drawing overlays entirely.
+			if handler.is_any_gizmo_hovered() {
+				self.layer_handlers.clear();
+				self.active_shape_handler = Some(handler);
+				return;
 			}
+
+			layer_handlers.push(handler);
 		}
 
-		self.layers_handlers = handlers_layer;
+		self.layer_handlers = layer_handlers;
 		self.active_shape_handler = None;
 	}
 
@@ -245,9 +82,7 @@ impl GizmoManager {
 		}
 	}
 
-	/// Draws overlays for either the active gizmo (if hovered) or all grouped selected gizmos.
-	///
-	/// If no single gizmo is active, it renders overlays for all grouped layers with associated handlers.
+	/// Draws overlays for the hovered gizmo, or for every selected layer when none is hovered.
 	pub fn overlays(
 		&self,
 		document: &DocumentMessageHandler,
@@ -256,23 +91,18 @@ impl GizmoManager {
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
-		if let Some(handler) = &self.active_shape_handler {
-			handler.overlays(document, None, input, shape_editor, mouse_position, overlay_context);
-			return;
-		}
+		let handlers = match &self.active_shape_handler {
+			Some(handler) => std::slice::from_ref(handler),
+			None => self.layer_handlers.as_slice(),
+		};
 
-		for (handler, selected_layers) in &self.layers_handlers {
-			for layer in selected_layers {
-				handler.overlays(document, Some(*layer), input, shape_editor, mouse_position, overlay_context);
-			}
+		for handler in handlers {
+			handler.overlays(document, input, shape_editor, mouse_position, overlay_context);
 		}
 	}
 
-	/// Returns the cursor icon to display when hovering or dragging a gizmo.
-	///
-	/// If a gizmo is active (hovered or being manipulated), it returns the cursor icon associated with that gizmo;
-	/// otherwise, returns `None` to indicate the default crosshair cursor should be used.
+	/// The cursor icon of the active gizmo, or `None` for the tool's default crosshair.
 	pub fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
-		self.active_shape_handler.as_ref().and_then(|h| h.gizmo_cursor_icon())
+		self.active_shape_handler.as_ref().and_then(|h| h.mouse_cursor_icon())
 	}
 }

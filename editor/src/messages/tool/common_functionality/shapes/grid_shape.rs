@@ -1,7 +1,6 @@
 use super::shape_utility::ShapeToolModifierKey;
 use super::*;
 use crate::consts::GRID_ROW_COLUMN_GIZMO_OFFSET;
-use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
@@ -13,7 +12,6 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::ParameterRef;
 use graphene_std::vector::misc::GridType;
 use graphene_std::vector::misc::dvec2_to_point;
-use kurbo::ParamCurveNearest;
 use std::collections::VecDeque;
 
 #[derive(Default)]
@@ -187,28 +185,9 @@ fn calculate_isometric_x_position(y_spacing: f64, rad_a: f64, rad_b: f64) -> f64
 	spacing_x * 9.
 }
 
-// --- Gizmo geometry -------------------------------------------------------------------------------
-//
-// Where a grid's four draggable edges sit, for both the rectangular and the isometric layout. This is the
-// grid's own geometry rather than gizmo machinery, so it lives with the shape; the interaction that uses it
+// Where a grid's four draggable edges sit, in both the rectangular and the isometric layout. This is the
+// grid's own geometry rather than gizmo machinery, so it lives with the shape; the interaction that reads it
 // is declared in the gizmo registry.
-
-pub fn check_if_over_gizmo(grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2, mouse_position: DVec2, viewport: DAffine2) -> Option<RowColumnGizmoType> {
-	let mouse_point = dvec2_to_point(mouse_position);
-	let accuracy = 1e-6;
-	let threshold = 32.;
-
-	for gizmo_type in RowColumnGizmoType::all() {
-		let line = gizmo_type.line(grid_type, columns, rows, spacing, angles, viewport);
-		let rect = gizmo_type.rect(grid_type, columns, rows, spacing, angles, viewport);
-
-		if rect.contains(mouse_point) || line.nearest(mouse_point, accuracy).distance_sq < threshold {
-			return Some(gizmo_type);
-		}
-	}
-
-	None
-}
 
 fn convert_to_gizmo_line(p0: DVec2, p1: DVec2) -> kurbo::Line {
 	kurbo::Line {
@@ -217,8 +196,7 @@ fn convert_to_gizmo_line(p0: DVec2, p1: DVec2) -> kurbo::Line {
 	}
 }
 
-/// Get corners of the rectangular-grid.
-/// Returns a tuple of (topleft,topright,bottomright,bottomleft)
+/// The corners of a rectangular grid, as (top left, top right, bottom right, bottom left).
 fn get_corners(columns: u32, rows: u32, spacing: DVec2) -> (DVec2, DVec2, DVec2, DVec2) {
 	let (width, height) = (spacing.x, spacing.y);
 
@@ -351,11 +329,9 @@ fn calculate_isometric_left_line_points(columns: u32, rows: u32, spacing: DVec2,
 	(top_left - offset, bottom_left + offset)
 }
 
+/// One of the four edges a grid's rows and columns are dragged from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RowColumnGizmoType {
-	/// No edge is in play. `Default` is deliberately not derived: every accessor below panics on this
-	/// variant, so a derived default would turn an omitted initialiser into a crash at the first call.
-	None,
 	Top,
 	Bottom,
 	Left,
@@ -363,21 +339,19 @@ pub enum RowColumnGizmoType {
 }
 
 impl RowColumnGizmoType {
-	pub fn get_line_points(&self, grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
+	fn get_line_points(&self, grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
 		match grid_type {
 			GridType::Rectangular => match self {
 				Self::Top => get_rectangle_top_line_points(columns, rows, spacing),
 				Self::Right => get_rectangle_right_line_points(columns, rows, spacing),
 				Self::Bottom => get_rectangle_bottom_line_points(columns, rows, spacing),
 				Self::Left => get_rectangle_left_line_points(columns, rows, spacing),
-				Self::None => panic!("RowColumnGizmoType::None does not have line points"),
 			},
 			GridType::Isometric => match self {
 				Self::Top => calculate_isometric_top_line_points(columns, rows, spacing, angles),
 				Self::Right => calculate_isometric_right_line_points(columns, rows, spacing, angles),
 				Self::Bottom => calculate_isometric_bottom_line_points(columns, rows, spacing, angles),
 				Self::Left => calculate_isometric_left_line_points(columns, rows, spacing, angles),
-				Self::None => panic!("RowColumnGizmoType::None does not have line points"),
 			},
 		}
 	}
@@ -398,73 +372,45 @@ impl RowColumnGizmoType {
 		let (x0, x1) = match self {
 			Self::Top | Self::Left => (viewport.transform_point2(p0 + gap), viewport.transform_point2(p1)),
 			Self::Bottom | Self::Right => (viewport.transform_point2(p0), viewport.transform_point2(p1 + gap)),
-			Self::None => panic!("RowColumnGizmoType::None does not have a rect"),
 		};
 
 		kurbo::Rect::new(x0.x, x0.y, x1.x, x1.y)
 	}
 
-	pub fn opposite_gizmo_type(&self) -> Self {
-		match self {
-			Self::Top => Self::Bottom,
-			Self::Right => Self::Left,
-			Self::Bottom => Self::Top,
-			Self::Left => Self::Right,
-			Self::None => panic!("RowColumnGizmoType::None does not have a rect"),
-		}
-	}
-
+	/// The viewport direction this edge grows in when it is dragged outward.
 	pub fn direction(&self, viewport: DAffine2) -> DVec2 {
 		match self {
-			RowColumnGizmoType::Top => viewport.transform_vector2(-DVec2::Y),
-			RowColumnGizmoType::Bottom => viewport.transform_vector2(DVec2::Y),
-			RowColumnGizmoType::Right => viewport.transform_vector2(DVec2::X),
-			RowColumnGizmoType::Left => viewport.transform_vector2(-DVec2::X),
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a direction"),
+			Self::Top => viewport.transform_vector2(-DVec2::Y),
+			Self::Bottom => viewport.transform_vector2(DVec2::Y),
+			Self::Right => viewport.transform_vector2(DVec2::X),
+			Self::Left => viewport.transform_vector2(-DVec2::X),
 		}
 	}
 
+	/// The row or column count this edge controls.
 	pub fn initial_dimension(&self, rows: u32, columns: u32) -> u32 {
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => rows,
-			RowColumnGizmoType::Left | RowColumnGizmoType::Right => columns,
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have an opposite"),
+			Self::Top | Self::Bottom => rows,
+			Self::Left | Self::Right => columns,
 		}
 	}
 
+	/// The distance between two rows or columns along this edge's axis.
 	pub fn spacing(&self, spacing: DVec2, grid_type: GridType, angles: DVec2) -> f64 {
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => spacing.y,
-			RowColumnGizmoType::Left | RowColumnGizmoType::Right => {
-				if grid_type == GridType::Rectangular {
-					spacing.x
-				} else {
-					spacing.y / (angles.x.to_radians().tan() + angles.y.to_radians().tan())
-				}
-			}
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have an initial dimension"),
+			Self::Top | Self::Bottom => spacing.y,
+			Self::Left | Self::Right if grid_type == GridType::Rectangular => spacing.x,
+			Self::Left | Self::Right => spacing.y / (angles.x.to_radians().tan() + angles.y.to_radians().tan()),
 		}
 	}
 
+	/// The grid input this edge writes.
 	pub fn parameter(&self) -> ParameterRef {
 		use graphene_std::vector::generator_nodes::grid::*;
 
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => RowsInput.into(),
-			RowColumnGizmoType::Left | RowColumnGizmoType::Right => ColumnsInput.into(),
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not reference a grid input"),
+			Self::Top | Self::Bottom => RowsInput.into(),
+			Self::Left | Self::Right => ColumnsInput.into(),
 		}
-	}
-
-	pub fn mouse_icon(&self) -> MouseCursorIcon {
-		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => MouseCursorIcon::NSResize,
-			RowColumnGizmoType::Left | RowColumnGizmoType::Right => MouseCursorIcon::EWResize,
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a spacing"),
-		}
-	}
-
-	pub fn all() -> [Self; 4] {
-		[Self::Top, Self::Right, Self::Bottom, Self::Left]
 	}
 }

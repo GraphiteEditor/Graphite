@@ -12,10 +12,9 @@ use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
 
-/// The heart's size is adjusted via a registry-driven radius gizmo (see the [gizmo registry]), while its
-/// parametric controls (cleavage, lobes, shoulder, etc.) are adjusted via the Properties panel.
-///
-/// [gizmo registry]: crate::messages::tool::common_functionality::gizmos::gizmo_registry
+/// The Heart drawing mode. Its canvas gizmos are declared in the
+/// [gizmo registry](crate::messages::tool::common_functionality::gizmos::gizmo_registry); the rest of its
+/// shaping parameters are set from the Properties panel.
 #[derive(Default)]
 pub struct Heart;
 
@@ -41,13 +40,12 @@ impl Heart {
 				return;
 			};
 
-			// In document units, as every other generator does: without this the heart is drawn at the
-			// wrong size whenever the canvas is not at 100% zoom.
+			// In document units, as every other generator does, or the heart comes out the wrong size at any
+			// zoom but 100%.
 			let dimensions = ((start - end) / viewport_zoom(document)).abs();
 
-			// A drag that is exactly horizontal, exactly vertical, or has not moved leaves one dimension at
-			// zero. Dividing by it would write an infinite or NaN scale into the layer transform, so the
-			// degenerate frame is skipped and the last good size stands.
+			// A drag that is exactly horizontal or vertical, or has not moved, leaves one dimension at zero.
+			// Dividing by it would write an infinite or NaN scale, so skip the frame and keep the last size.
 			if dimensions.x == 0. || dimensions.y == 0. {
 				return;
 			}
@@ -67,9 +65,9 @@ impl Heart {
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 
-			// Through the shared helper, as every other aspect-stretched shape does. Building the transform by
-			// hand sends a bare aspect ratio through `TransformIn::Viewport`, which divides by the zoom, so the
-			// net document scale came out as `aspect / zoom`. The helper multiplies by the zoom first.
+			// Through the shared helper, as every other aspect-stretched shape does. A hand-built transform
+			// sends a bare aspect ratio through `TransformIn::Viewport`, which divides by the zoom, leaving a
+			// document scale of `aspect / zoom`. The helper multiplies by the zoom first.
 			responses.add(window_aligned_transform_set(document, layer, (start + end) / 2., scale));
 		}
 	}

@@ -1,18 +1,8 @@
-//! # Gizmo Registry
+//! Which node parameters get a canvas gizmo, as a table. A node declares its gizmo-enabled inputs as a
+//! `const` slice of [`GizmoInfo`] and registers itself in [`registered_gizmo_nodes`]; the
+//! [generic gizmos](super::generic_gizmos) build the handles from that.
 //!
-//! A data-driven lookup that maps node types to the parameters that should be exposed as
-//! interactive canvas gizmos. This is the foundation of the *generic* gizmo system: instead of
-//! writing a bespoke handler for every shape, a node declares which of its inputs are
-//! gizmo-enabled here and the generic gizmo manager builds the interactive handles from that.
-//!
-//! See `README.md` in this directory for a guide to adding one, including the hooks a node reaches
-//! for when the generic mechanics are not enough.
-//!
-//! To add gizmos to a new node:
-//! 1. Add a `const` slice of [`GizmoInfo`] describing its gizmo-enabled parameters.
-//! 2. Register the node's [`ProtoNodeIdentifier`] in [`registered_gizmo_nodes`].
-//!
-//! See `GENERIC_GIZMOS.md` (next to this file) for a full walkthrough.
+//! `README.md`, next to this file, is the guide to adding one.
 
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -26,25 +16,22 @@ use graphene_std::vector::generator_nodes;
 use graphene_std::vector::generator_nodes::{arc, circle, grid, heart, regular_polygon, spiral, star};
 use graphene_std::{NodeParameter, ParameterRef};
 
-/// The kind of interactive control a gizmo presents, which also determines the underlying
-/// [`TaggedValue`](graph_craft::document::value::TaggedValue) type of the parameter it edits.
+/// The kind of control a gizmo presents, which also fixes the [`TaggedValue`] type of the parameter it edits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GizmoType {
-	/// A draggable handle that edits a continuous `f64` parameter (e.g. a radius or length).
+	/// A handle dragged along a ray, editing an `f64` length.
 	Slider,
-	/// A rotary dial that edits a discrete `u32` parameter (e.g. a number of sides).
+	/// A dial stepped by horizontal drag, editing a `u32` count.
 	Dial,
-	/// A draggable point that edits a `DVec2` parameter (e.g. a position or 2D spacing).
+	/// A draggable point editing a `DVec2`. Not implemented yet.
 	Position,
-	/// A handle that edits an angle, stored as `f64` degrees. Driven by the same handle machinery as
-	/// [`Slider`](Self::Slider), but an angle is never a distance along a ray, so a declaration using this
-	/// is expected to carry a [`GizmoBehavior::drag`] rather than rely on the default.
+	/// An angle in `f64` degrees. Runs on the [`Slider`](Self::Slider) machinery, but an angle is never a
+	/// distance along a ray, so a declaration using it is expected to carry its own [`GizmoBehavior::drag`].
 	Angle,
 }
 
-/// A hint describing where a gizmo's handle should be anchored relative to its layer. Handle
-/// positioning varies per node type, so this lets the registry declare intent while leaving the
-/// concrete math to the generic gizmo implementations.
+/// Where a gizmo's handle is anchored relative to its layer. The registry declares the intent and the
+/// generic gizmos do the math.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PositionHint {
 	/// Anchor at the center of the layer's bounding box.
@@ -58,8 +45,8 @@ pub enum PositionHint {
 	ParameterDerived,
 }
 
-/// How the user is currently engaging a gizmo. Hooks receive it so a shape can draw one thing as a
-/// resting affordance and another mid-drag, the way the hand-written handlers do.
+/// How the user is currently engaging a gizmo. Hooks receive it so a shape can draw one thing at rest and
+/// another mid-drag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GizmoState {
 	/// Not hovered: the gizmo is idle, but a shape may still want a subtle hint on screen.
@@ -70,8 +57,7 @@ pub enum GizmoState {
 	Dragging,
 }
 
-/// What a shape-specific hook is given to work with: the layer being edited, the document to read the
-/// node's other parameters from, and which parameter the gizmo in question drives.
+/// What a shape-specific hook is given to work with.
 pub struct GizmoContext<'a> {
 	pub layer: LayerNodeIdentifier,
 	pub document: &'a DocumentMessageHandler,
@@ -86,7 +72,7 @@ pub struct GizmoContext<'a> {
 	pub handle_index: usize,
 }
 
-/// What a drag has done so far, handed to a shape's own drag function.
+/// What a drag has done so far, handed to a shape's own [`GizmoBehavior::drag`].
 pub struct DragInput {
 	/// Where the drag began, in viewport space.
 	pub drag_start: DVec2,
@@ -94,12 +80,11 @@ pub struct DragInput {
 	pub mouse_position: DVec2,
 	/// The dragged parameter's value when the drag began.
 	pub initial_value: f64,
-	/// Every input of the node as it stood when the drag began, indexed the way the node's parameter symbols
-	/// are. A drag that rewrites several parameters at once needs this, because by the second frame the
-	/// values in the document are the ones it already wrote.
+	/// Every input of the node as it stood when the drag began, indexed the way its parameter symbols are. A
+	/// drag that rewrites several parameters needs this: by the second frame the live values are its own.
 	pub initial_parameters: Vec<Option<TaggedValue>>,
-	/// Total angle swept around the layer's origin since the drag began, in degrees. Accumulated frame by
-	/// frame so it keeps counting past a full turn, which the angle between two points cannot express.
+	/// Angle swept around the layer's origin since the drag began, in degrees. Accumulated frame by frame so
+	/// it keeps counting past a full turn.
 	pub total_angle: f64,
 	/// This frame's rotation about the layer's origin, in degrees.
 	pub angle_delta: f64,
@@ -112,9 +97,8 @@ pub struct DragInput {
 pub struct DragWrites {
 	/// Node inputs to set.
 	pub inputs: Vec<(ParameterRef, TaggedValue)>,
-	/// A transform to apply to the layer, for a control that repositions the shape as it resizes it. A grid
-	/// grown from its top edge has to move up as it gains a row, or it would grow downward instead and the
-	/// edge would run away from the cursor holding it.
+	/// A transform to apply to the layer, for a control that moves the shape as it resizes it. A grid grown
+	/// from its top edge has to move up as it gains a row, or the edge slides out from under the cursor.
 	pub transform: Option<DAffine2>,
 }
 
@@ -142,73 +126,58 @@ pub type HoverDistancesFn = fn(&GizmoContext) -> Vec<Option<f64>>;
 /// How cursor motion becomes node inputs.
 pub type DragFn = fn(&GizmoContext, &mut DragInput) -> DragWrites;
 
-/// The escape hatch for nodes whose gizmo needs more than the generic mechanics.
+/// The escape hatch for a node whose gizmo needs more than the generic mechanics.
 ///
-/// The generic layer always owns hit-testing, the hover/drag state machine, the handle overlay, and the
-/// input write. A few behaviors genuinely depend on a node's geometry and cannot be expressed as data —
-/// a star's snap radii fall out of its side count and its *other* radius; a spiral's turns and outer
-/// radius have to move together or the spiral changes tightness as you drag. Those arrive here as
-/// functions supplied by the shape, so the registry stays a table and the shape-specific math stays
-/// with the shape.
+/// The generic layer always owns hit-testing, the hover/drag state machine, the handle overlay and the
+/// input write. What is left depends on the node's geometry and cannot be expressed as data: a star's snap
+/// radii fall out of its side count and its other radius. Those arrive here as functions from
+/// [`gizmo_behaviors`], so the registry stays a table. Every field is optional.
 #[derive(Clone, Copy, Debug)]
 pub struct GizmoBehavior {
 	/// Values the drag should snap to, recomputed from the layer's current parameters at drag start.
 	pub snap_targets: Option<SnapTargetsFn>,
-	/// Extra overlay drawn while this gizmo is hovered or dragged, for nodes that show more than the
-	/// bare handle (a star previews its outline and spokes, for instance).
+	/// Extra overlay for a node that shows more than the bare handle, such as the star's outline and spokes.
+	/// Called in every state, so it draws the resting affordance too.
 	pub overlay: Option<OverlayFn>,
-	/// Additional inputs to write alongside the dragged one, given the value the drag produced. Used by
-	/// parameters that are only meaningful in combination.
+	/// Inputs to write alongside the dragged one, given the value the drag produced.
 	pub coupled_writes: Option<CoupledWritesFn>,
-	/// Where this parameter can be grabbed, in the layer's local space, given its current value.
+	/// Where this parameter can be grabbed, in the layer's local space, given its current value. The default
+	/// is a single handle `value` out along the local +X axis.
 	///
-	/// A length parameter is usually grabbable in exactly one place, which is the default: a handle sitting
-	/// `value` out along the local +X axis. Some shapes offer the same parameter in several places at once —
-	/// a star's outer radius can be taken hold of at any of its outer points — so this returns all of them.
-	/// The drag then runs along the ray through whichever one the user grabbed, not along a fixed axis.
+	/// A shape may offer the same parameter in several places at once: a star's outer radius can be taken hold
+	/// of at any of its outer points. The drag then runs along the ray through the one the user grabbed.
 	pub handle_positions: Option<HandlePositionsFn>,
-	/// How far the cursor is from each of this parameter's grab points, when they are not points.
-	///
-	/// The default measures to the handle positions above, which suits a control you take hold of at a
-	/// spot. A grid's rows are grabbed anywhere along an edge, so it measures to a line instead. `None` in
-	/// a slot means that grab point is not available right now.
+	/// How far the cursor is from each grab point, when they are not points. The default measures to the
+	/// handle positions above; a grid's rows are grabbed anywhere along an edge, so it measures to a line
+	/// instead. `None` in a slot means that grab point is unavailable right now.
 	pub hover_distances: Option<HoverDistancesFn>,
-	/// How cursor motion becomes node inputs.
+	/// How cursor motion becomes node inputs. The default reads the cursor's distance along the ray through
+	/// the grabbed handle, which is what a length wants.
 	///
-	/// The default reads the cursor's distance along the ray through the grabbed handle and writes the one
-	/// parameter, which is what a radius or a length wants. A shape whose control winds or sweeps rather
-	/// than extends supplies its own and returns every input the motion implies -- a spiral's turns cannot
-	/// change without its outer radius following, or the spiral would tighten as it grows.
+	/// A control that winds or sweeps rather than extends supplies its own, and returns every input the
+	/// motion implies: a spiral's turns cannot change without its outer radius following, or it tightens as
+	/// it grows. Supplying one also bypasses clamping and snapping, since only a drag that writes several
+	/// parameters knows how they constrain each other.
 	///
-	/// Returning this in place of the default also bypasses clamping and snapping, since a drag that writes
-	/// several parameters is the only thing that knows how they constrain each other.
-	///
-	/// The [`DragInput`] is mutable because a drag may have to re-anchor itself: an arc dragged past a full
-	/// sweep hands over to its other endpoint and continues from there, which means rewriting the baseline
-	/// the rest of the gesture is measured against.
+	/// [`DragInput`] is mutable so a gesture can re-anchor: an arc dragged past a full sweep hands over to
+	/// its other endpoint and rewrites the baseline the rest of the drag is measured against.
 	pub drag: Option<DragFn>,
-	/// Per-frame rotation, in degrees, below which swept angle is treated as cursor noise rather than
-	/// intent. Near the layer's origin the angle between successive cursor positions is mostly noise, and
-	/// feeding it in makes the value jitter while the cursor is still. Zero accumulates everything.
+	/// Per-frame rotation, in degrees, below which swept angle counts as cursor noise. Near the layer's
+	/// origin the angle between successive positions is mostly noise, and feeding it in makes the value
+	/// jitter while the cursor is still. Zero accumulates everything.
 	pub angle_deadzone: f64,
-	/// Set when the shape's `overlay` already draws whatever the user grabs, so the generic handle dot and
-	/// its line from the origin are suppressed. A grid marks its edge with a dashed line and a circle draws
-	/// the band around its circumference; neither has a handle sitting at a point.
+	/// Set when `overlay` already draws whatever the user grabs, suppressing the generic handle dot and its
+	/// line from the origin. A grid marks its edge with a dashed line and a circle draws a band around its
+	/// circumference; neither has a handle sitting at a point.
 	pub draws_own_handle: bool,
-	/// Set when this gizmo is grabbed anywhere along a region rather than at a point -- a circle's whole
-	/// circumference, a grid's whole edge.
-	///
-	/// This decides priority when two handles overlap, and it has to, because the distances they report are
-	/// not the same measurement. A region reports how far the cursor is from the region: on a circumference
-	/// that is near zero everywhere along it. A point reports how far the cursor is from that point. An arc's
-	/// sweep endpoints sit *on* its circumference, so comparing the two numbers hands every grab to the radius
-	/// and the endpoints can never be taken hold of. A point target therefore wins outright over a region
-	/// target, and distance only separates handles of the same kind.
+	/// Set when this gizmo is grabbed anywhere along a region rather than at a point: a circle's whole
+	/// circumference, a grid's whole edge. Decides priority against an overlapping point handle, which wins
+	/// outright. See `rank_candidates` in [`generic_gizmos`](super::generic_gizmos).
 	pub extended_target: bool,
 }
 
 impl GizmoBehavior {
-	/// A behavior with no hooks set, for `const` declarations that only need one of them.
+	/// No hooks at all. A declaration sets the few fields it needs and takes the rest from here.
 	pub const NONE: Self = Self {
 		snap_targets: None,
 		overlay: None,
@@ -222,27 +191,19 @@ impl GizmoBehavior {
 	};
 }
 
-/// Describes a single gizmo-enabled parameter of a node: which input it edits, how it should be
-/// presented, and the constraints/positioning that apply.
+/// One gizmo-enabled parameter of a node: which input it edits, how it is presented, and the bounds that
+/// apply. `min` and `max` are inclusive.
 #[derive(Clone, Copy, Debug)]
 pub struct GizmoInfo {
-	/// The index of the node input this gizmo edits.
 	pub parameter_index: usize,
-	/// The control type to instantiate for this parameter.
 	pub gizmo_type: GizmoType,
-	/// A human-readable name, shown in overlays/tooltips.
+	/// Shown in overlays and tooltips.
 	pub name: &'static str,
-	/// Inclusive lower bound for the value, if any.
 	pub min: Option<f64>,
-	/// Inclusive upper bound for the value, if any.
 	pub max: Option<f64>,
-	/// Where the gizmo's handle should be anchored.
 	pub position_hint: PositionHint,
-	/// Shape-specific behavior, for the few nodes whose gizmo needs more than the generic mechanics.
 	pub behavior: GizmoBehavior,
 }
-
-// --- Per-node gizmo declarations ------------------------------------------------------------
 
 const CIRCLE_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	parameter_index: circle::RadiusInput::INDEX,
@@ -254,8 +215,8 @@ const CIRCLE_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	position_hint: PositionHint::ParameterDerived,
 }];
 
-// The radius is grabbable at every corner rather than at a single `(radius, 0)` handle, which would
-// land off the polygon's geometry -- see `polygon_radius_handles`.
+// The radius is grabbable at every corner rather than at a single `(radius, 0)` handle, which would land
+// off the polygon's geometry. See `polygon_radius_handles`.
 const POLYGON_GIZMOS: &[GizmoInfo] = &[
 	GizmoInfo {
 		parameter_index: regular_polygon::SidesInput::INDEX,
@@ -317,8 +278,8 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 		behavior: gizmo_behaviors::CIRCULAR_RADIUS,
 		position_hint: PositionHint::ParameterDerived,
 	},
-	// One entry, not two: dragging either endpoint can move the start angle and the sweep together, so a
-	// separate start-angle gizmo would be a second control over the same gesture.
+	// One entry, not two: either endpoint can move the start angle and the sweep together, so a separate
+	// start-angle gizmo would be a second control over the same gesture.
 	GizmoInfo {
 		parameter_index: arc::SweepAngleInput::INDEX,
 		gizmo_type: GizmoType::Angle,
@@ -330,9 +291,9 @@ const ARC_GIZMOS: &[GizmoInfo] = &[
 	},
 ];
 
-// Only the turns control. The inner and outer radii are reachable from the Properties panel, and a handle
-// for either would sit at an arbitrary point on a curve that is nowhere near circular -- whereas winding the
-// spiral from either of its own endpoints reads immediately.
+// Only the turns control. A handle for either radius would sit at an arbitrary point on a curve that is
+// nowhere near circular, whereas winding the spiral from its own endpoints reads immediately. Both radii
+// stay in the Properties panel.
 const SPIRAL_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	parameter_index: spiral::TurnsInput::INDEX,
 	gizmo_type: GizmoType::Slider,
@@ -343,10 +304,8 @@ const SPIRAL_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	position_hint: PositionHint::ParameterDerived,
 }];
 
-// Only the radius slider: the heart's many shaping parameters (cleavage, lobes, shoulders, point)
-// are fine-tuned via the Properties panel, while the overall size reads naturally as a canvas handle.
-// The heart has eleven parameters; these three are the ones with an obvious place to grab on the shape.
-// The rest -- curvature, tilt, sharpness -- are shaping controls better set by number than by eye.
+// Three of the heart's eleven parameters: the ones with an obvious place to grab on the shape. The rest
+// (curvature, tilt, sharpness) are shaping controls better set by number than by eye.
 const HEART_GIZMOS: &[GizmoInfo] = &[
 	GizmoInfo {
 		parameter_index: heart::RadiusInput::INDEX,
@@ -377,8 +336,8 @@ const HEART_GIZMOS: &[GizmoInfo] = &[
 	},
 ];
 
-// Rows and columns only. The spacing was declared as a position gizmo that was never built, and a grid's
-// spacing is a two-axis value with no obvious handle on the shape -- it stays in the Properties panel.
+// Rows and columns only. A grid's spacing is a two-axis value with no obvious handle on the shape, so it
+// stays in the Properties panel.
 const GRID_GIZMOS: &[GizmoInfo] = &[
 	GizmoInfo {
 		parameter_index: grid::ColumnsInput::INDEX,
@@ -400,11 +359,10 @@ const GRID_GIZMOS: &[GizmoInfo] = &[
 	},
 ];
 
-/// Returns every node type that has registered gizmos, paired with its gizmo declarations.
+/// Every node type with registered gizmos, paired with its declarations.
 ///
-/// The identifier is cloned at call time because [`ProtoNodeIdentifier`]s are not trivially
-/// usable as `'static` references in a `const`. This is cheap (the identifiers are backed by
-/// `&'static str`) and only runs when a selection changes.
+/// This is a function rather than a `const` because a [`ProtoNodeIdentifier`] is not usable as a `'static`
+/// reference in one. Building the array is cheap: the identifiers are backed by `&'static str`.
 pub fn registered_gizmo_nodes() -> [(ProtoNodeIdentifier, &'static [GizmoInfo]); 7] {
 	[
 		(generator_nodes::circle::IDENTIFIER, CIRCLE_GIZMOS),
@@ -417,8 +375,7 @@ pub fn registered_gizmo_nodes() -> [(ProtoNodeIdentifier, &'static [GizmoInfo]);
 	]
 }
 
-/// Looks up the gizmo declarations for a given node type. Returns an empty slice when the node
-/// has no registered gizmos.
+/// The gizmo declarations for a node type, or an empty slice when it has none.
 pub fn get_gizmo_info(identifier: &ProtoNodeIdentifier) -> &'static [GizmoInfo] {
 	registered_gizmo_nodes()
 		.into_iter()
@@ -451,7 +408,7 @@ mod tests {
 		assert_eq!(sides.parameter_index, 1);
 		assert_eq!(sides.min, Some(3.));
 
-		// The radius is grabbable at the polygon's corners, so it needs somewhere to put those handles.
+		// The radius is grabbed at the polygon's corners, so it has to place its own handles.
 		let radius = &infos[1];
 		assert_eq!(radius.gizmo_type, GizmoType::Slider);
 		assert_eq!(radius.min, Some(0.));
@@ -470,14 +427,13 @@ mod tests {
 		let infos = get_gizmo_info(&generator_nodes::heart::IDENTIFIER);
 		assert_eq!(infos.len(), 3);
 
-		// The radius is a plain distance, so it needs no behavior of its own.
+		// A plain distance, so it needs no behavior of its own.
 		let radius = &infos[0];
 		assert_eq!(radius.gizmo_type, GizmoType::Slider);
 		assert_eq!(radius.min, Some(0.));
 		assert!(radius.behavior.handle_positions.is_none());
 
-		// The other two are fractions of the radius rather than distances, so each places its own handle
-		// on the geometry and converts back on drag.
+		// The other two are fractions of the radius, so each places its own handle and converts back on drag.
 		for proportion in &infos[1..] {
 			assert!(proportion.behavior.handle_positions.is_some());
 			assert!(proportion.behavior.drag.is_some());
@@ -495,7 +451,7 @@ mod tests {
 
 	#[test]
 	fn unregistered_node_returns_no_gizmos() {
-		// The Fill node is not a generator with gizmos, so it must return an empty slice.
+		// The Fill node is not a generator, so it has no gizmos.
 		assert!(get_gizmo_info(&graphene_std::vector_nodes::fill::IDENTIFIER).is_empty());
 	}
 

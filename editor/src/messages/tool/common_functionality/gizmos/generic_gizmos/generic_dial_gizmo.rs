@@ -1,10 +1,7 @@
-//! A generic dial that edits a discrete `u32` node parameter (e.g. a polygon's side count).
+//! A dial that edits a `u32` node parameter, such as a polygon's side count.
 //!
-//! Like [`GenericSliderGizmo`](super::generic_slider_gizmo::GenericSliderGizmo), this is fully
-//! data-driven from the [gizmo registry]: it is anchored at the layer's origin and converts a
-//! horizontal drag into integer steps (drag right to increase, left to decrease).
-//!
-//! [gizmo registry]: crate::messages::tool::common_functionality::gizmos::gizmo_registry
+//! It sits at the layer's origin and turns a horizontal drag into integer steps: right to increase, left to
+//! decrease.
 
 use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
@@ -28,8 +25,8 @@ use std::collections::VecDeque;
 const DIAL_PIXELS_PER_STEP: f64 = 25.;
 /// Viewport radius of the drawn dial indicator.
 const DIAL_INDICATOR_RADIUS: f64 = NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH;
-/// Viewport radius of the clickable hit area. Deliberately larger than the drawn indicator so the
-/// handle is easy to grab and the press doesn't fall through to the layer-move behavior.
+/// Viewport radius of the clickable hit area. Larger than the drawn indicator so the handle is easy to grab
+/// and the press does not fall through to the layer-move behavior.
 const DIAL_HOVER_RADIUS: f64 = NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH + 8.;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -40,7 +37,7 @@ pub enum GenericDialState {
 	Dragging,
 }
 
-/// A rotary dial bound to one `u32` parameter of one node.
+/// A dial bound to one `u32` parameter of one node.
 #[derive(Clone, Debug)]
 pub struct GenericDialGizmo {
 	layer: LayerNodeIdentifier,
@@ -82,9 +79,8 @@ impl GenericDialGizmo {
 		}
 	}
 
-	/// The registry entry's parameter, re-paired with the node it was declared for. `ParameterRef` is the
-	/// runtime form of a parameter symbol: the generic gizmos choose their parameter from the registry at
-	/// runtime, so they cannot name a symbol at the call site, but the identifier and index still travel together.
+	/// The registry entry's parameter, re-paired with the node it was declared for. A gizmo picks its
+	/// parameter from the registry at runtime, so it cannot name a parameter symbol at the call site.
 	fn parameter(&self) -> ParameterRef {
 		ParameterRef {
 			node_identifier: self.identifier.clone(),
@@ -112,23 +108,22 @@ impl GenericDialGizmo {
 		read_u32_input(self.layer, document, &self.identifier, self.info.parameter_index)
 	}
 
-	/// Whether this gizmo is grabbed along a region rather than at a point, which decides priority
-	/// against an overlapping handle. See [`GizmoBehavior::extended_target`].
+	/// Whether this gizmo is grabbed along a region rather than at a point, which decides priority against an
+	/// overlapping handle. See `GizmoBehavior::extended_target`.
 	pub fn is_extended_target(&self) -> bool {
 		self.info.behavior.extended_target
 	}
 
-	/// Pure hover test: the mouse's distance to the dial's centre when it is a hover candidate, else
-	/// `None`. The dial occupies a disc of `DIAL_HOVER_RADIUS` around the layer origin. Performs no
-	/// state mutation; the manager uses this to resolve overlapping handles.
+	/// The cursor's distance to the dial's centre when it is a hover candidate, else `None`. The dial occupies
+	/// a disc of `DIAL_HOVER_RADIUS` around the layer origin. Mutates nothing.
 	pub fn hover_distance(&self, mouse_position: DVec2, document: &DocumentMessageHandler) -> Option<f64> {
 		self.current_value(document)?;
 
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
 
-		// Hide the dial once the shape is too small on screen to sit around: the hit disc would cover the
-		// whole thing, and a press meant for the layer would be swallowed by the gizmo.
+		// Once the shape is this small the hit disc covers the whole of it, and a press meant for the layer
+		// would be swallowed by the dial.
 		let bounds = document.metadata().bounding_box_viewport(self.layer)?;
 		if (bounds[1] - bounds[0]).max_element() / 2. < GIZMO_HIDE_THRESHOLD {
 			return None;
@@ -138,8 +133,8 @@ impl GenericDialGizmo {
 		(distance <= DIAL_HOVER_RADIUS).then_some(distance)
 	}
 
-	/// Transition into the hovered state (no-op if already hovered or dragging), capturing the
-	/// reference value because `handle_click` has no document access.
+	/// Enter the hovered state, unless already hovered or dragging. The reference value is captured here
+	/// because `handle_click`, which starts the drag, has no access to the document.
 	pub fn enter_hover(&mut self, document: &DocumentMessageHandler, _mouse_position: DVec2, responses: &mut VecDeque<Message>) {
 		if self.state != GenericDialState::Inactive {
 			return;
@@ -159,17 +154,17 @@ impl GenericDialGizmo {
 		}
 	}
 
-	/// Convert the drag into integer steps. The magnitude comes from the total drag distance (so the
-	/// dial responds to motion in any direction, not just horizontal), while the horizontal direction
-	/// decides the sign: drag right to increase, left to decrease. Clamped to the registry's bounds.
+	/// Convert the drag into integer steps, clamped to the registry's bounds. The magnitude comes from the
+	/// total drag distance, so the dial answers motion in any direction, while the horizontal component
+	/// decides the sign: right increases, left decreases.
 	pub fn handle_update(&self, drag_start: DVec2, _document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		let drag = input.mouse.position - drag_start;
 		let direction = (input.mouse.position.x - drag_start.x).signum();
 		let steps = ((drag.length() / DIAL_PIXELS_PER_STEP).round() * direction) as i64;
 
-		let min = self.info.min.map(|m| m as i64).unwrap_or(0);
+		let min = self.info.min.map(|min| min as i64).unwrap_or(0);
 		// u32::MAX, not i64::MAX: the cast below would wrap anything above it.
-		let max = self.info.max.map(|m| m as i64).unwrap_or(u32::MAX as i64);
+		let max = self.info.max.map(|max| max as i64).unwrap_or(u32::MAX as i64);
 		let new_value = (self.initial_value as i64 + steps).clamp(min, max) as u32;
 
 		responses.add(NodeGraphMessage::SetInput {
@@ -179,8 +174,7 @@ impl GenericDialGizmo {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	/// Draw the dial as a grabbable handle at the layer origin: an outer ring (the hit target) plus
-	/// a filled center dot so it reads as draggable.
+	/// Draw the dial at the layer origin: an outer ring plus a filled centre dot, so it reads as draggable.
 	pub fn overlays(&self, document: &DocumentMessageHandler, mouse_position: DVec2, shape_editor: Option<&ShapeState>, overlay_context: &mut OverlayContext) {
 		if let Some(overlay) = self.info.behavior.overlay {
 			overlay(&self.context(document, mouse_position, shape_editor), overlay_context);

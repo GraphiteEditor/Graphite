@@ -1,9 +1,7 @@
-//! A generic, draggable handle that edits a continuous `f64` node parameter (e.g. a radius).
+//! A draggable handle that edits an `f64` node parameter, such as a radius.
 //!
-//! Unlike the hand-written shape gizmos it replaced, this gizmo is fully driven by data
-//! from the [gizmo registry](crate::messages::tool::common_functionality::gizmos::gizmo_registry):
-//! it knows nothing about the specific node it edits beyond the node id, the parameter index, and
-//! the registry's [`GizmoInfo`]. This is what lets any node opt into a slider with zero custom code.
+//! It knows nothing about the node it edits beyond the node id, the parameter index and the registry's
+//! [`GizmoInfo`], which is what lets any node opt into a slider with no code of its own.
 
 use crate::consts::{GIZMO_HIDE_THRESHOLD, POINT_RADIUS_HANDLE_SNAP_THRESHOLD};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
@@ -16,7 +14,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::prelude::GraphOperationMessage;
 use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage, Responses};
 use crate::messages::tool::common_functionality::gizmos::generic_gizmos::read_number_input;
-use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{DragInput, GizmoContext, GizmoInfo, GizmoState, PositionHint};
+use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{DragInput, GizmoContext, GizmoInfo, GizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use glam::{DAffine2, DVec2};
@@ -46,17 +44,16 @@ pub struct GenericSliderGizmo {
 	identifier: ProtoNodeIdentifier,
 	info: GizmoInfo,
 	state: GenericSliderState,
-	/// The parameter value captured when the drag began, used as the clamping/anchor reference.
+	/// The parameter's value when the drag began, the anchor every later frame is measured from.
 	initial_value: f64,
-	/// Values this drag should snap to, resolved once when the gizmo is first hovered. They depend on the
-	/// layer's *other* parameters, so they are captured alongside `initial_value` rather than recomputed
-	/// per frame while the value being dragged is already in flux.
+	/// Values this drag should snap to, resolved once on hover. They depend on the layer's other parameters,
+	/// so they are captured alongside `initial_value` rather than recomputed while the dragged value is in
+	/// flux.
 	snap_targets: Vec<f64>,
-	/// Which grab point the user took hold of, indexing `handle_positions`. Zero for the common case of a
-	/// parameter with a single handle.
+	/// Which grab point the user took hold of, indexing `handle_positions`. Zero for a single handle.
 	handle_index: usize,
-	/// The node's inputs as they stood when the drag began. A drag that writes several parameters needs
-	/// them, since the live values are the ones it already wrote.
+	/// The node's inputs as they stood when the drag began. A drag that writes several parameters needs them,
+	/// since the live values are the ones it already wrote.
 	initial_parameters: Vec<Option<TaggedValue>>,
 	/// Cursor position last frame, for accumulating swept angle.
 	previous_mouse_position: DVec2,
@@ -111,9 +108,8 @@ impl GenericSliderGizmo {
 		}
 	}
 
-	/// The registry entry's parameter, re-paired with the node it was declared for. `ParameterRef` is the
-	/// runtime form of a parameter symbol: the generic gizmos choose their parameter from the registry at
-	/// runtime, so they cannot name a symbol at the call site, but the identifier and index still travel together.
+	/// The registry entry's parameter, re-paired with the node it was declared for. A gizmo picks its
+	/// parameter from the registry at runtime, so it cannot name a parameter symbol at the call site.
 	fn parameter(&self) -> ParameterRef {
 		ParameterRef {
 			node_identifier: self.identifier.clone(),
@@ -151,18 +147,13 @@ impl GenericSliderGizmo {
 
 	/// Every point in the layer's local space where this parameter can be grabbed.
 	///
-	/// Shapes that place their handles on their own geometry supply them; everything else gets the single
-	/// default handle, sitting `value` out along the local +X axis.
+	/// A shape that puts its handles on its own geometry supplies them. Everything else gets the single
+	/// default handle, `value` out along the local +X axis. The bounding-box position hints fall
+	/// through to that same default until a node needs them.
 	fn handle_positions(&self, document: &DocumentMessageHandler, value: f64) -> Vec<DVec2> {
 		match self.info.behavior.handle_positions {
 			Some(positions) => positions(&self.context(document, DVec2::ZERO, None), value),
-			None => vec![match self.info.position_hint {
-				// A length-like parameter: place the handle that far out along the local +X axis.
-				PositionHint::ParameterDerived => DVec2::new(value.abs(), 0.),
-				// Generic fall-backs map the value onto the local +X axis as well; bounding-box-aware
-				// hints are refined as more node types adopt the slider.
-				_ => DVec2::new(value.abs(), 0.),
-			}],
+			None => vec![DVec2::new(value.abs(), 0.)],
 		}
 	}
 
@@ -172,15 +163,14 @@ impl GenericSliderGizmo {
 		handles.get(self.handle_index).copied().or_else(|| handles.first().copied())
 	}
 
-	/// Pure hover test: returns the mouse's distance to the handle when it is a hover candidate, or
-	/// `None` otherwise. The manager uses this distance to resolve priority when several gizmos
-	/// overlap (the closest handle wins). This performs no state mutation.
-	/// Whether this gizmo is grabbed along a region rather than at a point, which decides priority
-	/// against an overlapping handle. See [`GizmoBehavior::extended_target`].
+	/// Whether this gizmo is grabbed along a region rather than at a point, which decides priority against an
+	/// overlapping handle. See `GizmoBehavior::extended_target`.
 	pub fn is_extended_target(&self) -> bool {
 		self.info.behavior.extended_target
 	}
 
+	/// The cursor's distance to the nearest grab point, or `None` when none of them is a hover candidate. The
+	/// manager uses it to resolve priority between overlapping gizmos. Mutates nothing.
 	pub fn hover_distance(&self, mouse_position: DVec2, document: &DocumentMessageHandler) -> Option<f64> {
 		let value = self.current_value(document)?;
 
@@ -228,9 +218,8 @@ impl GenericSliderGizmo {
 			.unwrap_or(0)
 	}
 
-	/// Transition into the hovered state (no-op if already hovered or dragging). Capturing the
-	/// reference value here is necessary because `handle_click` (which starts the drag) has no
-	/// access to the document.
+	/// Enter the hovered state, unless already hovered or dragging. The reference values are captured here
+	/// because `handle_click`, which starts the drag, has no access to the document.
 	pub fn enter_hover(&mut self, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
 		if self.state != GenericSliderState::Inactive {
 			return;
@@ -259,13 +248,12 @@ impl GenericSliderGizmo {
 		}
 	}
 
-	/// Update the parameter live while dragging. The new value is the mouse's position projected
-	/// onto the local +X axis, clamped to the registry's min/max bounds.
+	/// Write the parameter live while dragging, from how far the cursor has travelled along the ray through
+	/// the grabbed handle, or from the shape's own `drag` when it supplies one.
 	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		// The first frame of a drag fixes the reference every later frame is measured against. Take it from
-		// the cursor itself rather than the tool's drag start: the two are in the same space, but the tool's
-		// may have been snapped to nearby geometry, and that offset would otherwise be spent as movement the
-		// instant the handle is grabbed -- a visible nudge on a click that never moved.
+		// Take the reference from the cursor rather than the tool's drag start. The two are in the same space,
+		// but the tool's may have been snapped to nearby geometry, and that offset would be spent as movement
+		// the instant the handle is grabbed: a visible nudge on a click that never moved.
 		if self.drag_origin.is_none() {
 			self.drag_origin = Some(input.mouse.position);
 			self.previous_mouse_position = input.mouse.position;
@@ -321,23 +309,20 @@ impl GenericSliderGizmo {
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let local_mouse = viewport.inverse().transform_point2(input.mouse.position);
 
-		// Project the cursor onto the ray through the grabbed handle. For the default single handle that ray
-		// is the +X axis; for a handle sitting on the shape's own geometry it is the ray the user is visibly
-		// pulling along.
+		// The ray through the grabbed handle: the +X axis for the default handle, and for a handle on the
+		// shape's own geometry the direction the user is visibly pulling along.
 		let Some(anchor) = self.active_handle_local(document, self.initial_value) else { return };
 		let ray = anchor.try_normalize().unwrap_or(DVec2::X);
 
-		// Measure how far the cursor has travelled along that ray rather than where it now sits, so the value
-		// does not jump the instant the handle is grabbed a pixel off centre. This is what the hand-written
-		// handlers did, all of which added a delta to the value they started from.
+		// Measure how far the cursor has travelled along it rather than where it now sits, so the value does
+		// not jump when the handle is grabbed a pixel off centre.
 		let travelled = local_mouse.dot(ray) - viewport.inverse().transform_point2(drag_start).dot(ray);
 
-		// Preserve the sign of the original value for parameters (like radius) that can be negative.
+		// Keep the sign of the original value, since a radius can be negative.
 		let direction = if self.initial_value.is_sign_negative() { -1. } else { 1. };
 		let mut value = self.initial_value + travelled * direction;
 
-		// Clamp last: snapping after clamping lets a target just outside the declared bounds pull the
-		// value back out of range.
+		// Clamp last: snapping afterwards would let a target outside the bounds pull the value back out.
 		value = self.clamp(self.snap(value));
 
 		responses.add(NodeGraphMessage::SetInput {
@@ -345,8 +330,7 @@ impl GenericSliderGizmo {
 			input: NodeInput::value(TaggedValue::F64(value), false),
 		});
 
-		// Parameters that are only meaningful in combination are written in the same batch, so the graph
-		// never evaluates a half-updated shape.
+		// Written in the same batch, so the graph never evaluates a half-updated shape.
 		if let Some(coupled_writes) = self.info.behavior.coupled_writes {
 			for (parameter, coupled_value) in coupled_writes(&self.context(document, input.mouse.position, None), value) {
 				responses.add(NodeGraphMessage::SetInput {
@@ -360,9 +344,8 @@ impl GenericSliderGizmo {
 	}
 
 	/// Add this frame's rotation about the layer's origin to the running total, so a drag that winds several
-	/// times around keeps counting instead of wrapping at half a turn.
-	///
-	/// Rotations inside the behavior's deadzone are dropped; see `GizmoBehavior::angle_deadzone`.
+	/// times around keeps counting instead of wrapping at half a turn. Rotations inside the behavior's
+	/// deadzone are dropped.
 	fn accumulate_angle(&mut self, document: &DocumentMessageHandler, mouse_position: DVec2) {
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
@@ -378,8 +361,7 @@ impl GenericSliderGizmo {
 		self.total_angle += self.angle_delta;
 	}
 
-	/// Pull the value onto the nearest snap target within the threshold. Returns the value unchanged when
-	/// nothing is in range.
+	/// Pull the value onto the nearest snap target in range, or leave it alone.
 	fn snap(&self, value: f64) -> f64 {
 		nearest_snap_target(value, &self.snap_targets, POINT_RADIUS_HANDLE_SNAP_THRESHOLD).unwrap_or(value)
 	}
@@ -397,16 +379,15 @@ impl GenericSliderGizmo {
 
 	/// Draw the handle dot, plus a guide line from the layer origin while hovered or dragging.
 	pub fn overlays(&self, document: &DocumentMessageHandler, mouse_position: DVec2, shape_editor: Option<&ShapeState>, overlay_context: &mut OverlayContext) {
-		// The shape's own overlay runs in every state: a resting affordance is exactly the case it wants to
-		// draw for, and the generic handle below only appears once the gizmo is engaged.
+		// The shape's own overlay runs in every state, including at rest, where the generic handle below is
+		// the only other thing on screen.
 		if let Some(overlay) = self.info.behavior.overlay {
 			overlay(&self.context(document, mouse_position, shape_editor), overlay_context);
 		}
 
 		if self.state == GenericSliderState::Inactive {
-			// A shape that draws its own overlay has already put something on screen to aim at. One that
-			// does not would otherwise be invisible until the cursor happened to land on it, so the generic
-			// layer marks where it can be grabbed.
+			// A shape with its own overlay has already put something on screen to aim at. One without would be
+			// invisible until the cursor happened to land on it, so mark where it can be grabbed.
 			if self.info.behavior.overlay.is_none() && !self.info.behavior.draws_own_handle {
 				self.draw_resting_handles(document, overlay_context);
 			}
@@ -432,7 +413,7 @@ impl GenericSliderGizmo {
 		overlay_context.manipulator_handle(handle, self.state == GenericSliderState::Dragging, None);
 	}
 
-	/// Mark every grab point with an unengaged handle, so a control with no overlay of its own is still
+	/// Mark every grab point with an unengaged handle, so a control with no overlay of its own is
 	/// discoverable before the cursor finds it.
 	fn draw_resting_handles(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		let Some(value) = self.current_value(document) else { return };
@@ -441,7 +422,7 @@ impl GenericSliderGizmo {
 
 		for local in self.handle_positions(document, value) {
 			let handle = viewport.transform_point2(local);
-			// Too small on screen to aim at, and the handle would sit on top of the shape's own centre.
+			// Too small on screen to aim at: the handle would sit on top of the shape's own centre.
 			if handle.distance(center) < GIZMO_HIDE_THRESHOLD {
 				continue;
 			}
@@ -458,7 +439,7 @@ impl GenericSliderGizmo {
 }
 
 /// The snap target closest to `value`, if any lies within `threshold`. Ties go to the earlier target, so a
-/// shape can express priority through the order it returns them in.
+/// shape expresses priority through the order it returns them in.
 fn nearest_snap_target(value: f64, targets: &[f64], threshold: f64) -> Option<f64> {
 	targets
 		.iter()
@@ -496,13 +477,13 @@ mod tests {
 
 	#[test]
 	fn ties_go_to_the_earlier_target() {
-		// A shape returns its most important snap targets first, so an exact tie must not reorder them.
+		// A shape returns its most important targets first, so an exact tie must not reorder them.
 		assert_eq!(nearest_snap_target(50., &[45., 55.], 8.), Some(45.));
 	}
 
 	#[test]
 	fn handles_negative_values() {
-		// Radii can be negative, and a negative radius snaps against negative targets.
+		// A radius can be negative, and snaps against the negative targets.
 		assert_eq!(nearest_snap_target(-48., &[-50., 50.], 8.), Some(-50.));
 	}
 }

@@ -9,7 +9,7 @@ machinery for them. Adding one to a node usually means writing a table entry, no
 gizmo_registry.rs    which parameters get gizmos, declared as data
 generic_gizmos/      the mechanics: hit-testing, hover/drag, overlays, writing the input
 gizmo_behaviors.rs   the shape-specific half, and the only place node geometry belongs
-gizmo_manager.rs     picks the right handler for the selected layer
+gizmo_manager.rs     builds a handler per selected layer and routes events to it
 ```
 
 The generic layer always owns the hover/drag state machine, arbitration between overlapping gizmos,
@@ -35,13 +35,15 @@ const HEART_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 Then register the node so the manager can find it:
 
 ```rust
-fn registered_gizmo_nodes() -> Vec<(ProtoNodeIdentifier, &'static [GizmoInfo])> {
-    vec![
+pub fn registered_gizmo_nodes() -> [(ProtoNodeIdentifier, &'static [GizmoInfo]); 7] {
+    [
         // ...
         (generator_nodes::heart::IDENTIFIER, HEART_GIZMOS),
     ]
 }
 ```
+
+The array length is part of the signature, so remember to bump it.
 
 That gives you a handle sitting `radius` out along the local +X axis, discoverable at rest, draggable,
 clamped, undoable. If your parameter is a length measured from the layer's origin, stop here.
@@ -138,8 +140,8 @@ transform is the one exception, and it moves the layer rather than the geometry.
   through, which is meaningless for a fraction-of-the-radius parameter.
 - **The transform cage sits on top of the obvious grab points.** Its corner and edge handles land where a
   circle's radius or an arc's endpoint invites the cursor, and it wins the press. Test away from them.
-- **The bounding-box `PositionHint` variants are inert.** Every migrated shape derives its handle from a
-  parameter, so `BoundingBoxCenter` and friends currently fall through to the +X axis.
+- **The bounding-box `PositionHint` variants are inert.** Every shape so far derives its handle from a
+  parameter, so `BoundingBoxCenter` and friends fall through to the +X axis.
 - **Two overlapping handles are not ranked by distance alone.** A gizmo grabbed along a region reports how
   far the cursor is from that region, which is near zero everywhere along it; a point handle reports its
   real distance. Comparing those two numbers gives the region every grab. Mark the region one

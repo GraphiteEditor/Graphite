@@ -1,13 +1,9 @@
-//! # Gizmo behaviors
+//! The shape-specific half of the gizmo system, and the only place node geometry belongs.
 //!
-//! The shape-specific half of the generic gizmo system, and the only place node geometry is allowed to
-//! leak into it.
-//!
-//! The [generic gizmos](super::generic_gizmos) own everything that is the same for every shape: the
-//! hover/drag state machine, hit-testing, the handle overlay, and writing the node input. A handful of
-//! behaviors are irreducibly shape-specific, though — a star's snap radii are a function of its side
-//! count and its *other* radius, and no amount of registry data expresses that. Those live here as plain
-//! functions, referenced from the [registry](super::gizmo_registry) table.
+//! The [generic gizmos](super::generic_gizmos) own what is the same for every shape: hit-testing, the
+//! hover/drag state machine, the handle overlay and the node input write. What is left is irreducibly
+//! shape-specific, such as a star's snap radii being a function of its side count and its other radius.
+//! Those live here as plain functions, referenced from the [registry](super::gizmo_registry) table.
 
 use crate::consts::{ARC_SNAP_THRESHOLD, COLOR_OVERLAY_RED};
 use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION, NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD};
@@ -33,158 +29,101 @@ use graphene_std::vector::misc::{GridType, SpiralType, dvec2_to_point, get_line_
 use kurbo::ParamCurveNearest;
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_2, FRAC_PI_4, PI, SQRT_2, TAU};
 
-/// The star's sides dial: previews the shape it is about to change.
+/// The star's sides dial, which previews the shape it is about to change.
 pub const STAR_SIDES: GizmoBehavior = GizmoBehavior {
-	snap_targets: None,
 	overlay: Some(star_sides_overlay),
-	coupled_writes: None,
-	handle_positions: None,
-	hover_distances: None,
-	drag: None,
-	angle_deadzone: 0.,
-	draws_own_handle: false,
-	extended_target: false,
+	..GizmoBehavior::NONE
 };
 
-/// Either of the star's radius handles: snaps to the radii where the star's points line up, and previews
-/// the outline while being dragged.
+/// Either of the star's radius handles. Snaps to the radii where its points line up, and previews the
+/// outline while dragged.
 pub const STAR_RADIUS: GizmoBehavior = GizmoBehavior {
 	snap_targets: Some(star_snap_radii),
 	overlay: Some(star_radius_overlay),
-	coupled_writes: None,
 	handle_positions: Some(star_radius_handles),
-	hover_distances: None,
-	drag: None,
-	angle_deadzone: 0.,
-	draws_own_handle: false,
-	extended_target: false,
+	..GizmoBehavior::NONE
 };
 
 /// A circular radius, for the circle and the arc. Grabbed anywhere on the circumference rather than at one
-/// point on it, which is how the hand-written handler worked and what the shape invites.
+/// point on it.
 pub const CIRCULAR_RADIUS: GizmoBehavior = GizmoBehavior {
-	snap_targets: None,
 	overlay: Some(circular_radius_overlay),
-	coupled_writes: None,
-	handle_positions: None,
 	hover_distances: Some(circular_radius_distances),
 	drag: Some(circular_radius_drag),
-	angle_deadzone: 0.,
 	draws_own_handle: true,
 	extended_target: true,
+	..GizmoBehavior::NONE
 };
 
 /// The grid's row count, grabbed along its top or bottom edge.
 pub const GRID_ROWS: GizmoBehavior = GizmoBehavior {
-	snap_targets: None,
 	overlay: Some(grid_edge_overlay),
-	coupled_writes: None,
-	handle_positions: None,
 	hover_distances: Some(grid_row_distances),
 	drag: Some(grid_edge_drag),
-	angle_deadzone: 0.,
 	draws_own_handle: true,
 	extended_target: true,
+	..GizmoBehavior::NONE
 };
 
 /// The grid's column count, grabbed along its left or right edge.
 pub const GRID_COLUMNS: GizmoBehavior = GizmoBehavior {
-	snap_targets: None,
 	overlay: Some(grid_edge_overlay),
-	coupled_writes: None,
-	handle_positions: None,
 	hover_distances: Some(grid_column_distances),
 	drag: Some(grid_edge_drag),
-	angle_deadzone: 0.,
 	draws_own_handle: true,
 	extended_target: true,
+	..GizmoBehavior::NONE
 };
 
-/// The arc's sweep, grabbable at either end of the curve. Dragging either endpoint reshapes the arc; the
-/// start endpoint carries the whole arc round with it, the end endpoint only opens or closes the sweep.
+/// The arc's sweep, grabbable at either end of the curve. The start endpoint carries the whole arc round
+/// with it; the end endpoint only opens or closes the sweep.
 pub const ARC_SWEEP: GizmoBehavior = GizmoBehavior {
-	snap_targets: None,
 	overlay: Some(arc_sweep_overlay),
-	coupled_writes: None,
 	handle_positions: Some(arc_sweep_handles),
-	hover_distances: None,
 	drag: Some(arc_sweep_drag),
-	angle_deadzone: 0.,
-	draws_own_handle: false,
-	extended_target: false,
+	..GizmoBehavior::NONE
 };
 
 /// The spiral's winding control. Grabbable at either end of the curve; dragging winds or unwinds it.
 pub const SPIRAL_TURNS: GizmoBehavior = GizmoBehavior {
-	snap_targets: None,
 	overlay: Some(spiral_turns_overlay),
-	coupled_writes: None,
 	handle_positions: Some(spiral_turns_handles),
-	hover_distances: None,
 	drag: Some(spiral_turns_drag),
 	angle_deadzone: 0.5,
-	draws_own_handle: false,
-	extended_target: false,
+	..GizmoBehavior::NONE
 };
 
 /// The heart's cleavage: the notch between its lobes, dragged straight down from the top.
 pub const HEART_CLEAVAGE: GizmoBehavior = GizmoBehavior {
-	snap_targets: None,
-	overlay: None,
-	coupled_writes: None,
 	handle_positions: Some(heart_cleavage_handles),
-	hover_distances: None,
 	drag: Some(heart_cleavage_drag),
-	angle_deadzone: 0.,
-	draws_own_handle: false,
-	extended_target: false,
+	..GizmoBehavior::NONE
 };
 
 /// The heart's shoulder width, grabbed at either lobe.
 pub const HEART_SHOULDER: GizmoBehavior = GizmoBehavior {
-	snap_targets: None,
-	overlay: None,
-	coupled_writes: None,
 	handle_positions: Some(heart_shoulder_handles),
-	hover_distances: None,
 	drag: Some(heart_shoulder_drag),
-	angle_deadzone: 0.,
-	draws_own_handle: false,
-	extended_target: false,
+	..GizmoBehavior::NONE
 };
 
 /// The polygon's radius, grabbable at any of its corners.
 pub const POLYGON_RADIUS: GizmoBehavior = GizmoBehavior {
-	snap_targets: None,
 	overlay: Some(polygon_radius_overlay),
-	coupled_writes: None,
 	handle_positions: Some(polygon_radius_handles),
-	hover_distances: None,
-	drag: None,
-	angle_deadzone: 0.,
-	draws_own_handle: false,
-	extended_target: false,
+	..GizmoBehavior::NONE
 };
 
 /// The polygon's sides dial, the counterpart to [`STAR_SIDES`].
 pub const POLYGON_SIDES: GizmoBehavior = GizmoBehavior {
-	snap_targets: None,
 	overlay: Some(polygon_sides_overlay),
-	coupled_writes: None,
-	handle_positions: None,
-	hover_distances: None,
-	drag: None,
-	angle_deadzone: 0.,
-	draws_own_handle: false,
-	extended_target: false,
+	..GizmoBehavior::NONE
 };
 
-/// The radii at which dragging one of a star's radius handles makes its points line up: the value where
-/// the tips sit at 90°, the mirrored case where the handle overtakes the other radius, and then every
-/// radius that puts a vertex collinear with one of its neighbors.
+/// The radii at which a star's points line up: where the tips sit at 90°, the mirrored case where the
+/// dragged handle overtakes the other radius, and every radius putting a vertex collinear with a neighbor.
 ///
-/// All of them are derived from the side count and the radius that is *not* being dragged, which is why
-/// this cannot be a registry constant.
+/// All are derived from the side count and the radius that is not being dragged.
 fn star_snap_radii(context: &GizmoContext) -> Vec<f64> {
 	let mut snap_radii = Vec::new();
 
@@ -202,7 +141,7 @@ fn star_snap_radii(context: &GizmoContext) -> Vec<f64> {
 	let other_radius = if context.parameter == ParameterRef::from(star::Radius2Input) { radius_1 } else { radius_2 };
 
 	// With one radius negative and the other positive the star is inside out, and none of the alignments
-	// below describe a shape the user can see, so there is nothing worth snapping to.
+	// below describe a shape the user can see.
 	if (radius_1.signum() * radius_2.signum()).is_sign_negative() {
 		return snap_radii;
 	}
@@ -224,8 +163,8 @@ fn star_snap_radii(context: &GizmoContext) -> Vec<f64> {
 		if factor < 0. {
 			break;
 		}
-		// Both pushes need the guard. For an even-sided star `factor` is ~1e-16 at i == sides/2, and the
-		// unguarded reciprocal turned that into a ~1e18 px snap target with a tick drawn off-screen.
+		// Both pushes need the guard: on an even-sided star `factor` is ~1e-16 at i == sides / 2, and the
+		// unguarded reciprocal makes that a ~1e18 px snap target with a tick drawn off screen.
 		if other_radius.abs() * factor > 1e-6 {
 			snap_radii.push(other_radius.abs() * sign * factor);
 			snap_radii.push((other_radius.abs() * sign) / factor);
@@ -235,8 +174,8 @@ fn star_snap_radii(context: &GizmoContext) -> Vec<f64> {
 	snap_radii
 }
 
-/// A star's radius is grabbable at every vertex that radius controls: `radius_1` at the outer points,
-/// `radius_2` at the inner ones. Whichever the user takes hold of, the drag runs out along that point.
+/// A star's radius is grabbable at every vertex it controls: `radius_1` at the outer points, `radius_2` at
+/// the inner ones. The drag then runs out along whichever one the user took hold of.
 fn star_radius_handles(context: &GizmoContext, value: f64) -> Vec<DVec2> {
 	let Some((sides, _, _)) = extract_star_parameters(Some(context.layer), context.document) else {
 		return Vec::new();
@@ -256,9 +195,8 @@ fn star_first_vertex(context: &GizmoContext) -> u32 {
 	if context.parameter == ParameterRef::from(star::Radius2Input) { 1 } else { 0 }
 }
 
-/// At rest, mark every vertex this radius controls so the handles are discoverable. Once one is engaged,
-/// swap to the ray it is being pulled along, the outline of the shape being reshaped, and ticks at each
-/// radius the drag will snap to.
+/// At rest, mark every vertex this radius controls. Once one is engaged, swap to the ray it is pulled
+/// along, the outline being reshaped, and a tick at each radius the drag will snap to.
 fn star_radius_overlay(context: &GizmoContext, overlay_context: &mut OverlayContext) {
 	let Some((sides, radius_1, radius_2)) = extract_star_parameters(Some(context.layer), context.document) else {
 		return;
@@ -271,7 +209,7 @@ fn star_radius_overlay(context: &GizmoContext, overlay_context: &mut OverlayCont
 		for vertex in (first_vertex..2 * sides).step_by(2) {
 			let point = star_vertex_position(viewport, vertex as i32, sides, radius_1, radius_2);
 
-			// Once the star is this small on screen the handles crowd its center and cannot be told apart.
+			// Any smaller and the handles crowd the centre and cannot be told apart.
 			if point.distance(center) < GIZMO_HIDE_THRESHOLD {
 				return;
 			}
@@ -284,8 +222,7 @@ fn star_radius_overlay(context: &GizmoContext, overlay_context: &mut OverlayCont
 	let point = star_vertex_position(viewport, vertex, sides, radius_1, radius_2);
 	let Some(direction) = (point - center).try_normalize() else { return };
 
-	// Extend the ray across the viewport: the radius keeps growing past the edge of the shape, and the line
-	// is what makes the direction of the drag readable.
+	// Extend the ray across the viewport: the radius keeps growing past the edge of the shape.
 	overlay_context.line(center, center + direction * overlay_context.viewport.size().into_dvec2().length(), None, None);
 	star_outline(Some(context.layer), context.document, overlay_context);
 
@@ -304,9 +241,8 @@ fn star_sides_overlay(context: &GizmoContext, overlay_context: &mut OverlayConte
 	let viewport = context.document.metadata().transform_to_viewport(context.layer);
 
 	if context.state == GizmoState::Inactive {
-		// At rest the spokes are only a hint that the dial is there, so they appear once the cursor is
-		// inside the star, and stand down near an editable segment where they would compete with the path
-		// editor's own overlays.
+		// At rest the spokes only hint that the dial is there, so they appear once the cursor is inside the
+		// star and stand down near an editable segment, where they would compete with the path editor.
 		if over_editable_segment(context) {
 			return;
 		}
@@ -353,8 +289,8 @@ fn over_editable_segment(context: &GizmoContext) -> bool {
 		.is_some_and(|segment| segment.layer() == context.layer)
 }
 
-/// One short line per side, radiating from the center. They lengthen once the dial is engaged, which is
-/// what makes the count being edited legible while dragging.
+/// One short line per side, radiating from the center. They lengthen once the dial is engaged, which makes
+/// the count legible while dragging.
 fn draw_spokes(viewport: DAffine2, sides: u32, radius: f64, state: GizmoState, overlay_context: &mut OverlayContext) {
 	let center = viewport.transform_point2(DVec2::ZERO);
 	let length = match state {
@@ -368,8 +304,7 @@ fn draw_spokes(viewport: DAffine2, sides: u32, radius: f64, state: GizmoState, o
 
 		let Some(direction) = (point - center).try_normalize() else { continue };
 
-		// Once the shape is this small on screen the spokes are longer than the shape itself, which reads
-		// as noise rather than as a control.
+		// Any smaller and the spokes are longer than the shape, which reads as noise rather than a control.
 		if point.distance(center) < GIZMO_HIDE_THRESHOLD {
 			return;
 		}
@@ -406,11 +341,11 @@ fn spiral_turns_handles(context: &GizmoContext, _value: f64) -> Vec<DVec2> {
 	]
 }
 
-/// Winding the spiral by dragging either end.
+/// Wind the spiral by dragging either end.
 ///
-/// Turns alone would change the spiral's tightness as it grows, so the outer radius moves with it by
-/// whatever keeps the growth factor the drag started with. Taking hold of the inner end winds the other
-/// way and carries the start angle along, so the end the user is *not* holding stays put.
+/// Turns alone would change its tightness as it grows, so the outer radius moves with them by whatever
+/// keeps the growth factor the drag started with. Taking hold of the inner end winds the other way and
+/// carries the start angle along, so the end the user is not holding stays put.
 fn spiral_turns_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
 	use graphene_std::vector::generator_nodes::spiral::*;
 
@@ -492,13 +427,11 @@ fn arc_sweep_handles(context: &GizmoContext, _value: f64) -> Vec<DVec2> {
 }
 
 /// The angles a sweep settles onto: every eighth of a turn, from closed to fully round.
-fn arc_snap_angles() -> Vec<f64> {
-	(0..=8).map(|i| (i as f64 * FRAC_PI_4).to_degrees()).collect()
-}
+const ARC_SNAP_ANGLES: [f64; 9] = [0., 45., 90., 135., 180., 225., 270., 315., 360.];
 
 /// How far the sweep must move to land on the nearest snap angle, or `None` if none is close enough.
 fn arc_snap_delta(sweep_angle: f64, dragging_start: bool) -> Option<f64> {
-	arc_snap_angles().into_iter().find(|angle| (angle - sweep_angle).abs() <= ARC_SNAP_THRESHOLD).map(|angle| {
+	ARC_SNAP_ANGLES.into_iter().find(|angle| (angle - sweep_angle).abs() <= ARC_SNAP_THRESHOLD).map(|angle| {
 		let delta = angle - sweep_angle;
 		// Dragging the start endpoint moves the sweep the opposite way from the cursor.
 		if dragging_start { -delta } else { delta }
@@ -507,10 +440,10 @@ fn arc_snap_delta(sweep_angle: f64, dragging_start: bool) -> Option<f64> {
 
 /// Reshape the arc by dragging one of its endpoints.
 ///
-/// The sweep is held to a single turn and never runs backwards, and the start angle is kept inside
-/// [-180°, 180°]. Both limits are reached by *continuing* a drag rather than ending it, so rather than
-/// stopping at the limit the gesture re-anchors: dragging the start endpoint past a full sweep hands over
-/// to the end endpoint and carries on from there, which is why the baseline is rewritten as it goes.
+/// The sweep is held to a single turn and never runs backwards, and the start angle stays inside
+/// [-180°, 180°]. Both limits are reached by continuing a drag rather than ending it, so the gesture
+/// re-anchors instead of stopping: past a full sweep the start endpoint hands over to the end endpoint and
+/// carries on from there. That is what the rewritten baselines below are for.
 fn arc_sweep_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
 	use graphene_std::vector::generator_nodes::arc::*;
 
@@ -615,7 +548,7 @@ fn arc_sweep_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
 }
 
 /// Mark both endpoints at rest, highlight the one under the cursor, and while dragging show the sweep being
-/// described: the arc between where the endpoint started and where it is now, labelled with its angle.
+/// described, labelled with its angle.
 fn arc_sweep_overlay(context: &GizmoContext, overlay_context: &mut OverlayContext) {
 	let Some((current_start, current_end)) = arc_end_points(Some(context.layer), context.document) else {
 		return;
@@ -660,7 +593,7 @@ fn arc_sweep_overlay(context: &GizmoContext, overlay_context: &mut OverlayContex
 	overlay_context.arc_sweep_angle(offset_angle, angle, point, point.distance(center), center, &text, transform);
 }
 
-/// Squared viewport distance within which an edge counts as grabbed, matching the hand-written gizmo.
+/// Squared viewport distance within which an edge counts as grabbed.
 const GRID_EDGE_THRESHOLD_SQUARED: f64 = 32.;
 
 /// The two edges that control a grid's rows, in the order their handle indices refer to.
@@ -677,7 +610,7 @@ fn grid_column_distances(context: &GizmoContext) -> Vec<Option<f64>> {
 }
 
 /// A grid's dimensions are grabbed anywhere along an edge, not at a point on it, so proximity is measured to
-/// the edge line -- or to nothing at all, if the cursor is inside the band the edge occupies.
+/// the edge line, or to nothing at all when the cursor is already inside the band the edge occupies.
 fn grid_edge_distances(context: &GizmoContext, edges: [RowColumnGizmoType; 2]) -> Vec<Option<f64>> {
 	let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(context.layer, context.document) else {
 		return vec![None, None];
@@ -711,11 +644,11 @@ fn grid_edges(context: &GizmoContext) -> [RowColumnGizmoType; 2] {
 /// Add or remove rows and columns by dragging an edge.
 ///
 /// The grid also has to move as it resizes. Dragging the top edge upward adds rows, but the node builds its
-/// grid downward from the origin, so without a matching translation the new rows would appear at the bottom
-/// and the edge would slide out from under the cursor.
+/// grid downward from the origin, so without a matching translation the new rows appear at the bottom and
+/// the edge slides out from under the cursor.
 ///
-/// Dragging an edge past the last row or column does not stop at one: the grid turns inside out and the
-/// opposite edge takes over, which is why the gesture re-anchors rather than clamping.
+/// Dragging past the last row or column does not stop at one: the grid turns inside out and the opposite
+/// edge takes over, so the gesture re-anchors rather than clamping.
 fn grid_edge_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
 	let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(context.layer, context.document) else {
 		return DragWrites::default();
@@ -800,8 +733,8 @@ fn circle_point(theta: f64, radius: f64) -> DVec2 {
 }
 
 /// Half the width of the band around the circumference that counts as grabbing it. It widens with the
-/// stroke, so a thick outline is still grabbable at its edge, and narrows for a circle that is small on
-/// screen so the band cannot swallow the whole shape.
+/// stroke, so a thick outline is grabbable at its edge, and narrows for a circle that is small on screen so
+/// the band cannot swallow the whole shape.
 fn circular_grab_spacing(viewport: DAffine2, radius: f64, center: DVec2, stroke_width: f64) -> f64 {
 	const SMALL_ON_SCREEN: f64 = 15.;
 
@@ -817,8 +750,8 @@ fn circular_radius(context: &GizmoContext) -> Option<f64> {
 	circular_radius_and_parameter(context).map(|(radius, _)| radius)
 }
 
-/// The radius and the input it came from. Both callers need the value; the drag also needs to know which
-/// node it is writing back to, and deriving that separately meant looking the shape up twice.
+/// The radius and the input it came from. The drag needs both, and deriving them separately looked the
+/// shape up twice.
 fn circular_radius_and_parameter(context: &GizmoContext) -> Option<(f64, ParameterRef)> {
 	use graphene_std::vector::generator_nodes::{arc, circle};
 
@@ -830,7 +763,7 @@ fn circular_radius_and_parameter(context: &GizmoContext) -> Option<(f64, Paramet
 }
 
 /// How far the cursor is from the circumference, or `None` when it is not on it. Reporting the radial
-/// distance rather than a flat "yes" lets an arc's endpoints still win the cursor where they overlap.
+/// distance rather than a flat yes lets an arc's endpoints still win the cursor where they overlap.
 fn circular_radius_distances(context: &GizmoContext) -> Vec<Option<f64>> {
 	let Some(radius) = circular_radius(context) else { return vec![None] };
 	let radius = radius.abs();
@@ -893,8 +826,8 @@ fn circular_radius_overlay(context: &GizmoContext, overlay_context: &mut Overlay
 	}
 }
 
-/// A regular polygon's radius reaches every corner equally, so every corner is a grab point -- the same
-/// arrangement as the star's, with one vertex per side rather than alternating between two radii.
+/// A regular polygon's radius reaches every corner equally, so every corner is a grab point. Same as the
+/// star's, with one vertex per side rather than alternating between two radii.
 fn polygon_radius_handles(context: &GizmoContext, value: f64) -> Vec<DVec2> {
 	let Some((sides, _)) = extract_polygon_parameters(Some(context.layer), context.document) else {
 		return Vec::new();
@@ -920,7 +853,7 @@ fn polygon_radius_overlay(context: &GizmoContext, overlay_context: &mut OverlayC
 		for vertex in 0..sides {
 			let point = polygon_vertex_position(viewport, vertex as i32, sides, radius);
 
-			// Once the polygon is this small the corners crowd its centre and cannot be told apart.
+			// Any smaller and the corners crowd the centre and cannot be told apart.
 			if point.distance(center) < GIZMO_HIDE_THRESHOLD {
 				return;
 			}
@@ -932,19 +865,31 @@ fn polygon_radius_overlay(context: &GizmoContext, overlay_context: &mut OverlayC
 	polygon_outline(Some(context.layer), context.document, overlay_context);
 }
 
-/// The bounds the heart node itself declares for these proportions. Past them the outline turns inside out
-/// -- a notch deeper than the shoulders are high crosses its own lobes and renders as nothing -- so the
-/// drags hold to them rather than to whatever the cursor asks for.
+/// The bounds the heart node itself declares for these proportions. Past them the outline turns inside out:
+/// a notch deeper than the shoulders are high crosses its own lobes and renders as nothing. The drags below
+/// hold to these rather than to whatever the cursor asks for.
 const HEART_CLEAVAGE_RANGE: (f64, f64) = (0., 0.6);
 const HEART_SHOULDER_WIDTH_RANGE: (f64, f64) = (0., 1.4);
 
-/// The heart's proportions are fractions of its radius rather than distances, so its handles sit where the
-/// geometry puts them and the drag converts back. See `heart_bezpath`, which these mirror.
-fn heart_radius_and(context: &GizmoContext, index: usize) -> Option<(f64, f64)> {
+/// The heart's radius.
+///
+/// Its other proportions are fractions of the radius rather than distances, so the handles below sit where
+/// the geometry puts them and the drags convert back. They mirror `heart_bezpath`.
+fn heart_radius(context: &GizmoContext) -> Option<f64> {
 	use graphene_std::vector::generator_nodes::heart;
 
 	let parameters = NodeGraphLayer::new(context.layer, &context.document.network_interface).find_node_parameters(heart::IDENTIFIER)?;
-	let Some(&TaggedValue::F64(radius)) = parameters.value(heart::RadiusInput) else { return None };
+	match parameters.value(heart::RadiusInput)? {
+		TaggedValue::F64(radius) => Some(*radius),
+		_ => None,
+	}
+}
+
+/// The heart's radius alongside one of its other inputs, read as an `f64`.
+fn heart_radius_and(context: &GizmoContext, index: usize) -> Option<(f64, f64)> {
+	use graphene_std::vector::generator_nodes::heart;
+
+	let radius = heart_radius(context)?;
 	let inputs = NodeGraphLayer::new(context.layer, &context.document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(heart::IDENTIFIER))?;
 	let Some(TaggedValue::F64(other)) = inputs.get(index)?.as_value() else { return None };
 
@@ -953,11 +898,7 @@ fn heart_radius_and(context: &GizmoContext, index: usize) -> Option<(f64, f64)> 
 
 /// The notch sits on the vertical axis, `1 - cleavage_depth` of the radius above centre.
 fn heart_cleavage_handles(context: &GizmoContext, value: f64) -> Vec<DVec2> {
-	use graphene_std::vector::generator_nodes::heart;
-
-	let Some((radius, _)) = heart_radius_and(context, heart::CleavageDepthInput::INDEX) else {
-		return Vec::new();
-	};
+	let Some(radius) = heart_radius(context) else { return Vec::new() };
 
 	vec![DVec2::new(0., (-1. + value) * radius)]
 }
@@ -965,9 +906,7 @@ fn heart_cleavage_handles(context: &GizmoContext, value: f64) -> Vec<DVec2> {
 fn heart_cleavage_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
 	use graphene_std::vector::generator_nodes::heart;
 
-	let Some((radius, _)) = heart_radius_and(context, heart::CleavageDepthInput::INDEX) else {
-		return DragWrites::default();
-	};
+	let Some(radius) = heart_radius(context) else { return DragWrites::default() };
 	if radius.abs() < f64::EPSILON {
 		return DragWrites::default();
 	}
@@ -995,9 +934,7 @@ fn heart_shoulder_handles(context: &GizmoContext, value: f64) -> Vec<DVec2> {
 fn heart_shoulder_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
 	use graphene_std::vector::generator_nodes::heart;
 
-	let Some((radius, _)) = heart_radius_and(context, heart::ShoulderHeightInput::INDEX) else {
-		return DragWrites::default();
-	};
+	let Some(radius) = heart_radius(context) else { return DragWrites::default() };
 	if radius.abs() < f64::EPSILON {
 		return DragWrites::default();
 	}
@@ -1011,17 +948,15 @@ fn heart_shoulder_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrit
 	DragWrites::inputs(vec![(heart::ShoulderWidthInput.into(), TaggedValue::F64(width))])
 }
 
-/// A circumference can be grabbed at any angle, which rules out every rotational way of reading the drag.
+/// Resize the circle or arc by dragging its circumference.
 ///
-/// Running along the ray from the centre through the grabbed point is the obvious choice and behaves badly
-/// at the top and bottom: a sideways slide there is almost entirely along the curve, so the radius either
-/// barely moves, or -- if the whole distance is counted and only the direction taken from the ray -- lurches
-/// in and out as microscopic vertical jitter flips the sign. The same motion has to mean two different
-/// things at three o'clock and at twelve, and no rotationally symmetric rule can give both.
+/// The obvious reading, along the ray from the centre through the grabbed point, behaves badly at the top
+/// and bottom: a sideways slide there runs almost entirely along the curve, so the radius either barely
+/// moves or lurches in and out as vertical jitter flips the sign. The same motion has to mean two different
+/// things at three o'clock and at twelve, and no rotationally symmetric rule gives both.
 ///
-/// So the drag reads horizontally, from wherever it was grabbed: right grows, left shrinks, whichever part
-/// of the curve is being held. It gives up on vertical movement meaning anything, and in exchange there is
-/// no dead zone, no sign that flips, and no angle where the control behaves differently from any other.
+/// So the drag reads horizontally wherever it was grabbed: right grows, left shrinks. Vertical movement
+/// means nothing, and in exchange there is no dead zone and no angle that behaves differently from another.
 fn circular_radius_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWrites {
 	let Some((radius, parameter)) = circular_radius_and_parameter(context) else {
 		return DragWrites::default();
@@ -1030,8 +965,7 @@ fn circular_radius_drag(context: &GizmoContext, drag: &mut DragInput) -> DragWri
 	let inverse = context.document.metadata().transform_to_viewport(context.layer).inverse();
 	let travelled = inverse.transform_point2(drag.mouse_position).x - inverse.transform_point2(drag.drag_start).x;
 
-	// Keep the sign: a negative radius means an inside-out shape, and growing it should deepen that rather
-	// than flip it.
+	// A negative radius means an inside-out shape, so growing it deepens that rather than flipping it.
 	let magnitude = (drag.initial_value.abs() + travelled).max(0.);
 	let signed = if radius.is_sign_negative() { -magnitude } else { magnitude };
 
