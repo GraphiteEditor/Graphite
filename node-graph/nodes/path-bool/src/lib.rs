@@ -4,9 +4,9 @@ use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_transforms, is_paint_present, set_paint_attribute, set_paint_attribute_at};
+use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::GradientStops;
-use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
@@ -128,9 +128,7 @@ fn boolean_operation<'e>(
 > {
 	let item = content.as_group_item();
 	let flattened = flatten_vector_run(GraphicLevel::Run(&item), DAffine2::IDENTITY, PaintReach::NONE);
-	let snapshot = graphic_types::graphic::run_to_list::<Graphic>(&item)
-		.expect("the run holds the row's element type")
-		.into_graphic_list();
+	let snapshot = graphic_types::graphic::run_to_list::<Graphic>(&item).expect("the run holds the row's element type").into_graphic_list();
 	boolean_core(ctx.arena(), flattened, snapshot, operation)
 }
 
@@ -157,9 +155,7 @@ fn boolean_operation_vector<'e>(
 > {
 	let item = content.as_group_item();
 	let flattened = graphic_types::graphic::run_to_list::<Vector>(&item).expect("the run holds vector lanes");
-	let snapshot = graphic_types::graphic::run_to_list::<Vector>(&item)
-		.expect("the run holds the row's element type")
-		.into_graphic_list();
+	let snapshot = graphic_types::graphic::run_to_list::<Vector>(&item).expect("the run holds the row's element type").into_graphic_list();
 	boolean_core(ctx.arena(), flattened, snapshot, operation)
 }
 
@@ -445,7 +441,10 @@ fn flatten_group(out: &mut List<Vector>, group: &core_types::record::Group, comp
 	} else if let Some(image) = graphic_types::graphic::run_to_list::<Raster<GPU>>(item) {
 		push_rows(out, raster_stand_in_rows(&image, composed));
 	} else if let Some(color) = graphic_types::graphic::run_to_list::<Color>(item) {
-		push_rows(out, (0..color.len()).filter_map(|i| Some(color_paint_row(*color.element(i)?, color.clone_item_attributes(i)))).collect());
+		push_rows(
+			out,
+			(0..color.len()).filter_map(|i| Some(color_paint_row(*color.element(i)?, color.clone_item_attributes(i)))).collect(),
+		);
 	} else if let Some(gradient) = graphic_types::graphic::run_to_list::<GradientStops>(item) {
 		push_rows(
 			out,

@@ -36,10 +36,7 @@ pub fn create_artboard<'e>(
 	clip: bool,
 ) -> (Artboard<'e>, Attr<Location>, Attr<Dimensions>, Attr<Background>, Attr<Clip>) {
 	let item = content.as_group_item();
-	let content = core_types::list::List::new_from_element(Graphic::Group(core_types::record::Group {
-		row: None,
-		content: item,
-	}));
+	let content = core_types::list::List::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: item }));
 
 	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input
 	// dimensions to represent dragging from the opposite corner). Compute the corner using the raw signed

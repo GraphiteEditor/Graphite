@@ -1507,11 +1507,7 @@ impl SourcePlan {
 			.filter(|field| source.offset_of(field.name, field.level).is_none())
 			.map(|field| (field.offset, default_fill_bytes(field.name, field.size)))
 			.collect();
-		Some(SourcePlan {
-			moves,
-			fills,
-			source: source.clone(),
-		})
+		Some(SourcePlan { moves, fills, source: source.clone() })
 	}
 
 	/// # Safety
@@ -1887,7 +1883,12 @@ impl ServedRecord {
 	/// markers. Panics unless the field is declared at `T` and byte-carried;
 	/// a parked field reads through replay, not the captured bytes.
 	pub fn field<T: Copy + 'static>(&self, name: &str, level: u8) -> T {
-		let field = self.layout.fields.iter().find(|field| field.name == name && field.level == level).expect("the layout carries the read field");
+		let field = self
+			.layout
+			.fields
+			.iter()
+			.find(|field| field.name == name && field.level == level)
+			.expect("the layout carries the read field");
 		assert_eq!(field.type_id, std::any::TypeId::of::<T>(), "the field was declared at this value type");
 		assert!(field.repark.is_none(), "a parked field reads through replay, not the captured bytes");
 		// SAFETY: the captured bytes image a record of this layout and the
@@ -2076,7 +2077,11 @@ impl<'e> RunBuilder<'e> {
 	/// Starts the next lane: moves its element in and default-fills its
 	/// fields. Returns the lane index; `None` reports arena exhaustion.
 	pub fn push<T: Send + Sync + dyn_any::StaticTypeSized>(&mut self, element: T) -> Option<usize> {
-		assert_eq!(std::any::TypeId::of::<T::Static>(), self.layout.element.type_id, "the pushed element must match the layout's element type");
+		assert_eq!(
+			std::any::TypeId::of::<T::Static>(),
+			self.layout.element.type_id,
+			"the pushed element must match the layout's element type"
+		);
 		assert!(self.pushed < self.len, "the builder holds exactly its declared lane count");
 		let lane = self.pushed;
 		let stride = self.layout.lane_stride();
@@ -2106,7 +2111,12 @@ impl<'e> RunBuilder<'e> {
 		A::Value<'static>: 'static,
 	{
 		assert!(lane < self.pushed, "attributes write onto pushed lanes");
-		let field = self.layout.fields.iter().find(|field| field.name == A::NAME && field.level == 0).expect("the layout carries the written marker");
+		let field = self
+			.layout
+			.fields
+			.iter()
+			.find(|field| field.name == A::NAME && field.level == 0)
+			.expect("the layout carries the written marker");
 		let offset = field.offset;
 		assert_eq!(field.type_id, std::any::TypeId::of::<A::Value<'static>>(), "the field was declared at the marker's value type");
 		// SAFETY: the offset comes from the builder's own layout and the value
@@ -2445,7 +2455,10 @@ impl<'a, T: dyn_any::StaticTypeSized> crate::lane::LaneSource for RunView<'a, T>
 impl<T: crate::render_complexity::RenderComplexity + dyn_any::StaticTypeSized> crate::render_complexity::RenderComplexity for RunView<'_, T> {
 	fn render_complexity(&self) -> usize {
 		use crate::lane::LaneSource;
-		(0..self.lane_count()).filter_map(|lane| self.element(lane)).map(crate::render_complexity::RenderComplexity::render_complexity).sum()
+		(0..self.lane_count())
+			.filter_map(|lane| self.element(lane))
+			.map(crate::render_complexity::RenderComplexity::render_complexity)
+			.sum()
 	}
 }
 

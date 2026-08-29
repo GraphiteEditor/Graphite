@@ -33,13 +33,7 @@ where
 		LevelStatus::Batch(batch, finality) => {
 			// SAFETY: a materialized batch's frames are arena-resident.
 			let item = unsafe { GroupItem::from_resident(batch) };
-			LevelGroup::Group(
-				Group {
-					row: None,
-					content: item,
-				},
-				finality,
-			)
+			LevelGroup::Group(Group { row: None, content: item }, finality)
 		}
 		LevelStatus::Pending => LevelGroup::Pending,
 		LevelStatus::Error(error) => LevelGroup::Error(error),
@@ -80,10 +74,7 @@ pub fn batch_to_legacy(layout: &core_types::record::Layout, batch: core_types::n
 		run_to_legacy_list::<T>(item).map(|list| Box::new(list) as Box<dyn std::any::Any + Send + Sync>)
 	}
 	if item.typed_lanes::<Graphic>().is_some() {
-		let group = Group {
-			row: None,
-			content: item,
-		};
+		let group = Group { row: None, content: item };
 		return Some(Box::new(group_to_legacy_list(&group)));
 	}
 	fn typed_artboards(item: &GroupItem) -> Option<Box<dyn std::any::Any + Send + Sync>> {

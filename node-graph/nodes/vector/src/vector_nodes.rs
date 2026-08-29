@@ -1660,7 +1660,12 @@ fn solidify_stroke_vector<'e>(
 	Interrupt,
 > {
 	let wrapper = wrap_vector_level(content);
-	solidify_native_lane(ctx.arena(), graphic_types::graphic::GraphicLevel::Legacy(&wrapper), || legacy_graphic_list_of(content), ctx.index() as usize)
+	solidify_native_lane(
+		ctx.arena(),
+		graphic_types::graphic::GraphicLevel::Legacy(&wrapper),
+		|| legacy_graphic_list_of(content),
+		ctx.index() as usize,
+	)
 }
 
 fn solidify_stroke_vector_extent(content: ListIn<'_, Vector>, level: LevelIn) -> GPoll<Extent> {

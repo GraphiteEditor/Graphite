@@ -103,10 +103,7 @@ fn flatten_extent(content: ListIn<'_, Graphic>, fully_flatten: ValueIn<'_, bool>
 #[node_macro::node(category("Test"), extent(wrap_extent))]
 fn wrap<'e>(_: impl Ctx, content: IList<Graphic<'e>>) -> Result<IList<Graphic<'e>>, Interrupt> {
 	let item = content.as_group_item();
-	Ok(Graphic::Group(core_types::record::Group {
-		row: None,
-		content: item,
-	}))
+	Ok(Graphic::Group(core_types::record::Group { row: None, content: item }))
 }
 
 /// The collected group is the level's single lane.

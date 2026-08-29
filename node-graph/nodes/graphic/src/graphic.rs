@@ -461,10 +461,7 @@ pub fn wrap_graphic<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
 ) -> Result<IList<Graphic<'e>>, Interrupt> {
 	let item = content.as_group_item();
-	Ok(Graphic::Group(core_types::record::Group {
-		row: None,
-		content: item,
-	}))
+	Ok(Graphic::Group(core_types::record::Group { row: None, content: item }))
 }
 
 /// The collected group is the level's single lane.
@@ -530,10 +527,7 @@ pub fn to_graphic_typed<'e, T: Clone + Send + Sync + core_types::CacheHash + 'st
 	#[implementations(Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
 ) -> Result<IList<Graphic<'e>>, Interrupt> {
 	let item = content.as_group_item();
-	Ok(Graphic::Group(core_types::record::Group {
-		row: None,
-		content: item,
-	}))
+	Ok(Graphic::Group(core_types::record::Group { row: None, content: item }))
 }
 
 /// An unconnected content input carries the unit, which renders as nothing like

@@ -691,7 +691,11 @@ mod tests {
 		let leveled = repeat_opacity_layout(&base);
 		let frames = frames_for(&[&base, &leveled]);
 
-		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(8u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let node = install(
+			RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(8u32), &base),
+			repeat_opacity_layout_meta(),
+			&[Some(&base)],
+		);
 		assert_eq!(Node::<ContextImpl>::layout(&node), &leveled);
 		let GPoll::Final(served) = core_types::record::capture(&node, &indexed, &frames) else {
 			panic!("expected a final record");
@@ -710,7 +714,11 @@ mod tests {
 		let base = f64_layout(&[]);
 		let frames = frames_for(&[&base]);
 
-		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let node = install(
+			RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base),
+			repeat_opacity_layout_meta(),
+			&[Some(&base)],
+		);
 		// The pushed level (0, the only level) reports the copy count.
 		assert_eq!(node.extent_at(&ctx, 0, &frames), core_types::gpoll::GPoll::Final(core_types::gpoll::Extent::Exactly(3)));
 	}
@@ -852,7 +860,11 @@ mod tests {
 		let (reverse_edge, reverse_layout) = lifted_value(false);
 		let frames = frames_for(&[&base, &leveled_content, &count_layout, &reverse_layout]);
 
-		let content = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let content = install(
+			RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base),
+			repeat_opacity_layout_meta(),
+			&[Some(&base)],
+		);
 		let meta = core_types::record::LayoutMeta {
 			sources: vec![0],
 			reads: vec![],
@@ -1434,7 +1446,11 @@ mod tests {
 				.map(|&(element, x)| (element, DAffine2::from_translation(glam::DVec2::new(x, 0.))))
 				.collect(),
 		};
-		let node = install(MirrorNode::new(RecordSource::new(content, &layout, &layout), ValueSource::new(true)), mirror_layout_meta(), &[Some(&layout)]);
+		let node = install(
+			MirrorNode::new(RecordSource::new(content, &layout, &layout), ValueSource::new(true)),
+			mirror_layout_meta(),
+			&[Some(&layout)],
+		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
 		let head = ctx.index_head();
 		let scoped = ctx.promoted(&head, 0);
@@ -1612,7 +1628,11 @@ mod tests {
 		let out = f64_layout(&[]);
 		let frames = frames_for(&[&base, &leveled_content, &count_layout, &reverse_layout, &out]);
 
-		let content = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let content = install(
+			RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base),
+			repeat_opacity_layout_meta(),
+			&[Some(&base)],
+		);
 		let meta = core_types::record::LayoutMeta {
 			sources: vec![0],
 			reads: vec![],
@@ -1821,7 +1841,11 @@ mod tests {
 		let out = f64_layout(&[]);
 		let frames = frames_for(&[&base, &leveled, &out]);
 
-		let repeat = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let repeat = install(
+			RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base),
+			repeat_opacity_layout_meta(),
+			&[Some(&base)],
+		);
 		let node = install_flip(SumNode::new(repeat, &leveled), &out);
 		assert_eq!(Node::<ContextImpl>::layout(&node).depth, 0, "the reducer collapsed the rank level");
 
@@ -2066,7 +2090,11 @@ mod tests {
 		let layout = source_opacity_layout();
 		let frames = frames_for(&[&layout]);
 
-		let node = install(SourceOpacityNode::new(ValueSource::new(()), ValueSource::new(3.), ValueSource::new(0.25)), source_opacity_layout_meta(), &[]);
+		let node = install(
+			SourceOpacityNode::new(ValueSource::new(()), ValueSource::new(3.), ValueSource::new(0.25)),
+			source_opacity_layout_meta(),
+			&[],
+		);
 		assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
 		let GPoll::Final(served) = core_types::record::capture(&node, &ctx, &frames) else {
 			panic!("expected a final record");

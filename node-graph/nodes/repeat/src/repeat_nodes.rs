@@ -360,7 +360,13 @@ mod test {
 			transform: local,
 		};
 
-		let mut node = RepeatRadialNode::new(RecordSource::new(content, &layout, &layout), ValueSource::new(90.0f64), ValueSource::new(2.0f64), ValueSource::new(4u32), &layout);
+		let mut node = RepeatRadialNode::new(
+			RecordSource::new(content, &layout, &layout),
+			ValueSource::new(90.0f64),
+			ValueSource::new(2.0f64),
+			ValueSource::new(4u32),
+			&layout,
+		);
 		Node::<ContextImpl>::set_layout(&mut node, repeat_radial_layout_meta().resolve(&[Some(&layout)]));
 		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(4)));
 

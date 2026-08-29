@@ -848,7 +848,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// never binds the context's arena; the kernel keeps its own bound.
 	let extracts_arena = |bound: &TypeParamBound| matches!(bound, TypeParamBound::Trait(trait_bound) if trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "ExtractArena"));
 	let mut impl_ctx_bounds: Vec<TokenStream2> = match ctx_param {
-		Some(ctx_param) => ctx_param.bounds.iter().filter(|bound| !matches!(bound, TypeParamBound::Lifetime(_)) && !extracts_arena(bound)).map(|bound| quote!(#bound)).collect(),
+		Some(ctx_param) => ctx_param
+			.bounds
+			.iter()
+			.filter(|bound| !matches!(bound, TypeParamBound::Lifetime(_)) && !extracts_arena(bound))
+			.map(|bound| quote!(#bound))
+			.collect(),
 		None => Vec::new(),
 	};
 	if ctx_param.is_none() {
@@ -2325,22 +2330,34 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				reading_secondary_indices(&regular_fields, skips_carrier)
 					.into_iter()
 					.filter_map(|index| match &regular_fields[index].ty {
-						ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::clone::Clone) }),
+						ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some({
+							let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
+							quote!(#ty: ::core::clone::Clone)
+						}),
 						_ => None,
 					}),
 			);
 			if let Some(ty) = carrier_read_ty {
-				bounds.push({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::clone::Clone) });
+				bounds.push({
+					let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
+					quote!(#ty: ::core::clone::Clone)
+				});
 			}
 			// The element store parks droppable elements in the arena.
 			if let Some(ty) = element_write {
-				bounds.push({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::marker::Send + ::core::marker::Sync + #core_types::StaticTypeSized + 'static) });
+				bounds.push({
+					let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
+					quote!(#ty: ::core::marker::Send + ::core::marker::Sync + #core_types::StaticTypeSized + 'static)
+				});
 			}
 		}
 		// A routing node's value elements copy out of their records.
 		if let Some(generic) = &routing_generic {
 			bounds.extend(routing_value_indices(&regular_fields, generic).into_iter().filter_map(|index| match &regular_fields[index].ty {
-				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::clone::Clone) }),
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some({
+					let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
+					quote!(#ty: ::core::clone::Clone)
+				}),
 				_ => None,
 			}));
 		}
@@ -2350,7 +2367,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ParsedFieldType::Regular(RegularParsedField { ty, .. })
 					if !node.inputs[index].subject && matches!(ir::value_binding(&node, index), ValueBinding::Plain | ValueBinding::ReadingSecondary | ValueBinding::RecordElement) =>
 				{
-					Some({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::clone::Clone) })
+					Some({
+						let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
+						quote!(#ty: ::core::clone::Clone)
+					})
 				}
 				_ => None,
 			}));
@@ -2370,9 +2390,18 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.filter(|(index, _)| ir::materialized_levels(&node, *index) == 0)
 				.filter_map(|(_, field)| match &field.ty {
 					// The conditional arena-park moves a lend element once.
-					ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => Some({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static) }),
-					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some({ let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static"); quote!(#ty: ::core::clone::Clone) }),
-					ParsedFieldType::Node(NodeParsedField { output_type, .. }) => Some({ let output_type = &crate::codegen::classify::substitute_lifetimes(output_type, "'static"); quote!(#output_type: ::core::clone::Clone) }),
+					ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => Some({
+						let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
+						quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static)
+					}),
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some({
+						let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
+						quote!(#ty: ::core::clone::Clone)
+					}),
+					ParsedFieldType::Node(NodeParsedField { output_type, .. }) => Some({
+						let output_type = &crate::codegen::classify::substitute_lifetimes(output_type, "'static");
+						quote!(#output_type: ::core::clone::Clone)
+					}),
 				})
 				.collect();
 			let out = crate::codegen::classify::substitute_lifetimes(&slot_value_type(&parsed.output_type), "'static");

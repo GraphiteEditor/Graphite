@@ -999,13 +999,7 @@ impl VectorRow<'_> {
 	}
 }
 
-fn walk_rows_of_run(
-	item: &core_types::record::GroupItem,
-	scale: FlattenScale,
-	layer_path: Option<&[NodeId]>,
-	paint: LanePaint<'_>,
-	visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep,
-) -> RowStep {
+fn walk_rows_of_run(item: &core_types::record::GroupItem, scale: FlattenScale, layer_path: Option<&[NodeId]>, paint: LanePaint<'_>, visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep) -> RowStep {
 	let Some(run) = core_types::record::RunView::<Vector>::new(item) else {
 		return RowStep::Continue;
 	};
@@ -1548,10 +1542,7 @@ mod run_tests {
 		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
 		let lane = builder.push(vector.clone()).unwrap();
 		builder.attr::<Fill>(lane, Some(&paint));
-		let group = core_types::record::Group {
-			row: None,
-			content: builder.finish(),
-		};
+		let group = core_types::record::Group { row: None, content: builder.finish() };
 		let expected = group_to_legacy_list(&group);
 		let owned = map_groups_to_owned(&Graphic::Group(group));
 		drop(source);
@@ -1568,17 +1559,11 @@ mod run_tests {
 		let source = core_types::arena::Arena::new(1 << 16).unwrap();
 		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[], 1).unwrap();
 		builder.push(vector.clone()).unwrap();
-		let nested = Graphic::Group(core_types::record::Group {
-			row: None,
-			content: builder.finish(),
-		});
+		let nested = Graphic::Group(core_types::record::Group { row: None, content: builder.finish() });
 
 		let mut builder = RunBuilder::new(&source, element_write_hashed::<Graphic>(), &[], 1).unwrap();
 		builder.push(nested).unwrap();
-		let group = core_types::record::Group {
-			row: None,
-			content: builder.finish(),
-		};
+		let group = core_types::record::Group { row: None, content: builder.finish() };
 		let expected = group_to_legacy_list(&group);
 		let owned = map_groups_to_owned(&Graphic::Group(group));
 		drop(source);
@@ -1592,10 +1577,7 @@ mod run_tests {
 	fn native_group_paint<'a>(vector: &Vector, arena: &'a core_types::arena::Arena) -> List<Graphic<'a>> {
 		let mut builder = RunBuilder::new(arena, element_write_hashed::<Vector>(), &[], 1).unwrap();
 		builder.push(vector.clone()).unwrap();
-		List::new_from_element(Graphic::Group(core_types::record::Group {
-			row: None,
-			content: builder.finish(),
-		}))
+		List::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: builder.finish() }))
 	}
 
 	#[test]
@@ -1716,10 +1698,7 @@ mod run_tests {
 		let mut top = List::new();
 		top.push(Item::new_from_element(Graphic::Graphic(painted)));
 		top.push(Item::new_from_element(Graphic::Graphic(nested)));
-		top.push(Item::new_from_element(Graphic::Group(core_types::record::Group {
-			row: None,
-			content: inner_item,
-		})));
+		top.push(Item::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: inner_item })));
 		top.push(Item::new_from_element(Graphic::Color(Color::BLACK)));
 		top.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(6., 0.)))));
 		top.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(5., 5.)));
@@ -1743,14 +1722,26 @@ mod run_tests {
 		let native = flatten_vector_rows(GraphicLevel::Legacy(&top));
 		assert_eq!(native.len(), legacy.len());
 		for row in 0..native.len() {
-			assert_eq!(native.attribute::<DAffine2>(core_types::ATTR_TRANSFORM, row), legacy.attribute::<DAffine2>(core_types::ATTR_TRANSFORM, row), "transform, row {row}");
-			assert_eq!(native.attribute::<f64>(core_types::ATTR_OPACITY, row), legacy.attribute::<f64>(core_types::ATTR_OPACITY, row), "opacity, row {row}");
+			assert_eq!(
+				native.attribute::<DAffine2>(core_types::ATTR_TRANSFORM, row),
+				legacy.attribute::<DAffine2>(core_types::ATTR_TRANSFORM, row),
+				"transform, row {row}"
+			);
+			assert_eq!(
+				native.attribute::<f64>(core_types::ATTR_OPACITY, row),
+				legacy.attribute::<f64>(core_types::ATTR_OPACITY, row),
+				"opacity, row {row}"
+			);
 			assert_eq!(
 				native.attribute::<Vec<core_types::uuid::NodeId>>(core_types::ATTR_EDITOR_LAYER_PATH, row),
 				legacy.attribute::<Vec<core_types::uuid::NodeId>>(core_types::ATTR_EDITOR_LAYER_PATH, row),
 				"layer path, row {row}"
 			);
-			assert_eq!(native.attribute::<Option<List<Graphic>>>(ATTR_FILL, row), legacy.attribute::<Option<List<Graphic>>>(ATTR_FILL, row), "fill, row {row}");
+			assert_eq!(
+				native.attribute::<Option<List<Graphic>>>(ATTR_FILL, row),
+				legacy.attribute::<Option<List<Graphic>>>(ATTR_FILL, row),
+				"fill, row {row}"
+			);
 		}
 		assert_eq!(native, legacy);
 	}

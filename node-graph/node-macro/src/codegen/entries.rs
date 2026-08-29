@@ -1,6 +1,6 @@
 use super::*;
-use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_error2::emit_error;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::spanned::Spanned;
 use syn::{GenericParam, Ident, Type};

@@ -503,10 +503,7 @@ impl NodeRuntime {
 						// SAFETY: the batch is resident for the read.
 						let item = unsafe { GroupItem::from_resident(batch) };
 						let bounds = graphene_std::renderer::graphic_list_bounding_box(&RunView::<Graphic>::new(&item)?, DAffine2::IDENTITY);
-						let group = Graphic::Group(Group {
-							row: None,
-							content: item,
-						});
+						let group = Graphic::Group(Group { row: None, content: item });
 						Self::render_thumbnail(thumbnail_renders, parent_network_node_id, &group, bounds, responses)
 					}
 					Some(())

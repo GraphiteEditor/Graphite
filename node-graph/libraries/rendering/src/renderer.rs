@@ -11,10 +11,10 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::lane::LaneSource;
-use core_types::list::{Item, List};
 use core_types::lane::{LeafLane, Single};
-use core_types::record::{Group, RunView};
+use core_types::list::{Item, List};
 use core_types::math::quad::Quad;
+use core_types::record::{Group, RunView};
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
@@ -1043,7 +1043,14 @@ fn render_graphic_vello<'e, S: LaneSource<Element = Graphic<'e>>>(source: &S, sc
 	render_graphic_vello_with(source, PaintReach::NONE, scene, transform, context, render_params)
 }
 
-fn render_graphic_vello_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(source: &'a S, inherited: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+fn render_graphic_vello_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(
+	source: &'a S,
+	inherited: PaintReach<'a>,
+	scene: &mut Scene,
+	transform: DAffine2,
+	context: &mut RenderContext,
+	render_params: &RenderParams,
+) {
 	let paint_columns = PaintColumns::new(source);
 	let mut mask_element_and_transform = None;
 
@@ -1127,7 +1134,13 @@ fn collect_graphic_metadata<'e, S: LaneSource<Element = Graphic<'e>>>(source: &S
 	collect_graphic_metadata_with(source, PaintReach::NONE, metadata, footprint, element_id)
 }
 
-fn collect_graphic_metadata_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(source: &'a S, inherited: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+fn collect_graphic_metadata_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(
+	source: &'a S,
+	inherited: PaintReach<'a>,
+	metadata: &mut RenderMetadata,
+	footprint: Footprint,
+	element_id: Option<NodeId>,
+) {
 	let paint_columns = PaintColumns::new(source);
 	for index in 0..source.lane_count() {
 		let item_transform: DAffine2 = source.attr::<Transform>(index);
@@ -1520,8 +1533,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 		// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 		let stroke = element.stroke.as_ref();
 		let stroke_fully_transparent = stroke_graphic_list.is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
-		let can_draw_aligned_stroke =
-			!stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
+		let can_draw_aligned_stroke = !stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 		if opacity < 1. || blend_mode_attr != BlendMode::default() {

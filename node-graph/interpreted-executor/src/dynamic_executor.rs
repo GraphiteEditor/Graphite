@@ -167,11 +167,7 @@ impl DynamicExecutor {
 	/// introspection window. The monitor stores only the context; the value is
 	/// recreated against current source data, so a read right after an
 	/// execution serves out of the warm memo entries.
-	pub fn introspect_with<R>(
-		&self,
-		node_path: &[NodeId],
-		read: impl FnOnce(&core_types::record::Layout, core_types::node::RecordBatch<'_>, &Arena) -> Option<R>,
-	) -> Result<R, IntrospectError> {
+	pub fn introspect_with<R>(&self, node_path: &[NodeId], read: impl FnOnce(&core_types::record::Layout, core_types::node::RecordBatch<'_>, &Arena) -> Option<R>) -> Result<R, IntrospectError> {
 		let serialized = self.tree.introspect(node_path)?;
 		let Some(snapshot) = serialized.downcast_ref::<core_types::context::CtxSnapshot>() else {
 			return Err(IntrospectError::NoData);

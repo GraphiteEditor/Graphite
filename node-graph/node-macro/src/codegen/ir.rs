@@ -1,9 +1,7 @@
 //! The intent IR: a node built from its signature, from which lowering derives.
 #![allow(dead_code)]
 
-use crate::codegen::classify::{
-	Dialect, RoutingIo, bare_ident, context_param, dialect, flip_carrier, generic_assignment, generic_extractable, is_served, record_shape, routing_io, slot_value_type,
-};
+use crate::codegen::classify::{Dialect, RoutingIo, bare_ident, context_param, dialect, flip_carrier, generic_assignment, generic_extractable, is_served, record_shape, routing_io, slot_value_type};
 use crate::codegen::entries::implementation_rows;
 use crate::parsing::{AttributeRead, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RecordWrites, RegularParsedField, record_writes};
 use proc_macro2::TokenStream as TokenStream2;
