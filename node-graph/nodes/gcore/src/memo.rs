@@ -3,30 +3,29 @@ use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ModifyIndex};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
-use core_types::record::{FrameClaim, LevelStatus, MaterializedSpan, OwnedRecord, Served, copy_record_bytes};
+use core_types::record::{FrameClaim, LevelStatus, MaterializedSpan, Served, copy_record_bytes};
 use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-/// The memo entry: the deep copies replay across frames, while the frame that
-/// materialized the level also serves lanes straight out of its arena batch
-/// (generation-guarded), so a within-frame pull allocates nothing.
+/// The memo entry: the level lives in the persistent region, which no
+/// evaluation resets, so a hit copies its lane's bytes and the parked
+/// references they carry stay live without a re-park.
 #[derive(Debug)]
 pub struct MemoLevel {
 	key: u64,
-	/// The arena region the level materialized into, resolvable only while its
-	/// generation is live.
-	span: Option<MaterializedSpan>,
-	lanes: Vec<OwnedRecord>,
+	/// The persistent region the level was promoted into, resolvable only
+	/// while that region's epoch is live.
+	span: MaterializedSpan,
 	finality: Finality,
 }
 
 /// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
-/// Stores a deep copy of the last record (a scalar wire) or the last whole
-/// level (a leveled wire) that flowed through this node and replays it on
-/// subsequent renders if the context has not changed. A leveled wire's cache
-/// key normalizes the addressed lane away, so per-lane pulls share one
+/// Promotes the last record (a scalar wire) or the last whole level (a leveled
+/// wire) that flowed through this node into the persistent region and serves
+/// it on subsequent renders if the context has not changed. A leveled wire's
+/// cache key normalizes the addressed lane away, so per-lane pulls share one
 /// materialization of the content instead of re-evaluating it per lane.
 #[node_macro::node(category("General"), path(graphene_core::memo))]
 fn memoize<'e, 'l>(
@@ -51,52 +50,45 @@ fn memoize<'e, 'l>(
 		}
 		false => cache_key(&ctx),
 	};
-	let finalized = |value: Served<'e>, finality: &Finality| match finality {
+	// The region the level is promoted into, which the executor flushes only
+	// between evaluations, so bytes copied out of it stay readable for this one.
+	let persistent = ctx.scope().persistent();
+	let finalized = |value: Served<'e>, finality: Finality| match finality {
 		Finality::AllFinal => GPoll::Final(value),
 		Finality::Partial => GPoll::Partial(value),
 	};
-	// The claim is this node's output frame: a hit fills it from the cached
+	// The claim is this node's output frame: a hit fills it from the published
 	// bytes, and every valueless exit drops it with the frame still claimed.
-	let serve = |entry: &MemoLevel, mut slot: FrameClaim<'e, 'l>| {
-		if lane >= entry.lanes.len() {
-			// The cached level ends here; the past-end signal serves drains.
-			return GPoll::Error(Box::new(core_types::gpoll::GraphError::past_end()));
-		}
-		if let Some(span) = entry.span
-			&& let Some(src) = span.lane(ctx.arena(), lane, content.layout())
-		{
-			// SAFETY: the span resolved in generation, so the lane is live and
-			// immutable at the layout it was materialized under.
-			unsafe { slot.fill_copy(src) };
-			// SAFETY: the copy images a complete record of this layout.
-			return finalized(unsafe { slot.finish_served() }, &entry.finality);
-		}
-		match entry.lanes[lane].replay_into(&mut slot, ctx.arena()) {
-			// SAFETY: the replay completes the record in the frame.
-			Some(()) => finalized(unsafe { slot.finish_served() }, &entry.finality),
-			None => GPoll::arena_exhausted(),
-		}
+	let serve = |src: *const u8, finality: Finality, mut slot: FrameClaim<'e, 'l>| {
+		// SAFETY: the source images a complete record of this layout whose
+		// parked payloads outlive the evaluation.
+		unsafe { slot.fill_copy(src) };
+		// SAFETY: the copy images a complete record of this layout.
+		finalized(unsafe { slot.finish_served() }, finality)
 	};
-	if let Some(entry) = cache.lock().unwrap().as_ref()
-		&& entry.key == key
+	let past_end = || GPoll::Error(Box::new(core_types::gpoll::GraphError::past_end()));
+	let entry = cache.lock().unwrap().as_ref().filter(|entry| entry.key == key).map(|entry| (entry.span, entry.finality));
+	// A span that no longer resolves was flushed; the miss below re-promotes it.
+	if let Some((span, finality)) = entry
+		&& let Some(published) = span.batch(persistent, content.layout())
 	{
-		return serve(entry, slot);
+		if lane >= published.len() {
+			// The cached level ends here; the past-end signal serves drains.
+			return past_end();
+		}
+		return serve(published.get(lane).rec().ptr(), finality, slot);
 	}
 	if leveled {
 		return match content.materialize_level(&ctx, ctx.arena()) {
 			LevelStatus::Batch(batch, finality) => {
-				let layout = content.layout();
 				// SAFETY: the batch came from this edge, so it carries the edge's layout.
-				let lanes: Vec<OwnedRecord> = (0..batch.len()).map(|index| unsafe { OwnedRecord::copy_out(layout, batch.get(index).rec()) }).collect();
-				let entry = MemoLevel {
-					key,
-					span: MaterializedSpan::of(&batch, ctx.arena()),
-					lanes,
-					finality,
-				};
-				let result = serve(&entry, slot);
-				*cache.lock().unwrap() = Some(entry);
-				result
+				let span = unsafe { MaterializedSpan::promote(&batch, persistent) };
+				*cache.lock().unwrap() = span.map(|span| MemoLevel { key, span, finality });
+				match lane < batch.len() {
+					// The publishing evaluation reads the resident batch, not the copy.
+					true => serve(batch.get(lane).rec().ptr(), finality, slot),
+					false => past_end(),
+				}
 			}
 			LevelStatus::Pending => GPoll::Pending,
 			LevelStatus::Error(error) => GPoll::Error(Box::new(error)),
@@ -110,16 +102,11 @@ fn memoize<'e, 'l>(
 		GPoll::Pending | GPoll::Fallback(_) | GPoll::Error(_) => None,
 	};
 	if let Some((value, finality)) = publishable {
-		// SAFETY: the value came from this edge, so it carries the edge's layout.
-		let copy = unsafe { OwnedRecord::copy_out(content.layout(), content.layout().rec(value)) };
-		*cache.lock().unwrap() = Some(MemoLevel {
-			key,
-			// A scalar record replays from the deep copy; the value the serve
-			// returned already lives in this frame.
-			span: None,
-			lanes: vec![copy],
-			finality,
-		});
+		let layout = content.layout();
+		// SAFETY: the value came from this edge, so it carries the edge's
+		// layout, and one record of it is a batch of one lane.
+		let span = unsafe { MaterializedSpan::promote(&core_types::node::RecordBatch::new(layout.rec(value).ptr(), 1, layout), persistent) };
+		*cache.lock().unwrap() = span.map(|span| MemoLevel { key, span, finality });
 	}
 	result
 }
@@ -394,6 +381,125 @@ mod tests {
 
 		assert_eq!(stacked.eval(&ctx, &frames), GPoll::Final(1));
 		assert_eq!(stacked.eval(&ctx, &frames), GPoll::Final(1));
+	}
+
+	#[test]
+	fn a_cross_evaluation_hit_serves_the_promoted_payload() {
+		let frames = core_types::record::test_frames(1 << 16);
+		let mut arena = Arena::new(4096).unwrap();
+		let persistent = Arena::new(4096).unwrap();
+		let generations = [];
+
+		let layout = element_layout::<String>();
+		let memo = MemoizeNode::new(lifted::<String>("promoted".to_string()), &layout);
+		let served_at = |arena: &Arena| {
+			let scope = scope_fixture(&generations, arena).with_persistent(&persistent);
+			let ctx = ContextImpl::root(&scope);
+			let GPoll::Final(value) = core_types::record::serve_edge(&memo, &ctx, &frames) else {
+				panic!("the memo must serve a final record");
+			};
+			let element: &String = unsafe { core_types::record::borrow_element(layout.rec(&value)) };
+			assert_eq!(element, "promoted");
+			std::ptr::from_ref(element)
+		};
+
+		served_at(&arena);
+		let first = served_at(&arena);
+		arena.reset();
+		let second = served_at(&arena);
+		assert_eq!(first, second, "a hit copies the promoted bytes rather than re-parking the payload");
+	}
+
+	#[test]
+	fn a_flush_invalidates_every_persistent_span() {
+		let frames = core_types::record::test_frames(1 << 16);
+		let arena = Arena::new(4096).unwrap();
+		let mut persistent = Arena::new(4096).unwrap();
+		let generations = [];
+
+		let layout = element_layout::<u32>();
+		let memoized = MemoizeNode::new(counting(), &layout);
+		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
+		let eval = |persistent: &Arena| {
+			let scope = scope_fixture(&generations, &arena).with_persistent(persistent);
+			memoized.eval(&ContextImpl::root(&scope), &frames)
+		};
+
+		assert_eq!(eval(&persistent), GPoll::Final(1));
+		assert_eq!(eval(&persistent), GPoll::Final(1), "the promoted level serves the hit");
+		persistent.reset();
+		assert_eq!(eval(&persistent), GPoll::Final(2), "the flush invalidates the span");
+		assert_eq!(eval(&persistent), GPoll::Final(2), "the miss re-promoted the level");
+	}
+
+	#[test]
+	fn a_span_never_resolves_against_another_region() {
+		let frames = core_types::record::test_frames(1 << 16);
+		let arena = Arena::new(4096).unwrap();
+		let promoted = Arena::new(4096).unwrap();
+		let foreign = Arena::new(4096).unwrap();
+		let generations = [];
+
+		let layout = element_layout::<u32>();
+		let memoized = MemoizeNode::new(counting(), &layout);
+		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
+		let eval = |persistent: &Arena| {
+			let scope = scope_fixture(&generations, &arena).with_persistent(persistent);
+			memoized.eval(&ContextImpl::root(&scope), &frames)
+		};
+
+		assert_eq!(eval(&promoted), GPoll::Final(1));
+		assert_eq!(eval(&promoted), GPoll::Final(1));
+		assert_eq!(eval(&foreign), GPoll::Final(2), "a stale or foreign span misses like an absent one");
+	}
+
+	#[test]
+	fn a_refused_promote_recomputes_and_marks_the_region() {
+		let frames = core_types::record::test_frames(1 << 16);
+		let arena = Arena::new(4096).unwrap();
+		let persistent = Arena::new(0).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena).with_persistent(&persistent);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = element_layout::<u32>();
+		let memoized = MemoizeNode::new(counting(), &layout);
+		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
+
+		assert_eq!(memoized.eval(&ctx, &frames), GPoll::Final(1));
+		assert_eq!(memoized.eval(&ctx, &frames), GPoll::Final(2), "an unpromoted level recomputes");
+		assert!(persistent.exhausted(), "the refused promote marks the region for a flush");
+	}
+
+	#[test]
+	fn a_leveled_memo_signals_past_end_beyond_the_level() {
+		let frames = core_types::record::test_frames(1 << 16);
+		let arena = Arena::new(1 << 12).unwrap();
+		let persistent = Arena::new(1 << 12).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena).with_persistent(&persistent);
+
+		let source = core_types::value::LeveledValueSource::new(vec![10u32, 20, 30]);
+		let layout = Node::<ContextImpl>::layout(&source).clone();
+		let memo = MemoizeNode::new(source, &layout);
+		let at = |lane: u64| {
+			let mut ctx = ContextImpl::root(&scope);
+			core_types::context::InjectIndex::set_index(&mut ctx, lane);
+			core_types::record::serve_edge(&memo, &ctx, &frames)
+		};
+
+		let GPoll::Final(value) = at(1) else {
+			panic!("the level covers lane 1");
+		};
+		assert_eq!(unsafe { core_types::record::read_element::<u32>(layout.rec(&value)) }, 20);
+		let GPoll::Error(error) = at(3) else {
+			panic!("lane 3 is past the level");
+		};
+		assert_eq!(error.kind, core_types::gpoll::ErrorKind::PastEnd);
+		let GPoll::Error(error) = at(3) else {
+			panic!("the cached level answers the drain the same way");
+		};
+		assert_eq!(error.kind, core_types::gpoll::ErrorKind::PastEnd);
 	}
 
 	#[test]

@@ -2797,7 +2797,7 @@ mod tests {
 	}
 
 	#[test]
-	fn record_memo_replays_the_deep_copy_on_a_context_hit() {
+	fn record_memo_serves_a_context_hit_without_re_evaluating() {
 		let frames = core_types::record::test_frames(1 << 16);
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
@@ -2842,14 +2842,15 @@ mod tests {
 			panic!("expected a partial record");
 		};
 		let GPoll::Partial(served) = core_types::record::capture(&memo, &ctx, &frames) else {
-			panic!("expected the replay to keep the partial finality");
+			panic!("expected the hit to keep the partial finality");
 		};
 		assert_eq!(served.field::<f64>("opacity", 0), 0.5);
 	}
 
 	#[test]
-	fn record_memo_re_parks_droppable_payloads_on_replay() {
+	fn record_memo_serves_droppable_payloads_from_the_persistent_region() {
 		let generations = [];
+		let persistent = Arena::new(1024).unwrap();
 
 		let source_layout = f64_layout(&[]);
 		let labeled = label_layout(&source_layout);
@@ -2864,16 +2865,18 @@ mod tests {
 
 		let first_arena = Arena::new(1024).unwrap();
 		{
-			let scope = scope_fixture(&generations, &first_arena);
+			let scope = scope_fixture(&generations, &first_arena).with_persistent(&persistent);
 			let ctx = ContextImpl::root(&scope);
 			let mut first = frames.reborrow();
 			let GPoll::Final(_) = core_types::record::serve_edge(&memo, &ctx, &mut first) else {
 				panic!("expected a final record");
 			};
 		}
+		// The evaluation that published is gone; only the promotion survives.
+		drop(first_arena);
 
-		let replay_arena = Arena::new(1024).unwrap();
-		let scope = scope_fixture(&generations, &replay_arena);
+		let later_arena = Arena::new(1024).unwrap();
+		let scope = scope_fixture(&generations, &later_arena).with_persistent(&persistent);
 		let ctx = ContextImpl::root(&scope);
 		let GPoll::Final(value) = core_types::record::serve_edge(&memo, &ctx, &frames) else {
 			panic!("expected a final record");
