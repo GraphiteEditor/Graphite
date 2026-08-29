@@ -1,7 +1,7 @@
 use std::env;
 use std::process::Command;
 
-const GRAPHITE_RELEASE_SERIES: &str = "Alpha 4";
+const GRAPHITE_RELEASE_SERIES: &str = "Alpha 5";
 
 fn main() {
 	// Instruct Cargo to rerun this build script if any of these environment variables change.
