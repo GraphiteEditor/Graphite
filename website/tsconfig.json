@@ -24,6 +24,7 @@
 		// Ignore generated directories
 		"node_modules",
 		"public",
+		"static/wasm",
 		// Ignore vendored code
 		"static/*.js"
 	]

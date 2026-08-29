@@ -14,6 +14,7 @@ export default defineConfig([
 		// Ignore generated directories
 		"node_modules/",
 		"public/",
+		"static/wasm/",
 		// Ignore vendored code
 		"static/*.js",
 		// Don't ignore JS and TS dotfiles in this folder
