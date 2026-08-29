@@ -7,40 +7,50 @@ declare their attribute reads and writes in their signatures, and the
 compiler resolves every access to a byte offset during wiring, so there is
 no name lookup at runtime. Storage and batch results are per-attribute
 columns. The contiguous record only exists as a per-lane view, assembled
-into buffers the compiler assigns. All of the machinery that could
+into activation frames on a per-thread stack. All of the machinery that could
 corrupt a layout is generated code, so getting it wrong is a type error or
 a graph compile error rather than undefined behavior.
 
 # Motivation
 
-Attributes currently exist as string-keyed pairs of boxed trait objects
-carried inside `List<T>`:
+Attributes currently exist as a string-keyed store of type-erased
+columns beside the elements:
 
 ```rs
 pub struct List<T> {
 	element: Vec<T>,
-	attributes: Vec<(String, Box<dyn AnyAttributeValue>)>,
+	attributes: Attributes,
+}
+
+struct Attributes {
+	attributes: Vec<(String, Box<dyn AnyAttribute>)>,
+	len: usize,
 }
 ```
 
-Every access does a string comparison and a downcast, every value is
-boxed, and merging eagerly pads missing attributes with materialized
-defaults. On a ten-node chain with eight attributes over 64k items this
-costs us around 500ns per item. The design described here measures
-between 3.5 and 47ns on the same workload, depending on the execution
-mode, and the cost is mostly independent of the attribute count.
+So the storage is already columnar: one boxed column per name, each
+holding `len` values. What it is not is resolved. Every access searches
+the key list by string comparison and downcasts the column, and merging
+eagerly pads missing attributes with materialized defaults. Scalar
+access boxes per value at the item boundary, where the same store
+appears as `ItemAttributeValues(Vec<(String, Box<dyn AnyAttributeValue>)>)`.
+On a ten-node chain with eight attributes over 64k items this costs us
+around 500ns per item. The design described here measures between 3.5
+and 47ns on the same workload, depending on the execution mode, and the
+cost is mostly independent of the attribute count.
 
 There is also a cost at compile time and in the node catalog. Because
-attributes ride inside `List<T>`, a node that touches a property needs
-per-type traits (`MultiplyAlpha` and kin) and an implementations list
-enumerating every carrier type. Each row monomorphizes, adding a new
+attributes ride inside `List<T>`, a node that touches a property carries
+an implementations list enumerating every carrier type: the opacity and
+blend-mode nodes each name seven. Each row monomorphizes, adding a new
 carrier type means editing every one of these lists, and the duplicated
-instantiations show up in the build size. The blending nodes also carry
-a TODO ("find a way to make this apply once to the list's parent rather
-than applying to each item") that the current representation cannot
-express at all: opacity on a group and opacity on each member composite
-differently once members overlap, so the difference is semantic, and
-there is currently nowhere to put it.
+instantiations show up in the build size, measured at 6.16 MB and about
+4% of frame rate when the rank work landed. An escape hatch exists for
+the narrow case of reading an attribute without the element (`ListDyn`,
+which erases the carrier), but it does not extend to nodes that write.
+Separately, opacity on a group and opacity on each member composite
+differently once members overlap, so the two are semantically distinct
+and the representation has nowhere to record which one a node meant.
 
 The requirements, briefly. Attributes are named with strings and work
 for all types, and users can author read/write nodes with custom names.
@@ -70,11 +80,17 @@ different thing from the same attribute on the group's members.
 An attribute name is declared once, as a marker type:
 
 ```rs
-#[attribute(name = "opacity", default = 1.)]
-pub struct Opacity;
+attribute! {
+	/// How visible the content is.
+	pub Opacity("opacity"): f64 = 1.;
+	/// The item's label, parked in the arena by the writer.
+	pub Label("label"): &str;
+}
 ```
 
-This fixes the name, the value type, and the name-specific default
+Each entry expands to the marker struct, its `Attribute` impl, and the
+census registration. This fixes the name, the value type, and the
+name-specific default
 (opacity should default to fully opaque, not to `f64::default()`). The
 registry collects the declarations into a census, and a misspelled name
 in a document can be diagnosed with a nearest-match suggestion. For
@@ -172,41 +188,77 @@ or a bound instead and monomorphizes per its implementations list.
 
 ## Levels: before vs. after a structure node
 
-Where a node sits in the chain decides which nesting level it affects.
-Applying the opacity node to a shape and then repeating it gives every
-copy its own opacity. Repeating first and then applying opacity sets one
-value on the whole group, which composites differently where copies
-overlap. The node's code is identical in both cases. Reads and writes
-bind to the top level of the wire at the node's position in the chain,
-and Repeat pushed a level in one of the two arrangements. Reaching an
-inner level from outside is an explicit map/enter construct, so "set on
-the parent" and "map over the children" are visibly different graphs.
+This part of the design is not settled, and the first implementation
+resolves every attribute at a single level. It is written up here
+because the requirement is real and the rest of the model has to leave
+room for it; see the open question at the end.
+
+Where a node sits in the chain should decide which nesting level it
+affects. Applying the opacity node to a shape and then repeating it
+would give every copy its own opacity. Repeating first and then applying
+opacity would set one value on the whole group, which composites
+differently where copies overlap. The node's code is identical in both
+cases. Reads and writes bind to the top level of the wire at the node's
+position in the chain, and Repeat pushed a level in one of the two
+arrangements. Reaching an inner level from outside is an explicit
+map/enter construct, so "set on the parent" and "map over the children"
+are visibly different graphs.
 
 ## Structure nodes
 
 A node that produces a list declares the new level's extent and writes
-per-copy values:
+per-copy values. The body is one lane of that list. There are two
+shapes, and which one applies is decided by whether the copies have to
+re-evaluate the content.
+
+The general shape takes the content lazily and evaluates it once per
+copy, at that copy's index:
 
 ```rs
 /// Instances the content a number of times, spaced by the direction vector.
-#[node_macro::node(category("Repeat"), extent = repat_extent)]
+#[node_macro::node(category("Repeat"), extent(repeat_extent))]
 fn repeat<T>(
-	ctx: impl Ctx + ExtractIndex,
-	(element, transform): (T, Attr<Transform>),
+	ctx: impl Ctx + DeriveCtx + ExtractIndex,
+	content: impl Node<Context<'_>, Output = (T, Attr<Transform>)>,
 	#[default(1)]
 	#[hard(1..)]
 	count: u32,
 	#[default(100., 100.)]
 	direction: DVec2,
-) -> List<(T, Attr<Transform>)> {
-	let offset = direction * ctx.innermost_index() as f64;
-	emit(element, Attr(DAffine2::from_translation(offset) * *transform))
+) -> Result<IList<(T, Attr<Transform>)>, Interrupt> {
+	let inner = content.inner_extent(ctx)?;
+	let (copy, rest) = ctx.split_innermost(inner);
+	if copy >= count as u64 {
+		return Err(GraphError::past_end().into());
+	}
+	let offset = direction * copy as f64;
+	let mut frame = IndexLink { index: 0, outer: None };
+	let (element, transform) = content.eval(&ctx.push_level(&mut frame, copy, rest))?;
+	Ok((element, Attr(DAffine2::from_translation(offset) * *transform)))
 }
 ```
 
-The body is one lane of the declared list: the kernel reads its own copy
-index and produces that copy's values. The `emit(...)` tail marks the one-lane form and
-doubles as the tuple constructor, and it is optional.
+The kernel splits the flat index into its own copy index and the index
+below it, then evaluates the content at a context with the copy pushed
+as a level. `DeriveCtx` is what admits the push, and only a lazy input
+can receive a derived context, so this shape is exactly the one where
+the copies are allowed to differ: anything upstream that reads the index
+sees the copy it is being evaluated for.
+
+Where the copies do not re-derive the content, the input stays an
+ordinary carrier and the kernel only computes the copy's own attributes:
+
+```rs
+#[node_macro::node(category("Repeat"), extent(repeat_opacity_extent))]
+fn repeat_opacity(ctx: impl Ctx + ExtractIndex, element: f64, count: u32) -> IList<(f64, Attr<Opacity>)> {
+	emit(element, Attr(ctx.index() as f64))
+}
+```
+
+A carrier is evaluated once for the whole run rather than per lane, so
+every copy sees the same element and the variation lives entirely in the
+attributes. The `emit(...)` tail marks the one-lane form and doubles as
+the tuple constructor, and it is optional.
 
 ## Merging
 
@@ -340,9 +392,15 @@ coercion.
 
 ## Levels and residency
 
-Levels are numbered from the innermost out. This keeps layout keys
-stable when a structure node pushes a level (nothing renumbers) and
-matches how indices are already numbered. The binding rules are:
+Layout keys carry a level, and levels are numbered from the innermost
+out, which keeps them stable when a structure node pushes a level
+(nothing renumbers) and matches how indices are already numbered. Only
+level 0 is populated today: the packed-record tier is flat, so the
+binding rules below and the residency analysis that follows them are the
+intended design rather than the implemented one. The level in the key is
+what leaves room for both.
+
+The binding rules are:
 
 - A read binds to the top level of the input wire it is destructured
   from at the node's chain position; a write binds to the top level of
@@ -363,11 +421,13 @@ A per-item attribute that only varies per group is bound at level 0 but
 resident at level 1, so it gets one slot per group rather than one per
 item.
 
-Storage is level-resident and columnar, and the contiguous record is a view.
-Per-lane consumers get the view assembled across levels and columns into
-their activation frames. Reads across a level boundary use the same
-index decomposition the structure nodes already perform, and in batches
-that decomposition is hoisted per run.
+Storage is meant to be level-resident and columnar, with the contiguous
+record as a view. Per-lane consumers get the view assembled across
+levels and columns into their activation frames. Reads across a level
+boundary use the same index decomposition the structure nodes already
+perform, and in batches that decomposition is hoisted per run. Neither
+the residency analysis nor the multi-level storage exists yet; a single
+level with resolved offsets is the base case both are built on.
 
 ## Runtime representation
 
@@ -399,30 +459,36 @@ that decomposition is hoisted per run.
   sibling evaluates. This relies on stack records being single-consumer,
   which the frame-memo insertion at fan-out points guarantees by copying
   a shared value off the stack rather than holding it across consumers.
-- Batch results are per-field columns, each statically Varying (an
+- Batch results are a run of lanes behind a resolved offset per field,
+  and the target form is per-field columns, each statically Varying (an
   array) or Uniform (a single value) per the residency analysis. A node
-  that does not touch a column forwards the pointer, so bypass costs
-  nothing, and uniform columns give constant attributes their one-slot
-  cost regardless of lane count. Both execution forms share one layout
-  descriptor, and crossing from a batched producer to a per-lane consumer
-  costs about 1.5ns per lane through a lane-view adapter.
-- A materialized level-N record carries its item count in one field at a
-  known offset in the layout, and each level-below column is a thin
-  pointer into the arena whose length is that count times the field
-  size. Erased consumers (the Data panel, capture, deep copy) read the
-  count off the record without reaching into the element type, and
-  Varying vs Uniform stays static in the layout, a Uniform column
-  addressing a single value. This is the same picture as a batch result,
-  so materializing a record and returning a batch are one format. Such
-  records spill: the count beside the element already fills the inline
-  budget, while scalar wires keep the two-word inline form.
-- Alignment padding only exists in the per-lane view. In a row, a `u8`
-  element costs the same as a `u64`, while
-  packed columns keep the cost proportional to the element size (2x
-  cheaper than rows when cache-resident, around 8x when memory-bound).
-  Columns are the storage format, so the proportional cost holds
-  wherever data accumulates, and the padding only survives in transient view
-  slots, whose number is bounded by graph depth.
+  that does not touch a column then forwards the pointer, so bypass
+  costs nothing, and uniform columns give constant attributes their
+  one-slot cost regardless of lane count. Both execution forms share one
+  layout descriptor, and crossing from a batched producer to a per-lane
+  consumer costs about 1.5ns per lane through a lane-view adapter. The
+  first implementation lays the run out as an array of records and
+  resolves each marker to an offset within a lane; moving that to
+  struct-of-arrays, and then to flat tables, happens behind the same
+  accessors.
+- A materialized level carries its lane count beside its layout and its
+  storage, which is either an arena-resident run or an owned copy.
+  Erased consumers (the Data panel, capture, deep copy) read the count
+  and the fields off that handle without reaching into the element type,
+  and Varying vs Uniform is meant to stay static in the layout, a
+  Uniform column addressing a single value. This is the same picture as
+  a batch result, so materializing a level and returning a batch are one
+  format. A record value is one pointer wide, and only a record whose
+  layout is empty rides inside the value itself; everything else spills
+  to the stack.
+- Alignment padding is what the column form buys. In a row, a `u8`
+  element costs the same as a `u64`, while packed columns keep the cost
+  proportional to the element size (2x cheaper than rows when
+  cache-resident, around 8x when memory-bound). Once columns are the
+  storage format, the proportional cost holds wherever data accumulates
+  and the padding survives only in transient view slots, whose number is
+  bounded by graph depth. Until then a run pays a row's padding on every
+  lane, which is the cost the struct-of-arrays step removes.
 
 ## Kernel io lowering
 
@@ -436,20 +502,24 @@ that decomposition is hoisted per run.
 | `(_, a): ((), Attr<A>)` | attribute-only input | wired record edge with unit element; the attribute is the payload |
 | `Attr<A>` in the return tuple | attribute write | offset write into the output record |
 | `RemoveAttr<A>` in the return tuple | attribute delete | the name leaves the output layout; functionally a write of the default |
-| `keys: List<K>` | whole-extent input | wired edge, evaluated over its extent into a view |
+| `keys: IList<K>` | whole-extent input | wired edge, evaluated over its extent into a view |
 | plain parameters | wired value inputs | ordinary wired edges; attributes on their wires do not flow |
 | `impl Node<Context<'_>, Output = Concrete>` | lazy value input | the value flows, attributes do not |
 | `impl Node<Context<'_>, Output = (T, Attr<A>, ..)>` | lazy input with attribute reads | each eval yields the element plus the declared reads, offsets resolved against that edge's layout; a read declaration only, and no field pass-through |
 | `impl Node<Context<'_>, Output = T>` (unbounded) | source of an opaque record family | routing, see below |
-| `-> List<W>` with `level_extent =` | per-lane level production | structural skeleton emitted by the macro |
-| `-> List<W>` without | store form | whole-level body, node owns storage |
+| `-> IList<W>` with a lazy subject and `DeriveCtx` | per-copy level production | the kernel splits the index and evaluates the subject at the pushed level |
+| `-> IList<W>` with a carrier subject | per-lane level production | the carrier binds once for the run; the kernel computes each lane's own fields |
+| `-> IList<W>` without `extent(fn)` | store form | whole-level body, node owns storage |
 
-`level_extent =` names a parameter, or a function over the node's values
-(author code never receives the node struct). The compiler derives both
-the extent formula and the matching index decomposition from this one
-declaration, which is what keeps them consistent. `emit(...)` is an
-optional tail marker for the per-lane form whose parentheses double as
-the tuple's, so multi-write lanes pay no extra nesting.
+`extent(fn)` names a function over the node's inputs and the queried level
+(author code never receives the node struct); `extent_raw(fn)` is the
+escape hatch for anything that vocabulary cannot say. The declaration
+answers what the level's counts are; the kernel performs the matching
+index decomposition itself. The two are written separately and have to
+agree, which is why the split and push go through shared helpers rather
+than open-coded arithmetic. `emit(...)` is an optional tail marker for
+the carrier form whose parentheses double as the tuple's, so multi-write
+lanes pay no extra nesting.
 
 The rule behind all the lazy forms: kernels control whether, when, and
 at which index their inputs are evaluated, but never how the records
@@ -461,17 +531,21 @@ misalign them, and domain declarations stay with the extent system.
 
 A structure node pairs an extent composition with an index
 decomposition. The extent composition is an ordinary extent override:
-the node macro's `extent(fn)` attribute names a function with the trait
-method's signature (the node and the context to `GPoll<Extent>`), so
+the node macro's `extent(fn)` attribute names a function over the node's
+inputs and the queried level to `GPoll<Extent>`, with `extent_raw(fn)` as
+the escape hatch keeping the raw node, context, and level form, so
 multiplicative, additive, and data-dependent extents are one mechanism
 rather than a macro taxonomy, and the default stays the meet over the
 value inputs.
 
-- Multiplicative (Repeat, map/enter): the extent override multiplies
-  the new level's count by the carrier's. A flat index splits by
-  division into the copy index (pushed as a level) and the content
-  index; the level push and the `emit` tail are the skeleton
-  declaration. Batches split into maximal per-copy runs.
+- Multiplicative (Repeat, map/enter): the extent override answers the
+  pushed level with the copy count and forwards inner levels to the
+  content. The kernel splits the flat index into the copy index and the
+  index below it through the shared split helper, and pushes the copy as
+  a level on a derived context before evaluating the content there. The
+  extent declaration and the split are written separately and have to
+  agree; the helpers are shared so that they can. Batches split into
+  maximal per-copy runs.
 - Additive (Merge): an ordinary routing kernel whose selector condition
   is the index. The kernel range-splits the flat index into a segment
   and a local index through the shared split helper and evaluates that
@@ -551,11 +625,18 @@ kernels:
 /// Reverses the order of the input list.
 #[node_macro::node(category("General"))]
 fn reverse<T>(
-	ctx: impl Ctx + DeriveCtx + ModifyIndex,
+	ctx: impl Ctx + ModifyIndex + Copy,
 	_: (),
 	content: impl Node<Context<'_>, Output = T>,
-) -> T {
-	content.eval(&ctx.with_index(content.extent(&ctx)? - 1 - ctx.innermost_index()))
+) -> Result<T, Interrupt> {
+	let total = match content.extent(ctx, Level::Total) {
+		GPoll::Final(Extent::Exactly(count)) => count as u64,
+		GPoll::Pending => return Err(Interrupt::Pending),
+		_ => return Err(GraphError::new("reverse over a non-exact extent").into()),
+	};
+	let mut shifted = *ctx;
+	shifted.set_index(total - 1 - ctx.innermost_index());
+	content.eval(&shifted)
 }
 ```
 
@@ -584,9 +665,10 @@ translation plans are built at selectors and merges. A per-name
 dependency analysis feeds the cache keys. The diagnostics produced along
 the way are unknown or misspelled names (checked against the census,
 with nearest-match suggestions), custom-name collisions, reads that some
-evaluation path cannot satisfy, and layout conflicts. The runtime checks
-nothing. Debug assertions guard the generated code against itself at
-wiring boundaries, following the existing precedent for TypeId checks.
+evaluation path cannot satisfy, and layout conflicts. The runtime does
+no name lookup. Layout construction and the safe record builders check
+field type identity and panic on a mismatch, which is what guards the
+generated code against itself at wiring boundaries.
 
 ## Soundness
 
@@ -599,10 +681,21 @@ of wires rather than of anything a kernel controls, safe kernel code can
 make semantic mistakes (evaluating an input it did not need to) but
 cannot misalign an offset. Kernels see contexts only as an opaque
 `impl Ctx + ...` they cannot construct, and lifetimes keep them from
-stashing handles in node state. The one remaining discipline lives
-inside generated code (a result buffer must not be borrowed across a
-sibling evaluation it could alias), and debug assertions guard it at
-wiring boundaries, following the existing precedent for TypeId checks.
+stashing handles in node state.
+
+That is the property the design is for, and reaching it is work rather
+than a consequence. Type identity is stamped on every layout field and
+checked where layouts are built and where the safe builders write, which
+is the enforcement this rests on. What is not yet closed, and is tracked
+as such: a producer whose layout was never installed writes through a
+path that assumes the inline width, an owned record replays against a
+caller-supplied layout it does not check, and the record stack's own
+bounds check is a debug assertion while its buffer can be reset under
+live records. Each is reachable from safe code, so the claim above holds
+by the discipline of the generated code and not yet by construction. The
+direction is to replace the emitted raw operations with a small set of
+checked surfaces, so that the remaining unsafe is the erased glue and
+the wiring-computed byte plans, where it is irreducible.
 
 # Drawbacks
 
@@ -617,9 +710,10 @@ wiring boundaries, following the existing precedent for TypeId checks.
   would absorb attribute renames without recompiling.
 - Until an elision pass exists, attributes that are written but never
   read occupy slots and copies.
-- Transient per-lane views pad small elements up to the record
-  alignment, and only the columnar storage is footprint-proportional.
-- Two execution forms (per-lane views and columnar batches) are more
+- Per-lane views pad small elements up to the record alignment, and so
+  does a run of records until the columnar storage arrives; only the
+  column form is footprint-proportional.
+- Two execution forms (per-lane views and batches) are more
   machinery than one representation. They share a single layout
   descriptor, and the measured seam between them is about 1.5ns per
   lane, but the machinery still has to exist.
@@ -628,11 +722,11 @@ wiring boundaries, following the existing precedent for TypeId checks.
 
 - Keep runtime maps (the current implementation): roughly 500ns per item
   on the reference chain and ~57ns marginal per attribute, an allocation
-  per value, and no compile-time name checking. Interning the keys
+  per column, and no compile-time name checking. Interning the keys
   improves the constant (about 1.9ns per access vs. 0.43 for a resolved
   offset) but keeps a per-access search and rules out the structural
-  optimizations that need static layouts: bypass, uniform columns, slot
-  coalescing.
+  optimizations that need static layouts: bypass, uniform columns, and
+  packing a level's fields to their resolved offsets.
 - Attributes as separate graph edges, one channel per attribute: bypass
   and per-channel caching become graph structure. We prototyped and
   measured this. Without caching at fan-outs, every channel re-evaluates
@@ -660,9 +754,9 @@ Item and List wire types work, which remains the behavioral reference
 for this design: name-specific defaults, merge with default fill, and
 the Data panel's presentation of items all carry over, and the wire
 rank display and Data panel belong to the editor and are unaffected
-here. One behavior is refined rather than kept: flat merge previously
-had to drop one input's top-level attributes, which the push-down rule
-now preserves. The present representation (string-keyed storage inside
+here. One behavior is refined rather than kept: flat merge
+has to drop one input's top-level attributes, which the push-down rule
+is meant to preserve. The present representation (string-keyed storage inside
 `List<T>`, with per-carrier implementations rows) is what the Motivation
 section measures. This RFC keeps its observable behavior while replacing
 the storage and registration strategy underneath.
@@ -674,14 +768,29 @@ from shading languages for residency.
 
 # Unresolved questions
 
+- Leveled attributes, the largest open area. Attributes at more than one
+  nesting level are designed but not built: the layout key carries a
+  level, and nothing populates a level above 0. Open within it are the
+  binding rules as stated (does a read really bind to the top level of
+  the wire it is destructured from, and is pinning element-reading nodes
+  to level 0 the right rule), how a structure node's per-copy write
+  lands in the former top row, whether residency is worth its analysis
+  or whether the extent machinery already answers it (an attribute whose
+  index function ignores the index is `Free`), and what the storage for
+  a level above 0 looks like given that the record tier is flat. The
+  UX half of the same question is the map/enter construct: how "set on
+  the parent" and "map over the children" read differently in the graph.
+  Until this is settled, the Repeat-around-Opacity requirement is
+  unmet.
 - Where and how the combine rule is declared on the attribute marker.
   Merge push-down and flatten both consume it, and inner-wins is the
-  implemented fallback.
+  intended fallback.
 - The spelling of the push-down marker on the merge node, the one part
   of the additive shape the extent override cannot express.
-- The graph UX of the map/enter construct.
-- Naming: `Attribute` trait vs. `Attr` wrapper, and whether the
-  authoring `List` sharing the wire type's name helps or confuses.
+- Naming: `Attribute` trait vs. `Attr` wrapper. The authoring list type
+  is spelled `IList` here, as in the implementation, to keep it clear of
+  the legacy wire type's `List`; a rename to `List` is planned once that
+  type retires.
 - Generic-typed writes: where the default for a generically written
   name comes from (a `Default` bound on the value vs. an input on the
   name source), what `A` instantiates to at the Rust level, whether
@@ -690,7 +799,7 @@ from shading languages for residency.
   node.
 - Whether evaluating at a lane outside the input's extent is clamped,
   wrapped, or a debug assertion.
-- `List<List<W>>` outputs, i.e. one node pushing two levels.
+- `IList<IList<W>>` outputs, i.e. one node pushing two levels.
 - How chatty the editor boundary becomes per frame, given that tools
   consume materialized views today.
 
