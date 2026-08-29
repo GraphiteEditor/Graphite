@@ -318,6 +318,7 @@ impl PerPixelAdjustCodegen<'_> {
 			},
 			output_type: raster_gpu,
 			output_depth: 0,
+			claim: None,
 			is_async: false,
 			fields,
 			body,

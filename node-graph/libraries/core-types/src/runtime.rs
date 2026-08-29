@@ -171,7 +171,7 @@ mod tests {
 	use crate::context::{ContextImpl, Ctx, EvalScope, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots};
 	use crate::gpoll::GPoll;
 	use crate::node::Node;
-	use crate::record::{Layout, RecordExtract, RecordLift, element_write, stack};
+	use crate::record::{Layout, LiftedSource, RecordExtract, element_write, stack};
 	use crate::transform::Footprint;
 	use std::sync::Mutex;
 	use std::sync::atomic::{AtomicU32, Ordering};
@@ -248,16 +248,6 @@ mod tests {
 		}
 	}
 
-	struct SourceNode<T>(T);
-
-	impl<T: Clone, Input> Node<Input> for SourceNode<T> {
-		type Output = T;
-
-		fn eval(&self, _input: &Input) -> GPoll<T> {
-			GPoll::Final(self.0.clone())
-		}
-	}
-
 	fn element_layout<T: Clone + Send + Sync + dyn_any::StaticTypeSized>() -> Layout
 	where
 		T::Static: Clone + Send + Sync,
@@ -265,11 +255,11 @@ mod tests {
 		Layout::default().with_writes(0, element_write::<T>(), &[])
 	}
 
-	fn lifted<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(value: T) -> RecordLift<T, SourceNode<T>>
+	fn lifted<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(value: T) -> LiftedSource<T, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<T>>
 	where
 		T::Static: Clone + Send + Sync,
 	{
-		RecordLift::new(SourceNode(value))
+		LiftedSource::new(move |_: &ContextImpl<'_>| GPoll::Final(value.clone()))
 	}
 
 	fn extract<El: Clone + Send + Sync + dyn_any::StaticTypeSized, N: Node<ContextImpl<'static>>>(mut graph: N) -> RecordExtract<El, N>
@@ -277,7 +267,10 @@ mod tests {
 		El::Static: Clone + Send + Sync,
 	{
 		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(1 << 12); }		let layout = element_layout::<El>();
+		unsafe {
+			stack::reserve(1 << 12);
+		}
+		let layout = element_layout::<El>();
 		graph.set_layout(crate::record::RecordLayout {
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
@@ -333,17 +326,11 @@ mod tests {
 		Ok(Box::pin(async move { value + addend }))
 	}
 
-	struct GatedSource(Arc<std::sync::atomic::AtomicBool>, f64);
-
-	impl<Input> Node<Input> for GatedSource {
-		type Output = f64;
-
-		fn eval(&self, _input: &Input) -> GPoll<f64> {
-			match self.0.load(Ordering::Relaxed) {
-				true => GPoll::Final(self.1),
-				false => GPoll::Pending,
-			}
-		}
+	fn gated(gate: Arc<std::sync::atomic::AtomicBool>, value: f64) -> LiftedSource<f64, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<f64>> {
+		LiftedSource::new(move |_: &ContextImpl<'_>| match gate.load(Ordering::Relaxed) {
+			true => GPoll::Final(value),
+			false => GPoll::Pending,
+		})
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
@@ -367,13 +354,13 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx), GPoll::Pending);
 		assert_eq!(SLOW_DOUBLE_RUNS.load(Ordering::Relaxed), 0);
 		assert_eq!(runtime.drain(), vec![7]);
 		assert_eq!(SLOW_DOUBLE_RUNS.load(Ordering::Relaxed), 1);
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
 		assert_eq!(SLOW_DOUBLE_RUNS.load(Ordering::Relaxed), 1);
 	}
 
@@ -394,9 +381,9 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Partial(-1.0));
+		assert_eq!(graph.eval(&ctx), GPoll::Partial(-1.0));
 		runtime.drain();
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
 	}
 
 	#[test]
@@ -416,9 +403,9 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx), GPoll::Pending);
 		runtime.drain();
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
 	}
 
 	#[test]
@@ -438,12 +425,12 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx), GPoll::Pending);
 		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1, "the prologue runs synchronously on the miss");
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx), GPoll::Pending);
 		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1, "in flight must not rerun the prologue");
 		assert_eq!(runtime.drain(), vec![8]);
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
 		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1);
 	}
 
@@ -458,7 +445,7 @@ mod tests {
 		let runtime = Arc::new(MockRuntime::default());
 		let graph = extract::<f64, _>(StagedSumNode::new(
 			lifted(40.0f64),
-			RecordLift::<f64, _>::new(GatedSource(gate.clone(), 2.0)),
+			gated(gate.clone(), 2.0),
 			lifted(RuntimeHandle(runtime.clone())),
 			lifted(9u64),
 			&element_layout::<f64>(),
@@ -467,12 +454,12 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx), GPoll::Pending);
 		assert_eq!(runtime.drain(), Vec::<SourceId>::new(), "an interrupted prologue must not spawn or claim the slot");
 		gate.store(true, Ordering::Relaxed);
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx), GPoll::Pending);
 		assert_eq!(runtime.drain(), vec![9]);
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
 	}
 
 	#[test]
@@ -498,9 +485,9 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx), GPoll::Pending);
 		runtime.drain();
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(21.5));
+		assert_eq!(graph.eval(&ctx), GPoll::Final(21.5));
 	}
 
 	#[test]
@@ -522,9 +509,9 @@ mod tests {
 			&element_layout::<u64>(),
 		));
 
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx), GPoll::Pending);
 		runtime.drain();
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(Footprint::DEFAULT.resolution.x));
+		assert_eq!(graph.eval(&ctx), GPoll::Final(Footprint::DEFAULT.resolution.x));
 	}
 
 	#[test]
@@ -638,7 +625,7 @@ mod tests {
 		let snapshot = runtime.snapshot();
 		let scope = EvalScope::new(None, None, None, &snapshot, &arena);
 		let ctx = ContextImpl::root(&scope);
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(graph.eval(&ctx), GPoll::Final(42.0));
 		assert!(!runtime.take_dirty());
 		assert_eq!(runtime.snapshot(), vec![(13, 0)]);
 		assert_eq!(runtime.spawner().drain(), 0);
@@ -661,7 +648,7 @@ mod tests {
 		let snapshot = runtime.snapshot();
 		let scope = EvalScope::new(None, None, None, &snapshot, &arena);
 		let ctx = ContextImpl::root(&scope);
-		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(graph.eval(&ctx), GPoll::Pending);
 		assert!(!runtime.take_dirty());
 
 		assert_eq!(runtime.spawner().drain(), 1);
@@ -671,7 +658,7 @@ mod tests {
 
 		let bumped_scope = EvalScope::new(None, None, None, &bumped, &arena);
 		let bumped_ctx = ContextImpl::root(&bumped_scope);
-		assert_eq!(Node::eval(&graph, &bumped_ctx), GPoll::Final(42.0), "the own-generation-excluded key replays the landed slot");
+		assert_eq!(graph.eval(&bumped_ctx), GPoll::Final(42.0), "the own-generation-excluded key replays the landed slot");
 		assert_eq!(runtime.spawner().drain(), 0, "a slot hit must not respawn");
 
 		let downstream_key = crate::registry::cache_key(&ContextImpl::root(&scope));

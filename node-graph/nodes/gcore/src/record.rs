@@ -7,7 +7,7 @@
 
 use core_types::Ctx;
 use core_types::attribute::{Attr, EditorLayerPath, Opacity, RemoveAttr, Transform};
-use core_types::context::{DeriveCtx, ExtractIndex, ExtractIndices, IndexLink, InjectIndex, ModifyIndex};
+use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex, ModifyIndex};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
 use core_types::node::Lane;
@@ -398,17 +398,8 @@ mod tests {
 	use core_types::context::{ContextImpl, EvalScope, ExtractArena};
 	use core_types::gpoll::GPoll;
 	use core_types::node::Node;
-	use core_types::record::{Layout, Rec, RecordSource, RecordValue, stack};
-
-	struct ValueNode<T>(T);
-
-	impl<T: Clone, Input> Node<Input> for ValueNode<T> {
-		type Output = T;
-
-		fn eval(&self, _input: &Input) -> GPoll<T> {
-			GPoll::Final(self.0.clone())
-		}
-	}
+	use core_types::record::{FrameClaim, Layout, LiftedSource, Rec, RecordSource, Served, stack};
+	use core_types::value::ValueSource;
 
 	struct RecordSourceNode<E> {
 		layout: Layout,
@@ -417,20 +408,27 @@ mod tests {
 		partial: bool,
 	}
 
-	impl<'e, E: Copy + Send + Sync + 'static> Node<ContextImpl<'e>> for RecordSourceNode<E> {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+	impl<C, E: Copy + Send + Sync + 'static> Node<C> for RecordSourceNode<E> {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(self.element);
 			for (name, field) in &self.fields {
 				frame.field::<f64>(name, 0, *field);
 			}
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
+			// SAFETY: the builder served a record of this node's layout.
+			let served = unsafe { slot.forward(&value) };
 			match self.partial {
-				true => GPoll::Partial(value),
-				false => GPoll::Final(value),
+				true => GPoll::Partial(served),
+				false => GPoll::Final(served),
 			}
+		}
+
+		fn layout(&self) -> &Layout {
+			&self.layout
 		}
 	}
 
@@ -440,21 +438,26 @@ mod tests {
 		field: Option<(&'static str, f64)>,
 	}
 
-	impl<'e> Node<ContextImpl<'e>> for LeveledSourceNode {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+	impl<C: ExtractIndex> Node<C> for LeveledSourceNode {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
 			let element = self.elements[input.innermost_index() as usize % self.elements.len()];
-			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(element);
 			if let Some((name, value)) = self.field {
 				frame.field::<f64>(name, 0, value);
 			}
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			GPoll::Final(value)
+			// SAFETY: the builder served a record of this node's layout.
+			GPoll::Final(unsafe { slot.forward(&value) })
 		}
 
-		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+		fn extent_at<'x>(&self, _input: &C, _level: u8) -> GPoll<Extent>
+		where
+			C: ExtractArena<ArenaRef = &'x Arena>,
+		{
 			GPoll::Final(Extent::Exactly(self.elements.len()))
 		}
 
@@ -468,19 +471,24 @@ mod tests {
 		rows: Vec<(f64, DAffine2)>,
 	}
 
-	impl<'e> Node<ContextImpl<'e>> for LeveledTransformSource {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+	impl<C: ExtractIndex> Node<C> for LeveledTransformSource {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
 			let (element, transform) = self.rows[input.innermost_index() as usize % self.rows.len()];
-			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(element);
 			frame.attr::<Transform>(transform);
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			GPoll::Final(value)
+			// SAFETY: the builder served a record of this node's layout.
+			GPoll::Final(unsafe { slot.forward(&value) })
 		}
 
-		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+		fn extent_at<'x>(&self, _input: &C, _level: u8) -> GPoll<Extent>
+		where
+			C: ExtractArena<ArenaRef = &'x Arena>,
+		{
 			GPoll::Final(Extent::Exactly(self.rows.len()))
 		}
 
@@ -496,21 +504,26 @@ mod tests {
 		count: usize,
 	}
 
-	impl<'e> Node<ContextImpl<'e>> for DrainSourceNode {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+	impl<C: ExtractIndex> Node<C> for DrainSourceNode {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
 			let lane = input.innermost_index();
 			if lane >= self.count as u64 {
 				return GPoll::past_end();
 			}
-			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(lane as f64);
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			GPoll::Final(value)
+			// SAFETY: the builder served a record of this node's layout.
+			GPoll::Final(unsafe { slot.forward(&value) })
 		}
 
-		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+		fn extent_at<'x>(&self, _input: &C, _level: u8) -> GPoll<Extent>
+		where
+			C: ExtractArena<ArenaRef = &'x Arena>,
+		{
 			GPoll::Final(Extent::AtLeast(0))
 		}
 
@@ -523,23 +536,32 @@ mod tests {
 		layout: Layout,
 	}
 
-	impl<'e> Node<ContextImpl<'e>> for IndexSourceNode {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+	impl<C: ExtractIndex + core_types::context::ExtractIndices> Node<C> for IndexSourceNode {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
 			// Depth-0 content varying per copy: the enclosing (pushed) level's
 			// index sits one link above the content's own innermost lane.
 			let element = input.try_index().and_then(|mut indices| indices.nth(1)).unwrap_or(0) as f64;
-			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(element);
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			GPoll::Final(value)
+			// SAFETY: the builder served a record of this node's layout.
+			GPoll::Final(unsafe { slot.forward(&value) })
+		}
+
+		fn layout(&self) -> &Layout {
+			&self.layout
 		}
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
 		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(1 << 16); }		EvalScope::new(Some(0.5), None, None, generations, arena)
+		unsafe {
+			stack::reserve(1 << 16);
+		}
+		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
 	fn f64_layout(names: &[&'static str]) -> Layout {
@@ -604,11 +626,11 @@ mod tests {
 		node
 	}
 
-	fn lifted_value<T: Clone + Send + Sync + core_types::StaticTypeSized + 'static>(value: T) -> (core_types::record::RecordLift<T, ValueNode<T>>, Layout)
+	fn lifted_value<T: Clone + Send + Sync + core_types::StaticTypeSized + 'static>(value: T) -> (ValueSource<T>, Layout)
 	where
 		T::Static: Clone + Send + Sync,
 	{
-		let lift = core_types::record::RecordLift::<T, _>::new(ValueNode(value));
+		let lift = ValueSource::new(value);
 		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		(lift, layout)
 	}
@@ -643,8 +665,8 @@ mod tests {
 		let leveled = repeat_opacity_layout(&base);
 		reserve_for(&[&base, &leveled]);
 
-		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(8u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
-		assert_eq!(node.layout(), &leveled);
+		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(8u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		assert_eq!(Node::<ContextImpl>::layout(&node), &leveled);
 		let GPoll::Final(served) = core_types::record::capture(&node, &indexed) else {
 			panic!("expected a final record");
 		};
@@ -662,7 +684,7 @@ mod tests {
 		let base = f64_layout(&[]);
 		reserve_for(&[&base]);
 
-		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let node = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
 		// The pushed level (0, the only level) reports the copy count.
 		assert_eq!(node.extent_at(&ctx, 0), core_types::gpoll::GPoll::Final(core_types::gpoll::Extent::Exactly(3)));
 	}
@@ -804,7 +826,7 @@ mod tests {
 		let (reverse_edge, reverse_layout) = lifted_value(false);
 		reserve_for(&[&base, &leveled_content, &count_layout, &reverse_layout]);
 
-		let content = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let content = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
 		let meta = core_types::record::LayoutMeta {
 			sources: vec![0],
 			reads: vec![],
@@ -861,7 +883,7 @@ mod tests {
 		reserve_for(&[&base]);
 
 		let node = install(
-			RepeatFadedNode::new(RecordSource::new(content, &base, &base), ValueNode(4u32), &base),
+			RepeatFadedNode::new(RecordSource::new(content, &base, &base), ValueSource::new(4u32), &base),
 			repeat_faded_layout_meta(),
 			&[Some(&base)],
 		);
@@ -1299,7 +1321,7 @@ mod tests {
 		let rows = [(1., 10.), (2., 30.), (3., 20.)];
 		let build = |keep: bool| {
 			install(
-				MirrorNode::new(RecordSource::new(content(&rows), &layout, &layout), ValueNode(keep)),
+				MirrorNode::new(RecordSource::new(content(&rows), &layout, &layout), ValueSource::new(keep)),
 				mirror_layout_meta(),
 				&[Some(&layout)],
 			)
@@ -1347,7 +1369,7 @@ mod tests {
 			rows: rows.iter().map(|&(element, x)| (element, DAffine2::from_translation(glam::DVec2::new(x, 0.)))).collect(),
 		};
 		let node = install(
-			ReverseLanesNode::new(RecordSource::new(content, &layout, &layout), ValueNode(0.25)),
+			ReverseLanesNode::new(RecordSource::new(content, &layout, &layout), ValueSource::new(0.25)),
 			reverse_lanes_layout_meta(),
 			&[Some(&layout)],
 		);
@@ -1386,7 +1408,7 @@ mod tests {
 				.map(|&(element, x)| (element, DAffine2::from_translation(glam::DVec2::new(x, 0.))))
 				.collect(),
 		};
-		let node = install(MirrorNode::new(RecordSource::new(content, &layout, &layout), ValueNode(true)), mirror_layout_meta(), &[Some(&layout)]);
+		let node = install(MirrorNode::new(RecordSource::new(content, &layout, &layout), ValueSource::new(true)), mirror_layout_meta(), &[Some(&layout)]);
 		let out = Node::<ContextImpl>::layout(&node).clone();
 		let head = ctx.index_head();
 		let scoped = ctx.promoted(&head, 0);
@@ -1415,15 +1437,11 @@ mod tests {
 	/// a lane-varying value serves the range's first lane to all of them.
 	#[test]
 	fn batch_rebinds_an_eager_input_the_compiler_cannot_prove_invariant() {
-		struct CountingValue<'a>(bool, &'a std::cell::Cell<u32>);
-
-		impl<Input> Node<Input> for CountingValue<'_> {
-			type Output = bool;
-
-			fn eval(&self, _input: &Input) -> GPoll<bool> {
-				self.1.set(self.1.get() + 1);
-				GPoll::Final(self.0)
-			}
+		fn counting_value(value: bool, evals: &std::cell::Cell<u32>) -> LiftedSource<bool, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<bool> + '_> {
+			LiftedSource::new(move |_: &ContextImpl<'_>| {
+				evals.set(evals.get() + 1);
+				GPoll::Final(value)
+			})
 		}
 
 		let arena = Arena::new(1 << 16).unwrap();
@@ -1441,7 +1459,7 @@ mod tests {
 				.collect(),
 		};
 		let evals = std::cell::Cell::new(0u32);
-		let mut node = MirrorNode::new(RecordSource::new(content, &layout, &layout), CountingValue(true, &evals));
+		let mut node = MirrorNode::new(RecordSource::new(content, &layout, &layout), counting_value(true, &evals));
 		let resolved = core_types::record::RecordLayout {
 			lane_invariant: 0,
 			..mirror_layout_meta().resolve(&[Some(&layout)])
@@ -1462,15 +1480,11 @@ mod tests {
 
 	#[test]
 	fn batch_binds_eager_inputs_once() {
-		struct CountingValue<'a>(bool, &'a std::cell::Cell<u32>);
-
-		impl<Input> Node<Input> for CountingValue<'_> {
-			type Output = bool;
-
-			fn eval(&self, _input: &Input) -> GPoll<bool> {
-				self.1.set(self.1.get() + 1);
-				GPoll::Final(self.0)
-			}
+		fn counting_value(value: bool, evals: &std::cell::Cell<u32>) -> LiftedSource<bool, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<bool> + '_> {
+			LiftedSource::new(move |_: &ContextImpl<'_>| {
+				evals.set(evals.get() + 1);
+				GPoll::Final(value)
+			})
 		}
 
 		let arena = Arena::new(1 << 16).unwrap();
@@ -1489,7 +1503,7 @@ mod tests {
 		};
 		let evals = std::cell::Cell::new(0u32);
 		let node = install(
-			MirrorNode::new(RecordSource::new(content, &layout, &layout), CountingValue(true, &evals)),
+			MirrorNode::new(RecordSource::new(content, &layout, &layout), counting_value(true, &evals)),
 			mirror_layout_meta(),
 			&[Some(&layout)],
 		);
@@ -1520,7 +1534,7 @@ mod tests {
 
 		// Element = the outer copy, so the total fold sums across both copies.
 		let content = install(
-			RepeatOpacityNode::new(IndexSourceNode { layout: base.clone() }, ValueNode(3u32), &base),
+			RepeatOpacityNode::new(IndexSourceNode { layout: base.clone() }, ValueSource::new(3u32), &base),
 			repeat_opacity_layout_meta(),
 			&[Some(&base)],
 		);
@@ -1572,7 +1586,7 @@ mod tests {
 		let out = f64_layout(&[]);
 		reserve_for(&[&base, &leveled_content, &count_layout, &reverse_layout, &out]);
 
-		let content = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let content = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
 		let meta = core_types::record::LayoutMeta {
 			sources: vec![0],
 			reads: vec![],
@@ -1651,7 +1665,7 @@ mod tests {
 		};
 		let path = vec![NodeId(7), NodeId(8)];
 		let node = install(
-			StampLayerPathNode::new(RecordSource::new(source, &source_layout, &source_layout), ValueNode(path.clone()), &source_layout),
+			StampLayerPathNode::new(RecordSource::new(source, &source_layout, &source_layout), ValueSource::new(path.clone()), &source_layout),
 			stamp_layer_path_layout_meta(),
 			&[Some(&source_layout)],
 		);
@@ -1661,7 +1675,7 @@ mod tests {
 		let head = ctx.index_head();
 		for (lane, element) in [(0u64, 10.), (1, 11.)] {
 			let _lane_scope = unsafe { stack::ScopeGuard::enter() };
-			let GPoll::Final(value) = node.eval(&ctx.promoted(&head, lane)) else {
+			let GPoll::Final(value) = core_types::record::serve_edge(&node, &ctx.promoted(&head, lane)) else {
 				panic!("expected a final record at lane {lane}");
 			};
 			let rec = out.rec(&value);
@@ -1780,9 +1794,9 @@ mod tests {
 		let out = f64_layout(&[]);
 		reserve_for(&[&base, &leveled, &out]);
 
-		let repeat = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueNode(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
+		let repeat = install(RepeatOpacityNode::new(bare_source(&base, 7.), ValueSource::new(3u32), &base), repeat_opacity_layout_meta(), &[Some(&base)]);
 		let node = install_flip(SumNode::new(repeat, &leveled), &out);
-		assert_eq!(node.layout().depth, 0, "the reducer collapsed the rank level");
+		assert_eq!(Node::<ContextImpl>::layout(&node).depth, 0, "the reducer collapsed the rank level");
 
 		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
@@ -1865,17 +1879,17 @@ mod tests {
 		let chain = install(
 			MultiplyOpacityNode::new(
 				install(
-					MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout),
+					MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueSource::new(0.5), &source_layout),
 					multiply_opacity_layout_meta(),
 					&[Some(&source_layout)],
 				),
-				ValueNode(0.5),
+				ValueSource::new(0.5),
 				&modified,
 			),
 			multiply_opacity_layout_meta(),
 			&[Some(&modified)],
 		);
-		assert_eq!(chain.layout(), &stacked);
+		assert_eq!(Node::<ContextImpl>::layout(&chain), &stacked);
 		let GPoll::Final(served) = core_types::record::capture(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
@@ -1917,7 +1931,7 @@ mod tests {
 		let chain = install(
 			MeasureNode::new(
 				install(
-					MultiplyOpacityNode::new(bare_source(&source_layout, -2.), ValueNode(0.5), &source_layout),
+					MultiplyOpacityNode::new(bare_source(&source_layout, -2.), ValueSource::new(0.5), &source_layout),
 					multiply_opacity_layout_meta(),
 					&[Some(&source_layout)],
 				),
@@ -1954,7 +1968,7 @@ mod tests {
 		let chain = install(
 			ShadeNode::new(
 				install(
-					MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout),
+					MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueSource::new(0.5), &source_layout),
 					multiply_opacity_layout_meta(),
 					&[Some(&source_layout)],
 				),
@@ -1983,7 +1997,7 @@ mod tests {
 		let u32_faded = fade_layout(&u32_source);
 		reserve_for(&[&f64_source, &f64_faded, &u32_source, &u32_faded]);
 
-		let wide = install(FadeNode::new(bare_source(&f64_source, 8.), ValueNode(0.5), &f64_source), fade_layout_meta(), &[Some(&f64_source)]);
+		let wide = install(FadeNode::new(bare_source(&f64_source, 8.), ValueSource::new(0.5), &f64_source), fade_layout_meta(), &[Some(&f64_source)]);
 		let GPoll::Final(served) = core_types::record::capture(&wide, &ctx) else {
 			panic!("expected a final record");
 		};
@@ -1998,7 +2012,7 @@ mod tests {
 					fields: vec![],
 					partial: false,
 				},
-				ValueNode(0.25),
+				ValueSource::new(0.25),
 				&u32_source,
 			),
 			fade_layout_meta(),
@@ -2021,7 +2035,7 @@ mod tests {
 		let layout = source_opacity_layout();
 		reserve_for(&[&layout]);
 
-		let node = install(SourceOpacityNode::new(ValueNode(()), ValueNode(3.), ValueNode(0.25)), source_opacity_layout_meta(), &[]);
+		let node = install(SourceOpacityNode::new(ValueSource::new(()), ValueSource::new(3.), ValueSource::new(0.25)), source_opacity_layout_meta(), &[]);
 		assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
 		let GPoll::Final(served) = core_types::record::capture(&node, &ctx) else {
 			panic!("expected a final record");
@@ -2049,7 +2063,7 @@ mod tests {
 					fields: vec![],
 					partial: true,
 				},
-				ValueNode(0.5),
+				ValueSource::new(0.5),
 				&source_layout,
 			),
 			multiply_opacity_layout_meta(),
@@ -2073,7 +2087,7 @@ mod tests {
 		reserve_for(&[&source_layout, &modified]);
 
 		let ok = install(
-			CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(0.5), &source_layout),
+			CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueSource::new(0.5), &source_layout),
 			checked_multiply_opacity_layout_meta(),
 			&[Some(&source_layout)],
 		);
@@ -2083,11 +2097,11 @@ mod tests {
 		assert_eq!(served.attr::<Opacity>(), 0.5);
 
 		let failing = install(
-			CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(-1.), &source_layout),
+			CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueSource::new(-1.), &source_layout),
 			checked_multiply_opacity_layout_meta(),
 			&[Some(&source_layout)],
 		);
-		let GPoll::Error(error) = failing.eval(&ctx) else {
+		let GPoll::Error(error) = core_types::record::serve_edge(&failing, &ctx) else {
 			panic!("expected an error");
 		};
 		assert!(error.kind == "negative factor");
@@ -2108,11 +2122,11 @@ mod tests {
 		let chain = install(
 			ScaleNode::new(
 				install(
-					MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout),
+					MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueSource::new(0.5), &source_layout),
 					multiply_opacity_layout_meta(),
 					&[Some(&source_layout)],
 				),
-				ValueNode(3.),
+				ValueSource::new(3.),
 				&modified,
 			),
 			scale_layout_meta(),
@@ -2178,7 +2192,7 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let source_layout = f64_layout(&["opacity"]);
-		let factor = core_types::record::RecordLift::<f64, _>::new(ValueNode(3.));
+		let factor = ValueSource::new(3.);
 		let factor_layout = Node::<ContextImpl>::layout(&factor).clone();
 		reserve_for(&[&source_layout]);
 
@@ -2307,14 +2321,14 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let unit = core_types::record::RecordLift::<(), _>::new(ValueNode(()));
+		let unit = ValueSource::new(());
 		let unit_layout = Node::<ContextImpl>::layout(&unit).clone();
 		let content_layout = f64_layout(&["opacity"]);
 		reserve_for(&[&content_layout]);
 
 		let run = |opacity: Option<f64>| {
 			let evals = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-			let alternate = core_types::record::RecordLift::<f64, _>::new(CountingValue(evals.clone()));
+			let alternate = counting_source(evals.clone());
 			let alternate_layout = Node::<ContextImpl>::layout(&alternate).clone();
 			let (content_layout, fields) = match opacity {
 				Some(value) => (content_layout.clone(), vec![("opacity", value)]),
@@ -2322,7 +2336,7 @@ mod tests {
 			};
 			let node = install_flip(
 				FallbackNode::new(
-					core_types::record::RecordLift::<(), _>::new(ValueNode(())),
+					ValueSource::new(()),
 					f64_record_source(&content_layout, 7., fields),
 					alternate,
 					&unit_layout,
@@ -2331,7 +2345,7 @@ mod tests {
 				),
 				&f64_layout(&[]),
 			);
-			let GPoll::Final(value) = node.eval(&ctx) else {
+			let GPoll::Final(value) = core_types::record::serve_edge(&node, &ctx) else {
 				panic!("expected a final record");
 			};
 			let element = unsafe { Node::<ContextImpl>::layout(&node).rec(&value).element::<f64>() };
@@ -2362,7 +2376,7 @@ mod tests {
 				install(
 					StripOpacityNode::new(
 						install(
-							MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout),
+							MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueSource::new(0.5), &source_layout),
 							multiply_opacity_layout_meta(),
 							&[Some(&source_layout)],
 						),
@@ -2421,17 +2435,17 @@ mod tests {
 		let chain = install(
 			LabelNode::new(
 				install(
-					LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout),
+					LabelNode::new(bare_source(&source_layout, 1.), ValueSource::new(String::from("a")), &source_layout),
 					label_layout_meta(),
 					&[Some(&source_layout)],
 				),
-				ValueNode(String::from("b")),
+				ValueSource::new(String::from("b")),
 				&labeled,
 			),
 			label_layout_meta(),
 			&[Some(&labeled)],
 		);
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(value) = core_types::record::serve_edge(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
 		let rec = relabeled.rec(&value);
@@ -2560,18 +2574,24 @@ mod tests {
 		layout: Layout,
 	}
 
-	impl<'e> Node<ContextImpl<'e>> for RealTimeProbe {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+	impl<C: ExtractIndex + core_types::ExtractRealTime> Node<C> for RealTimeProbe {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
 			let element: f64 = match core_types::context::ExtractRealTime::try_real_time(input) {
 				Some(_) => 1.,
 				None => 0.,
 			};
-			let mut frame = core_types::record::FrameBuilder::new(&self.layout, input.arena());
+			let mut frame = core_types::record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(element);
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			GPoll::Final(value)
+			// SAFETY: the builder served a record of this node's layout.
+			GPoll::Final(unsafe { slot.forward(&value) })
+		}
+
+		fn layout(&self) -> &Layout {
+			&self.layout
 		}
 	}
 
@@ -2640,7 +2660,7 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let lift = core_types::record::RecordLift::<String, _>::new(ValueNode(String::from("parked")));
+		let lift = ValueSource::new(String::from("parked"));
 		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		let chain = core_types::record::RecordExtract::<String, _>::new(lift, &layout);
 
@@ -2664,7 +2684,7 @@ mod tests {
 
 		let chain = ForwardRecordNode::new(RecordSource::new(f64_record_source(&layout, 4., vec![("opacity", 0.25)]), &layout, &layout.clone()), &layout);
 
-		let GPoll::Final(value) = chain.eval(&ctx) else {
+		let GPoll::Final(value) = core_types::record::serve_edge(&chain, &ctx) else {
 			panic!("expected a final record");
 		};
 		let rec = layout.rec(&value);
@@ -2703,15 +2723,11 @@ mod tests {
 		assert_eq!(served.element::<f64>(), 4.);
 	}
 
-	struct CountingValue(std::sync::Arc<std::sync::atomic::AtomicU32>);
-
-	impl<Input> Node<Input> for CountingValue {
-		type Output = f64;
-
-		fn eval(&self, _input: &Input) -> GPoll<f64> {
-			self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+	fn counting_source(evals: std::sync::Arc<std::sync::atomic::AtomicU32>) -> LiftedSource<f64, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<f64>> {
+		LiftedSource::new(move |_: &ContextImpl<'_>| {
+			evals.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 			GPoll::Final(21.)
-		}
+		})
 	}
 
 	#[test]
@@ -2722,7 +2738,7 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let evals = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-		let lift = core_types::record::RecordLift::<f64, _>::new(CountingValue(evals.clone()));
+		let lift = counting_source(evals.clone());
 		let layout = Node::<ContextImpl>::layout(&lift).clone();
 		let memo = crate::memo::MemoizeNode::new(lift, &layout);
 
@@ -2755,7 +2771,7 @@ mod tests {
 		};
 		let memo = crate::memo::MemoizeNode::new(source, &layout);
 
-		let GPoll::Partial(_) = memo.eval(&ctx) else {
+		let GPoll::Partial(_) = core_types::record::serve_edge(&memo, &ctx) else {
 			panic!("expected a partial record");
 		};
 		let GPoll::Partial(served) = core_types::record::capture(&memo, &ctx) else {
@@ -2773,7 +2789,7 @@ mod tests {
 		reserve_for(&[&labeled, &labeled]);
 
 		let chain = install(
-			LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout),
+			LabelNode::new(bare_source(&source_layout, 1.), ValueSource::new(String::from("a")), &source_layout),
 			label_layout_meta(),
 			&[Some(&source_layout)],
 		);
@@ -2783,7 +2799,7 @@ mod tests {
 		{
 			let scope = scope_fixture(&generations, &first_arena);
 			let ctx = ContextImpl::root(&scope);
-			let GPoll::Final(_) = memo.eval(&ctx) else {
+			let GPoll::Final(_) = core_types::record::serve_edge(&memo, &ctx) else {
 				panic!("expected a final record");
 			};
 		}
@@ -2791,7 +2807,7 @@ mod tests {
 		let replay_arena = Arena::new(1024).unwrap();
 		let scope = scope_fixture(&generations, &replay_arena);
 		let ctx = ContextImpl::root(&scope);
-		let GPoll::Final(value) = memo.eval(&ctx) else {
+		let GPoll::Final(value) = core_types::record::serve_edge(&memo, &ctx) else {
 			panic!("expected a final record");
 		};
 		let rec = labeled.rec(&value);

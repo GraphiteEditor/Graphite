@@ -17,7 +17,7 @@ pub(crate) fn generate_node_input_references(
 
 		for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
 			// `IList` nesting is rank metadata, not part of the value type.
-			let mut ty = match &parsed_input.ty {
+			let ty = match &parsed_input.ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => crate::codegen::ir::strip_ilist(output_type).0,
 			};

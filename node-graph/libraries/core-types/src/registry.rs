@@ -74,9 +74,9 @@ pub use crate::NodeIOTypes;
 
 /// Element-independent by erasure; the wire's `Type::Record(El)` keeps element reads proven at wiring.
 #[cfg(not(target_family = "wasm"))]
-pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>, Output = crate::record::RecordValue<'c>> + Send + Sync;
+pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>> + Send + Sync;
 #[cfg(target_family = "wasm")]
-pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>, Output = crate::record::RecordValue<'c>>;
+pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>>;
 
 #[cfg(not(target_family = "wasm"))]
 type DynEdge = dyn std::any::Any + Send + Sync;
@@ -136,12 +136,13 @@ impl<Input, N> Node<Input> for SharedEdge<N>
 where
 	N: Node<Input> + ?Sized,
 {
-	type Output = N::Output;
-
-	fn eval(&self, input: &Input) -> crate::gpoll::GPoll<Self::Output> {
-		// Every node advances the record stack by exactly its own frame: it keeps
-		// its output and reclaims its inputs. A mismatch is a leaked or
-		// over-released frame.
+	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
+		// Every node advances the record stack by exactly its own frame: the
+		// caller claimed it before the call, so serving must leave the stack
+		// where it found it. A mismatch is a leaked or over-released frame.
 		#[cfg(debug_assertions)]
 		let sp_before = crate::record::stack::sp();
 		#[cfg(debug_assertions)]
@@ -160,7 +161,7 @@ where
 		}
 		// SAFETY: `own` keeps the payload alive for `self`'s lifetime and Arc
 		// payloads are address stable.
-		let result = unsafe { self.ptr.as_ref() }.eval(input);
+		let result = unsafe { self.ptr.as_ref() }.serve(input, slot);
 		#[cfg(debug_assertions)]
 		if trace {
 			eprintln!("sp> exit frame_bytes {} sp {} -> {}", self.layout().frame_bytes(), sp_before, crate::record::stack::sp());
@@ -168,7 +169,7 @@ where
 		#[cfg(debug_assertions)]
 		debug_assert_eq!(
 			crate::record::stack::sp(),
-			sp_before + self.layout().frame_bytes(),
+			sp_before,
 			"{} left the record stack misaligned (frame_bytes {}, depth {}, fields [{}], poll {})",
 			std::any::type_name::<N>(),
 			self.layout().frame_bytes(),
@@ -185,26 +186,29 @@ where
 		result
 	}
 
-	fn extent_at(&self, input: &Input, level: u8) -> crate::gpoll::GPoll<crate::gpoll::Extent> {
-		// SAFETY: as in eval.
+	fn extent_at<'x>(&self, input: &Input, level: u8) -> crate::gpoll::GPoll<crate::gpoll::Extent>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
+	{
+		// SAFETY: as in serve.
 		unsafe { self.ptr.as_ref() }.extent_at(input, level)
 	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		// SAFETY: as in eval.
+		// SAFETY: as in serve.
 		unsafe { self.ptr.as_ref() }.serialize()
 	}
 
 	fn layout(&self) -> &crate::record::Layout {
-		// SAFETY: as in eval.
+		// SAFETY: as in serve.
 		unsafe { self.ptr.as_ref() }.layout()
 	}
 
-	fn eval_batch<'a>(&'a self, input: &'a Input, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>) -> crate::node::BatchStatus<'a>
+	fn eval_batch<'a, 'x>(&'a self, input: &'a Input, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>) -> crate::node::BatchStatus<'a>
 	where
-		Input: crate::context::InjectIndex + Copy,
+		Input: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
 	{
-		// SAFETY: as in eval.
+		// SAFETY: as in serve.
 		unsafe { self.ptr.as_ref() }.eval_batch(input, range, scratch)
 	}
 }
@@ -341,186 +345,244 @@ mod tests {
 	use super::*;
 	use crate::SourceId;
 	use crate::arena::Arena;
-	use crate::context::{Ctx, EvalScope, ExtractArena};
+	use crate::context::{Ctx, EvalScope, ExtractArena, ExtractIndices};
 	use crate::gpoll::GPoll;
 	use std::sync::Arc;
 	use std::sync::atomic::{AtomicU32, Ordering};
 
-	struct CountingNode(AtomicU32);
+	use crate::record::{FrameClaim, Layout, LiftedSource, Served, element_write, read_element, serve_edge, stack};
 
-	impl<Input> Node<Input> for CountingNode {
-		type Output = u32;
-
-		fn eval(&self, _input: &Input) -> GPoll<u32> {
-			GPoll::Final(self.0.fetch_add(1, Ordering::Relaxed) + 1)
-		}
-	}
-
-	struct LendNode(String);
-
-	impl<'e, Input: Ctx + ExtractArena<ArenaRef = &'e Arena>> Node<Input> for LendNode {
-		type Output = &'e String;
-
-		fn eval(&self, input: &Input) -> GPoll<&'e String> {
-			match input.arena().alloc(self.0.clone()) {
-				Some((parked, _)) => GPoll::Final(parked),
-				None => GPoll::arena_exhausted(),
-			}
-		}
+	fn counting() -> LiftedSource<u32, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<u32>> {
+		let count = AtomicU32::new(0);
+		LiftedSource::new(move |_: &ContextImpl<'_>| GPoll::Final(count.fetch_add(1, Ordering::Relaxed) + 1))
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
 		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
-	#[test]
-	fn borrow_carrying_value_types_wire_through_the_general_constructor() {
-		struct SplitBorrow<'c>(&'c str, usize);
+	/// Serves a parked borrow of its own value: the element is a reference into
+	/// the evaluation's arena, so its lifetime is the serving one.
+	struct LendNode {
+		value: String,
+		layout: Layout,
+	}
 
-		struct SplitNode<Node0> {
-			content: Node0,
+	impl LendNode {
+		fn new(value: &str) -> Self {
+			Self {
+				value: value.to_string(),
+				layout: Layout::default().with_writes(0, element_write::<&'static String>(), &[]),
+			}
 		}
+	}
 
-		impl<'e, Input, Node0> Node<Input> for SplitNode<Node0>
+	impl<Input: Ctx> Node<Input> for LendNode {
+		fn serve<'e, 'l>(&self, input: &Input, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
 		where
-			Input: Ctx,
-			Node0: Node<Input, Output = &'e String>,
+			Input: ExtractArena<ArenaRef = &'e Arena>,
 		{
-			type Output = SplitBorrow<'e>;
-
-			fn eval(&self, input: &Input) -> GPoll<SplitBorrow<'e>> {
-				self.content.eval(input).map(|value| SplitBorrow(value, value.len()))
+			match input.arena().alloc(self.value.clone()) {
+				Some((parked, _)) => slot.lift_served(GPoll::Final(parked), input.arena()),
+				None => GPoll::arena_exhausted(),
 			}
 		}
 
-		type ErasedSplitEdge = dyn for<'c> Node<ContextImpl<'c>, Output = SplitBorrow<'c>> + Send + Sync;
+		fn layout(&self) -> &Layout {
+			&self.layout
+		}
+	}
 
+	#[test]
+	fn borrow_carrying_value_types_wire_through_the_general_constructor() {
 		let arena = Arena::new(4096).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe {
+			stack::reserve(1 << 12);
+		}
 
-		let node: Arc<ErasedSplitEdge> = Arc::new(SplitNode {
-			content: LendNode("held".to_string()),
-		});
-		let handle = EdgeHandle::new_erased(node, concrete!(SplitBorrow<'static>));
-		assert_eq!(*handle.ty(), concrete!(SplitBorrow<'static>));
+		let node = LendNode::new("held");
+		let layout = Node::<ContextImpl>::layout(&node).clone();
+		let handle = EdgeHandle::new_erased(Arc::new(node) as Arc<ErasedRecordNode>, concrete!(String));
+		assert_eq!(*handle.ty(), concrete!(String));
 
-		let wired = handle.downcast_erased::<ErasedSplitEdge>(concrete!(SplitBorrow<'static>)).unwrap();
-		let GPoll::Final(split) = wired.eval(&ctx) else {
-			panic!("borrow-carrying output must eval through the erased edge");
+		let wired = handle.downcast_erased::<ErasedRecordNode>(concrete!(String)).unwrap();
+		let GPoll::Final(value) = serve_edge(&wired, &ctx) else {
+			panic!("borrow-carrying output must serve through the erased edge");
 		};
-		assert_eq!(split.0, "held");
-		assert_eq!(split.1, 4);
+		// SAFETY: the record was served at `layout`, whose element is the borrow.
+		let held = unsafe { read_element::<&String>(layout.rec(&value)) };
+		assert_eq!(held, "held");
+		assert_eq!(held.len(), 4);
+	}
+
+	/// Evaluates its content at three promoted index levels and serves the
+	/// collected elements.
+	struct RepeatNode<Node0, T> {
+		content: Node0,
+		inner: Layout,
+		layout: Layout,
+		_marker: std::marker::PhantomData<fn() -> T>,
+	}
+
+	impl<Node0, T: Clone + Send + Sync + dyn_any::StaticTypeSized> RepeatNode<Node0, T>
+	where
+		Vec<T>: Clone + Send + Sync + dyn_any::StaticTypeSized,
+		<Vec<T> as dyn_any::StaticTypeSized>::Static: Clone + Send + Sync,
+	{
+		fn new(content: Node0, inner: Layout) -> Self {
+			Self {
+				content,
+				inner,
+				layout: Layout::default().with_writes(0, element_write::<Vec<T>>(), &[]),
+				_marker: std::marker::PhantomData,
+			}
+		}
+	}
+
+	impl<C, T, Node0> Node<C> for RepeatNode<Node0, T>
+	where
+		C: Ctx + crate::context::DeriveCtx,
+		T: Clone + 'static,
+		Vec<T>: Send + Sync + dyn_any::StaticTypeSized,
+		Node0: for<'x> crate::record::DerivedRecordEdge<'x, crate::context::Derived<'x, C>>,
+	{
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
+			let cell = crate::node::StatusCell::new();
+			let spilled = input.index_head();
+			let mut result = Vec::new();
+			for index in 0..3 {
+				// SAFETY: the element copies out by value, so the content's
+				// frame is dead by the time the scope releases it.
+				let _scope = unsafe { stack::ScopeGuard::enter() };
+				let derived = input.promoted(&spilled, index);
+				match self.content.eval_derived(&cell, 0, &derived) {
+					// SAFETY: the content served at its own layout, whose
+					// element is `T`.
+					Ok(value) => result.push(unsafe { read_element::<T>(self.inner.rec(&value)) }),
+					Err(interrupt) => return interrupt.into(),
+				}
+			}
+			slot.lift_served(cell.finish(result), input.arena())
+		}
+
+		fn layout(&self) -> &Layout {
+			&self.layout
+		}
 	}
 
 	#[test]
 	fn derive_ctx_repeat_pushes_index_levels_through_the_erased_edge() {
-		use crate::context::{DeriveCtx, Derived, ExtractIndex};
-
-		struct RepeatNode<Node0> {
-			content: Node0,
-		}
-
-		impl<C, T, Node0> Node<C> for RepeatNode<Node0>
-		where
-			C: Ctx + DeriveCtx,
-			Node0: for<'x> Node<Derived<'x, C>, Output = T>,
-		{
-			type Output = Vec<T>;
-
-			fn eval(&self, input: &C) -> GPoll<Vec<T>> {
-				let spilled = input.index_head();
-				let mut result = Vec::new();
-				for index in 0..3 {
-					let derived = input.promoted(&spilled, index);
-					match self.content.eval(&derived) {
-						GPoll::Final(value) => result.push(value),
-						other => return other.map(|_| Vec::new()),
-					}
-				}
-				GPoll::Final(result)
-			}
-		}
-
-		struct LevelsNode;
-
-		impl<Input: ExtractIndex> Node<Input> for LevelsNode {
-			type Output = Vec<usize>;
-
-			fn eval(&self, input: &Input) -> GPoll<Vec<usize>> {
-				GPoll::Final(input.try_index().map(|levels| levels.collect()).unwrap_or_default())
-			}
-		}
-
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let nested = crate::record::RecordLift::<Vec<Vec<Vec<usize>>>, _>::new(RepeatNode {
-			content: RepeatNode { content: LevelsNode },
-		});
+		let levels = LiftedSource::<Vec<usize>, _>::new(|input: &ContextImpl| GPoll::Final(input.try_index().map(|levels| levels.collect()).unwrap_or_default()));
+		let levels_layout = Node::<ContextImpl>::layout(&levels).clone();
+		let inner = RepeatNode::<_, Vec<usize>>::new(levels, levels_layout);
+		let inner_layout = Node::<ContextImpl>::layout(&inner).clone();
+		let nested = RepeatNode::<_, Vec<Vec<usize>>>::new(inner, inner_layout);
 		let layout = Node::<ContextImpl>::layout(&nested).clone();
 		let erased: Box<ErasedRecordNode> = Box::new(nested);
 		// SAFETY: between evaluations, nothing served on the stack is live.
 		unsafe {
-			crate::record::stack::reserve(1 << 12);
+			stack::reserve(1 << 12);
 		}
 
-		let GPoll::Final(value) = erased.eval(&ctx) else {
+		let GPoll::Final(value) = serve_edge(&*erased, &ctx) else {
 			panic!("nested repeat must evaluate");
 		};
 		// SAFETY: the record was served at `layout`, whose element is the output.
-		let outer = unsafe { crate::record::read_element::<Vec<Vec<Vec<usize>>>>(layout.rec(&value)) };
+		let outer = unsafe { read_element::<Vec<Vec<Vec<usize>>>>(layout.rec(&value)) };
 		assert_eq!(outer.len(), 3);
 		assert_eq!(outer[2][1], vec![1, 2, 0]);
 		assert_eq!(outer[0][0], vec![0, 0, 0]);
 	}
 
+	/// Shifts the footprint's resolution and serves its content's element under
+	/// the derived context.
+	struct ShiftFootprintNode<Node0> {
+		content: Node0,
+		inner: Layout,
+		layout: Layout,
+	}
+
+	impl<Node0> ShiftFootprintNode<Node0> {
+		fn new(content: Node0, inner: Layout) -> Self {
+			Self {
+				content,
+				inner,
+				layout: Layout::default().with_writes(0, element_write::<u32>(), &[]),
+			}
+		}
+	}
+
+	impl<C, Node0> Node<C> for ShiftFootprintNode<Node0>
+	where
+		C: Ctx + crate::context::DeriveCtx + crate::context::ExtractFootprint,
+		Node0: for<'x> crate::record::DerivedRecordEdge<'x, crate::context::Derived<'x, C>>,
+	{
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
+			use crate::transform::Footprint;
+			let cell = crate::node::StatusCell::new();
+			let mut footprint = input.try_footprint().copied().unwrap_or(Footprint::DEFAULT);
+			footprint.resolution.x += 7;
+			// SAFETY: the element copies out by value, so the content's frame is
+			// dead by the time the scope releases it.
+			let value = {
+				let _scope = unsafe { stack::ScopeGuard::enter() };
+				let derived = input.with_footprint(&footprint);
+				match self.content.eval_derived(&cell, 0, &derived) {
+					// SAFETY: the content served at its own layout, whose
+					// element is the resolution.
+					Ok(value) => unsafe { read_element::<u32>(self.inner.rec(&value)) },
+					Err(interrupt) => return interrupt.into(),
+				}
+			};
+			slot.lift_served(cell.finish(value), input.arena())
+		}
+
+		fn layout(&self) -> &Layout {
+			&self.layout
+		}
+	}
+
 	#[test]
 	fn derive_ctx_footprint_replace_reaches_the_content() {
-		use crate::context::{DeriveCtx, Derived, ExtractFootprint};
+		use crate::context::ExtractFootprint;
 		use crate::transform::Footprint;
-
-		struct ShiftFootprintNode<Node0> {
-			content: Node0,
-		}
-
-		impl<C, T, Node0> Node<C> for ShiftFootprintNode<Node0>
-		where
-			C: Ctx + DeriveCtx + ExtractFootprint,
-			Node0: for<'x> Node<Derived<'x, C>, Output = T>,
-		{
-			type Output = T;
-
-			fn eval(&self, input: &C) -> GPoll<T> {
-				let mut footprint = input.try_footprint().copied().unwrap_or(Footprint::DEFAULT);
-				footprint.resolution.x += 7;
-				let derived = input.with_footprint(&footprint);
-				self.content.eval(&derived)
-			}
-		}
-
-		struct ResolutionNode;
-
-		impl<Input: ExtractFootprint> Node<Input> for ResolutionNode {
-			type Output = u32;
-
-			fn eval(&self, input: &Input) -> GPoll<u32> {
-				GPoll::Final(input.try_footprint().map(|footprint| footprint.resolution.x).unwrap_or(0))
-			}
-		}
 
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe {
+			stack::reserve(1 << 12);
+		}
 
-		let graph = ShiftFootprintNode {
-			content: ShiftFootprintNode { content: ResolutionNode },
+		let resolution = LiftedSource::<u32, _>::new(|input: &ContextImpl| GPoll::Final(input.try_footprint().map(|footprint| footprint.resolution.x).unwrap_or(0)));
+		let resolution_layout = Node::<ContextImpl>::layout(&resolution).clone();
+		let shifted = ShiftFootprintNode::new(resolution, resolution_layout);
+		let shifted_layout = Node::<ContextImpl>::layout(&shifted).clone();
+		let graph = ShiftFootprintNode::new(shifted, shifted_layout);
+		let layout = Node::<ContextImpl>::layout(&graph).clone();
+
+		let GPoll::Final(value) = serve_edge(&graph, &ctx) else {
+			panic!("the footprint shift must reach the content");
 		};
-		assert_eq!(graph.eval(&ctx), GPoll::Final(Footprint::DEFAULT.resolution.x + 14));
+		// SAFETY: the record was served at `layout`, whose element is the resolution.
+		assert_eq!(unsafe { read_element::<u32>(layout.rec(&value)) }, Footprint::DEFAULT.resolution.x + 14);
 	}
 
 	#[test]
@@ -559,24 +621,24 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let counting = crate::record::RecordLift::<u32, _>::new(CountingNode(AtomicU32::new(0)));
+		let counting = counting();
 		let layout = Node::<ContextImpl>::layout(&counting).clone();
 		let handle = EdgeHandle::new_record::<u32>(Arc::new(counting) as Arc<ErasedRecordNode>);
 		let duplicate = handle.duplicate();
 		assert_eq!(*duplicate.ty(), record_edge_type::<u32>());
 		// SAFETY: between evaluations, nothing served on the stack is live.
 		unsafe {
-			crate::record::stack::reserve(1 << 12);
+			stack::reserve(1 << 12);
 		}
 
 		let first = handle.downcast_record::<u32>().unwrap();
 		let second = duplicate.downcast_record::<u32>().unwrap();
 		// SAFETY: each record was served at `layout`, whose element is the count.
 		let count = |value| unsafe { layout.rec(&value).element::<u32>() };
-		assert_eq!(first.eval(&ctx).map(count), GPoll::Final(1));
-		assert_eq!(second.eval(&ctx).map(count), GPoll::Final(2));
+		assert_eq!(serve_edge(&first, &ctx).map(count), GPoll::Final(1));
+		assert_eq!(serve_edge(&second, &ctx).map(count), GPoll::Final(2));
 
 		drop(first);
-		assert_eq!(second.eval(&ctx).map(count), GPoll::Final(3));
+		assert_eq!(serve_edge(&second, &ctx).map(count), GPoll::Final(3));
 	}
 }

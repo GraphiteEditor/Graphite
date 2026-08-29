@@ -304,7 +304,7 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 	// Lazy secondaries are consumed as plain elements; raw record edges and
 	// ranked outputs have no element binding here.
 	let unsupported_lazy_secondary = |field: &ParsedField| match &field.ty {
-		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => is_record_value(output_type) || crate::codegen::ir::strip_ilist(output_type).1 > 0 || !field.attribute_reads.is_empty(),
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => is_served(output_type) || crate::codegen::ir::strip_ilist(output_type).1 > 0 || !field.attribute_reads.is_empty(),
 		ParsedFieldType::Regular(_) => false,
 	};
 	if parsed.fields.iter().skip(lazy_carrier as usize).any(|field| unsupported_lazy_secondary(field)) {
@@ -503,15 +503,17 @@ pub(crate) fn generic_assignment(field_ty: &Type, row_ty: &Type, generic: &Ident
 	})
 }
 
-pub(crate) fn is_record_value(ty: &Type) -> bool {
-	matches!(ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "RecordValue"))
+/// A whole-record position: the served proof a record-opaque kernel hands
+/// back, or the subject it receives without naming an element.
+pub(crate) fn is_served(ty: &Type) -> bool {
+	matches!(ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "Served"))
 }
 
-/// Whether a kernel operates on whole records: it names `RecordValue` in its
-/// output, receives raw record edges paired with the node's layout, and
+/// Whether a kernel operates on whole records: it serves through the claim it
+/// was handed, receives raw record edges paired with the node's layout, and
 /// takes on the record APIs' unsafe contracts itself.
 pub(crate) fn record_opaque(parsed: &ParsedNodeFn) -> bool {
-	is_record_value(&slot_value_type(&parsed.output_type))
+	is_served(&slot_value_type(&parsed.output_type))
 }
 
 pub(crate) fn routing_io(parsed: &ParsedNodeFn) -> Option<RoutingIo> {
@@ -739,45 +741,9 @@ pub(crate) fn named_serving_lifetime(ty: &Type) -> Option<Lifetime> {
 	visitor.found
 }
 
+/// Rewrites a kernel-declared `ExtractArena<'e>` bound into the equality the
+/// trait names.
 pub(crate) fn desugar_extract_lifetime(bound: &TypeParamBound, core_types: &TokenStream2) -> TokenStream2 {
-	desugar_extract_lifetime_at(bound, core_types, None)
-}
-
-/// Renames every occurrence of the named lifetimes to `'__record` in a token
-/// stream: a flipped kernel's serving lifetime is the record lifetime at the
-/// impl, under whichever name the author picked.
-pub(crate) fn rename_lifetimes_to_record(stream: TokenStream2, names: &[String]) -> TokenStream2 {
-	use proc_macro2::{Group, TokenTree};
-	let mut out = Vec::new();
-	let mut tokens = stream.into_iter().peekable();
-	while let Some(token) = tokens.next() {
-		match token {
-			TokenTree::Group(group) => {
-				let renamed = rename_lifetimes_to_record(group.stream(), names);
-				let mut fresh = Group::new(group.delimiter(), renamed);
-				fresh.set_span(group.span());
-				out.push(TokenTree::Group(fresh));
-			}
-			TokenTree::Punct(punct) if punct.as_char() == '\'' => {
-				match tokens.peek() {
-					Some(TokenTree::Ident(ident)) if names.iter().any(|name| ident == name) => {
-						let span = ident.span();
-						tokens.next();
-						out.push(TokenTree::Punct(punct));
-						out.push(TokenTree::Ident(proc_macro2::Ident::new("__record", span)));
-					}
-					_ => out.push(TokenTree::Punct(punct)),
-				}
-			}
-			token => out.push(token),
-		}
-	}
-	out.into_iter().collect()
-}
-
-/// As [`desugar_extract_lifetime`], with the arena lifetime overridden: a
-/// flipped kernel's serving lifetime is the record lifetime at the impl.
-pub(crate) fn desugar_extract_lifetime_at(bound: &TypeParamBound, core_types: &TokenStream2, at: Option<TokenStream2>) -> TokenStream2 {
 	let TypeParamBound::Trait(trait_bound) = bound else {
 		return quote!(#bound);
 	};
@@ -796,7 +762,6 @@ pub(crate) fn desugar_extract_lifetime_at(bound: &TypeParamBound, core_types: &T
 	let Some(GenericArgument::Lifetime(lifetime)) = args.args.first() else {
 		return quote!(#bound);
 	};
-	let lifetime = at.unwrap_or_else(|| quote!(#lifetime));
 	quote!(#core_types::context::ExtractArena<ArenaRef = &#lifetime #core_types::arena::Arena>)
 }
 

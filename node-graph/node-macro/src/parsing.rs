@@ -36,6 +36,9 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) output_depth: u8,
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
+	/// The caller's frame claim, declared by a record-opaque kernel that
+	/// serves through it; not a wired input.
+	pub(crate) claim: Option<PatType>,
 	pub(crate) body: TokenStream2,
 	pub(crate) description: String,
 }
@@ -685,7 +688,7 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 	let fn_generics = input_fn.sig.generics.params.into_iter().collect();
 	let is_async = input_fn.sig.asyncness.is_some();
 
-	let (input, fields) = parse_inputs(&input_fn.sig.inputs)?;
+	let (input, fields, claim) = parse_inputs(&input_fn.sig.inputs)?;
 	let (output_type, output_depth) = crate::codegen::ir::strip_output_rank(&parse_output(&input_fn.sig.output)?);
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
@@ -718,15 +721,17 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 		output_depth,
 		is_async,
 		fields,
+		claim,
 		where_clause,
 		body,
 		description,
 	})
 }
 
-fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<ParsedField>)> {
+fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<ParsedField>, Option<PatType>)> {
 	let mut fields = Vec::new();
 	let mut input = None;
+	let mut claim = None;
 
 	for (index, arg) in inputs.iter().enumerate() {
 		if let FnArg::Typed(PatType { pat, ty, attrs, .. }) = arg {
@@ -765,6 +770,17 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 				if attr_marker(ty).is_some() {
 					return Err(Error::new_spanned(pat_ident, "an attribute read binds to an input: destructure it as `(value, Attr<..>)`"));
 				}
+				// The claim is the caller's, not an input: it reaches the kernel
+				// from the serve the node is lowered into.
+				if is_frame_claim(ty) {
+					claim = Some(PatType {
+						attrs: Vec::new(),
+						pat: pat.clone(),
+						colon_token: Default::default(),
+						ty: ty.clone(),
+					});
+					continue;
+				}
 				let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
 				fields.push(field);
 			} else if let Pat::Tuple(pat_tuple) = &**pat {
@@ -789,7 +805,13 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 	}
 
 	let input = input.ok_or_else(|| Error::new_spanned(inputs, "Expected at least one input argument. The first argument should be the node input type."))?;
-	Ok((input, fields))
+	Ok((input, fields, claim))
+}
+
+/// Whether the parameter is the caller-provided frame claim a record-opaque
+/// kernel serves through.
+fn is_frame_claim(ty: &Type) -> bool {
+	matches!(ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "FrameClaim"))
 }
 
 /// Splits a lazy input's `Output = (T, Attr<..>..)` tuple into the element
@@ -1129,9 +1151,10 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			));
 		}
 
-		let (input_type, output_type) = node_input_type
-			.zip(node_output_type)
-			.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input, Output = OutputType>`"))?;
+		let input_type = node_input_type.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input>` or `impl Node<Input, Output = OutputType>`"))?;
+		// A subject named without an output is a whole-record wire: the kernel
+		// serves it through its own claim rather than reading an element.
+		let output_type = node_output_type.unwrap_or_else(|| syn::parse_quote!(Served<'_>));
 		if !matches!(&value_source, ParsedValueSource::None) {
 			return Err(Error::new_spanned(&ty, "No default values for `impl Node` allowed"));
 		}
@@ -1485,6 +1508,7 @@ mod tests {
 			output_type: parse_quote!(f64),
 			output_depth: 0,
 			is_async: false,
+			claim: None,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
 				name: None,
@@ -1565,6 +1589,7 @@ mod tests {
 			output_type: parse_quote!(T),
 			output_depth: 0,
 			is_async: false,
+			claim: None,
 			fields: vec![
 				ParsedField {
 					pat_ident: pat_ident("transform_target"),
@@ -1660,6 +1685,7 @@ mod tests {
 			output_type: parse_quote!(Vector),
 			output_depth: 0,
 			is_async: false,
+			claim: None,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("radius"),
 				name: None,
@@ -1736,6 +1762,7 @@ mod tests {
 			output_type: parse_quote!(List<Raster<P>>),
 			output_depth: 0,
 			is_async: false,
+			claim: None,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("shadows"),
 				name: None,
@@ -1824,6 +1851,7 @@ mod tests {
 			output_type: parse_quote!(f64),
 			output_depth: 0,
 			is_async: false,
+			claim: None,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
 				name: None,
@@ -1915,6 +1943,7 @@ mod tests {
 			output_type: parse_quote!(List<Raster<CPU>>),
 			output_depth: 0,
 			is_async: true,
+			claim: None,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("path"),
 				name: None,
@@ -1991,6 +2020,7 @@ mod tests {
 			output_type: parse_quote!(i32),
 			output_depth: 0,
 			is_async: false,
+			claim: None,
 			fields: vec![],
 			body: TokenStream2::new(),
 			description: String::new(),

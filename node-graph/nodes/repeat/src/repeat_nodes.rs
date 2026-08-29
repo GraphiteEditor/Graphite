@@ -181,20 +181,11 @@ mod test {
 	use super::*;
 	use core_types::SourceId;
 	use core_types::arena::Arena;
-	use core_types::context::{ContextImpl, EvalScope};
+	use core_types::context::{ContextImpl, EvalScope, ExtractArena};
 	use core_types::node::Node;
-	use core_types::record::{FieldWrite, FrameBuilder, Layout, RecordSource, RecordValue, capture, element_write, stack};
+	use core_types::record::{FieldWrite, FrameBuilder, FrameClaim, Layout, RecordSource, Served, capture, element_write, stack};
+	use core_types::value::ValueSource;
 	use vector_types::subpath::Subpath;
-
-	struct ValueNode<T>(T);
-
-	impl<T: Clone, Input> Node<Input> for ValueNode<T> {
-		type Output = T;
-
-		fn eval(&self, _input: &Input) -> GPoll<T> {
-			GPoll::Final(self.0.clone())
-		}
-	}
 
 	struct TransformSource {
 		layout: Layout,
@@ -202,16 +193,21 @@ mod test {
 		transform: DAffine2,
 	}
 
-	impl<'e> Node<ContextImpl<'e>> for TransformSource {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			use core_types::context::ExtractArena;
-			let mut frame = FrameBuilder::new(&self.layout, input.arena());
+	impl<C: ExtractIndex> Node<C> for TransformSource {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
+			let mut frame = FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(self.element);
 			frame.attr::<TransformAttr>(self.transform);
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			GPoll::Final(value)
+			// SAFETY: the builder served a record of this node's layout.
+			GPoll::Final(unsafe { slot.forward(&value) })
+		}
+
+		fn layout(&self) -> &Layout {
+			&self.layout
 		}
 	}
 
@@ -225,20 +221,24 @@ mod test {
 		rows: Vec<(Vector, DAffine2)>,
 	}
 
-	impl<'e> Node<ContextImpl<'e>> for VectorRows {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			use core_types::context::{ExtractArena, ExtractIndices};
+	impl<C: ExtractIndex> Node<C> for VectorRows {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
 			let (vector, transform) = &self.rows[input.innermost_index() as usize % self.rows.len()];
-			let mut frame = FrameBuilder::new(&self.layout, input.arena());
+			let mut frame = FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(vector.clone());
 			frame.attr::<TransformAttr>(*transform);
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			GPoll::Final(value)
+			// SAFETY: the builder served a record of this node's layout.
+			GPoll::Final(unsafe { slot.forward(&value) })
 		}
 
-		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+		fn extent_at<'x>(&self, _input: &C, _level: u8) -> GPoll<Extent>
+		where
+			C: ExtractArena<ArenaRef = &'x Arena>,
+		{
 			GPoll::Final(Extent::Exactly(self.rows.len()))
 		}
 
@@ -255,17 +255,18 @@ mod test {
 		layout: Layout,
 	}
 
-	impl<'e> Node<ContextImpl<'e>> for PositionProbe {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			use core_types::context::{ExtractArena, ExtractPosition};
+	impl<C: ExtractIndex + core_types::context::ExtractPosition> Node<C> for PositionProbe {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
 			let position = input.try_position().and_then(|mut positions| positions.next()).unwrap_or(DVec2::ZERO);
-			let mut frame = FrameBuilder::new(&self.layout, input.arena());
+			let mut frame = FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(position.x);
 			frame.attr::<TransformAttr>(DAffine2::IDENTITY);
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			GPoll::Final(value)
+			// SAFETY: the builder served a record of this node's layout.
+			GPoll::Final(unsafe { slot.forward(&value) })
 		}
 
 		fn layout(&self) -> &Layout {
@@ -293,9 +294,9 @@ mod test {
 
 		let mut node = RepeatArrayNode::new(
 			RecordSource::new(content, &layout, &layout),
-			ValueNode(DVec2::new(10., 0.)),
-			ValueNode(0.0f64),
-			ValueNode(3u32),
+			ValueSource::new(DVec2::new(10., 0.)),
+			ValueSource::new(0.0f64),
+			ValueSource::new(3u32),
 			&layout,
 		);
 		Node::<ContextImpl>::set_layout(&mut node, repeat_array_layout_meta().resolve(&[Some(&layout)]));
@@ -332,7 +333,7 @@ mod test {
 			transform: local,
 		};
 
-		let mut node = RepeatRadialNode::new(RecordSource::new(content, &layout, &layout), ValueNode(90.0f64), ValueNode(2.0f64), ValueNode(4u32), &layout);
+		let mut node = RepeatRadialNode::new(RecordSource::new(content, &layout, &layout), ValueSource::new(90.0f64), ValueSource::new(2.0f64), ValueSource::new(4u32), &layout);
 		Node::<ContextImpl>::set_layout(&mut node, repeat_radial_layout_meta().resolve(&[Some(&layout)]));
 		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(4)));
 
@@ -371,7 +372,7 @@ mod test {
 		let content_layout = transform_layout();
 		let content = PositionProbe { layout: content_layout.clone() };
 
-		let mut node = RepeatOnPointsNode::new(RecordSource::new(content, &content_layout, &content_layout), points, ValueNode(false), &content_layout);
+		let mut node = RepeatOnPointsNode::new(RecordSource::new(content, &content_layout, &content_layout), points, ValueSource::new(false), &content_layout);
 		Node::<ContextImpl>::set_layout(&mut node, repeat_on_points_layout_meta().resolve(&[Some(&content_layout)]));
 		let leveled = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(leveled.depth, 1);
@@ -407,7 +408,7 @@ mod test {
 		let content_layout = transform_layout();
 		let content = PositionProbe { layout: content_layout.clone() };
 
-		let mut node = RepeatOnPointsNode::new(RecordSource::new(content, &content_layout, &content_layout), points, ValueNode(true), &content_layout);
+		let mut node = RepeatOnPointsNode::new(RecordSource::new(content, &content_layout, &content_layout), points, ValueSource::new(true), &content_layout);
 		Node::<ContextImpl>::set_layout(&mut node, repeat_on_points_layout_meta().resolve(&[Some(&content_layout)]));
 
 		let mut expected = positions.clone();

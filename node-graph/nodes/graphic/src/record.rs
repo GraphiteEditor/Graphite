@@ -222,39 +222,35 @@ mod tests {
 	use core_types::SourceId;
 	use core_types::arena::Arena;
 	use core_types::attribute::Attribute as AttributeMarker;
-	use core_types::context::{ContextImpl, EvalScope, ExtractArena, ExtractIndices};
+	use core_types::context::{ContextImpl, EvalScope, ExtractArena};
 	use core_types::list::{Item, List};
 	use core_types::node::Node;
-	use core_types::record::{self, Layout, RecordSource, RecordValue, stack};
-
-	struct ValueNode<T>(T);
-
-	impl<T: Clone, Input> Node<Input> for ValueNode<T> {
-		type Output = T;
-
-		fn eval(&self, _input: &Input) -> GPoll<T> {
-			GPoll::Final(self.0.clone())
-		}
-	}
+	use core_types::record::{self, FrameClaim, Layout, RecordSource, Served, stack};
+	use core_types::value::ValueSource;
 
 	struct GraphicSource {
 		layout: Layout,
 		rows: Vec<(Graphic<'static>, DAffine2)>,
 	}
 
-	impl<'e> Node<ContextImpl<'e>> for GraphicSource {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+	impl<C: ExtractIndex> Node<C> for GraphicSource {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
 			let (graphic, transform) = &self.rows[input.innermost_index() as usize % self.rows.len()];
-			let mut frame = record::FrameBuilder::new(&self.layout, input.arena());
+			let mut frame = record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(graphic.clone());
 			frame.attr::<Transform>(*transform);
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			GPoll::Final(value)
+			// SAFETY: the builder served a record of this node's layout.
+			GPoll::Final(unsafe { slot.forward(&value) })
 		}
 
-		fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+		fn extent_at<'x>(&self, _input: &C, _level: u8) -> GPoll<Extent>
+		where
+			C: ExtractArena<ArenaRef = &'x Arena>,
+		{
 			GPoll::Final(Extent::Exactly(self.rows.len()))
 		}
 
@@ -342,7 +338,7 @@ mod tests {
 						&$layout,
 						&$layout,
 					),
-					ValueNode($fully),
+					ValueSource::new($fully),
 				),
 				flatten_layout_meta(),
 				&[Some(&$layout)],
@@ -358,31 +354,36 @@ mod tests {
 		layout: Layout,
 	}
 
-	fn vararg_text(input: &ContextImpl<'_>) -> Option<String> {
+	fn vararg_text<C: core_types::ExtractVarArgs>(input: &C) -> Option<String> {
 		let arg = core_types::ExtractVarArgs::vararg(input, 0).ok()?;
 		let list = arg.downcast_ref::<core_types::list::List<Graphic>>()?;
 		let Graphic::Text(text) = list.element(0)? else { return None };
 		Some(text.clone())
 	}
 
-	impl<'e> Node<ContextImpl<'e>> for PerRowSource {
-		type Output = RecordValue<'e>;
-
-		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+	impl<C: ExtractIndex + core_types::ExtractVarArgs> Node<C> for PerRowSource {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
 			let Some(label) = vararg_text(input) else {
 				return GPoll::error("the subgraph fixture expects a text vararg");
 			};
 			let lane = input.innermost_index();
 			let graphic = text(&format!("{label}{lane}"));
 			let translated = DAffine2::from_translation(glam::DVec2::new(lane as f64, 0.));
-			let mut frame = record::FrameBuilder::new(&self.layout, input.arena());
+			let mut frame = record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 			frame.element(graphic);
 			frame.attr::<Transform>(translated);
 			let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-			GPoll::Final(value)
+			// SAFETY: the builder served a record of this node's layout.
+			GPoll::Final(unsafe { slot.forward(&value) })
 		}
 
-		fn extent_at(&self, input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+		fn extent_at<'x>(&self, input: &C, _level: u8) -> GPoll<Extent>
+		where
+			C: ExtractArena<ArenaRef = &'x Arena>,
+		{
 			match vararg_text(input) {
 				Some(label) => GPoll::Final(Extent::Exactly(label.len())),
 				None => GPoll::error("the subgraph fixture expects a text vararg"),
@@ -681,7 +682,7 @@ mod tests {
 		assert_eq!(node.extent_at(&ctx, 0), GPoll::Final(Extent::Exactly(1)), "the group is the level's single lane");
 
 		let head = ctx.index_head();
-		let GPoll::Final(value) = node.eval(&ctx.promoted(&head, 0)) else {
+		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0)) else {
 			panic!("expected a final record");
 		};
 		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(out.rec(&value)) }) else {
@@ -716,7 +717,7 @@ mod tests {
 		let out = Node::<ContextImpl>::layout(&node).clone();
 
 		let head = ctx.index_head();
-		let GPoll::Final(value) = node.eval(&ctx.promoted(&head, 0)) else {
+		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0)) else {
 			panic!("expected a final record");
 		};
 		let copy = unsafe { (out.element.clone_out)(out.rec(&value).ptr()) };
@@ -746,18 +747,23 @@ mod tests {
 			colors: Vec<Color>,
 		}
 
-		impl<'e> Node<ContextImpl<'e>> for ColorSource {
-			type Output = RecordValue<'e>;
-
-			fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+		impl<C: ExtractIndex> Node<C> for ColorSource {
+			fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+			where
+				C: ExtractArena<ArenaRef = &'e Arena>,
+			{
 				let color = self.colors[input.innermost_index() as usize];
-				let mut frame = record::FrameBuilder::new(&self.layout, input.arena());
+				let mut frame = record::FrameBuilder::new(&self.layout, ExtractArena::arena(input));
 				frame.element(color);
 				let Some(value) = frame.finish() else { return GPoll::arena_exhausted() };
-				GPoll::Final(value)
+				// SAFETY: the builder served a record of this node's layout.
+				GPoll::Final(unsafe { slot.forward(&value) })
 			}
 
-			fn extent_at(&self, _input: &ContextImpl<'e>, _level: u8) -> GPoll<Extent> {
+			fn extent_at<'x>(&self, _input: &C, _level: u8) -> GPoll<Extent>
+			where
+				C: ExtractArena<ArenaRef = &'x Arena>,
+			{
 				GPoll::Final(Extent::Exactly(self.colors.len()))
 			}
 
@@ -809,7 +815,7 @@ mod tests {
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
 		let head = ctx.index_head();
-		let GPoll::Final(value) = node.eval(&ctx.promoted(&head, 0)) else {
+		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0)) else {
 			panic!("expected a final record");
 		};
 		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(out.rec(&value)) }) else {
@@ -844,7 +850,7 @@ mod tests {
 			// SAFETY: the element is cloned out inside the scope, so no borrow
 			// into the frame escapes it.
 			let _scope = unsafe { stack::ScopeGuard::enter() };
-			let GPoll::Final(value) = wrapped.eval(&ctx.promoted(&head, 0)) else {
+			let GPoll::Final(value) = record::serve_edge(&wrapped, &ctx.promoted(&head, 0)) else {
 				panic!("expected a final record");
 			};
 			let group = unsafe { record::borrow_element::<Graphic>(wrap_out.rec(&value)) }.clone();

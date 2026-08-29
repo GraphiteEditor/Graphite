@@ -10,7 +10,7 @@ use core_types::arena::Arena;
 use core_types::context::InjectIndex;
 use core_types::gpoll::{Finality, GraphError};
 use core_types::node::Node;
-use core_types::record::{Group, GroupItem, LevelStatus, RecordValue, materialize_level};
+use core_types::record::{Group, GroupItem, LevelStatus, materialize_level};
 use core_types::uuid::NodeId;
 use glam::{DAffine2, DVec2};
 use vector_types::GradientStops;
@@ -26,8 +26,8 @@ pub enum LevelGroup<'e> {
 /// group over the level's records, ready for the group render bridge.
 pub fn materialize_group<'a, 'e, C, N>(node: &'a N, input: &'a C, arena: &'a Arena) -> LevelGroup<'a>
 where
-	C: InjectIndex + Copy,
-	N: Node<C, Output = RecordValue<'e>>,
+	C: InjectIndex + Copy + core_types::context::ExtractArena<ArenaRef = &'e Arena>,
+	N: Node<C>,
 {
 	match materialize_level(node, input, arena) {
 		LevelStatus::Batch(batch, finality) => {

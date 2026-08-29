@@ -3,7 +3,7 @@ use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ModifyIndex};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
-use core_types::record::{LevelStatus, OwnedRecord, RecordValue, claim_frame, copy_record_bytes, serve_frame};
+use core_types::record::{FrameClaim, LevelStatus, OwnedRecord, Served, copy_record_bytes};
 use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -29,12 +29,12 @@ pub struct MemoLevel {
 /// key normalizes the addressed lane away, so per-lane pulls share one
 /// materialization of the content instead of re-evaluating it per lane.
 #[node_macro::node(category("General"), path(graphene_core::memo))]
-fn memoize<'e>(
+fn memoize<'e, 'l>(
 	ctx: impl Ctx + CacheHash + DeriveCtx + ExtractArena<'e> + ModifyIndex + Copy,
 	#[data] cache: Arc<Mutex<Option<MemoLevel>>>,
-	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
-) -> GPoll<RecordValue<'e>> {
-	let entry_sp = core_types::record::stack::sp();
+	content: impl Node<Context<'_>>,
+	slot: FrameClaim<'l>,
+) -> GPoll<Served<'e>> {
 	// A scalar wire's value may depend on the consuming lane (index readers),
 	// so only a leveled wire, whose level covers every lane by construction,
 	// keys with the lane normalized away.
@@ -51,32 +51,34 @@ fn memoize<'e>(
 		}
 		false => cache_key(&ctx),
 	};
-	let finalized = |value: RecordValue<'e>, finality: &Finality| match finality {
+	let finalized = |value: Served<'e>, finality: &Finality| match finality {
 		Finality::AllFinal => GPoll::Final(value),
 		Finality::Partial => GPoll::Partial(value),
 	};
-	let serve = |entry: &MemoLevel| {
+	// The claim is this node's output frame: a hit fills it from the cached
+	// bytes, and every valueless exit drops it with the frame still claimed.
+	let serve = |entry: &MemoLevel, mut slot: FrameClaim<'l>| {
 		if lane >= entry.lanes.len() {
 			// The cached level ends here; the past-end signal serves drains.
-			// The frame stays claimed on every exit, valueless ones included.
-			claim_frame(content.layout());
 			return GPoll::Error(Box::new(core_types::gpoll::GraphError::past_end()));
 		}
 		if entry.generation == ctx.arena().generation() {
 			// SAFETY: within the generation the materialized batch stays live,
 			// immutable, and laid out at the recorded stride.
-			let value = unsafe { serve_frame(content.layout(), (entry.frames + lane * entry.stride) as *const u8) };
-			return finalized(value, &entry.finality);
+			unsafe { slot.fill_copy((entry.frames + lane * entry.stride) as *const u8) };
+			// SAFETY: the copy images a complete record of this layout.
+			return finalized(unsafe { slot.finish_served() }, &entry.finality);
 		}
-		match entry.lanes[lane].replay(content.layout(), ctx.arena()) {
-			Some(value) => finalized(value, &entry.finality),
+		match entry.lanes[lane].replay_into(&mut slot, ctx.arena()) {
+			// SAFETY: the replay completes the record in the frame.
+			Some(()) => finalized(unsafe { slot.finish_served() }, &entry.finality),
 			None => GPoll::arena_exhausted(),
 		}
 	};
 	if let Some(entry) = cache.lock().unwrap().as_ref()
 		&& entry.key == key
 	{
-		return serve(entry);
+		return serve(entry, slot);
 	}
 	if leveled {
 		return match content.materialize_level(&ctx, ctx.arena()) {
@@ -95,28 +97,19 @@ fn memoize<'e>(
 					lanes,
 					finality,
 				};
-				let result = serve(&entry);
+				let result = serve(&entry, slot);
 				*cache.lock().unwrap() = Some(entry);
 				result
 			}
-			// A valueless materialization caches nothing, so the frames it left
-			// behind have no reader and must not be counted against this node.
-			LevelStatus::Pending => {
-				// SAFETY: nothing borrows the frames above the entry mark.
-				unsafe { core_types::record::interrupt_frame(entry_sp, content.layout()) };
-				GPoll::Pending
-			}
-			LevelStatus::Error(error) => {
-				// SAFETY: nothing borrows the frames above the entry mark.
-				unsafe { core_types::record::interrupt_frame(entry_sp, content.layout()) };
-				GPoll::Error(Box::new(error))
-			}
+			LevelStatus::Pending => GPoll::Pending,
+			LevelStatus::Error(error) => GPoll::Error(Box::new(error)),
 		};
 	}
-	let result = content.eval(&ctx);
+	// The output layout is the content's, so the claim is the content's frame.
+	let result = content.serve(&ctx, slot);
 	let publishable = match &result {
-		GPoll::Final(value) => Some((value, Finality::AllFinal)),
-		GPoll::Partial(value) => Some((value, Finality::Partial)),
+		GPoll::Final(served) => Some((served.record(), Finality::AllFinal)),
+		GPoll::Partial(served) => Some((served.record(), Finality::Partial)),
 		GPoll::Pending | GPoll::Fallback(_) | GPoll::Error(_) => None,
 	};
 	if let Some((value, finality)) = publishable {
@@ -124,7 +117,7 @@ fn memoize<'e>(
 		let copy = unsafe { OwnedRecord::copy_out(content.layout(), content.layout().rec(value)) };
 		*cache.lock().unwrap() = Some(MemoLevel {
 			key,
-			// A scalar record replays from the deep copy; the value the eval
+			// A scalar record replays from the deep copy; the value the serve
 			// returned already lives in this frame.
 			generation: u64::MAX,
 			frames: 0,
@@ -137,11 +130,12 @@ fn memoize<'e>(
 }
 
 #[node_macro::node(category(""), path(graphene_core::memo))]
-fn frame_memo<'e>(
+fn frame_memo<'e, 'l>(
 	ctx: impl Ctx + CacheHash + ExtractArena<'e>,
 	#[data] cell: ArenaCell<FrameTable<Box<[u8]>, 32>>,
-	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
-) -> GPoll<RecordValue<'e>> {
+	content: impl Node<Context<'_>>,
+	frame: FrameClaim<'l>,
+) -> GPoll<Served<'e>> {
 	let arena = ctx.arena();
 	let table = match cell.load(arena) {
 		Some(table) => table,
@@ -150,35 +144,39 @@ fn frame_memo<'e>(
 				cell.store(weak);
 				table
 			}
-			None => return content.eval(&ctx),
+			None => return content.serve(&ctx, frame),
 		},
 	};
 	// SAFETY: published bytes are same-frame copies of this edge's records,
-	// so they carry the edge's layout with live parked references.
-	let revive = |bytes: &'e Box<[u8]>| unsafe { serve_frame(content.layout(), bytes.as_ptr()) };
+	// so they carry the edge's layout with live parked references, and the
+	// claim is that layout's frame.
+	let revive = |mut frame: FrameClaim<'l>, bytes: &Box<[u8]>| unsafe {
+		frame.fill_copy(bytes.as_ptr());
+		frame.finish_served()
+	};
 	match table.lookup(cache_key(ctx)) {
-		Lookup::Hit(Finality::AllFinal, bytes) => GPoll::Final(revive(bytes)),
-		Lookup::Hit(Finality::Partial, bytes) => GPoll::Partial(revive(bytes)),
-		Lookup::Vacant(slot) => match content.eval(&ctx) {
-			GPoll::Final(value) => {
+		Lookup::Hit(Finality::AllFinal, bytes) => GPoll::Final(revive(frame, bytes)),
+		Lookup::Hit(Finality::Partial, bytes) => GPoll::Partial(revive(frame, bytes)),
+		Lookup::Vacant(slot) => match content.serve(&ctx, frame) {
+			GPoll::Final(served) => {
 				// SAFETY: the value came from this edge, so it carries the edge's layout.
-				// The eval's own frame serves this pull; the publish feeds later ones.
-				let bytes = unsafe { copy_record_bytes(content.layout(), content.layout().rec(&value)) };
+				// The serve's own frame answers this pull; the publish feeds later ones.
+				let bytes = unsafe { copy_record_bytes(content.layout(), content.layout().rec(served.record())) };
 				slot.publish(bytes, Finality::AllFinal);
-				GPoll::Final(value)
+				GPoll::Final(served)
 			}
-			GPoll::Partial(value) => {
+			GPoll::Partial(served) => {
 				// SAFETY: as above.
-				let bytes = unsafe { copy_record_bytes(content.layout(), content.layout().rec(&value)) };
+				let bytes = unsafe { copy_record_bytes(content.layout(), content.layout().rec(served.record())) };
 				slot.publish(bytes, Finality::Partial);
-				GPoll::Partial(value)
+				GPoll::Partial(served)
 			}
 			unpublishable => {
 				slot.release();
 				unpublishable
 			}
 		},
-		Lookup::Full => content.eval(&ctx),
+		Lookup::Full => content.serve(&ctx, frame),
 	}
 }
 
@@ -189,15 +187,16 @@ type MonitorValue = Arc<Mutex<Option<CtxSnapshot>>>;
 /// (context, source generations), so introspection recreates it by
 /// re-evaluating this edge with the rehydrated snapshot.
 #[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
-fn monitor<'e>(
+fn monitor<'e, 'l>(
 	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + ModifyIndex + Copy,
 	#[data] io: MonitorValue,
-	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
-) -> GPoll<RecordValue<'e>> {
+	content: impl Node<Context<'_>>,
+	slot: FrameClaim<'l>,
+) -> GPoll<Served<'e>> {
 	if ctx.index() == 0 {
 		*io.lock().unwrap() = Some(CtxSnapshot::capture(ctx));
 	}
-	content.eval(&ctx)
+	content.serve(&ctx, slot)
 }
 
 fn serialize_monitor(io: &MonitorValue) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
@@ -212,42 +211,33 @@ mod tests {
 	use core_types::arena::Arena;
 	use core_types::context::{ContextImpl, EvalScope};
 	use core_types::node::Node;
+	use core_types::record::LiftedSource;
 	use core_types::registry::{EdgeHandle, ErasedRecordNode};
 	use std::sync::atomic::{AtomicU32, Ordering};
 
-	struct CountingNode(AtomicU32);
-
-	impl<Input> Node<Input> for CountingNode {
-		type Output = u32;
-
-		fn eval(&self, _input: &Input) -> GPoll<u32> {
-			GPoll::Final(self.0.fetch_add(1, Ordering::Relaxed) + 1)
-		}
+	fn lifted<T: Clone + Send + Sync + core_types::StaticTypeSized>(value: T) -> LiftedSource<T, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<T>>
+	where
+		T::Static: Clone + Send + Sync,
+	{
+		LiftedSource::new(move |_: &ContextImpl<'_>| GPoll::Final(value.clone()))
 	}
 
-	struct PartialCountingNode(AtomicU32);
-
-	impl<Input> Node<Input> for PartialCountingNode {
-		type Output = u32;
-
-		fn eval(&self, _input: &Input) -> GPoll<u32> {
-			GPoll::Partial(self.0.fetch_add(1, Ordering::Relaxed) + 1)
-		}
+	fn counting() -> LiftedSource<u32, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<u32>> {
+		let count = AtomicU32::new(0);
+		LiftedSource::new(move |_: &ContextImpl<'_>| GPoll::Final(count.fetch_add(1, Ordering::Relaxed) + 1))
 	}
 
-	struct ValueNode<T>(T);
-
-	impl<T: Clone, Input> Node<Input> for ValueNode<T> {
-		type Output = T;
-
-		fn eval(&self, _input: &Input) -> GPoll<T> {
-			GPoll::Final(self.0.clone())
-		}
+	fn partial_counting() -> LiftedSource<u32, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<u32>> {
+		let count = AtomicU32::new(0);
+		LiftedSource::new(move |_: &ContextImpl<'_>| GPoll::Partial(count.fetch_add(1, Ordering::Relaxed) + 1))
 	}
 
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
 		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { core_types::record::stack::reserve(1 << 16); }		EvalScope::new(Some(0.5), None, None, generations, arena)
+		unsafe {
+			core_types::record::stack::reserve(1 << 16);
+		}
+		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
 	fn element_layout<T: Clone + Send + Sync + core_types::StaticTypeSized>() -> core_types::record::Layout
@@ -265,12 +255,12 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let layout = element_layout::<u32>();
-		let monitor = MonitorNode::new(core_types::record::RecordLift::<u32, _>::new(ValueNode(11u32)), &layout);
+		let monitor = MonitorNode::new(lifted::<u32>(11u32), &layout);
 		let handle = EdgeHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
 		assert!(handle.serialize().is_none(), "no snapshot before the first eval");
 
 		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
-		let GPoll::Final(_) = edge.eval(&ctx) else {
+		let GPoll::Final(_) = core_types::record::serve_edge(&edge, &ctx) else {
 			panic!("expected a final record");
 		};
 
@@ -296,7 +286,7 @@ mod tests {
 		let handle = EdgeHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
 
 		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
-		let GPoll::Final(_) = edge.eval(&ctx) else {
+		let GPoll::Final(_) = core_types::record::serve_edge(&edge, &ctx) else {
 			panic!("expected a final record");
 		};
 
@@ -333,7 +323,7 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let layout = element_layout::<Payload>();
-		let memoized = MemoizeNode::new(core_types::record::RecordLift::<Payload, _>::new(ValueNode(Payload("deep".to_string(), 0))), &layout);
+		let memoized = MemoizeNode::new(lifted::<Payload>(Payload("deep".to_string(), 0)), &layout);
 		let memoized = core_types::record::RecordExtract::<Payload, _>::new(memoized, &layout);
 
 		assert_eq!(memoized.eval(&ctx), GPoll::Final(Payload("deep".to_string(), 0)), "the miss serves the live value");
@@ -348,7 +338,7 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let layout = element_layout::<u32>();
-		let memoized = MemoizeNode::new(core_types::record::RecordLift::<u32, _>::new(CountingNode(AtomicU32::new(0))), &layout);
+		let memoized = MemoizeNode::new(counting(), &layout);
 		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
 
 		assert_eq!(memoized.eval(&ctx), GPoll::Final(1));
@@ -365,7 +355,7 @@ mod tests {
 		let scope_after = scope_fixture(&after, &arena);
 
 		let layout = element_layout::<u32>();
-		let memoized = MemoizeNode::new(core_types::record::RecordLift::<u32, _>::new(CountingNode(AtomicU32::new(0))), &layout);
+		let memoized = MemoizeNode::new(counting(), &layout);
 		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
 
 		assert_eq!(memoized.eval(&ContextImpl::root(&scope_before)), GPoll::Final(1));
@@ -381,7 +371,7 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let layout = element_layout::<u32>();
-		let memoized = MemoizeNode::new(core_types::record::RecordLift::<u32, _>::new(PartialCountingNode(AtomicU32::new(0))), &layout);
+		let memoized = MemoizeNode::new(partial_counting(), &layout);
 		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
 
 		assert_eq!(memoized.eval(&ctx), GPoll::Partial(1));
@@ -396,7 +386,7 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let layout = element_layout::<u32>();
-		let edge = EdgeHandle::new_record::<u32>(Arc::new(core_types::record::RecordLift::<u32, _>::new(CountingNode(AtomicU32::new(0)))) as Arc<ErasedRecordNode>);
+		let edge = EdgeHandle::new_record::<u32>(Arc::new(counting()) as Arc<ErasedRecordNode>);
 		let memoized = EdgeHandle::new_record::<u32>(Arc::new(MemoizeNode::new(edge.downcast_record::<u32>().unwrap(), &layout)) as Arc<ErasedRecordNode>);
 		let stacked = MemoizeNode::new(memoized.downcast_record::<u32>().unwrap(), &layout);
 		let stacked = core_types::record::RecordExtract::<u32, _>::new(stacked, &layout);
@@ -413,12 +403,12 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let layout = element_layout::<String>();
-		let memo = FrameMemoNode::new(core_types::record::RecordLift::<String, _>::new(ValueNode("lent out".to_string())), &layout);
+		let memo = FrameMemoNode::new(lifted::<String>("lent out".to_string()), &layout);
 
-		let GPoll::Final(first) = memo.eval(&ctx) else {
+		let GPoll::Final(first) = core_types::record::serve_edge(&memo, &ctx) else {
 			panic!("the miss must fill the frame table");
 		};
-		let GPoll::Final(second) = memo.eval(&ctx) else {
+		let GPoll::Final(second) = core_types::record::serve_edge(&memo, &ctx) else {
 			panic!("the hit must revive the published record");
 		};
 		let first: &String = unsafe { core_types::record::borrow_element(layout.rec(&first)) };

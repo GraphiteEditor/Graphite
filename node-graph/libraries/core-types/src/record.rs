@@ -485,21 +485,28 @@ impl<'e> RecordValue<'e> {
 
 /// A record edge evaluable at a derived context, yielding the record at that
 /// context's lifetime. The lifetime is a trait parameter because a bound like
-/// `for<'d> Node<Derived<'d, C>, Output = RecordValue<'d>>` is rejected: in a
-/// higher-ranked bound the lifetime must appear in a constrained input
-/// position, and both the `Derived` projection and the `Output` binding are
-/// unconstrained ones.
+/// `for<'d> Node<Derived<'d, C>>` cannot also say the derived context's arena
+/// is at `'d`: the equality binding `ExtractArena<ArenaRef = &'d Arena>` is an
+/// unconstrained position under a higher rank.
 pub trait DerivedRecordEdge<'derived, C> {
 	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt>;
+	/// [`serve_edge`] at the derived context, for poll kernels that carry the
+	/// status themselves.
+	fn serve_derived(&self, ctx: &C) -> GPoll<RecordValue<'derived>>;
 	fn extent_at_derived(&self, ctx: &C, level: u8) -> GPoll<crate::gpoll::Extent>;
 }
 
 impl<'derived, C, N> DerivedRecordEdge<'derived, C> for N
 where
-	N: Node<C, Output = RecordValue<'derived>>,
+	N: Node<C>,
+	C: crate::context::ExtractArena<ArenaRef = &'derived crate::arena::Arena>,
 {
 	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt> {
 		cell.eval_input(input_index, self, ctx)
+	}
+
+	fn serve_derived(&self, ctx: &C) -> GPoll<RecordValue<'derived>> {
+		serve_edge(self, ctx)
 	}
 
 	fn extent_at_derived(&self, ctx: &C, level: u8) -> GPoll<crate::gpoll::Extent> {
@@ -513,8 +520,8 @@ where
 /// are distinct. Frame bytes carry no drop glue, so the copy is a move.
 pub fn fill_frames<'a, 'e, C, N>(node: &'a N, input: &C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>) -> crate::node::BatchStatus<'a>
 where
-	C: crate::context::InjectIndex + Copy,
-	N: Node<C, Output = RecordValue<'e>>,
+	C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	N: Node<C>,
 {
 	use crate::node::BatchStatus;
 	let Some(scratch) = scratch else {
@@ -538,7 +545,7 @@ where
 		// SAFETY: the lane's record is copied out before the scope releases it,
 		// and valueless exits serve nothing above the entry.
 		let _lane_scope = unsafe { stack::ScopeGuard::enter() };
-		let value = match node.eval(&local) {
+		let value = match serve_edge(node, &local) {
 			GPoll::Final(value) => value,
 			GPoll::Partial(value) => {
 				finality = crate::gpoll::Finality::Partial;
@@ -568,8 +575,8 @@ where
 /// scratch, and an unbatched edge falls back to the [`fill_frames`] loop.
 pub fn materialize_batch<'a, 'e, C, N>(node: &'a N, input: &'a C, range: std::ops::Range<u64>, arena: &'a crate::arena::Arena) -> crate::node::BatchStatus<'a>
 where
-	C: crate::context::InjectIndex + Copy,
-	N: Node<C, Output = RecordValue<'e>>,
+	C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	N: Node<C>,
 {
 	use crate::node::BatchStatus;
 	let Some(len) = range.end.checked_sub(range.start).and_then(|len| usize::try_from(len).ok()) else {
@@ -608,8 +615,8 @@ pub enum LevelStatus<'a> {
 /// reducers inline the same protocol with their span offsets.
 pub fn materialize_level<'a, 'e, C, N>(node: &'a N, input: &'a C, arena: &'a crate::arena::Arena) -> LevelStatus<'a>
 where
-	C: crate::context::InjectIndex + Copy,
-	N: Node<C, Output = RecordValue<'e>>,
+	C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	N: Node<C>,
 {
 	use crate::gpoll::{Extent, GraphError, Level};
 	use crate::node::BatchStatus;
@@ -652,47 +659,6 @@ where
 	}
 }
 
-/// A record edge at a caller-chosen lifetime; the lifetime is a trait
-/// parameter for the same constrained-position reason as
-/// [`DerivedRecordEdge`].
-pub trait RecordEdge<'e, C>: Node<C, Output = RecordValue<'e>> {}
-
-impl<'e, C, N: Node<C, Output = RecordValue<'e>>> RecordEdge<'e, C> for N {}
-
-/// Builds an element-only record from a kernel's poll: inline layouts land
-/// in the value, larger ones spill to the record stack, arena exhaustion of
-/// a parked element reports as an error poll.
-pub(crate) fn lift_poll<'e, T: Send + Sync>(poll: GPoll<T>, layout: &Layout, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
-	let build = |element: T| {
-		if layout.frame_bytes() == 0 {
-			let mut value = RecordValue::zeroed();
-			unsafe { write_element(value.as_mut_ptr(), element, arena)? };
-			Some(value)
-		} else {
-			let dst = stack::push(layout.frame_bytes());
-			let written = unsafe { write_element(dst, element, arena) };
-			stack::truncate_above(dst, layout.frame_bytes());
-			written.map(|()| RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
-		}
-	};
-	let exhausted = || {
-		GPoll::Error(Box::new(crate::gpoll::GraphError {
-			kind: crate::gpoll::ErrorKind::ArenaExhausted,
-			trace: Vec::new(),
-		}))
-	};
-	match poll {
-		GPoll::Final(element) => build(element).map_or_else(exhausted, GPoll::Final),
-		GPoll::Partial(element) => build(element).map_or_else(exhausted, GPoll::Partial),
-		GPoll::Fallback(boxed) => {
-			let (element, error) = *boxed;
-			build(element).map_or_else(exhausted, |value| GPoll::Fallback(Box::new((value, error))))
-		}
-		GPoll::Pending => GPoll::Pending,
-		GPoll::Error(error) => GPoll::Error(error),
-	}
-}
-
 /// The raw lazy record edge handed to a record-opaque kernel: the wire plus
 /// its wiring-proven layout, the pairing the kernel's unsafe record
 /// operations rely on. The kernel must only pair the layout with values this
@@ -711,19 +677,22 @@ impl<'a, N> RecordEdgeInput<'a, N> {
 		self.layout
 	}
 
-	pub fn eval<'e, C>(&self, ctx: &C) -> GPoll<RecordValue<'e>>
+	/// Serves the edge through the kernel's own claim: the kernel's output
+	/// layout is the edge's, so the claim it was handed is the edge's frame.
+	pub fn serve<'e, 'l, C>(&self, ctx: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
 	where
-		N: Node<C, Output = RecordValue<'e>>,
+		N: Node<C>,
+		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
-		self.node.eval(ctx)
+		self.node.serve(ctx, slot)
 	}
 
 	/// [`materialize_level`] over the edge: the wire's whole flat span as one
 	/// batch.
 	pub fn materialize_level<'e, 'b, C>(&'b self, ctx: &'b C, arena: &'b crate::arena::Arena) -> LevelStatus<'b>
 	where
-		N: Node<C, Output = RecordValue<'e>>,
-		C: crate::context::InjectIndex + Copy,
+		N: Node<C>,
+		C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		materialize_level(self.node, ctx, arena)
 	}
@@ -765,12 +734,12 @@ impl<'a, Out, N> ElementEdge<'a, Out, N> {
 
 	pub fn eval<'d, C>(&self, ctx: &C) -> GPoll<Out>
 	where
-		N: Node<C, Output = RecordValue<'d>>,
+		N: DerivedRecordEdge<'d, C>,
 	{
 		// SAFETY: the read copies out by value, so no record above the entry
 		// (the edge's own frame) is live past the scope.
 		let _scope = unsafe { stack::ScopeGuard::enter() };
-		self.node.eval(ctx).map(|value| unsafe { (self.read)(self.layout.rec(&value), self.reads) })
+		self.node.serve_derived(ctx).map(|value| unsafe { (self.read)(self.layout.rec(&value), self.reads) })
 	}
 }
 
@@ -816,13 +785,13 @@ impl<'a, Out, N> ElementLazyInput<'a, Out, N> {
 
 	pub fn eval<'d, C>(&self, ctx: &C) -> Result<Out, crate::gpoll::Interrupt>
 	where
-		N: Node<C, Output = RecordValue<'d>>,
+		N: DerivedRecordEdge<'d, C>,
 	{
 		// SAFETY: the read copies the element and declared attributes out by
 		// value, so no record above the entry (the edge's own frame) is live
 		// past the scope.
 		let _scope = unsafe { stack::ScopeGuard::enter() };
-		let value = self.cell.eval_input(self.input_index, self.node, ctx)?;
+		let value = self.node.eval_derived(self.cell, self.input_index, ctx)?;
 		Ok(unsafe { (self.read)(self.layout.rec(&value), self.reads) })
 	}
 }
@@ -1583,7 +1552,6 @@ pub struct SourcePlan {
 	moves: Vec<(usize, usize, usize)>,
 	fills: Vec<(usize, Box<[u8]>)>,
 	source: Layout,
-	union: Layout,
 }
 
 impl SourcePlan {
@@ -1602,7 +1570,6 @@ impl SourcePlan {
 			moves,
 			fills,
 			source: source.clone(),
-			union: union.clone(),
 		})
 	}
 
@@ -1648,47 +1615,6 @@ impl<N> RecordSource<N> {
 /// `rec` must be a live record of `layout`.
 pub unsafe fn copy_record_bytes(layout: &Layout, rec: Rec) -> Box<[u8]> {
 	unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into()
-}
-
-/// Serves a record whose frame lives in storage the current evaluation does
-/// not own (a cached batch, published bytes): claims the node's frame over a
-/// copy of the source frame, so the contract that every node advances the
-/// record stack by exactly its own frame holds for cache hits too.
-///
-/// # Safety
-/// `src` must point at a live record of `layout` whose parked references
-/// outlive the serving evaluation.
-pub unsafe fn serve_frame<'e>(layout: &Layout, src: *const u8) -> RecordValue<'e> {
-	if layout.frame_bytes() == 0 {
-		let mut value = RecordValue::zeroed();
-		unsafe { std::ptr::copy_nonoverlapping(src, value.as_mut_ptr(), layout.size) };
-		value
-	} else {
-		let dst = stack::push(layout.frame_bytes());
-		unsafe { std::ptr::copy_nonoverlapping(src, dst, layout.size) };
-		RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) })
-	}
-}
-
-/// Claims a node's frame with nothing to serve, for exits that yield no
-/// record (past-end, pending): the frame contract holds on every exit,
-/// error included.
-pub fn claim_frame(layout: &Layout) {
-	if layout.frame_bytes() != 0 {
-		stack::push(layout.frame_bytes());
-	}
-}
-
-/// Closes an interrupted eval: rewinds to the eval's entry pointer (interrupt
-/// exits carry no value, so frames claimed above it are dead) and claims the
-/// node's own frame, keeping the frame contract on interrupt exits.
-///
-/// # Safety
-/// `entry` must be the stack pointer at the eval's entry, and no record
-/// above it may be referenced after the close.
-pub unsafe fn interrupt_frame(entry: usize, layout: &Layout) {
-	unsafe { stack::rewind(entry) };
-	claim_frame(layout);
 }
 
 /// A node's own output frame, claimed at eval entry: the one closing surface
@@ -1806,6 +1732,37 @@ impl<'l> FrameClaim<'l> {
 	pub fn lift_served<'e, T: Send + Sync + dyn_any::StaticTypeSized>(self, poll: GPoll<T>, arena: &'e crate::arena::Arena) -> GPoll<Served<'e>> {
 		self.lift(poll, arena).map(|value| Served { value })
 	}
+
+	/// [`Self::finish`] with the proof-bearing return for [`Node::serve`].
+	///
+	/// # Safety
+	/// As [`Self::finish`].
+	pub unsafe fn finish_served<'e>(self) -> Served<'e> {
+		Served { value: unsafe { self.finish() } }
+	}
+
+	/// Fills the frame from a record a forwarded wire already served, and
+	/// closes it: the source's frame sits above this claim and dies with its
+	/// drop, so the served record is this claim's own.
+	///
+	/// # Safety
+	/// `value` must be a live record of this frame's layout.
+	pub unsafe fn forward<'e>(mut self, value: &RecordValue<'_>) -> Served<'e> {
+		let src = self.layout.rec(value).ptr();
+		unsafe {
+			self.fill_copy(src);
+			self.finish_served()
+		}
+	}
+
+	/// Translates a source record into the frame through a wiring-resolved plan.
+	///
+	/// # Safety
+	/// `src` must be a live record of `plan`'s source layout, and `plan` must
+	/// translate into this frame's layout.
+	pub unsafe fn translate(&mut self, src: Rec, plan: &SourcePlan) {
+		unsafe { plan.translate(src, self.dst()) };
+	}
 }
 
 /// The proof a record was served through a frame claim: mintable only by the
@@ -1819,6 +1776,23 @@ impl<'e> Served<'e> {
 	pub fn value(self) -> RecordValue<'e> {
 		self.value
 	}
+
+	/// The served record in place, for producers that read it before passing
+	/// the proof on.
+	pub fn record(&self) -> &RecordValue<'e> {
+		&self.value
+	}
+}
+
+/// Claims `node`'s own frame and serves through it: the caller-side half of
+/// [`Node::serve`], for drivers that want the record rather than the proof.
+pub fn serve_edge<'e, C, N>(node: &N, input: &C) -> GPoll<RecordValue<'e>>
+where
+	N: Node<C> + ?Sized,
+	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+{
+	let slot = FrameClaim::enter(node.layout());
+	node.serve(input, slot).map(Served::value)
 }
 
 impl Drop for FrameClaim<'_> {
@@ -1874,6 +1848,13 @@ impl OwnedRecord {
 			value = RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) });
 		}
 		written.map(|()| value)
+	}
+
+	/// [`Self::replay`] into a caller's claim rather than a fresh frame; the
+	/// claim's layout is the one the copy was taken at.
+	pub fn replay_into(&self, slot: &mut FrameClaim<'_>, arena: &crate::arena::Arena) -> Option<()> {
+		let layout = slot.layout;
+		self.write_into(layout, slot.dst(), arena)
 	}
 
 	fn write_into(&self, layout: &Layout, dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
@@ -1948,12 +1929,16 @@ impl ServedRecord {
 /// rewinds to its entry state, so the result is owned and no stack slot
 /// stays claimed. Assertion scaffolding for law tests; production consumers
 /// read served records in place.
-pub fn capture<'e, C, N: Node<C, Output = RecordValue<'e>>>(node: &N, ctx: &C) -> GPoll<ServedRecord> {
+pub fn capture<'e, C, N>(node: &N, ctx: &C) -> GPoll<ServedRecord>
+where
+	N: Node<C> + ?Sized,
+	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+{
 	// SAFETY: any served record is deep-copied out inside the scope, so
 	// nothing served above the entry escapes it.
 	let _scope = unsafe { stack::ScopeGuard::enter() };
 	let layout = node.layout().clone();
-	node.eval(ctx).map(|value| ServedRecord {
+	serve_edge(node, ctx).map(|value| ServedRecord {
 		// SAFETY: the poll served `value` at the node's declared layout and
 		// nothing has claimed frames since.
 		record: unsafe { OwnedRecord::copy_out(&layout, layout.rec(&value)) },
@@ -1961,39 +1946,39 @@ pub fn capture<'e, C, N: Node<C, Output = RecordValue<'e>>>(node: &N, ctx: &C) -
 	})
 }
 
-/// Law-test scaffolding: wraps an arbitrary plain node onto a record wire
-/// (the element lands at offset 0 of a fresh element-only record, parked when
-/// it carries drop glue). No production path constructs one; value edges are
+/// Law-test scaffolding: a kernel closure served onto an element-only record
+/// wire (the element lands at offset 0, parked when it carries drop glue). No
+/// production path constructs one; value edges are
 /// [`crate::value::ValueSource`].
-pub struct RecordLift<El, N> {
-	edge: N,
+pub struct LiftedSource<El, F> {
+	kernel: F,
 	layout: Layout,
 	_marker: std::marker::PhantomData<fn() -> El>,
 }
 
-impl<El: Clone + Send + Sync + dyn_any::StaticTypeSized, N> RecordLift<El, N>
+impl<El: Clone + Send + Sync + dyn_any::StaticTypeSized, F> LiftedSource<El, F>
 where
 	El::Static: Clone + Send + Sync,
 {
-	pub fn new(edge: N) -> Self {
+	pub fn new(kernel: F) -> Self {
 		Self {
-			edge,
+			kernel,
 			layout: Layout::default().with_writes(0, element_write::<El>(), &[]),
 			_marker: std::marker::PhantomData,
 		}
 	}
 }
 
-impl<'e, C, El, N> Node<C> for RecordLift<El, N>
+impl<C, El, F> Node<C> for LiftedSource<El, F>
 where
-	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
-	El: Send + Sync + 'static,
-	N: Node<C, Output = El>,
+	El: Send + Sync + dyn_any::StaticTypeSized,
+	F: Fn(&C) -> GPoll<El>,
 {
-	type Output = RecordValue<'e>;
-
-	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
-		lift_poll(self.edge.eval(input), &self.layout, input.arena())
+	fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+	where
+		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
+		slot.lift_served((self.kernel)(input), input.arena())
 	}
 
 	fn layout(&self) -> &Layout {
@@ -2021,54 +2006,63 @@ impl<El, N> RecordExtract<El, N> {
 	}
 }
 
-impl<'e, C, El, N> Node<C> for RecordExtract<El, N>
-where
-	El: Clone + 'static,
-	N: Node<C, Output = RecordValue<'e>>,
-{
-	type Output = El;
-
-	fn eval(&self, input: &C) -> GPoll<El> {
+impl<El: Clone + 'static, N> RecordExtract<El, N> {
+	/// The edge's element, copied out of its record.
+	pub fn eval<'e, C>(&self, input: &C) -> GPoll<El>
+	where
+		N: Node<C>,
+		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
 		// SAFETY: the element copies out by value, so no record above the
-		// entry (the edge's frame) is live past the scope; a plain output
-		// claims no frame itself.
+		// entry (the edge's frame) is live past the scope.
 		let _scope = unsafe { stack::ScopeGuard::enter() };
-		self.edge.eval(input).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
+		serve_edge(&self.edge, input).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
 	}
 }
 
-impl<'e, C, N> Node<C> for RecordSource<N>
+impl<C, N> Node<C> for RecordSource<N>
 where
-	N: Node<C, Output = RecordValue<'e>>,
+	N: Node<C>,
 {
-	type Output = RecordValue<'e>;
-
-	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
-		match &self.plan {
-			None => self.edge.eval(input),
-			Some(plan) if plan.union.frame_bytes() == 0 => {
-				// SAFETY: the translation copies the record into the inline
-				// value, so no record above the entry is live past the scope.
-				let _scope = unsafe { stack::ScopeGuard::enter() };
-				self.edge.eval(input).map(|value| {
-					let mut out = RecordValue::zeroed();
-					unsafe { plan.translate(plan.source.rec(&value), out.as_mut_ptr()) };
-					out
-				})
+	fn serve<'e, 'l>(&self, input: &C, mut slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+	where
+		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
+		// The source's frame is claimed above this one and dies with the
+		// claim's drop; the translated union record stays.
+		let Some(plan) = &self.plan else {
+			return self.edge.serve(input, slot);
+		};
+		match serve_edge(&self.edge, input) {
+			GPoll::Final(value) => {
+				// SAFETY: the value came from this edge, so it carries the
+				// plan's source layout.
+				unsafe { slot.translate(plan.source.rec(&value), plan) };
+				// SAFETY: the translation completes the union record.
+				GPoll::Final(unsafe { slot.finish_served() })
 			}
-			Some(plan) => {
-				let dst = stack::push(plan.union.frame_bytes());
-				let value = self.edge.eval(input);
-				let result = value.map(|value| RecordValue::spilled(unsafe { plan.translate(plan.source.rec(&value), dst) }));
-				// The source's frame dies with the translation; the claimed
-				// frame above stays as this node's output.
-				stack::truncate_above(dst, plan.union.frame_bytes());
-				result
+			GPoll::Partial(value) => {
+				// SAFETY: as for the final arm.
+				unsafe { slot.translate(plan.source.rec(&value), plan) };
+				// SAFETY: as for the final arm.
+				GPoll::Partial(unsafe { slot.finish_served() })
 			}
+			GPoll::Fallback(boxed) => {
+				let (value, error) = *boxed;
+				// SAFETY: as for the final arm.
+				unsafe { slot.translate(plan.source.rec(&value), plan) };
+				// SAFETY: as for the final arm.
+				GPoll::Fallback(Box::new((unsafe { slot.finish_served() }, error)))
+			}
+			GPoll::Pending => GPoll::Pending,
+			GPoll::Error(error) => GPoll::Error(error),
 		}
 	}
 
-	fn extent_at(&self, input: &C, level: u8) -> GPoll<crate::gpoll::Extent> {
+	fn extent_at<'x>(&self, input: &C, level: u8) -> GPoll<crate::gpoll::Extent>
+	where
+		C: crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
+	{
 		self.edge.extent_at(input, level)
 	}
 
@@ -3034,17 +3028,17 @@ mod tests {
 			layout: Layout,
 		}
 
-		impl<'e> Node<&'e crate::arena::Arena> for Fixture {
-			type Output = RecordValue<'e>;
-
-			fn eval(&self, arena: &&'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
-				let mut frame = FrameBuilder::new(&self.layout, arena);
+		impl<C> Node<C> for Fixture {
+			fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'l>) -> GPoll<Served<'e>>
+			where
+				C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+			{
+				let mut frame = FrameBuilder::new(&self.layout, crate::context::ExtractArena::arena(input));
 				frame.element(String::from("parked"));
 				frame.attr::<Transform>(DAffine2::from_translation(DVec2::new(3., 4.)));
-				match frame.finish() {
-					Some(value) => GPoll::Final(value),
-					None => GPoll::error("arena exhausted"),
-				}
+				let Some(value) = frame.finish() else { return GPoll::error("arena exhausted") };
+				// SAFETY: the builder served a record of this node's layout.
+				GPoll::Final(unsafe { slot.forward(&value) })
 			}
 
 			fn layout(&self) -> &Layout {
@@ -3054,9 +3048,15 @@ mod tests {
 
 		let layout = Layout::default().with_writes(0, element_write::<String>(), &[FieldWrite::of::<Transform>(0), FieldWrite::of::<Opacity>(0)]);
 		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { stack::reserve(1 << 10); }		let arena = crate::arena::Arena::new(1024).unwrap();
+		unsafe {
+			stack::reserve(1 << 10);
+		}
+		let arena = crate::arena::Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = crate::context::EvalScope::new(None, None, None, &generations, &arena);
+		let ctx = crate::context::ContextImpl::root(&scope);
 		let mark = stack::sp();
-		let GPoll::Final(served) = capture(&Fixture { layout }, &&arena) else {
+		let GPoll::Final(served) = capture(&Fixture { layout }, &ctx) else {
 			panic!("the fixture serves finally");
 		};
 		assert_eq!(stack::sp(), mark, "capture returns every claimed slot");

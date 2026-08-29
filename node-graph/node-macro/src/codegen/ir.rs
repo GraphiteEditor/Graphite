@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use crate::codegen::classify::{
-	Dialect, RoutingIo, bare_ident, context_param, dialect, flip_carrier, generic_assignment, generic_extractable, is_record_value, record_shape, routing_io, slot_value_type,
+	Dialect, RoutingIo, bare_ident, context_param, dialect, flip_carrier, generic_assignment, generic_extractable, is_served, record_shape, routing_io, slot_value_type,
 };
 use crate::codegen::entries::implementation_rows;
 use crate::parsing::{AttributeRead, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RecordWrites, RegularParsedField, record_writes};
@@ -77,7 +77,7 @@ fn inputs(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &[Ident]) ->
 fn subject(index: usize, field: &ParsedField, carrier_subject: bool, routing: Option<&RoutingIo>) -> bool {
 	match &field.ty {
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
-			is_record_value(output_type) || routing.is_some_and(|routing| crate::codegen::classify::routing_source_output(output_type, &routing.generic)) || (index == 0 && carrier_subject)
+			is_served(output_type) || routing.is_some_and(|routing| crate::codegen::classify::routing_source_output(output_type, &routing.generic)) || (index == 0 && carrier_subject)
 		}
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => routing.is_some_and(|routing| bare_ident(ty) == Some(&routing.generic)) || (index == 0 && carrier_subject),
 	}
@@ -166,7 +166,7 @@ fn item_shape(element: &Type, depth: u8, reads: &[AttributeRead], generics: &[Id
 }
 
 fn element_of(ty: &Type, generics: &[Ident]) -> Element {
-	if is_record_value(ty) {
+	if is_served(ty) {
 		return Element::Opaque;
 	}
 	match bare_ident(ty) {
@@ -371,10 +371,11 @@ pub(crate) enum ValueBinding {
 }
 
 /// How a lazy (`impl Node`) input binds in eval. The `Poll` effect further
-/// selects the borrowed vs `__cell`-driven form within `Element`/`Plain`.
+/// selects the borrowed vs `__cell`-driven form within `Element`/`Generic`.
 pub(crate) enum LazyBinding {
 	Element,
-	Plain,
+	/// The kernel holds the whole record behind a bare generic element.
+	Generic,
 	DeriveRouting,
 	DeriveCarrier,
 	OpaqueRecord,
@@ -383,7 +384,7 @@ pub(crate) enum LazyBinding {
 impl ValueBinding {
 	/// Copies an element out of a record edge, so the frame is reclaimed after.
 	pub(crate) fn reads_out(&self) -> bool {
-		matches!(self, ValueBinding::ReadingSecondary | ValueBinding::RecordElement)
+		matches!(self, ValueBinding::ReadingSecondary | ValueBinding::RecordElement | ValueBinding::Plain)
 	}
 }
 
@@ -484,7 +485,7 @@ pub(crate) fn lazy_binding(node: &Node, index: usize) -> LazyBinding {
 	} else if matches!(input.shape.element, Element::Opaque) {
 		LazyBinding::OpaqueRecord
 	} else {
-		LazyBinding::Plain
+		LazyBinding::Generic
 	}
 }
 
@@ -654,7 +655,7 @@ mod tests {
 		} else if kinds.opaque {
 			let record = fields
 				.iter()
-				.position(|field| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_record_value(output_type)));
+				.position(|field| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_served(output_type)));
 			Facts {
 				sources: record.into_iter().collect(),
 				carried: true,
@@ -770,7 +771,7 @@ mod tests {
 		assert_bridge(
 			quote!(category("")),
 			quote! {
-				fn memo<'e>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>, Output = RecordValue<'e>>) -> GPoll<RecordValue<'e>> { content.eval(()) }
+				fn memo<'e, 'l>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>>, slot: FrameClaim<'l>) -> GPoll<Served<'e>> { content.serve(&(), slot) }
 			},
 		);
 	}
@@ -819,7 +820,7 @@ mod tests {
 					"flip-raw"
 				} else if flip {
 					"flip-lazy"
-				} else if opaque && raw && is_record_value(output_type) {
+				} else if opaque && raw && is_served(output_type) {
 					"opaque-record"
 				} else if raw {
 					"raw-lazy"
@@ -846,8 +847,8 @@ mod tests {
 				(LazyBinding::OpaqueRecord, _) => "opaque-record",
 				(LazyBinding::Element, true) => "flip-raw",
 				(LazyBinding::Element, false) => "flip-lazy",
-				(LazyBinding::Plain, true) => "raw-lazy",
-				(LazyBinding::Plain, false) => "lazy",
+				(LazyBinding::Generic, true) => "raw-lazy",
+				(LazyBinding::Generic, false) => "lazy",
 			},
 		}
 	}
@@ -1012,8 +1013,8 @@ mod tests {
 		assert_bindings(
 			quote!(category("")),
 			quote!(
-				fn memo<'e>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>, Output = RecordValue<'e>>) -> GPoll<RecordValue<'e>> {
-					content.eval(())
+				fn memo<'e, 'l>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>>, slot: FrameClaim<'l>) -> GPoll<Served<'e>> {
+					content.serve(&(), slot)
 				}
 			),
 		);

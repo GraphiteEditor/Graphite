@@ -178,7 +178,10 @@ impl DynamicExecutor {
 			.ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
 		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { core_types::record::stack::reserve(self.tree.stack_need()); }		let generations = self.runtime.snapshot();
+		unsafe {
+			core_types::record::stack::reserve(self.tree.stack_need());
+		}
+		let generations = self.runtime.snapshot();
 		let scope = EvalScope::new(snapshot.try_real_time(), snapshot.try_animation_time(), snapshot.try_pointer_position(), &generations, &arena);
 		let Some(ctx) = snapshot.rehydrate(&scope) else {
 			return Err(IntrospectError::NoData);
@@ -193,10 +196,10 @@ impl DynamicExecutor {
 				_ => None,
 			}
 		} else {
-			match core_types::node::Node::eval(&edge, &ctx) {
+			match core_types::record::serve_edge(&edge, &ctx) {
 				GPoll::Final(value) | GPoll::Partial(value) => {
 					let rec = layout.rec(&value);
-					// SAFETY: the eval produced one live record of the edge's layout.
+					// SAFETY: the serve produced one live record of the edge's layout.
 					let batch = unsafe { core_types::node::RecordBatch::new(rec.ptr(), 1, layout) };
 					read(layout, batch, &arena)
 				}
@@ -621,7 +624,10 @@ mod test {
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { core_types::record::stack::reserve(layout.frame_bytes()); }		let GPoll::Final(value) = edge.eval(&ctx) else {
+		unsafe {
+			core_types::record::stack::reserve(layout.frame_bytes());
+		}
+		let GPoll::Final(value) = core_types::record::serve_edge(&edge, &ctx) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { core_types::record::read_element::<u32>(layout.rec(&value)) }, 2);
@@ -666,7 +672,10 @@ mod test {
 		let layout = handle.layout().clone();
 		let edge = handle.duplicate().downcast_record::<f64>().unwrap();
 		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { core_types::record::stack::reserve(executor.tree().stack_need()); }		let GPoll::Final(value) = edge.eval(&ctx) else {
+		unsafe {
+			core_types::record::stack::reserve(executor.tree().stack_need());
+		}
+		let GPoll::Final(value) = core_types::record::serve_edge(&edge, &ctx) else {
 			panic!("the flipped clone must evaluate over record wires, got a non-final poll");
 		};
 		assert_eq!(unsafe { core_types::record::read_element::<f64>(layout.rec(&value)) }, 7.);
@@ -693,7 +702,10 @@ mod test {
 		let ctx = ContextImpl::root(&scope);
 		let edge = executor.tree().get(NodeId(2)).unwrap().downcast_record::<graphene_std::raster::color::Color>().unwrap();
 		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { core_types::record::stack::reserve(executor.tree().stack_need()); }		let result = edge.eval(&ctx);
+		unsafe {
+			core_types::record::stack::reserve(executor.tree().stack_need());
+		}
+		let result = core_types::record::serve_edge(&edge, &ctx);
 		// The empty raster level folds to an empty palette: past-end at lane 0.
 		assert!(
 			matches!(&result, GPoll::Error(error) if error.kind == core_types::gpoll::ErrorKind::PastEnd),

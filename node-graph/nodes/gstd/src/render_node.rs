@@ -220,28 +220,22 @@ mod tests {
 	use core_types::{ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime};
 	use graphene_application_io::TimingInformation;
 
-	struct ProbeNode;
-
-	impl<'a> Node<ContextImpl<'a>> for ProbeNode {
-		type Output = RenderOutput;
-
-		fn eval(&self, ctx: &ContextImpl<'a>) -> GPoll<RenderOutput> {
-			let render_params = ctx.vararg(0).unwrap().downcast_ref::<RenderParams>().expect("the vararg chain must start with RenderParams");
-			assert_eq!(render_params.scale, 2.0);
-			assert!(matches!(ctx.vararg(1), Err(VarArgsResult::IndexOutOfBounds)), "the RenderConfig must not leak downstream");
-			assert_eq!(ctx.footprint().transform, glam::DAffine2::from_scale(glam::DVec2::splat(2.0)) * Footprint::DEFAULT.transform);
-			assert_eq!(ctx.try_real_time(), Some(1.5));
-			assert_eq!(ctx.try_animation_time(), Some(2.0));
-			assert_eq!(ctx.try_pointer_position(), Some(glam::DVec2::new(3.0, 4.0)));
-			GPoll::Final(RenderOutput {
-				data: RenderOutputType::Buffer {
-					data: Vec::new(),
-					width: 0,
-					height: 0,
-				},
-				metadata: RenderMetadata::default(),
-			})
-		}
+	fn probe(ctx: &ContextImpl) -> GPoll<RenderOutput> {
+		let render_params = ctx.vararg(0).unwrap().downcast_ref::<RenderParams>().expect("the vararg chain must start with RenderParams");
+		assert_eq!(render_params.scale, 2.0);
+		assert!(matches!(ctx.vararg(1), Err(VarArgsResult::IndexOutOfBounds)), "the RenderConfig must not leak downstream");
+		assert_eq!(ctx.footprint().transform, glam::DAffine2::from_scale(glam::DVec2::splat(2.0)) * Footprint::DEFAULT.transform);
+		assert_eq!(ctx.try_real_time(), Some(1.5));
+		assert_eq!(ctx.try_animation_time(), Some(2.0));
+		assert_eq!(ctx.try_pointer_position(), Some(glam::DVec2::new(3.0, 4.0)));
+		GPoll::Final(RenderOutput {
+			data: RenderOutputType::Buffer {
+				data: Vec::new(),
+				width: 0,
+				height: 0,
+			},
+			metadata: RenderMetadata::default(),
+		})
 	}
 
 	#[test]
@@ -265,10 +259,13 @@ mod tests {
 		};
 		let ctx = root.with_varargs(&varargs);
 
-		let probe = core_types::record::RecordLift::<RenderOutput, _>::new(ProbeNode);
+		let probe = core_types::record::LiftedSource::<RenderOutput, _>::new(probe);
 		let layout = Node::<ContextImpl>::layout(&probe).clone();
 		// SAFETY: between evaluations, nothing served on the stack is live.
-		unsafe { core_types::record::stack::reserve(layout.frame_bytes().max(1 << 12)); }		let mut graph = CreateContextNode::new(probe, &layout);
+		unsafe {
+			core_types::record::stack::reserve(layout.frame_bytes().max(1 << 12));
+		}
+		let mut graph = CreateContextNode::new(probe, &layout);
 		// The executor resolves and installs the node's own layout at wiring;
 		// without it the flip tail writes through the default empty layout.
 		Node::<ContextImpl>::set_layout(
@@ -280,7 +277,7 @@ mod tests {
 				lane_invariant: u32::MAX,
 			},
 		);
-		let GPoll::Final(result) = Node::<ContextImpl>::eval(&graph, &ctx) else {
+		let GPoll::Final(result) = core_types::record::serve_edge(&graph, &ctx) else {
 			panic!("create_context must complete synchronously");
 		};
 		let output: &RenderOutput = unsafe { core_types::record::borrow_element(layout.rec(&result)) };

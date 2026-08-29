@@ -359,12 +359,9 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 						let #layout = #handle.layout().clone();
 						let #name = #handle.downcast_record::<#value_ty>()?;
 					},
-					SlotKind::Extracted(value_ty) => quote! {
-						let #handle = inputs.next().unwrap();
-						let #layout = #handle.layout().clone();
-						let #name = gcore::record::RecordExtract::<#value_ty, _>::new(#handle.downcast_record::<#value_ty>()?, &#layout);
-					},
-					SlotKind::Ranked(value_ty) => quote! {
+					// The node reads the element off the edge's own layout, so
+					// neither slot rides a layout to the constructor.
+					SlotKind::Extracted(value_ty) | SlotKind::Ranked(value_ty) => quote! {
 						let #name = inputs.next().unwrap().downcast_record::<#value_ty>()?;
 					},
 				}

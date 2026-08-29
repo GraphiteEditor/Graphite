@@ -17,15 +17,15 @@ where
 	}
 }
 
-impl<'e, C, T> crate::node::Node<C> for ValueSource<T>
+impl<C, T> crate::node::Node<C> for ValueSource<T>
 where
-	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
-	T: Clone + Send + Sync + 'static,
+	T: Clone + Send + Sync + dyn_any::StaticTypeSized,
 {
-	type Output = crate::record::RecordValue<'e>;
-
-	fn eval(&self, input: &C) -> crate::gpoll::GPoll<crate::record::RecordValue<'e>> {
-		crate::record::lift_poll(crate::gpoll::GPoll::Final(self.value.clone()), &self.layout, input.arena())
+	fn serve<'e, 'l>(&self, input: &C, slot: crate::record::FrameClaim<'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
+	where
+		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
+		slot.lift_served(crate::gpoll::GPoll::Final(self.value.clone()), input.arena())
 	}
 
 	fn layout(&self) -> &crate::record::Layout {
@@ -60,21 +60,25 @@ where
 	}
 }
 
-impl<'e, C, T> crate::node::Node<C> for LeveledValueSource<T>
+impl<C, T> crate::node::Node<C> for LeveledValueSource<T>
 where
-	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena> + crate::context::ExtractIndex,
-	T: Clone + Send + Sync + 'static,
+	C: crate::context::ExtractIndex,
+	T: Clone + Send + Sync + dyn_any::StaticTypeSized,
 {
-	type Output = crate::record::RecordValue<'e>;
-
-	fn eval(&self, input: &C) -> crate::gpoll::GPoll<crate::record::RecordValue<'e>> {
+	fn serve<'e, 'l>(&self, input: &C, slot: crate::record::FrameClaim<'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
+	where
+		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
 		let Some(value) = self.values.get(input.innermost_index() as usize) else {
 			return crate::gpoll::GPoll::error("value level addressed past its items");
 		};
-		crate::record::lift_poll(crate::gpoll::GPoll::Final(value.clone()), &self.layout, input.arena())
+		slot.lift_served(crate::gpoll::GPoll::Final(value.clone()), input.arena())
 	}
 
-	fn extent_at(&self, _input: &C, level: u8) -> crate::gpoll::GPoll<crate::gpoll::Extent> {
+	fn extent_at<'x>(&self, _input: &C, level: u8) -> crate::gpoll::GPoll<crate::gpoll::Extent>
+	where
+		C: crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
+	{
 		match level {
 			0 => crate::gpoll::GPoll::Final(crate::gpoll::Extent::Exactly(self.values.len())),
 			_ => crate::gpoll::GPoll::Final(crate::gpoll::Extent::Exactly(1)),

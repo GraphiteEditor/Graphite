@@ -17,7 +17,7 @@ pub enum BatchStatus<'a> {
 	/// hint is as for `Lent`.
 	Filled(RecordBatchMut<'a>, Finality, Extent),
 	/// No batch implementation behind this edge; a driver answers with the
-	/// per-lane eval and copy-out loop ([`crate::record::fill_frames`]).
+	/// per-lane serve and copy-out loop ([`crate::record::fill_frames`]).
 	Unbatched,
 	Pending,
 	Error(GraphError),
@@ -314,43 +314,34 @@ impl<T: Copy> Iterator for ListIter<'_, T> {
 	}
 }
 
-/// The output marker of a node that serves records through the caller's
-/// frame claim instead of returning a plain value. It satisfies the lift
-/// bounds so [`Node::serve`] stays callable and overridable on the erased
-/// surface.
-#[derive(Clone, Copy, Debug, Default, PartialEq, dyn_any::DynAny)]
-pub struct Records;
-
 pub trait Node<Input> {
-	type Output;
-
-	fn eval(&self, input: &Input) -> GPoll<Self::Output>;
-
 	/// Serves the node's record through the caller's claim: the writes land
 	/// in the claim and the returned proof is mintable only by its closing
 	/// methods, so the served record is of the claimed layout by
-	/// construction. The default lifts a plain output's element; record
-	/// servers override it.
+	/// construction. The caller claims the frame at [`Node::layout`] before
+	/// the call, so the node advances the record stack by exactly that frame.
 	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'l>) -> GPoll<crate::record::Served<'e>>
 	where
-		Self::Output: Send + Sync + dyn_any::StaticTypeSized,
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
-	{
-		slot.lift_served(self.eval(input), input.arena())
-	}
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>;
 
 	/// The count of items at one absolute nesting level (innermost `0`). The
 	/// leveled primitive a structure node overrides to report a pushed level's
 	/// size; the scalar base is one item at every level. Uncertainty rides the
 	/// `GPoll` status axis.
-	fn extent_at(&self, _input: &Input, _level: u8) -> GPoll<Extent> {
+	fn extent_at<'e>(&self, _input: &Input, _level: u8) -> GPoll<Extent>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
 		GPoll::Final(Extent::Exactly(1))
 	}
 
 	/// The composite domain query derived from [`extent_at`](Node::extent_at):
 	/// one level, the product of the levels below or above it, or the whole
 	/// domain's flat count. Consumers query this; nodes only write `extent_at`.
-	fn extent(&self, input: &Input, at: Level) -> GPoll<Extent> {
+	fn extent<'e>(&self, input: &Input, at: Level) -> GPoll<Extent>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
 		let product = |range: core::ops::Range<u8>| range.fold(GPoll::Final(Extent::Exactly(1)), |acc, level| Extent::mul(acc, self.extent_at(input, level)));
 		match at {
 			Level::At(level) => self.extent_at(input, level),
@@ -384,13 +375,13 @@ pub trait Node<Input> {
 
 	/// Batched evaluation of `range` into caller-provided frame storage of
 	/// `range.len() * layout.lane_stride()` bytes; see [`BatchStatus`]. The
-	/// default advertises no support and drivers fall back to per-lane eval
+	/// default advertises no support and drivers fall back to per-lane serves
 	/// with copy-out ([`crate::record::fill_frames`]); overrides exist to beat
 	/// that loop (resident lanes, direct fills, fewer erased calls), never for
 	/// correctness.
-	fn eval_batch<'a>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>) -> BatchStatus<'a>
+	fn eval_batch<'a, 'e>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>) -> BatchStatus<'a>
 	where
-		Input: InjectIndex + Copy,
+		Input: InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		let _ = (input, range, scratch);
 		BatchStatus::Unbatched
@@ -401,13 +392,17 @@ impl<Input, N> Node<Input> for &N
 where
 	N: Node<Input> + ?Sized,
 {
-	type Output = N::Output;
-
-	fn eval(&self, input: &Input) -> GPoll<Self::Output> {
-		(**self).eval(input)
+	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'l>) -> GPoll<crate::record::Served<'e>>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
+		(**self).serve(input, slot)
 	}
 
-	fn extent_at(&self, input: &Input, level: u8) -> GPoll<Extent> {
+	fn extent_at<'e>(&self, input: &Input, level: u8) -> GPoll<Extent>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
 		(**self).extent_at(input, level)
 	}
 
@@ -419,9 +414,9 @@ where
 		(**self).layout()
 	}
 
-	fn eval_batch<'a>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>) -> BatchStatus<'a>
+	fn eval_batch<'a, 'e>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>) -> BatchStatus<'a>
 	where
-		Input: InjectIndex + Copy,
+		Input: InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		(**self).eval_batch(input, range, scratch)
 	}
@@ -431,13 +426,17 @@ impl<Input, N> Node<Input> for Box<N>
 where
 	N: Node<Input> + ?Sized,
 {
-	type Output = N::Output;
-
-	fn eval(&self, input: &Input) -> GPoll<Self::Output> {
-		(**self).eval(input)
+	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'l>) -> GPoll<crate::record::Served<'e>>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
+		(**self).serve(input, slot)
 	}
 
-	fn extent_at(&self, input: &Input, level: u8) -> GPoll<Extent> {
+	fn extent_at<'e>(&self, input: &Input, level: u8) -> GPoll<Extent>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
 		(**self).extent_at(input, level)
 	}
 
@@ -449,9 +448,9 @@ where
 		(**self).layout()
 	}
 
-	fn eval_batch<'a>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>) -> BatchStatus<'a>
+	fn eval_batch<'a, 'e>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>) -> BatchStatus<'a>
 	where
-		Input: InjectIndex + Copy,
+		Input: InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		(**self).eval_batch(input, range, scratch)
 	}
@@ -461,13 +460,17 @@ impl<Input, N> Node<Input> for std::sync::Arc<N>
 where
 	N: Node<Input> + ?Sized,
 {
-	type Output = N::Output;
-
-	fn eval(&self, input: &Input) -> GPoll<Self::Output> {
-		(**self).eval(input)
+	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'l>) -> GPoll<crate::record::Served<'e>>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
+		(**self).serve(input, slot)
 	}
 
-	fn extent_at(&self, input: &Input, level: u8) -> GPoll<Extent> {
+	fn extent_at<'e>(&self, input: &Input, level: u8) -> GPoll<Extent>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
 		(**self).extent_at(input, level)
 	}
 
@@ -479,9 +482,9 @@ where
 		(**self).layout()
 	}
 
-	fn eval_batch<'a>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>) -> BatchStatus<'a>
+	fn eval_batch<'a, 'e>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>) -> BatchStatus<'a>
 	where
-		Input: InjectIndex + Copy,
+		Input: InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		(**self).eval_batch(input, range, scratch)
 	}
@@ -513,20 +516,27 @@ impl StatusCell {
 		Self { no_partial: true, ..Self::new() }
 	}
 
+	/// Claims the edge's own frame, serves through it, and folds the poll's
+	/// status into the cell. The claim is the caller's, so the edge's frame is
+	/// entered exactly once per evaluation.
 	#[inline(always)]
-	pub fn eval_input<Input, N: Node<Input>>(&self, input_index: usize, node: &N, input: &Input) -> Result<N::Output, Interrupt> {
-		match node.eval(input) {
-			GPoll::Final(value) => Ok(value),
+	pub fn eval_input<'e, Input, N: Node<Input> + ?Sized>(&self, input_index: usize, node: &N, input: &Input) -> Result<crate::record::RecordValue<'e>, Interrupt>
+	where
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	{
+		let slot = crate::record::FrameClaim::enter(node.layout());
+		match node.serve(input, slot) {
+			GPoll::Final(served) => Ok(served.value()),
 			GPoll::Partial(_) if self.no_partial => Err(Interrupt::Pending),
-			GPoll::Partial(value) => {
+			GPoll::Partial(served) => {
 				self.finality.set(Finality::Partial);
-				Ok(value)
+				Ok(served.value())
 			}
 			GPoll::Fallback(boxed) => {
-				let (value, error) = *boxed;
+				let (served, error) = *boxed;
 				let first = self.error.take();
 				self.error.set(first.or(Some(error.traced(input_index))));
-				Ok(value)
+				Ok(served.value())
 			}
 			GPoll::Pending => Err(Interrupt::Pending),
 			GPoll::Error(mut error) => {
@@ -590,19 +600,20 @@ impl<'a, N> LazyInput<'a, N> {
 	}
 
 	#[inline(always)]
-	pub fn eval<Input>(&self, ctx: &Input) -> Result<N::Output, Interrupt>
+	pub fn eval<'e, Input>(&self, ctx: &Input) -> Result<crate::record::RecordValue<'e>, Interrupt>
 	where
-		N: Node<Input>,
+		N: crate::record::DerivedRecordEdge<'e, Input>,
 	{
-		self.cell.eval_input(self.input_index, self.node, ctx)
+		self.node.eval_derived(self.cell, self.input_index, ctx)
 	}
 
 	/// The edge's composite extent, for kernels that split or shift indices
 	/// over their sources.
 	#[inline(always)]
-	pub fn extent<Input>(&self, ctx: &Input, at: Level) -> GPoll<Extent>
+	pub fn extent<'e, Input>(&self, ctx: &Input, at: Level) -> GPoll<Extent>
 	where
 		N: Node<Input>,
+		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		self.node.extent(ctx, at)
 	}
@@ -612,40 +623,60 @@ impl<'a, N> LazyInput<'a, N> {
 mod tests {
 	use super::*;
 
+	use crate::arena::Arena;
+	use crate::context::ExtractArena;
+	use crate::record::{LiftedSource, serve_edge};
+
 	#[derive(Clone, Copy)]
-	struct TestInput {
+	struct TestInput<'a> {
 		index: u64,
+		arena: &'a Arena,
 	}
 
-	impl InjectIndex for TestInput {
+	impl InjectIndex for TestInput<'_> {
 		fn set_index(&mut self, index: u64) {
 			self.index = index;
 		}
 	}
 
-	struct Double;
+	impl<'a> ExtractArena for TestInput<'a> {
+		type ArenaRef = &'a Arena;
 
-	impl Node<TestInput> for Double {
-		type Output = u64;
-
-		fn eval(&self, input: &TestInput) -> GPoll<u64> {
-			GPoll::Final(input.index * 2)
+		fn arena(&self) -> &'a Arena {
+			self.arena
 		}
+	}
+
+	fn double<'a>() -> LiftedSource<u64, impl Fn(&TestInput<'a>) -> GPoll<u64>> {
+		LiftedSource::new(|input: &TestInput<'a>| GPoll::Final(input.index * 2))
 	}
 
 	#[test]
 	fn the_default_advertises_no_batch_support() {
-		let input = TestInput { index: 0 };
+		let arena = Arena::new(1024).unwrap();
+		let input = TestInput { index: 0, arena: &arena };
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
-		assert!(matches!(Double.eval_batch(&input, 2..6, Some(&mut scratch)), BatchStatus::Unbatched));
-		assert!(matches!(Double.eval_batch(&input, 2..6, None), BatchStatus::Unbatched));
+		let node = double();
+		assert!(matches!(node.eval_batch(&input, 2..6, Some(&mut scratch)), BatchStatus::Unbatched));
+		assert!(matches!(node.eval_batch(&input, 2..6, None), BatchStatus::Unbatched));
 	}
 
 	#[test]
 	fn trait_is_object_safe_across_erased_edges() {
-		let erased: Box<dyn Node<TestInput, Output = u64>> = Box::new(Double);
-		let input = TestInput { index: 21 };
-		assert_eq!(erased.eval(&input), GPoll::Final(42));
+		let arena = Arena::new(1024).unwrap();
+		let input = TestInput { index: 21, arena: &arena };
+		let node = double();
+		let layout = Node::<TestInput>::layout(&node).clone();
+		let erased: Box<dyn Node<TestInput>> = Box::new(node);
+		// SAFETY: between evaluations, nothing served on the stack is live.
+		unsafe {
+			crate::record::stack::reserve(1 << 12);
+		}
+		let GPoll::Final(value) = serve_edge(&*erased, &input) else {
+			panic!("the erased edge must serve a final record");
+		};
+		// SAFETY: the record was served at `layout`, whose element is the output.
+		assert_eq!(unsafe { crate::record::read_element::<u64>(layout.rec(&value)) }, 42);
 		assert!(matches!(erased.eval_batch(&input, 0..2, None), BatchStatus::Unbatched));
 	}
 }

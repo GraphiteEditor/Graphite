@@ -7,7 +7,6 @@ use core_types::color::SRGBA8;
 use core_types::context::Context;
 use core_types::gpoll::GPoll;
 use core_types::list::List;
-use core_types::node::Node;
 use core_types::registry::EdgeHandle;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
@@ -366,24 +365,21 @@ macro_rules! tagged_value {
 				// RECORD WIRES, WHICH LAND AS THEIR ELEMENT
 				// =======================
 				if ty == core_types::registry::record_edge_type::<()>() {
-					return Ok(handle.downcast_record::<()>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(|_| TaggedValue::None));
+					let edge = handle.downcast_record::<()>().map_err(|e| format!("{e:?}"))?;
+					return Ok(core_types::record::serve_edge(&edge, ctx).map(|_| TaggedValue::None));
 				}
 				$(
 					if ty == core_types::registry::record_edge_type::<$ty>() {
 						let layout = handle.layout().clone();
-						return Ok(handle
-							.downcast_record::<$ty>()
-							.map_err(|e| format!("{e:?}"))?
-							.eval(ctx)
+						let edge = handle.downcast_record::<$ty>().map_err(|e| format!("{e:?}"))?;
+						return Ok(core_types::record::serve_edge(&edge, ctx)
 							.map(|value| TaggedValue::$identifier(unsafe { core_types::record::read_element::<$ty>(layout.rec(&value)) })));
 					}
 				)*
 				if ty == core_types::registry::record_edge_type::<RenderOutput>() {
 					let layout = handle.layout().clone();
-					return Ok(handle
-						.downcast_record::<RenderOutput>()
-						.map_err(|e| format!("{e:?}"))?
-						.eval(ctx)
+					let edge = handle.downcast_record::<RenderOutput>().map_err(|e| format!("{e:?}"))?;
+					return Ok(core_types::record::serve_edge(&edge, ctx)
 						.map(|value| TaggedValue::RenderOutput(unsafe { core_types::record::read_element::<RenderOutput>(layout.rec(&value)) })));
 				}
 				Err(format!("Cannot convert edge of type {ty} to TaggedValue"))

@@ -54,7 +54,7 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	for field in parsed.fields.iter().skip(1) {
 		if let ParsedFieldType::Node(NodeParsedField { output_type, .. }) = &field.ty {
 			// Lazy secondaries are consumed as plain elements through the wire.
-			if crate::codegen::classify::is_record_value(output_type) || crate::codegen::ir::strip_ilist(output_type).1 > 0 {
+			if crate::codegen::classify::is_served(output_type) || crate::codegen::ir::strip_ilist(output_type).1 > 0 {
 				emit_error!(field.pat_ident.span(), "a record node's lazy inputs consume plain elements, not record or ranked wires");
 			}
 			if !field.attribute_reads.is_empty() {

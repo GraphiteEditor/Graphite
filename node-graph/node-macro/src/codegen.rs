@@ -828,14 +828,30 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		]);
 	}
 
-	// A kernel-declared `ExtractArena<'e>` bound already carries the arena at
-	// its own lifetime; a second equality bound would contradict it.
-	let ctx_extracts_arena = ctx_param.is_some_and(|ctx_param| {
-		ctx_param
-			.bounds
-			.iter()
-			.any(|bound| matches!(bound, TypeParamBound::Trait(trait_bound) if trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "ExtractArena")))
-	});
+	// The serving lifetime is quantified by each serving method, so the impl
+	// never binds the context's arena; the kernel keeps its own bound.
+	let extracts_arena = |bound: &TypeParamBound| matches!(bound, TypeParamBound::Trait(trait_bound) if trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "ExtractArena"));
+	let mut impl_ctx_bounds: Vec<TokenStream2> = match ctx_param {
+		Some(ctx_param) => ctx_param.bounds.iter().filter(|bound| !matches!(bound, TypeParamBound::Lifetime(_)) && !extracts_arena(bound)).map(|bound| quote!(#bound)).collect(),
+		None => Vec::new(),
+	};
+	if ctx_param.is_none() {
+		impl_ctx_bounds.push(quote!(#core_types::Ctx));
+	}
+	if async_source && !snapshot_ctx {
+		impl_ctx_bounds.push(quote!(#core_types::context::DeriveCtx));
+	}
+	if snapshot_ctx {
+		impl_ctx_bounds.extend([
+			quote!(#core_types::context::DeriveCtx),
+			quote!(#core_types::context::ExtractFootprint),
+			quote!(#core_types::context::ExtractRealTime),
+			quote!(#core_types::context::ExtractAnimationTime),
+			quote!(#core_types::context::ExtractPointerPosition),
+			quote!(#core_types::context::ExtractIndex),
+			quote!(#core_types::context::ExtractPosition),
+		]);
+	}
 	let derives = ctx_param.is_some_and(|ctx_param| {
 		ctx_param.bounds.iter().any(|bound| match bound {
 			TypeParamBound::Trait(trait_bound) => trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "DeriveCtx"),
@@ -843,20 +859,40 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 	});
 	let derive_routing = derives && routing_generic.is_some();
+	// A kernel that holds records (a forwarded routing wire, or a lazy edge it
+	// serves itself) names the record lifetime; unless it declared a serving
+	// lifetime of its own, the context binds the arena at that lifetime.
+	let kernel_lazy = parsed.fields.iter().any(|field| !field.is_data_field && matches!(field.ty, ParsedFieldType::Node(_)));
+	let wants_record_lifetime = routing_generic.is_some() || ((record_io || flip) && kernel_lazy);
+	let ctx_declares_arena = ctx_param.is_some_and(|ctx_param| ctx_param.bounds.iter().any(extracts_arena));
+	let bind_record_arena = wants_record_lifetime && !ctx_declares_arena;
+	if bind_record_arena {
+		ctx_bounds.push(quote!(#core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>));
+	}
 
 	let ctx_generic = match ctx_bounds.is_empty() {
 		true => quote!(#ctx_ident),
 		false => quote!(#ctx_ident: #(#ctx_bounds)+*),
 	};
+	let impl_ctx_generic = match impl_ctx_bounds.is_empty() {
+		true => quote!(#ctx_ident),
+		false => quote!(#ctx_ident: #(#impl_ctx_bounds)+*),
+	};
 	let generic_tokens = |param: &GenericParam| match param {
 		GenericParam::Type(type_param) if Some(&type_param.ident) == ctx_param.map(|ctx_param| &ctx_param.ident) => ctx_generic.clone(),
+		param => quote!(#param),
+	};
+	let impl_generic_tokens = |param: &GenericParam| match param {
+		GenericParam::Type(type_param) if Some(&type_param.ident) == ctx_param.map(|ctx_param| &ctx_param.ident) => impl_ctx_generic.clone(),
 		param => quote!(#param),
 	};
 	let mut generics: Vec<TokenStream2> = parsed
 		.fn_generics
 		.iter()
 		.filter(|param| match param {
-			GenericParam::Type(type_param) => !derive_routing || Some(&type_param.ident) != routing_generic.as_ref(),
+			// A routing generic is the record itself, so the kernel names the
+			// record value rather than carrying the parameter.
+			GenericParam::Type(type_param) => Some(&type_param.ident) != routing_generic.as_ref(),
 			_ => true,
 		})
 		.map(|param| match param {
@@ -886,52 +922,24 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.iter()
 		.filter(|param| match param {
 			GenericParam::Type(type_param) => Some(&type_param.ident) != routing_generic.as_ref() && Some(&type_param.ident) != record_token.as_ref(),
-			// A serving lifetime stays only while the ctx bound constrains it
-			// (`ExtractArena<'e>`); wire types substitute its erased
-			// projection, which would leave it unconstrained. A flipped
-			// kernel's serving lifetime rebinds to the record lifetime, so
-			// the impl drops it entirely.
-			GenericParam::Lifetime(lifetime_param) => !flip && ctx_param.is_some_and(|ctx| quote!(#ctx).to_string().contains(&lifetime_param.lifetime.to_string())),
+			// A serving lifetime is the serve method's own, so it never rides
+			// the impl: an impl-level binding of the arena would contradict
+			// the one the method quantifies over.
+			GenericParam::Lifetime(_) => false,
 			_ => true,
 		})
-		.map(&generic_tokens)
+		.map(&impl_generic_tokens)
 		.collect();
 	if ctx_param.is_none() {
 		generics.push(ctx_generic.clone());
-		impl_generics.push(ctx_generic);
-	}
-	if routing_generic.is_some() || record_io || flip {
-		impl_generics.insert(0, quote!('__record));
-	}
-	// A flipped kernel's serving lifetime is the record lifetime at the impl:
-	// the ctx bound rebinds under the impl's own name.
-	if flip {
-		let serving_names: Vec<String> = parsed
-			.fn_generics
-			.iter()
-			.filter_map(|param| match param {
-				GenericParam::Lifetime(lifetime_param) => Some(lifetime_param.lifetime.ident.to_string()),
-				_ => None,
-			})
-			.collect();
-		if !serving_names.is_empty() {
-			impl_generics = impl_generics.into_iter().map(|tokens| crate::codegen::classify::rename_lifetimes_to_record(tokens, &serving_names)).collect();
-		}
+		impl_generics.push(impl_ctx_generic.clone());
 	}
 	let lazy_carrier = record_io && carrier_present && matches!(parsed.fields.iter().find(|field| !field.is_data_field).map(|field| &field.ty), Some(ParsedFieldType::Node(_)));
-	if derive_routing || (lazy_carrier && derives) {
-		generics.insert(0, quote!('__record));
-	}
 
 	let fn_name = &parsed.fn_name;
 	let mod_name = format_ident!("_{}_mod", parsed.mod_name);
 	let struct_name = format_ident!("{}Node", parsed.struct_name);
 	let output_type = &parsed.output_type;
-	let trait_output = match (record_io, &routing_generic) {
-		(true, _) | (false, Some(_)) => syn::parse_quote!(#core_types::record::RecordValue<'__record>),
-		(false, None) if flip => syn::parse_quote!(#core_types::record::RecordValue<'__record>),
-		(false, None) => slot_value_type(&parsed.output_type),
-	};
 	let raw_lazy = matches!(*model, Dialect::Poll);
 	let injected_name = |ident: &Ident| async_source && (ident == "_runtime" || ident == "_source");
 	let where_predicates: Vec<TokenStream2> = parsed.where_clause.iter().flat_map(|clause| clause.predicates.iter()).map(|predicate| quote!(#predicate)).collect();
@@ -965,48 +973,43 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		});
 	}
 	if flip {
-		let mut kernel_lazy = false;
 		for (index, field) in regular_fields.iter().enumerate() {
 			if matches!(&field.ty, ParsedFieldType::Node(_)) {
-				kernel_lazy = true;
 				let source_generic = format_ident!("__Source{index}");
 				let derived_extra = derives
-					.then(|| quote!(+ for<'__derived> #core_types::record::RecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>))
+					.then(|| quote!(+ for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>))
 					.into_iter();
 				generics.push(quote! {
-					#source_generic: #core_types::node::Node<#ctx_ident, Output = #core_types::record::RecordValue<'__record>> #(#derived_extra)*
+					#source_generic: #core_types::node::Node<#ctx_ident> #(#derived_extra)*
 				});
 			}
-		}
-		if kernel_lazy {
-			generics.insert(0, quote!('__record));
 		}
 	}
 	if record_io {
-		let mut kernel_lazy = false;
 		for (index, field) in regular_fields.iter().enumerate() {
 			if matches!(&field.ty, ParsedFieldType::Node(_)) && matches!(crate::codegen::ir::lazy_binding(&node, index), LazyBinding::Element) {
-				kernel_lazy = true;
 				let source_generic = format_ident!("__Source{index}");
 				let derived_extra = derives
-					.then(|| quote!(+ for<'__derived> #core_types::record::RecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>))
+					.then(|| quote!(+ for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>))
 					.into_iter();
 				generics.push(quote! {
-					#source_generic: #core_types::node::Node<#ctx_ident, Output = #core_types::record::RecordValue<'__record>> #(#derived_extra)*
+					#source_generic: #core_types::node::Node<#ctx_ident> #(#derived_extra)*
 				});
 			}
-		}
-		if kernel_lazy && !(derive_routing || (lazy_carrier && derives)) {
-			generics.insert(0, quote!('__record));
 		}
 	}
 	if opaque {
 		for (index, field) in regular_fields.iter().enumerate() {
-			if let ParsedFieldType::Node(NodeParsedField { output_type, .. }) = &field.ty {
+			if matches!(&field.ty, ParsedFieldType::Node(_)) {
 				let source_generic = format_ident!("__Source{index}");
-				generics.push(quote!(#source_generic: #core_types::node::Node<#ctx_ident, Output = #output_type>));
+				generics.push(quote!(#source_generic: #core_types::node::Node<#ctx_ident>));
 			}
 		}
+	}
+	// The record lifetime the kernel's wire types and arena bound name; the
+	// impl infers it from the serving lifetime at every call.
+	if wants_record_lifetime {
+		generics.insert(0, quote!('__record));
 	}
 
 	let data_names: Vec<&Ident> = data_fields.iter().map(|field| &field.pat_ident.ident).collect();
@@ -1018,9 +1021,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote!(#pat: &#ty)
 	});
 
-	let lazy_bound = |output_type: &Type| match derives {
-		true => quote!(for<'__derived> #core_types::node::Node<#core_types::context::Derived<'__derived, #ctx_ident>, Output = #output_type>),
-		false => quote!(#core_types::node::Node<#ctx_ident, Output = #output_type>),
+	let derived_edge = quote!(for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>);
+	let lazy_bound = || match derives {
+		true => {
+			let derived_edge = derived_edge.clone();
+			quote!(#core_types::node::Node<#ctx_ident> + #derived_edge)
+		}
+		false => quote!(#core_types::node::Node<#ctx_ident>),
 	};
 
 	let routing_source = |ty: &Type| routing_generic.as_ref().is_some_and(|generic| crate::codegen::classify::routing_source_output(ty, generic));
@@ -1074,6 +1081,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					(None, false) => quote!(#pat: #core_types::node::List<'_, #ty>),
 				}
 			}
+			// A routing source is the forwarded record itself, not an element.
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if routing_source(ty) => quote!(#pat: #core_types::record::RecordValue<'__record>),
 			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.attribute_reads.is_empty() => read_tuple_param(field, quote!(#pat), quote!(#ty)),
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
@@ -1094,12 +1103,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let out = lazy_read_out(field, output_type);
 						quote!(#pat: #core_types::record::ElementLazyInput<'_, #out, #source_generic>)
 					}
-					(LazyBinding::Plain, true) => {
-						let bound = lazy_bound(output_type);
+					(LazyBinding::Generic, true) => {
+						let bound = lazy_bound();
 						quote!(#pat: &impl #bound)
 					}
-					(LazyBinding::Plain, false) => {
-						let bound = lazy_bound(output_type);
+					(LazyBinding::Generic, false) => {
+						let bound = lazy_bound();
 						quote!(#pat: #core_types::node::LazyInput<'_, impl #bound>)
 					}
 				}
@@ -1107,63 +1116,48 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 
-	let record_value_ty: Type = syn::parse_quote!(#core_types::record::RecordValue<'__record>);
-	let node_bounds = regular_fields.iter().enumerate().zip(&node_generics).map(|((index, field), node_generic)| match &field.ty {
-		// A ranked input rides a record edge whatever the node kind; the
-		// materialized batch reads its lanes.
-		ParsedFieldType::Regular(_) if ir::materialized_levels(&node, index) > 0 => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
-		ParsedFieldType::Regular(_) if flip => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
-		ParsedFieldType::Node(_) if flip => match derives {
-			true => quote! {
-				#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>,
-				#node_generic: for<'__derived> #core_types::record::RecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>
+	let node_bounds = regular_fields.iter().enumerate().zip(&node_generics).map(|((index, field), node_generic)| {
+		let plain = quote!(#node_generic: #core_types::node::Node<#ctx_ident>);
+		// A lazy edge the kernel evaluates at derived contexts needs the
+		// derived form: the derived context's arena binding is unnameable
+		// under a higher rank.
+		let derived = quote!(#node_generic: #derived_edge);
+		let derived_plus = quote! {
+			#node_generic: #core_types::node::Node<#ctx_ident>,
+			#node_generic: #derived_edge
+		};
+		match &field.ty {
+			ParsedFieldType::Node(_) if flip => match derives {
+				true => derived_plus,
+				false => plain,
 			},
-			false => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
-		},
-		ParsedFieldType::Node(_) if record_io && !skips_carrier && index == 0 => match derives {
-			true => quote!(#node_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>),
-			false => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
-		},
-		ParsedFieldType::Regular(_) if record_io && !skips_carrier && index == 0 => {
-			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
-		}
-		ParsedFieldType::Regular(_) if record_io && !field.attribute_reads.is_empty() => {
-			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
-		}
-		// An element-consuming lazy secondary rides a record edge, derivable
-		// when the kernel evaluates it at derived contexts.
-		ParsedFieldType::Node(_) if record_io && matches!(ir::lazy_binding(&node, index), LazyBinding::Element) => match derives {
-			true => quote! {
-				#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>,
-				#node_generic: for<'__derived> #core_types::record::RecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>
+			ParsedFieldType::Node(_) if record_io && !skips_carrier && index == 0 => match derives {
+				true => derived,
+				false => plain,
 			},
-			false => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
-		},
-		ParsedFieldType::Regular(RegularParsedField { ty, .. }) if routing_source(ty) => {
-			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
-		}
-		ParsedFieldType::Regular(_) if routing_generic.is_some() => {
-			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
-		}
-		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #ty>),
-		ParsedFieldType::Node(NodeParsedField { output_type, .. }) if routing_source(output_type) => match derives {
-			true => quote!(#node_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>),
-			false => {
-				let bound = lazy_bound(&record_value_ty);
+			// An element-consuming lazy secondary rides a record edge, derivable
+			// when the kernel evaluates it at derived contexts.
+			ParsedFieldType::Node(_) if record_io && matches!(ir::lazy_binding(&node, index), LazyBinding::Element) => match derives {
+				true => derived_plus,
+				false => plain,
+			},
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if routing_source(output_type) => match derives {
+				true => derived,
+				false => plain,
+			},
+			ParsedFieldType::Node(_) if opaque => plain,
+			ParsedFieldType::Node(_) => {
+				let bound = lazy_bound();
 				quote!(#node_generic: #bound)
 			}
-		},
-		ParsedFieldType::Node(NodeParsedField { output_type, .. }) if opaque && is_record_value(output_type) => {
-			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #output_type>)
-		}
-		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
-			let bound = lazy_bound(output_type);
-			quote!(#node_generic: #bound)
+			// Every wire is a record edge; a value input's element copies out of
+			// the record its edge serves.
+			ParsedFieldType::Regular(_) => plain,
 		}
 	});
 
 	let mut lend_outlives: Vec<TokenStream2> = Vec::new();
-	if let Type::Reference(reference) = &trait_output
+	if let Type::Reference(reference) = &slot_value_type(&parsed.output_type)
 		&& let Some(lifetime) = &reference.lifetime
 	{
 		let inner = &reference.elem;
@@ -1224,29 +1218,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.collect::<Vec<(usize, &AttributeRead)>>()
 	};
 
-	// A serving node's interrupt exits close through the frame claim's drop;
-	// a forwarding node still closes by hand, since its kernel serves the
-	// record and a top-level claim would double the frame.
-	let claims_frame = flip || record_io;
-	let interrupt_close = match claims_frame {
-		true => quote!(),
-		false => quote! {
-			unsafe { #core_types::record::interrupt_frame(_entry_sp, <Self as #core_types::node::Node<#ctx_ident>>::layout(self)) };
-		},
+	// Every exit closes through the frame claim's drop, so no exit path
+	// reclaims by hand.
+	let interrupt_close = quote!();
+	let frame_entry = quote! {
+		#[allow(unused_mut, unused_variables)]
+		let mut __frame = __slot;
 	};
-	let frame_entry = match claims_frame {
-		true => quote! {
-			#[allow(unused_mut, unused_variables)]
-			let mut __frame = #core_types::record::FrameClaim::enter(<Self as #core_types::node::Node<#ctx_ident>>::layout(self));
-		},
-		false => quote!(let _entry_sp = #core_types::record::stack::sp();),
-	};
-	let lane_frame_entry = match claims_frame {
-		true => quote! {
-			#[allow(unused_mut, unused_variables)]
-			let mut __frame = #core_types::record::FrameClaim::enter(__node_layout);
-		},
-		false => quote!(let _entry_sp = #core_types::record::stack::sp();),
+	// The batch loop is not a serve, so each lane claims its own frame.
+	let lane_frame_entry = quote! {
+		#[allow(unused_mut, unused_variables)]
+		let mut __frame = #core_types::record::FrameClaim::enter(__node_layout);
 	};
 	let bind_body = |index: usize, field: &ParsedField, batch_mode: bool| {
 		let name = &field.pat_ident.ident;
@@ -1400,16 +1382,29 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
 					}
 				}
-				ValueBinding::Plain => quote! {
-					let #name = match __cell.eval_input(#index, &self.#name, __input) {
-						Ok(value) => value,
-						Err(interrupt) => #interrupt_return,
-					};
-				},
+				// A plain value rides a record edge like every other input; the
+				// element copies out against the edge's own layout, except for a
+				// routing source, whose record is what the kernel forwards.
+				ValueBinding::Plain => {
+					let read = (!routing_source(ty)).then(|| {
+						quote! {
+							let #name: #ty = unsafe {
+								#core_types::record::read_element(#core_types::node::Node::<#ctx_ident>::layout(&self.#name).rec(&#name))
+							};
+						}
+					});
+					quote! {
+						let #name = match __cell.eval_input(#index, &self.#name, __input) {
+							Ok(value) => value,
+							Err(interrupt) => #interrupt_return,
+						};
+						#read
+					}
+				}
 			},
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => match (ir::lazy_binding(&node, index), raw_lazy) {
 				// A raw poll edge is threaded straight through, so it does not bind here.
-				(LazyBinding::Plain, true) => quote!(),
+				(LazyBinding::Generic, true) => quote!(),
 				(LazyBinding::DeriveRouting, _) => quote! {
 					let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels));
 				},
@@ -1462,11 +1457,18 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				(LazyBinding::OpaqueRecord, _) => quote! {
 					let #name = #core_types::record::RecordEdgeInput::new(&self.#name, &self.__layout);
 				},
-				(LazyBinding::Plain, false) => quote! {
+				(LazyBinding::Generic, false) => quote! {
 					let #name = #core_types::node::LazyInput::new(&self.#name, &__cell, #index);
 				},
 			},
 		}
+	};
+
+	// A bind whose element copies out reclaims the edge's frame; a forwarded
+	// record must outlive the bind, so its frame stays.
+	let reads_out_at = |index: usize| match &regular_fields[index].ty {
+		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => !routing_source(ty) && ir::value_binding(&node, index).reads_out(),
+		ParsedFieldType::Node(_) => false,
 	};
 
 	let clamp_tokens = |field: &ParsedField| {
@@ -1493,7 +1495,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			ParsedFieldType::Regular(_) => quote!(#name),
 			ParsedFieldType::Node(_) => match (ir::lazy_binding(&node, index), raw_lazy) {
 				(LazyBinding::Element, true) | (LazyBinding::OpaqueRecord, _) => quote!(&#name),
-				(LazyBinding::Plain, true) => quote!(&self.#name),
+				(LazyBinding::Generic, true) => quote!(&self.#name),
 				_ => quote!(#name),
 			},
 		}
@@ -1559,23 +1561,28 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							let #arg = #core_types::extent::ListIn::new(&#query, &__total);
 						}
 					}
-					ValueBinding::RecordElement | ValueBinding::ReadingSecondary => {
-						let slot = format_ident!("__in_{index}");
+					// A routing source forwards its record whole; its extents are
+					// the queryable quantity.
+					_ if routing_source(ty) => extent_edge(&query, &arg),
+					ValueBinding::RecordElement | ValueBinding::ReadingSecondary | ValueBinding::Plain => {
+						let layout = match ir::value_binding(&node, index) {
+							ValueBinding::Plain => quote!(#core_types::node::Node::<#ctx_ident>::layout(&self.#name)),
+							_ => {
+								let slot = format_ident!("__in_{index}");
+								quote!(self.#slot)
+							}
+						};
 						quote! {
 							let #query = || {
 								// SAFETY: the element copies out by value; extent
 								// queries leave the record stack untouched.
 								let __scope = unsafe { #core_types::record::stack::ScopeGuard::enter() };
-								#core_types::node::Node::eval(&self.#name, __input)
-									.map(|__value| unsafe { #core_types::record::read_element::<#ty>(self.#slot.rec(&__value)) })
+								#core_types::record::serve_edge(&self.#name, __input)
+									.map(|__value| unsafe { #core_types::record::read_element::<#ty>(#layout.rec(&__value)) })
 							};
 							let #arg = #core_types::extent::ValueIn::new(&#query);
 						}
 					}
-					ValueBinding::Plain => quote! {
-						let #query = || #core_types::node::Node::eval(&self.#name, __input);
-						let #arg = #core_types::extent::ValueIn::new(&#query);
-					},
 					// A carrier, lent, or materialized ranked input is a record
 					// edge; its extents are the queryable quantity.
 					_ => extent_edge(&query, &arg),
@@ -1585,7 +1592,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			arg_names.push(arg);
 		}
 		quote! {
-			fn extent_at(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
+			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
+				where
+					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+				{
 				#(#arg_decls)*
 				let __level_in = #core_types::extent::LevelIn::new(__level, <Self as #core_types::node::Node<#ctx_ident>>::layout(self).depth);
 				#path(#(#arg_names,)* __level_in)
@@ -1593,7 +1603,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	} else if let Some(path) = &parsed.attributes.extent_raw {
 		quote! {
-			fn extent_at(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
+			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
+				where
+					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+				{
 				#path(self, __input, __level)
 			}
 		}
@@ -1620,7 +1633,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			},
 		};
 		quote! {
-			fn extent_at(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
+			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
+				where
+					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+				{
 				#query
 				let __arg = #core_types::extent::ExtentIn::new(&__query);
 				let __level_in = #core_types::extent::LevelIn::new(__level, <Self as #core_types::node::Node<#ctx_ident>>::layout(self).depth);
@@ -1631,7 +1647,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		// A leveled output without an extent fn reports a lower bound;
 		// consumers size it by draining to the past-end signal.
 		quote! {
-			fn extent_at(&self, _: &#ctx_ident, _: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent> {
+			fn extent_at<'__serve>(&self, _: &#ctx_ident, _: u8) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
+				where
+					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+				{
 				#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::AtLeast(0))
 			}
 		}
@@ -1652,14 +1671,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 
 	let batch_signature = quote! {
-		fn eval_batch<'__batch>(
+		fn eval_batch<'__batch, '__serve>(
 			&'__batch self,
 			__input: &'__batch #ctx_ident,
 			__range: ::std::ops::Range<u64>,
 			__scratch: Option<&'__batch mut [::std::mem::MaybeUninit<u64>]>,
 		) -> #core_types::node::BatchStatus<'__batch>
 		where
-			#ctx_ident: #core_types::context::InjectIndex + Copy,
+			#ctx_ident: #core_types::context::InjectIndex + Copy + #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 	};
 	let produces_records = record_io || routing_generic.is_some() || flip;
 
@@ -1678,18 +1697,20 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.flatten();
 	let lane_lifetime = lane_injected.is_some().then(|| quote!('__lane,));
 	let kernel_output = lane_injected.or(attr_injected);
-	let kernel_output = match derive_routing {
+	let kernel_output = match routing_generic.is_some() {
 		true => {
-			let generic = routing_generic.as_ref().expect("derive routing implies routing");
+			let generic = routing_generic.as_ref().expect("guarded by the arm");
 			let ty = substitute_routing_record(&parsed.output_type, generic, core_types);
 			quote!(#ty)
 		}
 		false => kernel_output.map(|ty| quote!(#ty)).unwrap_or_else(|| quote!(#output_type)),
 	};
+	let claim_param = parsed.claim.iter().map(|claim| quote!(, #claim));
+	let claim_arg = parsed.claim.iter().map(|_| quote!(, __frame));
 	let kernel = match async_fn {
 		false => quote! {
 			#[allow(clippy::too_many_arguments, clippy::type_complexity)]
-			#vis fn #fn_name<#attr_lifetime #lane_lifetime #(#generics,)*>(#ctx_pat: &#ctx_ident #(, #data_params)* #(, #kernel_params)*) -> #kernel_output #fn_where #body
+			#vis fn #fn_name<#attr_lifetime #lane_lifetime #(#generics,)*>(#ctx_pat: &#ctx_ident #(, #data_params)* #(, #kernel_params)* #(#claim_param)*) -> #kernel_output #fn_where #body
 		},
 		true => {
 			let kernel_generics = parsed.fn_generics.iter().filter(|param| match param {
@@ -1722,16 +1743,34 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		true => quote!(#core_types::node::StatusCell::no_partial()),
 		false => quote!(#core_types::node::StatusCell::new()),
 	};
-	let kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #call_args)*));
+	let kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #call_args)* #(#claim_arg)*));
+	// A record-opaque kernel serves through the claim it was handed; every
+	// other forwarding kernel returns a record of this node's layout, which
+	// fills the claim.
+	let forwarded = |value: TokenStream2| match opaque {
+		true => value,
+		// SAFETY: the kernel's record is of this node's layout.
+		false => quote!(unsafe { __frame.forward(&#value) }),
+	};
 	let lift = match *model {
-		Dialect::Interrupt => quote! {
-			match #kernel_call {
-				Ok(value) => __cell.finish(value),
-				Err(interrupt) => { #interrupt_close interrupt.into() }
+		Dialect::Interrupt => {
+			let served = forwarded(quote!(value));
+			quote! {
+				match #kernel_call {
+					Ok(value) => __cell.finish(#served),
+					Err(interrupt) => { #interrupt_close interrupt.into() }
+				}
 			}
+		}
+		Dialect::Poll => match opaque {
+			true => quote!(__cell.merge(#kernel_call)),
+			// SAFETY: the kernel's record is of this node's layout.
+			false => quote!(__cell.merge(#kernel_call).map(|value| unsafe { __frame.forward(&value) })),
 		},
-		Dialect::Poll => quote!(__cell.merge(#kernel_call)),
-		_ => quote!(__cell.finish(#kernel_call)),
+		_ => {
+			let served = forwarded(quote!(#kernel_call));
+			quote!(__cell.finish(#served))
+		}
 	};
 
 	let placeholder_value_names: Vec<&Ident> = kernel_fields
@@ -1764,19 +1803,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#clamp
 		}
 	});
-	// Async slots persist plain values across evaluations; a flipped source
-	// lifts the slot value onto its record wire at every merge point, into
-	// the carried frame when the node has a carrier.
-	let merge_lifted = |poll: TokenStream2| match flip {
-		true => quote!(__cell.merge(__frame.lift(#poll, #core_types::context::ExtractArena::arena(__input)))),
-		false => quote!(__cell.merge(#poll)),
-	};
-	let pending_return = match flip && carrier_flip {
-		true => quote! {
-			__frame.lift::<#slot_ty>(#core_types::gpoll::GPoll::Pending, #core_types::context::ExtractArena::arena(__input))
-		},
-		false => quote!({ #interrupt_close #core_types::gpoll::GPoll::Pending }),
-	};
+	// Async slots persist plain values across evaluations; the source lifts
+	// the slot value onto its record wire at every merge point, into the
+	// carried frame when the node has a carrier.
+	let merge_lifted = |poll: TokenStream2| quote!(__cell.merge(__frame.lift_served(#poll, #core_types::context::ExtractArena::arena(__input))));
+	// The claim drops with the frame still claimed, so a valueless exit needs
+	// no closing of its own.
+	let pending_return = quote!(#core_types::gpoll::GPoll::Pending);
 	let inflight = match &parsed.attributes.placeholder {
 		Some(path) => merge_lifted(quote!(#core_types::gpoll::GPoll::Partial(#path(#(&#placeholder_value_names),*)))),
 		None => pending_return.clone(),
@@ -1951,7 +1984,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#element_store
 			#(#attr_stores)*
 			// SAFETY: the carry and the writes above complete the record.
-			let __value = unsafe { __frame.finish() };
+			let __value = unsafe { __frame.finish_served() };
 		}
 	});
 	let record_tail = record_tail_core.clone().map(|core| {
@@ -1965,7 +1998,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let prelude = carried_prelude.clone().unwrap_or_default();
 			return quote! {
 				#prelude
-				__cell.merge(__frame.lift(#kernel_call, #core_types::context::ExtractArena::arena(__input)))
+				__cell.merge(__frame.lift_served(#kernel_call, #core_types::context::ExtractArena::arena(__input)))
 			};
 		}
 		let kernel_value = match *model {
@@ -1981,7 +2014,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! {
 			#prelude
 			let __kernel_value = #kernel_value;
-			__cell.merge(__frame.lift(#core_types::gpoll::GPoll::Final(__kernel_value), #core_types::context::ExtractArena::arena(__input)))
+			__cell.merge(__frame.lift_served(#core_types::gpoll::GPoll::Final(__kernel_value), #core_types::context::ExtractArena::arena(__input)))
 		}
 	});
 	let tail_form = if async_fn {
@@ -2055,14 +2088,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// base lane, so the per-lane loop runs only the kernel and the carrier;
 	// eager inputs are batch-invariant by contract (per-lane variance rides
 	// lazy carriers).
+	// The fill loop copies each lane's frame out, so it needs the record, not
+	// the serving proof.
 	let hoisted_lane_poll = match tail_form {
 		Tail::Record => record_tail_core.clone().map(|core| {
 			quote! {
 				#core
-				let __poll = __cell.finish(__value);
+				let __poll = __cell.finish(__value).map(#core_types::record::Served::value);
 			}
 		}),
-		Tail::Forward if routing_generic.is_some() => Some(quote!(let __poll = #lift;)),
+		Tail::Forward if routing_generic.is_some() => Some(quote!(let __poll = #lift.map(#core_types::record::Served::value);)),
 		_ => None,
 	};
 	// A serving-lifetime element rides the per-lane fill loop: the hoisted
@@ -2091,7 +2126,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index))
 				.map(|(index, field)| {
 					let body = bind_body(index, field, true);
-					match ir::value_binding(&node, index).reads_out() {
+					match reads_out_at(index) {
 						false => body,
 						true => {
 							let mark = format_ident!("__scope_{index}");
@@ -2269,12 +2304,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 
 	let record_bounds: Vec<TokenStream2> = {
-		let arena_bound = (record_io && !ctx_extracts_arena && (skips_carrier || lazy_carrier || element_write.is_some())) || (!record_io && (derive_routing || flip));
-		let mut bounds = if arena_bound {
-			vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
-		} else {
-			Vec::new()
-		};
+		// The serving lifetime is the serve method's, so the arena binding
+		// rides there rather than on the impl.
+		let mut bounds: Vec<TokenStream2> = Vec::new();
 		// A reading secondary input's element copies out of its record, as
 		// does a concrete carrier read.
 		if record_io {
@@ -2566,7 +2598,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let eval_body = eval_steps.iter().map(|step| match step {
 		EvalStep::Bind(index, field) => {
 			let body = bind_body(*index, field, false);
-			let reads_out = matches!(&field.ty, ParsedFieldType::Regular(_)) && ir::value_binding(&node, *index).reads_out();
+			let reads_out = reads_out_at(*index);
 			match reads_out {
 				false => body,
 				true => {
@@ -2597,9 +2629,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#(#flip_bounds,)*
 			#(#where_predicates,)*
 		{
-			type Output = #trait_output;
-
-			fn eval(&self, __input: &#ctx_ident) -> #core_types::gpoll::GPoll<Self::Output> {
+			fn serve<'__serve, '__slot>(&self, __input: &#ctx_ident, __slot: #core_types::record::FrameClaim<'__slot>) -> #core_types::gpoll::GPoll<#core_types::record::Served<'__serve>>
+			where
+				#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+			{
 				// The exit trace rides a guard so early returns report too, which
 				// is what pins a frame leak to its node.
 				#[cfg(debug_assertions)]
