@@ -2,7 +2,7 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 /// Handle word layout: 24 generation bits above 40 offset bits, so a 1 TiB arena is
 /// addressable and generations run out after ~3 days of 60fps resets.
@@ -18,6 +18,9 @@ pub struct Arena {
 	offset: AtomicUsize,
 	buf: Box<[UnsafeCell<MaybeUninit<u8>>]>,
 	drops: Mutex<Vec<DropEntry>>,
+	/// Set by a refused reservation and cleared by [`Arena::reset`], so a region
+	/// no evaluation resets can be seen to need one.
+	exhausted: AtomicBool,
 }
 
 impl std::fmt::Debug for Arena {
@@ -81,6 +84,7 @@ impl Arena {
 			offset: AtomicUsize::new(0),
 			buf,
 			drops: Mutex::new(Vec::new()),
+			exhausted: AtomicBool::new(false),
 		})
 	}
 
@@ -93,7 +97,13 @@ impl Arena {
 			offset: AtomicUsize::new(0),
 			buf: Box::new([]),
 			drops: Mutex::new(Vec::new()),
+			exhausted: AtomicBool::new(false),
 		}
+	}
+
+	/// Whether a reservation has been refused since the last [`Arena::reset`].
+	pub fn exhausted(&self) -> bool {
+		self.exhausted.load(Ordering::Relaxed)
 	}
 
 	pub fn generation(&self) -> u64 {
@@ -132,7 +142,10 @@ impl Arena {
 				}
 			}
 		}
-		reserved?;
+		if reserved.is_none() {
+			self.exhausted.store(true, Ordering::Relaxed);
+			return None;
+		}
 		Some(start)
 	}
 
@@ -196,6 +209,7 @@ impl Arena {
 			unsafe { (entry.drop_fn)(base.add(entry.offset)) }
 		}
 		*self.offset.get_mut() = 0;
+		*self.exhausted.get_mut() = false;
 		let Some(generation) = next_generation() else { return false };
 		self.generation.store(generation, Ordering::Release);
 		true
