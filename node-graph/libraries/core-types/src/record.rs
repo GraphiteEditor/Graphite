@@ -1801,6 +1801,38 @@ impl MaterializedSpan {
 		}
 	}
 
+	/// Copies the batch into `arena`, re-parking every payload its records
+	/// reference so the span's bytes reference nothing outside that region.
+	/// `None` where the region could not hold the copy, which leaves the
+	/// caller with nothing to cache.
+	///
+	/// # Safety
+	/// The batch's lanes must be live records of its layout.
+	pub unsafe fn promote(batch: &crate::node::RecordBatch<'_>, arena: &crate::arena::Arena) -> Option<MaterializedSpan> {
+		let layout = batch.layout();
+		let stride = layout.lane_stride();
+		let len = batch.len();
+		if len == 0 {
+			return Some(MaterializedSpan {
+				base: crate::arena::ArenaWeak::NULL,
+				len: 0,
+			});
+		}
+		let slab = arena.alloc_scratch::<u64>((len * stride).div_ceil(8))?;
+		let base: *mut u8 = slab.as_mut_ptr().cast();
+		for lane in 0..len {
+			// SAFETY: the caller's contract on the batch's lanes.
+			let owned = unsafe { OwnedRecord::copy_out(layout, batch.get(lane).rec()) };
+			// SAFETY: the lane's own region of the freshly reserved slab.
+			let dst = unsafe { base.add(lane * stride) };
+			owned.write_into(layout, dst, arena)?;
+		}
+		Some(MaterializedSpan {
+			base: arena.handle_at(base.cast_const())?,
+			len,
+		})
+	}
+
 	/// The span's lanes at `layout`, or `None` once the generation moved on.
 	pub fn batch<'a>(&self, arena: &'a crate::arena::Arena, layout: &'a Layout) -> Option<crate::node::RecordBatch<'a>> {
 		let base: *const u8 = match self.len {
