@@ -1,109 +1,441 @@
-.call-to-action.call-to-action.call-to-action {
-	display: flex;
-	flex-wrap: wrap;
-	flex-direction: row;
-	gap: calc(var(--font-size-link) * 0.8);
-	margin: calc(40 * var(--variable-px)) 0;
+// ==================================
+// HERO SPLIT BETWEEN COPY AND PICKER
+// ==================================
 
-	span {
+.diptych.donate-hero {
+	align-items: flex-start;
+
+	> .block {
+		flex: 1 1 420px;
+
+		h1 {
+			text-wrap: balance;
+		}
+	}
+}
+
+.statistics {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	// Equal rows keep the two halves balanced against the rule between them
+	grid-auto-rows: 1fr;
+	// The copy column aligns its children to the start, so this has to opt into the full width
+	align-self: stretch;
+	margin-top: calc(40 * var(--variable-px));
+
+	// Hides these while the stats API request is still in flight or has failed
+	&:has(.value:empty) {
+		visibility: hidden;
+	}
+
+	.statistic {
 		display: flex;
 		flex-direction: column;
+		align-items: center;
 		justify-content: center;
+		text-align: center;
+		padding: calc(20 * var(--variable-px)) 20px;
 
-		em {
-			text-align: center;
-			margin-top: 0.5em;
+		// Each row gets its own rule, inset so the two break apart at the row boundary
+		&:nth-child(odd) {
+			position: relative;
+
+			&::after {
+				content: "";
+				position: absolute;
+				width: var(--border-thickness);
+				top: calc(20 * var(--variable-px));
+				bottom: calc(20 * var(--variable-px));
+				right: 0;
+				background-color: var(--color-cloud);
+			}
 		}
 	}
 
-	.button {
+	.value {
+		font-family: "Bona Nova", Palatino, serif;
+		font-feature-settings: "lnum";
+		font-weight: 700;
+		line-height: 1.25;
+		font-size: calc(1rem * 20 / 9);
+	}
+
+	.label,
+	.note {
+		font-size: calc(1rem * 7 / 9);
+		font-weight: 800;
+		text-transform: uppercase;
+		color: var(--color-walnut);
+		text-wrap: balance;
+	}
+
+	@media screen and (max-width: 400px) {
+		grid-template-columns: 1fr;
+
+		.statistic:nth-child(odd)::after {
+			display: none;
+		}
+	}
+}
+
+// ===============
+// DONATION PICKER
+// ===============
+
+.donation-picker {
+	// Shrinks the checkout button, which is the only thing in here sized off this variable
+	--font-size-link: calc(1rem * 10 / 9);
+
+	flex: 1 1 420px;
+	box-sizing: border-box;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: calc(var(--feature-box-padding) / 2 * var(--variable-px));
+	background-color: var(--color-cloud);
+	background-image: url("https://static.graphite.art/textures/noise.png");
+	background-blend-mode: overlay;
+	background-position: center;
+
+	// Every visibility rule below is driven by these, so they're taken out of the layout without losing keyboard focusability
+	input:is([type="radio"], [type="checkbox"]) {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		opacity: 0;
 		margin: 0;
 	}
-}
 
-.statistics:has(span:empty) {
-	visibility: hidden;
-}
-
-#supporter-memberships,
-#corporate-sponsorships {
-	.triptych {
-		gap: 10px;
-		margin-top: 10px;
-
-		a {
-			flex-basis: calc(100% / 3 - 10px - (var(--feature-box-padding) * var(--variable-px)));
-		}
-	}
-
-	.triptych + .block,
-	.feature-box-inner > .block + :is(.block, .triptych) {
-		margin-top: calc(var(--feature-box-padding) / 2 * var(--variable-px));
-	}
-
-	.triptych + .block {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		justify-content: space-between;
-	}
-
-	.action-buttons {
-		gap: calc(var(--feature-box-padding) / 4 * var(--variable-px)) calc(var(--feature-box-padding) * var(--variable-px));
-		flex-wrap: wrap;
-
-		p {
-			text-align: left;
-			text-justify: auto;
-			white-space: nowrap;
-		}
-	}
-
-	@media screen and (max-width: 1280px) {
-		.triptych a {
-			// Half width, minus own padding on both sides, minus the gap
-			flex-basis: calc(50% - (var(--feature-box-padding) * var(--variable-px)) - 10px);
-		}
-	}
-
-	@media screen and (max-width: 640px) {
-		.triptych a {
-			flex-basis: 100%;
-		}
-	}
-
-	.feature-box-narrow {
-		min-width: 0;
+	label:has(input:is([type="radio"], [type="checkbox"])) {
 		background-color: var(--color-fog);
-		padding: calc(var(--feature-box-padding) / 2 * var(--variable-px));
-		text-decoration: none;
-		color: var(--color-navy);
+		cursor: pointer;
 
 		&:hover {
 			background-color: var(--color-lemon);
 		}
 
-		h1 {
-			// Compensates for emoji starting with some left spacing
-			text-indent: -0.2em;
+		&:has(input:checked) {
+			background-color: var(--color-navy);
+			color: var(--color-parchment);
+		}
+
+		&:has(input:focus-visible) {
+			outline: var(--border-thickness) solid var(--color-crimson);
+			outline-offset: var(--border-thickness);
+		}
+	}
+
+	.frequency,
+	.payment-method {
+		display: flex;
+		gap: 10px;
+
+		label {
+			flex: 1 1 0;
+			text-align: center;
+			padding: 0.4em 0;
+			font-weight: 800;
+		}
+	}
+
+	.frequency {
+		margin-bottom: calc(20 * var(--variable-px));
+	}
+
+	.tier-ladder,
+	.amount-ladder {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 10px;
+
+		@media screen and (max-width: 420px) {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+
+	.amount-ladder {
+		display: none;
+	}
+
+	.amount {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.5em 0.25em;
+		font: inherit;
+		font-weight: 800;
+		color: inherit;
+		border: none;
+		background-color: var(--color-fog);
+		cursor: pointer;
+
+		&:hover {
+			background-color: var(--color-lemon);
+		}
+
+		&[aria-pressed="true"] {
+			background-color: var(--color-navy);
+			color: var(--color-parchment);
+		}
+
+		&:focus-visible {
+			outline: var(--border-thickness) solid var(--color-crimson);
+			outline-offset: var(--border-thickness);
+		}
+	}
+
+	.tier-ladder {
+		.tier {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			text-align: center;
+			padding: 0.5em 0.25em;
+
+			.name {
+				font-weight: 800;
+				text-transform: uppercase;
+				font-size: calc(1rem * 7 / 9);
+			}
+
+			.price {
+				font-size: calc(1rem * 8 / 9);
+			}
+		}
+
+		.higher-reveal {
+			grid-column: 1 / -1;
+			padding: 0.4em 0;
+			text-align: center;
+			font-weight: 800;
+			font-size: calc(1rem * 7 / 9);
+			text-transform: uppercase;
+		}
+
+		.tier.higher {
+			display: none;
+		}
+	}
+
+	&:has(.higher-reveal input:checked) {
+		.higher-reveal {
+			display: none;
+		}
+
+		.tier.higher {
+			display: flex;
+		}
+	}
+
+	.corporate-link {
+		text-align: left;
+		text-justify: auto;
+		font-size: calc(1rem * 7 / 9);
+	}
+
+	// One toggle serves every tier, yet belongs between each tier's rewards and its button, so fixed rows interleave the two
+	.picker-body {
+		display: grid;
+		grid-template-rows: auto auto auto;
+		row-gap: 10px;
+		margin-top: calc(20 * var(--variable-px));
+
+		> .tier-panel {
+			display: none;
+		}
+
+		.rewards {
+			grid-area: 1 / 1;
 		}
 
 		ul {
-			padding-left: 1em;
-			font-size: calc(7 / 9 * 1em);
+			padding-left: 1.25em;
+			font-size: calc(1rem * 8 / 9);
+		}
+
+		// Marks what's new in this tier compared to its predecessor
+		li.unlocked {
+			font-weight: 700;
+		}
+
+		.info {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 1.4em;
+			height: 1.4em;
+			margin-left: 0.5em;
+			vertical-align: middle;
+			position: relative;
+			top: -0.15em;
+			border-radius: 50%;
+			background-color: var(--color-navy);
+			color: var(--color-parchment);
+			font-size: calc(1rem * 5 / 9);
+			font-weight: 700;
+			line-height: 1;
+			cursor: help;
+
+			&::before {
+				content: "?";
+			}
+		}
+
+		> .payment-controls {
+			grid-area: 2 / 1;
+			display: flex;
+			flex-direction: column;
+			gap: 10px;
+
+			// Carried by the toggle rather than the wrapper, so the separation above it never changes
+			.payment-method {
+				margin-top: calc(20 * var(--variable-px));
+			}
+		}
+
+		.manage {
+			align-self: flex-end;
+			margin-top: calc(20 * var(--variable-px));
+			font-size: calc(1rem * 7 / 9);
+		}
+
+		.action {
+			grid-area: 3 / 1;
+			display: none;
+		}
+
+		// The amount field serves both methods, so only the buttons beside it swap
+		.one-time-entry {
+			grid-area: 3 / 1;
+		}
+
+		.button {
+			background-color: var(--color-fog);
+			text-align: center;
+		}
+
+		button.button {
+			font-family: inherit;
+			cursor: pointer;
+		}
+
+		.amount-entry {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+
+			// The currency sign lives inside the box, so the border belongs to this wrapper instead of the input
+			.amount-field {
+				flex: 0 0 auto;
+				display: flex;
+				align-items: center;
+				box-sizing: border-box;
+				padding: 0 0.5em;
+				font-weight: 800;
+				color: var(--color-navy);
+				font-size: var(--font-size-link);
+				height: calc(var(--font-size-link) * 2);
+				border: var(--border-thickness) solid var(--color-navy);
+				background-color: white;
+				cursor: text;
+
+				&:focus-within {
+					outline: var(--border-thickness) solid var(--color-crimson);
+					outline-offset: var(--border-thickness);
+				}
+			}
+
+			.currency {
+				margin-right: 0.25em;
+			}
+
+			input {
+				width: 6ch;
+				padding: 0;
+				font: inherit;
+				color: inherit;
+				background: none;
+				border: none;
+				appearance: textfield;
+
+				&:focus {
+					outline: none;
+				}
+
+				&::-webkit-outer-spin-button,
+				&::-webkit-inner-spin-button {
+					appearance: none;
+					margin: 0;
+				}
+			}
+
+			.button {
+				flex: 1 1 auto;
+			}
 		}
 	}
 
-	.button {
-		background-color: var(--color-fog);
+	.picker-footer {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5em;
+		font-size: calc(1rem * 7 / 9);
+
+		p {
+			text-align: left;
+			text-justify: auto;
+			display: none;
+		}
 	}
 }
 
-#supporter-memberships {
-	background-color: var(--color-mustard);
+.donation-picker:has([value="quark"]:checked) .tier-panel[data-tier="quark"],
+.donation-picker:has([value="proton"]:checked) .tier-panel[data-tier="proton"],
+.donation-picker:has([value="nucleus"]:checked) .tier-panel[data-tier="nucleus"],
+.donation-picker:has([value="carbon"]:checked) .tier-panel[data-tier="carbon"],
+.donation-picker:has([value="charcoal"]:checked) .tier-panel[data-tier="charcoal"],
+.donation-picker:has([value="graphite"]:checked) .tier-panel[data-tier="graphite"],
+.donation-picker:has([value="graphene"]:checked) .tier-panel[data-tier="graphene"],
+.donation-picker:has([value="carbide"]:checked) .tier-panel[data-tier="carbide"],
+.donation-picker:has([value="diamond"]:checked) .tier-panel[data-tier="diamond"] {
+	display: contents;
 }
 
-#corporate-sponsorships {
-	background-color: var(--color-ale);
-	margin-top: 0;
+.donation-picker:has([value="one-time"]:checked) {
+	.tier-ladder {
+		display: none;
+	}
+
+	.amount-ladder {
+		display: grid;
+	}
+
+	.picker-body .tier-panel[data-tier] {
+		display: none;
+	}
+
+	.tier-panel[data-frequency="one-time"] {
+		display: contents;
+	}
+
+	// There is no ongoing membership to manage from a one-time gift
+	.manage {
+		display: none;
+	}
+}
+
+.donation-picker:has([value="direct"]:checked) .github-only {
+	color: Rgb(from var(--color-navy) r g b / 0.33);
+}
+
+.donation-picker:has([value="github"]:checked) .manage {
+	color: Rgb(from var(--color-crimson) r g b / 0.33);
+	pointer-events: none;
+}
+
+.donation-picker:has([value="direct"]:checked) :is(.action, .method-note)[data-method="direct"],
+.donation-picker:has([value="github"]:checked) :is(.action, .method-note)[data-method="github"] {
+	display: block;
 }
