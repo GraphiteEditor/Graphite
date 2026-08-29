@@ -1,3 +1,22 @@
+// Shown only when Stripe sends a member or one-time donor back to this banner's fragment
+#donation-thanks,
+#membership-welcome {
+	display: none;
+	box-sizing: border-box;
+	width: 100%;
+	padding: calc(20 * var(--variable-px)) calc(30 * var(--variable-px));
+	margin-bottom: calc(40 * var(--variable-px));
+	background-color: var(--color-seaside);
+	text-align: center;
+	text-justify: auto;
+	// Exceeding the distance from the page top keeps the browser from scrolling the header away
+	scroll-margin-top: 100vh;
+
+	&:target {
+		display: block;
+	}
+}
+
 // ==================================
 // HERO SPLIT BETWEEN COPY AND PICKER
 // ==================================
