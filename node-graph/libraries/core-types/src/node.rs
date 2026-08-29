@@ -153,7 +153,7 @@ impl<'a> RecordBatchMut<'a> {
 /// One lane's record: its pointer paired with the batch's layout.
 #[derive(Clone, Copy, Debug)]
 pub struct RecordLane<'a> {
-	rec: crate::record::Rec,
+	rec: crate::record::Rec<'a>,
 	layout: &'a crate::record::Layout,
 }
 
@@ -162,7 +162,7 @@ impl<'a> RecordLane<'a> {
 		self.layout
 	}
 
-	pub fn rec(&self) -> crate::record::Rec {
+	pub fn rec(&self) -> crate::record::Rec<'a> {
 		self.rec
 	}
 

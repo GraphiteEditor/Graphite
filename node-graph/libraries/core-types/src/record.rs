@@ -188,10 +188,10 @@ impl Layout {
 	/// Resolves a value of this layout, which must be its wiring-proven one,
 	/// to its record bytes. An empty record carries nothing and resolves to the
 	/// value's own storage; every other record spills and rides the pointer.
-	pub fn rec(&self, value: &RecordValue<'_>) -> Rec {
+	pub fn rec<'v>(&self, value: &'v RecordValue<'_>) -> Rec<'v> {
 		match self.size == 0 {
-			true => Rec((&raw const *value).cast()),
-			false => Rec(value.ptr),
+			true => Rec((&raw const *value).cast(), std::marker::PhantomData),
+			false => Rec(value.ptr, std::marker::PhantomData),
 		}
 	}
 
@@ -398,16 +398,17 @@ impl LayoutMeta {
 	}
 }
 
-/// A view of one record: a pointer whose layout is proven at wiring.
+/// A view of one record: a pointer whose layout is proven at wiring, borrowing
+/// the storage it points into for `'r`.
 #[derive(Clone, Copy, Debug)]
-pub struct Rec(*const u8);
+pub struct Rec<'r>(*const u8, std::marker::PhantomData<&'r u8>);
 
-impl Rec {
+impl<'r> Rec<'r> {
 	/// # Safety
 	/// `ptr` must point to a live record of the layout the consumer resolved
-	/// at wiring, valid until the owning slot is next written.
+	/// at wiring, valid for `'r` and until the owning slot is next written.
 	pub unsafe fn new(ptr: *const u8) -> Self {
-		Rec(ptr)
+		Rec(ptr, std::marker::PhantomData)
 	}
 
 	/// # Safety
@@ -467,7 +468,7 @@ impl<'e> RecordValue<'e> {
 	}
 
 	#[doc(hidden)]
-	pub fn spilled(rec: Rec) -> Self {
+	pub fn spilled(rec: Rec<'_>) -> Self {
 		RecordValue {
 			ptr: rec.ptr(),
 			_lifetime: std::marker::PhantomData,
@@ -693,7 +694,7 @@ impl<'a, 'e, N> RecordEdgeInput<'a, 'e, N> {
 /// # Safety
 /// `rec` must be a record of the layout the offsets were resolved against
 /// and `El` its element type; both are proven at wiring.
-unsafe fn element_only<El: Clone>(rec: Rec, _reads: &[Option<usize>]) -> El {
+unsafe fn element_only<El: Clone>(rec: Rec<'_>, _reads: &[Option<usize>]) -> El {
 	unsafe { read_element::<El>(rec) }
 }
 
@@ -701,7 +702,7 @@ pub struct ElementEdge<'a, 'e, Out, N> {
 	node: &'a N,
 	layout: &'a Layout,
 	reads: &'a [Option<usize>],
-	read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+	read: unsafe fn(Rec<'_>, &[Option<usize>]) -> Out,
 	frames: &'a Frames<'e>,
 }
 
@@ -720,7 +721,7 @@ impl<'a, 'e, El: Clone, N> ElementEdge<'a, 'e, El, N> {
 impl<'a, 'e, Out, N> ElementEdge<'a, 'e, Out, N> {
 	/// `read` must be sound against the layout the offsets in `reads` were
 	/// resolved from; the macro proves both at wiring.
-	pub fn with_reads(node: &'a N, layout: &'a Layout, reads: &'a [Option<usize>], read: unsafe fn(Rec, &[Option<usize>]) -> Out, frames: &'a Frames<'e>) -> Self {
+	pub fn with_reads(node: &'a N, layout: &'a Layout, reads: &'a [Option<usize>], read: unsafe fn(Rec<'_>, &[Option<usize>]) -> Out, frames: &'a Frames<'e>) -> Self {
 		Self { node, layout, reads, read, frames }
 	}
 
@@ -752,7 +753,7 @@ pub struct ElementLazyInput<'a, 'e, Out, N> {
 	input_index: usize,
 	layout: &'a Layout,
 	reads: &'a [Option<usize>],
-	read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+	read: unsafe fn(Rec<'_>, &[Option<usize>]) -> Out,
 	frames: &'a Frames<'e>,
 }
 
@@ -779,7 +780,7 @@ impl<'a, 'e, Out, N> ElementLazyInput<'a, 'e, Out, N> {
 		input_index: usize,
 		layout: &'a Layout,
 		reads: &'a [Option<usize>],
-		read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+		read: unsafe fn(Rec<'_>, &[Option<usize>]) -> Out,
 		frames: &'a Frames<'e>,
 	) -> Self {
 		Self {
@@ -916,7 +917,7 @@ pub struct DerivedLazyInput<'a, 'e, Out, N> {
 	input_index: usize,
 	inner_levels: u8,
 	reads: &'a [Option<usize>],
-	read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+	read: unsafe fn(Rec<'_>, &[Option<usize>]) -> Out,
 	frames: &'a Frames<'e>,
 }
 
@@ -929,7 +930,7 @@ impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
 		input_index: usize,
 		inner_levels: u8,
 		reads: &'a [Option<usize>],
-		read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+		read: unsafe fn(Rec<'_>, &[Option<usize>]) -> Out,
 		frames: &'a Frames<'e>,
 	) -> Self {
 		Self {
@@ -968,7 +969,7 @@ impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
 ///
 /// # Safety
 /// `rec` must be a spilled record's frame.
-pub unsafe fn token_only<'e>(rec: Rec, _reads: &[Option<usize>]) -> RecordValue<'e> {
+pub unsafe fn token_only<'e>(rec: Rec<'_>, _reads: &[Option<usize>]) -> RecordValue<'e> {
 	RecordValue::spilled(rec)
 }
 
@@ -1433,7 +1434,7 @@ where
 /// # Safety
 /// The record's element must be a `T` in the form [`element_parked`] picks,
 /// and the borrow is only valid while the record is.
-pub unsafe fn borrow_element<'e, T>(rec: Rec) -> &'e T {
+pub unsafe fn borrow_element<'e, T>(rec: Rec<'_>) -> &'e T {
 	match element_parked::<T>() {
 		true => unsafe { rec.element::<&T>() },
 		false => unsafe { &*rec.ptr().cast::<T>() },
@@ -1442,7 +1443,7 @@ pub unsafe fn borrow_element<'e, T>(rec: Rec) -> &'e T {
 
 /// # Safety
 /// The record's element must be a `T` in the form [`element_parked`] picks.
-pub unsafe fn read_element<T: Clone>(rec: Rec) -> T {
+pub unsafe fn read_element<T: Clone>(rec: Rec<'_>) -> T {
 	unsafe { borrow_element::<T>(rec) }.clone()
 }
 
@@ -1466,7 +1467,7 @@ pub unsafe fn write_element<T: Send + Sync>(dst: *mut u8, value: T, arena: &crat
 /// # Safety
 /// `src` must be a record of the plan's source layout and `dst` a buffer of
 /// the plan's target layout; both are proven at wiring.
-pub unsafe fn apply_plan(src: Rec, dst: *mut u8, plan: &[(usize, usize, usize)]) {
+pub unsafe fn apply_plan(src: Rec<'_>, dst: *mut u8, plan: &[(usize, usize, usize)]) {
 	for &(from, to, size) in plan {
 		unsafe { std::ptr::copy_nonoverlapping(src.ptr().add(from), dst.add(to), size) };
 	}
@@ -1512,8 +1513,9 @@ impl SourcePlan {
 
 	/// # Safety
 	/// `src` must be a record of this plan's source layout and `dst` a
-	/// buffer of the plan's union layout.
-	pub unsafe fn translate(&self, src: Rec, dst: *mut u8) -> Rec {
+	/// buffer of the plan's union layout. The returned view borrows `dst`, so
+	/// `'d` must not outlive it.
+	pub unsafe fn translate<'d>(&self, src: Rec<'_>, dst: *mut u8) -> Rec<'d> {
 		unsafe {
 			apply_plan(src, dst, &self.moves);
 			for (offset, bytes) in &self.fills {
@@ -1549,7 +1551,7 @@ impl<N> RecordSource<N> {
 
 /// # Safety
 /// `rec` must be a live record of `layout`.
-pub unsafe fn copy_record_bytes(layout: &Layout, rec: Rec) -> Box<[u8]> {
+pub unsafe fn copy_record_bytes(layout: &Layout, rec: Rec<'_>) -> Box<[u8]> {
 	unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into()
 }
 
@@ -1598,7 +1600,7 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// # Safety
 	/// `src` must be a live record of the plan's source layout, and the plan
 	/// must be the wiring-resolved plan of this frame's layout.
-	pub unsafe fn carry(&mut self, src: Rec, plan: &[(usize, usize, usize)]) {
+	pub unsafe fn carry(&mut self, src: Rec<'_>, plan: &[(usize, usize, usize)]) {
 		unsafe { apply_plan(src, self.dst(), plan) };
 	}
 
@@ -1688,7 +1690,7 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// # Safety
 	/// `src` must be a live record of `plan`'s source layout, and `plan` must
 	/// translate into this frame's layout.
-	pub unsafe fn translate(&mut self, src: Rec, plan: &SourcePlan) {
+	pub unsafe fn translate(&mut self, src: Rec<'_>, plan: &SourcePlan) {
 		unsafe { plan.translate(src, self.dst()) };
 	}
 }
@@ -1804,7 +1806,7 @@ impl std::fmt::Debug for OwnedRecord {
 impl OwnedRecord {
 	/// # Safety
 	/// `rec` must be a live record of `layout`.
-	pub unsafe fn copy_out(layout: &Layout, rec: Rec) -> OwnedRecord {
+	pub unsafe fn copy_out(layout: &Layout, rec: Rec<'_>) -> OwnedRecord {
 		let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into();
 		let element = layout.element.parked.then(|| unsafe { (layout.element.clone_out)(rec.ptr()) });
 		let fields = layout

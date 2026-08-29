@@ -2721,7 +2721,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					/// # Safety
 					/// `__rec` must be a spilled record's frame, of the layout
 					/// `__reads` was resolved against; the token rebinds it.
-					unsafe fn #read_fn<'__read>(__rec: #core_types::record::Rec, __reads: &[Option<usize>]) -> (#core_types::record::RecordValue<'__read> #(, #attr_tys)*) {
+					unsafe fn #read_fn<'__read>(__rec: #core_types::record::Rec<'_>, __reads: &[Option<usize>]) -> (#core_types::record::RecordValue<'__read> #(, #attr_tys)*) {
 						(#core_types::record::RecordValue::spilled(__rec) #(, #attr_slots)*)
 					}
 				};
@@ -2730,7 +2730,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				/// # Safety
 				/// `__rec` must be a record whose element is the declared output
 				/// type, of the layout `__reads` was resolved against.
-				unsafe fn #read_fn<'__read #(, #generics)*>(__rec: #core_types::record::Rec, __reads: &[Option<usize>]) -> (#output_type #(, #attr_tys)*)
+				unsafe fn #read_fn<'__read #(, #generics)*>(__rec: #core_types::record::Rec<'_>, __reads: &[Option<usize>]) -> (#output_type #(, #attr_tys)*)
 				where
 					#output_type: ::core::clone::Clone,
 				{
