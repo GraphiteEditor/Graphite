@@ -107,7 +107,6 @@ impl ToolMetadata for BrushTool {
 
 impl LayoutHolder for BrushTool {
 	fn layout(&self) -> Layout {
-		let autoscale_id = CheckboxId::new();
 		let autoscale_description = "Automatically scale the brush with viewport zoom.";
 		let widgets = vec![
 			ColorInput::new(FillChoice::<SRGBA8>::from(self.options.color.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
@@ -131,6 +130,30 @@ impl LayoutHolder for BrushTool {
 					}
 					.into()
 				})
+				.widget_instance(),
+			PopoverButton::new()
+				.popover_layout(Layout(vec![LayoutGroup::row({
+					let checkbox_id = CheckboxId::new();
+					vec![
+						CheckboxInput::new(self.options.autoscale)
+							.tooltip_label("Autoscale")
+							.tooltip_description(autoscale_description)
+							.for_label(checkbox_id)
+							.on_update(|checkbox_input: &CheckboxInput| {
+								BrushToolMessage::UpdateOptions {
+									options: BrushToolMessageOptionsUpdate::Autoscale(checkbox_input.checked),
+								}
+								.into()
+							})
+							.widget_instance(),
+						TextLabel::new("Autoscale")
+							.tooltip_label("Autoscale")
+							.tooltip_description(autoscale_description)
+							.for_checkbox(checkbox_id)
+							.widget_instance(),
+					]
+				})]))
+				.tooltip_label("Diameter Options")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(self.options.hardness))
@@ -159,24 +182,6 @@ impl LayoutHolder for BrushTool {
 					}
 					.into()
 				})
-				.widget_instance(),
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			CheckboxInput::new(self.options.autoscale)
-				.tooltip_label("Autoscale")
-				.tooltip_description(autoscale_description)
-				.for_label(autoscale_id)
-				.on_update(|checkbox_input: &CheckboxInput| {
-					BrushToolMessage::UpdateOptions {
-						options: BrushToolMessageOptionsUpdate::Autoscale(checkbox_input.checked),
-					}
-					.into()
-				})
-				.widget_instance(),
-			Separator::new(SeparatorStyle::Related).widget_instance(),
-			TextLabel::new("Autoscale")
-				.tooltip_label("Autoscale")
-				.tooltip_description(autoscale_description)
-				.for_checkbox(autoscale_id)
 				.widget_instance(),
 		];
 
@@ -381,8 +386,10 @@ impl BrushToolData {
 		};
 		let value = |index: usize| node.inputs.get(index).and_then(|input| input.as_value());
 		matches!(value(brush_strokes::ColorInput::INDEX), Some(TaggedValue::Color(color)) if *color == options.active_color())
-			&& matches!(value(brush_strokes::DiameterInput::INDEX), Some(TaggedValue::F64(diameter)) if *diameter == options.stroke_diameter(document))
-			&& matches!(value(brush_strokes::HardnessInput::INDEX), Some(TaggedValue::F64(hardness)) if *hardness == options.hardness)
+			&& matches!(value(brush_strokes::DiameterInput::INDEX), Some(TaggedValue::F64(diameter)) if {
+				let target = options.stroke_diameter(document);
+				(*diameter - target).abs() <= diameter.abs().max(target.abs()) * (f64::EPSILON * 8.)
+			}) && matches!(value(brush_strokes::HardnessInput::INDEX), Some(TaggedValue::F64(hardness)) if *hardness == options.hardness)
 			&& matches!(value(brush_strokes::FlowInput::INDEX), Some(TaggedValue::F64(flow)) if *flow == options.flow)
 	}
 
