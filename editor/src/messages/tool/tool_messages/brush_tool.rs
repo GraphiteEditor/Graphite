@@ -292,12 +292,13 @@ impl BrushToolData {
 		}
 
 		let parent = selected_layer.parent(document.metadata()).filter(|&parent| parent != LayerNodeIdentifier::ROOT_PARENT)?;
-		if !self.load_brush_layer(document, parent) {
-			return None;
-		}
+		let brush_layer = parent
+			.ancestors(document.metadata())
+			.take_while(|&ancestor| ancestor != LayerNodeIdentifier::ROOT_PARENT)
+			.find(|&ancestor| self.load_brush_layer(document, ancestor))?;
 
 		let Some(output) = document.network_interface.upstream_output_connector(&InputConnector::node_at_index(selected_layer.to_node(), 1), &[]) else {
-			return Some((parent, BrushTarget::FillEmpty { layer: selected_layer }));
+			return Some((brush_layer, BrushTarget::FillEmpty { layer: selected_layer }));
 		};
 
 		let new_group = || {
@@ -305,10 +306,10 @@ impl BrushToolData {
 			BrushTarget::NewGroup { parent, insert_index }
 		};
 		let OutputConnector::Node { node_id: strokes_node_id, .. } = output else {
-			return Some((parent, new_group()));
+			return Some((brush_layer, new_group()));
 		};
 		if document.network_interface.reference(&strokes_node_id, &[]) != Some(DefinitionIdentifier::ProtoNode(graphene_std::brush::brush_strokes::IDENTIFIER)) {
-			return Some((parent, new_group()));
+			return Some((brush_layer, new_group()));
 		}
 		let strokes = document
 			.network_interface
@@ -319,8 +320,8 @@ impl BrushToolData {
 			.and_then(|input| input.as_value())
 			.and_then(|value| if let TaggedValue::Strokes(strokes) = value { Some(strokes.clone()) } else { None });
 		match strokes {
-			Some(strokes) if Self::style_matches(document, strokes_node_id, options) => Some((parent, BrushTarget::Existing { strokes_node_id, strokes })),
-			_ => Some((parent, new_group())),
+			Some(strokes) if Self::style_matches(document, strokes_node_id, options) => Some((brush_layer, BrushTarget::Existing { strokes_node_id, strokes })),
+			_ => Some((brush_layer, new_group())),
 		}
 	}
 
@@ -562,7 +563,11 @@ fn selected_strokes_node(document: &DocumentMessageHandler) -> Option<NodeId> {
 		selected_layer.children(document.metadata()).next()?
 	} else {
 		let parent = selected_layer.parent(document.metadata()).filter(|&parent| parent != LayerNodeIdentifier::ROOT_PARENT)?;
-		if !is_brush_layer(document, parent) {
+		if !parent
+			.ancestors(document.metadata())
+			.take_while(|&ancestor| ancestor != LayerNodeIdentifier::ROOT_PARENT)
+			.any(|ancestor| is_brush_layer(document, ancestor))
+		{
 			return None;
 		}
 		selected_layer
