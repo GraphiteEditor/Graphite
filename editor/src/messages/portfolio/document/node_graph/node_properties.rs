@@ -2317,7 +2317,6 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if layout.is_empty() {
 		layout = node_no_properties(node_id, context);
 	}
-
 	let display_name = context
 		.network_interface
 		.node_metadata(&node_id, context.selection_network_path)
@@ -2344,7 +2343,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
-	let expanded = !context.properties_panel_collapsed_sections.contains(&node_id);
+	let expanded = !context.network_interface.is_collapsed(&node_id, context.selection_network_path);
 
 	LayoutGroup::section(name, description, visible, pinned, expanded, node_id.0, Layout(layout))
 }
