@@ -23,7 +23,7 @@ use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::ui::{UiCommand, UiInstance};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Preferences};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, Key, ModifierKeys, Preferences};
 use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -525,6 +525,24 @@ impl App {
 			window.end_pointer_lock();
 		}
 	}
+
+	/// Synthesize an Escape press/release so the editor cancels the active transform (same as a user pressing Escape)
+	fn send_cancel_escape(&mut self) {
+		for message in [
+			InputMessage::KeyDown {
+				key: Key::Escape,
+				key_repeat: false,
+				modifier_keys: ModifierKeys::empty(),
+			},
+			InputMessage::KeyUp {
+				key: Key::Escape,
+				key_repeat: false,
+				modifier_keys: ModifierKeys::empty(),
+			},
+		] {
+			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Input(message)));
+		}
+	}
 }
 impl ApplicationHandler for App {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
@@ -565,11 +583,12 @@ impl ApplicationHandler for App {
 			self.unlock_pointer();
 		}
 
-		// Release a pointer lock when the window loses focus
+		// The editor can no longer track the pointer, so cancel any pointer-locked operation (G/R/S) and release the grab
 		if let WindowEvent::Focused(false) = &event
 			&& self.input_state.pointer_locked()
 		{
 			self.unlock_pointer();
+			self.send_cancel_escape();
 		}
 
 		for action in self.input_state.process(&event) {
