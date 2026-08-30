@@ -4,6 +4,7 @@ use crate::messages::prelude::*;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum AppWindowMessage {
 	PointerLock,
+	PointerUnlock,
 	PointerLockMove { x: f64, y: f64 },
 	Restart,
 	Close,

@@ -1,4 +1,5 @@
 use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, SLOWING_DIVISOR};
+use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::pointer::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
@@ -12,6 +13,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::format_r
 use crate::messages::tool::tool_messages::select_tool;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
+use crate::messages::viewport::Position;
 use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
@@ -95,6 +97,10 @@ pub struct TransformLayerMessageHandler {
 
 	// Path tool (ghost outlines showing pre-transform geometry)
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
+
+	// Software cursor for wrap-around (visible fake cursor on Wayland/Web, OS warp on X11)
+	software_cursor_active: bool,
+	software_cursor_pos: ViewportPosition,
 }
 
 #[message_handler_data]
@@ -339,6 +345,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(OverlaysMessage::RemoveProvider {
 						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 					});
+					self.disable_software_cursor(responses);
 				}
 			}
 			TransformLayerMessage::BeginTransformOperation { operation } => {
@@ -384,6 +391,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(OverlaysMessage::AddProvider {
 					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 				});
+				self.enable_software_cursor(responses, input.mouse.position);
 				// Find a way better than this hack
 				responses.add(TransformLayerMessage::PointerMove {
 					slow_key: SLOW_KEY,
@@ -471,6 +479,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(OverlaysMessage::AddProvider {
 						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 					});
+					self.enable_software_cursor(responses, input.mouse.position);
 				}
 				responses.add(TransformLayerMessage::BeginTransformOperation { operation: transform_type });
 				responses.add(TransformLayerMessage::PointerMove {
@@ -510,6 +519,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(OverlaysMessage::RemoveProvider {
 					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 				});
+				self.disable_software_cursor(responses);
 			}
 			TransformLayerMessage::ConstrainX => {
 				self.state.is_transforming_in_local_space = self.transform_operation.constrain_axis(Axis::X, &mut selected, &self.state, document);
@@ -581,6 +591,26 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					};
 				}
 
+				if self.software_cursor_active {
+					let delta = input.mouse.position - self.mouse_position;
+					self.software_cursor_pos += delta;
+
+					// Wrap around the viewport edges
+					let size = viewport.size();
+					if size.x() > 0. && size.y() > 0. {
+						self.software_cursor_pos = DVec2::new(
+							((self.software_cursor_pos.x % size.x()) + size.x()) % size.x(),
+							((self.software_cursor_pos.y % size.y()) + size.y()) % size.y(),
+						);
+					}
+
+					responses.add(FrontendMessage::UpdateSoftwareCursor {
+						visible: true,
+						x: self.software_cursor_pos.x,
+						y: self.software_cursor_pos.y,
+					});
+				}
+
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {
@@ -649,6 +679,27 @@ impl TransformLayerMessageHandler {
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
 		self.transform_operation.hints(responses, self.state.is_transforming_in_local_space);
+	}
+
+	fn enable_software_cursor(&mut self, responses: &mut VecDeque<Message>, pos: ViewportPosition) {
+		if self.software_cursor_active {
+			return;
+		}
+		self.software_cursor_active = true;
+		self.software_cursor_pos = pos;
+		responses.add(FrontendMessage::UpdateSoftwareCursor { visible: true, x: pos.x, y: pos.y });
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
+		responses.add(AppWindowMessage::PointerLock);
+	}
+
+	fn disable_software_cursor(&mut self, responses: &mut VecDeque<Message>) {
+		if !self.software_cursor_active {
+			return;
+		}
+		self.software_cursor_active = false;
+		responses.add(FrontendMessage::UpdateSoftwareCursor { visible: false, x: 0., y: 0. });
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+		responses.add(AppWindowMessage::PointerUnlock);
 	}
 
 	fn set_ghost_outline(ghost_outline: &mut Vec<(Vec<ClickTargetType>, DAffine2)>, shape_editor: &ShapeState, document: &DocumentMessageHandler) {

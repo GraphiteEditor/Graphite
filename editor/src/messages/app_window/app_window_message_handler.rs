@@ -14,8 +14,14 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowPointerLock);
 			}
+			AppWindowMessage::PointerUnlock => {
+				#[cfg(not(target_family = "wasm"))]
+				responses.add(FrontendMessage::WindowPointerUnlock);
+			}
 			AppWindowMessage::PointerLockMove { x, y } => {
 				responses.add(FrontendMessage::WindowPointerLockMove { position: (x, y) });
+				// Keep G/R/S dragging moving while the pointer is locked
+				responses.add(InputPreprocessorMessage::RelativePointerMove { delta: glam::DVec2::new(x, y) });
 			}
 			AppWindowMessage::Close => {
 				#[cfg(not(target_family = "wasm"))]

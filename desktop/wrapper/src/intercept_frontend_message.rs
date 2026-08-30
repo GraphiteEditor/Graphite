@@ -125,6 +125,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::WindowPointerLock => {
 			dispatcher.respond(DesktopFrontendMessage::PointerLock);
 		}
+		FrontendMessage::WindowPointerUnlock => {
+			dispatcher.respond(DesktopFrontendMessage::PointerUnlock);
+		}
 		FrontendMessage::WindowClose => {
 			dispatcher.respond(DesktopFrontendMessage::WindowClose);
 		}
