@@ -80,7 +80,7 @@
 	let softwareCursorY = 0;
 
 	function handleSoftwareCursorWebMove(e: PointerEvent) {
-		if (!softwareCursorVisible || !isWeb) return;
+		if (!softwareCursorVisible || !isWeb || window.document.pointerLockElement !== viewport) return;
 		const dx = e.movementX;
 		const dy = e.movementY;
 		if (dx === 0 && dy === 0) return;
