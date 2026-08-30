@@ -1,30 +1,27 @@
 { pkgs, ... }:
 
 let
-  version = "149.0.5+g6770623+chromium-149.0.7827.197";
-  hashes = {
-    aarch64-linux = "sha256-cBAvcvs1rAg5EKJkCt81RZYupCWpUNIC/nLt3PJow7Q=";
-		x86_64-linux = "sha256-OPGMBJmvvLiLdBDniBQwx7LmTGGI59AcesJdILSeqcs=";
-  };
+  version = "149.7827.0";
+  upstream = "149.0.5+g6770623+chromium-149.0.7827.197";
 
   selectSystem =
     attrs:
     attrs.${pkgs.stdenv.hostPlatform.system}
       or (throw "Unsupported system ${pkgs.stdenv.hostPlatform.system}");
 
-  src = pkgs.fetchurl {
-    url = "https://cef-builds.spotifycdn.com/cef_binary_${version}_${
-      selectSystem {
-        aarch64-linux = "linuxarm64";
-        x86_64-linux = "linux64";
-      }
-    }_minimal.tar.bz2";
-    hash = selectSystem hashes;
+  src = selectSystem {
+    x86_64-linux = pkgs.fetchurl {
+      url = "https://github.com/timon-schelling/graphite-cef/releases/download/v${version}/graphite_cef_x86-64_linux.tar.xz";
+      hash = "sha256-CtvS/+NUh5ilnunt4AsWaZfWPiCsdEtz6+TLADT1Gqk=";
+    };
+    aarch64-linux = pkgs.fetchurl {
+      url = "https://cef-builds.spotifycdn.com/cef_binary_${upstream}_linuxarm64_minimal.tar.bz2";
+      hash = "sha256-cBAvcvs1rAg5EKJkCt81RZYupCWpUNIC/nLt3PJow7Q=";
+    };
   };
 in
-pkgs.cef-binary.overrideAttrs (finalAttrs: {
-  version = builtins.head (builtins.split "\\+" version);
-  inherit src;
+pkgs.cef-binary.overrideAttrs (_: {
+  inherit src version;
   postInstall = ''
     rm -r $out/* $out/.* || true
     strip ./Release/*.so*
@@ -38,7 +35,7 @@ pkgs.cef-binary.overrideAttrs (finalAttrs: {
     echo '${
       builtins.toJSON {
         type = "minimal";
-        name = builtins.baseNameOf finalAttrs.src.url;
+        name = "cef_binary_${upstream}";
         sha1 = "";
       }
     }' > $out/archive.json
