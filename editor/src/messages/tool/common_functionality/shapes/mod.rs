@@ -9,6 +9,7 @@ pub mod rectangle_shape;
 pub mod shape_utility;
 pub mod spiral_shape;
 pub mod star_shape;
+pub mod teardrop_shape;
 
 pub use super::resize::{viewport_zoom, window_aligned_transform_set};
 pub use super::shapes::arrow_shape::Arrow;
