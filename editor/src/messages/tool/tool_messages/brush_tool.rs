@@ -31,7 +31,7 @@ pub struct BrushOptions {
 	hardness: f64,
 	flow: f64,
 	color: ToolColorOptions,
-	autoscale: bool,
+	scale_with_viewport: bool,
 	last_synced_selection: Vec<LayerNodeIdentifier>,
 }
 
@@ -42,7 +42,7 @@ impl Default for BrushOptions {
 			hardness: BRUSH_HARDNESS_DEFAULT,
 			flow: BRUSH_FLOW_DEFAULT,
 			color: ToolColorOptions::default(),
-			autoscale: false,
+			scale_with_viewport: false,
 			last_synced_selection: Vec::new(),
 		}
 	}
@@ -54,7 +54,7 @@ impl BrushOptions {
 	}
 
 	fn stroke_diameter(&self, document: &DocumentMessageHandler) -> f64 {
-		if self.autoscale { self.diameter / viewport_zoom(document) } else { self.diameter }
+		if self.scale_with_viewport { self.diameter / viewport_zoom(document) } else { self.diameter }
 	}
 }
 
@@ -82,7 +82,7 @@ pub enum BrushToolMessageOptionsUpdate {
 	Diameter(f64),
 	Hardness(f64),
 	Flow(f64),
-	Autoscale(bool),
+	ScaleWithViewport(bool),
 	WorkingColorsChanged,
 }
 
@@ -107,7 +107,6 @@ impl ToolMetadata for BrushTool {
 
 impl LayoutHolder for BrushTool {
 	fn layout(&self) -> Layout {
-		let autoscale_description = "Automatically scale the brush with viewport zoom.";
 		let widgets = vec![
 			ColorInput::new(FillChoice::<SRGBA8>::from(self.options.color.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
 				.mixed(self.options.color.fill_choice.is_none())
@@ -133,22 +132,24 @@ impl LayoutHolder for BrushTool {
 				.widget_instance(),
 			PopoverButton::new()
 				.popover_layout(Layout(vec![LayoutGroup::row({
+					let scale_with_viewport_label = "Scale with Viewport";
+					let scale_with_viewport_description = "Automatically scale the brush with viewport zoom.";
 					let checkbox_id = CheckboxId::new();
 					vec![
-						CheckboxInput::new(self.options.autoscale)
-							.tooltip_label("Autoscale")
-							.tooltip_description(autoscale_description)
+						CheckboxInput::new(self.options.scale_with_viewport)
+							.tooltip_label(scale_with_viewport_label)
+							.tooltip_description(scale_with_viewport_description)
 							.for_label(checkbox_id)
 							.on_update(|checkbox_input: &CheckboxInput| {
 								BrushToolMessage::UpdateOptions {
-									options: BrushToolMessageOptionsUpdate::Autoscale(checkbox_input.checked),
+									options: BrushToolMessageOptionsUpdate::ScaleWithViewport(checkbox_input.checked),
 								}
 								.into()
 							})
 							.widget_instance(),
-						TextLabel::new("Autoscale")
-							.tooltip_label("Autoscale")
-							.tooltip_description(autoscale_description)
+						TextLabel::new(scale_with_viewport_label)
+							.tooltip_label(scale_with_viewport_label)
+							.tooltip_description(scale_with_viewport_description)
 							.for_checkbox(checkbox_id)
 							.widget_instance(),
 					]
@@ -224,7 +225,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Brus
 					responses.add(ToolMessage::SelectWorkingColor { color, primary: true });
 				}
 			}
-			BrushToolMessageOptionsUpdate::Autoscale(autoscale) => self.options.autoscale = autoscale,
+			BrushToolMessageOptionsUpdate::ScaleWithViewport(scale_with_viewport) => self.options.scale_with_viewport = scale_with_viewport,
 			BrushToolMessageOptionsUpdate::WorkingColorsChanged => {
 				self.options.color.fill_choice = Some(solid(context.global_tool_data.primary_color));
 			}
@@ -269,7 +270,7 @@ impl BrushTool {
 		};
 		let value = |index: usize| node.inputs.get(index).and_then(|input| input.as_value());
 		if let Some(TaggedValue::F64(diameter)) = value(brush_strokes::DiameterInput::INDEX) {
-			self.options.diameter = if self.options.autoscale { *diameter * viewport_zoom(document) } else { *diameter };
+			self.options.diameter = if self.options.scale_with_viewport { *diameter * viewport_zoom(document) } else { *diameter };
 		}
 		if let Some(TaggedValue::F64(hardness)) = value(brush_strokes::HardnessInput::INDEX) {
 			self.options.hardness = *hardness;
