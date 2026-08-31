@@ -18,6 +18,21 @@ const ARENA_CAPACITY: usize = 1 << 27;
 
 const PERSISTENT_CAPACITY: usize = 1 << 26;
 
+/// The heap the persistent region's parked payloads may own before a flush.
+/// Occupancy cannot stand in for it: a park costs one pointer in the region
+/// and owns its content outside it, so the two diverge by orders of magnitude.
+#[cfg(not(target_family = "wasm"))]
+const PERSISTENT_HEAP_BUDGET: usize = 1 << 29;
+
+#[cfg(target_family = "wasm")]
+const PERSISTENT_HEAP_BUDGET: usize = 1 << 28;
+
+/// The share of a budget that triggers a flush at the next boundary, chosen so
+/// the region is emptied before a promote is refused mid-evaluation.
+fn over_budget(used: usize, budget: usize) -> bool {
+	used >= budget / 8 * 7
+}
+
 fn new_arena(capacity: usize) -> Arena {
 	Arena::new(capacity).unwrap_or_else(|| {
 		log::error!("arena generations exhausted; continuing without frame caching");
@@ -257,9 +272,11 @@ where
 		};
 		let mut arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
 		let mut persistent = self.persistent.lock().unwrap_or_else(PoisonError::into_inner);
-		// A refused promote leaves the region with no room for the next one, so
-		// it is flushed whole between evaluations and the memos re-promote.
-		if persistent.exhausted() {
+		// The region is flushed whole between evaluations and the memos
+		// re-promote: on a refusal, which leaves no room for the next promote,
+		// and ahead of one where either the region itself or the heap its
+		// parked payloads own is close to full.
+		if persistent.exhausted() || over_budget(persistent.occupancy(), persistent.capacity()) || over_budget(persistent.retained_heap(), PERSISTENT_HEAP_BUDGET) {
 			persistent.reset();
 		}
 		let mut buffer = self.frames.lock().unwrap_or_else(PoisonError::into_inner);
@@ -593,6 +610,26 @@ mod test {
 		fn spawn(&self, _task: SourceFuture) -> bool {
 			false
 		}
+	}
+
+	#[test]
+	fn the_flush_trigger_fires_on_occupancy_and_on_retained_heap() {
+		assert!(!over_budget(0, 1 << 10));
+		assert!(!over_budget(1 << 10 >> 1, 1 << 10), "half full stays");
+		assert!(over_budget(1 << 10 >> 3 << 3, 1 << 10), "a full region flushes");
+		assert!(over_budget((1 << 10) / 8 * 7, 1 << 10), "seven eighths is the trigger");
+
+		let arena = Arena::new(1024).unwrap();
+		assert!(!over_budget(arena.retained_heap(), PERSISTENT_HEAP_BUDGET), "an empty region is under every budget");
+		let owned = vec![0u8; 4096];
+		let length = owned.len();
+		arena.alloc_sized(owned, length).unwrap();
+		assert_eq!(arena.retained_heap(), length);
+		assert!(over_budget(arena.retained_heap(), 4096), "the heap hint alone can trigger a flush");
+		assert!(
+			!over_budget(arena.occupancy(), arena.capacity()),
+			"occupancy stays low while the retained heap is large, which is why the trigger reads both"
+		);
 	}
 
 	#[test]
