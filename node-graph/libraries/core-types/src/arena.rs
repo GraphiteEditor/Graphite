@@ -21,6 +21,9 @@ pub struct Arena {
 	/// Set by a refused reservation and cleared by [`Arena::reset`], so a region
 	/// no evaluation resets can be seen to need one.
 	exhausted: AtomicBool,
+	/// Heap the parked payloads keep alive, which occupancy does not measure:
+	/// a park costs one pointer in the arena and owns its content outside it.
+	retained_heap: AtomicUsize,
 }
 
 impl std::fmt::Debug for Arena {
@@ -32,6 +35,9 @@ impl std::fmt::Debug for Arena {
 struct DropEntry {
 	offset: usize,
 	drop_fn: unsafe fn(*mut u8),
+	/// The park glue's estimate of the heap this payload owns, 0 where the
+	/// glue cannot measure it, so the counter is a lower bound.
+	retained: usize,
 }
 
 // SAFETY: disjoint regions are handed out by an atomic bump; a region is written
@@ -85,6 +91,7 @@ impl Arena {
 			buf,
 			drops: Mutex::new(Vec::new()),
 			exhausted: AtomicBool::new(false),
+			retained_heap: AtomicUsize::new(0),
 		})
 	}
 
@@ -98,6 +105,7 @@ impl Arena {
 			buf: Box::new([]),
 			drops: Mutex::new(Vec::new()),
 			exhausted: AtomicBool::new(false),
+			retained_heap: AtomicUsize::new(0),
 		}
 	}
 
@@ -108,6 +116,29 @@ impl Arena {
 
 	pub fn generation(&self) -> u64 {
 		self.generation.load(Ordering::Acquire)
+	}
+
+	/// Bytes handed out since the last [`Arena::reset`], including alignment
+	/// padding, so a caller can flush at a boundary before a refusal.
+	pub fn occupancy(&self) -> usize {
+		self.offset.load(Ordering::Relaxed)
+	}
+
+	pub fn capacity(&self) -> usize {
+		self.buf.len()
+	}
+
+	/// The heap the parked payloads own, summed from the park glue's hints.
+	/// A lower bound: glue that cannot measure its payload contributes 0.
+	pub fn retained_heap(&self) -> usize {
+		self.retained_heap.load(Ordering::Relaxed)
+	}
+
+	/// Whether `ptr` addresses this arena's backbone, which is the provenance
+	/// question a promote asks of every parked reference.
+	pub fn contains(&self, ptr: *const u8) -> bool {
+		let base = self.base() as usize;
+		(ptr as usize).wrapping_sub(base) < self.buf.len()
 	}
 
 	fn base(&self) -> *mut u8 {
@@ -150,6 +181,12 @@ impl Arena {
 	}
 
 	pub fn alloc<T: Send + Sync>(&self, value: T) -> Option<(&T, ArenaWeak<T>)> {
+		self.alloc_sized(value, 0)
+	}
+
+	/// [`Arena::alloc`] with the park glue's estimate of the heap `value` owns,
+	/// which the region's own occupancy cannot see.
+	pub fn alloc_sized<T: Send + Sync>(&self, value: T, retained: usize) -> Option<(&T, ArenaWeak<T>)> {
 		let offset = self.reserve(size_of::<T>(), align_of::<T>())?;
 		// Built before the write so an unencodable offset drops `value` here
 		// rather than stranding it in the arena without drop glue.
@@ -161,7 +198,8 @@ impl Arena {
 			unsafe fn glue<T>(p: *mut u8) {
 				unsafe { p.cast::<T>().drop_in_place() }
 			}
-			self.drops.lock().unwrap().push(DropEntry { offset, drop_fn: glue::<T> });
+			self.drops.lock().unwrap().push(DropEntry { offset, drop_fn: glue::<T>, retained });
+			self.retained_heap.fetch_add(retained, Ordering::Relaxed);
 		}
 		// SAFETY: initialized above; insert-only, so no `&mut` to it can exist.
 		Some((unsafe { &*ptr }, weak))
@@ -207,6 +245,10 @@ impl Arena {
 			// SAFETY: registered at alloc time; insert-only means the region was
 			// never overwritten within this generation.
 			unsafe { (entry.drop_fn)(base.add(entry.offset)) }
+			// Decremented as each payload's heap is freed, so an unwinding reset
+			// leaves the counter matching what is still parked.
+			let retained = self.retained_heap.get_mut();
+			*retained = retained.saturating_sub(entry.retained);
 		}
 		*self.offset.get_mut() = 0;
 		*self.exhausted.get_mut() = false;
@@ -442,6 +484,50 @@ mod tests {
 		}
 		arena.reset();
 		assert_eq!(*ORDER.lock().unwrap(), vec![2, 1, 0], "later allocations may borrow earlier ones, so they drop first");
+	}
+
+	#[test]
+	fn sized_parks_account_for_their_retained_heap() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		let mut arena = Arena::new(1024).unwrap();
+		assert_eq!(arena.retained_heap(), 0);
+
+		let owned = String::from("retained by the park");
+		let length = owned.len();
+		arena.alloc_sized(owned, length).unwrap();
+		assert_eq!(arena.retained_heap(), length, "the park's hint reaches the counter");
+
+		arena.alloc(String::from("unmeasured")).unwrap();
+		assert_eq!(arena.retained_heap(), length, "an unmeasured park contributes nothing");
+
+		arena.reset();
+		assert_eq!(arena.retained_heap(), 0, "the flush frees every parked payload");
+	}
+
+	#[test]
+	fn occupancy_tracks_the_bump_and_clears_on_reset() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		let mut arena = Arena::new(1024).unwrap();
+		assert_eq!(arena.occupancy(), 0);
+		assert_eq!(arena.capacity(), 1024);
+		arena.alloc(0u64).unwrap();
+		assert_eq!(arena.occupancy(), 8);
+		arena.reset();
+		assert_eq!(arena.occupancy(), 0);
+	}
+
+	#[test]
+	fn containment_answers_only_for_this_arena() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		let first = Arena::new(1024).unwrap();
+		let second = Arena::new(1024).unwrap();
+		let (value, _) = first.alloc(41u32).unwrap();
+		let ptr = std::ptr::from_ref(value).cast::<u8>();
+		assert!(first.contains(ptr));
+		assert!(!second.contains(ptr));
+		assert!(!first.contains(std::ptr::null()));
+		let heap = Box::new(7u32);
+		assert!(!first.contains(std::ptr::from_ref(&*heap).cast::<u8>()), "heap the arena does not back is outside it");
 	}
 
 	#[test]
