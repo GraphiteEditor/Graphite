@@ -615,7 +615,7 @@ fn marker_vertices_for_bezpath(bezpath: &BezPath, path_transform: DAffine2) -> V
 }
 
 /// Places marker artwork at the start, middle, and end vertices of a path, following SVG marker placement semantics.
-#[node_macro::node(name("Attach Markers"), category("Repeat"), path(core_types::vector))]
+#[node_macro::node(name("Attach Markers"), category("Vector"), path(core_types::vector))]
 async fn attach_markers<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The path whose vertices receive marker artwork.
