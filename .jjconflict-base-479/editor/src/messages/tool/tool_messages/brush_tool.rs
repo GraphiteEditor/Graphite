@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, OutputConnector};
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, selection_changed_since_last_sync, solid};
+use crate::messages::tool::common_functionality::resize::viewport_zoom;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
@@ -30,6 +31,7 @@ pub struct BrushOptions {
 	hardness: f64,
 	flow: f64,
 	color: ToolColorOptions,
+	scale_with_viewport: bool,
 	last_synced_selection: Vec<LayerNodeIdentifier>,
 }
 
@@ -40,6 +42,7 @@ impl Default for BrushOptions {
 			hardness: BRUSH_HARDNESS_DEFAULT,
 			flow: BRUSH_FLOW_DEFAULT,
 			color: ToolColorOptions::default(),
+			scale_with_viewport: false,
 			last_synced_selection: Vec::new(),
 		}
 	}
@@ -48,6 +51,10 @@ impl Default for BrushOptions {
 impl BrushOptions {
 	fn active_color(&self) -> Color {
 		self.color.active_color().unwrap_or_default()
+	}
+
+	fn stroke_diameter(&self, document: &DocumentMessageHandler) -> f64 {
+		if self.scale_with_viewport { self.diameter / viewport_zoom(document) } else { self.diameter }
 	}
 }
 
@@ -75,6 +82,7 @@ pub enum BrushToolMessageOptionsUpdate {
 	Diameter(f64),
 	Hardness(f64),
 	Flow(f64),
+	ScaleWithViewport(bool),
 	WorkingColorsChanged,
 }
 
@@ -121,6 +129,32 @@ impl LayoutHolder for BrushTool {
 					}
 					.into()
 				})
+				.widget_instance(),
+			PopoverButton::new()
+				.popover_layout(Layout(vec![LayoutGroup::row({
+					let scale_with_viewport_label = "Scale with Viewport";
+					let scale_with_viewport_description = "Automatically scale the brush with viewport zoom.";
+					let checkbox_id = CheckboxId::new();
+					vec![
+						CheckboxInput::new(self.options.scale_with_viewport)
+							.tooltip_label(scale_with_viewport_label)
+							.tooltip_description(scale_with_viewport_description)
+							.for_label(checkbox_id)
+							.on_update(|checkbox_input: &CheckboxInput| {
+								BrushToolMessage::UpdateOptions {
+									options: BrushToolMessageOptionsUpdate::ScaleWithViewport(checkbox_input.checked),
+								}
+								.into()
+							})
+							.widget_instance(),
+						TextLabel::new(scale_with_viewport_label)
+							.tooltip_label(scale_with_viewport_label)
+							.tooltip_description(scale_with_viewport_description)
+							.for_checkbox(checkbox_id)
+							.widget_instance(),
+					]
+				})]))
+				.tooltip_label("Diameter Options")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(self.options.hardness))
@@ -191,6 +225,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Brus
 					responses.add(ToolMessage::SelectWorkingColor { color, primary: true });
 				}
 			}
+			BrushToolMessageOptionsUpdate::ScaleWithViewport(scale_with_viewport) => self.options.scale_with_viewport = scale_with_viewport,
 			BrushToolMessageOptionsUpdate::WorkingColorsChanged => {
 				self.options.color.fill_choice = Some(solid(context.global_tool_data.primary_color));
 			}
@@ -235,7 +270,7 @@ impl BrushTool {
 		};
 		let value = |index: usize| node.inputs.get(index).and_then(|input| input.as_value());
 		if let Some(TaggedValue::F64(diameter)) = value(brush_strokes::DiameterInput::INDEX) {
-			self.options.diameter = *diameter;
+			self.options.diameter = if self.options.scale_with_viewport { *diameter * viewport_zoom(document) } else { *diameter };
 		}
 		if let Some(TaggedValue::F64(hardness)) = value(brush_strokes::HardnessInput::INDEX) {
 			self.options.hardness = *hardness;
@@ -352,8 +387,10 @@ impl BrushToolData {
 		};
 		let value = |index: usize| node.inputs.get(index).and_then(|input| input.as_value());
 		matches!(value(brush_strokes::ColorInput::INDEX), Some(TaggedValue::Color(color)) if *color == options.active_color())
-			&& matches!(value(brush_strokes::DiameterInput::INDEX), Some(TaggedValue::F64(diameter)) if *diameter == options.diameter)
-			&& matches!(value(brush_strokes::HardnessInput::INDEX), Some(TaggedValue::F64(hardness)) if *hardness == options.hardness)
+			&& matches!(value(brush_strokes::DiameterInput::INDEX), Some(TaggedValue::F64(diameter)) if {
+				let target = options.stroke_diameter(document);
+				(*diameter - target).abs() <= diameter.abs().max(target.abs()) * (f64::EPSILON * 8.)
+			}) && matches!(value(brush_strokes::HardnessInput::INDEX), Some(TaggedValue::F64(hardness)) if *hardness == options.hardness)
 			&& matches!(value(brush_strokes::FlowInput::INDEX), Some(TaggedValue::F64(flow)) if *flow == options.flow)
 	}
 
@@ -444,7 +481,7 @@ impl Fsm for BrushToolFsmState {
 							parent,
 							insert_index,
 							color: tool_options.active_color(),
-							diameter: tool_options.diameter,
+							diameter: tool_options.stroke_diameter(document),
 							hardness: tool_options.hardness,
 							flow: tool_options.flow,
 						});
@@ -458,7 +495,7 @@ impl Fsm for BrushToolFsmState {
 							layer,
 							strokes_node_id,
 							color: tool_options.active_color(),
-							diameter: tool_options.diameter,
+							diameter: tool_options.stroke_diameter(document),
 							hardness: tool_options.hardness,
 							flow: tool_options.flow,
 						});
