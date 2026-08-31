@@ -3167,6 +3167,9 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 	let max_height: Option<f64> = item.attribute_cloned_or(ATTR_MAX_HEIGHT, None);
 	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
+	let underline: bool = item.attribute_cloned_or(ATTR_UNDERLINE, false);
+	let overline: bool = item.attribute_cloned_or(ATTR_OVERLINE, false);
+	let strikethrough: bool = item.attribute_cloned_or(ATTR_STRIKETHROUGH, false);
 	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 	let typesetting = text_nodes::TypesettingConfig {
@@ -3177,6 +3180,9 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 		max_width,
 		max_height,
 		align,
+		underline,
+		overline,
+		strikethrough,
 	};
 
 	let mut glyph_paths: Vec<String> = Vec::new();
@@ -3248,6 +3254,9 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 	let max_height: Option<f64> = item.attribute_cloned_or(ATTR_MAX_HEIGHT, None);
 	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
+	let underline: bool = item.attribute_cloned_or(ATTR_UNDERLINE, false);
+	let overline: bool = item.attribute_cloned_or(ATTR_OVERLINE, false);
+	let strikethrough: bool = item.attribute_cloned_or(ATTR_STRIKETHROUGH, false);
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
@@ -3261,6 +3270,9 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 		max_width,
 		max_height,
 		align,
+		underline,
+		overline,
+		strikethrough,
 	};
 
 	let affine = Affine::new((transform * item_transform).to_cols_array());

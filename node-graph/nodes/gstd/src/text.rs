@@ -71,7 +71,7 @@ fn text(
 	let text = text.into_element();
 	let font = font.into_element();
 	let (size, line_height, letter_spacing, letter_tilt) = (*size.element(), *line_height.element(), *letter_spacing.element(), *letter_tilt.element());
-	let (has_max_width, max_width, has_max_height, max_height) = (*has_max_width.element(), *max_width.element(), *has_max_height.element(), *has_max_height.element());
+	let (has_max_width, max_width, has_max_height, max_height) = (*has_max_width.element(), *max_width.element(), *has_max_height.element(), *max_height.element());
 	let align = align.into_element();
 	let (underline, overline, strikethrough) = (*underline.element(), *overline.element(), *strikethrough.element());
 

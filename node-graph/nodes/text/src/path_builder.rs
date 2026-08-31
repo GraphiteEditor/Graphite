@@ -186,15 +186,35 @@ impl PathBuilder {
 			if per_glyph_items {
 				let translation = DVec2::new(start, y);
 				let frame = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -translation);
-				let rect = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(end - start, thickness) * self.scale);
-				let item = Item::new_from_element(Vector::from_subpaths([rect], false))
+				let rect = {
+					let min = DVec2::ZERO;
+					let max = DVec2::new(end - start, thickness) * self.scale;
+					let mut bezpath = BezPath::new();
+					bezpath.move_to((min.x, min.y));
+					bezpath.line_to((max.x, min.y));
+					bezpath.line_to((max.x, max.y));
+					bezpath.line_to((min.x, max.y));
+					bezpath.close_path();
+					bezpath
+				};
+				let item = Item::new_from_element(Vector::from_bezpath(rect))
 					.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(translation))
 					.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame);
 				self.vector_list.push(item);
 				self.per_glyph_bboxes.push(None);
 			} else {
-				let rect = Subpath::new_rectangle(DVec2::new(start, y) * self.scale, DVec2::new(end, y + thickness) * self.scale);
-				self.vector_list.element_mut(0).unwrap().append_subpath(rect, false);
+				let rect = {
+					let min = DVec2::new(start, y) * self.scale;
+					let max = DVec2::new(end, y + thickness) * self.scale;
+					let mut bezpath = BezPath::new();
+					bezpath.move_to((min.x, min.y));
+					bezpath.line_to((max.x, min.y));
+					bezpath.line_to((max.x, max.y));
+					bezpath.line_to((min.x, max.y));
+					bezpath.close_path();
+					bezpath
+				};
+				self.vector_list.element_mut(0).unwrap().append_bezpath(rect);
 			}
 		}
 	}

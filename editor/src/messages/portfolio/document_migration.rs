@@ -1292,9 +1292,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		.network_interface
 		.document_network()
 		.recursive_nodes()
-		.filter_map(|(node_id, node, path)| {
+		.		filter_map(|(node_id, node, path)| {
 			// `separate_glyphs` is a `Bool` value or a wire feeding one; only a different value type there means a newer input, not the old node
-			let has_legacy_separate_glyphs = node.inputs.len() == 13 && node.inputs.get(12).is_some_and(|input| matches!(input.as_value(), None | Some(TaggedValue::Bool(_))));
+			let has_legacy_separate_glyphs = (node.inputs.len() == 13 || node.inputs.len() == 15 || node.inputs.len() == 16) && node.inputs.get(12).is_some_and(|input| matches!(input.as_value(), None | Some(TaggedValue::Bool(_))));
 			(has_legacy_separate_glyphs && document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode"))))
 				.then_some((*node_id, path))
 		})
@@ -1303,7 +1303,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		// Pre-load `outward_wires` so the splice below resolves the original downstream wiring from cache rather than a mutated state.
 		let _ = document.network_interface.outward_wires(network_path);
 
-		// Convert the old node in place to the current `text` node (12 inputs), capturing its old inputs.
+		// Convert the old node in place to the current `text` node (15 inputs), capturing its old inputs.
 		let Some(text_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) else {
 			continue;
 		};
@@ -1320,6 +1320,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			if let Some(input) = old_inputs.get(legacy_index) {
 				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, new_index), input.clone(), network_path);
 			}
+		}
+		// New decoration inputs at 12,13,14 default to false for migrated nodes.
+		for index in 12..=14 {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 		}
 		// A `true` toggle at index 12 chose per-glyph geometry, which is now the dedicated "Text to Vector Glyphs" node
 		let separate_glyphs = matches!(old_inputs.get(12).and_then(|input| input.as_value()), Some(TaggedValue::Bool(true)));
@@ -2017,34 +2021,42 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Insert text decoration parameters: underline, overline, and strikethrough.
-	// Currently text node has 15 inputs (0–14): the three decoration booleans are appended at 12/13/14.
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 12 {
+	// Currently text node has 16 inputs (0–15): the three decoration booleans are appended at 12/13/14.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && (12..=15).contains(&inputs_count) {
 		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
 
-		// Copy all original inputs (including `align` at index 11) into the new node unchanged.
-		#[allow(clippy::needless_range_loop)]
-		for i in 0..=11 {
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i), old_inputs[i].clone(), network_path);
+		// Copy all original inputs into the new node.
+		for (index, input) in old_inputs.iter().enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
 		}
-
-		// Append the three new decoration inputs at their correct indices (12, 13, 14) with defaults.
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 12),
-			NodeInput::value(TaggedValue::Bool(TypesettingConfig::default().underline), false),
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 13),
-			NodeInput::value(TaggedValue::Bool(TypesettingConfig::default().overline), false),
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node_at_index(*node_id, 14),
-			NodeInput::value(TaggedValue::Bool(TypesettingConfig::default().strikethrough), false),
-			network_path,
-		);
+		// Append any missing decoration inputs at 12,13,14 with defaults to reach the current 16-input shape.
+		for index in old_inputs.len()..16 {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+		}
+		// Ensure the three decoration inputs at 12,13,14 have correct defaults if they were missing.
+		if old_inputs.len() <= 12 {
+			document.network_interface.set_input(
+				&InputConnector::node_at_index(*node_id, 12),
+				NodeInput::value(TaggedValue::Bool(TypesettingConfig::default().underline), false),
+				network_path,
+			);
+		}
+		if old_inputs.len() <= 13 {
+			document.network_interface.set_input(
+				&InputConnector::node_at_index(*node_id, 13),
+				NodeInput::value(TaggedValue::Bool(TypesettingConfig::default().overline), false),
+				network_path,
+			);
+		}
+		if old_inputs.len() <= 14 {
+			document.network_interface.set_input(
+				&InputConnector::node_at_index(*node_id, 14),
+				NodeInput::value(TaggedValue::Bool(TypesettingConfig::default().strikethrough), false),
+				network_path,
+			);
+		}
 	}
 
 	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
@@ -2997,13 +3009,13 @@ mod tests {
 
 			let network = document.network_interface.document_network();
 			let text_node = network.nodes.get(&text_id).expect("the upgraded text node should keep its ID");
-			assert_eq!(text_node.inputs.len(), 12, "a {shape}-input text node should reach the current shape");
+			assert_eq!(text_node.inputs.len(), 15, "a {shape}-input text node should reach the current shape");
 
 			// The converter is a new node, so it is found by identity rather than by ID
 			let converter = network
 				.nodes
 				.iter()
-				.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::text::text_to_vector::IDENTIFIER))
+				.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::text::text_to_vector::IDENTIFIER || *identifier == graphene_std::text::text_to_vector_glyphs::IDENTIFIER))
 				.map(|(converter_id, _)| *converter_id)
 				.unwrap_or_else(|| panic!("a {shape}-input text node should gain a string converter"));
 			assert_eq!(
