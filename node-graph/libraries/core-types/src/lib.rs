@@ -6,7 +6,6 @@ pub mod bounds;
 pub mod consts;
 pub mod context;
 pub mod extent;
-pub mod frame_table;
 pub mod gpoll;
 pub mod lane;
 pub mod list;
