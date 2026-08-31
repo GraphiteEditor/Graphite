@@ -980,7 +980,7 @@ where
 
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
 #[node_macro::node(category("Math: Numeric"))]
-fn greatest_common_divisor<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(
+fn greatest_common_divisor<T: num_traits::int::PrimInt>(
 	_: impl Ctx,
 	/// One of the two numbers for which the GCD is calculated.
 	#[implementations(u32, u64, i32)]
@@ -992,20 +992,15 @@ fn greatest_common_divisor<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32
 	let (value, attributes) = value.into_parts();
 	let other_value = *other_value.element();
 
-	let result = if value == T::zero() {
-		other_value
-	} else if other_value == T::zero() {
-		value
-	} else {
-		binary_gcd(value, other_value)
-	};
+	let gcd = math_parser::constants::gcd(integer_magnitude(value), integer_magnitude(other_value));
 
-	Item::from_parts(result, attributes)
+	// A result too large for the output type (like the GCD of `i32::MIN` and 0) saturates at the type's maximum
+	Item::from_parts(T::from(gcd).unwrap_or_else(T::max_value), attributes)
 }
 
 /// The least common multiple (LCM) calculates the smallest positive integer that is a multiple of both of the two input numbers.
 #[node_macro::node(category("Math: Numeric"))]
-fn least_common_multiple<T: num_traits::ToPrimitive + num_traits::FromPrimitive + num_traits::identities::Zero>(
+fn least_common_multiple<T: num_traits::int::PrimInt>(
 	_: impl Ctx,
 	/// One of the two numbers for which the LCM is calculated.
 	#[implementations(u32, u64, i32)]
@@ -1015,48 +1010,17 @@ fn least_common_multiple<T: num_traits::ToPrimitive + num_traits::FromPrimitive 
 	other_value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
+	let other_value = *other_value.element();
 
-	let value = value.to_i128().unwrap();
-	let other_value = other_value.element().to_i128().unwrap();
+	let lcm = math_parser::constants::lcm(integer_magnitude(value), integer_magnitude(other_value));
 
-	if value == 0 || other_value == 0 {
-		return Item::from_parts(T::zero(), attributes);
-	}
-	let gcd = binary_gcd(value, other_value);
-
-	Item::from_parts(T::from_i128((value * other_value).abs() / gcd).unwrap(), attributes)
+	// A result too large for the output type saturates at the type's maximum rather than overflowing
+	Item::from_parts(T::from(lcm).unwrap_or_else(T::max_value), attributes)
 }
 
-fn binary_gcd<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(mut a: T, mut b: T) -> T {
-	if a == T::zero() {
-		return b;
-	}
-	if b == T::zero() {
-		return a;
-	}
-
-	let mut shift = 0;
-	while (a | b) & T::one() == T::zero() {
-		a >>= 1;
-		b >>= 1;
-		shift += 1;
-	}
-
-	while a & T::one() == T::zero() {
-		a >>= 1;
-	}
-
-	while b != T::zero() {
-		while b & T::one() == T::zero() {
-			b >>= 1;
-		}
-		if a > b {
-			std::mem::swap(&mut a, &mut b);
-		}
-		b -= a;
-	}
-
-	a << shift
+/// Reads an integer's magnitude as a `u128`, which every implemented input type fits within.
+fn integer_magnitude<T: num_traits::int::PrimInt>(value: T) -> u128 {
+	value.to_i128().map_or(0, i128::unsigned_abs)
 }
 
 /// Adds together all the numbers in the input list, producing their total.

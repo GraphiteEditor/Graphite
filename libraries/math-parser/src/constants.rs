@@ -4,23 +4,65 @@ use std::f64::consts::{LN_2, PI};
 
 pub type BuiltinFunction = fn(&[Value]) -> Option<Value>;
 
-/// Truncates both operands to nonnegative integers for `gcd`/`lcm`, or `None` when either is non-finite or beyond f64's exactly-representable integer range.
-fn integer_operands(a: f64, b: f64) -> Option<(u64, u64)> {
-	// The largest magnitude below which every integer is exactly representable in f64
-	const EXACT_INTEGER_LIMIT: f64 = (1_u64 << f64::MANTISSA_DIGITS) as f64;
+/// The largest magnitude below which every integer is exactly representable in f64.
+const EXACT_INTEGER_LIMIT: f64 = (1_u64 << f64::MANTISSA_DIGITS) as f64;
 
-	let (a, b) = (a.trunc(), b.trunc());
-	if !a.is_finite() || !b.is_finite() || a.abs() > EXACT_INTEGER_LIMIT || b.abs() > EXACT_INTEGER_LIMIT {
-		return None;
-	}
-	Some(((a as i64).unsigned_abs(), (b as i64).unsigned_abs()))
+/// Truncates an operand to a nonnegative integer for `gcd`/`lcm`, or `None` when it is non-finite or beyond f64's exactly-representable integer range.
+fn integer_operand(value: f64) -> Option<u128> {
+	let value = value.trunc();
+	(value.is_finite() && value.abs() <= EXACT_INTEGER_LIMIT).then(|| (value as i64).unsigned_abs() as u128)
 }
 
-fn euclidean_gcd(mut x: u64, mut y: u64) -> u64 {
-	while y != 0 {
-		(x, y) = (y, x % y);
+/// Rounds a combinatorics operand to the nearest whole number, or `None` when it is negative, non-finite, or beyond f64's exactly-representable integer range.
+fn whole_operand(value: f64) -> Option<u64> {
+	let value = value.round();
+	(0. ..=EXACT_INTEGER_LIMIT).contains(&value).then_some(value as u64)
+}
+
+/// Accumulates one multiplicative `step` per iteration, stopping once the running product reaches infinity, since it stays there.
+/// That bounds the work to a few thousand steps for operands whose true result no f64 can hold.
+fn bounded_product(steps: impl Iterator<Item = u64>, step: impl Fn(f64, u64) -> f64) -> f64 {
+	let mut product = 1.;
+	for index in steps {
+		if !product.is_finite() {
+			break;
+		}
+		product = step(product, index);
 	}
-	x
+	product
+}
+
+/// Computes the greatest common divisor of two nonnegative integers by the Euclidean algorithm.
+pub fn gcd(a: u128, b: u128) -> u128 {
+	let (mut a, mut b) = (a, b);
+	// O(log min(a, b)) iterations, worst case 184 loops with the largest consecutive u128 Fibonacci numbers
+	while b != 0 {
+		(a, b) = (b, a % b);
+	}
+	a
+}
+
+/// Computes the least common multiple of two nonnegative integers. Operands within f64's exact integer range cannot overflow it.
+pub fn lcm(a: u128, b: u128) -> u128 {
+	if a == 0 || b == 0 {
+		return 0;
+	}
+	(a / gcd(a, b)) * b
+}
+
+/// Resolves a base-suffixed function name like `log2` or `root3.25` into the corresponding two-argument
+/// function and the baked-in second argument parsed from the suffix.
+pub fn suffixed_function(name: &str) -> Option<(BuiltinFunction, f64)> {
+	let (function, suffix) = ["log", "root"].into_iter().find_map(|prefix| Some((prefix, name.strip_prefix(prefix)?)))?;
+	let suffix = suffix.strip_prefix('_').unwrap_or(suffix);
+
+	// A base is written in plain decimal, leaving anything else, like the keyword-valued `loginf` or the scientific `log2e5`, to resolve as a variable or custom function
+	if !suffix.starts_with(|c: char| c.is_ascii_digit()) || !suffix.chars().all(|c| c.is_ascii_digit() || c == '.') {
+		return None;
+	}
+	let base = suffix.parse::<f64>().ok().filter(|base| base.is_finite())?;
+
+	Some((builtin_function(function)?, base))
 }
 
 /// Looks up a built-in math function by name, returning a plain function pointer so dispatch avoids hashing and dynamic allocation.
@@ -62,67 +104,37 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			_ => None,
 		},
 
-		// Inverse trig with legacy names and standard aliases
-		"invsin" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.asin()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.asin()))),
-			_ => None,
-		},
+		// TODO: Offer the `arc-`/`ar-` spellings (`arcsin`, `artanh`) and the legacy `inv-` names as autocomplete aliases in the expression widget, resolving to these canonical names
 		"asin" => |values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.asin()))),
 			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.asin()))),
 			_ => None,
 		},
 
-		"invcos" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.acos()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.acos()))),
-			_ => None,
-		},
 		"acos" => |values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.acos()))),
 			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.acos()))),
 			_ => None,
 		},
 
-		"invtan" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.atan()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.atan()))),
-			_ => None,
-		},
 		"atan" => |values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.atan()))),
 			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.atan()))),
 			_ => None,
 		},
 
-		"invcsc" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().asin()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().asin()))),
-			_ => None,
-		},
 		"acsc" => |values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().asin()))),
 			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().asin()))),
 			_ => None,
 		},
 
-		"invsec" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().acos()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().acos()))),
-			_ => None,
-		},
 		"asec" => |values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().acos()))),
 			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().acos()))),
 			_ => None,
 		},
 
-		"invcot" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().atan()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().atan()))),
-			_ => None,
-		},
 		"acot" => |values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().atan()))),
 			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().atan()))),
@@ -218,13 +230,6 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			_ => None,
 		},
 
-		"pow" => |values| match values {
-			[Value::Number(Number::Real(x)), Value::Number(Number::Real(n))] => Some(Value::Number(Number::Real(x.powf(*n)))),
-			[Value::Number(Number::Complex(x)), Value::Number(Number::Real(n))] => Some(Value::Number(Number::Complex(x.powf(*n)))),
-			[Value::Number(Number::Complex(x)), Value::Number(Number::Complex(n))] => Some(Value::Number(Number::Complex(x.powc(*n)))),
-			_ => None,
-		},
-
 		"root" => |values| match values {
 			[Value::Number(Number::Real(x)), Value::Number(Number::Real(n))] => {
 				// Odd integer roots of negative reals are real, which powf alone would report as NaN
@@ -238,14 +243,9 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 		"log" => |values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.log10()))),
 			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.log10()))),
-			[Value::Number(n), Value::Number(base)] => {
-				// Custom base logarithm using change of base formula
-				let compute_log = |x: f64, b: f64| -> f64 { x.ln() / b.ln() };
-				match (n, base) {
-					(Number::Real(x), Number::Real(b)) => Some(Value::Number(Number::Real(compute_log(*x, *b)))),
-					_ => None,
-				}
-			}
+			// Change of base, staying real when both operands are, and widening into the complex plane when either is not
+			[Value::Number(Number::Real(x)), Value::Number(Number::Real(base))] => Some(Value::Number(Number::Real(x.ln() / base.ln()))),
+			[Value::Number(x), Value::Number(base)] => Some(Value::Number(Number::Complex(x.as_complex().ln() / base.as_complex().ln()))),
 			_ => None,
 		},
 
@@ -306,6 +306,28 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			_ => None,
 		},
 
+		// Variadic across one or more real arguments, ignoring NaN like Rust's own f64::min/f64::max
+		"min" => |values| {
+			// Seeded from the first argument so that arguments which are all NaN give back NaN rather than an infinity of their own, even though a NaN input should represent a bug
+			let [Value::Number(Number::Real(first)), rest @ ..] = values else { return None };
+			let mut min = *first;
+			for value in rest {
+				let Value::Number(Number::Real(real)) = value else { return None };
+				min = min.min(*real);
+			}
+			Some(Value::Number(Number::Real(min)))
+		},
+
+		"max" => |values| {
+			let [Value::Number(Number::Real(first)), rest @ ..] = values else { return None };
+			let mut max = *first;
+			for value in rest {
+				let Value::Number(Number::Real(real)) = value else { return None };
+				max = max.max(*real);
+			}
+			Some(Value::Number(Number::Real(max)))
+		},
+
 		"lerp" => |values| match values {
 			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b)), Value::Number(Number::Real(t))] => Some(Value::Number(Number::Real(a + (b - a) * t))),
 			_ => None,
@@ -351,7 +373,7 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 
 		"gcd" => |values| match values {
 			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b))] => {
-				let gcd = integer_operands(*a, *b).map_or(f64::NAN, |(x, y)| euclidean_gcd(x, y) as f64);
+				let gcd = integer_operand(*a).zip(integer_operand(*b)).map_or(f64::NAN, |(a, b)| gcd(a, b) as f64);
 				Some(Value::Number(Number::Real(gcd)))
 			}
 			_ => None,
@@ -359,16 +381,37 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 
 		"lcm" => |values| match values {
 			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b))] => {
-				let Some((x, y)) = integer_operands(*a, *b) else {
-					return Some(Value::Number(Number::Real(f64::NAN)));
-				};
-				if x == 0 || y == 0 {
-					return Some(Value::Number(Number::Real(0.)));
+				let lcm = integer_operand(*a).zip(integer_operand(*b)).map_or(f64::NAN, |(a, b)| lcm(a, b) as f64);
+				Some(Value::Number(Number::Real(lcm)))
+			}
+			_ => None,
+		},
+
+		// Combinatorics over whole numbers: `choose(n, r)` is the binomial coefficient and `pick(n, r)` the falling factorial
+		"choose" => |values| match values {
+			[Value::Number(Number::Real(n)), Value::Number(Number::Real(r))] => {
+				let (n, r) = (whole_operand(*n)?, whole_operand(*r)?);
+				if r > n {
+					return Some(Value::from_f64(0.));
 				}
 
-				// Multiply in f64 so huge results can't overflow the integer range
-				let lcm = (x / euclidean_gcd(x, y)) as f64 * y as f64;
-				Some(Value::Number(Number::Real(lcm)))
+				// Multiplying then dividing at each step keeps every intermediate whole, and the smaller of `r` and `n - r` halves the steps
+				let r = r.min(n - r);
+				let binomial = bounded_product(1..=r, |accumulated, k| accumulated * (n - r + k) as f64 / k as f64);
+				Some(Value::from_f64(binomial))
+			}
+			_ => None,
+		},
+
+		"pick" => |values| match values {
+			[Value::Number(Number::Real(n)), Value::Number(Number::Real(r))] => {
+				let (n, r) = (whole_operand(*n)?, whole_operand(*r)?);
+				if r > n {
+					return Some(Value::from_f64(0.));
+				}
+
+				let falling_factorial = bounded_product(0..r, |accumulated, k| accumulated * (n - k) as f64);
+				Some(Value::from_f64(falling_factorial))
 			}
 			_ => None,
 		},
@@ -401,21 +444,6 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			_ => None,
 		},
 
-		// Logical Functions
-		"isnan" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(if real.is_nan() { 1. } else { 0. }))),
-			_ => None,
-		},
-
-		"eq" => |values| match values {
-			[Value::Number(a), Value::Number(b)] => Some(Value::Number(Number::Real(if a == b { 1. } else { 0. }))),
-			_ => None,
-		},
-
-		"greater" => |values| match values {
-			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b))] => Some(Value::Number(Number::Real(if a > b { 1. } else { 0. }))),
-			_ => None,
-		},
 		_ => return None,
 	})
 }

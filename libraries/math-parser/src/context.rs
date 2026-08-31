@@ -11,13 +11,14 @@ pub trait FunctionProvider {
 	fn run_function(&self, name: &str, args: &[Value]) -> Option<Value>;
 }
 
-pub struct ValueMap(HashMap<String, Value>);
+#[derive(Default)]
+pub struct ValueMap(pub HashMap<String, Value>);
 
 pub struct NothingMap;
 
-impl ValueProvider for &ValueMap {
+impl<V: ValueProvider> ValueProvider for &V {
 	fn get_value(&self, name: &str) -> Option<Value> {
-		self.0.get(name).cloned()
+		(**self).get_value(name)
 	}
 }
 

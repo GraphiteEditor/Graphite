@@ -76,7 +76,12 @@ where
 		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
 		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div), just(Token::Modulo).to(BinaryOp::Modulo)));
 		let pow_op = just(Token::Caret).to(BinaryOp::Pow);
-		let unary_op = choice((just(Token::Minus).to(UnaryOp::Neg), just(Token::Bang).to(UnaryOp::Not)));
+		let unary_op = choice((
+			just(Token::Minus).to(UnaryOp::Neg),
+			just(Token::Plus).to(UnaryOp::Pos),
+			just(Token::Bang).to(UnaryOp::Not),
+			just(Token::Not).to(UnaryOp::Not),
+		));
 		let and_op = just(Token::AndAnd).to(BinaryOp::And);
 		let or_op = just(Token::OrOr).to(BinaryOp::Or);
 		let cmp_op = choice((
@@ -188,7 +193,7 @@ mod tests {
 			op: BinaryOp::Pow,
 			rhs: Box::new(Node::Lit(Literal::Float(3.))),
 		},
-		test_parse_unary_sqrt: "sqrt(16)" => Node::FnCall {
+		test_parse_sqrt_call: "sqrt(16)" => Node::FnCall {
 			name: "sqrt".to_string(),
 			expr: vec![Node::Lit(Literal::Float(16.))],
 		},
