@@ -4,7 +4,7 @@ let
   version = "149.0.5+g6770623+chromium-149.0.7827.197";
   hashes = {
     aarch64-linux = "sha256-cBAvcvs1rAg5EKJkCt81RZYupCWpUNIC/nLt3PJow7Q=";
-		x86_64-linux = "sha256-OPGMBJmvvLiLdBDniBQwx7LmTGGI59AcesJdILSeqcs=";
+    x86_64-linux = "sha256-OPGMBJmvvLiLdBDniBQwx7LmTGGI59AcesJdILSeqcs=";
   };
 
   selectSystem =
@@ -12,17 +12,19 @@ let
     attrs.${pkgs.stdenv.hostPlatform.system}
       or (throw "Unsupported system ${pkgs.stdenv.hostPlatform.system}");
 
+  url = "https://cef-builds.spotifycdn.com/cef_binary_${version}_${
+    selectSystem {
+      aarch64-linux = "linuxarm64";
+      x86_64-linux = "linux64";
+    }
+  }_minimal.tar.bz2";
+
   src = pkgs.fetchurl {
-    url = "https://cef-builds.spotifycdn.com/cef_binary_${version}_${
-      selectSystem {
-        aarch64-linux = "linuxarm64";
-        x86_64-linux = "linux64";
-      }
-    }_minimal.tar.bz2";
+    inherit url;
     hash = selectSystem hashes;
   };
 in
-pkgs.cef-binary.overrideAttrs (finalAttrs: {
+pkgs.cef-binary.overrideAttrs {
   version = builtins.head (builtins.split "\\+" version);
   inherit src;
   postInstall = ''
@@ -38,9 +40,9 @@ pkgs.cef-binary.overrideAttrs (finalAttrs: {
     echo '${
       builtins.toJSON {
         type = "minimal";
-        name = builtins.baseNameOf finalAttrs.src.url;
+        name = builtins.baseNameOf url;
         sha1 = "";
       }
     }' > $out/archive.json
   '';
-})
+}
