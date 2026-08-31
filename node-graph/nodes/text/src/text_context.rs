@@ -9,6 +9,13 @@ use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, Lin
 use std::collections::HashMap;
 use vector_types::Vector;
 
+/// Minimal RGBA brush type (channels: `[r, g, b, a]`, each 0–255) that satisfies
+/// `parley::style::Brush` via its blanket impl for `Clone + PartialEq + Default + Debug`.
+/// A newtype over `[u8; 4]` is required because Rust's orphan rule forbids
+/// `impl ForeignTrait for [ForeignType; N]` in an external crate.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub struct RgbaColor(pub [u8; 4]);
+
 thread_local! {
 	static THREAD_TEXT: RefCell<TextContext> = RefCell::new(TextContext::default());
 }
@@ -16,7 +23,7 @@ thread_local! {
 /// Iterates the glyph runs of a laid-out text in reading order, computing each line's last-line alignment correction
 /// (`x_offset` and per-space `space_extra`) and skipping runs clipped by `max_height`. Shared by the vector shaper and the
 /// SVG/Vello text renderers so the alignment logic lives in one place.
-pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: TypesettingConfig, mut visit: impl FnMut(&GlyphRun<'_, ()>, f32, f32)) {
+pub fn for_each_styled_glyph_run(layout: &Layout<RgbaColor>, text: &str, typesetting: TypesettingConfig, mut visit: impl FnMut(&GlyphRun<'_, RgbaColor>, f32, f32)) {
 	let alignment_width = typesetting.max_width.map(|w| w as f32).unwrap_or_else(|| layout.full_width());
 	let last_line_correction = typesetting.align.last_line_correction();
 
@@ -71,7 +78,7 @@ pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: T
 #[derive(Default)]
 pub struct TextContext {
 	font_context: FontContext,
-	layout_context: LayoutContext<()>,
+	layout_context: LayoutContext<RgbaColor>,
 	font_info_cache: HashMap<ResourceHash, (FamilyId, FontInfo)>,
 }
 
@@ -106,11 +113,13 @@ impl TextContext {
 	}
 
 	/// Create a text layout from the given font resource and typesetting configuration.
-	pub fn layout_text(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig) -> Option<Layout<()>> {
+	pub fn layout_text(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig) -> Option<Layout<RgbaColor>> {
 		let (font_family, font_info) = self.get_font_info(font)?;
 
 		const DISPLAY_SCALE: f32 = 1.;
 		let mut builder = self.layout_context.ranged_builder(&mut self.font_context, text, DISPLAY_SCALE, false);
+
+		builder.push_default(StyleProperty::Brush(RgbaColor([0, 0, 0, 255])));
 
 		builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
 		builder.push_default(StyleProperty::LetterSpacing(typesetting.letter_spacing as f32));
@@ -122,7 +131,21 @@ impl TextContext {
 		builder.push_default(StyleProperty::FontWidth(font_info.width()));
 		builder.push_default(LineHeight::FontSizeRelative(typesetting.line_height_ratio as f32));
 
-		let mut layout: Layout<()> = builder.build(text);
+		// DEMO: alternate colors and double the font size for each subsequent word to prove style spans work.
+		const STYLE_A: RgbaColor = RgbaColor([0, 0, 0, 255]);
+		const STYLE_B: RgbaColor = RgbaColor([220, 30, 30, 255]);
+		let base_font_size = typesetting.font_size as f32;
+		let mut byte_cursor = 0usize;
+		for (word_index, word) in text.split_inclusive(|c: char| c.is_whitespace()).enumerate() {
+			let end = byte_cursor + word.len();
+			let is_even = word_index % 2 == 0;
+			let font_size = base_font_size * 2.0_f32.powi(word_index as i32);
+			builder.push(StyleProperty::Brush(if is_even { STYLE_A } else { STYLE_B }), byte_cursor..end);
+			builder.push(StyleProperty::FontSize(font_size), byte_cursor..end);
+			byte_cursor = end;
+		}
+
+		let mut layout: Layout<RgbaColor> = builder.build(text);
 
 		layout.break_all_lines(typesetting.max_width.map(|mw| mw as f32));
 		layout.align(typesetting.align.into(), AlignmentOptions::default());

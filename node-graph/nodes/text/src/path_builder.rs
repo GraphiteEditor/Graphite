@@ -105,7 +105,7 @@ impl PathBuilder {
 		has_geometry
 	}
 
-	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, letter_tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
+	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, crate::text_context::RgbaColor>, letter_tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
 		let mut run_x = glyph_run.offset() + x_offset;
 		let run_y = glyph_run.baseline();
 

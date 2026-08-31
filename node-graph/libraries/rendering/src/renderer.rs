@@ -2268,14 +2268,16 @@ impl OutlinePen for GlyphOutlinePen<'_> {
 }
 
 /// Draws each glyph of `glyph_run` into a `BezPath` (with the run's position and faux-italic `tilt_tan` baked in)
-/// and calls `emit` for each non-empty glyph. Zero-geometry glyphs advance by `space_extra` for justified spacing.
-fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, ()>, x_offset: f32, space_extra: f32, tilt_tan: f64, mut emit: impl FnMut(&BezPath)) {
+/// and calls `emit` with the path and the run's RGBA brush color for each non-empty glyph.
+/// Zero-geometry glyphs advance by `space_extra` for justified spacing.
+fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, text_nodes::RgbaColor>, x_offset: f32, space_extra: f32, tilt_tan: f64, mut emit: impl FnMut(&BezPath, [u8; 4])) {
 	let mut run_x = glyph_run.offset() + x_offset;
 	let run_y = glyph_run.baseline();
 	let run = glyph_run.run();
 	let font = run.font();
 	let font_size_pts = run.font_size();
 	let normalized_coords: Vec<NormalizedCoord> = run.normalized_coords().iter().map(|c| NormalizedCoord::from_bits(*c)).collect();
+	let run_color = glyph_run.style().brush.0;
 
 	let Ok(font_ref) = SkrifaFontRef::from_index(font.data.as_ref(), font.index) else { return };
 	let outlines = font_ref.outline_glyphs();
@@ -2293,7 +2295,7 @@ fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, ()>, x_offset: f3
 		let path = &mut bez_path;
 		let mut pen = GlyphOutlinePen { path, ox, oy, tilt_tan };
 		if outline.draw(settings, &mut pen).is_ok() && !bez_path.elements().is_empty() {
-			emit(&bez_path);
+			emit(&bez_path, run_color);
 		} else if space_extra != 0. && glyph.advance > 0. {
 			run_x += space_extra;
 		}
@@ -2428,15 +2430,15 @@ impl Render for List<String> {
 				align,
 			};
 
-			let mut glyph_paths: Vec<String> = Vec::new();
+			let mut glyph_paths: Vec<(String, [u8; 4])> = Vec::new();
 
 			text_nodes::TextContext::with_thread_local(|ctx| {
 				let Some(layout) = ctx.layout_text(text, &font, typesetting) else { return };
 				let tilt_tan = letter_tilt.to_radians().tan();
 
 				text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
-					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
-						glyph_paths.push(bez_path.to_svg());
+					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path, color| {
+						glyph_paths.push((bez_path.to_svg(), color));
 					});
 				});
 			});
@@ -2461,7 +2463,7 @@ impl Render for List<String> {
 					}
 				},
 				|render| {
-					for path_d in glyph_paths {
+					for (path_d, color) in glyph_paths {
 						render.leaf_tag("path", |attributes| {
 							attributes.push("d", path_d);
 							if let RenderMode::Outline = render_params.render_mode {
@@ -2469,8 +2471,12 @@ impl Render for List<String> {
 								attributes.push("stroke", "black");
 								attributes.push("stroke-width", "1");
 							} else {
-								attributes.push("fill", "black");
+								let [r, g, b, a] = color;
+								attributes.push("fill", format!("#{r:02x}{g:02x}{b:02x}"));
 								attributes.push("fill-rule", "nonzero");
+								if a < 255 {
+									attributes.push("fill-opacity", format!("{:.4}", a as f32 / 255.));
+								}
 							}
 						});
 					}
@@ -2531,12 +2537,14 @@ impl Render for List<String> {
 				let tilt_tan = letter_tilt.to_radians().tan();
 
 				text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
-					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
+					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path, color| {
 						if let RenderMode::Outline = render_params.render_mode {
 							let (outline_stroke, outline_color) = get_outline_styles(render_params);
 							scene.stroke(&outline_stroke, affine, outline_color, None, bez_path);
 						} else {
-							scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, bez_path);
+							let [r, g, b, a] = color;
+							let vello_color = peniko::color::AlphaColor::<peniko::color::Srgb>::new([r as f32 / 255., g as f32 / 255., b as f32 / 255., a as f32 / 255.]);
+							scene.fill(peniko::Fill::NonZero, affine, vello_color, None, bez_path);
 						}
 					});
 				});
