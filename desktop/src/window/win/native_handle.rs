@@ -344,6 +344,14 @@ unsafe fn position_helper(main: HWND, helper: HWND) {
 	let h = (r.bottom - r.top) + RESIZE_BAND_THICKNESS * 2;
 
 	let _ = unsafe { SetWindowPos(helper, Some(main), x, y, w, h, SWP_NOACTIVATE | SWP_NOSENDCHANGING) };
+
+	let outer = unsafe { CreateRectRgn(0, 0, w, h) };
+	let inner = unsafe { CreateRectRgn(RESIZE_BAND_THICKNESS, RESIZE_BAND_THICKNESS, w - RESIZE_BAND_THICKNESS, h - RESIZE_BAND_THICKNESS) };
+	let _ = unsafe { CombineRgn(Some(outer), Some(outer), Some(inner), RGN_DIFF) };
+	let _ = unsafe { DeleteObject(inner.into()) };
+	if unsafe { SetWindowRgn(helper, Some(outer), false) } == 0 {
+		let _ = unsafe { DeleteObject(outer.into()) };
+	}
 }
 
 unsafe fn calculate_hit(helper: HWND, lparam: LPARAM) -> u32 {
