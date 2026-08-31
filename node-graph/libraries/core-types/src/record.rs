@@ -1644,12 +1644,6 @@ impl<N> RecordSource<N> {
 	}
 }
 
-/// # Safety
-/// `rec` must be a live record of `layout`.
-pub unsafe fn copy_record_bytes(layout: &Layout, rec: Rec<'_>) -> Box<[u8]> {
-	unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into()
-}
-
 /// A node's own output frame, minted by its caller from the caller's frame
 /// space: the one closing surface for every exit. Writes land through it,
 /// [`Self::lift`] and [`Self::finish`] serve the record, and it carries the
