@@ -220,8 +220,8 @@ gungraun = { version = "0.18" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = "149"
-cef-dll-sys = "149"
+cef = "151"
+cef-dll-sys = "151"
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
@@ -261,5 +261,5 @@ debug = true
 
 [patch.crates-io]
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
-cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-149" }
-cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-149" }
+cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-151" }
+cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-151" }
