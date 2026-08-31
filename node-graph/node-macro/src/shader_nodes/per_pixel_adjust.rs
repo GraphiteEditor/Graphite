@@ -294,7 +294,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let entry_point_name = &self.entry_point_name;
 		let body = quote! {
 			{
-				#executor.into_element().shader_runtime().run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
+				#executor.into_element().run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
 					has_uniform: #has_uniform,

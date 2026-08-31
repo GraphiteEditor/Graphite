@@ -46,7 +46,7 @@
 			let matchesRemainingTerms = true;
 
 			if (isTypeSearch && typeSearchTerm) {
-				matchesTypeSearch = node.inputTypes?.some((inputType) => inputType.toLowerCase().includes(typeSearchTerm)) || false;
+				matchesTypeSearch = node.inputTypes?.some((constraint) => constraint === "All" || constraint.Limited.some((inputType) => inputType.toLowerCase().includes(typeSearchTerm))) || false;
 			}
 
 			if (remainingSearchTerms.length > 0) {

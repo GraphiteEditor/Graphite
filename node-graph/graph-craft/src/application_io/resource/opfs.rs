@@ -153,9 +153,6 @@ async fn drain_queue(inner: Arc<Mutex<Inner>>) {
 			Mutation::Write { hash, bytes } => {
 				if let Err(error) = write_file(&directory, &hash, &bytes).await {
 					log::error!("OPFS write for {hash} failed: {error:?}");
-
-					// Nothing reached disk, so leaving the hash listed would claim a file that later sessions cannot read
-					inner.lock().unwrap().on_disk.remove(&hash);
 				}
 			}
 			Mutation::Delete { hash } => {
