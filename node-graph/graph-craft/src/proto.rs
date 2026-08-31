@@ -470,7 +470,7 @@ impl ProtoNetwork {
 			ProtoNode {
 				construction_args: ConstructionArgs::Nodes(vec![node_id]),
 				call_argument: concrete!(Context),
-				identifier: graphene_core::memo::memoize::IDENTIFIER,
+				identifier: graphene_core::memo::frame_memo::IDENTIFIER,
 				original_location: OriginalLocation {
 					path: path.clone(),
 					..Default::default()
