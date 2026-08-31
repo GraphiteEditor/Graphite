@@ -1191,7 +1191,68 @@ unsafe fn deep_clone_graphic(ptr: *const u8) -> Box<dyn std::any::Any + Send + S
 unsafe fn deep_repark_graphic(value: &(dyn std::any::Any + Send + Sync), dst: *mut u8, arena: &core_types::arena::Arena) -> Option<()> {
 	let graphic = value.downcast_ref::<Graphic>().expect("an element replays at its own type");
 	let resident = map_groups_to_resident(graphic, arena)?;
-	unsafe { core_types::record::write_element(dst, resident, arena) }
+	let retained = graphic_retained_heap(&resident);
+	unsafe { core_types::record::write_element_sized(dst, resident, arena, retained) }
+}
+
+/// The graphic with every `Group` promoted into the persistent region: an
+/// interior already living there is shared rather than copied, so the cost is
+/// what this level newly produced. `None` reports arena exhaustion.
+pub fn map_groups_to_persistent<'p>(graphic: &Graphic<'_>, promotion: &core_types::record::Promotion<'p>) -> Option<Graphic<'p>> {
+	match graphic {
+		Graphic::Group(group) => group.to_persistent(promotion).map(Graphic::Group),
+		Graphic::Graphic(children) => {
+			let mut out = List::new();
+			for item in children.clone().into_iter() {
+				let (element, attributes) = item.into_parts();
+				out.push(Item::from_parts(map_groups_to_persistent(&element, promotion)?, attributes));
+			}
+			Some(Graphic::Graphic(out))
+		}
+		Graphic::Vector(vector) => Some(Graphic::Vector(vector.clone())),
+		Graphic::RasterCPU(raster) => Some(Graphic::RasterCPU(raster.clone())),
+		Graphic::RasterGPU(raster) => Some(Graphic::RasterGPU(raster.clone())),
+		Graphic::Color(color) => Some(Graphic::Color(*color)),
+		Graphic::Gradient(gradient) => Some(Graphic::Gradient(gradient.clone())),
+		Graphic::Text(text) => Some(Graphic::Text(text.clone())),
+	}
+}
+
+/// The promote for `Graphic` elements: the generic path would deep-copy every
+/// interior through an owned intermediate, while this shares the interiors the
+/// persistent region already holds.
+///
+/// # Safety
+/// `src` must point at a live parked `Graphic` element field, and `dst` at the
+/// element field the promoted reference is written to.
+unsafe fn promote_graphic(src: *const u8, dst: *mut u8, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
+	let graphic = unsafe { core_types::record::borrow_element::<Graphic>(core_types::record::Rec::new(src)) };
+	let promoted = map_groups_to_persistent(graphic, promotion)?;
+	let retained = graphic_retained_heap(&promoted);
+	unsafe { core_types::record::write_element_sized(dst, promoted, promotion.persistent(), retained) }
+}
+
+/// The heap a graphic's own payload owns. Group interiors are excluded: their
+/// lanes park through this same glue and are counted as they land.
+fn graphic_retained_heap(graphic: &Graphic<'_>) -> usize {
+	match graphic {
+		Graphic::Vector(vector) => vector_retained_heap(vector),
+		Graphic::RasterCPU(raster) => raster.data.len() * size_of::<Color>(),
+		Graphic::Text(text) => text.len(),
+		Graphic::Gradient(gradient) => gradient.len() * size_of::<(f64, Color)>(),
+		Graphic::Graphic(children) => (0..children.len()).filter_map(|index| children.element(index)).map(graphic_retained_heap).sum(),
+		Graphic::Group(_) | Graphic::RasterGPU(_) | Graphic::Color(_) => 0,
+	}
+}
+
+/// The heap a vector's domain columns own, summed over the columns it
+/// exposes, so the segment domain's private parallel columns are undercounted.
+fn vector_retained_heap(vector: &Vector) -> usize {
+	size_of_val(vector.point_domain.ids())
+		+ size_of_val(vector.point_domain.positions())
+		+ size_of_val(vector.segment_domain.ids())
+		+ size_of_val(vector.region_domain.ids())
+		+ size_of_val(vector.colinear_manipulators.as_slice())
 }
 
 fn graphic_contains_groups(graphic: &Graphic) -> bool {
@@ -1239,6 +1300,11 @@ const _: () = {
 	fn register_all() {
 		core_types::record::register_deep_element_clone::<Graphic>(deep_clone_graphic, deep_repark_graphic);
 		core_types::record::register_deep_field_value::<Option<List<Graphic>>>(deep_clone_graphic_list, deep_repark_graphic_list);
+		core_types::record::register_element_promote::<Graphic>(promote_graphic);
+		core_types::record::register_retained_heap::<Graphic>(|value| value.downcast_ref::<Graphic>().map_or(0, graphic_retained_heap));
+		core_types::record::register_retained_heap::<Vector>(|value| value.downcast_ref::<Vector>().map_or(0, vector_retained_heap));
+		core_types::record::register_retained_heap::<Raster<CPU>>(|value| value.downcast_ref::<Raster<CPU>>().map_or(0, |raster| raster.data.len() * size_of::<Color>()));
+		core_types::record::register_retained_heap::<String>(|value| value.downcast_ref::<String>().map_or(0, String::len));
 	}
 
 	#[cfg(not(target_family = "wasm"))]

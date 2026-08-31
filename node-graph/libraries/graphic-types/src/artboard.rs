@@ -73,17 +73,38 @@ unsafe fn deep_repark_artboard(value: &(dyn std::any::Any + Send + Sync), dst: *
 	unsafe { core_types::record::write_element(dst, Artboard(content), arena) }
 }
 
+/// The promote for `Artboard` elements: as for `Graphic`, content groups the
+/// persistent region already holds are shared rather than copied.
+///
+/// # Safety
+/// `src` must point at a live parked `Artboard` element field, and `dst` at
+/// the element field the promoted reference is written to.
+unsafe fn promote_artboard(src: *const u8, dst: *mut u8, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
+	let artboard = unsafe { core_types::record::borrow_element::<Artboard>(core_types::record::Rec::new(src)) };
+	let mut content = List::new();
+	for item in artboard.0.clone().into_iter() {
+		let (element, attributes) = item.into_parts();
+		content.push(core_types::list::Item::from_parts(crate::graphic::map_groups_to_persistent(&element, promotion)?, attributes));
+	}
+	unsafe { core_types::record::write_element(dst, Artboard(content), promotion.persistent()) }
+}
+
 const _: () = {
+	fn register_all() {
+		core_types::record::register_deep_element_clone::<Artboard>(deep_clone_artboard, deep_repark_artboard);
+		core_types::record::register_element_promote::<Artboard>(promote_artboard);
+	}
+
 	#[cfg(not(target_family = "wasm"))]
 	#[core_types::ctor::ctor]
 	fn register() {
-		core_types::record::register_deep_element_clone::<Artboard>(deep_clone_artboard, deep_repark_artboard);
+		register_all();
 	}
 
 	#[cfg(target_family = "wasm")]
 	#[unsafe(export_name = "__node_registry_deep_element_artboard")]
 	extern "C" fn register() {
-		core_types::record::register_deep_element_clone::<Artboard>(deep_clone_artboard, deep_repark_artboard);
+		register_all();
 	}
 };
 
