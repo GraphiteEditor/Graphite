@@ -1073,9 +1073,11 @@ impl FrameArena {
 
 	/// The whole buffer as free space, for one evaluation.
 	pub fn frames(&mut self) -> Frames<'_> {
+		let base = self.buf.as_mut_ptr().cast::<u8>();
 		Frames {
-			base: std::cell::Cell::new(self.buf.as_mut_ptr().cast::<u8>()),
+			base: std::cell::Cell::new(base),
 			words: std::cell::Cell::new(self.buf.len()),
+			bounds: (base as usize, self.buf.len() * 8),
 			_lifetime: std::marker::PhantomData,
 		}
 	}
@@ -1092,6 +1094,9 @@ impl FrameArena {
 pub struct Frames<'e> {
 	base: std::cell::Cell<*mut u8>,
 	words: std::cell::Cell<usize>,
+	/// The whole buffer as (address, bytes), which stays fixed while claims
+	/// advance the cursor, so a promote can range-check a reference against it.
+	bounds: (usize, usize),
 	_lifetime: std::marker::PhantomData<&'e ()>,
 }
 
@@ -1110,8 +1115,15 @@ impl<'e> Frames<'e> {
 		Frames {
 			base: std::cell::Cell::new(self.base.get()),
 			words: std::cell::Cell::new(self.words.get()),
+			bounds: self.bounds,
 			_lifetime: std::marker::PhantomData,
 		}
+	}
+
+	/// The whole frame buffer as (address, bytes), the range a promote treats
+	/// as evaluation-lived.
+	pub fn bounds(&self) -> (usize, usize) {
+		self.bounds
 	}
 
 	/// Runs claims against this space and gives it back on the guard's drop, so
@@ -1437,8 +1449,9 @@ where
 		if let Some(deep) = deep_element_glue(std::any::TypeId::of::<T::Static>()) {
 			return unsafe { (deep.repark)(value, dst, arena) };
 		}
+		let retained = retained_measure(std::any::TypeId::of::<T::Static>()).map_or(0, |measure| measure(value));
 		let value = value.downcast_ref::<T::Static>().expect("an element replays at its own type");
-		unsafe { write_element(dst, value.clone(), arena) }
+		unsafe { write_element_sized(dst, value.clone(), arena, retained) }
 	}
 	let (size, align) = element_dims::<T>();
 	ElementWrite {
@@ -1525,9 +1538,17 @@ pub unsafe fn read_element<T: Clone>(rec: Rec<'_>) -> T {
 /// `dst` must be fresh element storage of a record whose element is `T`.
 /// `None` reports arena exhaustion for a parked element.
 pub unsafe fn write_element<T: Send + Sync>(dst: *mut u8, value: T, arena: &crate::arena::Arena) -> Option<()> {
+	unsafe { write_element_sized(dst, value, arena, 0) }
+}
+
+/// [`write_element`] with the park glue's estimate of the heap `value` owns.
+///
+/// # Safety
+/// As [`write_element`].
+pub unsafe fn write_element_sized<T: Send + Sync>(dst: *mut u8, value: T, arena: &crate::arena::Arena, retained: usize) -> Option<()> {
 	match element_parked::<T>() {
 		true => {
-			let (parked, _) = arena.alloc(value)?;
+			let (parked, _) = arena.alloc_sized(value, retained)?;
 			unsafe { dst.cast::<&T>().write(parked) };
 			Some(())
 		}
@@ -1769,6 +1790,154 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	}
 }
 
+/// The regions a promote dispatches on. A payload already living in the
+/// persistent region outlives every entry promoted into it and is shared; a
+/// payload in the transient arena or the frame buffer dies at the next reset
+/// and is cloned.
+///
+/// The dispatch is decidable only where the reference addresses the payload
+/// itself, which holds for parked elements and for a group interior's frames.
+/// A reference-valued attribute instead names heap its arena-parked owner
+/// holds, at an address in no arena's range, so those always clone.
+///
+/// THE SHARING LAW: sharing a payload between persistent entries is sound
+/// because persistent invalidation is epochal, so every entry dies at one
+/// flush and no entry can outlive a payload another still names. Per-entry
+/// eviction would have to refcount the shared payloads before it could
+/// reclaim one entry's storage.
+#[derive(Clone, Copy)]
+pub struct Promotion<'a> {
+	transient: &'a crate::arena::Arena,
+	frames: (usize, usize),
+	persistent: &'a crate::arena::Arena,
+}
+
+impl<'a> Promotion<'a> {
+	/// `frames` is the whole frame buffer as (address, bytes), from
+	/// [`Frames::bounds`].
+	pub fn new(transient: &'a crate::arena::Arena, frames: (usize, usize), persistent: &'a crate::arena::Arena) -> Self {
+		Promotion { transient, frames, persistent }
+	}
+
+	pub fn persistent(&self) -> &'a crate::arena::Arena {
+		self.persistent
+	}
+
+	/// Whether the reference dies with the evaluation, which is the promote's
+	/// clone-or-share question. A null or byte-carried slot reads as neither
+	/// region's and shares.
+	pub fn evaluation_lived(&self, ptr: *const u8) -> bool {
+		self.transient.contains(ptr) || (ptr as usize).wrapping_sub(self.frames.0) < self.frames.1
+	}
+}
+
+/// Rewrites one promoted record's parked references in place: the lane bytes
+/// are already the persistent region's, and each reference whose payload dies
+/// with the evaluation is replaced by a clone parked there.
+///
+/// A parked element rides the arena slot its payload was written into, so the
+/// region holding it decides share against clone. A parked field's reference
+/// instead points into heap its arena-parked owner holds, which lies in no
+/// arena range, so provenance is undecidable there and the field always
+/// clones.
+///
+/// # Safety
+/// `dst` must be a persistent image of a live record of `layout`.
+unsafe fn promote_record(layout: &Layout, dst: *mut u8, promotion: &Promotion<'_>) -> Option<()> {
+	if layout.element.parked {
+		// SAFETY: a parked element slot holds one reference at offset 0.
+		let parked = unsafe { dst.cast::<*const u8>().read() };
+		if !promotion.persistent.contains(parked) {
+			match element_promote_glue(layout.element.type_id) {
+				// SAFETY: the slot images a parked element of this type.
+				Some(promote) => unsafe { promote(dst.cast_const(), dst, promotion) }?,
+				None => {
+					// SAFETY: as above, and the clone owns its content.
+					let owned = unsafe { (layout.element.clone_out)(dst.cast_const()) };
+					unsafe { (layout.element.repark)(&*owned, dst, promotion.persistent) }?;
+				}
+			}
+		}
+	}
+	for field in &layout.fields {
+		let Some(repark) = field.repark else { continue };
+		// SAFETY: a parked field slot holds one reference at its offset.
+		let slot = unsafe { dst.add(field.offset) };
+		// SAFETY: the slot images a parked field of this descriptor.
+		let value = deepen_field_value(unsafe { (field.read_erased)(slot.cast_const()) });
+		match deep_field_glue(value.as_any().type_id()) {
+			Some(glue) => match (glue.replay)(&*value, promotion.persistent)? {
+				// SAFETY: the replay produced this field's own value type.
+				Some(resident) => unsafe { repark(&*resident, slot, promotion.persistent) }?,
+				None => unsafe { repark(&*value, slot, promotion.persistent) }?,
+			},
+			None => unsafe { repark(&*value, slot, promotion.persistent) }?,
+		}
+	}
+	Some(())
+}
+
+/// Re-walks a promoted record and asserts no reference into the evaluation's
+/// storage survived, which is the postcondition every later hit and every
+/// shared interior relies on. The element's payload must sit in the persistent
+/// region itself; a field's payload is heap its owner holds, so the weaker
+/// range check is all that is decidable there.
+///
+/// # Safety
+/// `ptr` must be a live record of `layout`.
+pub unsafe fn assert_promoted(layout: &Layout, ptr: *const u8, promotion: &Promotion<'_>) {
+	if layout.element.parked {
+		// SAFETY: a parked element slot holds one reference at offset 0.
+		let parked = unsafe { ptr.cast::<*const u8>().read() };
+		assert!(promotion.persistent.contains(parked), "a promoted element kept a reference outside the persistent region");
+	}
+	for field in &layout.fields {
+		if field.repark.is_none() {
+			continue;
+		}
+		// SAFETY: a parked field slot holds one reference at its offset.
+		let parked = unsafe { ptr.add(field.offset).cast::<*const u8>().read() };
+		assert!(!promotion.evaluation_lived(parked), "a promoted field kept a reference into the evaluation");
+	}
+}
+
+/// The promote override for element types whose payload holds arena-resident
+/// interiors: the generic path clones through an owned intermediate, while a
+/// registered promote shares the interiors already living in the persistent
+/// region and copies only the rest.
+type ElementPromote = unsafe fn(*const u8, *mut u8, &Promotion<'_>) -> Option<()>;
+
+static ELEMENT_PROMOTES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, ElementPromote>>> = std::sync::LazyLock::new(Default::default);
+
+/// Registers the promote for elements of `T`. Called at startup from the crate
+/// that owns the type. The promote must leave no reference the promotion calls
+/// evaluation-lived.
+pub fn register_element_promote<T: dyn_any::StaticTypeSized>(promote: ElementPromote) {
+	ELEMENT_PROMOTES.lock().unwrap().insert(std::any::TypeId::of::<T::Static>(), promote);
+}
+
+fn element_promote_glue(type_id: std::any::TypeId) -> Option<ElementPromote> {
+	ELEMENT_PROMOTES.lock().unwrap().get(&type_id).copied()
+}
+
+/// The park glue's heap estimate for values of a type, keyed as the deep glue
+/// is. Consulted where a payload parks, so a region's retained heap is known
+/// without walking it.
+type RetainedMeasure = fn(&(dyn std::any::Any + Send + Sync)) -> usize;
+
+static RETAINED_MEASURES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, RetainedMeasure>>> = std::sync::LazyLock::new(Default::default);
+
+/// Registers the retained-heap estimate for values of `T`. Called at startup
+/// from the crate that owns the type. The estimate is a hint: an unregistered
+/// type contributes 0, so a region's counter is a lower bound.
+pub fn register_retained_heap<T: dyn_any::StaticTypeSized>(measure: RetainedMeasure) {
+	RETAINED_MEASURES.lock().unwrap().insert(std::any::TypeId::of::<T::Static>(), measure);
+}
+
+fn retained_measure(type_id: std::any::TypeId) -> Option<RetainedMeasure> {
+	RETAINED_MEASURES.lock().unwrap().get(&type_id).copied()
+}
+
 /// A materialized run of lanes as the arena region its frames live in: the
 /// handle keeps the provenance the region was allocated with and carries the
 /// generation, so resolving it re-checks liveness where an address would have
@@ -1801,14 +1970,16 @@ impl MaterializedSpan {
 		}
 	}
 
-	/// Copies the batch into `arena`, re-parking every payload its records
-	/// reference so the span's bytes reference nothing outside that region.
-	/// `None` where the region could not hold the copy, which leaves the
-	/// caller with nothing to cache.
+	/// Copies the batch into the persistent region as a copy-on-write over
+	/// provenance: the frame bytes memcpy, and each parked reference is cloned
+	/// only where it dies with the evaluation, so a layout carrying no parked
+	/// slot reduces to the memcpy and a level whose payloads an upstream memo
+	/// already published costs nothing beyond it. `None` where the region
+	/// could not hold the copy, which leaves the caller with nothing to cache.
 	///
 	/// # Safety
 	/// The batch's lanes must be live records of its layout.
-	pub unsafe fn promote(batch: &crate::node::RecordBatch<'_>, arena: &crate::arena::Arena) -> Option<MaterializedSpan> {
+	pub unsafe fn to_persistent(batch: &crate::node::RecordBatch<'_>, promotion: &Promotion<'_>) -> Option<MaterializedSpan> {
 		let layout = batch.layout();
 		let stride = layout.lane_stride();
 		let len = batch.len();
@@ -1818,17 +1989,24 @@ impl MaterializedSpan {
 				len: 0,
 			});
 		}
-		let slab = arena.alloc_scratch::<u64>((len * stride).div_ceil(8))?;
+		let persistent = promotion.persistent();
+		let slab = persistent.alloc_scratch::<u64>((len * stride).div_ceil(8))?;
 		let base: *mut u8 = slab.as_mut_ptr().cast();
 		for lane in 0..len {
-			// SAFETY: the caller's contract on the batch's lanes.
-			let owned = unsafe { OwnedRecord::copy_out(layout, batch.get(lane).rec()) };
-			// SAFETY: the lane's own region of the freshly reserved slab.
+			// SAFETY: the caller's contract on the lane, into the lane's own
+			// region of the freshly reserved slab.
 			let dst = unsafe { base.add(lane * stride) };
-			owned.write_into(layout, dst, arena)?;
+			unsafe { std::ptr::copy_nonoverlapping(batch.get(lane).rec().ptr(), dst, layout.size) };
+			// SAFETY: the copy images a record of this layout.
+			unsafe { promote_record(layout, dst, promotion) }?;
+		}
+		#[cfg(debug_assertions)]
+		for lane in 0..len {
+			// SAFETY: every lane was imaged and promoted above.
+			unsafe { assert_promoted(layout, base.add(lane * stride).cast_const(), promotion) };
 		}
 		Some(MaterializedSpan {
-			base: arena.handle_at(base.cast_const())?,
+			base: persistent.handle_at(base.cast_const())?,
 			len,
 		})
 	}
@@ -2315,6 +2493,17 @@ impl<'e> GroupItem<'e> {
 			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");
 		}
 		let stride = layout.lane_stride();
+		// A run already living in the target region needs no copy: the arena is
+		// insert-only within a generation, so the lanes cannot move or change
+		// while the adopting item borrows them.
+		if batch.len() > 0 && arena.contains(batch.frames_ptr()) {
+			return Some(Self {
+				layout,
+				storage: ItemStorage::Resident(batch.frames_ptr()),
+				len: batch.len(),
+				_arena: std::marker::PhantomData,
+			});
+		}
 		let scratch = arena.alloc_scratch::<u64>((batch.len() * stride).div_ceil(8))?;
 		let frames = scratch.as_mut_ptr().cast::<u8>();
 		for lane in 0..batch.len() {
@@ -2489,6 +2678,42 @@ impl<'e> GroupItem<'e> {
 		})
 	}
 
+	/// The run promoted into the persistent region: a run already living there
+	/// is shared, since its own promote left it free of evaluation-lived
+	/// references, and one that dies with the evaluation is copied lane by lane
+	/// with the same dispatch applied to its parked references. This is what
+	/// keeps a promote proportional to newly produced data.
+	pub fn to_persistent<'p>(&self, promotion: &Promotion<'p>) -> Option<GroupItem<'p>> {
+		let ItemStorage::Resident(frames) = self.storage else {
+			return self.replay(promotion.persistent());
+		};
+		let persistent = promotion.persistent();
+		if self.len == 0 || persistent.contains(frames) {
+			return Some(GroupItem {
+				layout: self.layout.clone(),
+				storage: ItemStorage::Resident(frames),
+				len: self.len,
+				_arena: std::marker::PhantomData,
+			});
+		}
+		let stride = self.layout.lane_stride();
+		let scratch = persistent.alloc_scratch::<u64>((self.len * stride).div_ceil(8))?;
+		let dst = scratch.as_mut_ptr().cast::<u8>();
+		// SAFETY: the source holds `len` lanes of `layout` at its stride and the
+		// scratch was reserved for exactly that.
+		unsafe { std::ptr::copy_nonoverlapping(frames, dst, self.len * stride) };
+		for lane in 0..self.len {
+			// SAFETY: each lane images a record of this layout.
+			unsafe { promote_record(&self.layout, dst.add(lane * stride), promotion) }?;
+		}
+		Some(GroupItem {
+			layout: self.layout.clone(),
+			storage: ItemStorage::Resident(dst.cast_const()),
+			len: self.len,
+			_arena: std::marker::PhantomData,
+		})
+	}
+
 	/// A typed view over the stored records, checked against the layout's
 	/// element type.
 	pub fn typed_lanes<T: dyn_any::StaticTypeSized>(&self) -> Option<crate::node::List<'_, T>> {
@@ -2593,6 +2818,19 @@ impl<'e> Group<'e> {
 			row: self.row.as_ref().map(GroupItem::copy_out),
 			content: self.content.copy_out(),
 		}
+	}
+
+	/// The group promoted into the persistent region, each run shared or copied
+	/// by [`GroupItem::to_persistent`].
+	pub fn to_persistent<'p>(&self, promotion: &Promotion<'p>) -> Option<Group<'p>> {
+		let row = match &self.row {
+			Some(row) => Some(row.to_persistent(promotion)?),
+			None => None,
+		};
+		Some(Group {
+			row,
+			content: self.content.to_persistent(promotion)?,
+		})
 	}
 
 	/// Re-parks an owned group's runs into `arena`; `None` reports arena
@@ -2801,6 +3039,141 @@ mod tests {
 		let b = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("length")]);
 		assert_eq!(Layout::union(&[&a, &b]), Layout::union(&[&b, &a]));
 		assert!(Layout::union(&[&a, &b]).offset_of("length", 0).is_some());
+	}
+
+	#[test]
+	fn a_pod_level_promotes_as_a_bare_memcpy() {
+		let transient = crate::arena::Arena::new(4096).unwrap();
+		let persistent = crate::arena::Arena::new(4096).unwrap();
+		let layout = Layout::default().with_writes(1, element_write::<f64>(), &[f64_field("opacity")]);
+		let stride = layout.lane_stride();
+
+		let mut buffer = vec![0u64; (4 * stride).div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		let bounds = (base as usize, buffer.len() * 8);
+		for lane in 0..4usize {
+			unsafe { base.add(lane * stride).cast::<f64>().write(lane as f64) };
+		}
+		let batch = unsafe { crate::node::RecordBatch::new(base.cast_const(), 4, &layout) };
+
+		let promotion = Promotion::new(&transient, bounds, &persistent);
+		let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) }.unwrap();
+
+		let slab = (4 * stride).div_ceil(8) * 8;
+		assert_eq!(persistent.occupancy(), slab, "a layout with no parked slot allocates the slab and nothing else");
+		assert_eq!(persistent.retained_heap(), 0, "no payload parked, so nothing is retained");
+		let published = span.batch(&persistent, &layout).unwrap();
+		for lane in 0..4usize {
+			assert_eq!(unsafe { published.get(lane).rec().element::<f64>() }, lane as f64, "lane {lane}");
+		}
+	}
+
+	#[test]
+	fn a_promoted_element_lands_in_the_persistent_region() {
+		let transient = crate::arena::Arena::new(4096).unwrap();
+		let persistent = crate::arena::Arena::new(4096).unwrap();
+		let layout = Layout::default().with_writes(0, element_write::<String>(), &[]);
+
+		let mut buffer = vec![0u64; layout.frame_bytes().div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		let bounds = (base as usize, buffer.len() * 8);
+		unsafe { write_element(base, String::from("parked in the evaluation"), &transient) }.unwrap();
+		let source = unsafe { base.cast::<*const u8>().read() };
+		assert!(transient.contains(source));
+
+		let batch = unsafe { crate::node::RecordBatch::new(base.cast_const(), 1, &layout) };
+		let promotion = Promotion::new(&transient, bounds, &persistent);
+		let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) }.unwrap();
+
+		let published = span.batch(&persistent, &layout).unwrap();
+		let promoted = unsafe { published.get(0).rec().ptr().cast::<*const u8>().read() };
+		assert!(persistent.contains(promoted), "the promote re-parked the payload into the persistent region");
+		assert_ne!(source, promoted, "an evaluation-lived payload is cloned, not shared");
+		assert_eq!(unsafe { borrow_element::<String>(published.get(0).rec()) }, "parked in the evaluation");
+	}
+
+	#[test]
+	fn a_persistent_element_is_shared_by_the_promote() {
+		let transient = crate::arena::Arena::new(4096).unwrap();
+		let persistent = crate::arena::Arena::new(4096).unwrap();
+		let layout = Layout::default().with_writes(0, element_write::<String>(), &[]);
+
+		let mut buffer = vec![0u64; layout.frame_bytes().div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		let bounds = (base as usize, buffer.len() * 8);
+		// The payload an upstream memo already published: the promote must
+		// name it rather than copy it.
+		unsafe { write_element(base, String::from("published upstream"), &persistent) }.unwrap();
+		let upstream = unsafe { base.cast::<*const u8>().read() };
+		let occupied = persistent.occupancy();
+
+		let batch = unsafe { crate::node::RecordBatch::new(base.cast_const(), 1, &layout) };
+		let promotion = Promotion::new(&transient, bounds, &persistent);
+		let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) }.unwrap();
+
+		let published = span.batch(&persistent, &layout).unwrap();
+		let promoted = unsafe { published.get(0).rec().ptr().cast::<*const u8>().read() };
+		assert_eq!(upstream, promoted, "an already persistent payload is shared, pointer for pointer");
+		assert_eq!(persistent.occupancy() - occupied, layout.frame_bytes(), "only the lane slab was allocated");
+	}
+
+	#[test]
+	#[should_panic(expected = "a promoted element kept a reference outside the persistent region")]
+	fn the_rewalk_catches_a_reference_the_promote_left_behind() {
+		let transient = crate::arena::Arena::new(4096).unwrap();
+		let persistent = crate::arena::Arena::new(4096).unwrap();
+		let layout = Layout::default().with_writes(0, element_write::<String>(), &[]);
+
+		let mut buffer = vec![0u64; layout.frame_bytes().div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		let bounds = (base as usize, buffer.len() * 8);
+		unsafe { write_element(base, String::from("never promoted"), &transient) }.unwrap();
+
+		let promotion = Promotion::new(&transient, bounds, &persistent);
+		unsafe { assert_promoted(&layout, base.cast_const(), &promotion) };
+	}
+
+	#[test]
+	fn an_interior_run_already_persistent_is_shared() {
+		let transient = crate::arena::Arena::new(4096).unwrap();
+		let persistent = crate::arena::Arena::new(4096).unwrap();
+		let layout = Layout::default().with_writes(1, element_write::<f64>(), &[f64_field("opacity")]);
+		let stride = layout.lane_stride();
+
+		let mut buffer = vec![0u64; (2 * stride).div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		for lane in 0..2usize {
+			unsafe { base.add(lane * stride).cast::<f64>().write(lane as f64) };
+		}
+		let batch = unsafe { crate::node::RecordBatch::new(base.cast_const(), 2, &layout) };
+
+		let published = GroupItem::adopt(batch, &persistent).unwrap();
+		let occupied = persistent.occupancy();
+		let promotion = Promotion::new(&transient, (base as usize, buffer.len() * 8), &persistent);
+		let shared = published.to_persistent(&promotion).unwrap();
+
+		assert_eq!(persistent.occupancy(), occupied, "a run the region already holds costs no allocation");
+		assert!(std::ptr::eq(published.lanes().frames_ptr(), shared.lanes().frames_ptr()), "the interior is shared, not copied");
+	}
+
+	#[test]
+	fn adopting_within_one_region_shares_the_run() {
+		let arena = crate::arena::Arena::new(4096).unwrap();
+		let layout = Layout::default().with_writes(1, element_write::<f64>(), &[f64_field("opacity")]);
+		let stride = layout.lane_stride();
+
+		let mut buffer = vec![0u64; (2 * stride).div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		for lane in 0..2usize {
+			unsafe { base.add(lane * stride).cast::<f64>().write(lane as f64) };
+		}
+		let batch = unsafe { crate::node::RecordBatch::new(base.cast_const(), 2, &layout) };
+
+		let resident = GroupItem::adopt(batch, &arena).unwrap();
+		let occupied = arena.occupancy();
+		let again = GroupItem::adopt(resident.lanes(), &arena).unwrap();
+		assert_eq!(arena.occupancy(), occupied, "re-adopting a run the arena already holds copies nothing");
+		assert!(std::ptr::eq(resident.lanes().frames_ptr(), again.lanes().frames_ptr()));
 	}
 
 	#[test]
