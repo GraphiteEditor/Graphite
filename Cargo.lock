@@ -610,8 +610,8 @@ dependencies = [
 
 [[package]]
 name = "cef"
-version = "149.2.0+149.0.5"
-source = "git+https://github.com/timon-schelling/cef-rs.git?branch=graphite-149#877c9cd8f7776e6c52e365d501ad44c73e17117a"
+version = "151.8.0+151.3.24"
+source = "git+https://github.com/timon-schelling/cef-rs.git?branch=graphite-151#35712dc3948628245cf9810eadd045d9435442e8"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.23.1",
@@ -629,8 +629,8 @@ dependencies = [
 
 [[package]]
 name = "cef-dll-sys"
-version = "149.2.0+149.0.5"
-source = "git+https://github.com/timon-schelling/cef-rs.git?branch=graphite-149#877c9cd8f7776e6c52e365d501ad44c73e17117a"
+version = "151.8.0+151.3.24"
+source = "git+https://github.com/timon-schelling/cef-rs.git?branch=graphite-151#35712dc3948628245cf9810eadd045d9435442e8"
 dependencies = [
  "anyhow",
  "cmake",
@@ -1262,7 +1262,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1372,7 +1372,7 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 [[package]]
 name = "download-cef"
 version = "2.3.2"
-source = "git+https://github.com/timon-schelling/cef-rs.git?branch=graphite-149#877c9cd8f7776e6c52e365d501ad44c73e17117a"
+source = "git+https://github.com/timon-schelling/cef-rs.git?branch=graphite-151#35712dc3948628245cf9810eadd045d9435442e8"
 dependencies = [
  "bzip2",
  "clap",
@@ -1541,7 +1541,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4081,7 +4081,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -4609,7 +4609,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5126,7 +5126,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5194,7 +5194,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5937,7 +5937,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7225,7 +7225,7 @@ version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0978bf7171b3d90bac376700cb56d606feb40f251a475a5d6634613564460b22"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
