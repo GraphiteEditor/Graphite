@@ -15,8 +15,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN,
-	ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_OVERLINE,
+	ATTR_STRIKETHROUGH, ATTR_TEXT_ALIGN, ATTR_TRANSFORM, ATTR_UNDERLINE,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -3040,6 +3040,9 @@ fn text_item_size_and_transform(item: ItemRef<'_, String>) -> Option<(DVec2, DAf
 	let max_height: Option<f64> = item.attribute_cloned_or(ATTR_MAX_HEIGHT, None);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let underline: bool = item.attribute_cloned_or(ATTR_UNDERLINE, false);
+	let overline: bool = item.attribute_cloned_or(ATTR_OVERLINE, false);
+	let strikethrough: bool = item.attribute_cloned_or(ATTR_STRIKETHROUGH, false);
 
 	let typesetting = text_nodes::TypesettingConfig {
 		font_size,
@@ -3049,6 +3052,9 @@ fn text_item_size_and_transform(item: ItemRef<'_, String>) -> Option<(DVec2, DAf
 		max_width,
 		max_height,
 		align,
+		underline,
+		overline,
+		strikethrough,
 	};
 
 	let (width, height) = text_nodes::TextContext::with_thread_local(|ctx| {

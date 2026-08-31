@@ -100,6 +100,9 @@ pub struct TypesettingConfig {
 	pub max_width: Option<f64>,
 	pub max_height: Option<f64>,
 	pub align: TextAlign,
+	pub underline: bool,
+	pub overline: bool,
+	pub strikethrough: bool,
 }
 
 impl Default for TypesettingConfig {
@@ -112,6 +115,9 @@ impl Default for TypesettingConfig {
 			max_width: None,
 			max_height: None,
 			align: TextAlign::default(),
+			underline: false,
+			overline: false,
+			strikethrough: false,
 		}
 	}
 }

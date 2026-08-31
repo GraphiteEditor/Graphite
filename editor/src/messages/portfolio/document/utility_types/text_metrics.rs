@@ -10,6 +10,9 @@ pub fn text_width(text: &str, font_size: f64) -> f64 {
 		max_width: None,
 		max_height: None,
 		align: TextAlign::AlignLeft,
+		underline: false,
+		overline: false,
+		strikethrough: false,
 	};
 
 	TextContext::with_thread_local(|text_context| text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false).x)
