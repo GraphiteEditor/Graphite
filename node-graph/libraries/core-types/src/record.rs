@@ -118,6 +118,10 @@ pub struct ElementWrite {
 	pub type_id: std::any::TypeId,
 	pub clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>,
 	pub repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
+	/// Moves a parked payload's header into the persistent region rather than
+	/// cloning the heap it owns, returning the new header. `None` declines,
+	/// which leaves the caller its clone path.
+	pub park_move: unsafe fn(*const u8, &Promotion<'_>) -> Option<*const u8>,
 	/// Hashes the element's content. `None` means the stored bytes are the
 	/// content, which holds for every unparked element.
 	pub content_hash: Option<unsafe fn(*const u8, &mut dyn core::hash::Hasher)>,
@@ -141,6 +145,9 @@ impl Default for ElementWrite {
 		unsafe fn repark(_value: &(dyn std::any::Any + Send + Sync), _dst: *mut u8, _arena: &crate::arena::Arena) -> Option<()> {
 			Some(())
 		}
+		unsafe fn park_move(_parked: *const u8, _promotion: &Promotion<'_>) -> Option<*const u8> {
+			None
+		}
 		Self {
 			size: 0,
 			align: 0,
@@ -148,6 +155,7 @@ impl Default for ElementWrite {
 			type_id: std::any::TypeId::of::<()>(),
 			clone_out,
 			repark,
+			park_move,
 			content_hash: None,
 			content_eq: None,
 		}
@@ -1453,6 +1461,23 @@ where
 		let value = value.downcast_ref::<T::Static>().expect("an element replays at its own type");
 		unsafe { write_element_sized(dst, value.clone(), arena, retained) }
 	}
+	/// Declines for a type carrying deep glue, whose value may hold interiors
+	/// the evaluation's arena owns and which a moved header may not reference.
+	///
+	/// # Safety
+	/// `parked` must address a live payload of `T`.
+	unsafe fn park_move<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(parked: *const u8, promotion: &Promotion<'_>) -> Option<*const u8>
+	where
+		T::Static: Clone + Send + Sync,
+	{
+		deep_element_glue(std::any::TypeId::of::<T::Static>()).is_none().then_some(())?;
+		// SAFETY: the caller's contract, at the type the park was written with.
+		let value: &(dyn std::any::Any + Send + Sync) = unsafe { &*parked.cast::<T::Static>() };
+		let retained = retained_measure(std::any::TypeId::of::<T::Static>()).map_or(0, |measure| measure(value));
+		// SAFETY: as above, and the decline above establishes that the payload
+		// owns all of its content.
+		unsafe { promotion.move_park::<T::Static>(parked, retained) }.map(<*const T::Static>::cast)
+	}
 	let (size, align) = element_dims::<T>();
 	ElementWrite {
 		size,
@@ -1461,6 +1486,7 @@ where
 		type_id: std::any::TypeId::of::<T::Static>(),
 		clone_out: clone_out::<T>,
 		repark: repark::<T>,
+		park_move: park_move::<T>,
 		content_hash: None,
 		content_eq: None,
 	}
@@ -1823,6 +1849,26 @@ impl<'a> Promotion<'a> {
 	pub fn evaluation_lived(&self, ptr: *const u8) -> bool {
 		self.transient.contains(ptr) || (ptr as usize).wrapping_sub(self.frames.0) < self.frames.1
 	}
+
+	/// Moves a transient payload's header into the persistent region instead of
+	/// cloning the heap it owns: the heap travels with the drop obligation and
+	/// is freed at the persistent flush, never at the transient reset. `None`
+	/// where the header is not the transient arena's own park or the region
+	/// refused it, which leaves the caller its clone path.
+	///
+	/// The forwarding is the evaluation's, so a payload two records share moves
+	/// once and both reach the one persistent header. The source header stays
+	/// readable to the evaluation's remaining sharers, which are the only reads
+	/// the move keeps sound: no read of it may outlive the persistent flush.
+	///
+	/// # Safety
+	/// `parked` must address a live `T` the transient arena parked, and `T`
+	/// must own all of its content, a persistent header being allowed to
+	/// reference no transient storage.
+	pub unsafe fn move_park<T: Send + Sync>(&self, parked: *const u8, retained: usize) -> Option<*const T> {
+		// SAFETY: the caller's contract, forwarded to the parking arena.
+		unsafe { self.transient.move_park::<T>(parked, self.persistent, retained) }
+	}
 }
 
 /// Rewrites one promoted record's parked references in place: the lane bytes
@@ -1845,11 +1891,16 @@ unsafe fn promote_record(layout: &Layout, dst: *mut u8, promotion: &Promotion<'_
 			match element_promote_glue(layout.element.type_id) {
 				// SAFETY: the slot images a parked element of this type.
 				Some(promote) => unsafe { promote(dst.cast_const(), dst, promotion) }?,
-				None => {
-					// SAFETY: as above, and the clone owns its content.
-					let owned = unsafe { (layout.element.clone_out)(dst.cast_const()) };
-					unsafe { (layout.element.repark)(&*owned, dst, promotion.persistent) }?;
-				}
+				// SAFETY: as above; the header is the payload's own.
+				None => match unsafe { (layout.element.park_move)(parked, promotion) } {
+					// SAFETY: a parked element slot holds one reference at offset 0.
+					Some(moved) => unsafe { dst.cast::<*const u8>().write(moved) },
+					None => {
+						// SAFETY: as above, and the clone owns its content.
+						let owned = unsafe { (layout.element.clone_out)(dst.cast_const()) };
+						unsafe { (layout.element.repark)(&*owned, dst, promotion.persistent) }?;
+					}
+				},
 			}
 		}
 	}
@@ -3082,8 +3133,79 @@ mod tests {
 		let published = span.batch(&persistent, &layout).unwrap();
 		let promoted = unsafe { published.get(0).rec().ptr().cast::<*const u8>().read() };
 		assert!(persistent.contains(promoted), "the promote re-parked the payload into the persistent region");
-		assert_ne!(source, promoted, "an evaluation-lived payload is cloned, not shared");
+		assert_ne!(source, promoted, "an evaluation-lived payload gets its own persistent header");
 		assert_eq!(unsafe { borrow_element::<String>(published.get(0).rec()) }, "parked in the evaluation");
+	}
+
+	/// The measure production registers for `String`, without which a promote
+	/// credits the region 0 and the counters cannot be observed to transfer.
+	fn measure_strings() {
+		register_retained_heap::<String>(|value| value.downcast_ref::<String>().map_or(0, String::len));
+	}
+
+	#[test]
+	fn a_promoted_payload_moves_its_heap_rather_than_cloning_it() {
+		measure_strings();
+		let mut transient = crate::arena::Arena::new(4096).unwrap();
+		let persistent = crate::arena::Arena::new(4096).unwrap();
+		let layout = Layout::default().with_writes(0, element_write::<String>(), &[]);
+
+		let mut buffer = vec![0u64; layout.frame_bytes().div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		let bounds = (base as usize, buffer.len() * 8);
+		let owned = String::from("the obligation travels with the header");
+		let (heap, length) = (owned.as_ptr(), owned.len());
+		unsafe { write_element_sized(base, owned, &transient, length) }.unwrap();
+		assert_eq!(transient.retained_heap(), length);
+
+		let batch = unsafe { crate::node::RecordBatch::new(base.cast_const(), 1, &layout) };
+		let promotion = Promotion::new(&transient, bounds, &persistent);
+		let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) }.unwrap();
+
+		let published = span.batch(&persistent, &layout).unwrap();
+		let served = unsafe { borrow_element::<String>(published.get(0).rec()) };
+		assert_eq!(served.as_ptr(), heap, "the promote moved the header, so the served view names the pre-promote heap");
+		assert_eq!(transient.retained_heap(), 0, "the transient counter gave the hint up");
+		assert_eq!(persistent.retained_heap(), length, "and the persistent counter took it");
+
+		transient.reset();
+		let published = span.batch(&persistent, &layout).unwrap();
+		assert_eq!(
+			unsafe { borrow_element::<String>(published.get(0).rec()) },
+			"the obligation travels with the header",
+			"the moved payload survives the transient reset"
+		);
+	}
+
+	#[test]
+	fn a_payload_two_records_share_promotes_to_one_persistent_header() {
+		measure_strings();
+		let transient = crate::arena::Arena::new(4096).unwrap();
+		let mut persistent = crate::arena::Arena::new(4096).unwrap();
+		let layout = Layout::default().with_writes(0, element_write::<String>(), &[]);
+		let stride = layout.lane_stride();
+
+		let mut buffer = vec![0u64; (2 * stride).div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		let bounds = (base as usize, buffer.len() * 8);
+		let length = "shared across lanes".len();
+		unsafe { write_element_sized(base, String::from("shared across lanes"), &transient, length) }.unwrap();
+		// A carried field byte-copies the reference, so both lanes name the one park.
+		let shared = unsafe { base.cast::<*const u8>().read() };
+		unsafe { base.add(stride).cast::<*const u8>().write(shared) };
+
+		let batch = unsafe { crate::node::RecordBatch::new(base.cast_const(), 2, &layout) };
+		let promotion = Promotion::new(&transient, bounds, &persistent);
+		let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) }.unwrap();
+
+		let published = span.batch(&persistent, &layout).unwrap();
+		let first = unsafe { published.get(0).rec().ptr().cast::<*const u8>().read() };
+		let second = unsafe { published.get(1).rec().ptr().cast::<*const u8>().read() };
+		assert_eq!(first, second, "a payload two records share moves once");
+		assert_eq!(persistent.retained_heap(), length, "and its hint transfers once");
+
+		persistent.reset();
+		assert_eq!(persistent.retained_heap(), 0, "the flush frees the one header exactly once");
 	}
 
 	#[test]
