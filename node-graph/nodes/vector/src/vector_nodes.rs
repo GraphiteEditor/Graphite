@@ -1098,7 +1098,7 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 	#[range]
 	#[soft(0..1)]
 	spread: Item<f64>,
-	/// If active, existing non-zero handles won't be affected.
+	/// If active, existing nonzero handles won't be affected.
 	#[default(true)]
 	preserve_existing: Item<bool>,
 ) -> Item<V> {
@@ -2935,7 +2935,7 @@ async fn morph(
 	// the item transform (which will be group_transform * lerped_transform after the
 	// pipeline's Transform node runs), the lerped_transform cancels out and children
 	// get the correct footprint: parent * group_transform * child_transform.
-	// Only pre-compensate if the lerped transform is invertible (non-zero determinant).
+	// Only pre-compensate if the lerped transform is invertible (nonzero determinant).
 	// A zero determinant can occur when interpolated scale passes through zero (e.g., flipped axes),
 	// in which case we skip pre-compensation to avoid propagating NaN through merged_layers transforms.
 	if lerped_transform.matrix2.determinant().abs() > f64::EPSILON {
@@ -3746,7 +3746,7 @@ mod test {
 
 		assert_eq!(&manipulator_groups_anchors[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
 
-		// Test a rectangular path with non-zero rotation
+		// Test a rectangular path with nonzero rotation
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = List::new_from_element(square);
 		square.with_attribute_mut_or_default(ATTR_TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));

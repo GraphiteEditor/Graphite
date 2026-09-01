@@ -1455,7 +1455,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		stroke_below: wants_stroke_below,
 	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 
-	// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
+	// Only consider strokes with nonzero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
 	// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
 	let set_stroke_transform = has_real_stroke
@@ -2207,7 +2207,7 @@ impl Render for List<Vector> {
 	}
 }
 
-/// Build one multi-contour `Path` (non-zero fill rule, so holes like the inside of an "O" work
+/// Build one multi-contour `Path` (nonzero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, geometry: &Vector, transform: DAffine2) {
 	// A coverage whose paint is `Graphic::None` exists but paints nothing, so it does not close subpaths for hit testing

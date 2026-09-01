@@ -58,7 +58,7 @@ pub struct PortfolioMessageHandler {
 	pub reset_node_definitions_on_open: bool,
 	pub workspace: WorkspaceMessageHandler,
 	working_copy_root: Option<PathBuf>,
-	/// Number of document not fully loaded. While non-zero, resource GC is skipped.
+	/// Number of documents not fully loaded. While nonzero, resource GC is skipped.
 	pending_opens: usize,
 }
 

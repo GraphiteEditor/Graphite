@@ -813,7 +813,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				} else {
 					// Clipboard paste or drag-drop: center at cursor or viewport center.
 					// Convert the document-space cursor to the parent's local coordinate space so that
-					// an artboard at a non-zero position does not offset the placement.
+					// an artboard at a nonzero position does not offset the placement.
 					let parent_to_document = {
 						let metadata = self.metadata();
 						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
@@ -876,7 +876,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				} else {
 					// Clipboard paste or drag-drop: center at cursor or viewport center.
 					// Convert the document-space cursor to the parent's local coordinate space so that
-					// an artboard at a non-zero position does not offset the placement.
+					// an artboard at a nonzero position does not offset the placement.
 					let parent_to_document = {
 						let metadata = self.metadata();
 						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
@@ -2778,7 +2778,7 @@ impl DocumentMessageHandler {
 			let appearance = self.network_interface.document_metadata().layer_appearance_attributes.get(&layer);
 
 			let has_fill = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
-			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
+			// A visible stroke needs both renderable geometry (nonzero weight) and paint that draws something
 			let has_stroke = appearance.is_some_and(|appearance| {
 				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
 					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_guaranteed_fully_transparent())
@@ -3751,7 +3751,7 @@ impl DocumentMessageHandler {
 		let first_or_last_selected_layer = match relative_index_offset.signum() {
 			-1 => selected_layers.next(),
 			1 => selected_layers.last(),
-			_ => panic!("selected_layers_reorder() must be given a non-zero value"),
+			_ => panic!("selected_layers_reorder() must be given a nonzero value"),
 		};
 
 		let Some(pivot_layer) = first_or_last_selected_layer else {
