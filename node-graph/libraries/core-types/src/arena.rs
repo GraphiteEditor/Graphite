@@ -1,4 +1,5 @@
 use std::cell::UnsafeCell;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::sync::Mutex;
@@ -24,6 +25,11 @@ pub struct Arena {
 	/// Heap the parked payloads keep alive, which occupancy does not measure:
 	/// a park costs one pointer in the arena and owns its content outside it.
 	retained_heap: AtomicUsize,
+	/// Where [`Arena::move_park`] sent each moved park, as its offset here to
+	/// the header's address in the receiving arena, so a payload two records
+	/// share is moved once. Cleared by [`Arena::reset`], so a forwarding holds
+	/// for one generation.
+	forwarded: Mutex<HashMap<usize, usize>>,
 }
 
 impl std::fmt::Debug for Arena {
@@ -38,6 +44,21 @@ struct DropEntry {
 	/// The park glue's estimate of the heap this payload owns, 0 where the
 	/// glue cannot measure it, so the counter is a lower bound.
 	retained: usize,
+}
+
+/// The glue a tombstoned entry carries: its payload was moved to another arena,
+/// which now owns the obligation.
+unsafe fn inert(_: *mut u8) {}
+
+/// The entry parking `offset`, `None` where the arena holds no obligation for
+/// it. Entries are pushed in reserve order, which is offset order, so the
+/// search is exact; the scan covers a push order that concurrency interleaved.
+fn entry_at(entries: &[DropEntry], offset: usize) -> Option<usize> {
+	let probe = entries.partition_point(|entry| entry.offset < offset);
+	match entries.get(probe).is_some_and(|entry| entry.offset == offset) {
+		true => Some(probe),
+		false => entries.iter().rposition(|entry| entry.offset == offset),
+	}
 }
 
 // SAFETY: disjoint regions are handed out by an atomic bump; a region is written
@@ -92,6 +113,7 @@ impl Arena {
 			drops: Mutex::new(Vec::new()),
 			exhausted: AtomicBool::new(false),
 			retained_heap: AtomicUsize::new(0),
+			forwarded: Mutex::new(HashMap::new()),
 		})
 	}
 
@@ -106,6 +128,7 @@ impl Arena {
 			drops: Mutex::new(Vec::new()),
 			exhausted: AtomicBool::new(false),
 			retained_heap: AtomicUsize::new(0),
+			forwarded: Mutex::new(HashMap::new()),
 		}
 	}
 
@@ -205,6 +228,63 @@ impl Arena {
 		Some((unsafe { &*ptr }, weak))
 	}
 
+	/// Moves the payload at `src` out of this arena and into `dst`: the header's
+	/// own bytes are copied, its drop obligation is pushed onto `dst` with the
+	/// `retained` hint, and the entry here is tombstoned in place, its glue
+	/// swapped for [`inert`] so the reset costs nothing per entry to honour it.
+	/// The heap the payload owns is neither copied nor freed; ownership travels
+	/// with the obligation and is discharged by `dst`'s flush.
+	///
+	/// THE MOVE'S OWNERSHIP CONTRACT: the source header keeps its bytes and
+	/// stays readable to this generation's remaining sharers, but it owns
+	/// nothing, so no read of it may outlive `dst`'s flush. A payload moved
+	/// once is not moved again: its recorded destination is returned, so a
+	/// fan-out sharer's second move reaches the one header and the obligation
+	/// is never duplicated.
+	///
+	/// `dst` is credited `retained`, which is what a clone of the payload would
+	/// have credited it, and this arena is debited what its own park recorded,
+	/// so neither counter reads worse than it did before the move.
+	///
+	/// `None` where `src` is not this arena's park, where `T` is zero-sized
+	/// (whose parks share an offset and so cannot be told apart), or where
+	/// `dst` refused the header.
+	///
+	/// # Safety
+	/// `src` must address a live `T` this arena parked, and `T` must own all of
+	/// its content: the moved header may reference no storage of this arena.
+	pub unsafe fn move_park<T: Send + Sync>(&self, src: *const u8, dst: &Arena, retained: usize) -> Option<*const T> {
+		(size_of::<T>() != 0).then_some(())?;
+		let offset = (src as usize).checked_sub(self.base() as usize)?;
+		(offset < self.buf.len()).then_some(())?;
+		let mut forwarded = self.forwarded.lock().unwrap();
+		if let Some(&moved) = forwarded.get(&offset) {
+			return Some(moved as *const T);
+		}
+		let mut entries = self.drops.lock().unwrap();
+		let entry = entry_at(&entries, offset)?;
+		let slot = dst.alloc_scratch::<T>(1)?;
+		let target = slot.as_mut_ptr().cast::<T>();
+		// SAFETY: the caller's contract on `src`, into a freshly reserved,
+		// aligned, unaliased slot of the same type.
+		unsafe { std::ptr::copy_nonoverlapping(src.cast::<T>(), target, 1) };
+		let parked = std::mem::replace(&mut entries[entry].retained, 0);
+		entries[entry].drop_fn = inert;
+		drop(entries);
+		unsafe fn glue<T>(p: *mut u8) {
+			unsafe { p.cast::<T>().drop_in_place() }
+		}
+		dst.drops.lock().unwrap().push(DropEntry {
+			offset: target as usize - dst.base() as usize,
+			drop_fn: glue::<T>,
+			retained,
+		});
+		dst.retained_heap.fetch_add(retained, Ordering::Relaxed);
+		let _ = self.retained_heap.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| Some(current.saturating_sub(parked)));
+		forwarded.insert(offset, target as usize);
+		Some(target.cast_const())
+	}
+
 	pub fn alloc_slice_copy<T: Copy + Send + Sync>(&self, src: &[T]) -> Option<&[T]> {
 		let buf = self.alloc_scratch::<T>(src.len())?;
 		for (slot, &value) in buf.iter_mut().zip(src) {
@@ -237,9 +317,14 @@ impl Arena {
 
 	/// `false` once generations are exhausted, parking the arena on [`PARKED_GENERATION`]
 	/// where every handle misses and further allocation is refused.
+	///
+	/// A park [`Arena::move_park`] handed to another arena carries [`inert`]
+	/// glue and a zeroed hint, so it costs the loop nothing beyond the call it
+	/// would have made anyway.
 	pub fn reset(&mut self) -> bool {
 		let base = self.base();
 		let entries = std::mem::take(self.drops.get_mut().unwrap());
+		self.forwarded.get_mut().unwrap().clear();
 		self.generation.store(PARKED_GENERATION, Ordering::Release);
 		for entry in entries.into_iter().rev() {
 			// SAFETY: registered at alloc time; insert-only means the region was
@@ -502,6 +587,86 @@ mod tests {
 
 		arena.reset();
 		assert_eq!(arena.retained_heap(), 0, "the flush frees every parked payload");
+	}
+
+	#[test]
+	fn a_moved_park_carries_its_heap_and_its_obligation() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		let mut transient = Arena::new(1024).unwrap();
+		let mut persistent = Arena::new(1024).unwrap();
+
+		let owned = String::from("moved, never cloned");
+		let length = owned.len();
+		let heap = owned.as_ptr();
+		let (parked, _) = transient.alloc_sized(owned, length).unwrap();
+		let src = std::ptr::from_ref(parked).cast::<u8>();
+
+		let moved = unsafe { transient.move_park::<String>(src, &persistent, length) }.unwrap();
+		assert_eq!(unsafe { &*moved }.as_ptr(), heap, "the move copies the header and leaves the heap where it was");
+		assert!(persistent.contains(moved.cast()), "the header lands in the receiving arena");
+		assert_eq!(transient.retained_heap(), 0, "the parking arena gives the hint up");
+		assert_eq!(persistent.retained_heap(), length, "and the receiving arena takes it");
+
+		transient.reset();
+		assert_eq!(unsafe { &*moved }, "moved, never cloned", "the parking arena's reset leaves a moved payload alone");
+		persistent.reset();
+		assert_eq!(persistent.retained_heap(), 0, "the receiving flush frees it");
+	}
+
+	#[test]
+	fn a_park_two_records_share_moves_once_and_frees_once() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		static DROPS: AtomicU32 = AtomicU32::new(0);
+		struct Probe(#[allow(dead_code)] String);
+		impl Drop for Probe {
+			fn drop(&mut self) {
+				DROPS.fetch_add(1, Ordering::Relaxed);
+			}
+		}
+		DROPS.store(0, Ordering::Relaxed);
+		let mut transient = Arena::new(1024).unwrap();
+		let mut persistent = Arena::new(1024).unwrap();
+
+		let (parked, _) = transient.alloc_sized(Probe(String::from("shared by two records")), 21).unwrap();
+		let src = std::ptr::from_ref(parked).cast::<u8>();
+		let first = unsafe { transient.move_park::<Probe>(src, &persistent, 21) }.unwrap();
+		let second = unsafe { transient.move_park::<Probe>(src, &persistent, 21) }.unwrap();
+		assert_eq!(first, second, "the second move forwards to the header the first wrote");
+		assert_eq!(persistent.retained_heap(), 21, "the hint transfers once, not once per sharer");
+
+		transient.reset();
+		assert_eq!(DROPS.load(Ordering::Relaxed), 0, "a tombstoned entry is skipped by its arena's reset");
+		persistent.reset();
+		assert_eq!(DROPS.load(Ordering::Relaxed), 1, "the flush that owns the obligation frees it exactly once");
+	}
+
+	#[test]
+	fn the_forwarding_map_lives_one_generation() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		static DROPS: AtomicU32 = AtomicU32::new(0);
+		struct Probe(#[allow(dead_code)] String);
+		impl Drop for Probe {
+			fn drop(&mut self) {
+				DROPS.fetch_add(1, Ordering::Relaxed);
+			}
+		}
+		DROPS.store(0, Ordering::Relaxed);
+		let mut transient = Arena::new(1024).unwrap();
+		let mut persistent = Arena::new(1024).unwrap();
+
+		let (parked, _) = transient.alloc_sized(Probe(String::from("first generation")), 16).unwrap();
+		let src = std::ptr::from_ref(parked).cast::<u8>();
+		unsafe { transient.move_park::<Probe>(src, &persistent, 16) }.unwrap();
+		assert_eq!(transient.forwarded.lock().unwrap().len(), 1, "the move tombstoned the entry it left");
+
+		transient.reset();
+		assert!(transient.forwarded.lock().unwrap().is_empty(), "the tombstone set is empty after the reset");
+
+		transient.alloc_sized(Probe(String::from("second generation")), 16).unwrap();
+		transient.reset();
+		assert_eq!(DROPS.load(Ordering::Relaxed), 1, "a fresh park at a tombstoned offset drops normally");
+		persistent.reset();
+		assert_eq!(DROPS.load(Ordering::Relaxed), 2);
 	}
 
 	#[test]
