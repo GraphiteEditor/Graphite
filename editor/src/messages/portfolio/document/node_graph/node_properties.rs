@@ -329,6 +329,7 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<f64>(x) || id_is::<f32>(x) => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), false),
 						Some(x) if id_is::<u32>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::from(u32::MAX))).into(),
 						Some(x) if id_is::<u64>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
+						Some(x) if id_is::<i64>(x) => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
 						Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
 						Some(x) if id_is::<String>(x) => text_widget(default_info).into(),
 						Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", "", None, false),
@@ -1149,6 +1150,14 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			number_props
 				.value(Some(x as f64))
 				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::U64((x.value.unwrap()) as u64)))
+				.on_commit(commit_value)
+				.widget_instance(),
+		]),
+		Some(&TaggedValue::I64(x)) => widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			number_props
+				.value(Some(x as f64))
+				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::I64(x.value.unwrap().round() as i64)))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
