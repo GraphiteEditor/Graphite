@@ -32,6 +32,63 @@ fn bounded_product(steps: impl Iterator<Item = u64>, step: impl Fn(f64, u64) -> 
 	product
 }
 
+/// Collects every argument as a real number, or `None` if any is complex or there are no arguments at all.
+fn real_operands(values: &[Value]) -> Option<Vec<f64>> {
+	if values.is_empty() {
+		return None;
+	}
+
+	values
+		.iter()
+		.map(|value| match value {
+			Value::Number(Number::Real(real)) => Some(*real),
+			_ => None,
+		})
+		.collect()
+}
+
+/// The power of two at or below the largest magnitude, dividing by which is exact and brings every value within ±2, so sums and
+/// squares of the scaled values neither overflow nor underflow. It's 1 when the largest magnitude is zero, subnormal, or infinite.
+fn power_of_two_scale(reals: &[f64]) -> f64 {
+	let largest = reals.iter().fold(0_f64, |largest, real| largest.max(real.abs()));
+	if !largest.is_normal() {
+		return 1.;
+	}
+
+	// Keeping only the exponent bits zeroes the mantissa, leaving the power of two
+	f64::from_bits(largest.to_bits() & (0x7FF << 52))
+}
+
+/// Computes the variance of the real arguments divided by the returned scale, over the count less `correction` (1 for a sample,
+/// undefined for a single value, or 0 for a population). Staying scaled lets a standard deviation take its root before overflowing.
+fn scaled_variance(values: &[Value], correction: usize) -> Option<(f64, f64)> {
+	let reals = real_operands(values)?;
+	let divisor = reals.len().checked_sub(correction).filter(|divisor| *divisor > 0)? as f64;
+	let scale = power_of_two_scale(&reals);
+
+	let mean = reals.iter().map(|real| real / scale).sum::<f64>() / reals.len() as f64;
+	let variance = reals.iter().map(|real| (real / scale - mean).powi(2)).sum::<f64>() / divisor;
+	Some((variance, scale))
+}
+
+/// Interpolates from `a` to `b` by `t` as `a + (b - a) t`, or as `a (1 - t) + b t` when finite endpoints are too far apart for `b - a` to fit.
+fn lerp(a: f64, b: f64, t: f64) -> f64 {
+	let difference = b - a;
+	if difference.is_infinite() && a.is_finite() && b.is_finite() {
+		return a * (1. - t) + b * t;
+	}
+	a + difference * t
+}
+
+/// The fraction of the way `value` lies from `a` to `b`, halving every operand first (which keeps the ratio) when a difference of finite ones would overflow.
+fn inverse_lerp(value: f64, a: f64, b: f64) -> f64 {
+	let (numerator, denominator) = (value - a, b - a);
+	if (numerator.is_infinite() || denominator.is_infinite()) && [value, a, b].iter().all(|operand| operand.is_finite()) {
+		return (value / 2. - a / 2.) / (b / 2. - a / 2.);
+	}
+	numerator / denominator
+}
+
 /// Computes the greatest common divisor of two nonnegative integers by the Euclidean algorithm.
 pub fn gcd(a: u128, b: u128) -> u128 {
 	let (mut a, mut b) = (a, b);
@@ -44,10 +101,15 @@ pub fn gcd(a: u128, b: u128) -> u128 {
 
 /// Computes the least common multiple of two nonnegative integers. Operands within f64's exact integer range cannot overflow it.
 pub fn lcm(a: u128, b: u128) -> u128 {
+	checked_lcm(a, b).unwrap_or_default()
+}
+
+/// Computes the least common multiple of two nonnegative integers, or `None` when it exceeds integer storage.
+fn checked_lcm(a: u128, b: u128) -> Option<u128> {
 	if a == 0 || b == 0 {
-		return 0;
+		return Some(0);
 	}
-	(a / gcd(a, b)) * b
+	(a / gcd(a, b)).checked_mul(b)
 }
 
 /// Resolves a base-suffixed function name like `log2` or `root3.25` into the corresponding two-argument
@@ -269,10 +331,8 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 		},
 
 		// Geometry Functions
-		"hypot" => |values| match values {
-			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b))] => Some(Value::Number(Number::Real(a.hypot(*b)))),
-			_ => None,
-		},
+		// Folding pairwise hypotenuses gives the root of the sum of squares without ever squaring, avoiding overflow
+		"hypot" => |values| Some(Value::from_f64(real_operands(values)?.into_iter().fold(0., f64::hypot))),
 
 		"atan2" => |values| match values {
 			[Value::Number(Number::Real(y)), Value::Number(Number::Real(x))] => Some(Value::Number(Number::Real(y.atan2(*x)))),
@@ -328,8 +388,104 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			Some(Value::Number(Number::Real(max)))
 		},
 
+		// Statistics across one or more real arguments
+		// TODO: Offer `avg` and `average` as autocomplete aliases in the expression widget, resolving to `mean`
+		"mean" => |values| {
+			let reals = real_operands(values)?;
+			let scale = power_of_two_scale(&reals);
+			Some(Value::from_f64(reals.iter().map(|real| real / scale).sum::<f64>() / reals.len() as f64 * scale))
+		},
+
+		"median" => |values| {
+			let mut reals = real_operands(values)?;
+			if reals.iter().any(|real| real.is_nan()) {
+				return Some(Value::from_f64(f64::NAN));
+			}
+
+			reals.sort_by(f64::total_cmp);
+			let middle = reals.len() / 2;
+			// An even count has no single middle value, so the two straddling it are averaged
+			let median = if reals.len() % 2 == 0 { reals[middle - 1].midpoint(reals[middle]) } else { reals[middle] };
+
+			Some(Value::from_f64(median))
+		},
+
+		// The bare names are the sample forms and the `pop` suffix marks the population forms
+		"variance" => |values| scaled_variance(values, 1).map(|(variance, scale)| Value::from_f64(variance * scale * scale)),
+		"variancepop" => |values| scaled_variance(values, 0).map(|(variance, scale)| Value::from_f64(variance * scale * scale)),
+		"stdev" => |values| scaled_variance(values, 1).map(|(variance, scale)| Value::from_f64(variance.sqrt() * scale)),
+		"stdevpop" => |values| scaled_variance(values, 0).map(|(variance, scale)| Value::from_f64(variance.sqrt() * scale)),
+
+		"geomean" => |values| {
+			let reals = real_operands(values)?;
+			// A negative operand has no real geometric mean, and averaging the logarithms keeps the product from overflowing
+			if reals.iter().any(|real| *real < 0.) {
+				return None;
+			}
+			Some(Value::from_f64((reals.iter().map(|real| real.ln()).sum::<f64>() / reals.len() as f64).exp()))
+		},
+
+		"harmmean" => |values| {
+			let reals = real_operands(values)?;
+			if reals.iter().any(|real| real.is_nan()) {
+				return Some(Value::from_f64(f64::NAN));
+			}
+
+			// Like the geometric mean, a negative operand has no meaningful harmonic mean, while a zero one makes it zero
+			if reals.iter().any(|real| *real < 0.) {
+				return None;
+			}
+			let smallest = reals.iter().copied().fold(f64::INFINITY, f64::min);
+			if smallest == 0. || smallest.is_infinite() {
+				return Some(Value::from_f64(smallest));
+			}
+
+			// Dividing the smallest operand by each keeps every reciprocal term within 1, so their sum can't overflow
+			let scaled_reciprocal_sum = reals.iter().map(|real| smallest / real).sum::<f64>();
+			Some(Value::from_f64(reals.len() as f64 / scaled_reciprocal_sum * smallest))
+		},
+
+		"rms" => |values| {
+			let reals = real_operands(values)?;
+			let scale = power_of_two_scale(&reals);
+			let mean_square = reals.iter().map(|real| (real / scale).powi(2)).sum::<f64>() / reals.len() as f64;
+			Some(Value::from_f64(mean_square.sqrt() * scale))
+		},
+
+		"mode" => |values| {
+			let mut reals = real_operands(values)?;
+			reals.sort_by(f64::total_cmp);
+
+			// In ascending order, the first run of the greatest length is the smallest of the most frequent values, and no mode exists when no value repeats
+			let mut mode = None;
+			let mut mode_count = 1;
+			for run in reals.chunk_by(|a, b| a == b) {
+				if run.len() > mode_count {
+					mode = Some(run[0]);
+					mode_count = run.len();
+				}
+			}
+			mode.map(Value::from_f64)
+		},
+
+		"count" => |values| Some(Value::from_f64(values.len() as f64)),
+
+		// Variadic parity across logical operands, which must each be exactly 0 or 1
+		"xor" => |values| {
+			let mut parity = false;
+			for value in values {
+				let Value::Number(Number::Real(real)) = value else { return None };
+				if *real == 1. {
+					parity = !parity;
+				} else if *real != 0. {
+					return None;
+				}
+			}
+			Some(Value::from_f64(parity as u8 as f64))
+		},
+
 		"lerp" => |values| match values {
-			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b)), Value::Number(Number::Real(t))] => Some(Value::Number(Number::Real(a + (b - a) * t))),
+			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b)), Value::Number(Number::Real(t))] => Some(Value::from_f64(lerp(*a, *b, *t))),
 			_ => None,
 		},
 
@@ -340,10 +496,7 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 				Value::Number(Number::Real(in_b)),
 				Value::Number(Number::Real(out_a)),
 				Value::Number(Number::Real(out_b)),
-			] => {
-				let t = (*value - *in_a) / (*in_b - *in_a);
-				Some(Value::Number(Number::Real(out_a + t * (out_b - out_a))))
-			}
+			] => Some(Value::from_f64(lerp(*out_a, *out_b, inverse_lerp(*value, *in_a, *in_b)))),
 			_ => None,
 		},
 
@@ -371,20 +524,16 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			_ => None,
 		},
 
-		"gcd" => |values| match values {
-			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b))] => {
-				let gcd = integer_operand(*a).zip(integer_operand(*b)).map_or(f64::NAN, |(a, b)| gcd(a, b) as f64);
-				Some(Value::Number(Number::Real(gcd)))
-			}
-			_ => None,
+		"gcd" => |values| {
+			let reduced = real_operands(values)?.into_iter().try_fold(0_u128, |accumulated, real| Some(gcd(accumulated, integer_operand(real)?)));
+			Some(Value::from_f64(reduced.map_or(f64::NAN, |reduced| reduced as f64)))
 		},
 
-		"lcm" => |values| match values {
-			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b))] => {
-				let lcm = integer_operand(*a).zip(integer_operand(*b)).map_or(f64::NAN, |(a, b)| lcm(a, b) as f64);
-				Some(Value::Number(Number::Real(lcm)))
-			}
-			_ => None,
+		"lcm" => |values| {
+			let reduced = real_operands(values)?
+				.into_iter()
+				.try_fold(1_u128, |accumulated, real| checked_lcm(accumulated, integer_operand(real)?));
+			Some(Value::from_f64(reduced.map_or(f64::NAN, |reduced| reduced as f64)))
 		},
 
 		// Combinatorics over whole numbers: `choose(n, r)` is the binomial coefficient and `pick(n, r)` the falling factorial
