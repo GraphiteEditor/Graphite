@@ -35,7 +35,7 @@ mod tests {
 	#[test]
 	fn unrecognized_characters_fail_to_parse() {
 		// Unrecognized trailing input must be rejected rather than silently dropped after a valid prefix
-		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "2 = 3"] {
+		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "2 = 3", "\\", "2 \\ 3", "\\2", "\\_foo"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
 	}
@@ -54,6 +54,52 @@ mod tests {
 		for input in ["2 3", "10 000", "1 .5", "2 3 + 1", "1e5 3", "2. 3", "sqrt(4).5", "sqrt(4) .5", "pi.5", "5!.5"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
+	}
+
+	#[test]
+	fn bindings_shadow_constants_and_the_prefix_reaches_the_builtin() {
+		struct ShadowingBindings;
+		impl context::ValueProvider for ShadowingBindings {
+			fn get_value(&self, name: &str) -> Option<Value> {
+				match name {
+					"e" => Some(Value::from_f64(2.5)),
+					"π" => Some(Value::from_f64(3.)),
+					_ => None,
+				}
+			}
+		}
+		let eval = |source: &str| ast::Node::try_parse_from_str(source).unwrap().eval(&EvalContext::new(ShadowingBindings, context::NothingMap));
+
+		// A binding shadows the builtin of exactly its spelling, so a bound `π` shadows the constant while `pi` still reaches the builtin
+		assert_eq!(eval("e").unwrap().as_real(), Some(2.5));
+		assert_eq!(eval("π + pi").unwrap().as_real(), Some(3. + std::f64::consts::PI));
+
+		// The `\` prefix always reaches the builtin, and names no variable when no builtin has that name
+		assert_eq!(eval("\\e + \\π").unwrap().as_real(), Some(std::f64::consts::E + std::f64::consts::PI));
+		assert!(matches!(eval("\\foo"), Err(EvalError::MissingValue(name)) if name == "\\foo"));
+
+		// Constants are lowercase-only, so another casing is an unbound variable rather than a spelling of the constant
+		assert!(matches!(eval("E"), Err(EvalError::MissingValue(name)) if name == "E"));
+	}
+
+	#[test]
+	fn host_functions_shadow_builtins_except_behind_the_prefix() {
+		struct DoublingSin;
+		impl context::FunctionProvider for DoublingSin {
+			fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
+				(name == "sin").then(|| Value::from_f64(2. * args[0].as_real().unwrap()))
+			}
+		}
+		let eval = |source: &str| {
+			ast::Node::try_parse_from_str(source)
+				.unwrap()
+				.eval(&EvalContext::new(context::NothingMap, DoublingSin))
+				.unwrap()
+				.as_real()
+		};
+
+		assert_eq!(eval("sin(3)"), Some(6.));
+		assert_eq!(eval("\\sin(pi / 2)"), Some(1.));
 	}
 
 	#[test]
@@ -357,6 +403,11 @@ mod tests {
 
 		// Truth values are the numbers 1 and 0
 		constant_truth_values: "true + true - false" => 2.,
+
+		// The `\` prefix names the language's own constants and functions, so LaTeX habits like `2\pi` evaluate
+		builtin_prefix_constant: "\\tau / \\pi" => 2.,
+		builtin_prefix_function: "\\sqrt(16)" => 4.,
+		builtin_prefix_implicit_multiplication: "2\\pi" => 2. * std::f64::consts::PI,
 
 		// atan2
 		trig_atan2_axis: "atan2(1, 0)" => std::f64::consts::FRAC_PI_2,
