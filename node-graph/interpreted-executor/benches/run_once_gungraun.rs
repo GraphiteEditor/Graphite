@@ -13,7 +13,7 @@ fn setup_run_once(name: &str) -> DynamicExecutor {
 }
 
 #[library_benchmark]
-#[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = setup_run_once)]
+#[benches::with_setup(args = ["changing-seasons", "isometric-fountain", "painted-dreams", "procedural-string-lights", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = setup_run_once)]
 pub fn run_once(executor: DynamicExecutor) -> (DynamicExecutor, core_types::gpoll::GPoll<graph_craft::document::value::TaggedValue>) {
 	let context = application_io::RenderConfig::default();
 	let result = black_box(Executor::execute(&&executor, black_box(context)).unwrap());
