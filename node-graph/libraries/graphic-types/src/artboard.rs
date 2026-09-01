@@ -74,13 +74,24 @@ unsafe fn deep_repark_artboard(value: &(dyn std::any::Any + Send + Sync), dst: *
 }
 
 /// The promote for `Artboard` elements: as for `Graphic`, content groups the
-/// persistent region already holds are shared rather than copied.
+/// persistent region already holds are shared rather than copied, and
+/// group-free content moves its header instead of copying its heap.
 ///
 /// # Safety
 /// `src` must point at a live parked `Artboard` element field, and `dst` at
 /// the element field the promoted reference is written to.
 unsafe fn promote_artboard(src: *const u8, dst: *mut u8, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
 	let artboard = unsafe { core_types::record::borrow_element::<Artboard>(core_types::record::Rec::new(src)) };
+	if !crate::graphic::list_contains_groups(&artboard.0) {
+		// SAFETY: a parked element slot holds one reference at offset 0, and
+		// group-free content owns all of itself.
+		let header = unsafe { src.cast::<*const u8>().read() };
+		if let Some(moved) = unsafe { promotion.move_park::<Artboard>(header, 0) } {
+			// SAFETY: as above, into the promoted image's own element slot.
+			unsafe { dst.cast::<*const Artboard>().write(moved) };
+			return Some(());
+		}
+	}
 	let mut content = List::new();
 	for item in artboard.0.clone().into_iter() {
 		let (element, attributes) = item.into_parts();

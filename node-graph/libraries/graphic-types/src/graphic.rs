@@ -1220,13 +1220,24 @@ pub fn map_groups_to_persistent<'p>(graphic: &Graphic<'_>, promotion: &core_type
 
 /// The promote for `Graphic` elements: the generic path would deep-copy every
 /// interior through an owned intermediate, while this shares the interiors the
-/// persistent region already holds.
+/// persistent region already holds. A group-free graphic references nothing the
+/// evaluation owns, so its header moves and its heap is never copied.
 ///
 /// # Safety
 /// `src` must point at a live parked `Graphic` element field, and `dst` at the
 /// element field the promoted reference is written to.
 unsafe fn promote_graphic(src: *const u8, dst: *mut u8, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
 	let graphic = unsafe { core_types::record::borrow_element::<Graphic>(core_types::record::Rec::new(src)) };
+	if !graphic_contains_groups(graphic) {
+		// SAFETY: a parked element slot holds one reference at offset 0, and a
+		// group-free graphic owns all of its content.
+		let header = unsafe { src.cast::<*const u8>().read() };
+		if let Some(moved) = unsafe { promotion.move_park::<Graphic<'static>>(header, graphic_retained_heap(graphic)) } {
+			// SAFETY: as above, into the promoted image's own element slot.
+			unsafe { dst.cast::<*const Graphic<'static>>().write(moved) };
+			return Some(());
+		}
+	}
 	let promoted = map_groups_to_persistent(graphic, promotion)?;
 	let retained = graphic_retained_heap(&promoted);
 	unsafe { core_types::record::write_element_sized(dst, promoted, promotion.persistent(), retained) }
@@ -1263,7 +1274,7 @@ fn graphic_contains_groups(graphic: &Graphic) -> bool {
 	}
 }
 
-fn list_contains_groups(list: &List<Graphic>) -> bool {
+pub(crate) fn list_contains_groups(list: &List<Graphic>) -> bool {
 	(0..list.len()).any(|index| list.element(index).is_some_and(graphic_contains_groups))
 }
 
