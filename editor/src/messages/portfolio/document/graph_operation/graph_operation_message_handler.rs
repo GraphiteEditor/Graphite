@@ -14,7 +14,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, GradientUnits, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -533,6 +533,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				let gradient_info = SvgGradientInfo {
 					graphite_stops: extract_graphite_gradient_stops(&svg),
 					spaces: extract_gradient_spaces(&svg),
+					units: extract_gradient_units(&svg),
 				};
 
 				// Pass identity so each leaf layer receives only its SVG-native transform from `abs_transform`.
@@ -575,6 +576,8 @@ struct SvgGradientInfo {
 	graphite_stops: HashMap<String, Gradient>,
 	/// Gradient spaces, keyed by gradient element `id`, resolved from the `color-interpolation` property.
 	spaces: HashMap<String, GradientSpace>,
+	/// Gradient units, keyed by gradient element `id`, resolved from the `gradientUnits` attribute.
+	units: HashMap<String, GradientUnits>,
 }
 
 /// Pre-parses the raw SVG XML to resolve each gradient's inherited `color-interpolation` property, which usvg's
@@ -615,6 +618,59 @@ fn extract_gradient_spaces(svg: &str) -> HashMap<String, GradientSpace> {
 		{
 			result.insert(gradient_id.to_string(), gradient_space);
 		}
+	}
+
+	result
+}
+
+fn extract_gradient_units(svg: &str) -> HashMap<String, GradientUnits> {
+	let mut result = HashMap::new();
+
+	let doc = match usvg::roxmltree::Document::parse(svg) {
+		Ok(doc) => doc,
+		Err(_) => return result,
+	};
+
+	// Collect gradient nodes by id for href resolution
+	let mut gradient_nodes: HashMap<&str, usvg::roxmltree::Node> = HashMap::new();
+	for node in doc.descendants() {
+		if matches!(node.tag_name().name(), "linearGradient" | "radialGradient") {
+			if let Some(id) = node.attribute("id") {
+				gradient_nodes.insert(id, node);
+			}
+		}
+	}
+
+	fn resolve_units<'a>(node: usvg::roxmltree::Node<'a, 'a>, gradient_nodes: &HashMap<&'a str, usvg::roxmltree::Node<'a, 'a>>, seen: &mut Vec<&'a str>) -> Option<GradientUnits> {
+		if let Some(units) = node.attribute("gradientUnits") {
+			match units {
+				"userSpaceOnUse" => return Some(GradientUnits::UserSpaceOnUse),
+				"objectBoundingBox" => return Some(GradientUnits::ObjectBoundingBox),
+				_ => {}
+			}
+		}
+		if let Some(href) = node.attribute("href").or_else(|| node.attribute("xlink:href")) {
+			let id = href.trim_start_matches('#');
+			if seen.contains(&id) {
+				return None;
+			}
+			seen.push(id);
+			if let Some(referenced) = gradient_nodes.get(id) {
+				if let Some(units) = resolve_units(*referenced, gradient_nodes, seen) {
+					return Some(units);
+				}
+			}
+		}
+		None
+	}
+
+	for node in doc.descendants() {
+		if !matches!(node.tag_name().name(), "linearGradient" | "radialGradient") {
+			continue;
+		}
+		let Some(gradient_id) = node.attribute("id") else { continue };
+		let units = resolve_units(node, &gradient_nodes, &mut Vec::new()).unwrap_or(GradientUnits::ObjectBoundingBox);
+		result.insert(gradient_id.to_string(), units);
 	}
 
 	result
@@ -1033,7 +1089,8 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				space: gradient_info.spaces.get(linear.id()).copied().unwrap_or(GradientSpace::RgbGamma),
 				..Default::default()
 			};
-			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
+			let gradient_units = gradient_info.units.get(linear.id()).copied().unwrap_or(GradientUnits::ObjectBoundingBox);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, gradient_units, transform);
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -1061,7 +1118,8 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				space: gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma),
 				..Default::default()
 			};
-			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
+			let gradient_units = gradient_info.units.get(radial.id()).copied().unwrap_or(GradientUnits::ObjectBoundingBox);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, gradient_units, transform);
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};

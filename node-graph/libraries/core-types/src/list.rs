@@ -71,6 +71,8 @@ pub const ATTR_GRADIENT_INTERPOLATION: &str = "gradient_interpolation";
 /// Gradient's `bool` (implicit default `false`) for treating the stop list as a cycle, where a wrapped interval
 /// interpolates from the last stop through the 1|0 boundary back to the first.
 pub const ATTR_GRADIENT_CYCLIC: &str = "gradient_cyclic";
+/// Gradient's SVG coordinate system (`userSpaceOnUse` or `objectBoundingBox`).
+pub const ATTR_GRADIENT_UNITS: &str = "gradient_units";
 /// Gradient stop's `f64` position from 0 to 1 along the gradient, on the `List<Color>` inside a `Gradient`.
 /// When the attribute is absent, stops distribute evenly across the 0 to 1 range.
 pub const ATTR_POSITION: &str = "position";
