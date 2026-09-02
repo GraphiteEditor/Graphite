@@ -1,6 +1,9 @@
 use core_types::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_MIDPOINT, ATTR_POSITION, Item, List};
+use core_types::list::{
+	ATTR_FOCAL_CENTER, ATTR_GRADIENT_ANGULAR, ATTR_GRADIENT_CURVATURE_A, ATTR_GRADIENT_CURVATURE_B, ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION,
+	ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_MIDPOINT, ATTR_POSITION, Item, List,
+};
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -15,6 +18,104 @@ pub enum GradientForm {
 	Linear,
 	/// Transitions the colors outward from a center point.
 	Radial,
+}
+
+/// The unified geometry model for linear, radial, and radial-with-fr/fx/fy gradients.
+///
+/// Any gradient is a field between two circles, A and B, of chosen radii. Curvature is `1 / radius`, so a line
+/// (infinite radius) has curvature `0` and the default of two omitted curvatures describes a linear gradient.
+/// The curvature attribute is not stored directly; it is reparameterized through the arctangent from `[-inf, inf]`
+/// to `[-1, 1]` so the two ends can be animated between the linear (`0`) and radial (`±1`) configurations.
+///
+/// The `transform` places the pair of circles; the start circle's center offset and radius ride in the focal
+/// attributes for SVG `fr`/`fx`/`fy` fidelity. Angular (conic/sweep) gradients are marked with `angular`, which
+/// SVG cannot represent and so renders nothing.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct GradientGeometry {
+	/// Reparameterized curvature of the gradient's start circle (focal circle for a radial gradient). `0` = line.
+	pub curvature_a: f64,
+	/// Reparameterized curvature of the gradient's end circle. `0` = line.
+	pub curvature_b: f64,
+	/// Whether the gradient is a conic (angular/sweep) gradient painted along the V direction. SVG cannot represent these, so they render nothing.
+	pub angular: bool,
+}
+
+/// Reparameterizes a curvature (`1 / radius`, in `[-inf, inf]`) onto `[-1, 1]` so the two circle curvatures live in
+/// a finite, animatable range: `0` (a line) maps to `0`, a unit circle maps to `0.5`, and a point maps to `1`.
+pub fn reparameterize_curvature(curvature: f64) -> f64 {
+	curvature.atan() * (2. / std::f64::consts::PI)
+}
+
+/// The inverse of [`reparameterize_curvature`], recovering the raw curvature from its `[-1, 1]` representation.
+pub fn dereparameterize_curvature(reparameterized: f64) -> f64 {
+	(reparameterized * std::f64::consts::FRAC_PI_2).tan()
+}
+
+impl GradientGeometry {
+	/// A linear gradient: both boundary curves are lines (infinite radius, zero curvature).
+	pub fn linear() -> Self {
+		Self::default()
+	}
+
+	/// The default radial gradient: the start circle is a point (infinite curvature) and the end circle has unit radius.
+	pub fn radial() -> Self {
+		Self {
+			curvature_a: reparameterize_curvature(f64::INFINITY),
+			curvature_b: reparameterize_curvature(1.),
+			angular: false,
+		}
+	}
+
+	/// The derived form of a gradient from its geometry: a conic is not linear or radial, both-zero curvatures is linear, anything else is radial.
+	pub fn form(&self) -> GradientForm {
+		if self.angular || self.curvature_a.abs() > f64::EPSILON || self.curvature_b.abs() > f64::EPSILON {
+			GradientForm::Radial
+		} else {
+			GradientForm::Linear
+		}
+	}
+
+	/// The radii of the two circles in gradient-local (unit) space: `1 / curvature`, with a line as infinite radius.
+	pub fn radii(&self) -> (f64, f64) {
+		(1. / dereparameterize_curvature(self.curvature_a), 1. / dereparameterize_curvature(self.curvature_b))
+	}
+
+	/// The whole-gradient geometry an item carries in its attributes beside a gradient element, defaulting each absent one.
+	pub fn from_item_attributes<T>(item: &Item<T>) -> Self {
+		Self {
+			curvature_a: item.attribute_cloned_or_default(ATTR_GRADIENT_CURVATURE_A),
+			curvature_b: item.attribute_cloned_or_default(ATTR_GRADIENT_CURVATURE_B),
+			angular: item.attribute_cloned_or_default(ATTR_GRADIENT_ANGULAR),
+		}
+	}
+
+	/// The whole-gradient geometry a list carries at `index` beside a gradient element, defaulting each absent one.
+	pub fn from_list_row_attributes<T>(list: &List<T>, index: usize) -> Self {
+		Self {
+			curvature_a: list.attribute_cloned_or_default(ATTR_GRADIENT_CURVATURE_A, index),
+			curvature_b: list.attribute_cloned_or_default(ATTR_GRADIENT_CURVATURE_B, index),
+			angular: list.attribute_cloned_or_default(ATTR_GRADIENT_ANGULAR, index),
+		}
+	}
+}
+
+impl From<&Item<Gradient>> for GradientGeometry {
+	fn from(item: &Item<Gradient>) -> Self {
+		Self::from_item_attributes(item)
+	}
+}
+
+/// The canonical geometry for the classic `Linear` and `Radial` forms: a linear gradient is two lines (zero curvature),
+/// a radial gradient is a point start circle (infinite curvature) with a unit end circle.
+impl From<GradientForm> for GradientGeometry {
+	fn from(form: GradientForm) -> Self {
+		match form {
+			GradientForm::Linear => Self::linear(),
+			GradientForm::Radial => Self::radial(),
+		}
+	}
 }
 
 /// A gradient's stops: a list of colors (linear, unassociated alpha) whose optional `position` and `midpoint`
@@ -120,6 +221,14 @@ pub struct GradientRamp<C = Color> {
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientInterpolation::is_default"))]
 	#[cfg_attr(feature = "wasm", tsify(optional))]
 	pub gradient_interpolation: GradientInterpolation,
+	/// The gradient's unified two-circle geometry, carried as a sibling field like the other whole-ramp settings so SVG focal data survives import, document storage, and node value round-trips.
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+	#[cfg_attr(feature = "wasm", tsify(optional))]
+	pub gradient_geometry: Option<GradientGeometry>,
+	/// The focal circle's center offset in gradient-local unit space (SVG `fx`/`fy`), carried alongside `gradient_geometry`.
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+	#[cfg_attr(feature = "wasm", tsify(optional))]
+	pub focal_center: Option<[f64; 2]>,
 }
 
 unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for GradientRamp<C> {
@@ -135,12 +244,16 @@ impl<C> From<GradientStops<C>> for GradientRamp<C> {
 			gradient_cyclic: Default::default(),
 			gradient_hue_direction: Default::default(),
 			gradient_interpolation: Default::default(),
+			gradient_geometry: None,
+			focal_center: None,
 		}
 	}
 }
 
 impl From<&Gradient> for GradientRamp {
 	fn from(gradient: &Gradient) -> Self {
+		let geometry = gradient.geometry();
+		let focal_center = gradient.focal_center();
 		Self {
 			stops: gradient.into(),
 			gradient_spread: Default::default(),
@@ -148,6 +261,8 @@ impl From<&Gradient> for GradientRamp {
 			gradient_cyclic: Default::default(),
 			gradient_hue_direction: Default::default(),
 			gradient_interpolation: Default::default(),
+			gradient_geometry: (geometry != GradientGeometry::default()).then_some(geometry),
+			focal_center: (focal_center != DVec2::ZERO).then(|| [focal_center.x, focal_center.y]),
 		}
 	}
 }
@@ -160,13 +275,31 @@ impl From<Gradient> for GradientRamp {
 
 impl From<GradientRamp> for Gradient {
 	fn from(ramp: GradientRamp) -> Self {
-		Gradient::from(ramp.stops)
+		let mut gradient = Gradient::from(ramp.stops);
+		if let Some(geometry) = ramp.gradient_geometry {
+			gradient.0.set_attribute(ATTR_GRADIENT_CURVATURE_A, 0, geometry.curvature_a);
+			gradient.0.set_attribute(ATTR_GRADIENT_CURVATURE_B, 0, geometry.curvature_b);
+			gradient.0.set_attribute(ATTR_GRADIENT_ANGULAR, 0, geometry.angular);
+		}
+		if let Some([x, y]) = ramp.focal_center {
+			gradient.0.set_attribute(ATTR_FOCAL_CENTER, 0, DVec2::new(x, y));
+		}
+		gradient
 	}
 }
 
 impl From<&GradientRamp> for Gradient {
 	fn from(ramp: &GradientRamp) -> Self {
-		Gradient::from(ramp.stops.clone())
+		let mut gradient = Gradient::from(ramp.stops.clone());
+		if let Some(geometry) = ramp.gradient_geometry {
+			gradient.0.set_attribute(ATTR_GRADIENT_CURVATURE_A, 0, geometry.curvature_a);
+			gradient.0.set_attribute(ATTR_GRADIENT_CURVATURE_B, 0, geometry.curvature_b);
+			gradient.0.set_attribute(ATTR_GRADIENT_ANGULAR, 0, geometry.angular);
+		}
+		if let Some([x, y]) = ramp.focal_center {
+			gradient.0.set_attribute(ATTR_FOCAL_CENTER, 0, DVec2::new(x, y));
+		}
+		gradient
 	}
 }
 
@@ -190,12 +323,22 @@ impl From<GradientRamp> for Item<Gradient> {
 		if !ramp.gradient_interpolation.is_default() {
 			item.set_attribute(ATTR_GRADIENT_INTERPOLATION, ramp.gradient_interpolation);
 		}
+		if let Some(geometry) = ramp.gradient_geometry {
+			item.set_attribute(ATTR_GRADIENT_CURVATURE_A, geometry.curvature_a);
+			item.set_attribute(ATTR_GRADIENT_CURVATURE_B, geometry.curvature_b);
+			item.set_attribute(ATTR_GRADIENT_ANGULAR, geometry.angular);
+		}
+		if let Some([focal_x, focal_y]) = ramp.focal_center {
+			item.set_attribute(ATTR_FOCAL_CENTER, DVec2::new(focal_x, focal_y));
+		}
 		item
 	}
 }
 
 impl From<&Item<Gradient>> for GradientRamp {
 	fn from(item: &Item<Gradient>) -> Self {
+		let geometry = GradientGeometry::from_item_attributes(item);
+		let focal_center: DVec2 = item.attribute_cloned_or_default(ATTR_FOCAL_CENTER);
 		Self {
 			stops: item.element().into(),
 			gradient_spread: item.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD),
@@ -203,6 +346,8 @@ impl From<&Item<Gradient>> for GradientRamp {
 			gradient_cyclic: item.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC),
 			gradient_hue_direction: item.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION),
 			gradient_interpolation: item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION),
+			gradient_geometry: (geometry != GradientGeometry::default()).then_some(geometry),
+			focal_center: (focal_center != DVec2::ZERO).then(|| [focal_center.x, focal_center.y]),
 		}
 	}
 }
@@ -232,12 +377,16 @@ impl From<&GradientRamp> for GradientRamp<SRGBA8> {
 			gradient_cyclic: ramp.gradient_cyclic,
 			gradient_hue_direction: ramp.gradient_hue_direction,
 			gradient_interpolation: ramp.gradient_interpolation,
+			gradient_geometry: ramp.gradient_geometry,
+			focal_center: ramp.focal_center,
 		}
 	}
 }
 
 impl From<&Gradient> for GradientRamp<SRGBA8> {
 	fn from(gradient: &Gradient) -> Self {
+		let geometry = gradient.geometry();
+		let focal_center = gradient.focal_center();
 		Self {
 			stops: gradient.into(),
 			gradient_spread: Default::default(),
@@ -245,6 +394,8 @@ impl From<&Gradient> for GradientRamp<SRGBA8> {
 			gradient_cyclic: Default::default(),
 			gradient_hue_direction: Default::default(),
 			gradient_interpolation: Default::default(),
+			gradient_geometry: (geometry != GradientGeometry::default()).then_some(geometry),
+			focal_center: (focal_center != DVec2::ZERO).then(|| [focal_center.x, focal_center.y]),
 		}
 	}
 }
@@ -255,14 +406,15 @@ impl From<&GradientRamp<SRGBA8>> for GradientRamp {
 		let mut gradient = Gradient::from(&ramp.stops);
 		gradient.elide_default_attributes(ramp.gradient_cyclic);
 
-		Self {
-			gradient_spread: ramp.gradient_spread,
-			gradient_space: ramp.gradient_space,
-			gradient_cyclic: ramp.gradient_cyclic,
-			gradient_hue_direction: ramp.gradient_hue_direction,
-			gradient_interpolation: ramp.gradient_interpolation,
-			..Self::from(gradient)
-		}
+		let mut converted = Self::from(gradient);
+		converted.gradient_spread = ramp.gradient_spread;
+		converted.gradient_space = ramp.gradient_space;
+		converted.gradient_cyclic = ramp.gradient_cyclic;
+		converted.gradient_hue_direction = ramp.gradient_hue_direction;
+		converted.gradient_interpolation = ramp.gradient_interpolation;
+		converted.gradient_geometry = ramp.gradient_geometry;
+		converted.focal_center = ramp.focal_center;
+		converted
 	}
 }
 
@@ -967,6 +1119,39 @@ impl Gradient {
 
 	pub fn black_to_white() -> Self {
 		Self::from(vec![Color::BLACK, Color::WHITE])
+	}
+
+	/// The gradient's unified geometry, read from the whole-gradient attributes on the stop list.
+	pub fn geometry(&self) -> GradientGeometry {
+		GradientGeometry {
+			curvature_a: self.0.attribute_cloned_or_default(ATTR_GRADIENT_CURVATURE_A, 0),
+			curvature_b: self.0.attribute_cloned_or_default(ATTR_GRADIENT_CURVATURE_B, 0),
+			angular: self.0.attribute_cloned_or_default(ATTR_GRADIENT_ANGULAR, 0),
+		}
+	}
+
+	/// The focal circle's center offset in gradient-local unit space (SVG `fx`/`fy`).
+	pub fn focal_center(&self) -> DVec2 {
+		self.0.attribute_cloned_or_default(ATTR_FOCAL_CENTER, 0)
+	}
+
+	/// Stores the focal circle's center offset and radius as whole-gradient attributes, deriving `curvature_a` from the
+	/// radius so SVG `fr`/`fx`/`fy` round-trip through the two-circle geometry model. The end circle is the unit circle
+	/// (`curvature_b = reparameterize_curvature(1.)`), since the gradient's transform normalizes the outer radius to 1.
+	pub fn set_focal_geometry(&mut self, focal_center: DVec2, focal_radius: f64) {
+		self.0.set_attribute(ATTR_FOCAL_CENTER, 0, focal_center);
+		let curvature_a = if focal_radius > 0. {
+			reparameterize_curvature(1. / focal_radius)
+		} else {
+			reparameterize_curvature(f64::INFINITY)
+		};
+		self.0.set_attribute(ATTR_GRADIENT_CURVATURE_A, 0, curvature_a);
+		self.0.set_attribute(ATTR_GRADIENT_CURVATURE_B, 0, reparameterize_curvature(1.));
+	}
+
+	/// Whether the gradient is a conic (angular/sweep) gradient, which SVG cannot represent and so renders nothing.
+	pub fn is_angular(&self) -> bool {
+		self.0.attribute_cloned_or_default(ATTR_GRADIENT_ANGULAR, 0)
 	}
 
 	pub fn as_color_list(&self) -> &List<Color> {
@@ -1943,6 +2128,47 @@ mod tests {
 		let explicit = GradientRamp::from(explicit);
 		let json = serde_json::to_string(&explicit).unwrap();
 		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), explicit);
+	}
+
+	#[test]
+	fn focal_geometry_round_trips_through_the_ramp_item_and_attributes() {
+		// The focal circle's radius and offset must survive the ramp round-trip that SVG import uses,
+		// rather than being dropped and falling back to the point-focal default
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		gradient.set_focal_geometry(DVec2::new(0.3, -0.2), 0.4);
+
+		let geometry = gradient.geometry();
+		assert_eq!(geometry.curvature_a, reparameterize_curvature(1. / 0.4), "the focal radius should derive curvature_a");
+		assert_eq!(geometry.curvature_b, reparameterize_curvature(1.), "the end circle should be the unit circle");
+		assert_eq!(geometry.form(), GradientForm::Radial, "a focal geometry must read as radial");
+
+		let ramp = GradientRamp::from(gradient.clone());
+		assert_eq!(ramp.gradient_geometry, Some(geometry), "the ramp should carry the geometry");
+		assert_eq!(ramp.focal_center, Some([0.3, -0.2]), "the ramp should carry the focal center");
+
+		let json = serde_json::to_string(&ramp).unwrap();
+		assert!(json.contains("gradient_geometry") && json.contains("focal_center"), "the geometry must serialize: {json}");
+		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), ramp);
+
+		let restored = Gradient::from(ramp);
+		assert_eq!(restored.geometry(), geometry);
+		assert_eq!(restored.focal_center(), DVec2::new(0.3, -0.2));
+
+		let item = Item::<Gradient>::from(GradientRamp::from(gradient));
+		assert_eq!(GradientGeometry::from_item_attributes(&item), geometry);
+		assert_eq!(GradientRamp::from(&item).gradient_geometry, Some(geometry), "reading the item back should keep the geometry");
+		assert_eq!(GradientRamp::from(&item).focal_center, Some([0.3, -0.2]), "reading the item back should keep the focal center");
+	}
+
+	#[test]
+	fn plain_linear_gradient_stays_free_of_geometry_attributes() {
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		let ramp = GradientRamp::from(gradient);
+		assert_eq!(ramp.gradient_geometry, None, "a linear gradient should not carry geometry");
+		assert_eq!(ramp.focal_center, None, "a linear gradient should not carry a focal center");
+
+		let json = serde_json::to_string(&ramp).unwrap();
+		assert!(!json.contains("gradient_geometry") && !json.contains("focal_center"), "absent geometry must not serialize: {json}");
 	}
 
 	#[test]

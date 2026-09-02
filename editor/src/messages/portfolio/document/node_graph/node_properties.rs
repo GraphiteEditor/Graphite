@@ -32,8 +32,8 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign, StrokeCap, StrokeJoin,
-	build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientForm, GradientGeometry, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign,
+	StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -2376,7 +2376,8 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Solid(Option<Color>),
 		Gradient {
 			gradient: Gradient,
-			gradient_form: GradientForm,
+			/// Unified two-circle geometry derived from the fill node's GradientFormInput.
+			geometry: GradientGeometry,
 			settings: GradientSettings,
 			transform: DAffine2,
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
@@ -2406,7 +2407,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				}) {
 					Some(gradient) => ResolvedFill::Gradient {
 						gradient: gradient.stops,
-						gradient_form: gradient.gradient_form,
+						geometry: gradient.geometry,
 						settings: gradient.settings,
 						transform: gradient.transform,
 						transform_is_value: gradient.transform_is_value,
@@ -2550,7 +2551,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets.push(fill_type_switch);
 
 	if let ResolvedFill::Gradient {
-		gradient_form,
+		geometry,
 		transform,
 		transform_is_value,
 		..
@@ -2569,7 +2570,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 			let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
 				.tooltip_label("Reverse Direction")
-				.tooltip_description(graph_modification_utils::reverse_direction_tooltip_description(gradient_form))
+				.tooltip_description(graph_modification_utils::reverse_direction_tooltip_description(geometry))
 				.on_update(move |_| Message::Batched {
 					messages: Box::new([
 						NodeGraphMessage::SetInputValue {
@@ -2605,7 +2606,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 		row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(entries).selected_index(Some(gradient_form as u32)).widget_instance(),
+			RadioInput::new(entries).selected_index(Some(geometry.form() as u32)).widget_instance(),
 		]);
 
 		widgets.push(LayoutGroup::row(row));
