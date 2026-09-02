@@ -1307,10 +1307,55 @@ fn deep_repark_graphic_list(value: &dyn core_types::list::AnyAttributeValue, are
 	Some(Some(Box::new(Some(list))))
 }
 
+/// The promote for graphic-list fields, the deep field glue's third half: the
+/// owned halves copy content groups out to the owned form and replay them back,
+/// while this maps the content transient-to-persistent in one pass.
+///
+/// THE TWO-LEVEL SHARING LAW: the field's own header is not provenance-shared.
+/// It moves where the content is group-free, since the payload then owns all of
+/// its content and the transient arena confirms the reference is its own park,
+/// and otherwise it clones into a fresh persistent park. One level inside, a
+/// content group's interior is arena-resident and its provenance is decidable,
+/// so it takes [`map_groups_to_persistent`]'s Cow dispatch: an interior the
+/// persistent region already holds is shared pointer for pointer.
+///
+/// # Safety
+/// `src` must point at a live parked graphic-list field, and `dst` at the field
+/// slot the promoted reference is written to.
+unsafe fn promote_graphic_list(src: *const u8, dst: *mut u8, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
+	// SAFETY: the caller's contract; the slot holds one optional reference.
+	let Some(list) = (unsafe { src.cast::<Option<&List<Graphic<'static>>>>().read() }) else {
+		// SAFETY: as above, into the promoted image's own field slot.
+		unsafe { dst.cast::<Option<&List<Graphic<'static>>>>().write(None) };
+		return Some(());
+	};
+	if !list_contains_groups(list) {
+		// SAFETY: a group-free list owns all of its content, and the arena
+		// declines a reference that is not a park of its own.
+		if let Some(moved) = unsafe { promotion.move_park::<List<Graphic<'static>>>(std::ptr::from_ref(list).cast(), 0) } {
+			// SAFETY: the move published a live list in the persistent region.
+			unsafe { dst.cast::<Option<&List<Graphic<'static>>>>().write(Some(&*moved)) };
+			return Some(());
+		}
+	}
+	let mut promoted = list.clone();
+	for element in promoted.iter_element_values_mut() {
+		*element = map_groups_to_persistent(element, promotion)?;
+	}
+	// SAFETY: every borrow the clone carried was replaced by persistent content
+	// above, so the erased form outlives the evaluation.
+	let promoted = unsafe { core_types::record::erase_static(promoted) };
+	let (parked, _) = promotion.persistent().alloc(promoted)?;
+	// SAFETY: the slot holds one optional reference.
+	unsafe { dst.cast::<Option<&List<Graphic<'static>>>>().write(Some(parked)) };
+	Some(())
+}
+
 const _: () = {
 	fn register_all() {
 		core_types::record::register_deep_element_clone::<Graphic>(deep_clone_graphic, deep_repark_graphic);
 		core_types::record::register_deep_field_value::<Option<List<Graphic>>>(deep_clone_graphic_list, deep_repark_graphic_list);
+		core_types::record::register_field_promote::<Option<&'static List<Graphic<'static>>>>(promote_graphic_list);
 		core_types::record::register_element_promote::<Graphic>(promote_graphic);
 		core_types::record::register_retained_heap::<Graphic>(|value| value.downcast_ref::<Graphic>().map_or(0, graphic_retained_heap));
 		core_types::record::register_retained_heap::<Vector>(|value| value.downcast_ref::<Vector>().map_or(0, vector_retained_heap));
