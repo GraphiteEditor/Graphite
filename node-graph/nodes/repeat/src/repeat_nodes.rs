@@ -14,7 +14,6 @@ async fn repeat<T: Send + Clone + 'static>(
 	#[implementations(
 		Context -> List<String>,
 		Context -> List<bool>,
-		Context -> List<f32>,
 		Context -> List<f64>,
 		Context -> List<u32>,
 		Context -> List<u64>,
@@ -61,7 +60,6 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 	#[implementations(
 		Context -> List<String>,
 		Context -> List<bool>,
-		Context -> List<f32>,
 		Context -> List<f64>,
 		Context -> List<u32>,
 		Context -> List<u64>,
@@ -120,7 +118,6 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 	#[implementations(
 		Context -> List<String>,
 		Context -> List<bool>,
-		Context -> List<f32>,
 		Context -> List<f64>,
 		Context -> List<u32>,
 		Context -> List<u64>,
@@ -177,7 +174,6 @@ async fn repeat_on_points<T: Send + Clone + 'static>(
 	#[implementations(
 		Context -> List<String>,
 		Context -> List<bool>,
-		Context -> List<f32>,
 		Context -> List<f64>,
 		Context -> List<u32>,
 		Context -> List<u64>,

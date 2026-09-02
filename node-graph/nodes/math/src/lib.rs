@@ -89,15 +89,6 @@ fn output<T: ExpressionValue>(result: Option<Value>) -> T {
 		.unwrap_or_default()
 }
 
-impl ExpressionValue for f32 {
-	fn into_f64(self) -> f64 {
-		self as f64
-	}
-	fn from_value(value: &Value) -> Option<Self> {
-		value.as_f32()
-	}
-}
-
 impl ExpressionValue for bool {
 	fn into_f64(self) -> f64 {
 		self as u8 as f64
@@ -128,7 +119,7 @@ impl ValueProvider for SingleVariableMathContext {
 fn math_fx<T: ExpressionValue>(
 	_: impl Ctx,
 	/// The value passed into the expression as `x`.
-	#[implementations(f64, f32, bool)]
+	#[implementations(f64, bool)]
 	value: Item<T>,
 	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`.
 	#[name("f(x) =")]
@@ -175,7 +166,7 @@ impl ValueProvider for PositionalMathContext {
 fn math_f<T: ExpressionValue>(
 	_: impl Ctx,
 	/// The items the expression reads.
-	#[implementations(List<f64>, List<f32>, List<bool>)]
+	#[implementations(List<f64>, List<bool>)]
 	values: List<T>,
 	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
 	#[name("f(…) =")]
@@ -204,10 +195,10 @@ fn math_f<T: ExpressionValue>(
 fn add<A: Add<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the addition operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, u32, DVec2, f64, DVec2)]
 	augend: Item<A>,
 	/// The right-hand side of the addition operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, u32, DVec2, DVec2, f64)]
 	addend: Item<B>,
 ) -> Item<<A as Add<B>>::Output> {
 	let (augend, attributes) = augend.into_parts();
@@ -220,10 +211,10 @@ fn add<A: Add<B>, B>(
 fn subtract<A: Sub<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the subtraction operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, u32, DVec2, f64, DVec2)]
 	minuend: Item<A>,
 	/// The right-hand side of the subtraction operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, u32, DVec2, DVec2, f64)]
 	subtrahend: Item<B>,
 ) -> Item<<A as Sub<B>>::Output> {
 	let (minuend, attributes) = minuend.into_parts();
@@ -236,11 +227,11 @@ fn subtract<A: Sub<B>, B>(
 fn multiply<A: Mul<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the multiplication operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2, DAffine2)]
+	#[implementations(f64, u32, DVec2, f64, DVec2, DAffine2)]
 	multiplier: Item<A>,
 	/// The right-hand side of the multiplication operation.
 	#[default(1.)]
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64, DAffine2)]
+	#[implementations(f64, u32, DVec2, DVec2, f64, DAffine2)]
 	multiplicand: Item<B>,
 ) -> Item<<A as Mul<B>>::Output> {
 	let (multiplier, attributes) = multiplier.into_parts();
@@ -255,12 +246,6 @@ pub trait SafeDivide<Rhs = Self> {
 impl SafeDivide for f64 {
 	type Output = f64;
 	fn safe_divide(self, denominator: f64) -> f64 {
-		if denominator == 0. { 0. } else { self / denominator }
-	}
-}
-impl SafeDivide for f32 {
-	type Output = f32;
-	fn safe_divide(self, denominator: f32) -> f32 {
 		if denominator == 0. { 0. } else { self / denominator }
 	}
 }
@@ -296,11 +281,11 @@ impl SafeDivide<DVec2> for f64 {
 fn divide<A: SafeDivide<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the division operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, u32, DVec2, DVec2, f64)]
 	numerator: Item<A>,
 	/// The right-hand side of the division operation.
 	#[default(1.)]
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, u32, DVec2, f64, DVec2)]
 	denominator: Item<B>,
 ) -> Item<<A as SafeDivide<B>>::Output> {
 	let (numerator, attributes) = numerator.into_parts();
@@ -316,11 +301,6 @@ impl Componentwise for f64 {
 		f(self)
 	}
 }
-impl Componentwise for f32 {
-	fn componentwise(self, f: impl Fn(f64) -> f64) -> Self {
-		f(self as f64) as f32
-	}
-}
 impl Componentwise for DVec2 {
 	fn componentwise(self, f: impl Fn(f64) -> f64) -> Self {
 		DVec2::new(f(self.x), f(self.y))
@@ -334,7 +314,7 @@ impl Componentwise for DVec2 {
 fn reciprocal<T: Componentwise>(
 	_: impl Ctx,
 	/// The number for which the reciprocal is calculated.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -349,11 +329,11 @@ fn reciprocal<T: Componentwise>(
 fn modulo<A: Rem<B, Output: Add<B, Output: Rem<B, Output = A::Output>>>, B: Copy>(
 	_: impl Ctx,
 	/// The left-hand side of the modulo operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, u32, DVec2, DVec2, f64)]
 	numerator: Item<A>,
 	/// The right-hand side of the modulo operation.
 	#[default(2.)]
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, u32, DVec2, f64, DVec2)]
 	modulus: Item<B>,
 	/// Ensures the result is always positive, even if the numerator is negative.
 	#[default(true)]
@@ -373,12 +353,6 @@ pub trait Exponent<Rhs = Self> {
 impl Exponent for f64 {
 	type Output = f64;
 	fn power(self, power: f64) -> f64 {
-		self.powf(power)
-	}
-}
-impl Exponent for f32 {
-	type Output = f32;
-	fn power(self, power: f32) -> f32 {
 		self.powf(power)
 	}
 }
@@ -414,10 +388,10 @@ impl Exponent<DVec2> for f64 {
 fn exponent<A: Exponent<B>, B>(
 	_: impl Ctx,
 	/// The base number that is raised to the power.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, u32, DVec2, DVec2, f64)]
 	base: Item<A>,
 	/// The power to which the base number is raised.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, u32, DVec2, f64, DVec2)]
 	#[default(2.)]
 	power: Item<B>,
 ) -> Item<<A as Exponent<B>>::Output> {
@@ -448,12 +422,6 @@ impl NthRoot for f64 {
 		scalar_nth_root(self, degree)
 	}
 }
-impl NthRoot for f32 {
-	type Output = f32;
-	fn nth_root(self, degree: f32) -> f32 {
-		scalar_nth_root(self as f64, degree as f64) as f32
-	}
-}
 impl NthRoot for DVec2 {
 	type Output = DVec2;
 	fn nth_root(self, degree: DVec2) -> DVec2 {
@@ -481,12 +449,12 @@ fn root<A: NthRoot<B>, B>(
 	_: impl Ctx,
 	/// The number inside the radical for which the `n`th root is calculated.
 	#[default(2.)]
-	#[implementations(f64, f32, DVec2, DVec2, f64)]
+	#[implementations(f64, DVec2, DVec2, f64)]
 	radicand: Item<A>,
 	/// The degree of the root to be calculated. Square root is 2, cube root is 3, and so on.
 	/// Degrees 0 or less are invalid and will produce an output of 0.
 	#[default(2.)]
-	#[implementations(f64, f32, f64, DVec2, DVec2)]
+	#[implementations(f64, f64, DVec2, DVec2)]
 	degree: Item<B>,
 ) -> Item<<A as NthRoot<B>>::Output> {
 	let (radicand, attributes) = radicand.into_parts();
@@ -516,18 +484,6 @@ impl Logarithm for f64 {
 		scalar_logarithm(self, base)
 	}
 }
-impl Logarithm for f32 {
-	type Output = f32;
-	fn logarithm(self, base: f32) -> f32 {
-		// The f32 representation of e widens inexactly, so match it against e at f32 precision and substitute the exact f64 e
-		let base = if (base - std::f32::consts::E).abs() < f32::EPSILON * 10. {
-			std::f64::consts::E
-		} else {
-			base as f64
-		};
-		scalar_logarithm(self as f64, base) as f32
-	}
-}
 impl Logarithm for DVec2 {
 	type Output = DVec2;
 	fn logarithm(self, base: DVec2) -> DVec2 {
@@ -554,11 +510,11 @@ impl Logarithm<DVec2> for f64 {
 fn logarithm<A: Logarithm<B>, B>(
 	_: impl Ctx,
 	/// The number for which the logarithm is calculated.
-	#[implementations(f64, f32, DVec2, DVec2, f64)]
+	#[implementations(f64, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The base of the logarithm, such as 2 (binary), 10 (decimal), and e (natural logarithm).
 	#[default(2.)]
-	#[implementations(f64, f32, f64, DVec2, DVec2)]
+	#[implementations(f64, f64, DVec2, DVec2)]
 	base: Item<B>,
 ) -> Item<<A as Logarithm<B>>::Output> {
 	let (value, attributes) = value.into_parts();
@@ -573,7 +529,7 @@ fn logarithm<A: Logarithm<B>, B>(
 fn sine<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	theta: Item<T>,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: Item<bool>,
@@ -592,7 +548,7 @@ fn sine<T: Componentwise>(
 fn cosine<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	theta: Item<T>,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: Item<bool>,
@@ -611,7 +567,7 @@ fn cosine<T: Componentwise>(
 fn tangent<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	theta: Item<T>,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: Item<bool>,
@@ -625,34 +581,32 @@ fn tangent<T: Componentwise>(
 
 /// The inverse sine trigonometric function (`asin`) calculates the angle whose sine is the input value.
 #[node_macro::node(category("Math: Trig"))]
-fn sine_inverse<T: num_traits::float::Float>(
+fn sine_inverse(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated. Must be in the domain `[-1, 1]` (it will be clamped to -1 or 1 otherwise).
-	#[implementations(f64, f32)]
-	value: Item<T>,
+	value: Item<f64>,
 	/// Whether the resulting angle should be given in as radians instead of degrees.
 	radians: Item<bool>,
-) -> Item<T> {
+) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
 
-	let angle = value.clamp(T::from(-1.).unwrap(), T::from(1.).unwrap()).asin();
+	let angle = value.clamp(-1., 1.).asin();
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
 
 /// The inverse cosine trigonometric function (`acos`) calculates the angle whose cosine is the input value.
 #[node_macro::node(category("Math: Trig"))]
-fn cosine_inverse<T: num_traits::float::Float>(
+fn cosine_inverse(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated. Must be in the domain `[-1, 1]` (it will be clamped to -1 or 1 otherwise).
-	#[implementations(f64, f32)]
-	value: Item<T>,
+	value: Item<f64>,
 	/// Whether the resulting angle should be given in as radians instead of degrees.
 	radians: Item<bool>,
-) -> Item<T> {
+) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
 
-	let angle = value.clamp(T::from(-1.).unwrap(), T::from(1.).unwrap()).acos();
+	let angle = value.clamp(-1., 1.).acos();
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
@@ -666,7 +620,7 @@ fn cosine_inverse<T: num_traits::float::Float>(
 fn tangent_inverse<T: TangentInverse>(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 	/// Whether the resulting angle should be given in as radians instead of degrees.
 	radians: Item<bool>,
@@ -679,12 +633,6 @@ fn tangent_inverse<T: TangentInverse>(
 pub trait TangentInverse {
 	type Output: num_traits::float::Float;
 	fn atan(self, radians: bool) -> Self::Output;
-}
-impl TangentInverse for f32 {
-	type Output = f32;
-	fn atan(self, radians: bool) -> Self::Output {
-		if radians { self.atan() } else { self.atan().to_degrees() }
-	}
 }
 impl TangentInverse for f64 {
 	type Output = f64;
@@ -703,35 +651,30 @@ impl TangentInverse for DVec2 {
 ///
 /// For example, 0.5 in the input range `[0, 1]` would map to 0 in the output range `[-180, 180]`.
 #[node_macro::node(category("Math: Numeric"))]
-fn remap<U: num_traits::float::Float>(
+fn remap(
 	_: impl Ctx,
 	/// The value to be mapped between ranges.
-	#[implementations(f64, f32)]
-	value: Item<U>,
+	value: Item<f64>,
 	/// The lower bound of the input range.
-	#[implementations(f64, f32)]
-	input_min: Item<U>,
+	input_min: Item<f64>,
 	/// The upper bound of the input range.
-	#[implementations(f64, f32)]
 	#[default(1.)]
-	input_max: Item<U>,
+	input_max: Item<f64>,
 	/// The lower bound of the output range.
-	#[implementations(f64, f32)]
-	output_min: Item<U>,
+	output_min: Item<f64>,
 	/// The upper bound of the output range.
-	#[implementations(f64, f32)]
 	#[default(1.)]
-	output_max: Item<U>,
+	output_max: Item<f64>,
 	/// Whether to constrain the result within the output range instead of extrapolating beyond its bounds.
 	clamped: Item<bool>,
-) -> Item<U> {
+) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
 	let (input_min, input_max, output_min, output_max) = (*input_min.element(), *input_max.element(), *output_min.element(), *output_max.element());
 
 	let input_range = input_max - input_min;
 
 	// Handle division by zero
-	if input_range.abs() < U::epsilon() {
+	if input_range.abs() < f64::EPSILON {
 		return Item::from_parts(output_min, attributes);
 	}
 
@@ -762,11 +705,6 @@ impl Lerp for f64 {
 		self * (1. - factor) + end * factor
 	}
 }
-impl Lerp for f32 {
-	fn lerp(self, end: Self, factor: f64) -> Self {
-		(self as f64 * (1. - factor) + end as f64 * factor) as f32
-	}
-}
 impl Lerp for DVec2 {
 	fn lerp(self, end: Self, factor: f64) -> Self {
 		self * (1. - factor) + end * factor
@@ -780,11 +718,11 @@ impl Lerp for DVec2 {
 fn lerp<T: Lerp>(
 	_: impl Ctx,
 	/// The value produced when the factor is 0.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	start: Item<T>,
 	/// The value produced when the factor is 1.
 	#[default(1.)]
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	end: Item<T>,
 	/// The mix between the start (at 0) and end (at 1) values.
 	#[default(0.5)]
@@ -862,7 +800,7 @@ fn as_bool(_: impl Ctx, value: Item<bool>) -> Item<bool> {
 fn round<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded to the nearest whole number.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -877,7 +815,7 @@ fn round<T: Componentwise>(
 fn floor<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded down.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -892,7 +830,7 @@ fn floor<T: Componentwise>(
 fn ceiling<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded up.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -906,11 +844,6 @@ trait AbsoluteValue {
 impl AbsoluteValue for DVec2 {
 	fn abs(self) -> Self {
 		DVec2::new(self.x.abs(), self.y.abs())
-	}
-}
-impl AbsoluteValue for f32 {
-	fn abs(self) -> Self {
-		self.abs()
 	}
 }
 impl AbsoluteValue for f64 {
@@ -936,7 +869,7 @@ impl AbsoluteValue for i64 {
 fn absolute_value<T: AbsoluteValue>(
 	_: impl Ctx,
 	/// The number to be made positive.
-	#[implementations(f64, f32, i32, i64, DVec2)]
+	#[implementations(f64, i32, i64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -951,7 +884,7 @@ fn absolute_value<T: AbsoluteValue>(
 fn sign<T: Componentwise>(
 	_: impl Ctx,
 	/// The number whose sign is checked.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -979,15 +912,6 @@ impl MinMax for f64 {
 		if self < other { self } else { other }
 	}
 	fn maximum(self, other: f64) -> f64 {
-		if self > other { self } else { other }
-	}
-}
-impl MinMax for f32 {
-	type Output = f32;
-	fn minimum(self, other: f32) -> f32 {
-		if self < other { self } else { other }
-	}
-	fn maximum(self, other: f32) -> f32 {
 		if self > other { self } else { other }
 	}
 }
@@ -1044,10 +968,10 @@ impl MinMax<DVec2> for f64 {
 fn min<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, String, DVec2, DVec2, f64)]
+	#[implementations(f64, u32, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The other of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, u32, String, DVec2, f64, DVec2)]
 	other_value: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output> {
 	let (value, attributes) = value.into_parts();
@@ -1062,10 +986,10 @@ fn min<A: MinMax<B>, B>(
 fn max<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, String, DVec2, DVec2, f64)]
+	#[implementations(f64, u32, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The other of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, u32, String, DVec2, f64, DVec2)]
 	other_value: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output> {
 	let (value, attributes) = value.into_parts();
@@ -1080,13 +1004,13 @@ fn max<A: MinMax<B>, B>(
 fn clamp<A: MinMax<B>, B: MinMax<Output = B> + Clone>(
 	_: impl Ctx,
 	/// The number to be clamped, which is restricted to the range between the minimum and maximum values.
-	#[implementations(f64, f32, u32, String, DVec2, DVec2, f64)]
+	#[implementations(f64, u32, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The left (smaller) side of the range. The output is never less than this number.
-	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, u32, String, DVec2, f64, DVec2)]
 	min: Item<B>,
 	/// The right (greater) side of the range. The output is never greater than this number.
-	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, u32, String, DVec2, f64, DVec2)]
 	#[default(1)]
 	max: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output>
@@ -1189,7 +1113,7 @@ fn all(_: impl Ctx, values: List<bool>) -> Item<bool> {
 fn is_nonzero<T: Default + std::cmp::PartialEq>(
 	_: impl Ctx,
 	/// The value compared against zero.
-	#[implementations(f64, f32, u32, u64, i32, i64, DVec2)]
+	#[implementations(f64, u32, u64, i32, i64, DVec2)]
 	value: Item<T>,
 ) -> Item<bool> {
 	let (value, attributes) = value.into_parts();
@@ -1202,10 +1126,10 @@ fn is_nonzero<T: Default + std::cmp::PartialEq>(
 fn less_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
 	/// The number on the left-hand side of the comparison.
-	#[implementations(f64, f32, u32)]
+	#[implementations(f64, u32)]
 	value: Item<T>,
 	/// The number on the right-hand side of the comparison.
-	#[implementations(f64, f32, u32)]
+	#[implementations(f64, u32)]
 	other_value: Item<T>,
 	/// Uses the less-than-or-equal operation (`<=`) instead of the less-than operation (`<`).
 	or_equal: Item<bool>,
@@ -1223,10 +1147,10 @@ fn less_than<T: std::cmp::PartialOrd<T>>(
 fn greater_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
 	/// The number on the left-hand side of the comparison.
-	#[implementations(f64, f32, u32)]
+	#[implementations(f64, u32)]
 	value: Item<T>,
 	/// The number on the right-hand side of the comparison.
-	#[implementations(f64, f32, u32)]
+	#[implementations(f64, u32)]
 	other_value: Item<T>,
 	/// Uses the greater-than-or-equal operation (`>=`) instead of the greater-than operation (`>`).
 	or_equal: Item<bool>,
@@ -1243,10 +1167,10 @@ fn greater_than<T: std::cmp::PartialOrd<T>>(
 fn equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	#[implementations(f64, u32, DVec2, bool, String)]
 	value: Item<T>,
 	/// The other of the two values to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	#[implementations(f64, u32, DVec2, bool, String)]
 	other_value: Item<T>,
 ) -> Item<bool> {
 	let value = value.into_element();
@@ -1259,10 +1183,10 @@ fn equals<T: std::cmp::PartialEq<T>>(
 fn not_equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for inequality.
-	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	#[implementations(f64, u32, DVec2, bool, String)]
 	value: Item<T>,
 	/// The other of the two values to compare for inequality.
-	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	#[implementations(f64, u32, DVec2, bool, String)]
 	other_value: Item<T>,
 ) -> Item<bool> {
 	let value = value.into_element();
@@ -1321,7 +1245,6 @@ async fn switch<T: 'n + Send>(
 	#[implementations(
 		Context -> Item<String>,
 		Context -> Item<bool>,
-		Context -> Item<f32>,
 		Context -> Item<f64>,
 		Context -> Item<u32>,
 		Context -> Item<u64>,
@@ -1336,7 +1259,6 @@ async fn switch<T: 'n + Send>(
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
-		Context -> Item<Bundle<f32>>,
 		Context -> Item<Bundle<f64>>,
 		Context -> Item<Bundle<u32>>,
 		Context -> Item<Bundle<u64>>,
@@ -1355,7 +1277,6 @@ async fn switch<T: 'n + Send>(
 	#[implementations(
 		Context -> Item<String>,
 		Context -> Item<bool>,
-		Context -> Item<f32>,
 		Context -> Item<f64>,
 		Context -> Item<u32>,
 		Context -> Item<u64>,
@@ -1370,7 +1291,6 @@ async fn switch<T: 'n + Send>(
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
-		Context -> Item<Bundle<f32>>,
 		Context -> Item<Bundle<f64>>,
 		Context -> Item<Bundle<u32>>,
 		Context -> Item<Bundle<u64>>,
@@ -1921,18 +1841,6 @@ mod test {
 		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
 		assert_eq!(root((), vec2(64., 27.), vec2(2., 3.)).into_element(), DVec2::new(8., 3.));
 		assert_eq!(logarithm((), vec2(8., 100.), vec2(2., 10.)).into_element(), DVec2::new(3., 2.));
-	}
-
-	#[test]
-	pub fn logarithm_f32_base_e_and_near_e() {
-		assert_eq!(
-			logarithm((), Item::new_from_element(8_f32), Item::new_from_element(std::f32::consts::E)).into_element(),
-			8_f64.ln() as f32
-		);
-		assert_eq!(
-			logarithm((), Item::new_from_element(8_f32), Item::new_from_element(2.7_f32)).into_element(),
-			8_f64.log(2.7_f32 as f64) as f32
-		);
 	}
 
 	#[test]

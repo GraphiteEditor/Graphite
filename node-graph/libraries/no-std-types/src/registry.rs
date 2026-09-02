@@ -1,16 +1,10 @@
 pub mod types {
 	/// 0% - 100%
 	pub type Percentage = f64;
-	/// 0% - 100%
-	pub type PercentageF32 = f32;
 	/// -100% - 100%
 	pub type SignedPercentage = f64;
-	/// -100% - 100%
-	pub type SignedPercentageF32 = f32;
 	/// -180° - 180°
 	pub type Angle = f64;
-	/// -180° - 180°
-	pub type AngleF32 = f32;
 	/// Ends in the unit of x
 	pub type Multiplier = f64;
 	/// Non-negative integer with px unit
