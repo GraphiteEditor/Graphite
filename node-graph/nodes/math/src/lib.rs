@@ -777,21 +777,21 @@ fn random(
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Converts a number to the standard integer type, which may be the required type for certain node inputs.
+/// Converts a `Number` to the `Integer` type, which may be the required type for certain node inputs.
 #[node_macro::node(category("Type Assertion"))]
 fn as_integer(_: impl Ctx, value: Item<i64>) -> Item<i64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Converts an integer or bool to the decimal number type, which may be the required type for certain node inputs. A bool becomes 0 (false) or 1 (true).
+/// Converts an `Integer` or `Bool` to the `Number` type, which may be the required type for certain node inputs. A `Bool` becomes 0 (false) or 1 (true).
 #[node_macro::node(category("Type Assertion"))]
 fn as_number(_: impl Ctx, value: Item<f64>) -> Item<f64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Passes a true or false value through as the type bool, which may be the required type for certain node inputs.
+/// Passes a true or false value through as the type `Bool`, which may be the required type for certain node inputs.
 #[node_macro::node(category("Type Assertion"))]
 fn as_bool(_: impl Ctx, value: Item<bool>) -> Item<bool> {
 	value
@@ -855,11 +855,6 @@ impl AbsoluteValue for f64 {
 		self.abs()
 	}
 }
-impl AbsoluteValue for i32 {
-	fn abs(self) -> Self {
-		self.abs()
-	}
-}
 impl AbsoluteValue for i64 {
 	fn abs(self) -> Self {
 		self.abs()
@@ -873,7 +868,7 @@ impl AbsoluteValue for i64 {
 fn absolute_value<T: AbsoluteValue>(
 	_: impl Ctx,
 	/// The number to be made positive.
-	#[implementations(f64, i32, i64, DVec2)]
+	#[implementations(f64, i64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -1030,47 +1025,38 @@ where
 
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
 #[node_macro::node(category("Math: Numeric"))]
-fn greatest_common_divisor<T: num_traits::int::PrimInt>(
+fn greatest_common_divisor(
 	_: impl Ctx,
 	/// One of the two numbers for which the GCD is calculated.
-	#[implementations(i64, i32)]
-	value: Item<T>,
+	value: Item<i64>,
 	/// The other of the two numbers for which the GCD is calculated.
-	#[implementations(i64, i32)]
-	other_value: Item<T>,
-) -> Item<T> {
+	other_value: Item<i64>,
+) -> Item<i64> {
 	let (value, attributes) = value.into_parts();
 	let other_value = *other_value.element();
 
-	let gcd = math_parser::constants::gcd(integer_magnitude(value), integer_magnitude(other_value));
+	let gcd = math_parser::constants::gcd(value.unsigned_abs() as u128, other_value.unsigned_abs() as u128);
 
-	// A result too large for the output type (like the GCD of `i32::MIN` and 0) saturates at the type's maximum
-	Item::from_parts(T::from(gcd).unwrap_or_else(T::max_value), attributes)
+	// A result too large for the output type (like the GCD of `i64::MIN` and 0) saturates at the type's maximum
+	Item::from_parts(i64::try_from(gcd).unwrap_or(i64::MAX), attributes)
 }
 
 /// The least common multiple (LCM) calculates the smallest positive integer that is a multiple of both of the two input numbers.
 #[node_macro::node(category("Math: Numeric"))]
-fn least_common_multiple<T: num_traits::int::PrimInt>(
+fn least_common_multiple(
 	_: impl Ctx,
 	/// One of the two numbers for which the LCM is calculated.
-	#[implementations(i64, i32)]
-	value: Item<T>,
+	value: Item<i64>,
 	/// The other of the two numbers for which the LCM is calculated.
-	#[implementations(i64, i32)]
-	other_value: Item<T>,
-) -> Item<T> {
+	other_value: Item<i64>,
+) -> Item<i64> {
 	let (value, attributes) = value.into_parts();
 	let other_value = *other_value.element();
 
-	let lcm = math_parser::constants::lcm(integer_magnitude(value), integer_magnitude(other_value));
+	let lcm = math_parser::constants::lcm(value.unsigned_abs() as u128, other_value.unsigned_abs() as u128);
 
 	// A result too large for the output type saturates at the type's maximum rather than overflowing
-	Item::from_parts(T::from(lcm).unwrap_or_else(T::max_value), attributes)
-}
-
-/// Reads an integer's magnitude as a `u128`, which every implemented input type fits within.
-fn integer_magnitude<T: num_traits::int::PrimInt>(value: T) -> u128 {
-	value.to_i128().map_or(0, i128::unsigned_abs)
+	Item::from_parts(i64::try_from(lcm).unwrap_or(i64::MAX), attributes)
 }
 
 /// Adds together all the numbers in the input list, producing their total.
@@ -1117,7 +1103,7 @@ fn all(_: impl Ctx, values: List<bool>) -> Item<bool> {
 fn is_nonzero<T: Default + std::cmp::PartialEq>(
 	_: impl Ctx,
 	/// The value compared against zero.
-	#[implementations(f64, i32, i64, DVec2)]
+	#[implementations(f64, i64, DVec2)]
 	value: Item<T>,
 ) -> Item<bool> {
 	let (value, attributes) = value.into_parts();
@@ -1311,7 +1297,7 @@ async fn switch<T: 'n + Send>(
 	if *condition.element() { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
 }
 
-/// Constructs a bool value which may be set to true or false.
+/// Constructs a `Bool` value which may be set to true or false.
 #[node_macro::node(category("Value"))]
 fn bool_value(_: impl Ctx, _primary: (), #[name("Bool")] bool_value: Item<bool>) -> Item<bool> {
 	bool_value

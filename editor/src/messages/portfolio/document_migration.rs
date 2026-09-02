@@ -1302,7 +1302,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		// The rewritten "Math f(x)" expression, or `None` when only the Extend + "Math f(…)" form can preserve the node's meaning
 		let inline_b_constant = match operand_b.as_value() {
 			Some(TaggedValue::F64(constant)) => Some(*constant),
-			Some(TaggedValue::F32(constant)) => Some(*constant as f64),
 			_ => None,
 		};
 		let fx_expression = match &static_expression {
@@ -1338,7 +1337,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			// "Extend" joins the two operands into the list "Math f(…)" reads; an unwired constant operand becomes a one-item list value
 			let as_list_input = |input: &NodeInput| match input.as_value() {
 				Some(TaggedValue::F64(value)) => NodeInput::value(TaggedValue::F64Array(vec![*value]), input.is_exposed()),
-				Some(TaggedValue::F32(value)) => NodeInput::value(TaggedValue::F64Array(vec![*value as f64]), input.is_exposed()),
 				_ => input.clone(),
 			};
 			let Some(extend_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::graphic::extend::IDENTIFIER)) else {
@@ -1500,10 +1498,25 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
-	// Shader nodes compute in f32 but their parameters ride the graph as f64, so an F32 stored in a slot whose definition now
-	// defaults to F64 widens to match. Keying on the definition covers any parameter that leaves f32 behind, and running last
-	// covers the F32 values the migrations above still write.
-	let widened_float_inputs: Vec<(NodeId, Vec<NodeId>, usize, f64, bool)> = document
+	// Parameters that historically accepted fractional numbers are now integers (the polygon and star "Sides", the index,
+	// shift amount, and slice bound parameters of the list, string, and regex nodes, the "Path is Closed" index, and the
+	// "Blend" count), so a stored F64 truncates as those slots' own casts and Floor node did, preserving what documents drew
+	let narrowed_integer_inputs: &[(DefinitionIdentifier, &[usize])] = &[
+		(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER), &[1]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER), &[1]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::vector::index_points::IDENTIFIER), &[1]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::item_at_index::IDENTIFIER), &[1]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::remove_at_index::IDENTIFIER), &[1]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::shift::IDENTIFIER), &[1]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::list_indices::IDENTIFIER), &[1]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::list_slice::IDENTIFIER), &[1, 2]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::text_nodes::string_slice::IDENTIFIER), &[1, 2]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::text_nodes::regex::regex_find::IDENTIFIER), &[2]),
+		(DefinitionIdentifier::Network("Regex Find".into()), &[2]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::vector::path_is_closed::IDENTIFIER), &[1]),
+		(DefinitionIdentifier::Network("Blend".into()), &[1]),
+	];
+	let fractional_value_inputs: Vec<(NodeId, Vec<NodeId>, usize, i64, bool)> = document
 		.network_interface
 		.document_network()
 		.recursive_nodes()
@@ -1511,52 +1524,21 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			let Some(reference) = document.network_interface.reference(node_id, &path) else {
 				return Vec::new();
 			};
-			let Some(definition) = resolve_document_node_type(&reference) else { return Vec::new() };
-			let default_inputs = definition.default_node_template().inputs;
+			let Some((_, indices)) = narrowed_integer_inputs.iter().find(|(identifier, _)| reference == *identifier) else {
+				return Vec::new();
+			};
 
-			node.inputs
+			indices
 				.iter()
-				.enumerate()
-				.filter_map(|(index, input)| {
-					let NodeInput::Value { tagged_value, exposed } = input else { return None };
-					let TaggedValue::F32(value) = &**tagged_value else { return None };
-					let NodeInput::Value { tagged_value: default_value, .. } = default_inputs.get(index)? else {
-						return None;
-					};
-					matches!(&**default_value, TaggedValue::F64(_)).then(|| (*node_id, path.clone(), index, *value as f64, *exposed))
+				.filter_map(|&index| {
+					let NodeInput::Value { tagged_value, exposed } = node.inputs.get(index)? else { return None };
+					let TaggedValue::F64(value) = &**tagged_value else { return None };
+					Some((*node_id, path.clone(), index, *value as i64, *exposed))
 				})
 				.collect::<Vec<_>>()
 		})
 		.collect();
-	for (node_id, network_path, index, value, exposed) in widened_float_inputs {
-		document
-			.network_interface
-			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(TaggedValue::F64(value), exposed), &network_path);
-	}
-
-	// With the catalog's integers standardized on i64, any unsigned values stored by older documents upgrade to their I64 form.
-	// This runs last so the passes above that detect legacy node shapes by their U32 values still see them unconverted.
-	let unsigned_value_inputs: Vec<(NodeId, Vec<NodeId>, usize, i64, bool)> = document
-		.network_interface
-		.document_network()
-		.recursive_nodes()
-		.flat_map(|(node_id, node, path)| {
-			node.inputs
-				.iter()
-				.enumerate()
-				.filter_map(|(index, input)| {
-					let NodeInput::Value { tagged_value, exposed } = input else { return None };
-					let integer = match &**tagged_value {
-						TaggedValue::U32(value) => *value as i64,
-						TaggedValue::U64(value) => i64::try_from(*value).unwrap_or(i64::MAX),
-						_ => return None,
-					};
-					Some((*node_id, path.clone(), index, integer, *exposed))
-				})
-				.collect::<Vec<_>>()
-		})
-		.collect();
-	for (node_id, network_path, index, integer, exposed) in unsigned_value_inputs {
+	for (node_id, network_path, index, integer, exposed) in fractional_value_inputs {
 		document
 			.network_interface
 			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(TaggedValue::I64(integer), exposed), &network_path);
@@ -1612,6 +1594,29 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.any(|n| matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("LegacyLayerExtend") || id.as_str().contains("legacy_layer_extend")))
 		&& let Some(reference) = document.network_interface.reference(node_id, network_path)
 		&& let Some(node_definition) = resolve_document_node_type(&reference)
+	{
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
+	}
+
+	// Rebuild the Blend subgraph that still floors its Count import, since the now-integer Count enters through As Number instead
+	if let DocumentNodeImplementation::Network(inner) = &node.implementation
+		&& document.network_interface.reference(node_id, network_path) == Some(DefinitionIdentifier::Network("Blend".into()))
+		&& inner.nodes.values().any(|n| {
+			matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::math_nodes::floor::IDENTIFIER)
+				&& n.inputs.iter().any(|input| matches!(input, NodeInput::Import { import_index: 1, .. }))
+		}) && let Some(node_definition) = resolve_network_node_type("Blend")
+	{
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
+	}
+
+	// Rebuild the Regex Find subgraph that still imports its Match Index as a decimal, since that index is now an integer
+	if let DocumentNodeImplementation::Network(inner) = &node.implementation
+		&& document.network_interface.reference(node_id, network_path) == Some(DefinitionIdentifier::Network("Regex Find".into()))
+		&& inner.nodes.values().any(|n| {
+			n.inputs
+				.iter()
+				.any(|input| matches!(input, NodeInput::Import { import_type, import_index: 2 } if *import_type == item!(f64)))
+		}) && let Some(node_definition) = resolve_network_node_type("Regex Find")
 	{
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 	}
@@ -2437,18 +2442,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-		let output_level = |index: usize, default: f32| match old_inputs.get(index).and_then(|input| input.as_value()) {
-			Some(TaggedValue::F32(percent)) => percent / 100.,
+		let output_level = |index: usize, default: f64| match old_inputs.get(index).and_then(|input| input.as_value()) {
+			Some(TaggedValue::F64(percent)) => percent / 100.,
 			_ => default,
 		};
 		let (output_minimums, output_maximums) = (output_level(4, 0.), output_level(5, 1.));
 		for (index, input) in old_inputs.iter().take(6).enumerate() {
 			let input = match (index, input.as_value()) {
-				(2, Some(TaggedValue::F32(percent))) => {
+				(2, Some(TaggedValue::F64(percent))) => {
 					// The old node's midtones-to-gamma mapping, from https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 					let midtones = output_minimums + (output_maximums - output_minimums) * percent / 100.;
 					let gamma = if midtones < 0.5 { 1. + 9. * (1. - midtones * 2.) } else { ((1. - midtones) * 2.).max(0.01) };
-					NodeInput::value(TaggedValue::F32(gamma.clamp(0.01, 9.99)), input.is_exposed())
+					NodeInput::value(TaggedValue::F64(gamma.clamp(0.01, 9.99)), input.is_exposed())
 				}
 				_ => input.clone(),
 			};
@@ -2593,12 +2598,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut new_node_template)?;
 
 		// The two six-input layouts differ only in where the DVec2 "angles" and the u32 "columns"/"rows" sit:
-		//   Legacy: [primary, grid_type, spacing, angles (DVec2), columns (u32), rows (u32)]
-		//   Modern: [primary, grid_type, spacing, columns (u32), rows (u32), angles (DVec2)]
-		// So a DVec2 "angles" at index 3, or a u32 "rows" at index 5, marks the legacy order. Checking both slots classifies
+		//   Legacy: [primary, grid_type, spacing, angles (DVec2), columns (int), rows (int)]
+		//   Modern: [primary, grid_type, spacing, columns (int), rows (int), angles (DVec2)]
+		// So a DVec2 "angles" at index 3, or anything but angles at index 5, marks the legacy order. Checking both slots classifies
 		// correctly even when one of them is a wired or imported connection rather than a literal value.
 		let index_3_is_angles = matches!(old_inputs.get(3), Some(NodeInput::Value { tagged_value, .. }) if matches!(**tagged_value, TaggedValue::DVec2(_)));
-		let index_5_is_rows = matches!(old_inputs.get(5), Some(NodeInput::Value { tagged_value, .. }) if matches!(**tagged_value, TaggedValue::U32(_)));
+		let index_5_is_rows = matches!(old_inputs.get(5), Some(NodeInput::Value { tagged_value, .. }) if !matches!(**tagged_value, TaggedValue::DVec2(_)));
 		let legacy_angles_layout = index_3_is_angles || index_5_is_rows;
 
 		if legacy_angles_layout {
@@ -3460,52 +3465,95 @@ mod tests {
 		}
 	}
 
-	// Old documents store unsigned integer values, which upgrade to the standard I64 form after the passes that detect legacy shapes by them
+	// The Blend network's Count is now an integer, so an old instance rounds its stored F64 count and swaps the Floor its
+	// subgraph used to whole-number the count for the As Number that brings the integer into the network's decimal math
 	#[test]
-	fn unsigned_values_upgrade_to_i64() {
-		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+	fn blend_count_narrows_to_i64_and_its_subgraph_is_rebuilt() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplateImplementation;
 
 		let node_id = NodeId(1);
 		let mut document = DocumentMessageHandler::default();
-		document.network_interface.insert_node(
-			node_id,
-			NodeTemplate {
-				inputs: vec![NodeInput::value(TaggedValue::U32(7), false), NodeInput::value(TaggedValue::U64(9), true)],
-				..Default::default()
-			},
-			&[],
-		);
-
-		document_migration_upgrades(&mut document, false);
-
-		let node = &document.network_interface.document_network().nodes[&node_id];
-		assert_eq!(node.inputs.first().and_then(|input| input.as_value()).cloned(), Some(TaggedValue::I64(7)));
-		assert_eq!(node.inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::I64(9)));
-		assert!(matches!(node.inputs.get(1), Some(NodeInput::Value { exposed: true, .. })), "exposure should survive the upgrade");
-	}
-
-	// A shader node's parameters ride the graph as f64, so an F32 a document stored where the node's definition now
-	// defaults to F64 widens, while an F32 sitting in a slot with some other default type is left alone
-	#[test]
-	fn stored_f32_values_widen_where_the_definition_defaults_to_f64() {
-		let node_id = NodeId(1);
-		let mut document = DocumentMessageHandler::default();
-		let gamma_correction = DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::adjustments::gamma_correction::IDENTIFIER);
-		let mut node_template = resolve_document_node_type(&gamma_correction).expect("Gamma Correction should exist").default_node_template();
-		node_template.inputs[0] = NodeInput::value(TaggedValue::F32(1.), false);
-		node_template.inputs[1] = NodeInput::value(TaggedValue::F32(2.2), true);
+		let mut node_template = resolve_network_node_type("Blend").expect("Blend should exist").default_node_template();
+		node_template.inputs[1] = NodeInput::value(TaggedValue::F64(6.9), false);
+		let NodeTemplateImplementation::Network(network_template) = &mut node_template.implementation else {
+			panic!("Blend should be a network node")
+		};
+		let count_conversion = network_template.nodes.get_mut(&NodeId(3)).expect("Blend should have a count conversion node");
+		count_conversion.implementation = NodeTemplateImplementation::ProtoNode(graphene_std::math_nodes::floor::IDENTIFIER);
+		count_conversion.inputs = vec![NodeInput::import(item!(f64), 1)];
 		document.network_interface.insert_node(node_id, node_template, &[]);
 
 		document_migration_upgrades(&mut document, false);
 
 		let node = &document.network_interface.document_network().nodes[&node_id];
 		assert_eq!(
-			node.inputs.first().and_then(|input| input.as_value()).cloned(),
-			Some(TaggedValue::F32(1.)),
-			"a slot whose default is not a number keeps its value"
+			node.inputs.get(1).and_then(|input| input.as_value()).cloned(),
+			Some(TaggedValue::I64(6)),
+			"the count truncates as the retired Floor did, so the document keeps drawing six"
 		);
-		assert_eq!(node.inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::F64(2.2_f32 as f64)));
-		assert!(matches!(node.inputs.get(1), Some(NodeInput::Value { exposed: true, .. })), "exposure should survive the upgrade");
+		let DocumentNodeImplementation::Network(inner) = &node.implementation else {
+			panic!("Blend should stay a network node")
+		};
+		assert_eq!(
+			inner.nodes[&NodeId(3)].implementation,
+			DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::as_number::IDENTIFIER)
+		);
+	}
+
+	// The rebuild above is keyed on the retired Floor that took the Count import, since the subgraph keeps another Floor
+	// for its subpath index and a current Blend would otherwise lose any edit made inside it on every load
+	#[test]
+	fn current_blend_subgraph_survives_migration() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplateImplementation;
+
+		let node_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		let mut node_template = resolve_network_node_type("Blend").expect("Blend should exist").default_node_template();
+		let NodeTemplateImplementation::Network(network_template) = &mut node_template.implementation else {
+			panic!("Blend should be a network node")
+		};
+		let edited_subtract = network_template.nodes.get_mut(&NodeId(5)).expect("Blend should have an open-path denominator node");
+		edited_subtract.inputs[1] = NodeInput::value(TaggedValue::F64(42.), false);
+		document.network_interface.insert_node(node_id, node_template, &[]);
+
+		document_migration_upgrades(&mut document, false);
+
+		let DocumentNodeImplementation::Network(inner) = &document.network_interface.document_network().nodes[&node_id].implementation else {
+			panic!("Blend should stay a network node")
+		};
+		assert_eq!(inner.nodes[&NodeId(5)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::F64(42.)));
+	}
+
+	// Regex Find's Match Index is now an integer, so an old instance rounds its stored F64 index and rebuilds the subgraph
+	// that fed the decimal index to its two item-at-index nodes
+	#[test]
+	fn regex_find_match_index_narrows_to_i64_and_its_subgraph_is_rebuilt() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplateImplementation;
+
+		let node_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		let mut node_template = resolve_network_node_type("Regex Find").expect("Regex Find should exist").default_node_template();
+		node_template.inputs[2] = NodeInput::value(TaggedValue::F64(1.6), false);
+		let NodeTemplateImplementation::Network(network_template) = &mut node_template.implementation else {
+			panic!("Regex Find should be a network node")
+		};
+		network_template.nodes.get_mut(&NodeId(0)).expect("Regex Find should have a find node").inputs[2] = NodeInput::import(item!(f64), 2);
+		network_template.nodes.get_mut(&NodeId(1)).expect("Regex Find should have an item-at-index node").inputs[1] = NodeInput::value(TaggedValue::F64(0.), false);
+		document.network_interface.insert_node(node_id, node_template, &[]);
+
+		document_migration_upgrades(&mut document, false);
+
+		let node = &document.network_interface.document_network().nodes[&node_id];
+		assert_eq!(
+			node.inputs.get(2).and_then(|input| input.as_value()).cloned(),
+			Some(TaggedValue::I64(1)),
+			"the match index truncates as the retired cast did"
+		);
+		let DocumentNodeImplementation::Network(inner) = &node.implementation else {
+			panic!("Regex Find should stay a network node")
+		};
+		assert_eq!(inner.nodes[&NodeId(0)].inputs.get(2), Some(&NodeInput::import(item!(i64), 2)));
+		assert_eq!(inner.nodes[&NodeId(1)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::I64(0)));
 	}
 
 	#[test]

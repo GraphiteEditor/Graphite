@@ -1040,18 +1040,7 @@ fn narrow_shader_fields(fields: &mut [ParsedField]) -> syn::Result<()> {
 		}
 
 		// The registry's f64 typedefs, like `Percentage` and `Angle`, spell the graph's Number by its widget meaning and narrow the same way
-		let spells_f64 = [
-			"f64",
-			"Percentage",
-			"SignedPercentage",
-			"Angle",
-			"Multiplier",
-			"PixelLength",
-			"Length",
-			"Fraction",
-			"Progression",
-			"SignedInteger",
-		];
+		let spells_f64 = ["f64", "Percentage", "SignedPercentage", "Angle", "Multiplier", "PixelLength", "Length", "Fraction", "Progression"];
 		let counterpart: Type = if spells_f64.iter().any(|name| is_primitive_type(&element, name)) {
 			parse_quote!(f32)
 		} else if is_primitive_type(&element, "i64") {

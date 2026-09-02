@@ -1725,10 +1725,11 @@ async fn path_is_closed(
 	/// The vector content whose subpaths are inspected.
 	content: Item<Vector>,
 	/// The index of the subpath to check, counting across the element's subpaths.
-	index: Item<f64>,
+	#[hard(0..)]
+	index: Item<i64>,
 ) -> Item<bool> {
-	let index = index.into_element();
-	let closed = content.element().build_stroke_path_iter().map(|(_, closed)| closed).nth(index.max(0.) as usize).unwrap_or(false);
+	let index = usize::try_from(index.into_element()).unwrap_or(usize::MAX);
+	let closed = content.element().build_stroke_path_iter().map(|(_, closed)| closed).nth(index).unwrap_or(false);
 
 	Item::new_from_element(closed)
 }
@@ -3451,7 +3452,7 @@ fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<b
 	Item::new_from_element(inside)
 }
 
-// TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
+// TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall this count off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
 async fn list_length(_: impl Ctx, content: ListDyn) -> Item<f64> {
@@ -3473,7 +3474,7 @@ async fn index_points(
 	/// The vector element containing the anchor points to be retrieved.
 	content: Item<Vector>,
 	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last point.
-	index: Item<f64>,
+	index: Item<i64>,
 ) -> Item<DVec2> {
 	let index = index.into_element();
 	let positions = content.element().point_domain.positions();
@@ -3483,11 +3484,10 @@ async fn index_points(
 	};
 
 	// Clamp and allow negative indexing from the end
-	let index = index as isize;
 	let index = if index < 0 {
-		(positions.len() as isize + index).max(0) as usize
+		(positions.len() as i64 + index).max(0) as usize
 	} else {
-		(index as usize).min(last_index)
+		index.min(last_index as i64) as usize
 	};
 
 	Item::new_from_element(positions[index])

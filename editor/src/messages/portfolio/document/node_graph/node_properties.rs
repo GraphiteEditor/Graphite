@@ -307,7 +307,6 @@ pub(crate) fn property_from_type(
 				Some("Length") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
 				Some("Fraction") => number_or_slider(default_info, bounded(number_input.mode_range(), 0., 1.), true),
 				Some("Progression") => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
-				Some("SignedInteger") => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
 				Some("PixelSize") => vec2_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
 				Some("TextArea") => text_area_widget(default_info).into(),
 

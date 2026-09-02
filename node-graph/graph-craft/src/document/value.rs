@@ -519,10 +519,10 @@ tagged_value! {
 	// ===============
 	// PRIMITIVE TYPES
 	// ===============
-	F32(f32),
+	#[serde(alias = "F32")] // TODO: Eventually remove this document upgrade code
 	F64(f64),
-	U32(u32),
-	U64(u64),
+	#[serde(deserialize_with = "core_types::misc::migrate_to_i64")] // TODO: Eventually remove this document upgrade code
+	#[serde(alias = "U32", alias = "U64")]
 	I64(i64),
 	Bool(bool),
 	String(String),
@@ -604,10 +604,7 @@ impl TaggedValue {
 		match self {
 			TaggedValue::None => "()".to_string(),
 			TaggedValue::String(x) => format!("\"{x}\""),
-			TaggedValue::U32(x) => x.to_string() + "_u32",
-			TaggedValue::U64(x) => x.to_string() + "_u64",
 			TaggedValue::I64(x) => x.to_string() + "_i64",
-			TaggedValue::F32(x) => x.to_string() + "_f32",
 			TaggedValue::F64(x) => x.to_string() + "_f64",
 			TaggedValue::Bool(x) => x.to_string(),
 			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
@@ -857,10 +854,7 @@ impl Display for TaggedValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			TaggedValue::String(x) => f.write_str(x),
-			TaggedValue::U32(x) => f.write_fmt(format_args!("{x}")),
-			TaggedValue::U64(x) => f.write_fmt(format_args!("{x}")),
 			TaggedValue::I64(x) => f.write_fmt(format_args!("{x}")),
-			TaggedValue::F32(x) => f.write_fmt(format_args!("{x}")),
 			TaggedValue::F64(x) => f.write_fmt(format_args!("{x}")),
 			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
 			_ => panic!("Cannot convert to string"),
@@ -1157,5 +1151,37 @@ mod gradient_shape_migration {
 			vec![0., 1.],
 			"the nested tuple stops should parse through the field adapter"
 		);
+	}
+}
+
+// TODO: Eventually remove this document upgrade code
+#[cfg(test)]
+mod retired_numeric_variants {
+	use super::*;
+
+	fn load(payload: serde_json::Value) -> TaggedValue {
+		deserialize_tagged_value_with_legacy_migration(payload)
+			.expect("The numeric payload should deserialize")
+			.into_inner()
+			.as_ref()
+			.clone()
+	}
+
+	#[test]
+	fn unsigned_tags_read_as_integers() {
+		assert_eq!(load(serde_json::json!({ "U32": 7 })), TaggedValue::I64(7));
+		assert_eq!(load(serde_json::json!({ "U64": 9 })), TaggedValue::I64(9));
+	}
+
+	#[test]
+	fn an_unsigned_value_past_the_signed_range_saturates() {
+		assert_eq!(load(serde_json::json!({ "U64": u64::MAX })), TaggedValue::I64(i64::MAX));
+	}
+
+	#[test]
+	fn the_32_bit_float_tag_reads_the_digits_it_stored() {
+		// The stored text is what the author chose, so reading it as f64 beats widening the 32-bit value it parsed into
+		assert_eq!(load(serde_json::json!({ "F32": 2.2 })), TaggedValue::F64(2.2));
+		assert_ne!(load(serde_json::json!({ "F32": 2.2 })), TaggedValue::F64(2.2_f32 as f64));
 	}
 }

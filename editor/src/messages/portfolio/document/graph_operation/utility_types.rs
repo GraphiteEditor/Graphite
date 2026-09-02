@@ -94,10 +94,10 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[], self.import);
 	}
 
-	pub fn insert_blend_data(&mut self, layer: LayerNodeIdentifier, count: f64) -> NodeId {
+	pub fn insert_blend_data(&mut self, layer: LayerNodeIdentifier, count: i64) -> NodeId {
 		let blend = resolve_network_node_type("Blend")
 			.expect("Blend node does not exist")
-			.node_template_input_override([Some(NodeInput::type_default(list!(Graphic), true)), Some(NodeInput::value(TaggedValue::F64(count), false))]);
+			.node_template_input_override([Some(NodeInput::type_default(list!(Graphic), true)), Some(NodeInput::value(TaggedValue::I64(count), false))]);
 
 		let blend_id = NodeId::new();
 		self.network_interface.insert_node(blend_id, blend, &[]);
