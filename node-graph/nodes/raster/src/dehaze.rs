@@ -37,6 +37,8 @@ async fn dehaze(_: impl Ctx, image_frame: Item<Raster<CPU>>, strength: Item<Perc
 
 // There is no real point in modifying these values because they do not change the final result all that much.
 // The authors of the paper recommended using these values to get a reasonable balance of performance and quality.
+// TODO: The patch size and guided filter radius are whole source pixels, so the effect's scale follows the image's resolution.
+// Derive them from the footprint so the dehaze acts at a document-space scale independent of how the image was sampled.
 const PATCH_SIZE: u32 = 15;
 const TOP_PERCENT: f64 = 0.001;
 const RADIUS: u32 = 60;
