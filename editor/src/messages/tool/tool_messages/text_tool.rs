@@ -873,23 +873,29 @@ impl Fsm for TextToolFsmState {
 					// Find the translation necessary from the original position in viewport space
 					let translation_viewport = bounds.original_bound_transform.transform_vector2(translation_bounds_space);
 
-					// TODO: Don't set both max_width and max_height to true at the same time, only do one based on which edge is being dragged (or both if a corner is being dragged)
-					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxWidthInput),
-						input: NodeInput::value(TaggedValue::Bool(true), false),
-					});
-					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxWidthInput),
-						input: NodeInput::value(TaggedValue::F64(size_layer.x), false),
-					});
-					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxHeightInput),
-						input: NodeInput::value(TaggedValue::Bool(true), false),
-					});
-					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxHeightInput),
-						input: NodeInput::value(TaggedValue::F64(size_layer.y), false),
-					});
+					// Only set the max width/height for the axis (axes) whose edge(s) are actually being dragged, so a single-edge drag doesn't lock the other axis too
+					let (touches_width, touches_height) = (movement.left || movement.right, movement.top || movement.bottom);
+
+					if touches_width {
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxWidthInput),
+							input: NodeInput::value(TaggedValue::Bool(true), false),
+						});
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxWidthInput),
+							input: NodeInput::value(TaggedValue::F64(size_layer.x), false),
+						});
+					}
+					if touches_height {
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxHeightInput),
+							input: NodeInput::value(TaggedValue::Bool(true), false),
+						});
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxHeightInput),
+							input: NodeInput::value(TaggedValue::F64(size_layer.y), false),
+						});
+					}
 					responses.add(GraphOperationMessage::TransformSet {
 						layer: dragging_layer.id,
 						transform: DAffine2::from_translation(translation_viewport) * document.metadata().document_to_viewport * dragging_layer.original_transform,
