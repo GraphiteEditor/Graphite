@@ -650,17 +650,20 @@ jobs:
           codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Graphite Helper.app"
           codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Graphite Helper (GPU).app"
           codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Graphite Helper (Renderer).app"
+          find "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework/Libraries" -name "*.dylib" -exec codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" {} \;
           codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework"
-          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework/Libraries/libcef_sandbox.dylib"
-          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework/Libraries/libEGL.dylib"
-          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework/Libraries/libGLESv2.dylib"
-          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework/Libraries/libvk_swiftshader.dylib"
           codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH" --deep
 
           codesign --verify --deep --strict --verbose=4 "$APP_PATH"
 
           ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
-          xcrun notarytool submit "$ZIP_PATH" --wait --apple-id "$APPLE_EMAIL" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD"
+          SUBMISSION_ID=$(xcrun notarytool submit "$ZIP_PATH" --wait --output-format json --apple-id "$APPLE_EMAIL" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD" | tee /dev/stderr | jq -r '.id')
+          STATUS=$(xcrun notarytool info "$SUBMISSION_ID" --output-format json --apple-id "$APPLE_EMAIL" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD" | jq -r '.status')
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "Notarization failed with status: $STATUS"
+            xcrun notarytool log "$SUBMISSION_ID" --apple-id "$APPLE_EMAIL" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD"
+            exit 1
+          fi
           rm "$ZIP_PATH"
 
           xcrun stapler staple -v "$APP_PATH"
