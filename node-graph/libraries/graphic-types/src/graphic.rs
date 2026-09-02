@@ -1773,6 +1773,104 @@ mod run_tests {
 		assert_eq!(map_groups_to_legacy(served.element(0).unwrap()), expected);
 	}
 
+	/// A `lanes`-long frame promoted out of `transient` into `persistent`, with
+	/// `fill` written into the paint field of every lane. The frame buffer comes
+	/// back so it outlives the promote's reads.
+	fn promote_paint_field(
+		fill: Option<&List<Graphic<'static>>>,
+		lanes: usize,
+		transient: &core_types::arena::Arena,
+		persistent: &core_types::arena::Arena,
+	) -> (core_types::record::Layout, core_types::record::MaterializedSpan, Vec<u64>) {
+		use core_types::record::{Layout, MaterializedSpan, Promotion, element_write, write_field};
+
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[FieldWrite::of::<Fill>(0)]);
+		let offset = layout.offset_of(Fill::NAME, 0).unwrap();
+		let stride = layout.lane_stride();
+		let mut buffer = vec![0u64; (lanes * stride).div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		let bounds = (base as usize, buffer.len() * 8);
+		for lane in 0..lanes {
+			// SAFETY: the frame is this layout's, written at the element slot and
+			// at the paint field's own offset.
+			unsafe {
+				base.add(lane * stride).cast::<f64>().write(lane as f64);
+				write_field::<Option<&List<Graphic<'static>>>>(base.add(lane * stride), offset, fill);
+			}
+		}
+		// SAFETY: the frames hold `lanes` live records of `layout`.
+		let batch = unsafe { core_types::node::RecordBatch::new(base.cast_const(), lanes, &layout) };
+		let promotion = Promotion::new(transient, bounds, persistent);
+		// SAFETY: as above.
+		let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) }.expect("the region holds the promote");
+		(layout, span, buffer)
+	}
+
+	/// The promoted paint of one lane, at the layout the promote published.
+	fn promoted_paint<'p>(
+		span: &core_types::record::MaterializedSpan,
+		layout: &core_types::record::Layout,
+		lane: usize,
+		persistent: &'p core_types::arena::Arena,
+	) -> &'p List<Graphic<'p>> {
+		let offset = layout.offset_of(Fill::NAME, 0).unwrap();
+		let batch = span.batch(persistent, layout).expect("the span resolves in its own region");
+		// SAFETY: the promote wrote a record of `layout` into every lane.
+		unsafe { batch.get(lane).rec().read::<Option<&List<Graphic>>>(offset) }.expect("the paint promotes present")
+	}
+
+	#[test]
+	fn a_promoted_paint_field_shares_persistent_interiors() {
+		let inner_vector = unit_square_at(DVec2::ZERO);
+		let transient = core_types::arena::Arena::new(1 << 16).unwrap();
+		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
+
+		// The interior an upstream promote already published, named by a paint
+		// list the evaluation parked.
+		let published = native_group_paint(&inner_vector, &persistent);
+		let interior = {
+			let Some(Graphic::Group(group)) = published.element(0) else { panic!("the paint carries a native group") };
+			group.content.lanes().get(0).rec().ptr()
+		};
+		// SAFETY: the list serves only while `persistent` is live, and the
+		// promote under test replaces every borrow it carries.
+		let (paint, _) = transient.alloc(unsafe { core_types::record::erase_static(published) }).unwrap();
+
+		let occupied = persistent.occupancy();
+		let (layout, span, _frames) = promote_paint_field(Some(paint), 1, &transient, &persistent);
+		let served = promoted_paint(&span, &layout, 0, &persistent);
+
+		let Some(Graphic::Group(group)) = served.element(0) else { panic!("the promote keeps the group form") };
+		assert_eq!(group.content.lanes().get(0).rec().ptr(), interior, "a persistent interior is shared pointer for pointer");
+		assert!(
+			persistent.occupancy() - occupied <= layout.frame_bytes() + size_of::<List<Graphic>>() + align_of::<List<Graphic>>(),
+			"the promote allocated the lane slab and the field's own header, never the owned form of the shared interior"
+		);
+	}
+
+	#[test]
+	fn a_group_free_paint_field_moves_its_parked_header() {
+		let mut transient = core_types::arena::Arena::new(1 << 16).unwrap();
+		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
+
+		let paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO)));
+		let heap = {
+			let Some(Graphic::Vector(vector)) = paint.element(0) else { panic!("the paint carries a vector") };
+			vector.point_domain.positions().as_ptr()
+		};
+		let (paint, _) = transient.alloc(paint).unwrap();
+
+		let (layout, span, _frames) = promote_paint_field(Some(paint), 2, &transient, &persistent);
+		let served = promoted_paint(&span, &layout, 0, &persistent);
+		let Some(Graphic::Vector(vector)) = served.element(0) else { panic!("the promote keeps the vector") };
+		assert_eq!(vector.point_domain.positions().as_ptr(), heap, "the promote moved the header, so the served paint names the pre-promote heap");
+		assert!(std::ptr::eq(served, promoted_paint(&span, &layout, 1, &persistent)), "a paint two lanes share moves once");
+
+		transient.reset();
+		let served = promoted_paint(&span, &layout, 0, &persistent);
+		assert!(matches!(served.element(0), Some(Graphic::Vector(_))), "the moved paint survives the transient reset");
+	}
+
 	#[test]
 	fn a_legacy_list_owns_its_paint_attr_content() {
 		let inner_vector = unit_square_at(DVec2::ZERO);
