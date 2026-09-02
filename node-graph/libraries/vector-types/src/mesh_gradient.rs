@@ -1,15 +1,18 @@
+use std::array;
+use std::ops::{Add, Mul};
+
 use core_types::list::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item};
 use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2, Mat4, Vec4};
-use kurbo::{BezPath, ParamCurve, PathSeg};
+use kurbo::{BezPath, CubicBez, ParamCurve, PathSeg};
+use num_traits::Float;
 
 use crate::{
 	Vector,
 	gradient::{GradientInterpolation, GradientSpace, color_from_gradient_space_channels, gradient_space_channels},
 	vector::{
 		PointId, SegmentId,
-		algorithms::util::pathseg_tangent,
 		misc::{BezierHandles, HandleId, HandleType, pathseg_points, point_to_dvec2},
 	},
 };
@@ -60,12 +63,13 @@ impl MeshPatch {
 		const RELATIVE_EPSILON: f64 = 1e-6;
 		const FOLDOVER_SAFETY_ANGLE_DEGREES: f64 = 5.;
 		let minimum_normalized_jacobian = FOLDOVER_SAFETY_ANGLE_DEGREES.to_radians().sin();
+		let position_bezier_net = coons_to_position_bezier_net(&self.corners, &self.edges);
 
 		for row in 0..=SUBDIVISIONS {
 			let v = row as f64 / SUBDIVISIONS as f64;
 			for column in 0..=SUBDIVISIONS {
 				let u = column as f64 / SUBDIVISIONS as f64;
-				let jacobian = position_jacobian(self.corners, self.edges, u, v);
+				let jacobian = position_jacobian(&position_bezier_net, u, v);
 				let derivative_u = jacobian.x_axis;
 				let derivative_v = jacobian.y_axis;
 				let scale = derivative_u.length() * derivative_v.length();
@@ -703,17 +707,15 @@ enum MeshPatchInterpolation {
 		/// Derivatives of corner colors for bicubic hermite interpolation. [top-left, top-right, bottom-left, bottom-right]
 		color_derivatives: [PatchColorDerivatives; 4],
 		/// The Bezier restatement of the Hermite color data, built alongside it so the two cannot drift apart.
-		bezier_control_points: Box<[[Vec4; 4]; 4]>,
+		color_bezier_net: Box<[[Vec4; 4]; 4]>,
 	},
 }
 
 /// A cached mesh patch for subdivision into subpatches in rendering phase.
 #[derive(Clone)]
 pub struct MeshPatchEvaluator {
-	/// Corner positions. [top-left, top-right, bottom-left, bottom-right]
-	pub corners: [DVec2; 4],
-	/// Edges defining the patch. [top, bottom, left, right]
-	pub edges: [PathSeg; 4],
+	// Bicubic Bezier patch representation of the Coons patch.
+	position_bezier_net: [[DVec2; 4]; 4],
 	/// Color-space channels and straight alpha. [top-left, top-right, bottom-left, bottom-right]
 	colors: [Vec4; 4],
 	/// Color space for interpolation.
@@ -776,21 +778,10 @@ impl MeshPatchEvaluator {
 		}
 	}
 
-	/// Evaluates the interpolated position using a bilinearly blended Coons patch.
+	/// Evaluates the shape control net as a bicubic tensor-product Bezier patch at UV, returning the corresponding position in mesh-local space.
 	pub fn evaluate_position(&self, u: f64, v: f64) -> DVec2 {
-		let [top_seg, bottom_seg, left_seg, right_seg] = self.edges;
-		let [top_left, top_right, bottom_left, bottom_right] = self.corners;
-
-		let top_u_pos = point_to_dvec2(top_seg.eval(u));
-		let bottom_u_pos = point_to_dvec2(bottom_seg.eval(u));
-		let left_v_pos = point_to_dvec2(left_seg.eval(v));
-		let right_v_pos = point_to_dvec2(right_seg.eval(v));
-
-		let s_c = (1. - v) * top_u_pos + v * bottom_u_pos;
-		let s_d = (1. - u) * left_v_pos + u * right_v_pos;
-		let s_b = top_left * (1. - u) * (1. - v) + top_right * u * (1. - v) + bottom_left * (1. - u) * v + bottom_right * u * v;
-
-		s_c + s_d - s_b
+		let u_interpolated = self.position_bezier_net.map(|control_point| evaluate_cubic_bezier_bernstein(&control_point, u));
+		evaluate_cubic_bezier_bernstein(&u_interpolated, v)
 	}
 
 	/// Returns [0,1] approximated uv by calculating the inverse of the bilinearly-blended Coons patch using Newton's method.
@@ -829,7 +820,7 @@ impl MeshPatchEvaluator {
 			}
 
 			// If not, calculate the next uv by subtracting the inverse Jacobian multiplied by the error
-			let jacobian = position_jacobian(self.corners, self.edges, u, v);
+			let jacobian = position_jacobian(&self.position_bezier_net, u, v);
 			let determinant = jacobian.determinant();
 			if !determinant.is_finite() || determinant.abs() <= JACOBIAN_EPSILON {
 				break;
@@ -867,40 +858,16 @@ impl MeshPatchEvaluator {
 
 	/// Evaluates one horizontal Bezier control row of a smooth patch.
 	pub fn evaluate_bicubic_bezier_row(&self, row: usize, u: f32) -> Option<Vec4> {
-		let MeshPatchInterpolation::Smooth { bezier_control_points, .. } = &self.interpolation else {
+		let MeshPatchInterpolation::Smooth {
+			color_bezier_net: bezier_control_points,
+			..
+		} = &self.interpolation
+		else {
 			return None;
 		};
-		let &[a, b, c, d] = bezier_control_points.get(row)?;
-		let one_minus_u = 1. - u;
-		Some(a * one_minus_u.powi(3) + b * (3. * u * one_minus_u.powi(2)) + c * (3. * u.powi(2) * one_minus_u) + d * u.powi(3))
+		let control_net = bezier_control_points.get(row)?;
+		Some(evaluate_cubic_bezier_bernstein(control_net, u))
 	}
-}
-
-/// Restates a patch's Hermite color data as the control net of the equivalent bicubic Bezier surface.
-fn bicubic_bezier_control_net(colors: &[Vec4; 4], color_derivatives: &[PatchColorDerivatives; 4]) -> [[Vec4; 4]; 4] {
-	let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = *colors;
-	let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = *color_derivatives;
-
-	let hermite_channels: [Mat4; 4] = std::array::from_fn(|channel| {
-		Mat4::from_cols(
-			Vec4::new(top_left_color[channel], top_left_color_slope.v[channel], bottom_left_color[channel], bottom_left_color_slope.v[channel]),
-			Vec4::new(top_left_color_slope.u[channel], 0., bottom_left_color_slope.u[channel], 0.),
-			Vec4::new(
-				top_right_color[channel],
-				top_right_color_slope.v[channel],
-				bottom_right_color[channel],
-				bottom_right_color_slope.v[channel],
-			),
-			Vec4::new(top_right_color_slope.u[channel], 0., bottom_right_color_slope.u[channel], 0.),
-		)
-	});
-
-	let hermite_to_bezier_axis = Mat4::from_cols(Vec4::new(1., 1., 0., 0.), Vec4::new(0., 1. / 3., 0., 0.), Vec4::new(0., 0., 1., 1.), Vec4::new(0., 0., -1. / 3., 0.));
-	let hermite_to_bezier_axis_transpose = hermite_to_bezier_axis.transpose();
-
-	let points_mat = hermite_channels.map(|hermite| hermite_to_bezier_axis * hermite * hermite_to_bezier_axis_transpose);
-
-	std::array::from_fn(|v| std::array::from_fn(|u| Vec4::new(points_mat[0].col(u)[v], points_mat[1].col(u)[v], points_mat[2].col(u)[v], points_mat[3].col(u)[v])))
 }
 
 #[derive(Debug)]
@@ -1019,6 +986,8 @@ impl MeshGradientEvaluator {
 
 				let [top_left_pos, top_right_pos, bottom_left_pos, bottom_right_pos] = patch.corners;
 
+				let position_bezier_net = coons_to_position_bezier_net(&patch.corners, &patch.edges);
+
 				let interpolation = match interpolation {
 					GradientInterpolation::Stepped => MeshPatchInterpolation::Stepped,
 					GradientInterpolation::Linear => MeshPatchInterpolation::Linear,
@@ -1040,17 +1009,16 @@ impl MeshGradientEvaluator {
 							}
 						});
 
-						let bezier_control_points = Box::new(bicubic_bezier_control_net(&patch_colors, &color_derivatives));
+						let bezier_control_points = Box::new(hermite_to_color_bezier_net(&patch_colors, &color_derivatives));
 						MeshPatchInterpolation::Smooth {
 							color_derivatives,
-							bezier_control_points,
+							color_bezier_net: bezier_control_points,
 						}
 					}
 				};
 
 				patch_color_data.push(MeshPatchEvaluator {
-					corners: patch.corners,
-					edges: patch.edges,
+					position_bezier_net,
 					colors: patch_colors,
 					space,
 					interpolation,
@@ -1108,28 +1076,98 @@ fn line_to_cubic_bezier_handles(start: DVec2, end: DVec2) -> (Option<DVec2>, Opt
 	(Some(start + (end - start) / 3.), Some(end + (start - end) / 3.))
 }
 
+/// Degree-elevate a path segment to a cubic Bézier while preserving its parameterization.
+/// Unlike `PathSeg::to_cubic()`, this preserves the parameterization of line segments.
+fn pathseg_to_cubic_bez(pathseg: PathSeg) -> CubicBez {
+	match pathseg {
+		PathSeg::Line(line) => {
+			let p0 = line.start();
+			let p3 = line.end();
+			CubicBez::new(p0, p0 + (p3 - p0) / 3., p3 + (p0 - p3) / 3., p3)
+		}
+		PathSeg::Quad(quad_bez) => quad_bez.raise(),
+		PathSeg::Cubic(cubic_bez) => cubic_bez,
+	}
+}
+
+/// Evaluates a cubic Bezier curve at `time` using the Bernstein basis.
+fn evaluate_cubic_bezier_bernstein<C: Copy + Mul<T, Output = C> + Add<Output = C>, T: Float>(control_points: &[C; 4], time: T) -> C {
+	let [a, b, c, d] = *control_points;
+	let one_minus_time: T = T::one() - time;
+	let three = T::one() + T::one() + T::one();
+	a * one_minus_time.powi(3) + b * (three * time * one_minus_time.powi(2)) + c * (three * time.powi(2) * one_minus_time) + d * time.powi(3)
+}
+
+/// Restates a Coons patch as the control net of the equivalent bicubic Bezier surface.
+fn coons_to_position_bezier_net(corners: &[DVec2; 4], edges: &[PathSeg; 4]) -> [[DVec2; 4]; 4] {
+	let cubic_bez_to_points_array = |bez: CubicBez| [bez.p0, bez.p1, bez.p2, bez.p3].map(point_to_dvec2);
+	let [top_left_pos, top_right_pos, bottom_left_pos, bottom_right_pos] = corners;
+	let [top_control_points, bottom_control_points, left_control_points, right_control_points] = array::from_fn(|i| cubic_bez_to_points_array(pathseg_to_cubic_bez(edges[i])));
+
+	array::from_fn(|j| {
+		let v = j as f64 / 3.;
+		array::from_fn(|i| {
+			let u = i as f64 / 3.;
+			let left_weight = 1. - u;
+			let right_weight = u;
+			let top_weight = 1. - v;
+			let bottom_weight = v;
+
+			let top_bottom_lerped_point = top_weight * top_control_points[i] + bottom_weight * bottom_control_points[i];
+			let left_right_lerped_point = left_weight * left_control_points[j] + right_weight * right_control_points[j];
+			let bilerped_corner_point =
+				top_weight * left_weight * top_left_pos + top_weight * right_weight * top_right_pos + bottom_weight * left_weight * bottom_left_pos + bottom_weight * right_weight * bottom_right_pos;
+
+			top_bottom_lerped_point + left_right_lerped_point - bilerped_corner_point
+		})
+	})
+}
+
+/// Restates a patch's Hermite color data as the control net of the equivalent bicubic Bezier surface.
+fn hermite_to_color_bezier_net(colors: &[Vec4; 4], color_derivatives: &[PatchColorDerivatives; 4]) -> [[Vec4; 4]; 4] {
+	let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = *colors;
+	let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = *color_derivatives;
+
+	let hermite_channels: [Mat4; 4] = std::array::from_fn(|channel| {
+		Mat4::from_cols(
+			Vec4::new(top_left_color[channel], top_left_color_slope.v[channel], bottom_left_color[channel], bottom_left_color_slope.v[channel]),
+			Vec4::new(top_left_color_slope.u[channel], 0., bottom_left_color_slope.u[channel], 0.),
+			Vec4::new(
+				top_right_color[channel],
+				top_right_color_slope.v[channel],
+				bottom_right_color[channel],
+				bottom_right_color_slope.v[channel],
+			),
+			Vec4::new(top_right_color_slope.u[channel], 0., bottom_right_color_slope.u[channel], 0.),
+		)
+	});
+
+	let hermite_to_bezier_axis = Mat4::from_cols(Vec4::new(1., 1., 0., 0.), Vec4::new(0., 1. / 3., 0., 0.), Vec4::new(0., 0., 1., 1.), Vec4::new(0., 0., -1. / 3., 0.));
+	let hermite_to_bezier_axis_transpose = hermite_to_bezier_axis.transpose();
+
+	let points_mat = hermite_channels.map(|hermite| hermite_to_bezier_axis * hermite * hermite_to_bezier_axis_transpose);
+
+	std::array::from_fn(|v| std::array::from_fn(|u| Vec4::new(points_mat[0].col(u)[v], points_mat[1].col(u)[v], points_mat[2].col(u)[v], points_mat[3].col(u)[v])))
+}
+
 /// Returns Jacobian matrix of the UV position in a single Coons patch.
-fn position_jacobian(corners: [DVec2; 4], edges: [PathSeg; 4], u: f64, v: f64) -> DMat2 {
-	let [top, bottom, left, right] = edges;
-	let [top_left, top_right, bottom_left, bottom_right] = corners;
+fn position_jacobian(position_bezier_net: &[[DVec2; 4]; 4], u: f64, v: f64) -> DMat2 {
+	let evaluate_quadratic_bezier = |control_points: &[DVec2; 3], time: f64| {
+		let [p0, p1, p2] = control_points;
+		let one_minus_time = 1. - time;
+		one_minus_time.powi(2) * p0 + 2. * time * one_minus_time * p1 + time.powi(2) * p2
+	};
 
-	let top_u_pos = point_to_dvec2(top.eval(u));
-	let bottom_u_pos = point_to_dvec2(bottom.eval(u));
-	let left_v_pos = point_to_dvec2(left.eval(v));
-	let right_v_pos = point_to_dvec2(right.eval(v));
+	let u_derivative_bezier_net: [[DVec2; 3]; 4] = array::from_fn(|j| array::from_fn(|i| 3. * (position_bezier_net[j][i + 1] - position_bezier_net[j][i])));
+	let v_derivative_bezier_net: [[DVec2; 4]; 3] = array::from_fn(|j| array::from_fn(|i| 3. * (position_bezier_net[j + 1][i] - position_bezier_net[j][i])));
 
-	let top_bottom_derivative_u = (1. - v) * pathseg_tangent(top, u) + v * pathseg_tangent(bottom, u);
-	let left_right_derivative_u = right_v_pos - left_v_pos;
-	let top_bottom_derivative_v = bottom_u_pos - top_u_pos;
-	let left_right_derivative_v = (1. - u) * pathseg_tangent(left, v) + u * pathseg_tangent(right, v);
+	let u_derivative_control_points_over_v: [DVec2; 4] = array::from_fn(|i| evaluate_quadratic_bezier(&u_derivative_bezier_net[i], u));
+	let v_derivative_control_points_over_v: [DVec2; 3] = array::from_fn(|i| evaluate_cubic_bezier_bernstein(&v_derivative_bezier_net[i], u));
 
-	let bilinear_derivative_u = (1. - v) * (top_right - top_left) + v * (bottom_right - bottom_left);
-	let bilinear_derivative_v = (1. - u) * (bottom_left - top_left) + u * (bottom_right - top_right);
-
-	let derivative_u = top_bottom_derivative_u + left_right_derivative_u - bilinear_derivative_u;
-	let derivative_v = top_bottom_derivative_v + left_right_derivative_v - bilinear_derivative_v;
-
-	DMat2::from_cols(derivative_u, derivative_v)
+	DMat2::from_cols(
+		evaluate_cubic_bezier_bernstein(&u_derivative_control_points_over_v, v),
+		evaluate_quadratic_bezier(&v_derivative_control_points_over_v, v),
+	)
 }
 
 #[cfg(test)]
@@ -1154,13 +1192,27 @@ mod tests {
 	}
 
 	fn patch_evaluator(corners: [DVec2; 4], edges: [PathSeg; 4]) -> MeshPatchEvaluator {
-		MeshPatchEvaluator {
-			corners,
-			edges,
-			colors: [Vec4::ZERO; 4],
-			space: GradientSpace::RgbGamma,
-			interpolation: MeshPatchInterpolation::Linear,
+		let mut mesh = MeshGradient::from_positions(&corners, 2, 2).unwrap();
+		let edge_ids = [
+			*mesh.horizontal_edges.get(0, 0).unwrap(),
+			*mesh.horizontal_edges.get(1, 0).unwrap(),
+			*mesh.vertical_edges.get(0, 0).unwrap(),
+			*mesh.vertical_edges.get(0, 1).unwrap(),
+		];
+
+		for (edge_id, edge) in edge_ids.into_iter().zip(edges) {
+			let edge = pathseg_to_cubic_bez(edge);
+			mesh.set_edge_handles(
+				edge_id,
+				BezierHandles::Cubic {
+					handle_start: point_to_dvec2(edge.p1),
+					handle_end: point_to_dvec2(edge.p2),
+				},
+			)
+			.unwrap();
 		}
+
+		mesh.evaluator(GradientSpace::RgbGamma, GradientInterpolation::Linear).unwrap().patch_evaluator(0).unwrap().clone()
 	}
 
 	fn mesh_with_corner_colors(mut color: impl FnMut(usize) -> Color) -> MeshGradient {
@@ -1180,7 +1232,7 @@ mod tests {
 		mesh
 	}
 
-	fn curved_patch_evaluator() -> MeshPatchEvaluator {
+	fn curved_patch_evaluator() -> ([DVec2; 4], [PathSeg; 4], MeshPatchEvaluator) {
 		let corners = [DVec2::new(0., 0.), DVec2::new(2., 0.), DVec2::new(0., 2.), DVec2::new(2., 2.)];
 		let [top_left, top_right, bottom_left, bottom_right] = corners.map(point);
 		let edges = [
@@ -1189,7 +1241,7 @@ mod tests {
 			PathSeg::Cubic(kurbo::CubicBez::new(top_left, kurbo::Point::new(-0.4, 0.5), kurbo::Point::new(0.4, 1.5), bottom_left)),
 			PathSeg::Cubic(kurbo::CubicBez::new(top_right, kurbo::Point::new(2.4, 0.5), kurbo::Point::new(1.6, 1.5), bottom_right)),
 		];
-		patch_evaluator(corners, edges)
+		(corners, edges, patch_evaluator(corners, edges))
 	}
 
 	#[test]
@@ -1199,15 +1251,12 @@ mod tests {
 		let v_delta = Vec4::new(0.3, -0.1, 0.2, 0.1);
 		let colors = [base, base + u_delta, base + v_delta, base + u_delta + v_delta];
 		let color_slopes = [PatchColorDerivatives { u: u_delta, v: v_delta }; 4];
-		let evaluator = MeshPatchEvaluator {
-			corners: [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE],
-			edges: line_edges([DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE]),
-			colors,
-			space: GradientSpace::RgbGamma,
-			interpolation: MeshPatchInterpolation::Smooth {
-				color_derivatives: color_slopes,
-				bezier_control_points: Box::new(bicubic_bezier_control_net(&colors, &color_slopes)),
-			},
+		let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE];
+		let mut evaluator = patch_evaluator(corners, line_edges(corners));
+		evaluator.colors = colors;
+		evaluator.interpolation = MeshPatchInterpolation::Smooth {
+			color_derivatives: color_slopes,
+			color_bezier_net: Box::new(hermite_to_color_bezier_net(&colors, &color_slopes)),
 		};
 
 		for [u, v] in [[0., 0.], [0.37, 0.61], [1., 1.]] {
@@ -1275,13 +1324,13 @@ mod tests {
 
 	#[test]
 	fn evaluate_position_reproduces_patch_boundaries() {
-		let evaluator = curved_patch_evaluator();
+		let (_, edges, evaluator) = curved_patch_evaluator();
 
 		for t in [0., 0.25, 0.5, 0.75, 1.] {
-			assert_position(evaluator.evaluate_position(t, 0.), point_to_dvec2(evaluator.edges[0].eval(t)));
-			assert_position(evaluator.evaluate_position(t, 1.), point_to_dvec2(evaluator.edges[1].eval(t)));
-			assert_position(evaluator.evaluate_position(0., t), point_to_dvec2(evaluator.edges[2].eval(t)));
-			assert_position(evaluator.evaluate_position(1., t), point_to_dvec2(evaluator.edges[3].eval(t)));
+			assert_position(evaluator.evaluate_position(t, 0.), point_to_dvec2(edges[0].eval(t)));
+			assert_position(evaluator.evaluate_position(t, 1.), point_to_dvec2(edges[1].eval(t)));
+			assert_position(evaluator.evaluate_position(0., t), point_to_dvec2(edges[2].eval(t)));
+			assert_position(evaluator.evaluate_position(1., t), point_to_dvec2(edges[3].eval(t)));
 		}
 	}
 
@@ -1292,7 +1341,8 @@ mod tests {
 		let edges = line_edges(corners);
 
 		for [u, v] in [[0., 0.], [0.25, 0.75], [0.5, 0.5], [1., 1.]] {
-			let jacobian = position_jacobian(corners, edges, u, v);
+			let position_bezier_net = coons_to_position_bezier_net(&corners, &edges);
+			let jacobian = position_jacobian(&position_bezier_net, u, v);
 			assert_position(jacobian.x_axis, transform.matrix2.x_axis);
 			assert_position(jacobian.y_axis, transform.matrix2.y_axis);
 		}
@@ -1306,12 +1356,12 @@ mod tests {
 
 	#[test]
 	fn position_jacobian_matches_numerical_derivative_for_curved_patch() {
-		let evaluator = curved_patch_evaluator();
+		let (corners, edges, evaluator) = curved_patch_evaluator();
 		let (u, v, step) = (0.37, 0.61, 1e-6);
 
 		let numerical_u = (evaluator.evaluate_position(u + step, v) - evaluator.evaluate_position(u - step, v)) / (2. * step);
 		let numerical_v = (evaluator.evaluate_position(u, v + step) - evaluator.evaluate_position(u, v - step)) / (2. * step);
-		let jacobian = position_jacobian(evaluator.corners, evaluator.edges, u, v);
+		let jacobian = position_jacobian(&coons_to_position_bezier_net(&corners, &edges), u, v);
 
 		assert!((jacobian.x_axis - numerical_u).length() < 1e-8, "expected {:?}, got {:?}", numerical_u, jacobian.x_axis);
 		assert!((jacobian.y_axis - numerical_v).length() < 1e-8, "expected {:?}, got {:?}", numerical_v, jacobian.y_axis);
@@ -1319,7 +1369,7 @@ mod tests {
 
 	#[test]
 	fn inverse_patch_position_recovers_curved_patch_uv() {
-		let evaluator = curved_patch_evaluator();
+		let (_, _, evaluator) = curved_patch_evaluator();
 		let expected = DVec2::new(0.37, 0.61);
 		let target = evaluator.evaluate_position(expected.x, expected.y);
 		let actual = evaluator.inverse_patch_position(target, DVec2::splat(0.5));
