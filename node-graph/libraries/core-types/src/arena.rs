@@ -26,10 +26,11 @@ pub struct Arena {
 	/// a park costs one pointer in the arena and owns its content outside it.
 	retained_heap: AtomicUsize,
 	/// Where [`Arena::move_park`] sent each moved park, as its offset here to
-	/// the header's address in the receiving arena, so a payload two records
-	/// share is moved once. Cleared by [`Arena::reset`], so a forwarding holds
-	/// for one generation.
-	forwarded: Mutex<HashMap<usize, usize>>,
+	/// the header's address in the receiving arena and the moved size, so a
+	/// payload two records share is moved once and a mistyped sharer is
+	/// refused. Cleared by [`Arena::reset`], so a forwarding holds for one
+	/// generation.
+	forwarded: Mutex<HashMap<usize, (usize, usize)>>,
 }
 
 impl std::fmt::Debug for Arena {
@@ -40,6 +41,9 @@ impl std::fmt::Debug for Arena {
 
 struct DropEntry {
 	offset: usize,
+	/// The parked payload's own size, so [`Arena::move_park`] refuses a
+	/// reference into a park of another type that shares the offset.
+	size: usize,
 	drop_fn: unsafe fn(*mut u8),
 	/// The park glue's estimate of the heap this payload owns, 0 where the
 	/// glue cannot measure it, so the counter is a lower bound.
@@ -221,7 +225,7 @@ impl Arena {
 			unsafe fn glue<T>(p: *mut u8) {
 				unsafe { p.cast::<T>().drop_in_place() }
 			}
-			self.drops.lock().unwrap().push(DropEntry { offset, drop_fn: glue::<T>, retained });
+			self.drops.lock().unwrap().push(DropEntry { offset, size: size_of::<T>(), drop_fn: glue::<T>, retained });
 			self.retained_heap.fetch_add(retained, Ordering::Relaxed);
 		}
 		// SAFETY: initialized above; insert-only, so no `&mut` to it can exist.
@@ -246,23 +250,27 @@ impl Arena {
 	/// have credited it, and this arena is debited what its own park recorded,
 	/// so neither counter reads worse than it did before the move.
 	///
-	/// `None` where `src` is not this arena's park, where `T` is zero-sized
-	/// (whose parks share an offset and so cannot be told apart), or where
-	/// `dst` refused the header.
+	/// `None` where `src` is not this arena's park of `T`'s own size, where
+	/// `T` is zero-sized (whose parks share an offset and so cannot be told
+	/// apart), or where `dst` refused the header.
 	///
 	/// # Safety
-	/// `src` must address a live `T` this arena parked, and `T` must own all of
-	/// its content: the moved header may reference no storage of this arena.
+	/// `src` must address a live `T`, and a park of this arena at that address
+	/// and size must be the `T` itself, not another type's park the address
+	/// coincides with. `T` must own all of its content: the moved header may
+	/// reference no storage of this arena.
 	pub unsafe fn move_park<T: Send + Sync>(&self, src: *const u8, dst: &Arena, retained: usize) -> Option<*const T> {
 		(size_of::<T>() != 0).then_some(())?;
 		let offset = (src as usize).checked_sub(self.base() as usize)?;
 		(offset < self.buf.len()).then_some(())?;
 		let mut forwarded = self.forwarded.lock().unwrap();
-		if let Some(&moved) = forwarded.get(&offset) {
+		if let Some(&(moved, size)) = forwarded.get(&offset) {
+			(size == size_of::<T>()).then_some(())?;
 			return Some(moved as *const T);
 		}
 		let mut entries = self.drops.lock().unwrap();
 		let entry = entry_at(&entries, offset)?;
+		(entries[entry].size == size_of::<T>()).then_some(())?;
 		let slot = dst.alloc_scratch::<T>(1)?;
 		let target = slot.as_mut_ptr().cast::<T>();
 		// SAFETY: the caller's contract on `src`, into a freshly reserved,
@@ -276,12 +284,13 @@ impl Arena {
 		}
 		dst.drops.lock().unwrap().push(DropEntry {
 			offset: target as usize - dst.base() as usize,
+			size: size_of::<T>(),
 			drop_fn: glue::<T>,
 			retained,
 		});
 		dst.retained_heap.fetch_add(retained, Ordering::Relaxed);
 		let _ = self.retained_heap.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| Some(current.saturating_sub(parked)));
-		forwarded.insert(offset, target as usize);
+		forwarded.insert(offset, (target as usize, size_of::<T>()));
 		Some(target.cast_const())
 	}
 
@@ -638,6 +647,26 @@ mod tests {
 		assert_eq!(DROPS.load(Ordering::Relaxed), 0, "a tombstoned entry is skipped by its arena's reset");
 		persistent.reset();
 		assert_eq!(DROPS.load(Ordering::Relaxed), 1, "the flush that owns the obligation frees it exactly once");
+	}
+
+	#[test]
+	fn a_move_refuses_a_mistyped_park_and_its_forwarding() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		struct Owner {
+			_first: String,
+			_tail: u64,
+		}
+		let mut transient = Arena::new(1024).unwrap();
+		let mut persistent = Arena::new(1024).unwrap();
+
+		let (parked, _) = transient.alloc(Owner { _first: String::from("a first member"), _tail: 0 }).unwrap();
+		let src = std::ptr::from_ref(parked).cast::<u8>();
+		assert!(unsafe { transient.move_park::<String>(src, &persistent, 0) }.is_none(), "a park of another size is refused");
+		unsafe { transient.move_park::<Owner>(src, &persistent, 0) }.unwrap();
+		assert!(unsafe { transient.move_park::<String>(src, &persistent, 0) }.is_none(), "the forwarding refuses the same mistype");
+
+		transient.reset();
+		persistent.reset();
 	}
 
 	#[test]

@@ -1855,8 +1855,8 @@ impl<'a> Promotion<'a> {
 	/// Moves a transient payload's header into the persistent region instead of
 	/// cloning the heap it owns: the heap travels with the drop obligation and
 	/// is freed at the persistent flush, never at the transient reset. `None`
-	/// where the header is not the transient arena's own park or the region
-	/// refused it, which leaves the caller its clone path.
+	/// where the header is not the transient arena's own park of `T`'s size or
+	/// the region refused it, which leaves the caller its clone path.
 	///
 	/// The forwarding is the evaluation's, so a payload two records share moves
 	/// once and both reach the one persistent header. The source header stays
@@ -1864,9 +1864,9 @@ impl<'a> Promotion<'a> {
 	/// the move keeps sound: no read of it may outlive the persistent flush.
 	///
 	/// # Safety
-	/// `parked` must address a live `T` the transient arena parked, and `T`
-	/// must own all of its content, a persistent header being allowed to
-	/// reference no transient storage.
+	/// `parked` must address a live `T`, and a transient park at that address
+	/// and size must be the `T` itself. `T` must own all of its content, a
+	/// persistent header being allowed to reference no transient storage.
 	pub unsafe fn move_park<T: Send + Sync>(&self, parked: *const u8, retained: usize) -> Option<*const T> {
 		// SAFETY: the caller's contract, forwarded to the parking arena.
 		unsafe { self.transient.move_park::<T>(parked, self.persistent, retained) }
