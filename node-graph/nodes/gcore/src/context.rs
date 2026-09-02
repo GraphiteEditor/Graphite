@@ -56,12 +56,8 @@ fn read_number(ctx: impl Ctx + ExtractVarArgs) -> Item<f64> {
 		return item.clone();
 	}
 
-	// Numeric lists carry several possible element types, so probe each and widen to f64, keeping the item's attributes
-	if let Some(item) = var_arg.downcast_ref::<Item<u32>>() {
-		let (element, attributes) = item.clone().into_parts();
-		return Item::from_parts(element as f64, attributes);
-	}
-	if let Some(item) = var_arg.downcast_ref::<Item<u64>>() {
+	// An integer list widens to f64, keeping the item's attributes
+	if let Some(item) = var_arg.downcast_ref::<Item<i64>>() {
 		let (element, attributes) = item.clone().into_parts();
 		return Item::from_parts(element as f64, attributes);
 	}
@@ -76,7 +72,8 @@ async fn read_position(
 	/// The number of nested loops to traverse outwards (from the innermost loop) to get the position from. The most upstream loop is level 0, and downstream loops add levels.
 	///
 	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
-	loop_level: Item<u32>,
+	#[hard(0..)]
+	loop_level: Item<i64>,
 ) -> Item<DVec2> {
 	let loop_level = *loop_level.element();
 	Item::new_from_element(ctx.try_position().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(DVec2::ZERO))
@@ -94,7 +91,8 @@ async fn read_index(
 	/// The number of nested loops to traverse outwards (from the innermost loop) to get the index from. The most upstream loop is level 0, and downstream loops add levels.
 	///
 	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
-	loop_level: Item<u32>,
+	#[hard(0..)]
+	loop_level: Item<i64>,
 ) -> Item<f64> {
 	let loop_level = *loop_level.element();
 	Item::new_from_element(ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(0) as f64)

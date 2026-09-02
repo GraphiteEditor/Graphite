@@ -124,7 +124,7 @@ impl RowColumnGizmo {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, self.gizmo_type.parameter()),
-			input: NodeInput::value(TaggedValue::U32((self.initial_dimension() as i32 + dimensions_to_add).max(1) as u32), false),
+			input: NodeInput::value(TaggedValue::I64((self.initial_dimension() as i32 + dimensions_to_add).max(1) as i64), false),
 		});
 
 		responses.add(GraphOperationMessage::TransformChange {

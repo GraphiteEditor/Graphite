@@ -111,7 +111,7 @@ impl Star {
 		let node_type = resolve_document_node_type(&identifier).expect("Star node can't be found");
 		node_type.node_template_input_override([
 			None,
-			Some(NodeInput::value(TaggedValue::U32(vertices), false)),
+			Some(NodeInput::value(TaggedValue::I64(vertices as i64), false)),
 			Some(NodeInput::value(TaggedValue::F64(0.5), false)),
 			Some(NodeInput::value(TaggedValue::F64(0.25), false)),
 		])

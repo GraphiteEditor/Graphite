@@ -209,7 +209,7 @@ impl NumberOfPointsDial {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, sides_parameter),
-			input: NodeInput::value(TaggedValue::U32(new_point_count as u32), false),
+			input: NodeInput::value(TaggedValue::I64(new_point_count as i64), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}

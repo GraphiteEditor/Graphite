@@ -16,8 +16,7 @@ async fn context_modification<T>(
 	/// The data to pass through, evaluated with the stripped down context.
 	#[implementations(
 		Context -> Item<bool>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
+		Context -> Item<i64>,
 		Context -> Item<f64>,
 		Context -> Item<String>,
 		Context -> Item<DAffine2>,

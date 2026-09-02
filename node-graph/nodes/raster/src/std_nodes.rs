@@ -274,7 +274,7 @@ pub fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
 	#[default(true)] clip: Item<bool>,
-	seed: Item<u32>,
+	#[hard(0..)] seed: Item<i64>,
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_scale")]
 	#[default(10.)]
 	scale: Item<f64>,
@@ -286,7 +286,8 @@ pub fn noise_pattern(
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_type")] fractal_type: Item<FractalType>,
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_octaves")]
 	#[default(3)]
-	fractal_octaves: Item<u32>,
+	#[hard(1..10)]
+	fractal_octaves: Item<i64>,
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_lacunarity")]
 	#[default(2.)]
 	fractal_lacunarity: Item<f64>,

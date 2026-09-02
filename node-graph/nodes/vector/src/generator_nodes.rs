@@ -162,7 +162,7 @@ fn regular_polygon<T: AsU64>(
 	_primary: (),
 	#[default(6)]
 	#[hard(3..)]
-	#[implementations(u32, u64, f64)]
+	#[implementations(i64, f64)]
 	sides: Item<T>,
 	#[unit(" px")]
 	#[default(50)]
@@ -179,7 +179,7 @@ fn star<T: AsU64>(
 	_primary: (),
 	#[default(5)]
 	#[hard(2..)]
-	#[implementations(u32, u64, f64)]
+	#[implementations(i64, f64)]
 	sides: Item<T>,
 	#[unit(" px")]
 	#[default(50)]
@@ -308,12 +308,17 @@ fn grid<T: GridSpacing>(
 	#[default(10)]
 	#[implementations(f64, DVec2)]
 	spacing: Item<T>,
-	#[default(10)] columns: Item<u32>,
-	#[default(10)] rows: Item<u32>,
+	#[default(10)]
+	#[hard(0..)]
+	columns: Item<i64>,
+	#[default(10)]
+	#[hard(0..)]
+	rows: Item<i64>,
 	#[default(30., 30.)] angles: Item<DVec2>,
 	#[default(true)] connect_cells: Item<bool>,
 ) -> Item<Vector> {
 	let (grid_type, columns, rows, angles, connect_cells) = (grid_type.into_element(), *columns.element(), *rows.element(), *angles.element(), *connect_cells.element());
+	let (columns, rows) = (columns.max(0) as u32, rows.max(0) as u32);
 
 	let (x_spacing, y_spacing) = spacing.element().as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
@@ -401,11 +406,11 @@ mod tests {
 	#[test]
 	fn isometric_grid_test() {
 		// Doesn't crash with weird angles
-		grid((), (), item(GridType::Isometric), item(0.), item(5_u32), item(5_u32), item((0., 0.).into()), item(true));
-		grid((), (), item(GridType::Isometric), item(90.), item(5_u32), item(5_u32), item((90., 90.).into()), item(true));
+		grid((), (), item(GridType::Isometric), item(0.), item(5_i64), item(5_i64), item((0., 0.).into()), item(true));
+		grid((), (), item(GridType::Isometric), item(90.), item(5_i64), item(5_i64), item((90., 90.).into()), item(true));
 
 		// Works properly
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((30., 30.).into()), item(true));
+		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_i64), item(5_i64), item((30., 30.).into()), item(true));
 		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.element().segment_iter().count(), 4 * 5 + 4 * 9);
 		for (_, segment, _, _) in grid.element().segment_iter() {
@@ -417,7 +422,7 @@ mod tests {
 
 	#[test]
 	fn skew_isometric_grid_test() {
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((40., 30.).into()), item(true));
+		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_i64), item(5_i64), item((40., 30.).into()), item(true));
 		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.element().segment_iter().count(), 4 * 5 + 4 * 9);
 		for (_, segment, _, _) in grid.element().segment_iter() {
@@ -431,7 +436,7 @@ mod tests {
 	#[test]
 	fn grid_disconnected_cells_test() {
 		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath.
-		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_u32), item(3_u32), item((30., 30.).into()), item(false));
+		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_i64), item(3_i64), item((30., 30.).into()), item(false));
 		let vector = grid.element();
 		assert_eq!(vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count(), 4);
 		assert_eq!(vector.point_domain.ids().len(), 4 * 4);

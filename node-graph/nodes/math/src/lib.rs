@@ -195,10 +195,10 @@ fn math_f<T: ExpressionValue>(
 fn add<A: Add<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the addition operation.
-	#[implementations(f64, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	augend: Item<A>,
 	/// The right-hand side of the addition operation.
-	#[implementations(f64, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	addend: Item<B>,
 ) -> Item<<A as Add<B>>::Output> {
 	let (augend, attributes) = augend.into_parts();
@@ -211,10 +211,10 @@ fn add<A: Add<B>, B>(
 fn subtract<A: Sub<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the subtraction operation.
-	#[implementations(f64, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	minuend: Item<A>,
 	/// The right-hand side of the subtraction operation.
-	#[implementations(f64, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	subtrahend: Item<B>,
 ) -> Item<<A as Sub<B>>::Output> {
 	let (minuend, attributes) = minuend.into_parts();
@@ -227,11 +227,11 @@ fn subtract<A: Sub<B>, B>(
 fn multiply<A: Mul<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the multiplication operation.
-	#[implementations(f64, u32, DVec2, f64, DVec2, DAffine2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2, DAffine2)]
 	multiplier: Item<A>,
 	/// The right-hand side of the multiplication operation.
 	#[default(1.)]
-	#[implementations(f64, u32, DVec2, DVec2, f64, DAffine2)]
+	#[implementations(f64, i64, DVec2, DVec2, f64, DAffine2)]
 	multiplicand: Item<B>,
 ) -> Item<<A as Mul<B>>::Output> {
 	let (multiplier, attributes) = multiplier.into_parts();
@@ -249,9 +249,9 @@ impl SafeDivide for f64 {
 		if denominator == 0. { 0. } else { self / denominator }
 	}
 }
-impl SafeDivide for u32 {
-	type Output = u32;
-	fn safe_divide(self, denominator: u32) -> u32 {
+impl SafeDivide for i64 {
+	type Output = i64;
+	fn safe_divide(self, denominator: i64) -> i64 {
 		self.checked_div(denominator).unwrap_or(0)
 	}
 }
@@ -281,11 +281,11 @@ impl SafeDivide<DVec2> for f64 {
 fn divide<A: SafeDivide<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the division operation.
-	#[implementations(f64, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	numerator: Item<A>,
 	/// The right-hand side of the division operation.
 	#[default(1.)]
-	#[implementations(f64, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	denominator: Item<B>,
 ) -> Item<<A as SafeDivide<B>>::Output> {
 	let (numerator, attributes) = numerator.into_parts();
@@ -329,11 +329,11 @@ fn reciprocal<T: Componentwise>(
 fn modulo<A: Rem<B, Output: Add<B, Output: Rem<B, Output = A::Output>>>, B: Copy>(
 	_: impl Ctx,
 	/// The left-hand side of the modulo operation.
-	#[implementations(f64, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	numerator: Item<A>,
 	/// The right-hand side of the modulo operation.
 	#[default(2.)]
-	#[implementations(f64, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	modulus: Item<B>,
 	/// Ensures the result is always positive, even if the numerator is negative.
 	#[default(true)]
@@ -356,10 +356,20 @@ impl Exponent for f64 {
 		self.powf(power)
 	}
 }
-impl Exponent for u32 {
-	type Output = u32;
-	fn power(self, power: u32) -> u32 {
-		self.pow(power)
+impl Exponent for i64 {
+	type Output = i64;
+	// Only ±1 stay representable once the exponent is negative or too large, so everything else falls to 0
+	fn power(self, power: i64) -> i64 {
+		if let Ok(power) = u32::try_from(power) {
+			return self.checked_pow(power).unwrap_or(0);
+		}
+
+		match self {
+			1 => 1,
+			-1 if power % 2 == 0 => 1,
+			-1 => -1,
+			_ => 0,
+		}
 	}
 }
 impl Exponent for DVec2 {
@@ -388,10 +398,10 @@ impl Exponent<DVec2> for f64 {
 fn exponent<A: Exponent<B>, B>(
 	_: impl Ctx,
 	/// The base number that is raised to the power.
-	#[implementations(f64, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	base: Item<A>,
 	/// The power to which the base number is raised.
-	#[implementations(f64, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	#[default(2.)]
 	power: Item<B>,
 ) -> Item<<A as Exponent<B>>::Output> {
@@ -751,14 +761,15 @@ fn random(
 	_: impl Ctx,
 	_primary: (),
 	/// Seed to determine the unique variation of which number is generated.
-	seed: Item<u64>,
+	#[hard(0..)]
+	seed: Item<i64>,
 	/// The smaller end of the range within which the random number is generated.
 	min: Item<f64>,
 	/// The larger end of the range within which the random number is generated.
 	#[default(1.)]
 	max: Item<f64>,
 ) -> Item<f64> {
-	let mut rng = rand::rngs::StdRng::seed_from_u64(*seed.element());
+	let mut rng = rand::rngs::StdRng::seed_from_u64(*seed.element() as u64);
 	let result = rng.random::<f64>();
 	let (min, max) = (*min.element(), *max.element());
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
@@ -915,12 +926,12 @@ impl MinMax for f64 {
 		if self > other { self } else { other }
 	}
 }
-impl MinMax for u32 {
-	type Output = u32;
-	fn minimum(self, other: u32) -> u32 {
+impl MinMax for i64 {
+	type Output = i64;
+	fn minimum(self, other: i64) -> i64 {
 		if self < other { self } else { other }
 	}
-	fn maximum(self, other: u32) -> u32 {
+	fn maximum(self, other: i64) -> i64 {
 		if self > other { self } else { other }
 	}
 }
@@ -968,10 +979,10 @@ impl MinMax<DVec2> for f64 {
 fn min<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the lesser is returned.
-	#[implementations(f64, u32, String, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The other of the two numbers, of which the lesser is returned.
-	#[implementations(f64, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
 	other_value: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output> {
 	let (value, attributes) = value.into_parts();
@@ -986,10 +997,10 @@ fn min<A: MinMax<B>, B>(
 fn max<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the greater is returned.
-	#[implementations(f64, u32, String, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The other of the two numbers, of which the greater is returned.
-	#[implementations(f64, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
 	other_value: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output> {
 	let (value, attributes) = value.into_parts();
@@ -1004,13 +1015,13 @@ fn max<A: MinMax<B>, B>(
 fn clamp<A: MinMax<B>, B: MinMax<Output = B> + Clone>(
 	_: impl Ctx,
 	/// The number to be clamped, which is restricted to the range between the minimum and maximum values.
-	#[implementations(f64, u32, String, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The left (smaller) side of the range. The output is never less than this number.
-	#[implementations(f64, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
 	min: Item<B>,
 	/// The right (greater) side of the range. The output is never greater than this number.
-	#[implementations(f64, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
 	#[default(1)]
 	max: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output>
@@ -1029,10 +1040,10 @@ where
 fn greatest_common_divisor<T: num_traits::int::PrimInt>(
 	_: impl Ctx,
 	/// One of the two numbers for which the GCD is calculated.
-	#[implementations(u32, u64, i32)]
+	#[implementations(i64, i32)]
 	value: Item<T>,
 	/// The other of the two numbers for which the GCD is calculated.
-	#[implementations(u32, u64, i32)]
+	#[implementations(i64, i32)]
 	other_value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -1049,10 +1060,10 @@ fn greatest_common_divisor<T: num_traits::int::PrimInt>(
 fn least_common_multiple<T: num_traits::int::PrimInt>(
 	_: impl Ctx,
 	/// One of the two numbers for which the LCM is calculated.
-	#[implementations(u32, u64, i32)]
+	#[implementations(i64, i32)]
 	value: Item<T>,
 	/// The other of the two numbers for which the LCM is calculated.
-	#[implementations(u32, u64, i32)]
+	#[implementations(i64, i32)]
 	other_value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -1113,7 +1124,7 @@ fn all(_: impl Ctx, values: List<bool>) -> Item<bool> {
 fn is_nonzero<T: Default + std::cmp::PartialEq>(
 	_: impl Ctx,
 	/// The value compared against zero.
-	#[implementations(f64, u32, u64, i32, i64, DVec2)]
+	#[implementations(f64, i32, i64, DVec2)]
 	value: Item<T>,
 ) -> Item<bool> {
 	let (value, attributes) = value.into_parts();
@@ -1126,10 +1137,10 @@ fn is_nonzero<T: Default + std::cmp::PartialEq>(
 fn less_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
 	/// The number on the left-hand side of the comparison.
-	#[implementations(f64, u32)]
+	#[implementations(f64, i64)]
 	value: Item<T>,
 	/// The number on the right-hand side of the comparison.
-	#[implementations(f64, u32)]
+	#[implementations(f64, i64)]
 	other_value: Item<T>,
 	/// Uses the less-than-or-equal operation (`<=`) instead of the less-than operation (`<`).
 	or_equal: Item<bool>,
@@ -1147,10 +1158,10 @@ fn less_than<T: std::cmp::PartialOrd<T>>(
 fn greater_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
 	/// The number on the left-hand side of the comparison.
-	#[implementations(f64, u32)]
+	#[implementations(f64, i64)]
 	value: Item<T>,
 	/// The number on the right-hand side of the comparison.
-	#[implementations(f64, u32)]
+	#[implementations(f64, i64)]
 	other_value: Item<T>,
 	/// Uses the greater-than-or-equal operation (`>=`) instead of the greater-than operation (`>`).
 	or_equal: Item<bool>,
@@ -1167,10 +1178,10 @@ fn greater_than<T: std::cmp::PartialOrd<T>>(
 fn equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for equality.
-	#[implementations(f64, u32, DVec2, bool, String)]
+	#[implementations(f64, i64, DVec2, bool, String)]
 	value: Item<T>,
 	/// The other of the two values to compare for equality.
-	#[implementations(f64, u32, DVec2, bool, String)]
+	#[implementations(f64, i64, DVec2, bool, String)]
 	other_value: Item<T>,
 ) -> Item<bool> {
 	let value = value.into_element();
@@ -1183,10 +1194,10 @@ fn equals<T: std::cmp::PartialEq<T>>(
 fn not_equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for inequality.
-	#[implementations(f64, u32, DVec2, bool, String)]
+	#[implementations(f64, i64, DVec2, bool, String)]
 	value: Item<T>,
 	/// The other of the two values to compare for inequality.
-	#[implementations(f64, u32, DVec2, bool, String)]
+	#[implementations(f64, i64, DVec2, bool, String)]
 	other_value: Item<T>,
 ) -> Item<bool> {
 	let value = value.into_element();
@@ -1246,8 +1257,7 @@ async fn switch<T: 'n + Send>(
 		Context -> Item<String>,
 		Context -> Item<bool>,
 		Context -> Item<f64>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
+		Context -> Item<i64>,
 		Context -> Item<DVec2>,
 		Context -> Item<DAffine2>,
 		Context -> Item<Vector>,
@@ -1278,8 +1288,7 @@ async fn switch<T: 'n + Send>(
 		Context -> Item<String>,
 		Context -> Item<bool>,
 		Context -> Item<f64>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
+		Context -> Item<i64>,
 		Context -> Item<DVec2>,
 		Context -> Item<DAffine2>,
 		Context -> Item<Vector>,

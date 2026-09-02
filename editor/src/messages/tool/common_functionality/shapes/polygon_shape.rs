@@ -109,7 +109,11 @@ impl Polygon {
 	pub fn create_node(vertices: u32) -> NodeTemplate {
 		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER);
 		let node_type = resolve_document_node_type(&identifier).expect("Regular Polygon can't be found");
-		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::U32(vertices), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))])
+		node_type.node_template_input_override([
+			None,
+			Some(NodeInput::value(TaggedValue::I64(vertices as i64), false)),
+			Some(NodeInput::value(TaggedValue::F64(0.5), false)),
+		])
 	}
 
 	pub fn update_shape(
@@ -169,19 +173,19 @@ impl Polygon {
 			return;
 		};
 
-		let Some(&TaggedValue::U32(n)) = node_inputs.get(1).unwrap().as_value() else {
+		let Some(&TaggedValue::I64(n)) = node_inputs.get(1).unwrap().as_value() else {
 			return;
 		};
 
-		let new_dimension = if decrease { (n - 1).max(3) } else { n + 1 };
+		let new_dimension = if decrease { n.saturating_sub(1).max(3) } else { n.saturating_add(1) };
 
 		responses.add(ShapeToolMessage::UpdateOptions {
-			options: ShapeOptionsUpdate::Vertices(new_dimension),
+			options: ShapeOptionsUpdate::Vertices(new_dimension.max(0) as u32),
 		});
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::regular_polygon::SidesInput),
-			input: NodeInput::value(TaggedValue::U32(new_dimension), false),
+			input: NodeInput::value(TaggedValue::I64(new_dimension), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}

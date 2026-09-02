@@ -308,7 +308,6 @@ pub(crate) fn property_from_type(
 				Some("Fraction") => number_or_slider(default_info, bounded(number_input.mode_range(), 0., 1.), true),
 				Some("Progression") => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
 				Some("SignedInteger") => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
-				Some("SeedValue") => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
 				Some("PixelSize") => vec2_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
 				Some("TextArea") => text_area_widget(default_info).into(),
 
@@ -326,8 +325,6 @@ pub(crate) fn property_from_type(
 						// PRIMITIVE TYPES
 						// ===============
 						Some(x) if id_is::<f64>(x) => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), false),
-						Some(x) if id_is::<u32>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::from(u32::MAX))).into(),
-						Some(x) if id_is::<u64>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
 						Some(x) if id_is::<i64>(x) => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
 						Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
 						Some(x) if id_is::<String>(x) => text_widget(default_info).into(),
@@ -2633,7 +2630,7 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 	let (no_decimals, decimal_sep_value, use_thousands, thousands_sep_value) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
 			let decimal_places = match document_node.input(DecimalPlacesInput).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::U32(x)) => x,
+				Some(&TaggedValue::I64(x)) => x,
 				_ => 2,
 			};
 			let decimal_sep = match document_node.input(DecimalSeparatorInput).and_then(|input| input.as_non_exposed_value()) {

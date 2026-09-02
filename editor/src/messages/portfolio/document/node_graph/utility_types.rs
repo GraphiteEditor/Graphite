@@ -33,7 +33,7 @@ impl FrontendGraphDataType {
 			"Color" => Self::Color,
 			"Gradient" => Self::Gradient,
 			"String" => Self::Typography,
-			"f64" | "u32" | "u64" | "bool" | "DVec2" | "DAffine2" => Self::Number,
+			"f64" | "i64" | "bool" | "DVec2" | "DAffine2" => Self::Number,
 			raster if raster.starts_with("Raster") => Self::Raster,
 			_ => Self::General,
 		}

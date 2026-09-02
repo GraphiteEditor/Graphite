@@ -2525,7 +2525,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		let new_spacing_value = NodeInput::value(TaggedValue::PointSpacingType(graphene_std::vector::misc::PointSpacingType::Separation), false);
-		let new_quantity_value = NodeInput::value(TaggedValue::U32(100), false);
+		let new_quantity_value = NodeInput::value(TaggedValue::I64(100), false);
 
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), new_spacing_value, network_path);
@@ -2546,7 +2546,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		if let NodeInput::Value { tagged_value, exposed } = quantity_value
 			&& let TaggedValue::F64(value) = **tagged_value
 		{
-			let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), *exposed);
+			let new_quantity_value = NodeInput::value(TaggedValue::I64(value as i64), *exposed);
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), new_quantity_value, network_path);
 		}
 	}
@@ -2594,7 +2594,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		node_path.push(*node_id);
 
 		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &node_path);
-		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
+		document.network_interface.add_import(TaggedValue::I64(0), false, 1, "Loop Level", "TODO", &node_path);
 	}
 
 	// Drop the placeholder primary input the "Read Vector" node used to carry, since it reads its value from the context
@@ -2655,7 +2655,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::U32(0), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::I64(0), false), network_path);
 	}
 
 	// Migrate from the old source/target v1 "Morph" node to the new `List<Vector>`-based v2 "Morph" node.

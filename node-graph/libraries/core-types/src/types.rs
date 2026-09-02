@@ -522,7 +522,11 @@ pub fn make_type_user_readable(ty: &str) -> String {
 		.replace("DVec2", "Vec2")
 		.replace("IVec2", "Vec2")
 		.replace("UVec2", "Vec2")
-		.replace("&str", "String");
+		.replace("&str", "String")
+		// The numeric ladder's rung names label its wires
+		.replace("f64", "Number")
+		.replace("i64", "Integer")
+		.replace("bool", "Bool");
 
 	rewrite_ranked_type_wrappers(&ty)
 }

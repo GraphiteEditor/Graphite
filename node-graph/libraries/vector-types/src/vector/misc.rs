@@ -114,6 +114,11 @@ impl AsU64 for u64 {
 		*self
 	}
 }
+impl AsU64 for i64 {
+	fn as_u64(&self) -> u64 {
+		(*self).max(0) as u64
+	}
+}
 impl AsU64 for f64 {
 	fn as_u64(&self) -> u64 {
 		*self as u64

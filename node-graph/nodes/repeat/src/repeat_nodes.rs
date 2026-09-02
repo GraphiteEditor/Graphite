@@ -15,8 +15,7 @@ async fn repeat<T: Send + Clone + 'static>(
 		Context -> List<String>,
 		Context -> List<bool>,
 		Context -> List<f64>,
-		Context -> List<u32>,
-		Context -> List<u64>,
+		Context -> List<i64>,
 		Context -> List<DVec2>,
 		Context -> List<DAffine2>,
 		Context -> List<Vector>,
@@ -30,7 +29,7 @@ async fn repeat<T: Send + Clone + 'static>(
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	#[default(1)]
 	#[hard(1..)]
-	count: Item<u32>,
+	count: Item<i64>,
 	reverse: Item<bool>,
 ) -> List<T> {
 	// Someday this node can have the option to generate infinitely instead of a fixed count (basically `std::iter::repeat`).
@@ -61,8 +60,7 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 		Context -> List<String>,
 		Context -> List<bool>,
 		Context -> List<f64>,
-		Context -> List<u32>,
-		Context -> List<u64>,
+		Context -> List<i64>,
 		Context -> List<DVec2>,
 		Context -> List<DAffine2>,
 		Context -> List<Vector>,
@@ -80,7 +78,7 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 	angle: Item<Angle>,
 	#[default(5)]
 	#[hard(1..)]
-	count: Item<u32>,
+	count: Item<i64>,
 ) -> List<T> {
 	let (direction, angle, count) = (direction.into_element(), angle.into_element(), count.into_element());
 	let angle = angle.to_radians();
@@ -119,8 +117,7 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 		Context -> List<String>,
 		Context -> List<bool>,
 		Context -> List<f64>,
-		Context -> List<u32>,
-		Context -> List<u64>,
+		Context -> List<i64>,
 		Context -> List<DVec2>,
 		Context -> List<DAffine2>,
 		Context -> List<Vector>,
@@ -138,7 +135,7 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 	radius: Item<f64>,
 	#[default(5)]
 	#[hard(1..)]
-	count: Item<u32>,
+	count: Item<i64>,
 ) -> List<T> {
 	let (start_angle, radius, count) = (start_angle.into_element(), radius.into_element(), count.into_element());
 
@@ -175,8 +172,7 @@ async fn repeat_on_points<T: Send + Clone + 'static>(
 		Context -> List<String>,
 		Context -> List<bool>,
 		Context -> List<f64>,
-		Context -> List<u32>,
-		Context -> List<u64>,
+		Context -> List<i64>,
 		Context -> List<DVec2>,
 		Context -> List<DAffine2>,
 		Context -> List<Vector>,
@@ -279,7 +275,7 @@ mod test {
 		let rect = RectangleNode::new(
 			FutureWrapperNode(()),
 			ExtractXyNode::new(
-				ReadPositionNode::new(FutureWrapperNode(()), FutureWrapperNode(Item::new_from_element(0_u32))),
+				ReadPositionNode::new(FutureWrapperNode(()), FutureWrapperNode(Item::new_from_element(0_i64))),
 				FutureWrapperNode(Item::new_from_element(XY::Y)),
 			),
 			FutureWrapperNode(Item::new_from_element(2_f64)),
