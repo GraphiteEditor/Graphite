@@ -1,4 +1,5 @@
 use crate::parsing::*;
+use crate::shader_nodes::STD_FEATURE_GATE;
 use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote, quote_spanned};
@@ -153,6 +154,15 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			value => value.regular().expect("a non-node field is a value field").ty.clone(),
 		})
 		.collect();
+	let shader_field_types: Vec<_> = regular_fields
+		.iter()
+		.zip(field_types.iter())
+		.map(|(field, field_type)| match field.ty.regular() {
+			Some(regular) => regular.body_ty().clone(),
+			None => field_type.clone(),
+		})
+		.collect();
+	let has_shader_variant = regular_fields.iter().any(|field| field.ty.regular().is_some_and(|regular| regular.narrowed_body_ty.is_some()));
 
 	// Only regular fields have UI metadata (data fields are internal state)
 	let widget_override: Vec<_> = regular_fields
@@ -782,11 +792,32 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	}
 
+	let node_fn = |field_types: &[Type]| {
+		quote! {
+			#(#description_doc_attrs)*
+			#[inline]
+			#[allow(clippy::too_many_arguments)]
+			#vis #async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
+		}
+	};
+	// A shader node's fn is emitted twice from the one body: as declared, in f64, for the CPU, and with the f32 parameter
+	// counterparts for the shader build, which cannot represent a 64-bit float. The body casts to f32 only where it meets a Color channel.
+	let node_fn = if has_shader_variant {
+		let cpu_fn = node_fn(&field_types);
+		let shader_fn = node_fn(&shader_field_types);
+		quote! {
+			#[cfg(feature = #STD_FEATURE_GATE)]
+			#cpu_fn
+
+			#[cfg(not(feature = #STD_FEATURE_GATE))]
+			#shader_fn
+		}
+	} else {
+		node_fn(&field_types)
+	};
+
 	Ok(quote! {
-		#(#description_doc_attrs)*
-		#[inline]
-		#[allow(clippy::too_many_arguments)]
-		#vis #async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
+		#node_fn
 
 		#cfg
 		#[automatically_derived]

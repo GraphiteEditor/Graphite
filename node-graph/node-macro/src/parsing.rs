@@ -329,6 +329,16 @@ pub struct RegularParsedField {
 	pub number_mode_range: bool,
 	pub implementations: Punctuated<Type, Comma>,
 	pub gpu_image: bool,
+	/// Set for a shader node's `f64` or `i64` parameter: `ty` keeps the type it was declared with, which the graph and the
+	/// CPU fn use, while the shader build's fn variant and the GPU uniform take this `f32` or `i32` counterpart.
+	pub narrowed_body_ty: Option<Type>,
+}
+
+impl RegularParsedField {
+	/// The type the shader build's fn variant is handed: the 32-bit counterpart of a shader node's declared `f64` or `i64`, otherwise `ty` itself.
+	pub fn body_ty(&self) -> &Type {
+		self.narrowed_body_ty.as_ref().unwrap_or(&self.ty)
+	}
 }
 
 /// a param of `impl Node` with `#[implementation(in -> out)]`
@@ -598,7 +608,10 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 	let fn_generics = input_fn.sig.generics.params.into_iter().collect();
 	let is_async = input_fn.sig.asyncness.is_some();
 
-	let (input, fields) = parse_inputs(&input_fn.sig.inputs)?;
+	let (input, mut fields) = parse_inputs(&input_fn.sig.inputs)?;
+	if matches!(attributes.shader_node, Some(ShaderNodeType::PerPixelAdjust(_))) {
+		narrow_shader_fields(&mut fields)?;
+	}
 	let output_type = parse_output(&input_fn.sig.output)?;
 	let output_element = peel_item(&output_type);
 	let where_clause = input_fn.sig.generics.where_clause;
@@ -967,6 +980,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				value_source,
 				implementations,
 				gpu_image,
+				narrowed_body_ty: None,
 			}),
 			name,
 			description,
@@ -999,6 +1013,82 @@ fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 		}
 	}
 	(false, None, None)
+}
+
+/// A `PerPixelAdjust` shader node is declared with the catalog's `f64` and `i64` parameters, and its fn is emitted twice
+/// from the one body: as declared for the CPU, and with the `f32` and `i32` counterparts recorded here for the shader
+/// build, which cannot represent a 64-bit number. Declaring `f32` or `i32` directly is refused so the node's definition
+/// only ever speaks the graph's types.
+fn narrow_shader_fields(fields: &mut [ParsedField]) -> syn::Result<()> {
+	for field in fields.iter_mut() {
+		let Some(regular) = field.ty.regular() else { continue };
+		let declared = regular.ty.clone();
+
+		if peel_list(&declared).is_some() {
+			return Err(Error::new_spanned(
+				&declared,
+				"A per-pixel shader node cannot take a `List` parameter, since its values ride in a uniform buffer and the shader cannot allocate; declare an `Item` instead",
+			));
+		}
+
+		let element = peel_item(&declared).unwrap_or_else(|| declared.clone());
+		if ["f32", "i32", "PercentageF32", "SignedPercentageF32", "AngleF32"].iter().any(|name| is_primitive_type(&element, name)) {
+			return Err(Error::new_spanned(
+				&declared,
+				"A shader node's parameters are declared as `f64` or `i64`, the graph's Number and Integer types; the macro narrows them to the `f32` or `i32` the shader computes with",
+			));
+		}
+
+		// The registry's f64 typedefs, like `Percentage` and `Angle`, spell the graph's Number by its widget meaning and narrow the same way
+		let spells_f64 = [
+			"f64",
+			"Percentage",
+			"SignedPercentage",
+			"Angle",
+			"Multiplier",
+			"PixelLength",
+			"Length",
+			"Fraction",
+			"Progression",
+			"SignedInteger",
+		];
+		let counterpart: Type = if spells_f64.iter().any(|name| is_primitive_type(&element, name)) {
+			parse_quote!(f32)
+		} else if is_primitive_type(&element, "i64") {
+			parse_quote!(i32)
+		} else {
+			continue;
+		};
+		let body_ty = if peel_item(&declared).is_some() {
+			replace_wrapper_element(&declared, counterpart)
+		} else {
+			counterpart
+		};
+
+		let mut regular = regular.clone();
+		regular.narrowed_body_ty = Some(body_ty);
+		field.ty = ParsedFieldType::classify(regular);
+	}
+
+	Ok(())
+}
+
+/// Swaps the element type inside a wrapper like `Item<T>`, keeping the wrapper's path as it was written.
+fn replace_wrapper_element(ty: &Type, element: Type) -> Type {
+	let mut ty = ty.clone();
+	if let Type::Path(type_path) = &mut ty
+		&& let Some(segment) = type_path.path.segments.last_mut()
+		&& let syn::PathArguments::AngleBracketed(arguments) = &mut segment.arguments
+		&& let Some(syn::GenericArgument::Type(inner)) = arguments.args.first_mut()
+	{
+		*inner = element;
+	}
+	ty
+}
+
+fn is_primitive_type(ty: &Type, name: &str) -> bool {
+	let Type::Path(type_path) = ty else { return false };
+	type_path.path.segments.last().is_some_and(|segment| segment.ident == name)
 }
 
 fn is_integer_type(ty: &Type) -> bool {
@@ -1214,6 +1304,7 @@ mod tests {
 					number_mode_range: false,
 					implementations: Punctuated::new(),
 					gpu_image: false,
+					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1302,6 +1393,7 @@ mod tests {
 						number_mode_range: false,
 						implementations: Punctuated::new(),
 						gpu_image: false,
+						narrowed_body_ty: None,
 					}),
 					number_display_decimal_places: None,
 					number_step: None,
@@ -1371,6 +1463,7 @@ mod tests {
 					number_mode_range: false,
 					implementations: Punctuated::new(),
 					gpu_image: false,
+					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1443,6 +1536,7 @@ mod tests {
 						p
 					},
 					gpu_image: false,
+					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1517,6 +1611,7 @@ mod tests {
 					number_mode_range: true,
 					implementations: Punctuated::new(),
 					gpu_image: false,
+					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1599,6 +1694,7 @@ mod tests {
 					number_mode_range: false,
 					implementations: Punctuated::new(),
 					gpu_image: false,
+					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1760,5 +1856,55 @@ mod tests {
 		// Instead of checking for exact line and column,
 		// verify that the error span is the one we specified
 		assert_eq!(error.span().start(), problem_span.start());
+	}
+
+	#[test]
+	fn test_shader_node_parameters_narrow_for_the_body() {
+		let attr = quote!(category("Raster: Adjustment"), shader_node(PerPixelAdjust));
+		let input = quote!(
+			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, amount: Item<f64>, scale: f64, steps: Item<i64>) -> Item<T> {
+				image
+			}
+		);
+		let parsed = parse_node_fn(attr.clone(), input).unwrap();
+
+		let types = |index: usize| {
+			let regular = parsed.fields[index].ty.regular().unwrap();
+			let body = regular.narrowed_body_ty.as_ref().map(|ty| ty.to_token_stream().to_string());
+			(regular.ty.to_token_stream().to_string(), body)
+		};
+		assert_eq!(types(0), ("Item < T >".to_string(), None), "the image parameter is left alone");
+		assert_eq!(
+			types(1),
+			("Item < f64 >".to_string(), Some("Item < f32 >".to_string())),
+			"an Item<f64> stays on the wire and reaches the body as Item<f32>"
+		);
+		assert_eq!(types(2), ("f64".to_string(), Some("f32".to_string())), "a bare f64 reaches the body as f32");
+		assert_eq!(
+			types(3),
+			("Item < i64 >".to_string(), Some("Item < i32 >".to_string())),
+			"an Item<i64> stays on the wire and reaches the body as Item<i32>"
+		);
+
+		let declared_f32 = quote!(
+			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, amount: Item<f32>) -> Item<T> {
+				image
+			}
+		);
+		assert!(parse_node_fn(attr.clone(), declared_f32).is_err(), "a shader node must not declare f32 itself");
+
+		let declared_i32 = quote!(
+			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, steps: Item<i32>) -> Item<T> {
+				image
+			}
+		);
+		assert!(parse_node_fn(attr.clone(), declared_i32).is_err(), "a shader node must not declare i32 itself");
+
+		let declared_list = quote!(
+			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, amounts: List<f64>) -> Item<T> {
+				image
+			}
+		);
+		assert!(parse_node_fn(attr, declared_list).is_err(), "a uniform cannot carry a List");
 	}
 }

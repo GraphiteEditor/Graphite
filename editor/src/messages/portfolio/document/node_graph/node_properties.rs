@@ -1728,7 +1728,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 				let exposed = input.is_some_and(|input| input.is_exposed());
 				let value = input
 					.and_then(|input| input.as_value())
-					.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value as f64) } else { None })
+					.and_then(|tagged| if let TaggedValue::F64(value) = tagged { Some(*value) } else { None })
 					.unwrap_or(0.);
 				(exposed, value)
 			})
@@ -1851,7 +1851,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index,
-						value: TaggedValue::F32(scale.value(scale_position) as f32).into(),
+						value: TaggedValue::F64(scale.value(scale_position)).into(),
 					}
 					.into()
 				}
@@ -1887,11 +1887,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 					.value(Some(current))
 					.min_width(60)
 					.max_width(60)
-					.on_update(update_value_at_index(
-						move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32),
-						node_id,
-						input_index,
-					))
+					.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::F64(widget.value.unwrap_or(0.)), node_id, input_index))
 					.on_commit(commit_value)
 					.widget_instance(),
 			);
@@ -1915,8 +1911,8 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 		Some(TaggedValue::HueSaturationRange(range)) => *range,
 		_ => HueSaturationRange::Master,
 	};
-	let f32_value = |parameter: &ParameterRef| match document_node.inputs.get(parameter.input_index).and_then(|input| input.as_value()) {
-		Some(TaggedValue::F32(value)) => *value,
+	let slider_value = |parameter: &ParameterRef| match document_node.inputs.get(parameter.input_index).and_then(|input| input.as_value()) {
+		Some(TaggedValue::F64(value)) => *value as f32,
 		_ => 0.,
 	};
 
@@ -1984,9 +1980,9 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 		Gradient::from((0..=stops).map(stop).collect::<Vec<_>>())
 	};
 	let saturation_track = if colorize_value {
-		toward_hue(f32_value(&hue) / 360.)
+		toward_hue(slider_value(&hue) / 360.)
 	} else if let Some([_, range_start, range_end, _]) = &range_values {
-		let (start, end) = (f32_value(range_start), f32_value(range_end));
+		let (start, end) = (slider_value(range_start), slider_value(range_end));
 		let center = start + (end - start).rem_euclid(360.) / 2.;
 		toward_hue(center / 360.)
 	} else {
@@ -2193,7 +2189,7 @@ fn gradient_slider_row(
 		.ok()
 		.and_then(|document_node| document_node.inputs.get(input_index))
 		.and_then(|input| input.as_non_exposed_value())
-		.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value as f64) } else { None });
+		.and_then(|tagged| if let TaggedValue::F64(value) = tagged { Some(*value) } else { None });
 
 	// Only add the slider and number widgets when the input is not exposed
 	if let Some(current) = current {
@@ -2202,7 +2198,7 @@ fn gradient_slider_row(
 			max: value_max,
 			default: Some(default_value),
 		};
-		let value_at = move |position| TaggedValue::F32(slider.value(position) as f32);
+		let value_at = move |position| TaggedValue::F64(slider.value(position));
 
 		row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		row.push(
@@ -2225,11 +2221,7 @@ fn gradient_slider_row(
 				.min_width(60)
 				.max_width(60)
 				.display_decimal_places(0)
-				.on_update(update_value_at_index(
-					move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32),
-					node_id,
-					input_index,
-				))
+				.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::F64(widget.value.unwrap_or(0.)), node_id, input_index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		);
