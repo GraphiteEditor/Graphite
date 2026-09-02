@@ -1817,8 +1817,10 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 ///
 /// The dispatch is decidable only where the reference addresses the payload
 /// itself, which holds for parked elements and for a group interior's frames.
-/// A reference-valued attribute instead names heap its arena-parked owner
-/// holds, at an address in no arena's range, so those always clone.
+/// A reference-valued attribute instead names storage whose owner the address
+/// alone does not identify, so those are never provenance-shared; they clone,
+/// or move where [`Arena::move_park`](crate::arena::Arena::move_park) confirms
+/// the reference is the transient arena's own park.
 ///
 /// THE SHARING LAW: sharing a payload between persistent entries is sound
 /// because persistent invalidation is epochal, so every entry dies at one
@@ -1877,9 +1879,9 @@ impl<'a> Promotion<'a> {
 ///
 /// A parked element rides the arena slot its payload was written into, so the
 /// region holding it decides share against clone. A parked field's reference
-/// instead points into heap its arena-parked owner holds, which lies in no
-/// arena range, so provenance is undecidable there and the field always
-/// clones.
+/// names storage the promote cannot attribute from the address alone, so it is
+/// never provenance-shared: it clones, or takes the route a registered
+/// [`FieldPromote`] states under the two-level sharing law.
 ///
 /// # Safety
 /// `dst` must be a persistent image of a live record of `layout`.
@@ -1908,6 +1910,12 @@ unsafe fn promote_record(layout: &Layout, dst: *mut u8, promotion: &Promotion<'_
 		let Some(repark) = field.repark else { continue };
 		// SAFETY: a parked field slot holds one reference at its offset.
 		let slot = unsafe { dst.add(field.offset) };
+		if let Some(promote) = field_promote_glue(field.type_id) {
+			// SAFETY: the slot images a parked field of this descriptor, and the
+			// promoted reference is written back into that same slot.
+			unsafe { promote(slot.cast_const(), slot, promotion) }?;
+			continue;
+		}
 		// SAFETY: the slot images a parked field of this descriptor.
 		let value = deepen_field_value(unsafe { (field.read_erased)(slot.cast_const()) });
 		match deep_field_glue(value.as_any().type_id()) {
@@ -1963,6 +1971,37 @@ pub fn register_element_promote<T: dyn_any::StaticTypeSized>(promote: ElementPro
 
 fn element_promote_glue(type_id: std::any::TypeId) -> Option<ElementPromote> {
 	ELEMENT_PROMOTES.lock().unwrap().get(&type_id).copied()
+}
+
+/// The deep field glue's third half, opt-in beside [`register_deep_field_value`]'s
+/// pair: a registered promote routes the field payload transient-to-persistent
+/// at the slot itself, so the promote never builds the owned form the other two
+/// halves round-trip through. Keyed by the field's stored type rather than its
+/// owned one, since the route runs before any erased read. The owned halves keep
+/// serving every other seam, [`OwnedRecord::copy_out`] and [`GroupItem::copy_out`]
+/// included.
+///
+/// THE TWO-LEVEL SHARING LAW, which a registrant must hold to: the field's own
+/// header is not provenance-shared, since a stored reference names storage whose
+/// owner the promote cannot attribute from the address alone; it clones, or moves
+/// where the payload owns all of its content and the transient arena confirms the
+/// reference is its own park. One level inside the payload, an interior that is
+/// arena-resident has decidable provenance and takes the Cow dispatch: an interior
+/// the persistent region already holds is shared pointer for pointer, and one that
+/// dies with the evaluation is copied or moved.
+type FieldPromote = unsafe fn(*const u8, *mut u8, &Promotion<'_>) -> Option<()>;
+
+static FIELD_PROMOTES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, FieldPromote>>> = std::sync::LazyLock::new(Default::default);
+
+/// Registers the promote for fields stored as `T`. Called at startup from the
+/// crate that owns the type. The promote must leave no reference the promotion
+/// calls evaluation-lived.
+pub fn register_field_promote<T: 'static>(promote: FieldPromote) {
+	FIELD_PROMOTES.lock().unwrap().insert(std::any::TypeId::of::<T>(), promote);
+}
+
+fn field_promote_glue(type_id: std::any::TypeId) -> Option<FieldPromote> {
+	FIELD_PROMOTES.lock().unwrap().get(&type_id).copied()
 }
 
 /// The park glue's heap estimate for values of a type, keyed as the deep glue
