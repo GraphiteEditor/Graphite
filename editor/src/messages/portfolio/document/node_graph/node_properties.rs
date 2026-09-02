@@ -1125,22 +1125,6 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
-		Some(&TaggedValue::U32(x)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			number_props
-				.value(Some(x as f64))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32)))
-				.on_commit(commit_value)
-				.widget_instance(),
-		]),
-		Some(&TaggedValue::U64(x)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			number_props
-				.value(Some(x as f64))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::U64((x.value.unwrap()) as u64)))
-				.on_commit(commit_value)
-				.widget_instance(),
-		]),
 		Some(&TaggedValue::I64(x)) => widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props

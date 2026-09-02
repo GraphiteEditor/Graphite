@@ -578,7 +578,7 @@ fn read_attribute_vector(
 	result
 }
 
-/// Reads a named numeric attribute (`f64`, `u64`, or `u32`) from the input list, outputting each value as an element of a new `f64[]`. Integer values are converted to `f64`.
+/// Reads a named numeric attribute (`f64` or `i64`) from the input list, outputting each value as an element of a new `f64[]`. Integer values are converted to `f64`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_number(
 	_: impl Ctx,
@@ -589,11 +589,7 @@ fn read_attribute_number(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let value = content
-			.attribute::<f64>(&name, index)
-			.copied()
-			.or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64))
-			.or_else(|| content.attribute::<u32>(&name, index).map(|v| *v as f64));
+		let value = content.attribute::<f64>(&name, index).copied().or_else(|| content.attribute::<i64>(&name, index).map(|v| *v as f64));
 		let Some(value) = value else { continue };
 		result.push(Item::new_from_element(value));
 	}

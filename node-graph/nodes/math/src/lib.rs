@@ -777,16 +777,9 @@ fn random(
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Converts a number to an integer of the type u32, which may be the required type for certain node inputs.
-#[node_macro::node(name("As u32"), category("Type Assertion"))]
-fn as_u32(_: impl Ctx, value: Item<u32>) -> Item<u32> {
-	value
-}
-
-// TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Converts a number to an integer of the type u64, which may be the required type for certain node inputs.
-#[node_macro::node(name("As u64"), category("Type Assertion"))]
-fn as_u64(_: impl Ctx, value: Item<u64>) -> Item<u64> {
+/// Converts a number to the standard integer type, which may be the required type for certain node inputs.
+#[node_macro::node(category("Type Assertion"))]
+fn as_integer(_: impl Ctx, value: Item<i64>) -> Item<i64> {
 	value
 }
 
@@ -1270,8 +1263,7 @@ async fn switch<T: 'n + Send>(
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
 		Context -> Item<Bundle<f64>>,
-		Context -> Item<Bundle<u32>>,
-		Context -> Item<Bundle<u64>>,
+		Context -> Item<Bundle<i64>>,
 		Context -> Item<Bundle<DVec2>>,
 		Context -> Item<Bundle<DAffine2>>,
 		Context -> Item<Bundle<Vector>>,
@@ -1301,8 +1293,7 @@ async fn switch<T: 'n + Send>(
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
 		Context -> Item<Bundle<f64>>,
-		Context -> Item<Bundle<u32>>,
-		Context -> Item<Bundle<u64>>,
+		Context -> Item<Bundle<i64>>,
 		Context -> Item<Bundle<DVec2>>,
 		Context -> Item<Bundle<DAffine2>>,
 		Context -> Item<Bundle<Vector>>,
