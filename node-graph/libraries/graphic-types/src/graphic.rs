@@ -1278,6 +1278,12 @@ pub(crate) fn list_contains_groups(list: &List<Graphic>) -> bool {
 	(0..list.len()).any(|index| list.element(index).is_some_and(graphic_contains_groups))
 }
 
+/// The heap a graphic list's elements own, group interiors excluded as
+/// [`graphic_retained_heap`] excludes them.
+fn list_retained_heap(list: &List<Graphic>) -> usize {
+	(0..list.len()).filter_map(|index| list.element(index)).map(graphic_retained_heap).sum()
+}
+
 /// The deep copy-out for graphic-list field values (the paint markers' owned
 /// form): content groups leave in their owned form. Declines (`None`) for
 /// group-free content, which already owns everything.
@@ -1329,10 +1335,12 @@ unsafe fn promote_graphic_list(src: *const u8, dst: *mut u8, promotion: &core_ty
 		unsafe { dst.cast::<Option<&List<Graphic<'static>>>>().write(None) };
 		return Some(());
 	};
+	let retained = list_retained_heap(list);
 	if !list_contains_groups(list) {
 		// SAFETY: a group-free list owns all of its content, and the arena
-		// declines a reference that is not a park of its own.
-		if let Some(moved) = unsafe { promotion.move_park::<List<Graphic<'static>>>(std::ptr::from_ref(list).cast(), 0) } {
+		// declines a reference that is not a park at the list's own address
+		// and size.
+		if let Some(moved) = unsafe { promotion.move_park::<List<Graphic<'static>>>(std::ptr::from_ref(list).cast(), retained) } {
 			// SAFETY: the move published a live list in the persistent region.
 			unsafe { dst.cast::<Option<&List<Graphic<'static>>>>().write(Some(&*moved)) };
 			return Some(());
@@ -1345,7 +1353,7 @@ unsafe fn promote_graphic_list(src: *const u8, dst: *mut u8, promotion: &core_ty
 	// SAFETY: every borrow the clone carried was replaced by persistent content
 	// above, so the erased form outlives the evaluation.
 	let promoted = unsafe { core_types::record::erase_static(promoted) };
-	let (parked, _) = promotion.persistent().alloc(promoted)?;
+	let (parked, _) = promotion.persistent().alloc_sized(promoted, retained)?;
 	// SAFETY: the slot holds one optional reference.
 	unsafe { dst.cast::<Option<&List<Graphic<'static>>>>().write(Some(parked)) };
 	Some(())
