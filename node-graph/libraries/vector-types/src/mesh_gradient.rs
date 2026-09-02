@@ -422,9 +422,9 @@ impl MeshGradient {
 
 	// TODO: Research the way to handle polar color spaces for mesh gradient
 	/// Returns a new `MeshGradientEvaluator` whose Hermite color field is expressed in `space`.
-	pub fn evaluator(&self, space: GradientSpace, interpolation: GradientInterpolation) -> Option<MeshGradientEvaluator> {
+	pub fn evaluator(&self, space: GradientSpace, interpolation: GradientInterpolation) -> Result<MeshGradientEvaluator, MeshGradientEvaluatorError> {
 		if space.is_polar() {
-			return None;
+			return Err(MeshGradientEvaluatorError::UnsupportedColorSpace);
 		}
 		MeshGradientEvaluator::new(self, space, interpolation)
 	}
@@ -533,7 +533,7 @@ impl MeshGradient {
 			return None;
 		}
 
-		let evaluator = self.evaluator(space, interpolation)?;
+		let evaluator = self.evaluator(space, interpolation).ok()?;
 		let (axis, split_patch_index) = self.grid_line_axis(segment_id)?;
 		let (split_edge_grid, _) = axis.edge_grids(&self.horizontal_edges, &self.vertical_edges);
 		let [across_corner_count, _] = axis.logical_indices(split_edge_grid.rows, split_edge_grid.columns);
@@ -690,27 +690,25 @@ impl MeshGradient {
 }
 
 #[derive(Clone, Copy)]
-struct MeshCornerDerivatives {
+struct PatchColorDerivatives {
 	u: Vec4,
 	v: Vec4,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum MeshPatchInterpolation {
 	Stepped,
 	Linear,
 	Smooth {
-		/// Slopes of corner colors for bicubic hermite interpolation. [top-left, top-right, bottom-left, bottom-right]
-		color_slopes: [MeshCornerDerivatives; 4],
-		/// Linear length of between each corner. [top, bottom, left, right]
-		lengths: [f32; 4],
+		/// Derivatives of corner colors for bicubic hermite interpolation. [top-left, top-right, bottom-left, bottom-right]
+		color_derivatives: [PatchColorDerivatives; 4],
 		/// The Bezier restatement of the Hermite color data, built alongside it so the two cannot drift apart.
-		bezier_control_points: [[Vec4; 4]; 4],
+		bezier_control_points: Box<[[Vec4; 4]; 4]>,
 	},
 }
 
 /// A cached mesh patch for subdivision into subpatches in rendering phase.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct MeshPatchEvaluator {
 	/// Corner positions. [top-left, top-right, bottom-left, bottom-right]
 	pub corners: [DVec2; 4],
@@ -718,7 +716,7 @@ pub struct MeshPatchEvaluator {
 	pub edges: [PathSeg; 4],
 	/// Color-space channels and straight alpha. [top-left, top-right, bottom-left, bottom-right]
 	colors: [Vec4; 4],
-	/// Color space used by `colors` and `color_slopes`.
+	/// Color space for interpolation.
 	space: GradientSpace,
 	/// Color interpolation method.
 	interpolation: MeshPatchInterpolation,
@@ -736,7 +734,7 @@ impl MeshPatchEvaluator {
 				let bottom = bottom_left_color.lerp(bottom_right_color, u);
 				top.lerp(bottom, v).to_array()
 			}
-			MeshPatchInterpolation::Smooth { color_slopes, lengths, .. } => {
+			MeshPatchInterpolation::Smooth { color_derivatives, .. } => {
 				let hermite = |a: f32, ma: f32, b: f32, mb: f32, t: f32| -> f32 {
 					let t_power_2 = t * t;
 					let t_power_3 = t_power_2 * t;
@@ -749,26 +747,19 @@ impl MeshPatchEvaluator {
 					ma * h3 + a * h1 + b * h2 + mb * h4
 				};
 
-				let [top_length, bottom_length, left_length, right_length] = lengths;
-				let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = color_slopes;
+				let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = color_derivatives;
 
 				std::array::from_fn(|channel| {
-					let top_color_interpolated = hermite(
-						top_left_color[channel],
-						top_left_color_slope.u[channel] * top_length,
-						top_right_color[channel],
-						top_right_color_slope.u[channel] * top_length,
-						u,
-					);
+					let top_color_interpolated = hermite(top_left_color[channel], top_left_color_slope.u[channel], top_right_color[channel], top_right_color_slope.u[channel], u);
 					let bottom_color_interpolated = hermite(
 						bottom_left_color[channel],
-						bottom_left_color_slope.u[channel] * bottom_length,
+						bottom_left_color_slope.u[channel],
 						bottom_right_color[channel],
-						bottom_right_color_slope.u[channel] * bottom_length,
+						bottom_right_color_slope.u[channel],
 						u,
 					);
-					let top_slope_interpolated = hermite(top_left_color_slope.v[channel] * left_length, 0., top_right_color_slope.v[channel] * right_length, 0., u);
-					let bottom_slope_interpolated = hermite(bottom_left_color_slope.v[channel] * left_length, 0., bottom_right_color_slope.v[channel] * right_length, 0., u);
+					let top_slope_interpolated = hermite(top_left_color_slope.v[channel], 0., top_right_color_slope.v[channel], 0., u);
+					let bottom_slope_interpolated = hermite(bottom_left_color_slope.v[channel], 0., bottom_right_color_slope.v[channel], 0., u);
 					hermite(top_color_interpolated, top_slope_interpolated, bottom_color_interpolated, bottom_slope_interpolated, v)
 				})
 			}
@@ -886,27 +877,21 @@ impl MeshPatchEvaluator {
 }
 
 /// Restates a patch's Hermite color data as the control net of the equivalent bicubic Bezier surface.
-fn bicubic_bezier_control_net(colors: &[Vec4; 4], color_slopes: &[MeshCornerDerivatives; 4], lengths: &[f32; 4]) -> [[Vec4; 4]; 4] {
-	let [top_length, bottom_length, left_length, right_length] = *lengths;
+fn bicubic_bezier_control_net(colors: &[Vec4; 4], color_derivatives: &[PatchColorDerivatives; 4]) -> [[Vec4; 4]; 4] {
 	let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = *colors;
-	let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = *color_slopes;
+	let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = *color_derivatives;
 
 	let hermite_channels: [Mat4; 4] = std::array::from_fn(|channel| {
 		Mat4::from_cols(
-			Vec4::new(
-				top_left_color[channel],
-				top_left_color_slope.v[channel] * left_length,
-				bottom_left_color[channel],
-				bottom_left_color_slope.v[channel] * left_length,
-			),
-			Vec4::new(top_left_color_slope.u[channel] * top_length, 0., bottom_left_color_slope.u[channel] * bottom_length, 0.),
+			Vec4::new(top_left_color[channel], top_left_color_slope.v[channel], bottom_left_color[channel], bottom_left_color_slope.v[channel]),
+			Vec4::new(top_left_color_slope.u[channel], 0., bottom_left_color_slope.u[channel], 0.),
 			Vec4::new(
 				top_right_color[channel],
-				top_right_color_slope.v[channel] * right_length,
+				top_right_color_slope.v[channel],
 				bottom_right_color[channel],
-				bottom_right_color_slope.v[channel] * right_length,
+				bottom_right_color_slope.v[channel],
 			),
-			Vec4::new(top_right_color_slope.u[channel] * top_length, 0., bottom_right_color_slope.u[channel] * bottom_length, 0.),
+			Vec4::new(top_right_color_slope.u[channel], 0., bottom_right_color_slope.u[channel], 0.),
 		)
 	});
 
@@ -916,6 +901,16 @@ fn bicubic_bezier_control_net(colors: &[Vec4; 4], color_slopes: &[MeshCornerDeri
 	let points_mat = hermite_channels.map(|hermite| hermite_to_bezier_axis * hermite * hermite_to_bezier_axis_transpose);
 
 	std::array::from_fn(|v| std::array::from_fn(|u| Vec4::new(points_mat[0].col(u)[v], points_mat[1].col(u)[v], points_mat[2].col(u)[v], points_mat[3].col(u)[v])))
+}
+
+#[derive(Debug)]
+pub enum MeshGradientEvaluatorError {
+	UnsupportedColorSpace,
+	InsufficientCornerGrid,
+	InconsistentGridDimensions,
+	MissingCornerPoint,
+	PatchCountOverflow,
+	InvalidPatch,
 }
 
 /// Struct for evaluating color for subpatch corners.
@@ -929,10 +924,10 @@ pub struct MeshGradientEvaluator {
 }
 
 impl MeshGradientEvaluator {
-	pub fn new(mesh_gradient: &MeshGradient, space: GradientSpace, interpolation: GradientInterpolation) -> Option<Self> {
+	pub fn new(mesh_gradient: &MeshGradient, space: GradientSpace, interpolation: GradientInterpolation) -> Result<Self, MeshGradientEvaluatorError> {
 		let [corner_rows, corner_columns] = mesh_gradient.corner_points.dimensions();
 		if corner_rows < 2 || corner_columns < 2 {
-			return None;
+			return Err(MeshGradientEvaluatorError::InsufficientCornerGrid);
 		}
 		let patch_columns = corner_columns - 1;
 		let patch_rows = corner_rows - 1;
@@ -941,15 +936,18 @@ impl MeshGradientEvaluator {
 			|| mesh_gradient.horizontal_edges.dimensions() != [corner_rows, patch_columns]
 			|| mesh_gradient.vertical_edges.dimensions() != [patch_rows, corner_columns]
 		{
-			return None;
+			return Err(MeshGradientEvaluatorError::InconsistentGridDimensions);
 		}
 
-		let corner_positions: Vec<DVec2> = mesh_gradient
+		let corner_positions: Option<Vec<DVec2>> = mesh_gradient
 			.corner_points
 			.values
 			.iter()
 			.map(|&point_id| mesh_gradient.mesh_geometry.point_domain.position_from_id(point_id))
-			.collect::<Option<_>>()?;
+			.collect::<Option<_>>();
+		let Some(corner_positions) = corner_positions else {
+			return Err(MeshGradientEvaluatorError::MissingCornerPoint);
+		};
 
 		let colors: Vec<Vec4> = mesh_gradient
 			.corner_colors
@@ -959,7 +957,7 @@ impl MeshGradientEvaluator {
 			.collect();
 
 		// Calculate the slope of the `curr_index` corner by FDM. The slope is derived from the linear distance from the previous/next corners.
-		let calculate_color_slope = |prev_index: usize, curr_index: usize, next_index: usize| {
+		let calculate_spatial_color_slope = |prev_index: usize, curr_index: usize, next_index: usize| {
 			let prev_color = colors[prev_index];
 			let curr_color = colors[curr_index];
 			let next_color = colors[next_index];
@@ -997,23 +995,24 @@ impl MeshGradientEvaluator {
 			clamped_row * corner_columns + clamped_column
 		};
 
-		let corner_slopes = (interpolation == GradientInterpolation::Smooth).then(|| {
+		let spatial_color_slopes = (interpolation == GradientInterpolation::Smooth).then(|| {
 			let mut slopes = Vec::with_capacity(corner_rows * corner_columns);
 			for row in 0..corner_rows as isize {
 				for col in 0..corner_columns as isize {
 					let curr_index = sample_index(row, col);
-					let u = calculate_color_slope(sample_index(row, col - 1), curr_index, sample_index(row, col + 1));
-					let v = calculate_color_slope(sample_index(row - 1, col), curr_index, sample_index(row + 1, col));
-					slopes.push(MeshCornerDerivatives { u, v });
+					let u = calculate_spatial_color_slope(sample_index(row, col - 1), curr_index, sample_index(row, col + 1));
+					let v = calculate_spatial_color_slope(sample_index(row - 1, col), curr_index, sample_index(row + 1, col));
+					slopes.push([u, v]);
 				}
 			}
 			slopes
 		});
 
-		let mut patch_color_data = Vec::with_capacity(patch_rows.checked_mul(patch_columns)?);
+		let patch_count = patch_rows.checked_mul(patch_columns).ok_or(MeshGradientEvaluatorError::PatchCountOverflow)?;
+		let mut patch_color_data = Vec::with_capacity(patch_count);
 		for row in 0..patch_rows {
 			for column in 0..patch_columns {
-				let patch = mesh_gradient.patch(row, column)?;
+				let patch = mesh_gradient.patch(row, column).ok_or(MeshGradientEvaluatorError::InvalidPatch)?;
 				let top_left_index = row * corner_columns + column;
 				let corner_indices = [top_left_index, top_left_index + 1, top_left_index + corner_columns, top_left_index + corner_columns + 1];
 				let patch_colors = corner_indices.map(|index| colors[index]);
@@ -1024,18 +1023,26 @@ impl MeshGradientEvaluator {
 					GradientInterpolation::Stepped => MeshPatchInterpolation::Stepped,
 					GradientInterpolation::Linear => MeshPatchInterpolation::Linear,
 					GradientInterpolation::Smooth => {
-						let corner_slopes = corner_slopes.as_ref().expect("Smooth interpolation must have color slopes");
-						let color_slopes = corner_indices.map(|index| corner_slopes[index]);
-						let lengths = [
-							top_left_pos.distance(top_right_pos) as f32,
-							bottom_left_pos.distance(bottom_right_pos) as f32,
-							top_left_pos.distance(bottom_left_pos) as f32,
-							top_right_pos.distance(bottom_right_pos) as f32,
-						];
-						let bezier_control_points = bicubic_bezier_control_net(&patch_colors, &color_slopes, &lengths);
+						let top_length = top_left_pos.distance(top_right_pos) as f32;
+						let bottom_length = bottom_left_pos.distance(bottom_right_pos) as f32;
+						let left_length = top_left_pos.distance(bottom_left_pos) as f32;
+						let right_length = top_right_pos.distance(bottom_right_pos) as f32;
+						let corner_related_lengths = [[top_length, left_length], [top_length, right_length], [bottom_length, left_length], [bottom_length, right_length]];
+
+						let spatial_color_slopes = spatial_color_slopes.as_ref().expect("Smooth interpolation must have color slopes");
+						let color_derivatives = std::array::from_fn(|index| {
+							let corner_index = corner_indices[index];
+							let [u_slope, v_slope] = spatial_color_slopes[corner_index];
+							let [u_length, v_length] = corner_related_lengths[index];
+							PatchColorDerivatives {
+								u: u_slope * u_length,
+								v: v_slope * v_length,
+							}
+						});
+
+						let bezier_control_points = Box::new(bicubic_bezier_control_net(&patch_colors, &color_derivatives));
 						MeshPatchInterpolation::Smooth {
-							color_slopes,
-							lengths,
+							color_derivatives,
 							bezier_control_points,
 						}
 					}
@@ -1051,7 +1058,7 @@ impl MeshGradientEvaluator {
 			}
 		}
 
-		Some(Self {
+		Ok(Self {
 			patches: patch_color_data,
 			space,
 			interpolation,
@@ -1191,17 +1198,15 @@ mod tests {
 		let u_delta = Vec4::new(0.2, 0.1, -0.1, 0.2);
 		let v_delta = Vec4::new(0.3, -0.1, 0.2, 0.1);
 		let colors = [base, base + u_delta, base + v_delta, base + u_delta + v_delta];
-		let color_slopes = [MeshCornerDerivatives { u: u_delta, v: v_delta }; 4];
-		let lengths = [1.; 4];
+		let color_slopes = [PatchColorDerivatives { u: u_delta, v: v_delta }; 4];
 		let evaluator = MeshPatchEvaluator {
 			corners: [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE],
 			edges: line_edges([DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE]),
 			colors,
 			space: GradientSpace::RgbGamma,
 			interpolation: MeshPatchInterpolation::Smooth {
-				color_slopes,
-				lengths,
-				bezier_control_points: bicubic_bezier_control_net(&colors, &color_slopes, &lengths),
+				color_derivatives: color_slopes,
+				bezier_control_points: Box::new(bicubic_bezier_control_net(&colors, &color_slopes)),
 			},
 		};
 

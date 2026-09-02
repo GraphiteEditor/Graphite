@@ -3046,7 +3046,9 @@ fn render_mesh_gradient_item_svg(item: ItemRef<'_, MeshGradient>, render: &mut S
 	let Some(mesh_gradient) = item.element() else { return };
 	let space: GradientSpace = item.attribute_cloned_or_default::<GradientSpace>(ATTR_GRADIENT_SPACE);
 	let interpolation_method: GradientInterpolation = item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION);
-	let Some(mesh_evaluator) = mesh_gradient.evaluator(space, interpolation_method) else { return };
+	let Some(mesh_evaluator) = mesh_gradient.evaluator(space, interpolation_method).ok() else {
+		return;
+	};
 
 	let mesh_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let parent_transform = DAffine2::from_scale(DVec2::splat(1. / render_params.scale)) * render_params.footprint.transform * render.transform;
@@ -3109,7 +3111,7 @@ fn render_mesh_gradient_item_to_vello(item: ItemRef<'_, MeshGradient>, scene: &m
 
 	let space: GradientSpace = item.attribute_cloned_or_default(ATTR_GRADIENT_SPACE);
 	let interpolation_method: GradientInterpolation = item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION);
-	let Some(evaluator) = mesh_gradient.evaluator(space, interpolation_method) else { return };
+	let Some(evaluator) = mesh_gradient.evaluator(space, interpolation_method).ok() else { return };
 	let viewport_zoom = if render_params.viewport_zoom > 0. { render_params.viewport_zoom } else { 1. };
 	let position_error_tolerance = MESH_POSITION_ERROR_TOLERANCE / viewport_zoom;
 	let Some(subpatches) = subdivide_patches_adaptive(&evaluator, mesh_transform, parent_transform, position_error_tolerance, MESH_COLOR_ERROR_TOLERANCE) else {
