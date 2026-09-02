@@ -4,6 +4,7 @@
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "/src/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import SoftwareCursor from "/src/components/panels/SoftwareCursor.svelte";
 	import Graph from "/src/components/views/Graph.svelte";
 	import RulerInput from "/src/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
@@ -73,6 +74,22 @@
 	let cursorEyedropperPreviewColorChoice = "";
 	let cursorEyedropperPreviewColorPrimary = "";
 	let cursorEyedropperPreviewColorSecondary = "";
+
+	let softwareCursorVisible = false;
+	let softwareCursorX = 0;
+	let softwareCursorY = 0;
+
+	function handleSoftwareCursorWebMove(e: PointerEvent) {
+		if (!softwareCursorVisible || !isWeb || window.document.pointerLockElement !== viewport) return;
+		const dx = e.movementX;
+		const dy = e.movementY;
+		if (dx === 0 && dy === 0) return;
+		try {
+			editor.appWindowPointerLockMove(dx, dy);
+		} catch {
+			// The wrapper may not be ready yet
+		}
+	}
 
 	// Gradient stop color picker
 	let gradientStopPickerColor: SRGBA8 | undefined = undefined;
@@ -509,6 +526,7 @@
 			await tick();
 
 			const { origin, spacing, interval, visible, tilt, flip, selectionQuad } = data;
+
 			updateDocumentRulers(origin, spacing, interval, visible, tilt, flip, selectionQuad || undefined);
 		});
 
@@ -518,6 +536,30 @@
 
 			updateMouseCursor(data.cursor);
 		});
+
+		// Software cursor
+		subscriptions.subscribeFrontendMessage("UpdateSoftwareCursor", async (data) => {
+			await tick();
+
+			softwareCursorVisible = data.visible;
+			softwareCursorX = data.x;
+			softwareCursorY = data.y;
+
+			if (!isWeb) return;
+
+			// Browsers reject a re-lock request shortly after an unlock, so keep retrying on each update
+			if (data.visible && viewport && window.document.pointerLockElement !== viewport) {
+				try {
+					viewport.requestPointerLock?.().catch(() => undefined);
+				} catch {
+					// Retried on the next update
+				}
+			} else if (!data.visible && window.document.pointerLockElement === viewport) {
+				window.document.exitPointerLock();
+			}
+		});
+
+		window.addEventListener("pointermove", handleSoftwareCursorWebMove);
 
 		// Text entry
 		subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
@@ -566,6 +608,7 @@
 		viewportResizeObserver?.disconnect();
 		removeUpdatePixelRatio?.();
 		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
+		window.removeEventListener("pointermove", handleSoftwareCursorWebMove);
 
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
 		subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");
@@ -573,6 +616,7 @@
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
 		subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
+		subscriptions.unsubscribeFrontendMessage("UpdateSoftwareCursor");
 		subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
@@ -657,6 +701,7 @@
 							y={cursorTop}
 						/>
 					{/if}
+					<SoftwareCursor visible={softwareCursorVisible} x={softwareCursorX} y={softwareCursorY} />
 					<div
 						style:left={gradientStopPickerPosition ? `${gradientStopPickerPosition?.x}px` : undefined}
 						style:top={gradientStopPickerPosition ? `${gradientStopPickerPosition?.y}px` : undefined}

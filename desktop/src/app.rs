@@ -23,7 +23,7 @@ use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::ui::{UiCommand, UiInstance};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Preferences};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, Key, ModifierKeys, Preferences};
 use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -349,6 +349,9 @@ impl App {
 					window.start_pointer_lock();
 				}
 			}
+			DesktopFrontendMessage::PointerUnlock => {
+				self.unlock_pointer();
+			}
 			DesktopFrontendMessage::WindowClose => {
 				self.app_event_scheduler.schedule(AppEvent::Exit);
 			}
@@ -506,6 +509,40 @@ impl App {
 			}
 		}
 	}
+
+	fn unlock_pointer(&mut self) {
+		if let Some(pos) = self.input_state.unlock_pointer()
+			&& let Some(window) = &self.window
+		{
+			window.end_pointer_lock();
+			self.ui.send(UiCommand::Input(WindowEvent::PointerMoved {
+				device_id: None,
+				position: pos,
+				primary: true,
+				source: winit::event::PointerSource::Mouse,
+			}));
+		} else if let Some(window) = &self.window {
+			window.end_pointer_lock();
+		}
+	}
+
+	/// Synthesize an Escape press/release so the editor cancels the active transform (same as a user pressing Escape)
+	fn send_cancel_escape(&mut self) {
+		for message in [
+			InputMessage::KeyDown {
+				key: Key::Escape,
+				key_repeat: false,
+				modifier_keys: ModifierKeys::empty(),
+			},
+			InputMessage::KeyUp {
+				key: Key::Escape,
+				key_repeat: false,
+				modifier_keys: ModifierKeys::empty(),
+			},
+		] {
+			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Input(message)));
+		}
+	}
 }
 impl ApplicationHandler for App {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
@@ -536,23 +573,22 @@ impl ApplicationHandler for App {
 	}
 
 	fn window_event(&mut self, _event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-		// Handle pointer lock release
 		if let WindowEvent::PointerButton {
 			state: ElementState::Released,
 			button,
 			..
 		} = &event && button.clone().mouse_button() == Some(MouseButton::Left)
-			&& let Some(pointer_lock_position) = self.input_state.unlock_pointer()
+			&& self.input_state.pointer_locked()
 		{
-			if let Some(window) = &self.window {
-				window.end_pointer_lock();
-			}
-			self.ui.send(UiCommand::Input(WindowEvent::PointerMoved {
-				device_id: None,
-				position: pointer_lock_position,
-				primary: true,
-				source: winit::event::PointerSource::Mouse,
-			}));
+			self.unlock_pointer();
+		}
+
+		// The editor can no longer track the pointer, so cancel any pointer-locked operation (G/R/S) and release the grab
+		if let WindowEvent::Focused(false) = &event
+			&& self.input_state.pointer_locked()
+		{
+			self.unlock_pointer();
+			self.send_cancel_escape();
 		}
 
 		for action in self.input_state.process(&event) {
@@ -642,6 +678,9 @@ impl ApplicationHandler for App {
 		if self.input_state.pointer_locked()
 			&& let winit::event::DeviceEvent::PointerMotion { delta: (x, y) } = event
 		{
+			// DeviceEvent deltas are physical pixels
+			let scale = self.input_state.viewport_scale();
+			let (x, y) = if scale != 0. { (x / scale, y / scale) } else { (x, y) };
 			let message = DesktopWrapperMessage::PointerLockMove { x, y };
 			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 		}

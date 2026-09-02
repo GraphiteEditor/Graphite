@@ -187,6 +187,10 @@ impl InputState {
 		self.viewport_info.as_ref().map_or(1., |info| info.scale)
 	}
 
+	pub(crate) fn viewport_scale(&self) -> f64 {
+		self.scale()
+	}
+
 	fn in_viewport(&self, position: PhysicalPosition<f64>) -> bool {
 		self.viewport_info.as_ref().is_some_and(|info| info.contains(position))
 	}

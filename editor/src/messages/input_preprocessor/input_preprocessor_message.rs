@@ -1,6 +1,7 @@
 use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 use crate::messages::prelude::*;
+use glam::DVec2;
 
 #[impl_message(Message, InputPreprocessor)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -14,4 +15,5 @@ pub enum InputPreprocessorMessage {
 	PointerShake { editor_mouse_state: EditorPointerState, modifier_keys: ModifierKeys },
 	CurrentTime { timestamp: u64 },
 	WheelScroll { editor_mouse_state: EditorPointerState, modifier_keys: ModifierKeys },
+	RelativePointerMove { delta: DVec2 },
 }

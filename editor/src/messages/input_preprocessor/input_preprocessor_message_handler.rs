@@ -107,6 +107,11 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 
 				responses.add(InputMapperMessage::WheelScroll);
 			}
+			InputPreprocessorMessage::RelativePointerMove { delta } => {
+				self.mouse.position += delta;
+
+				responses.add(InputMapperMessage::PointerMove);
+			}
 		};
 	}
 

@@ -67,6 +67,7 @@ pub enum DesktopFrontendMessage {
 		content: String,
 	},
 	PointerLock,
+	PointerUnlock,
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,

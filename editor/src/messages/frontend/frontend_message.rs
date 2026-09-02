@@ -350,6 +350,13 @@ pub enum FrontendMessage {
 		position: (f64, f64),
 	},
 	#[cfg(not(target_family = "wasm"))]
+	WindowPointerUnlock,
+	UpdateSoftwareCursor {
+		visible: bool,
+		x: f64,
+		y: f64,
+	},
+	#[cfg(not(target_family = "wasm"))]
 	WindowClose,
 	#[cfg(not(target_family = "wasm"))]
 	WindowMinimize,
