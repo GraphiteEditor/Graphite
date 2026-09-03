@@ -35,6 +35,7 @@ pub enum ShapeType {
 	Spiral,
 	Grid,
 	Arrow,
+	Heart,
 	Line,      // KEEP THIS AT THE END
 	Rectangle, // KEEP THIS AT THE END
 	Ellipse,   // KEEP THIS AT THE END
@@ -50,6 +51,7 @@ impl ShapeType {
 		ShapeType::Spiral,
 		ShapeType::Grid,
 		ShapeType::Arrow,
+		ShapeType::Heart,
 		ShapeType::Line,      // KEEP THIS AT THE END
 		ShapeType::Rectangle, // KEEP THIS AT THE END
 		ShapeType::Ellipse,   // KEEP THIS AT THE END
@@ -58,7 +60,10 @@ impl ShapeType {
 	/// True if this shape mode's fill checkbox is ticked by default when nothing is selected.
 	/// Spiral/Grid/Line are open paths and default to fill-off, the closed shapes default to fill-on.
 	pub fn defaults_to_fill(&self) -> bool {
-		matches!(self, Self::Polygon | Self::Star | Self::Circle | Self::Arc | Self::Rectangle | Self::Ellipse | Self::Arrow)
+		matches!(
+			self,
+			Self::Polygon | Self::Star | Self::Circle | Self::Arc | Self::Rectangle | Self::Ellipse | Self::Arrow | Self::Heart
+		)
 	}
 
 	pub fn name(&self) -> String {
@@ -70,6 +75,7 @@ impl ShapeType {
 			Self::Spiral => "Spiral",
 			Self::Grid => "Grid",
 			Self::Arrow => "Arrow",
+			Self::Heart => "Heart",
 			Self::Line => "Line",           // KEEP THIS AT THE END
 			Self::Rectangle => "Rectangle", // KEEP THIS AT THE END
 			Self::Ellipse => "Ellipse",     // KEEP THIS AT THE END
@@ -123,7 +129,7 @@ pub trait ShapeGizmoHandler {
 	/// Called every frame to update the gizmo's interaction state based on the mouse position and selection.
 	///
 	/// This includes detecting hover states and preparing interaction flags or visual feedback (e.g., highlighting a hovered handle).
-	fn handle_state(&mut self, selected_shape_layers: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>);
+	fn handle_state(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>);
 
 	/// Called when a mouse click occurs over the canvas and a gizmo handle is hovered.
 	///
@@ -139,15 +145,7 @@ pub trait ShapeGizmoHandler {
 	/// Draws the static or hover-dependent overlays associated with the gizmo.
 	///
 	/// These overlays include visual indicators like shape outlines, control points, and hover highlights.
-	fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		selected_shape_layers: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	);
+	fn overlays(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_editor: &mut &mut ShapeState, mouse_position: DVec2, overlay_context: &mut OverlayContext);
 
 	/// Draws overlays specifically during a drag operation.
 	///
