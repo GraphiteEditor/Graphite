@@ -15,6 +15,7 @@ pub(crate) struct InputState {
 	pointer_keys: MouseKeys,
 	ui_capture: bool,
 	click_tracker: ClickTracker,
+	direct_input: bool,
 }
 
 impl InputState {
@@ -28,11 +29,16 @@ impl InputState {
 			pointer_keys: MouseKeys::empty(),
 			ui_capture: true,
 			click_tracker: ClickTracker::default(),
+			direct_input: false,
 		}
 	}
 
 	pub(crate) fn set_viewport_info(&mut self, x: f64, y: f64, width: f64, height: f64, scale: f64) {
 		self.viewport_info = Some(ViewportInfo { x, y, width, height, scale });
+	}
+
+	pub(crate) fn set_direct_input(&mut self, enabled: bool) {
+		self.direct_input = enabled;
 	}
 
 	pub(crate) fn lock_pointer(&mut self) {
@@ -65,7 +71,7 @@ impl InputState {
 					return;
 				};
 				let ui_capture = if self.pointer_keys.is_empty() {
-					self.pointer_locked() || !self.in_viewport(*position)
+					self.pointer_locked() || self.ui_captures(*position)
 				} else {
 					self.ui_capture
 				};
@@ -95,7 +101,7 @@ impl InputState {
 
 				// Stroke keeps capture decided from first button press until all buttons are released.
 				if state.is_pressed() && self.pointer_keys.is_empty() {
-					self.ui_capture = self.pointer_locked() || !tablet || !self.in_viewport(*position);
+					self.ui_capture = self.pointer_locked() || !tablet || self.ui_captures(*position);
 				}
 
 				let mouse_button = button.clone().mouse_button();
@@ -146,7 +152,7 @@ impl InputState {
 				}
 			}
 			WindowEvent::MouseWheel { delta, .. } => {
-				if self.pointer_locked() || !self.in_viewport(self.pointer_position) {
+				if self.pointer_locked() || self.ui_captures(self.pointer_position) {
 					let input = match delta {
 						MouseScrollDelta::LineDelta(x, y) => InputEvent::pointer().scrolled_lines(f64::from(*x), f64::from(*y)),
 						MouseScrollDelta::PixelDelta(position) => InputEvent::pointer().scrolled_pixels(position.x, position.y),
@@ -168,7 +174,7 @@ impl InputState {
 				});
 			}
 			WindowEvent::PinchGesture { delta, .. } => {
-				if self.pointer_locked() || !self.in_viewport(self.pointer_position) || !delta.is_normal() {
+				if self.pointer_locked() || self.ui_captures(self.pointer_position) || !delta.is_normal() {
 					ui_callback(InputEvent::pointer().zoomed(*delta).modifiers(self.modifiers).build());
 					return;
 				}
@@ -192,8 +198,8 @@ impl InputState {
 		self.viewport_info.as_ref().map_or(1., |info| info.scale)
 	}
 
-	fn in_viewport(&self, position: PhysicalPosition<f64>) -> bool {
-		self.viewport_info.as_ref().is_some_and(|info| info.contains(position))
+	fn ui_captures(&self, position: PhysicalPosition<f64>) -> bool {
+		!self.direct_input || !self.viewport_info.as_ref().is_some_and(|info| info.contains(position))
 	}
 
 	fn pointer_state(&self) -> PointerState {

@@ -79,6 +79,10 @@ mod editor_commands {
 		}
 	}
 
+	fn app_window_direct_input(enabled: bool) -> Message {
+		AppWindowMessage::DirectInput { enabled }.into()
+	}
+
 	/// Start Pointer Lock
 	fn app_window_pointer_lock() -> Message {
 		AppWindowMessage::PointerLock.into()

@@ -19,6 +19,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, afterUpdate, createEventDispatcher, tick } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import { reportFloatingMenuClose, reportFloatingMenuOpen } from "/src/managers/floating-menus";
 	import { browserVersion } from "/src/utility-functions/platform";
 	import type { MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -42,6 +43,8 @@
 	export let escapeCloses = true;
 	export let strayCloses = true;
 
+	const menuId = String(Math.random()).substring(2);
+
 	let tail: HTMLDivElement | undefined;
 	let self: HTMLDivElement | undefined;
 	let floatingMenuContainer: HTMLDivElement | undefined;
@@ -64,6 +67,9 @@
 	let pointerStillDown = false;
 
 	$: watchOpenChange(open);
+
+	$: if (open && type !== "Tooltip" && type !== "Cursor") reportFloatingMenuOpen(menuId);
+	else reportFloatingMenuClose(menuId);
 
 	$: minWidthStyleValue = measuringOngoing ? "0" : `${Math.max(minWidth, minWidthParentWidth)}px`;
 	$: displayTail = open && type === "Popover";
@@ -157,6 +163,7 @@
 	});
 
 	onDestroy(() => {
+		reportFloatingMenuClose(menuId);
 		containerResizeObserver.disconnect();
 		dialogResizeObserver?.disconnect();
 		window.removeEventListener("pointermove", pointerMoveHandler);

@@ -2,6 +2,7 @@
 	import { onMount, onDestroy, setContext } from "svelte";
 	import MainWindow from "/src/components/window/MainWindow.svelte";
 	import { createClipboardManager, destroyClipboardManager } from "/src/managers/clipboard";
+	import { createFloatingMenusManager, destroyFloatingMenusManager } from "/src/managers/floating-menus";
 	import { createHyperlinkManager, destroyHyperlinkManager } from "/src/managers/hyperlink";
 	import { createInputManager, destroyInputManager } from "/src/managers/input";
 	import { createLocalizationManager, destroyLocalizationManager } from "/src/managers/localization";
@@ -38,6 +39,7 @@
 
 	onMount(() => {
 		createClipboardManager(subscriptions, editor);
+		createFloatingMenusManager(editor);
 		createHyperlinkManager(subscriptions);
 		createLocalizationManager(subscriptions, editor);
 		createPanicManager(subscriptions);
@@ -65,6 +67,7 @@
 
 		// Managers
 		destroyClipboardManager();
+		destroyFloatingMenusManager();
 		destroyHyperlinkManager();
 		destroyLocalizationManager();
 		destroyPanicManager();

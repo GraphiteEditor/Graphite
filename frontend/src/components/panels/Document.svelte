@@ -9,6 +9,7 @@
 	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import { reportFloatingMenuClose, reportFloatingMenuOpen } from "/src/managers/floating-menus";
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DocumentStore } from "/src/stores/document";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
@@ -34,6 +35,12 @@
 	let textInput: undefined | HTMLDivElement = undefined;
 	let showTextInput: boolean;
 	let textInputMatrix: [number, number, number, number, number, number];
+
+	// Report the textbox like a floating menu, see `src/managers/floating-menus.ts` for more context
+	// TODO: Find a less hacky way to do this
+	const textboxId = String(Math.random()).substring(2);
+	$: if (showTextInput) reportFloatingMenuOpen(textboxId);
+	else reportFloatingMenuClose(textboxId);
 
 	// Scrollbars
 	let scrollbarPos = { x: 0.5, y: 0.5 };
@@ -565,6 +572,7 @@
 		cleanupViewportResizeObserver?.();
 		viewportResizeObserver?.disconnect();
 		removeUpdatePixelRatio?.();
+		reportFloatingMenuClose(textboxId);
 		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
 
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
