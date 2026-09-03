@@ -337,20 +337,6 @@ impl AttributeDyn {
 		self.0.len() == 0
 	}
 
-	/// Builds a new attribute matching `target_len` items, taking values from this attribute (wrapping if shorter, truncating if longer).
-	pub fn cloned_to_length(&self, key: &str, target_len: usize) -> Box<dyn AnyAttribute> {
-		let mut result = self.0.new_with_defaults(0);
-		let source_len = self.0.len();
-		if source_len == 0 {
-			pad_with_implicit_default(key, &mut result, target_len);
-			return result;
-		}
-		for i in 0..target_len {
-			let value = self.0.clone_value(i % source_len).expect("source_len > 0");
-			result.push(value);
-		}
-		result
-	}
 }
 
 impl Clone for AttributeDyn {
@@ -784,13 +770,6 @@ impl Attributes {
 		}
 	}
 
-	/// Gets a mutable reference to the value at the given index, creating the attribute if it doesn't exist or has the wrong type.
-	fn get_or_insert_default_value<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str, index: usize) -> &mut T {
-		let attribute_position = self.find_or_create_attribute::<T>(key);
-		let attribute = (*self.attributes[attribute_position].1).as_any_mut().downcast_mut::<Attribute<T>>().unwrap();
-		&mut attribute.0[index]
-	}
-
 	/// Sets the value at the given index in the attribute for the given key.
 	/// Creates the attribute with defaults if it doesn't exist.
 	fn set_value<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: T) {
@@ -1031,14 +1010,6 @@ impl<T> List<T> {
 		self.attributes.set_value(key, index, value);
 	}
 
-	/// Replaces (or adds) an attribute from a type-erased source. The source is wrapped or truncated to match this list's item count.
-	pub fn set_attribute_dyn(&mut self, key: impl Into<String>, source: AttributeDyn) {
-		let key = key.into();
-		self.attributes.attributes.retain(|(k, _)| k != &key);
-		let new_attribute = source.cloned_to_length(&key, self.element.len());
-		self.attributes.attributes.push((key, new_attribute));
-	}
-
 	/// Sets a single type-erased attribute value at the given index, creating the attribute from the value's underlying type if it doesn't exist (padded with defaults to match the list's length).
 	/// Falls back to default if the value's type doesn't match an existing attribute.
 	pub fn set_attribute_value_dyn(&mut self, key: impl Into<String>, index: usize, value: AttributeValueDyn) {
@@ -1056,12 +1027,6 @@ impl<T> List<T> {
 	/// Removes the entire attribute for the given key, if present.
 	pub fn remove_attribute(&mut self, key: &str) {
 		self.attributes.remove_attribute(key);
-	}
-
-	/// Runs the given closure on a mutable reference to the attribute value at the given item index,
-	/// creating the attribute with defaults if it doesn't exist, and returns the closure's result.
-	pub fn with_attribute_mut_or_default<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static, R, F: FnOnce(&mut U) -> R>(&mut self, key: &str, index: usize, f: F) -> R {
-		f(self.attributes.get_or_insert_default_value::<U>(key, index))
 	}
 
 	/// Returns a debug-formatted display string for the attribute at the given item index and key.
