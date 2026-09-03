@@ -136,18 +136,6 @@ impl<'a> RecordBatchMut<'a> {
 		unsafe { RecordBatch::new(self.scratch.as_ptr().cast(), self.len, self.layout) }
 	}
 
-	/// Lane `lane`'s frame for in-place writes through the layout's offsets.
-	pub fn lane_ptr(&mut self, lane: usize) -> *mut u8 {
-		assert!(lane < self.len, "lane {lane} out of bounds for a batch of {}", self.len);
-		// SAFETY: in-bounds by the assert against the constructor's contract.
-		unsafe { self.scratch.as_mut_ptr().cast::<u8>().add(lane * self.layout.lane_stride()) }
-	}
-
-	/// Reclaims the raw buffer, e.g. to rebind it under a same-stride output
-	/// layout for an in-place map.
-	pub fn into_scratch(self) -> &'a mut [MaybeUninit<u64>] {
-		self.scratch
-	}
 }
 
 /// One lane's record: its pointer paired with the batch's layout.
