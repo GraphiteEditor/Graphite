@@ -129,12 +129,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.collect();
 
-	// Flipped nodes carry their kernel generics as struct parameters: record
-	// edges no longer bind them through `Output`, so the struct must. A
-	// ranked input's element generic is carried on any node kind for the
-	// same reason: the materialized view monomorphizes the kernel per row. A
-	// record-io node's secondary inputs read erased off their wire, so a
-	// generic one of them names is carried too.
+	// Flipped kernels, ranked-input element generics, and the generics a
+	// record-io node's secondary inputs name must be carried as struct parameters.
 	let ctx_ident_for_flip = context_param(parsed).map(|ctx| ctx.ident.clone());
 	let carries_generic = |ident: &Ident| {
 		regular_fields.iter().enumerate().any(|(index, field)| match &field.ty {
