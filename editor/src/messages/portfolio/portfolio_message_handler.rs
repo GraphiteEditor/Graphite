@@ -198,7 +198,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 
-				responses.add(PortfolioMessage::GarbageCollectResources);
+				// responses.add(PortfolioMessage::GarbageCollectResources);
+				//
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
 				let validate = preferences.validate_storage_round_trip;
@@ -1688,6 +1689,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if no_open_documents {
 					responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
 				}
+			}
+			PortfolioMessage::RequestSvgTextCopy { graphite_json } => {
+				self.executor.copy_svg_clipboard(graphite_json);
 			}
 		}
 	}

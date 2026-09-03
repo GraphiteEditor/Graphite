@@ -812,6 +812,11 @@ impl NodeGraphExecutor {
 
 		Ok(())
 	}
+
+	pub fn copy_svg_clipboard(&self, graphite_json: String) {
+		// TODO: See if to propagat ethe error here or move it up.
+		self.runtime_io.send(GraphRuntimeRequest::CopySvgTextClipboard(graphite_json));
+	}
 }
 
 // TODO: Eventually remove this document upgrade code

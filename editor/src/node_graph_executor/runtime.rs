@@ -70,6 +70,7 @@ pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
 	EditorPreferencesUpdate(EditorPreferences),
+	CopySvgTextClipboard(String),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -182,6 +183,7 @@ impl NodeRuntime {
 					}
 				}
 				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
+				GraphRuntimeRequest::CopySvgTextClipboard(_) => todo!(),
 			}
 		}
 
@@ -339,6 +341,9 @@ impl NodeRuntime {
 						inspect_result,
 					});
 					return texture;
+				}
+				GraphRuntimeRequest::CopySvgTextClipboard(_) => {
+					todo!();
 				}
 			}
 		}
