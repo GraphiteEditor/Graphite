@@ -17,7 +17,7 @@ use core_types::transform::Transform;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::graphic::{bake_paint_transforms, has_paint, is_paint_present, paint_graphics, set_paint_attribute_at};
+use graphic_types::graphic::{bake_paint_transforms, has_paint, is_paint_present, set_paint_attribute_at};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_STROKE, Graphic, IntoGraphicList};
@@ -3776,6 +3776,7 @@ fn centroid(_: impl Ctx, vector: IList<Vector>, centroid_type: CentroidType) -> 
 mod test {
 	use super::*;
 	use core_types::transform::Footprint;
+	use graphic_types::graphic::paint_graphics;
 	use kurbo::{CubicBez, Ellipse, Point, Rect};
 	use vector_types::vector::algorithms::bezpath_algorithms::{TValue, trim_pathseg};
 	use vector_types::vector::misc::pathseg_abs_diff_eq;
