@@ -1,4 +1,5 @@
 //! The intent IR: a node built from its signature, from which lowering derives.
+// Fields below the `Node` root are read by the IR's own tests only.
 #![allow(dead_code)]
 
 use crate::codegen::classify::{Dialect, RoutingIo, bare_ident, context_param, dialect, flip_carrier, generic_assignment, generic_extractable, is_served, record_shape, routing_io, slot_value_type};
@@ -13,7 +14,6 @@ pub(crate) fn build(parsed: &ParsedNodeFn) -> Node {
 	let generic_idents: Vec<Ident> = generics.iter().map(|generic| generic.ident.clone()).collect();
 	let fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
 	Node {
-		kernel: Kernel { fn_name: parsed.fn_name.clone() },
 		monomorphizations: monomorphizations(parsed, &fields, &generic_idents),
 		inputs: inputs(parsed, &fields, &generic_idents),
 		output: output(parsed, &generic_idents),
@@ -496,7 +496,6 @@ pub(crate) fn lazy_binding(node: &Node, index: usize) -> LazyBinding {
 }
 
 pub(crate) struct Node {
-	pub(crate) kernel: Kernel,
 	pub(crate) generics: Vec<Generic>,
 	/// Correlated rows (zipped `#[implementations]`, not crossed); empty = erased.
 	pub(crate) monomorphizations: Vec<ImplRow>,
@@ -505,11 +504,6 @@ pub(crate) struct Node {
 	pub(crate) effect: Effect,
 	/// The context is derived (a `DeriveCtx` bound), so routing sources rebind it.
 	pub(crate) derives: bool,
-}
-
-/// The kernel fn the node wraps.
-pub(crate) struct Kernel {
-	pub(crate) fn_name: Ident,
 }
 
 pub(crate) struct Generic {
