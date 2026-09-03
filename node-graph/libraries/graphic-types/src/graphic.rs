@@ -584,13 +584,6 @@ impl<'e> Graphic<'e> {
 		}
 	}
 
-	pub fn as_vector_mut(&mut self) -> Option<&mut Vector> {
-		match self {
-			Graphic::Vector(vector) => Some(vector),
-			_ => None,
-		}
-	}
-
 	pub fn as_raster(&self) -> Option<&Raster<CPU>> {
 		match self {
 			Graphic::RasterCPU(raster) => Some(raster),

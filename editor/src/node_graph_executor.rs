@@ -985,20 +985,6 @@ mod test {
 			element
 		}
 
-		/// Grab all of the values of the input every time it occurs in the graph.
-		pub fn grab_all_input<'a, Input: NodeInputDecleration + 'a>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Input::Result> + 'a
-		where
-			Input::Result: Send + Sync + Clone + 'static,
-		{
-			self.protonodes_by_name
-				.get(&Input::identifier())
-				.map_or([].as_slice(), |x| x.as_slice())
-				.iter()
-				.filter_map(|inputs| inputs.get(Input::INDEX))
-				.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
-				.filter_map(Instrumented::downcast::<Input>) // Some might not resolve (e.g. generics that don't work properly)
-		}
-
 		/// Grab all of the values of a LEVELED input, which introspects as its
 		/// whole legacy list rather than as one element. `T` is the introspected
 		/// element type, which differs from the declared one where a conversion
