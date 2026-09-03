@@ -280,6 +280,9 @@ impl App {
 					render_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
 				}
 			}
+			DesktopFrontendMessage::WindowUpdateDirectInput { enabled } => {
+				self.input_state.set_direct_input(enabled);
+			}
 			DesktopFrontendMessage::UpdateUIScale { scale } => {
 				self.ui_scale = scale;
 				self.resize();

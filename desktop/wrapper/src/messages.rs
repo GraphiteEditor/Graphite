@@ -40,6 +40,9 @@ pub enum DesktopFrontendMessage {
 	UpdateUIScale {
 		scale: f64,
 	},
+	WindowUpdateDirectInput {
+		enabled: bool,
+	},
 	UpdateOverlays(vello::Scene),
 	PersistenceWriteDocument {
 		id: DocumentId,
