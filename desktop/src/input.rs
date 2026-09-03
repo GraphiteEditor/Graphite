@@ -66,10 +66,6 @@ impl InputState {
 			WindowEvent::PointerMoved { position, source, .. } => {
 				self.pointer_position = *position;
 
-				let PointerSource::TabletTool { kind, data } = source else {
-					ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).build());
-					return;
-				};
 				let ui_capture = if self.pointer_keys.is_empty() {
 					self.pointer_locked() || self.ui_captures(*position)
 				} else {
@@ -81,7 +77,10 @@ impl InputState {
 				}
 
 				editor_callback(InputMessage::PointerMove {
-					editor_mouse_state: self.tablet_pointer_state(kind, data),
+					editor_mouse_state: match source {
+						PointerSource::TabletTool { kind, data } => self.tablet_pointer_state(kind, data),
+						_ => self.pointer_state(),
+					},
 					modifier_keys: self.modifier_keys(),
 				});
 			}
@@ -97,11 +96,9 @@ impl InputState {
 			WindowEvent::PointerButton { state, button, position, .. } => {
 				self.pointer_position = *position;
 
-				let tablet = matches!(button, ButtonSource::TabletTool { .. });
-
 				// Stroke keeps capture decided from first button press until all buttons are released.
 				if state.is_pressed() && self.pointer_keys.is_empty() {
-					self.ui_capture = self.pointer_locked() || !tablet || self.ui_captures(*position);
+					self.ui_capture = self.pointer_locked() || self.ui_captures(*position);
 				}
 
 				let mouse_button = button.clone().mouse_button();
@@ -121,7 +118,7 @@ impl InputState {
 				let count = mouse_button.map_or(1, |button| self.click_tracker.input(*position, button, *state));
 
 				let back_or_forward = matches!(mouse_button, Some(MouseButton::Back | MouseButton::Forward));
-				if self.pointer_locked() || !(back_or_forward || (tablet && !self.ui_capture)) {
+				if self.pointer_locked() || !(back_or_forward || !self.ui_capture) {
 					let pointer = InputEvent::pointer().position(*position);
 					let input = match state {
 						ElementState::Pressed => pointer.pressed(button.clone(), count),
