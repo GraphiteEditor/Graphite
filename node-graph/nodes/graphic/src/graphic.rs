@@ -349,12 +349,8 @@ fn mirror_vector_extent(
 
 pub use _mirror_vector_mod::mirror_vector_entries;
 
-/// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
-/// with its own trailing entry dropped. The terminating element of the returned path is the document node whose
-/// encapsulated network we live in, so the path doubles as a unique reference to that node at any nesting depth.
-/// Used as the value source for stamping the `editor:layer_path` attribute on each item of a layer's output, which lets
-/// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
-/// the layer is at the root document network or nested inside a custom subgraph.
+/// `node_path` with its trailing entry dropped: the containing network's path, which is also a unique
+/// reference to the owning document node at any nesting depth. Stamped onto `editor:layer_path`.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
 pub fn path_of_subgraph(_: impl Ctx, node_path: Vec<NodeId>) -> Vec<NodeId> {
 	let len = node_path.len();

@@ -2094,12 +2094,7 @@ fn collect_raster_metadata<S: LaneSource>(source: &S, metadata: &mut RenderMetad
 		let transform: DAffine2 = source.attr::<Transform>(0);
 		metadata.local_transforms.insert(element_id, transform);
 
-		// If this raster carries a snapshot of upstream graphic content (e.g. it was produced by Rasterize,
-		// which destructively merges its inputs into pixels), recurse into that snapshot so the editor can
-		// surface the original child layers' click targets (the same mechanism Boolean Operation uses).
-		// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
-		// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
-		// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
+		// The snapshot's children already match `footprint`, so `transform` (the rasterization area) must not be applied.
 		if let Some(upstream_nested_layers) = source.attr::<EditorMergedLayers>(0).filter(|layers| !layers.is_empty()) {
 			upstream_nested_layers.collect_metadata(metadata, footprint, None);
 		}
