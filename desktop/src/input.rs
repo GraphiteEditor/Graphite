@@ -4,16 +4,14 @@ use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, Po
 use winit::keyboard::ModifiersState;
 
 use crate::ui::{InputEvent, MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
-use crate::wrapper::messages::{InputMessage, ModifierKeys, MouseKeys, PointerState, ScrollDelta};
+use crate::wrapper::messages::{EditorPointerState, InputMessage, ModifierKeys, MouseKeys, ScrollDelta};
 
 pub(crate) struct InputState {
 	start: Instant,
 	viewport_info: Option<ViewportInfo>,
-	pointer_lock_position: Option<PhysicalPosition<f64>>,
 	modifiers: ModifiersState,
 	pointer_position: PhysicalPosition<f64>,
-	pointer_keys: MouseKeys,
-	ui_capture: bool,
+	pointer_state: PointerState,
 	click_tracker: ClickTracker,
 	direct_input: bool,
 }
@@ -23,11 +21,9 @@ impl InputState {
 		Self {
 			start: Instant::now(),
 			viewport_info: None,
-			pointer_lock_position: None,
 			modifiers: ModifiersState::default(),
 			pointer_position: PhysicalPosition::default(),
-			pointer_keys: MouseKeys::empty(),
-			ui_capture: true,
+			pointer_state: PointerState::Hover { route: Route::Ui },
 			click_tracker: ClickTracker::default(),
 			direct_input: false,
 		}
@@ -42,19 +38,39 @@ impl InputState {
 	}
 
 	pub(crate) fn lock_pointer(&mut self) {
-		self.pointer_lock_position = Some(self.pointer_position);
+		self.pointer_state = match self.pointer_state {
+			PointerState::Hover { route } => PointerState::Locked {
+				route,
+				keys: MouseKeys::empty(),
+				position: self.pointer_position,
+			},
+			PointerState::Stroke { route, keys } | PointerState::Locked { route, keys, .. } => PointerState::Locked {
+				route,
+				keys,
+				position: self.pointer_position,
+			},
+		};
 	}
 
 	pub(crate) fn unlock_pointer(&mut self) -> Option<PhysicalPosition<f64>> {
-		let position = self.pointer_lock_position.take();
-		if let Some(position) = position {
-			self.pointer_position = position;
-		}
-		position
+		let PointerState::Locked {
+			route: resume,
+			keys,
+			position: restore,
+		} = self.pointer_state
+		else {
+			return None;
+		};
+		self.pointer_position = restore;
+		self.pointer_state = match keys.is_empty() {
+			true => PointerState::Hover { route: Route::Ui },
+			false => PointerState::Stroke { route: resume, keys },
+		};
+		Some(restore)
 	}
 
 	pub(crate) fn pointer_locked(&self) -> bool {
-		self.pointer_lock_position.is_some()
+		matches!(self.pointer_state, PointerState::Locked { .. })
 	}
 
 	pub(crate) fn modifiers(&self) -> ModifiersState {
@@ -66,23 +82,28 @@ impl InputState {
 			WindowEvent::PointerMoved { position, source, .. } => {
 				self.pointer_position = *position;
 
-				let ui_capture = if self.pointer_keys.is_empty() {
-					self.pointer_locked() || self.ui_captures(*position)
-				} else {
-					self.ui_capture
-				};
-				if ui_capture {
-					ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).build());
-					return;
-				}
-
-				editor_callback(InputMessage::PointerMove {
-					editor_mouse_state: match source {
-						PointerSource::TabletTool { kind, data } => self.tablet_pointer_state(kind, data),
-						_ => self.pointer_state(),
+				let route = match self.pointer_state {
+					PointerState::Hover { .. } => {
+						let next = self.route(*position);
+						self.pointer_state = PointerState::Hover { route: next };
+						next
+					}
+					PointerState::Stroke { route, .. } => route,
+					PointerState::Locked { keys, route: resume, .. } => match keys.is_empty() {
+						true => Route::Ui,
+						false => resume,
 					},
-					modifier_keys: self.modifier_keys(),
-				});
+				};
+				match route {
+					Route::Ui => ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).build()),
+					Route::Editor => editor_callback(InputMessage::PointerMove {
+						editor_mouse_state: match source {
+							PointerSource::TabletTool { kind, data } => self.tablet_pointer_state(kind, data),
+							_ => self.pointer_state(),
+						},
+						modifier_keys: self.modifier_keys(),
+					}),
+				}
 			}
 			WindowEvent::PointerEntered { position, .. } => {
 				self.pointer_position = *position;
@@ -96,11 +117,6 @@ impl InputState {
 			WindowEvent::PointerButton { state, button, position, .. } => {
 				self.pointer_position = *position;
 
-				// Stroke keeps capture decided from first button press until all buttons are released.
-				if state.is_pressed() && self.pointer_keys.is_empty() {
-					self.ui_capture = self.pointer_locked() || self.ui_captures(*position);
-				}
-
 				let mouse_button = button.clone().mouse_button();
 				let keys = match mouse_button {
 					Some(MouseButton::Left) => MouseKeys::LEFT,
@@ -110,15 +126,41 @@ impl InputState {
 					Some(MouseButton::Forward) => MouseKeys::FORWARD,
 					_ => MouseKeys::NONE,
 				};
-				match state {
-					ElementState::Pressed => self.pointer_keys.insert(keys),
-					ElementState::Released => self.pointer_keys.remove(keys),
-				}
+
+				let (pointer, route) = match self.pointer_state {
+					PointerState::Hover { route } => match (state.is_pressed(), keys.is_empty()) {
+						(true, false) => {
+							let route = self.route(*position);
+							(PointerState::Stroke { route, keys }, route)
+						}
+						(true, true) => (PointerState::Hover { route }, self.route(*position)),
+						(false, _) => (PointerState::Hover { route }, route),
+					},
+					PointerState::Stroke { route, keys: mut held } => {
+						match state.is_pressed() {
+							true => held.insert(keys),
+							false => held.remove(keys),
+						}
+						match held.is_empty() {
+							true => (PointerState::Hover { route }, route),
+							false => (PointerState::Stroke { route, keys: held }, route),
+						}
+					}
+					PointerState::Locked { route, keys: mut held, position } => {
+						let resume = if state.is_pressed() && held.is_empty() { Route::Ui } else { route };
+						match state.is_pressed() {
+							true => held.insert(keys),
+							false => held.remove(keys),
+						}
+						(PointerState::Locked { route: resume, keys: held, position }, Route::Ui)
+					}
+				};
+				self.pointer_state = pointer;
 
 				let count = mouse_button.map_or(1, |button| self.click_tracker.input(*position, button, *state));
 
 				let back_or_forward = matches!(mouse_button, Some(MouseButton::Back | MouseButton::Forward));
-				if self.pointer_locked() || !(back_or_forward || !self.ui_capture) {
+				if self.pointer_locked() || keys.is_empty() || !(back_or_forward || route == Route::Editor) {
 					let pointer = InputEvent::pointer().position(*position);
 					let input = match state {
 						ElementState::Pressed => pointer.pressed(button.clone(), count),
@@ -138,7 +180,7 @@ impl InputState {
 					ElementState::Released if count % 2 == 0 => {
 						editor_callback(InputMessage::PointerUp { editor_mouse_state, modifier_keys });
 						editor_callback(InputMessage::DoubleClick {
-							editor_mouse_state: PointerState {
+							editor_mouse_state: EditorPointerState {
 								mouse_keys: keys,
 								..editor_mouse_state
 							},
@@ -166,7 +208,7 @@ impl InputState {
 				let scroll_delta = ScrollDelta::new(-x * SCROLL_SPEED_X, -y * SCROLL_SPEED_Y, 0.);
 
 				editor_callback(InputMessage::WheelScroll {
-					editor_mouse_state: PointerState { scroll_delta, ..self.pointer_state() },
+					editor_mouse_state: EditorPointerState { scroll_delta, ..self.pointer_state() },
 					modifier_keys: self.modifier_keys(),
 				});
 			}
@@ -179,7 +221,7 @@ impl InputState {
 				// TODO: This is a temporary solution to handle pinch gestures, we should handle pinch gestures editor-side instead.
 				let scroll_delta = ScrollDelta::new(0., -delta * PINCH_ZOOM_SPEED, 0.);
 				editor_callback(InputMessage::WheelScroll {
-					editor_mouse_state: PointerState { scroll_delta, ..self.pointer_state() },
+					editor_mouse_state: EditorPointerState { scroll_delta, ..self.pointer_state() },
 					modifier_keys: self.modifier_keys() | ModifierKeys::CONTROL,
 				});
 			}
@@ -199,17 +241,28 @@ impl InputState {
 		!self.direct_input || !self.viewport_info.as_ref().is_some_and(|info| info.contains(position))
 	}
 
-	fn pointer_state(&self) -> PointerState {
-		PointerState {
+	fn route(&self, position: PhysicalPosition<f64>) -> Route {
+		if self.ui_captures(position) { Route::Ui } else { Route::Editor }
+	}
+
+	fn pointer_keys(&self) -> MouseKeys {
+		match self.pointer_state {
+			PointerState::Hover { .. } => MouseKeys::empty(),
+			PointerState::Stroke { keys, .. } | PointerState::Locked { keys, .. } => keys,
+		}
+	}
+
+	fn pointer_state(&self) -> EditorPointerState {
+		EditorPointerState {
 			editor_position: (self.pointer_position.x / self.scale(), self.pointer_position.y / self.scale()).into(),
-			mouse_keys: self.pointer_keys,
+			mouse_keys: self.pointer_keys(),
 			time: Some(self.start.elapsed().as_secs_f64() * 1000.),
 			..Default::default()
 		}
 	}
 
-	fn tablet_pointer_state(&self, kind: &TabletToolKind, data: &TabletToolData) -> PointerState {
-		PointerState {
+	fn tablet_pointer_state(&self, kind: &TabletToolKind, data: &TabletToolData) -> EditorPointerState {
+		EditorPointerState {
 			pressure: data.force.map(|force| force.normalized(None)),
 			tilt: data.clone().tilt().map(|tilt| (f64::from(tilt.x), f64::from(tilt.y)).into()),
 			twist: data.twist.map(f64::from),
@@ -227,6 +280,19 @@ impl InputState {
 		keys.set(ModifierKeys::META_OR_COMMAND, self.modifiers.meta_key());
 		keys
 	}
+}
+
+#[derive(Clone, Copy)]
+enum PointerState {
+	Hover { route: Route },
+	Stroke { route: Route, keys: MouseKeys },
+	Locked { route: Route, keys: MouseKeys, position: PhysicalPosition<f64> },
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Route {
+	Ui,
+	Editor,
 }
 
 struct ViewportInfo {
