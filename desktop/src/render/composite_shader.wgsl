@@ -52,13 +52,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		return srgb_to_linear(immediates.background_color);
 	}
 
-	let ui_linear = srgb_to_linear(textureSample(t_ui, s_diffuse, ui_coordinate));
-	if (ui_linear.a >= 0.999) {
-		return ui_linear;
+	let ui_sample = textureSample(t_ui, s_diffuse, ui_coordinate);
+	if (ui_sample.a >= 0.999) {
+		return srgb_to_linear(ui_sample);
 	}
 
-	// UI texture is premultiplied, we need to unpremultiply before blending
-	let ui_srgb = linear_to_srgb(unpremultiply(ui_linear));
+	let ui_srgb = unpremultiply(ui_sample);
 
 	let viewport_coordinate = (in.tex_coords - immediates.viewport_offset) * immediates.viewport_scale;
 	if (viewport_coordinate.x < 0.0 || viewport_coordinate.x > 1.0 ||
