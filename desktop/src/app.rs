@@ -9,10 +9,11 @@ use std::sync::mpsc::{Receiver, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
+use winit::data_transfer::TypeHint;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, AsyncRequestSerial, ControlFlow, DndAction, EventLoop};
 use winit::window::WindowId;
 
 use crate::dirs;
@@ -35,6 +36,7 @@ pub(crate) struct App {
 	window_maximized: bool,
 	window_fullscreen: bool,
 	window_pending_drag: bool,
+	pending_dnd_fetch: Option<AsyncRequestSerial>,
 	input_state: InputState,
 	ui_scale: f64,
 	app_event_receiver: Receiver<AppEvent>,
@@ -107,6 +109,7 @@ impl App {
 			window_maximized: false,
 			window_fullscreen: false,
 			window_pending_drag: false,
+			pending_dnd_fetch: None,
 			input_state: InputState::new(),
 			ui_scale: 1.,
 			app_event_receiver,
@@ -538,7 +541,7 @@ impl ApplicationHandler for App {
 		}
 	}
 
-	fn window_event(&mut self, _event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+	fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
 		// Handle pointer lock release
 		if let WindowEvent::PointerButton {
 			state: ElementState::Released,
@@ -601,20 +604,39 @@ impl ApplicationHandler for App {
 					self.exit(Some(ExitReason::UiAccelerationFailure));
 				}
 			}
-			WindowEvent::DragDropped { paths, .. } => {
-				for path in paths {
-					match fs::read(&path) {
-						Ok(content) => {
-							let message = DesktopWrapperMessage::ImportFile { path, content };
-							self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-						}
-						Err(e) => {
-							tracing::error!("Failed to read dropped file {}: {}", path.display(), e);
-							return;
-						}
-					};
+			WindowEvent::DragEntered { id, .. } => {
+				let accepts = event_loop.data_transfer(id).is_ok_and(|data_transfer| data_transfer.has_type(&TypeHint::UriList));
+				let actions: &[DndAction] = if accepts { &[DndAction::Copy] } else { &[] };
+				if let Err(e) = event_loop.set_valid_dnd_actions(id, actions) {
+					tracing::error!("Failed to set valid drag and drop actions: {e}");
 				}
 			}
+			WindowEvent::DragDropped { id, .. } => match event_loop.fetch_data_transfer(id, &TypeHint::UriList) {
+				Ok(serial) => self.pending_dnd_fetch = Some(serial),
+				Err(e) => tracing::error!("Failed to fetch dropped data: {e}"),
+			},
+			WindowEvent::DataTransferReceived { serial, ref value, .. } if self.pending_dnd_fetch == Some(serial) => match value.try_as_file_paths() {
+				Ok(paths) => {
+					self.pending_dnd_fetch = None;
+					for path in paths {
+						match fs::read(&path) {
+							Ok(content) => {
+								let message = DesktopWrapperMessage::ImportFile { path, content };
+								self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+							}
+							Err(e) => {
+								tracing::error!("Failed to read dropped file {}: {}", path.display(), e);
+								return;
+							}
+						};
+					}
+				}
+				Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+				Err(e) => {
+					self.pending_dnd_fetch = None;
+					tracing::error!("Failed to read dropped data: {e}");
+				}
+			},
 
 			WindowEvent::PointerMoved { .. } | WindowEvent::PointerLeft { position: Some(_), .. } | WindowEvent::PointerEntered { .. }
 				if !self.input_state.pointer_locked() && self.window_pending_drag =>
