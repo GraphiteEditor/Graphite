@@ -895,10 +895,9 @@
 				height: 100%;
 				background-size: var(--grid-spacing) var(--grid-spacing);
 				background-position: calc(var(--grid-offset-x) - var(--grid-dot-radius)) calc(var(--grid-offset-y) - var(--grid-dot-radius));
-				background-image: radial-gradient(circle at var(--grid-dot-radius) var(--grid-dot-radius), var(--color-3-darkgray) var(--grid-dot-radius), transparent 0);
+				background-image: radial-gradient(circle at var(--grid-dot-radius) var(--grid-dot-radius), rgb(from var(--color-f-white) r g b / 0.2) var(--grid-dot-radius), transparent 0);
 				background-repeat: repeat;
 				image-rendering: pixelated;
-				mix-blend-mode: screen;
 			}
 		}
 
