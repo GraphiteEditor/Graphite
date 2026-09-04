@@ -8,6 +8,10 @@ pub(crate) enum AppEvent {
 	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
+	ClipboardRead,
+	ClipboardWrite {
+		content: String,
+	},
 	Exit,
 	UiCrashed,
 	OpenFiles(Vec<std::path::PathBuf>),
