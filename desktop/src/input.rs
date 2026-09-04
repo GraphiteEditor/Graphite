@@ -221,6 +221,7 @@ impl InputState {
 					let input = match delta {
 						MouseScrollDelta::LineDelta(x, y) => InputEvent::pointer().scrolled_lines(f64::from(*x), f64::from(*y)),
 						MouseScrollDelta::PixelDelta(position) => InputEvent::pointer().scrolled_pixels(position.x, position.y),
+						_ => return,
 					};
 					ui_callback(input.modifiers(self.modifiers).build());
 					return;
@@ -229,6 +230,7 @@ impl InputState {
 				let (x, y) = match delta {
 					MouseScrollDelta::LineDelta(x, y) => (f64::from(*x) * SCROLL_LINE_WIDTH, f64::from(*y) * SCROLL_LINE_HEIGHT),
 					MouseScrollDelta::PixelDelta(position) => (position.x, position.y),
+					_ => return,
 				};
 
 				let scroll_delta = ScrollDelta::new(-x * SCROLL_SPEED_X, -y * SCROLL_SPEED_Y, 0.);
