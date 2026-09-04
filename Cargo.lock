@@ -4897,6 +4897,7 @@ dependencies = [
  "graphene-hash",
  "graphene-resource",
  "graphic-types",
+ "image",
  "kurbo",
  "log",
  "num-traits",

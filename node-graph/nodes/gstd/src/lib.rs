@@ -54,7 +54,7 @@ pub mod artboard {
 }
 
 pub mod gradient {
-	pub use vector_types::{Gradient, GradientStop};
+	pub use vector_types::{Gradient, GradientStop, MeshGradient};
 }
 
 pub mod transform {
