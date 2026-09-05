@@ -1038,6 +1038,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
+									NodeInput::value(TaggedValue::None, false),
 									NodeInput::import(generic!(T), 0),
 									NodeInput::import(concrete!(Footprint), 1),
 									NodeInput::node(NodeId(1), 0),

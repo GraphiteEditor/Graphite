@@ -5,7 +5,9 @@ use canvas_utils::{Canvas, CanvasHandle};
 use core_types::color::SRGBA8;
 use core_types::gpoll::GPoll;
 #[cfg(target_family = "wasm")]
-use core_types::list::{Item, List};
+use core_types::attribute::{Attr, OwnedAttr, Transform};
+#[cfg(target_family = "wasm")]
+use core_types::list::List;
 
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
@@ -21,9 +23,9 @@ pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
 #[cfg(target_family = "wasm")]
-use graphic_types::ATTR_EDITOR_MERGED_LAYERS;
-#[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
+#[cfg(target_family = "wasm")]
+use graphic_types::markers::EditorMergedLayers;
 #[cfg(target_family = "wasm")]
 use graphic_types::IntoGraphicList;
 #[cfg(target_family = "wasm")]
@@ -204,6 +206,7 @@ fn create_canvas(_: impl Ctx) -> CanvasHandle {
 #[node_macro::node(category(""))]
 async fn rasterize<T: WasmNotSend + Clone>(
 	_: impl Ctx,
+	_: (),
 	#[implementations(
 		List<Vector>,
 		List<Raster<CPU>>,
@@ -214,7 +217,7 @@ async fn rasterize<T: WasmNotSend + Clone>(
 	mut data: List<T>,
 	footprint: Footprint,
 	mut canvas: CanvasHandle,
-) -> List<Raster<CPU>>
+) -> (Raster<CPU>, Attr<Transform>, OwnedAttr<EditorMergedLayers>)
 where
 	List<T>: Render + Clone + graphic_types::IntoGraphicList,
 {
@@ -222,12 +225,15 @@ where
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return List::new();
+		// A zero-size raster renders as nothing, matching the legacy empty list
+		return (Raster::new_cpu(Image::default()), Attr(DAffine2::IDENTITY), OwnedAttr::new(None));
 	}
 
 	// Snapshot the input as a List<Graphic> so the renderer can recurse into the original child layers
 	// when collecting metadata, exposing their click targets to editor tools (same mechanism as Boolean Operation).
+	// The copy is owned before the first await: the input's arena content dies with the spawning evaluation.
 	let upstream_graphic_list = data.clone().into_graphic_list();
+	let merged_layers = OwnedAttr::new(Some(&upstream_graphic_list));
 
 	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
@@ -264,11 +270,7 @@ where
 	let rasterized = context.get_image_data(0, 0, resolution.x as i32, resolution.y as i32).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	List::new_from_item(
-		Item::new_from_element(Raster::new_cpu(image))
-			.with_attribute(ATTR_TRANSFORM, footprint.transform)
-			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, Some(upstream_graphic_list)),
-	)
+	(Raster::new_cpu(image), Attr(footprint.transform), merged_layers)
 }
 
 #[node_macro::node(category(""), inject_scope)]
