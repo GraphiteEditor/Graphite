@@ -1426,10 +1426,22 @@ fn deep_field_glue(type_id: std::any::TypeId) -> Option<DeepFieldGlue> {
 	DEEP_FIELD_VALUES.lock().unwrap().get(&type_id).copied()
 }
 
-fn deepen_field_value(value: Box<dyn crate::list::AnyAttributeValue>) -> Box<dyn crate::list::AnyAttributeValue> {
+/// The copy-out half over an erased field value: the owned form a value takes
+/// when it crosses out of the evaluation whose arena its content borrows. A
+/// value with no registered glue already owns everything and passes through.
+pub fn deepen_field_value(value: Box<dyn crate::list::AnyAttributeValue>) -> Box<dyn crate::list::AnyAttributeValue> {
 	match deep_field_glue(value.as_any().type_id()) {
 		Some(glue) => (glue.copy_out)(&*value).unwrap_or(value),
 		None => value,
+	}
+}
+
+/// The replay half over an erased field value: `Some(None)` where the value
+/// already owns its content, `None` on arena exhaustion.
+pub fn replay_field_value(value: &dyn crate::list::AnyAttributeValue, arena: &crate::arena::Arena) -> Option<Option<Box<dyn crate::list::AnyAttributeValue>>> {
+	match deep_field_glue(value.as_any().type_id()) {
+		Some(glue) => (glue.replay)(value, arena),
+		None => Some(None),
 	}
 }
 
@@ -1918,14 +1930,9 @@ unsafe fn promote_record(layout: &Layout, dst: *mut u8, promotion: &Promotion<'_
 		}
 		// SAFETY: the slot images a parked field of this descriptor.
 		let value = deepen_field_value(unsafe { (field.read_erased)(slot.cast_const()) });
-		match deep_field_glue(value.as_any().type_id()) {
-			Some(glue) => match (glue.replay)(&*value, promotion.persistent)? {
-				// SAFETY: the replay produced this field's own value type.
-				Some(resident) => unsafe { repark(&*resident, slot, promotion.persistent) }?,
-				None => unsafe { repark(&*value, slot, promotion.persistent) }?,
-			},
-			None => unsafe { repark(&*value, slot, promotion.persistent) }?,
-		}
+		let resident = replay_field_value(&*value, promotion.persistent)?;
+		// SAFETY: the replay produced this field's own value type.
+		unsafe { repark(resident.as_deref().unwrap_or(&*value), slot, promotion.persistent) }?;
 	}
 	Some(())
 }
@@ -2203,13 +2210,8 @@ impl OwnedRecord {
 		for (index, value) in &self.fields {
 			let field = &layout.fields[*index];
 			let repark = field.repark.expect("copied fields carry re-park glue");
-			match deep_field_glue(value.as_any().type_id()) {
-				Some(glue) => match (glue.replay)(&**value, arena)? {
-					Some(resident) => unsafe { repark(&*resident, dst.add(field.offset), arena) }?,
-					None => unsafe { repark(&**value, dst.add(field.offset), arena) }?,
-				},
-				None => unsafe { repark(&**value, dst.add(field.offset), arena) }?,
-			}
+			let resident = replay_field_value(&**value, arena)?;
+			unsafe { repark(resident.as_deref().unwrap_or(&**value), dst.add(field.offset), arena) }?;
 		}
 		Some(())
 	}

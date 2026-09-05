@@ -79,6 +79,45 @@ impl<'e, A: Attribute> std::fmt::Debug for Attr<'e, A> {
 	}
 }
 
+/// An attribute write that outlives the evaluation producing it: an async
+/// source's slot persists across generations, so a reference value cannot
+/// cross as itself. The value crosses deep-copied through the field glue and
+/// parks into the serving arena at every lift, which is why the copy is paid
+/// once per invocation rather than once per evaluation.
+pub struct OwnedAttr<A: Attribute>(Box<dyn AnyAttributeValue>, PhantomData<fn() -> A>);
+
+impl<A: Attribute> OwnedAttr<A> {
+	/// Deep-copies `value` out of the evaluation that produced it.
+	pub fn new(value: A::Value<'_>) -> Self {
+		// SAFETY: the read addresses a live local of the marker's value type.
+		let erased = unsafe { A::read_erased((&raw const value).cast()) };
+		OwnedAttr(crate::record::deepen_field_value(erased), PhantomData)
+	}
+
+	/// Parks the copy into `arena` for one evaluation; `None` reports arena
+	/// exhaustion.
+	pub fn park<'e>(&self, arena: &'e crate::arena::Arena) -> Option<A::Value<'e>> {
+		let resident = crate::record::replay_field_value(&*self.0, arena)?;
+		let mut value = A::default();
+		// SAFETY: the slot is a live field of the marker's value type, and the
+		// stored value is the copy `new` took at that same type.
+		unsafe { write_stored::<A>(resident.as_deref().unwrap_or(&*self.0), (&raw mut value).cast(), arena) }?;
+		Some(value)
+	}
+}
+
+impl<A: Attribute> Clone for OwnedAttr<A> {
+	fn clone(&self) -> Self {
+		OwnedAttr(self.0.clone(), PhantomData)
+	}
+}
+
+impl<A: Attribute> std::fmt::Debug for OwnedAttr<A> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_tuple(A::NAME).field(&self.0.display_string()).finish()
+	}
+}
+
 /// A deletion of `A` in a node's return tuple: the name leaves the output
 /// layout, so downstream reads yield the declared default again. Functionally
 /// a write of the default; the value carries nothing.
@@ -408,6 +447,27 @@ mod tests {
 		let row = info("name").unwrap();
 		assert_eq!(row.value_type, TypeId::of::<&'static str>());
 		assert_eq!(row.size, size_of::<&str>());
+	}
+
+	#[test]
+	fn an_owned_reference_crossing_parks_into_the_serving_arena() {
+		let owned = OwnedAttr::<Name>::new("crossing");
+		let arena = crate::arena::Arena::new(1024).unwrap();
+		assert_eq!(owned.park(&arena).unwrap(), "crossing");
+		assert_eq!(owned.clone().park(&arena).unwrap(), "crossing", "the crossing parks again on every evaluation");
+	}
+
+	#[test]
+	fn an_owned_plain_crossing_rides_its_bytes() {
+		let arena = crate::arena::Arena::new(64).unwrap();
+		assert_eq!(OwnedAttr::<Opacity>::new(0.25).park(&arena).unwrap(), 0.25);
+	}
+
+	#[test]
+	fn an_exhausted_arena_refuses_an_owned_reference_crossing() {
+		let owned = OwnedAttr::<Name>::new("too long for this arena");
+		let arena = crate::arena::Arena::new(8).unwrap();
+		assert!(owned.park(&arena).is_none());
 	}
 
 	#[test]
