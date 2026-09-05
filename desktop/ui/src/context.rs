@@ -223,6 +223,7 @@ fn create_browser(delegate: BrowserDelegate, frames: FrameStreamer, view_info_se
 	.map(|browser| BrowserContext {
 		delegate,
 		browser,
+		input: input::InputState::default(),
 		view_info_sender,
 		_instance_dir: instance_dir,
 	})
@@ -252,12 +253,8 @@ pub(crate) enum InitError {
 pub(crate) struct CefContextHandle;
 
 impl CefContextHandle {
-	pub(crate) fn apply_input(&self, events: Vec<InputEvent>) {
-		with_context(move |context| {
-			for event in &events {
-				input::apply(&context.browser, event);
-			}
-		});
+	pub(crate) fn process_input(&self, event: InputEvent) {
+		with_context(move |context| input::process(&mut context.input, &context.browser, &event));
 	}
 
 	pub(crate) fn update_view_info(&self, update: ViewInfoUpdate) {
@@ -276,6 +273,7 @@ impl CefContextHandle {
 struct BrowserContext {
 	delegate: BrowserDelegate,
 	browser: Browser,
+	input: input::InputState,
 	view_info_sender: Sender<ViewInfoUpdate>,
 	_instance_dir: TempDir,
 }

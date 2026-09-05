@@ -99,7 +99,7 @@ enum ControlOutcome {
 fn control_loop(receiver: &IpcReceiver<HostControlMessage>, context: &CefContextHandle, sequence: &SequenceState) -> ControlOutcome {
 	loop {
 		match receiver.recv() {
-			Ok(HostControlMessage::Input(events)) => context.apply_input(events),
+			Ok(HostControlMessage::Input(event)) => context.process_input(event),
 			Ok(HostControlMessage::UpdateViewInfo(update)) => context.update_view_info(update),
 			Ok(HostControlMessage::RefreshViewInfo) => context.refresh_view_info(),
 			Ok(HostControlMessage::SendWebMessage(message)) => context.send_web_message(message),
