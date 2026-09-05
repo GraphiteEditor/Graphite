@@ -13,3 +13,4 @@ flamegraph.svg
 .direnv
 .DS_Store
 .nvim.lua
+devcontainer-lock.json
