@@ -344,7 +344,7 @@ jobs:
             frontend/package-lock.json
 
       - name: 📦 Install Cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
+        uses: cargo-bins/cargo-binstall@v1.23.0
         with:
           version: ${{ env.CARGO_BINSTALL_VERSION }}
 
@@ -543,7 +543,7 @@ jobs:
             frontend/package-lock.json
 
       - name: 📦 Install Cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
+        uses: cargo-bins/cargo-binstall@v1.23.0
         with:
           version: ${{ env.CARGO_BINSTALL_VERSION }}
 
