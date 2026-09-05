@@ -28,7 +28,6 @@ pkgs.mkShell (
 
       pkgs.lld
       pkgs.nodejs
-      # NOTICE: keep these tool versions in sync with `.github/workflows/build.yml`, `.devcontainer/devcontainer.json`, `.nix/pkgs/graphite.nix`, `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
       pkgs.binaryen
       pkgs.wasm-bindgen-cli_0_2_121
       pkgs.cargo-about

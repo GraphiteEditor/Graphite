@@ -10,7 +10,7 @@
 			"version": "24"
 		}
 	},
-	// NOTICE: keep these tool versions in sync with `.github/workflows/build.yml`, `.nix/dev.nix`, `.nix/pkgs/graphite.nix`, `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
+	// NOTICE: keep these tool versions in sync with `.github/workflows/build.yml`, `.nix/dev.nix` and `.nix/pkgs/graphite.nix` (wasm-bindgen-cli), `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
 	"containerEnv": {
 		"WASM_BINDGEN_CLI_VERSION": "0.2.121",
 		"CARGO_ABOUT_VERSION": "0.9.2",

@@ -64,8 +64,8 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			command: "cargo-about",
 			args: &["--version"],
 			name: "Cargo About",
-			// NOTICE: keep in sync with the `cargo-about` version pinned in `.github/workflows/build.yml`, `.devcontainer/devcontainer.json`, `.nix/dev.nix`, and `.nix/pkgs/graphite.nix`
-			version: Some("=0.9.2"),
+			// NOTICE: keep in sync with the `cargo-about` version pinned in `.github/workflows/build.yml` and `.devcontainer/devcontainer.json`
+			version: Some(">=0.9.2"),
 			install: "cargo install -f cargo-about@0.9.2".into(),
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()
