@@ -5,10 +5,22 @@
 			"profile": "default",
 			"targets": "wasm32-unknown-unknown"
 		},
-		"ghcr.io/devcontainers/features/node:1": {}
+		"ghcr.io/devcontainers/features/node:1": {
+			// NOTICE: keep in sync with `.nvmrc`
+			"version": "24"
+		}
 	},
-	// NOTE: Keep this in sync with WASM_BINDGEN_CLI_VERSION and CARGO_ABOUT_VERSION in `.github/workflows/build.yml`
-	"onCreateCommand": "curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash && cargo binstall --no-confirm --force cargo-about@0.9.0 wasm-bindgen-cli@0.2.121",
+	// NOTICE: keep these tool versions in sync with `.github/workflows/build.yml`, `.nix/dev.nix`, `.nix/pkgs/graphite.nix`, `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
+	"containerEnv": {
+		"WASM_BINDGEN_CLI_VERSION": "0.2.121",
+		"CARGO_ABOUT_VERSION": "0.9.2",
+		"BINARYEN_VERSION": "130",
+		"CARGO_BINSTALL_VERSION": "1.23.0"
+	},
+	"onCreateCommand": {
+		"Install cargo-about and wasm-bindgen-cli": "curl -sSfL https://github.com/cargo-bins/cargo-binstall/releases/download/v$CARGO_BINSTALL_VERSION/cargo-binstall-$(uname -m)-unknown-linux-musl.tgz | tar xz -C $CARGO_HOME/bin && BINSTALL_DISABLE_TELEMETRY=true cargo binstall --no-confirm cargo-about@$CARGO_ABOUT_VERSION wasm-bindgen-cli@$WASM_BINDGEN_CLI_VERSION",
+		"Install Binaryen wasm-opt": "curl -sSfL https://github.com/WebAssembly/binaryen/releases/download/version_$BINARYEN_VERSION/binaryen-version_$BINARYEN_VERSION-$(uname -m)-linux.tar.gz | tar xz -C $CARGO_HOME/bin --strip-components=2 binaryen-version_$BINARYEN_VERSION/bin/wasm-opt"
+	},
 	"customizations": {
 		"vscode": {
 			// NOTE: Keep this in sync with `.vscode/extensions.json`

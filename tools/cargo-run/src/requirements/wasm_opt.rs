@@ -3,7 +3,7 @@ use crate::cmd::prelude::*;
 use crate::{install_dir, workspace_dir};
 
 /// Pinned Binaryen release used by [`install_action`].
-/// NOTICE: keep in sync with the `BINARYEN_VERSION` pinned across the CI workflows, and update [`SHA256`] below.
+/// NOTICE: keep in sync with the Binaryen version pinned in `.github/workflows/build.yml`, `.devcontainer/devcontainer.json`, `.nix/dev.nix`, and `.nix/pkgs/graphite.nix`, and update [`SHA256`] below.
 const VERSION: &str = "130";
 const SHA256: &[(&str, &str)] = &[
 	("x86_64-windows", "cc09c874f4332d00aa32ab72745a9b98c9a172f795762f21d03e70638a3f7f4c"),
