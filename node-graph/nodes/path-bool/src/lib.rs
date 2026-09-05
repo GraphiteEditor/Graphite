@@ -69,7 +69,7 @@ fn boolean_core<'e>(
 	};
 	let park_paint = |paint: Option<List<Graphic<'static>>>| -> Result<Option<&'e List<Graphic>>, core_types::gpoll::Interrupt> {
 		match paint {
-			Some(list) => Ok(Some(arena.alloc(list).ok_or_else(exhausted)?.0)),
+			Some(list) => Ok(Some(arena.alloc_sized_keyed(list, 0).ok_or_else(exhausted)?.0)),
 			None => Ok(None),
 		}
 	};
@@ -82,7 +82,7 @@ fn boolean_core<'e>(
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	// Snapshot the input layers so the renderer can recurse into them for
 	// editor click-target preservation.
-	let merged_layers = arena.alloc(snapshot).ok_or_else(exhausted)?.0;
+	let merged_layers = arena.alloc_sized_keyed(snapshot, 0).ok_or_else(exhausted)?.0;
 
 	Ok((
 		element,

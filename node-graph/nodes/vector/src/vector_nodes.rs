@@ -276,8 +276,10 @@ fn assign_colors_graphic_extent(
 
 pub use _assign_colors_graphic_mod::assign_colors_graphic_entries;
 
+/// Keyed, so a group-free paint's promote moves this header rather than
+/// cloning the content it owns.
 fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic<'static>>) -> Result<&'e List<Graphic<'static>>, Interrupt> {
-	let (parked, _) = arena.alloc(paint).ok_or(GraphError {
+	let (parked, _) = arena.alloc_sized_keyed(paint, 0).ok_or(GraphError {
 		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
 		trace: Vec::new(),
 	})?;
@@ -1555,7 +1557,7 @@ fn emit_legacy_lane<'e>(
 	let merged_layers = output
 		.attribute::<Option<List<Graphic>>>(ATTR_EDITOR_MERGED_LAYERS, lane)
 		.and_then(|layers| layers.as_ref())
-		.map(|layers| arena.alloc(layers.clone()).ok_or_else(exhausted).map(|(parked, _)| parked))
+		.map(|layers| arena.alloc_sized_keyed(layers.clone(), 0).ok_or_else(exhausted).map(|(parked, _)| parked))
 		.transpose()?;
 
 	Ok((
@@ -1884,7 +1886,7 @@ fn flatten_path_core<'e>(
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	// Snapshot the input layers so the renderer can recurse into them for
 	// editor click-target preservation, as the boolean operation does.
-	let merged_layers = arena.alloc(snapshot).ok_or_else(exhausted)?.0;
+	let merged_layers = arena.alloc_sized_keyed(snapshot, 0).ok_or_else(exhausted)?.0;
 
 	Ok((output, Attr(DAffine2::IDENTITY), Attr(fill), Attr(stroke), Attr(layer_path.as_slice()), Attr(Some(merged_layers))))
 }
