@@ -162,8 +162,11 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	}
 	if let Some(writes) = &writes {
 		let mut seen_writes: Vec<String> = Vec::new();
-		for marker in &writes.markers {
-			let written = marker.to_token_stream().to_string();
+		for write in &writes.markers {
+			if write.owned && !async_source {
+				emit_error!(parsed.output_type.span(), "an owned attribute crossing belongs to an async source; a synchronous write parks its value in the kernel");
+			}
+			let written = write.marker.to_token_stream().to_string();
 			if seen_writes.contains(&written) {
 				emit_error!(parsed.output_type.span(), "attribute `{}` is written twice", written);
 			}

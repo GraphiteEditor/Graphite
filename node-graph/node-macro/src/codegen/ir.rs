@@ -96,9 +96,23 @@ fn output(parsed: &ParsedNodeFn, generics: &[Ident]) -> Output {
 		shape: ItemShape {
 			element: element_of(&element, generics),
 			depth,
-			attrs: writes.into_iter().map(|marker| LevelAttr { marker, level: 0 }).collect(),
+			attrs: writes
+				.into_iter()
+				.map(|write| LevelAttr {
+					marker: write.marker,
+					level: 0,
+					owned: write.owned,
+				})
+				.collect(),
 		},
-		removes: removes.into_iter().map(|marker| LevelAttr { marker, level: 0 }).collect(),
+		removes: removes
+			.into_iter()
+			.map(|marker| LevelAttr {
+				marker,
+				level: 0,
+				owned: false,
+			})
+			.collect(),
 		gathers,
 	}
 }
@@ -158,6 +172,7 @@ fn item_shape(element: &Type, depth: u8, reads: &[AttributeRead], generics: &[Id
 			.map(|read| LevelAttr {
 				marker: read.marker.clone(),
 				level: 0,
+				owned: false,
 			})
 			.collect(),
 	}
@@ -557,6 +572,8 @@ pub(crate) enum Element {
 pub(crate) struct LevelAttr {
 	pub(crate) marker: Type,
 	pub(crate) level: u8,
+	/// Writes only: the value crosses as an owned copy that parks at the lift.
+	pub(crate) owned: bool,
 }
 
 pub(crate) enum Effect {
@@ -680,7 +697,7 @@ mod tests {
 			Facts {
 				sources: if skips_carrier(parsed) { vec![] } else { vec![0] },
 				carried: token_carrier(parsed),
-				writes: markers(write_markers.iter()),
+				writes: markers(write_markers.iter().map(|write| &write.marker)),
 				removes: markers(removes.iter()),
 				delta: 0,
 			}
@@ -778,6 +795,19 @@ mod tests {
 				}
 			),
 		);
+	}
+
+	#[test]
+	fn bridge_record_owned_write_async_source() {
+		let node = assert_bridge(
+			quote!(category("")),
+			quote!(
+				async fn tag_async(_: impl Ctx, _: (), val: f64) -> (f64, OwnedAttr<Label>) {
+					(val, OwnedAttr::new(""))
+				}
+			),
+		);
+		assert!(node.output.shape.attrs.iter().all(|attr| attr.owned), "an `OwnedAttr` slot crosses the boundary owned");
 	}
 
 	/// An async source's element is the value its slot stores, so a byte-carried

@@ -1859,14 +1859,28 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// carried frame when the node has a carrier.
 	// A writing source stores the kernel's whole tuple as that plain value:
 	// the lift writes the attributes through the claim, then lifts the
-	// element, the shape the sync record tail closes with.
+	// element, the shape the sync record tail closes with. An owned crossing
+	// parks into the serving arena first, so its exhaustion is a poll.
 	let source_writes = (record_io && async_source && !write_markers.is_empty()).then(|| {
 		let binders: Vec<Ident> = (0..write_markers.len()).map(|index| format_ident!("__attr_{index}")).collect();
-		let slots: Vec<Ident> = (0..write_markers.len()).map(|index| format_ident!("__write_{index}")).collect();
+		let stores = node.output.shape.attrs.iter().enumerate().map(|(index, attr)| {
+			let binder = &binders[index];
+			let slot = format_ident!("__write_{index}");
+			match attr.owned {
+				false => quote!(unsafe { __frame.attr_at(self.#slot, #binder.0) };),
+				true => quote! {
+					let #binder = match #binder.park(#core_types::context::ExtractArena::arena(__input)) {
+						::core::option::Option::Some(value) => value,
+						::core::option::Option::None => return #core_types::gpoll::GPoll::arena_exhausted(),
+					};
+					unsafe { __frame.attr_at(self.#slot, #binder) };
+				},
+			}
+		});
 		quote! {
-			.map(|(__element #(, #core_types::attribute::Attr(#binders))*)| {
-				#(unsafe { __frame.attr_at(self.#slots, #binders) };)*
-				__element
+			.and_then(|(__element #(, #binders)*)| {
+				#(#stores)*
+				#core_types::gpoll::GPoll::Final(__element)
 			})
 		}
 	});

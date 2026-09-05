@@ -51,13 +51,20 @@ pub(crate) struct AttributeRead {
 	pub(crate) marker: Type,
 }
 
+/// One attribute write slot: the marker, and whether it crosses as an owned
+/// copy (`OwnedAttr<M>`) instead of an evaluation-lifetime value (`Attr<M>`).
+pub(crate) struct AttrWrite {
+	pub(crate) marker: Type,
+	pub(crate) owned: bool,
+}
+
 /// The write half of a record kernel's return: the element type in the first
 /// tuple slot, then the attribute markers written and the ones removed. `None`
 /// unless the value is a well-formed write tuple (a non-marker element first,
-/// then only `Attr` and `RemoveAttr` slots, at least one).
+/// then only `Attr`, `OwnedAttr` and `RemoveAttr` slots, at least one).
 pub(crate) struct RecordWrites {
 	pub(crate) element: Type,
-	pub(crate) markers: Vec<Type>,
+	pub(crate) markers: Vec<AttrWrite>,
 	pub(crate) removes: Vec<Type>,
 }
 
@@ -65,14 +72,16 @@ pub(crate) fn record_writes(value: &Type) -> Option<RecordWrites> {
 	let Type::Tuple(tuple) = value else { return None };
 	let mut slots = tuple.elems.iter();
 	let element = slots.next()?;
-	if attr_marker(element).is_some() || remove_attr_marker(element).is_some() {
+	if attr_marker(element).is_some() || owned_attr_marker(element).is_some() || remove_attr_marker(element).is_some() {
 		return None;
 	}
 	let mut markers = Vec::new();
 	let mut removes = Vec::new();
 	for slot in slots {
 		if let Some(marker) = attr_marker(slot) {
-			markers.push(marker);
+			markers.push(AttrWrite { marker, owned: false });
+		} else if let Some(marker) = owned_attr_marker(slot) {
+			markers.push(AttrWrite { marker, owned: true });
 		} else if let Some(marker) = remove_attr_marker(slot) {
 			removes.push(marker);
 		} else {
@@ -89,6 +98,11 @@ pub(crate) fn record_writes(value: &Type) -> Option<RecordWrites> {
 /// Returns the marker type of an `Attr<Marker>` type, if `ty` is one.
 pub(crate) fn attr_marker(ty: &Type) -> Option<Type> {
 	marker_of(ty, "Attr")
+}
+
+/// Returns the marker type of an `OwnedAttr<Marker>` type, if `ty` is one.
+pub(crate) fn owned_attr_marker(ty: &Type) -> Option<Type> {
+	marker_of(ty, "OwnedAttr")
 }
 
 /// Returns the marker type of a `RemoveAttr<Marker>` type, if `ty` is one.

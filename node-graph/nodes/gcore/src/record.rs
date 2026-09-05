@@ -6,7 +6,7 @@
 //! wiring is by hand until the compiler pass constructs layouts.
 
 use core_types::Ctx;
-use core_types::attribute::{Attr, EditorLayerPath, Opacity, RemoveAttr, Transform};
+use core_types::attribute::{Attr, EditorLayerPath, Opacity, OwnedAttr, RemoveAttr, Transform};
 use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex, ModifyIndex};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
@@ -377,6 +377,13 @@ async fn fade_async(_: impl Ctx, element: f64, opacity: f64) -> (f64, Attr<Opaci
 #[node_macro::node(category("Test"))]
 async fn measure_async(_: impl Ctx, _: (), element: f64) -> (f64, Attr<Length>) {
 	(element, Attr(element.abs()))
+}
+
+/// Test-only async source whose reference value crosses the future boundary
+/// owned: the slot holds the deep copy and every lift parks it afresh.
+#[node_macro::node(category("Test"))]
+async fn tag_async(_: impl Ctx, _: (), element: f64, label: String) -> (f64, OwnedAttr<Label>) {
+	(element, OwnedAttr::new(label.as_str()))
 }
 
 #[node_macro::node(category("Test"))]
@@ -2450,6 +2457,37 @@ mod tests {
 		};
 		assert_eq!(served.element::<f64>(), -4.);
 		assert_eq!(served.attr::<Length>(), 4.);
+	}
+
+	#[test]
+	fn an_owned_crossing_parks_its_reference_on_every_lift() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let (runtime, _) = lifted_value(core_types::runtime::RuntimeHandle(std::sync::Arc::new(InlineRuntime)));
+		let (source_id, _) = lifted_value(7 as SourceId);
+		let layout = tag_async_layout();
+		let frames = frames_for(&[&layout]);
+
+		let node = install(
+			TagAsyncNode::new(ValueSource::new(()), ValueSource::new(3.), ValueSource::new("tagged".to_string()), runtime, source_id),
+			tag_async_layout_meta(),
+			&[],
+		);
+		assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
+		let offset = layout.offset_of("label", 0).expect("the source writes the label");
+
+		for pass in ["the spawning eval", "the slot hit"] {
+			let scoped = frames.scope();
+			let GPoll::Final(value) = core_types::record::serve_edge(&node, &ctx, &scoped) else {
+				panic!("an inline completion is final on {pass}");
+			};
+			let rec = layout.rec(&value);
+			assert_eq!(unsafe { rec.element::<f64>() }, 3., "{pass}");
+			assert_eq!(unsafe { rec.read::<&str>(offset) }, "tagged", "{pass}");
+		}
 	}
 
 	#[test]
