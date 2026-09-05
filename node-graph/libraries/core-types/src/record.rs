@@ -1313,7 +1313,7 @@ pub unsafe fn write_field<T>(dst: *mut u8, offset: usize, value: T) {
 /// `dst` must be the claimed frame (or inline scratch when `frame_bytes` is
 /// 0) of a record whose element is `T` and whose frame size is `frame_bytes`,
 /// with every carried field already written.
-pub(crate) unsafe fn lift_poll_into<'e, T: Send + Sync>(poll: GPoll<T>, dst: *mut u8, frame_bytes: usize, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
+pub(crate) unsafe fn lift_poll_into<'e, T: Send + Sync + dyn_any::StaticTypeSized>(poll: GPoll<T>, dst: *mut u8, frame_bytes: usize, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
 	let build = |element: T| {
 		let written = unsafe { write_element(dst, element, arena) };
 		written.map(|()| match frame_bytes {
@@ -1471,7 +1471,8 @@ where
 		}
 		let retained = retained_measure(std::any::TypeId::of::<T::Static>()).map_or(0, |measure| measure(value));
 		let value = value.downcast_ref::<T::Static>().expect("an element replays at its own type");
-		unsafe { write_element_sized(dst, value.clone(), arena, retained) }
+		// SAFETY: the caller's contract, keyed as this element's own parks are.
+		unsafe { write_element_keyed(dst, value.clone(), arena, retained, std::any::TypeId::of::<T::Static>()) }
 	}
 	/// Declines for a type carrying deep glue, whose value may hold interiors
 	/// the evaluation's arena owns and which a moved header may not reference.
@@ -1488,7 +1489,7 @@ where
 		let retained = retained_measure(std::any::TypeId::of::<T::Static>()).map_or(0, |measure| measure(value));
 		// SAFETY: as above, and the decline above establishes that the payload
 		// owns all of its content.
-		unsafe { promotion.move_park::<T::Static>(parked, retained) }.map(<*const T::Static>::cast)
+		unsafe { promotion.move_park::<T>(parked, retained) }.map(<*const T::Static>::cast)
 	}
 	let (size, align) = element_dims::<T>();
 	ElementWrite {
@@ -1575,7 +1576,7 @@ pub unsafe fn read_element<T: Clone>(rec: Rec<'_>) -> T {
 /// # Safety
 /// `dst` must be fresh element storage of a record whose element is `T`.
 /// `None` reports arena exhaustion for a parked element.
-pub unsafe fn write_element<T: Send + Sync>(dst: *mut u8, value: T, arena: &crate::arena::Arena) -> Option<()> {
+pub unsafe fn write_element<T: Send + Sync + dyn_any::StaticTypeSized>(dst: *mut u8, value: T, arena: &crate::arena::Arena) -> Option<()> {
 	unsafe { write_element_sized(dst, value, arena, 0) }
 }
 
@@ -1583,10 +1584,21 @@ pub unsafe fn write_element<T: Send + Sync>(dst: *mut u8, value: T, arena: &crat
 ///
 /// # Safety
 /// As [`write_element`].
-pub unsafe fn write_element_sized<T: Send + Sync>(dst: *mut u8, value: T, arena: &crate::arena::Arena, retained: usize) -> Option<()> {
+pub unsafe fn write_element_sized<T: Send + Sync + dyn_any::StaticTypeSized>(dst: *mut u8, value: T, arena: &crate::arena::Arena, retained: usize) -> Option<()> {
+	// SAFETY: the caller's contract; `T::Static` is the element type's own key.
+	unsafe { write_element_keyed(dst, value, arena, retained, std::any::TypeId::of::<T::Static>()) }
+}
+
+/// [`write_element_sized`] for replay glue already holding the element's
+/// static form, whose key the element type it replays into supplies.
+///
+/// # Safety
+/// As [`write_element`], and `type_of` must be that element type's key, since
+/// a park carrying it is what [`Promotion::move_park`] moves at.
+pub(crate) unsafe fn write_element_keyed<T: Send + Sync>(dst: *mut u8, value: T, arena: &crate::arena::Arena, retained: usize, type_of: std::any::TypeId) -> Option<()> {
 	match element_parked::<T>() {
 		true => {
-			let (parked, _) = arena.alloc_sized(value, retained)?;
+			let (parked, _) = arena.alloc_sized_as(value, retained, type_of)?;
 			unsafe { dst.cast::<&T>().write(parked) };
 			Some(())
 		}
@@ -1867,8 +1879,9 @@ impl<'a> Promotion<'a> {
 	/// Moves a transient payload's header into the persistent region instead of
 	/// cloning the heap it owns: the heap travels with the drop obligation and
 	/// is freed at the persistent flush, never at the transient reset. `None`
-	/// where the header is not the transient arena's own park of `T`'s size or
-	/// the region refused it, which leaves the caller its clone path.
+	/// where the header is not the transient arena's own park keyed to `T`'s
+	/// static type or the region refused it, which leaves the caller its clone
+	/// path.
 	///
 	/// The forwarding is the evaluation's, so a payload two records share moves
 	/// once and both reach the one persistent header. The source header stays
@@ -1876,10 +1889,14 @@ impl<'a> Promotion<'a> {
 	/// the move keeps sound: no read of it may outlive the persistent flush.
 	///
 	/// # Safety
-	/// `parked` must address a live `T`, and a transient park at that address
-	/// and size must be the `T` itself. `T` must own all of its content, a
-	/// persistent header being allowed to reference no transient storage.
-	pub unsafe fn move_park<T: Send + Sync>(&self, parked: *const u8, retained: usize) -> Option<*const T> {
+	/// `parked` must address a live `T`, and `T` must own all of its content, a
+	/// persistent header being allowed to reference no transient storage, which
+	/// is also what lets it be republished at `T::Static`. The park's key
+	/// settles the type, so the caller owes no identity argument.
+	pub unsafe fn move_park<T: dyn_any::StaticTypeSized>(&self, parked: *const u8, retained: usize) -> Option<*const T::Static>
+	where
+		T::Static: Send + Sync,
+	{
 		// SAFETY: the caller's contract, forwarded to the parking arena.
 		unsafe { self.transient.move_park::<T>(parked, self.persistent, retained) }
 	}
