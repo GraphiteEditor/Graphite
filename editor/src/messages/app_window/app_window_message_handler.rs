@@ -17,6 +17,12 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 			AppWindowMessage::PointerLockMove { x, y } => {
 				responses.add(FrontendMessage::WindowPointerLockMove { position: (x, y) });
 			}
+			AppWindowMessage::DirectInput { enabled } => {
+				#[cfg(not(target_family = "wasm"))]
+				responses.add(FrontendMessage::WindowUpdateDirectInput { enabled });
+				#[cfg(target_family = "wasm")]
+				let _ = enabled;
+			}
 			AppWindowMessage::Close => {
 				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowClose);
