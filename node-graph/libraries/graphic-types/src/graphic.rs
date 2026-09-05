@@ -1842,7 +1842,7 @@ mod run_tests {
 		};
 		// SAFETY: the list serves only while `persistent` is live, and the
 		// promote under test replaces every borrow it carries.
-		let (paint, _) = transient.alloc(unsafe { core_types::record::erase_static(published) }).unwrap();
+		let (paint, _) = transient.alloc_sized_keyed(unsafe { core_types::record::erase_static(published) }, 0).unwrap();
 
 		let occupied = persistent.occupancy();
 		let (layout, span, _frames) = promote_paint_field(Some(paint), 1, &transient, &persistent);
@@ -1866,7 +1866,7 @@ mod run_tests {
 			let Some(Graphic::Vector(vector)) = paint.element(0) else { panic!("the paint carries a vector") };
 			vector.point_domain.positions().as_ptr()
 		};
-		let (paint, _) = transient.alloc(paint).unwrap();
+		let (paint, _) = transient.alloc_sized_keyed(paint, 0).unwrap();
 
 		let (layout, span, _frames) = promote_paint_field(Some(paint), 2, &transient, &persistent);
 		let served = promoted_paint(&span, &layout, 0, &persistent);

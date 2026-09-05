@@ -214,7 +214,7 @@ where
 	};
 	let park_paint = |paint: Option<List<Graphic<'static>>>| -> Result<Option<&'e List<Graphic<'static>>>, Interrupt> {
 		match paint {
-			Some(paint) => Ok(Some(arena.alloc(paint).ok_or_else(exhausted)?.0)),
+			Some(paint) => Ok(Some(arena.alloc_sized_keyed(paint, 0).ok_or_else(exhausted)?.0)),
 			None => Ok(None),
 		}
 	};
