@@ -1,3 +1,4 @@
+use std::any::TypeId;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -26,11 +27,11 @@ pub struct Arena {
 	/// a park costs one pointer in the arena and owns its content outside it.
 	retained_heap: AtomicUsize,
 	/// Where [`Arena::move_park`] sent each moved park, as its offset here to
-	/// the header's address in the receiving arena and the moved size, so a
-	/// payload two records share is moved once and a mistyped sharer is
+	/// the header's address in the receiving arena and the moved type's key, so
+	/// a payload two records share is moved once and a mistyped sharer is
 	/// refused. Cleared by [`Arena::reset`], so a forwarding holds for one
 	/// generation.
-	forwarded: Mutex<HashMap<usize, (usize, usize)>>,
+	forwarded: Mutex<HashMap<usize, (usize, TypeId)>>,
 }
 
 impl std::fmt::Debug for Arena {
@@ -41,9 +42,9 @@ impl std::fmt::Debug for Arena {
 
 struct DropEntry {
 	offset: usize,
-	/// The parked payload's own size, so [`Arena::move_park`] refuses a
-	/// reference into a park of another type that shares the offset.
-	size: usize,
+	/// The parked payload's static-type key, `None` where the park was
+	/// allocated without one and so never moves.
+	type_of: Option<TypeId>,
 	drop_fn: unsafe fn(*mut u8),
 	/// The park glue's estimate of the heap this payload owns, 0 where the
 	/// glue cannot measure it, so the counter is a lower bound.
@@ -214,6 +215,23 @@ impl Arena {
 	/// [`Arena::alloc`] with the park glue's estimate of the heap `value` owns,
 	/// which the region's own occupancy cannot see.
 	pub fn alloc_sized<T: Send + Sync>(&self, value: T, retained: usize) -> Option<(&T, ArenaWeak<T>)> {
+		self.alloc_stamped(value, retained, None)
+	}
+
+	/// [`Arena::alloc_sized`] stamping the park's static-type key, which is what
+	/// [`Arena::move_park`] matches on, so only a park allocated here can move.
+	pub fn alloc_sized_keyed<T: Send + Sync + dyn_any::StaticTypeSized>(&self, value: T, retained: usize) -> Option<(&T, ArenaWeak<T>)> {
+		self.alloc_stamped(value, retained, Some(TypeId::of::<T::Static>()))
+	}
+
+	/// [`Arena::alloc_sized_keyed`] for park glue already holding the element's
+	/// static form, which projects the key from the element type instead of
+	/// from the value's own. Crate-private: a wrong key mistypes a move.
+	pub(crate) fn alloc_sized_as<T: Send + Sync>(&self, value: T, retained: usize, type_of: TypeId) -> Option<(&T, ArenaWeak<T>)> {
+		self.alloc_stamped(value, retained, Some(type_of))
+	}
+
+	fn alloc_stamped<T: Send + Sync>(&self, value: T, retained: usize, type_of: Option<TypeId>) -> Option<(&T, ArenaWeak<T>)> {
 		let offset = self.reserve(size_of::<T>(), align_of::<T>())?;
 		// Built before the write so an unencodable offset drops `value` here
 		// rather than stranding it in the arena without drop glue.
@@ -225,7 +243,7 @@ impl Arena {
 			unsafe fn glue<T>(p: *mut u8) {
 				unsafe { p.cast::<T>().drop_in_place() }
 			}
-			self.drops.lock().unwrap().push(DropEntry { offset, size: size_of::<T>(), drop_fn: glue::<T>, retained });
+			self.drops.lock().unwrap().push(DropEntry { offset, type_of, drop_fn: glue::<T>, retained });
 			self.retained_heap.fetch_add(retained, Ordering::Relaxed);
 		}
 		// SAFETY: initialized above; insert-only, so no `&mut` to it can exist.
@@ -250,32 +268,40 @@ impl Arena {
 	/// have credited it, and this arena is debited what its own park recorded,
 	/// so neither counter reads worse than it did before the move.
 	///
-	/// `None` where `src` is not this arena's park of `T`'s own size, where
-	/// `T` is zero-sized (whose parks share an offset and so cannot be told
-	/// apart), or where `dst` refused the header.
+	/// The move republishes the payload at `T::Static`, which is the key both
+	/// [`Arena::alloc_sized_keyed`] and this stamp, so a park and its move
+	/// project the type exactly once each and agree by construction.
+	///
+	/// `None` where `src` is not this arena's park keyed to `T::Static`, where
+	/// the type is zero-sized (whose parks share an offset and so cannot be
+	/// told apart), or where `dst` refused the header.
 	///
 	/// # Safety
-	/// `src` must address a live `T`, and a park of this arena at that address
-	/// and size must be the `T` itself, not another type's park the address
-	/// coincides with. `T` must own all of its content: the moved header may
-	/// reference no storage of this arena.
-	pub unsafe fn move_park<T: Send + Sync>(&self, src: *const u8, dst: &Arena, retained: usize) -> Option<*const T> {
-		(size_of::<T>() != 0).then_some(())?;
+	/// `src` must address a live `T`, and `T` must own all of its content: the
+	/// moved header may reference no storage of this arena, which is also what
+	/// lets the payload be republished at `T::Static`. The key settles the
+	/// type, so the caller owes no size or identity argument beyond those two.
+	pub unsafe fn move_park<T: dyn_any::StaticTypeSized>(&self, src: *const u8, dst: &Arena, retained: usize) -> Option<*const T::Static>
+	where
+		T::Static: Send + Sync,
+	{
+		(size_of::<T::Static>() != 0).then_some(())?;
 		let offset = (src as usize).checked_sub(self.base() as usize)?;
 		(offset < self.buf.len()).then_some(())?;
+		let type_of = TypeId::of::<T::Static>();
 		let mut forwarded = self.forwarded.lock().unwrap();
-		if let Some(&(moved, size)) = forwarded.get(&offset) {
-			(size == size_of::<T>()).then_some(())?;
-			return Some(moved as *const T);
+		if let Some(&(moved, moved_type)) = forwarded.get(&offset) {
+			(moved_type == type_of).then_some(())?;
+			return Some(moved as *const T::Static);
 		}
 		let mut entries = self.drops.lock().unwrap();
 		let entry = entry_at(&entries, offset)?;
-		(entries[entry].size == size_of::<T>()).then_some(())?;
-		let slot = dst.alloc_scratch::<T>(1)?;
-		let target = slot.as_mut_ptr().cast::<T>();
+		(entries[entry].type_of == Some(type_of)).then_some(())?;
+		let slot = dst.alloc_scratch::<T::Static>(1)?;
+		let target = slot.as_mut_ptr().cast::<T::Static>();
 		// SAFETY: the caller's contract on `src`, into a freshly reserved,
 		// aligned, unaliased slot of the same type.
-		unsafe { std::ptr::copy_nonoverlapping(src.cast::<T>(), target, 1) };
+		unsafe { std::ptr::copy_nonoverlapping(src.cast::<T::Static>(), target, 1) };
 		let parked = std::mem::replace(&mut entries[entry].retained, 0);
 		entries[entry].drop_fn = inert;
 		drop(entries);
@@ -284,13 +310,13 @@ impl Arena {
 		}
 		dst.drops.lock().unwrap().push(DropEntry {
 			offset: target as usize - dst.base() as usize,
-			size: size_of::<T>(),
-			drop_fn: glue::<T>,
+			type_of: Some(type_of),
+			drop_fn: glue::<T::Static>,
 			retained,
 		});
 		dst.retained_heap.fetch_add(retained, Ordering::Relaxed);
 		let _ = self.retained_heap.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| Some(current.saturating_sub(parked)));
-		forwarded.insert(offset, (target as usize, size_of::<T>()));
+		forwarded.insert(offset, (target as usize, type_of));
 		Some(target.cast_const())
 	}
 
@@ -607,7 +633,7 @@ mod tests {
 		let owned = String::from("moved, never cloned");
 		let length = owned.len();
 		let heap = owned.as_ptr();
-		let (parked, _) = transient.alloc_sized(owned, length).unwrap();
+		let (parked, _) = transient.alloc_sized_keyed(owned, length).unwrap();
 		let src = std::ptr::from_ref(parked).cast::<u8>();
 
 		let moved = unsafe { transient.move_park::<String>(src, &persistent, length) }.unwrap();
@@ -627,6 +653,9 @@ mod tests {
 		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
 		static DROPS: AtomicU32 = AtomicU32::new(0);
 		struct Probe(#[allow(dead_code)] String);
+		unsafe impl dyn_any::StaticType for Probe {
+			type Static = Probe;
+		}
 		impl Drop for Probe {
 			fn drop(&mut self) {
 				DROPS.fetch_add(1, Ordering::Relaxed);
@@ -636,7 +665,7 @@ mod tests {
 		let mut transient = Arena::new(1024).unwrap();
 		let mut persistent = Arena::new(1024).unwrap();
 
-		let (parked, _) = transient.alloc_sized(Probe(String::from("shared by two records")), 21).unwrap();
+		let (parked, _) = transient.alloc_sized_keyed(Probe(String::from("shared by two records")), 21).unwrap();
 		let src = std::ptr::from_ref(parked).cast::<u8>();
 		let first = unsafe { transient.move_park::<Probe>(src, &persistent, 21) }.unwrap();
 		let second = unsafe { transient.move_park::<Probe>(src, &persistent, 21) }.unwrap();
@@ -652,18 +681,27 @@ mod tests {
 	#[test]
 	fn a_move_refuses_a_mistyped_park_and_its_forwarding() {
 		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
-		struct Owner {
-			_first: String,
-			_tail: u64,
+		struct Owner(#[allow(dead_code)] String);
+		unsafe impl dyn_any::StaticType for Owner {
+			type Static = Owner;
+		}
+		/// Owner's layout exactly, so only the type key tells the two apart.
+		struct Twin(#[allow(dead_code)] String);
+		unsafe impl dyn_any::StaticType for Twin {
+			type Static = Twin;
 		}
 		let mut transient = Arena::new(1024).unwrap();
 		let mut persistent = Arena::new(1024).unwrap();
 
-		let (parked, _) = transient.alloc(Owner { _first: String::from("a first member"), _tail: 0 }).unwrap();
+		let (parked, _) = transient.alloc_sized_keyed(Owner(String::from("a keyed park")), 0).unwrap();
 		let src = std::ptr::from_ref(parked).cast::<u8>();
-		assert!(unsafe { transient.move_park::<String>(src, &persistent, 0) }.is_none(), "a park of another size is refused");
+		assert!(unsafe { transient.move_park::<Twin>(src, &persistent, 0) }.is_none(), "a park of another type of the same size is refused");
 		unsafe { transient.move_park::<Owner>(src, &persistent, 0) }.unwrap();
-		assert!(unsafe { transient.move_park::<String>(src, &persistent, 0) }.is_none(), "the forwarding refuses the same mistype");
+		assert!(unsafe { transient.move_park::<Twin>(src, &persistent, 0) }.is_none(), "the forwarding refuses the same mistype");
+
+		let (unkeyed, _) = transient.alloc(Owner(String::from("an unkeyed park"))).unwrap();
+		let src = std::ptr::from_ref(unkeyed).cast::<u8>();
+		assert!(unsafe { transient.move_park::<Owner>(src, &persistent, 0) }.is_none(), "a park allocated without a key never moves");
 
 		transient.reset();
 		persistent.reset();
@@ -674,6 +712,9 @@ mod tests {
 		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
 		static DROPS: AtomicU32 = AtomicU32::new(0);
 		struct Probe(#[allow(dead_code)] String);
+		unsafe impl dyn_any::StaticType for Probe {
+			type Static = Probe;
+		}
 		impl Drop for Probe {
 			fn drop(&mut self) {
 				DROPS.fetch_add(1, Ordering::Relaxed);
@@ -683,7 +724,7 @@ mod tests {
 		let mut transient = Arena::new(1024).unwrap();
 		let mut persistent = Arena::new(1024).unwrap();
 
-		let (parked, _) = transient.alloc_sized(Probe(String::from("first generation")), 16).unwrap();
+		let (parked, _) = transient.alloc_sized_keyed(Probe(String::from("first generation")), 16).unwrap();
 		let src = std::ptr::from_ref(parked).cast::<u8>();
 		unsafe { transient.move_park::<Probe>(src, &persistent, 16) }.unwrap();
 		assert_eq!(transient.forwarded.lock().unwrap().len(), 1, "the move tombstoned the entry it left");
