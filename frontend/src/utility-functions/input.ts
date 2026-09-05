@@ -107,11 +107,18 @@ export async function onKeyUp(e: KeyboardEvent, editor: EditorWrapper, dialogSto
 
 // Pointer events
 
+// On desktop, num lock marks events as observe-only, do not redirect them to the editor.
+function isObserveOnly(e: MouseEvent): boolean {
+	return import.meta.env.MODE === "native" && e.getModifierState("NumLock");
+}
+
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentStore: DocumentStore) {
 	potentiallyRestoreCanvasFocus(e);
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
+
+	if (isObserveOnly(e)) return;
 
 	// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu, or the graph overlay, on top of the canvas
 	// TODO: A better approach is to pass along a boolean to the backend's input preprocessor so it can know if it's being occluded by the GUI.
@@ -132,6 +139,8 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStore: DialogStore) {
 	potentiallyRestoreCanvasFocus(e);
 	potentiallyClearTextSelection(e);
+
+	if (isObserveOnly(e)) return;
 
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
 	const isTargetingCanvas = !inFloatingMenu && e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
@@ -171,7 +180,7 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-	if (textToolInteractiveInputElement) return;
+	if (isObserveOnly(e) || textToolInteractiveInputElement) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
@@ -180,7 +189,7 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 // Mouse events
 
 export function onPotentialDoubleClick(e: MouseEvent, editor: EditorWrapper) {
-	if (textToolInteractiveInputElement || inPointerLock) return;
+	if (isObserveOnly(e) || textToolInteractiveInputElement || inPointerLock) return;
 
 	// Allow only events within the viewport or node graph boundaries
 	const isTargetingCanvas = e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
