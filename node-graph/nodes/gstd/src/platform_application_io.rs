@@ -2,10 +2,10 @@
 use base64::Engine;
 #[cfg(target_family = "wasm")]
 use canvas_utils::{Canvas, CanvasHandle};
-use core_types::color::SRGBA8;
-use core_types::gpoll::GPoll;
 #[cfg(target_family = "wasm")]
 use core_types::attribute::{Attr, OwnedAttr, Transform};
+use core_types::color::SRGBA8;
+use core_types::gpoll::GPoll;
 #[cfg(target_family = "wasm")]
 use core_types::list::List;
 
@@ -25,11 +25,11 @@ pub use graphene_canvas_utils as canvas_utils;
 #[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
 #[cfg(target_family = "wasm")]
-use graphic_types::markers::EditorMergedLayers;
-#[cfg(target_family = "wasm")]
 use graphic_types::IntoGraphicList;
 #[cfg(target_family = "wasm")]
 use graphic_types::Vector;
+#[cfg(target_family = "wasm")]
+use graphic_types::markers::EditorMergedLayers;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 #[cfg(target_family = "wasm")]

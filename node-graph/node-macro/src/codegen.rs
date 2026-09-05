@@ -136,7 +136,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// record-io node's secondary inputs read erased off their wire, so a
 	// generic one of them names is carried too.
 	let ctx_ident_for_flip = context_param(parsed).map(|ctx| ctx.ident.clone());
-	let ranked_carries = |ident: &Ident| {
+	let carries_generic = |ident: &Ident| {
 		regular_fields.iter().enumerate().any(|(index, field)| match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, list_levels, .. }) => (*list_levels > 0 || (record_io && index > 0)) && type_contains_ident(ty, ident),
 			_ => false,
@@ -145,7 +145,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let carried_generics: Vec<&syn::GenericParam> = fn_generics
 		.iter()
 		.filter(|param| match param {
-			syn::GenericParam::Type(tp) => Some(&tp.ident) != ctx_ident_for_flip.as_ref() && !data_field_generic_idents.contains(&tp.ident) && (flip || ranked_carries(&tp.ident)),
+			syn::GenericParam::Type(tp) => Some(&tp.ident) != ctx_ident_for_flip.as_ref() && !data_field_generic_idents.contains(&tp.ident) && (flip || carries_generic(&tp.ident)),
 			_ => false,
 		})
 		.collect();

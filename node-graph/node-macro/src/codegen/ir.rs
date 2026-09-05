@@ -105,14 +105,7 @@ fn output(parsed: &ParsedNodeFn, generics: &[Ident]) -> Output {
 				})
 				.collect(),
 		},
-		removes: removes
-			.into_iter()
-			.map(|marker| LevelAttr {
-				marker,
-				level: 0,
-				owned: false,
-			})
-			.collect(),
+		removes: removes.into_iter().map(|marker| LevelAttr { marker, level: 0, owned: false }).collect(),
 		gathers,
 	}
 }
