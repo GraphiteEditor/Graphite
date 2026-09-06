@@ -20,7 +20,7 @@ pub struct NodeMetadata {
 	pub context_features: Vec<ContextFeature>,
 	pub memoize: bool,
 	pub inject_scope: bool,
-	/// The macro appended its hidden `_runtime` and `_source` fields as the last two entries of `fields`.
+	/// Set where `_runtime` and `_source` are the last two entries of `fields`.
 	pub async_source_fields: bool,
 }
 
@@ -389,8 +389,8 @@ mod tests {
 		assert_eq!(held.len(), 4);
 	}
 
-	/// Evaluates its content at three promoted index levels and serves the
-	/// collected elements.
+	/// Evaluates its content at three indices of one promoted level and serves
+	/// the collected elements.
 	struct RepeatNode<Node0, T> {
 		content: Node0,
 		inner: Layout,

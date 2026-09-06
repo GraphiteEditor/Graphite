@@ -120,7 +120,7 @@ pub(crate) fn routing_value_indices(regular_fields: &[&ParsedField], generic: &I
 }
 
 /// The lazy inputs declaring attribute reads, with their indices into the
-/// unit-skipped regular fields.
+/// regular fields.
 pub(crate) fn lazy_read_fields<'a>(regular_fields: &[&'a ParsedField]) -> Vec<(usize, &'a ParsedField)> {
 	regular_fields
 		.iter()
@@ -130,7 +130,7 @@ pub(crate) fn lazy_read_fields<'a>(regular_fields: &[&'a ParsedField]) -> Vec<(u
 		.collect()
 }
 
-/// The indices (into the unit-skipped regular fields) of value inputs whose
+/// The indices (into the regular fields) of value inputs whose
 /// reads resolve against their own input rather than the carrier's.
 pub(crate) fn reading_secondary_indices(regular_fields: &[&ParsedField], skips_carrier: bool) -> Vec<usize> {
 	regular_fields

@@ -418,7 +418,7 @@ impl BorrowTree {
 		self.nodes.insert(id, (node, path));
 	}
 
-	/// Calls the `Node::serialize` for that specific node, returning for example the captured io record for a monitor node. The node path must match the document node path.
+	/// Calls the `Node::serialize` for that specific node, returning for example the captured context snapshot for a monitor node. The node path must match the document node path.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let (node, _path) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;

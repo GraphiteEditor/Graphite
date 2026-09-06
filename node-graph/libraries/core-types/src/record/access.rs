@@ -38,7 +38,6 @@ impl<'r> Rec<'r> {
 
 /// An opaque record value: every non-empty record spills to a claimed frame
 /// and the value carries its pointer, while an empty record carries nothing.
-/// Only [`Layout::rec`] reads it, against the wiring-proven layout.
 #[derive(Clone, Copy)]
 pub struct RecordValue<'e> {
 	pub(in crate::record) ptr: *const u8,

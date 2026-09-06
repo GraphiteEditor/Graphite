@@ -314,8 +314,8 @@ impl<'e> GroupItem<'e> {
 	}
 
 	/// Re-parks an owned item's lanes into `arena`, restoring the resident
-	/// form; `None` reports arena exhaustion. A resident item returns a plain
-	/// clone.
+	/// form; `None` reports arena exhaustion. A resident item re-adopts into
+	/// `arena`, sharing only where its lanes already live there.
 	pub fn replay<'a>(&self, arena: &'a crate::arena::Arena) -> Option<GroupItem<'a>> {
 		let ItemStorage::Owned(owned) = &self.storage else {
 			// A resident item re-serves at the target arena's own lifetime,
@@ -584,7 +584,7 @@ impl graphene_hash::CacheHash for GroupItem<'_> {
 		let stride = self.layout.lane_stride();
 		let frames = self.frames();
 		for lane in 0..self.len {
-			// SAFETY: `adopt` filled `len` lanes of `layout`.
+			// SAFETY: the constructors store `len` lanes of `layout` at the layout's stride.
 			unsafe { record_content_hash(&self.layout, frames.add(lane * stride), state) };
 		}
 	}

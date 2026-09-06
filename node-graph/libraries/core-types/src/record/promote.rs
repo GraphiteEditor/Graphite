@@ -370,7 +370,7 @@ mod tests {
 		let bounds = (base as usize, buffer.len() * 8);
 		let length = "shared across lanes".len();
 		unsafe { write_element_sized(base, String::from("shared across lanes"), &transient, length) }.unwrap();
-		// A carried field byte-copies the reference, so both lanes name the one park.
+		// A carried element byte-copies its park reference, so both lanes name the one park.
 		let shared = unsafe { base.cast::<*const u8>().read() };
 		unsafe { base.add(stride).cast::<*const u8>().write(shared) };
 

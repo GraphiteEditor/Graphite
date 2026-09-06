@@ -728,7 +728,7 @@ pub(crate) struct NodePlan {
 
 /// The field and generic derivation shared by the struct/metadata side and the
 /// impl side, computed once in [`generate_node_code`] and passed to
-/// [`generate_node_impl`]. `regular_fields` is the carrier-skipped slice both
+/// [`generate_node_impl`]. `regular_fields` is the non-data field slice both
 /// sides agree on.
 pub(crate) struct NodeFields<'a> {
 	pub(crate) data_fields: Vec<&'a ParsedField>,
@@ -1531,8 +1531,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	});
 
 	// The extent override is the leveled `extent_at`; consumers query the
-	// composite `extent(ctx, Level)`, which the trait derives from it. A node
-	// without `extent = fn` keeps the scalar default (one item at every level).
+	// composite `extent(ctx, Level)`, which the trait derives from it.
 	// The typed extent surface: the node's inputs in declaration order (values
 	// readable without unsafe, inputs as per-level extent queries, derived
 	// content promoted per copy), then the level paired with the node's depth.

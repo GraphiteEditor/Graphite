@@ -91,7 +91,7 @@ pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic<'st
 }
 
 /// The group as a legacy `List<Graphic>`: a `Graphic` run becomes the items,
-/// another typed run becomes one item holding its typed list.
+/// another typed run becomes one de-tabled leaf item per lane.
 pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic<'static>> {
 	let item = &group.content;
 	if let Some(mut list) = run_to_legacy_list::<Graphic>(item) {
