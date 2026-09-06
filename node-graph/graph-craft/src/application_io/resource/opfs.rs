@@ -20,7 +20,6 @@ struct Inner {
 	on_disk: HashSet<ResourceHash>,
 	queue: VecDeque<Mutation>,
 	worker_active: bool,
-	persist_requested: bool,
 }
 
 pub struct OpfsResourceStorage {
@@ -43,7 +42,6 @@ impl OpfsResourceStorage {
 				on_disk,
 				queue: VecDeque::new(),
 				worker_active: false,
-				persist_requested: false,
 			})),
 		})
 	}
@@ -130,24 +128,15 @@ fn kick_worker(inner: &Arc<Mutex<Inner>>, guard: &mut Inner) {
 
 async fn drain_queue(inner: Arc<Mutex<Inner>>) {
 	loop {
-		let (directory, mutation, persist_requested) = {
+		let (directory, mutation) = {
 			let mut guard = inner.lock().unwrap();
 			let Some(mutation) = guard.queue.pop_front() else {
 				guard.worker_active = false;
 				return;
 			};
 
-			let persist_requested = matches!(mutation, Mutation::Write { .. }) && !guard.persist_requested;
-			if persist_requested {
-				guard.persist_requested = true;
-			}
-
-			(guard.directory.clone(), mutation, persist_requested)
+			(guard.directory.clone(), mutation)
 		};
-
-		if persist_requested {
-			request_persistence().await;
-		}
 
 		match mutation {
 			Mutation::Write { hash, bytes } => {
@@ -161,23 +150,6 @@ async fn drain_queue(inner: Arc<Mutex<Inner>>) {
 				}
 			}
 		}
-	}
-}
-
-async fn request_persistence() {
-	let Some(window) = web_sys::window() else {
-		log::warn!("OPFS persist() skipped: no window");
-		return;
-	};
-	let storage = window.navigator().storage();
-
-	match storage.persist() {
-		Ok(promise) => match JsFuture::from(promise).await {
-			Ok(value) if value.as_bool() == Some(true) => {}
-			Ok(_) => log::warn!("OPFS persistence was not granted; browser may evict resources under storage pressure"),
-			Err(error) => log::warn!("OPFS persist() rejected: {error:?}"),
-		},
-		Err(error) => log::warn!("OPFS persist() threw: {error:?}"),
 	}
 }
 
