@@ -2560,6 +2560,36 @@ mod test_pen_tool {
 	}
 
 	#[tokio::test]
+	async fn undo_during_a_handle_transform_cancels_the_transform_and_rewinds() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+
+		// Drag out C's handle so there is one to transform, then start grabbing it
+		let handle = C + DVec2::new(50., 50.);
+		editor.move_mouse(C.x, C.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(C.x, C.y, ModifierKeys::empty()).await;
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(handle.x, handle.y, ModifierKeys::empty()).await;
+		assert_anchors(&editor, &[A, B, C]);
+		editor.press(Key::KeyG, ModifierKeys::empty()).await;
+		assert!(transforming(&editor), "Expected the handle transform to be in progress");
+
+		undo(&mut editor).await;
+		assert!(!transforming(&editor), "Expected the undo to cancel the handle transform");
+		assert_anchors(&editor, &[A, B]);
+
+		click_pen(&mut editor, D).await;
+		assert_anchors(&editor, &[A, B, D]);
+	}
+
+	fn transforming(editor: &EditorTestUtils) -> bool {
+		editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler.is_transforming()
+	}
+
+	#[tokio::test]
 	async fn modifiers_held_from_the_undo_shortcut_do_not_constrain_the_rewound_preview() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
