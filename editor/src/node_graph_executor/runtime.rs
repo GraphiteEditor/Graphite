@@ -70,7 +70,7 @@ pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
 	EditorPreferencesUpdate(EditorPreferences),
-	CopySvgTextClipboard(String),
+	CopySvgTextClipboard(String, Vec<NodeId>),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -167,6 +167,7 @@ impl NodeRuntime {
 		let mut graph = None;
 		let mut eyedropper = None;
 		let mut execution = None;
+		let mut svg_clipboard = None;
 		for request in self.receiver.try_iter() {
 			match request {
 				GraphRuntimeRequest::GraphUpdate(_) => graph = Some(request),
@@ -187,7 +188,7 @@ impl NodeRuntime {
 					}
 				}
 				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
-				GraphRuntimeRequest::CopySvgTextClipboard(_) => todo!(),
+				GraphRuntimeRequest::CopySvgTextClipboard(..) => svg_clipboard = Some(request),
 			}
 		}
 
@@ -199,7 +200,7 @@ impl NodeRuntime {
 			eyedropper.render_config.pointer = execution.render_config.pointer;
 		}
 
-		let requests = [preferences, graph, eyedropper, execution].into_iter().flatten();
+		let requests = [preferences, graph, eyedropper, execution, svg_clipboard].into_iter().flatten();
 
 		for request in requests {
 			match request {
@@ -346,9 +347,91 @@ impl NodeRuntime {
 					});
 					return texture;
 				}
-				GraphRuntimeRequest::CopySvgTextClipboard(_) => {
-					todo!();
-				}
+				GraphRuntimeRequest::CopySvgTextClipboard(text_string_clipboard, selected_node_ids) => {
+					let mut combined_graphics = List::<Graphic>::new();
+
+					for monitor_node_path in &self.monitor_nodes {
+						// Skip inspect monitor node if active
+						if self.inspect_state.as_ref().is_some_and(|state| monitor_node_path.last().copied() == Some(state.monitor_node)) {
+							continue;
+						}
+
+						let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
+							continue;
+						};
+
+						if selected_node_ids.contains(&parent_network_node_id) {
+							// Introspect using the full monitor node path
+							if let Ok(introspected_data) = self.executor.introspect(monitor_node_path) {
+								if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
+									combined_graphics.extend(io.output.clone());
+								} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Graphic>>>() {
+									combined_graphics.push(io.output.clone());
+								}
+							}
+						}
+					}
+
+					if combined_graphics.is_empty() {
+						self.sender.send_svg_text_clipboard(String::new(), text_string_clipboard);
+						return None;
+					}
+
+					let bounds = graphene_std::renderer::graphic_list_bounding_box(&combined_graphics, DAffine2::IDENTITY);
+					let raw_bounds = match bounds {
+						RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
+						_ => [DVec2::ZERO, DVec2::ONE],
+					};
+
+					let footprint = Footprint {
+						transform: DAffine2::from_translation(DVec2::new(raw_bounds[0].x, raw_bounds[0].y)),
+						resolution: UVec2::new((raw_bounds[1].x - raw_bounds[0].x).abs().ceil() as u32, (raw_bounds[1].y - raw_bounds[0].y).abs().ceil() as u32).max(UVec2::ONE),
+						quality: RenderQuality::Full,
+					};
+
+					let render_params = RenderParams {
+						footprint,
+						thumbnail: false,
+						..Default::default()
+					};
+					let mut render = SvgRender::new();
+					combined_graphics.render_svg(&mut render, &render_params);
+					render.format_svg(raw_bounds[0], raw_bounds[1]);
+
+					self.sender.send_svg_text_clipboard(render.svg.to_svg_string(), text_string_clipboard);
+				} // 	// self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
+				  // 	// let mut uninspected_nodes = Vec::new();
+				  // 	// for monitor_node_path in &self.monitor_nodes {
+				  // 	// 	if !self
+				  // 	// 		.inspect_state
+				  // 	// 		.as_ref()
+				  // 	// 		.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node))
+				  // 	// 	{
+				  // 	// 		uninspected_nodes.push(monitor_node_path);
+				  // 	// 	}
+				  // 	// }
+				  // 	for node in self.monitor_nodes.iter().flatten() {
+				  // 		if selected_node_ids.contains(node) {}
+				  // 	}
+				  // 	for monitor_node_path in &self.monitor_nodes {
+				  // 		// The monitor nodes are located within a document node, and are thus children in that network, so this gets the parent document node's ID
+				  // 		let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
+				  // 			warn!("Monitor node has invalid node id");
+				  // 			continue;
+				  // 		};
+				  // 		// Extract the monitor node's stored `Graphic` data
+				  // 		let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else {
+				  // 			// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
+				  // 			#[cfg(debug_assertions)]
+				  // 			warn!("Failed to introspect monitor node {}", self.executor.introspect(monitor_node_path).unwrap_err());
+				  // 			continue;
+				  // 		};
+				  // 		if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
+				  // 			let bounds = graphene_std::renderer::graphic_list_bounding_box(&io.output, DAffine2::IDENTITY);
+				  // 			self.svg_clipboard_produce(text_string_clipboard, &io.output, bounds);
+				  // 		}
+				  // 	}
+				  // }
 			}
 		}
 		None
@@ -537,6 +620,37 @@ impl NodeRuntime {
 			});
 			*old_thumbnail_svg = new_thumbnail_svg;
 		}
+	}
+
+	fn svg_clipboard_produce(&self, text_string_clipboard: String, graphic: &impl Render, bounds: RenderBoundingBox) {
+		let raw_bounds = match bounds {
+			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
+			_ => [DVec2::ZERO, DVec2::ONE],
+		};
+		let bounds = expand_to_thumbnail_aspect(raw_bounds);
+		let new_thumbnail_svg = {
+			let footprint = Footprint {
+				transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
+				resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
+				quality: RenderQuality::Full,
+			};
+
+			// Render the thumbnail from a `Graphic` into an SVG string
+			let render_params = RenderParams {
+				footprint,
+				thumbnail: true,
+				..Default::default()
+			};
+			let mut render = SvgRender::new();
+			graphic.render_svg(&mut render, &render_params);
+
+			// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
+			render.format_svg(bounds[0], bounds[1]);
+
+			render.svg
+		};
+
+		self.sender.send_svg_text_clipboard(new_thumbnail_svg.to_svg_string(), text_string_clipboard);
 	}
 }
 
