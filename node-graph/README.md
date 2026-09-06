@@ -1,173 +1,161 @@
-# Creating Nodes In Graphite
+# The Graphite Node Graph
 
-## Purpose of Nodes
+Graphite is a node based image editor. Everything it renders comes from evaluating a graph of nodes, and this directory holds that system: the types nodes are built on, the node library, the macro that turns a plain Rust function into a node, and the compiler and executor that turn a saved document into a running graph.
 
-Graphite is an image editor which is centered around a node based editing workflow, which allows operations to be visually connected in a graph. This is flexible as it allows all operations to be viewed or modified at any time without losing original data. The node system has been designed to be as general as possible with all data types being representable and a broad selection of nodes for a variety of use cases being planned.
+This is an orientation document, not a specification. It says what lives where and what the vocabulary means. The code is the ground truth, and the module level `//!` headers under `libraries/core-types/src/` carry the real design detail.
 
-## The Document Graph
+## Crate map
 
-The graph that is presented to users in the editor is known as the document graph, and is defined in the `NodeNetwork` struct. Each node that has been placed in this graph has the following properties:
+Foundations, in `libraries/`:
 
-```rs
-pub struct DocumentNode {
-	pub inputs: Vec<NodeInput>,
-	pub call_argument: Type,
-	pub implementation: DocumentNodeImplementation,
-	pub skip_deduplication: bool,
-	pub visible: bool,
-	pub original_location: OriginalLocation,
+| Crate | Directory | What it is |
+| --- | --- | --- |
+| `core-types` | `libraries/core-types` | The `Node` trait, records, attributes, the arena, contexts, and the node registry. Everything else sits on it. |
+| `no-std-types` | `libraries/no-std-types` | `no_std` primitives shared with the GPU shader crates: color, blending, choice types. |
+| `graphene-hash` | `libraries/graphene-hash` | `CacheHash`, which hashes floats by bit pattern so cache keys stay stable. |
+| `graphic-types` | `libraries/graphic-types` | Document element types: `Graphic`, `Vector`, `Artboard`, and their attribute markers. |
+| `raster-types` | `libraries/raster-types` | `Image`, `Raster<CPU>` and `Raster<GPU>`, `Texture`, and the pixel traits. |
+| `vector-types` | `libraries/vector-types` | Vector geometry: `Vector`, subpaths, point and segment domains, gradients, styles. |
+| `rendering` | `libraries/rendering` | The `Render` trait and the SVG and Vello backends. |
+| `graphene-application-io` | `libraries/application-io` | Traits for reaching the host: GPU access, resource loading, `EditorApi`. |
+| `graphene-resource` | `libraries/resources` | Content addressed binary blobs and their async loading. |
+| `graphene-canvas-utils` | `libraries/canvas-utils` | HTML canvas helpers, and nothing at all off wasm. |
+| `wgpu-executor` | `libraries/wgpu-executor` | The GPU backend: wgpu context, pipeline and texture caches, the Vello renderer. |
+
+The node library, in `nodes/`:
+
+| Crate | Directory | What it is |
+| --- | --- | --- |
+| `graphene-core` | `nodes/gcore` | Core nodes: arithmetic, context modification, memoization, animation, and the pilot record nodes. |
+| `graphene-std` | `nodes/gstd` | The standard library. Re-exports every other node crate and adds the render pipeline, text, and platform IO nodes. |
+| `blending-nodes` | `nodes/blending` | Blend mode, opacity, and fill. |
+| `brush-nodes` | `nodes/brush` | Brush strokes, stamping, and brush rendering. |
+| `graphic-nodes` | `nodes/graphic` | Grouping and artboard construction over `Graphic`. |
+| `math-nodes` | `nodes/math` | The expression parser node plus arithmetic, random, and vector math. |
+| `path-bool-nodes` | `nodes/path-bool` | Boolean path operations on vector geometry. |
+| `raster-nodes` | `nodes/raster` | Color adjustments, blending, and filters. Written `no_std` capable so the kernels double as GPU shaders. |
+| `repeat-nodes` | `nodes/repeat` | Grid, linear, and circular repeats. |
+| `text-nodes` | `nodes/text` | Font loading, glyph shaping, text to path, and string operations. |
+| `transform-nodes` | `nodes/transform` | Translation, rotation, scale, skew, and footprint aware transforms. |
+| `vector-nodes` | `nodes/vector` | Shape generators, path operations, and vector modification. |
+
+Compiler and runtime:
+
+| Crate | Directory | What it is |
+| --- | --- | --- |
+| `graph-craft` | `graph-craft` | The document graph and its lowering: `NodeNetwork` and `DocumentNode` down to `ProtoNetwork`, plus type inference. |
+| `preprocessor` | `preprocessor` | The pass over a freshly loaded document: expands proto nodes into their definitions, injects scopes, resolves resource inputs. |
+| `interpreted-executor` | `interpreted-executor` | The dynamic executor. Instantiates a `ProtoNetwork` into a tree of boxed nodes and evaluates it. |
+| `node-macro` | `node-macro` | `#[node]` and friends. Generates the node struct, its `Node` impl, the registry entries, and the editor metadata. |
+| `graphene-cli` | `graphene-cli` | Headless CLI: load a document, compile it, run it, export the result. |
+
+## Core concepts
+
+### Nodes
+
+`Node` lives in `libraries/core-types/src/node.rs` and has exactly one required method, `serve`. A node serves its output record through a frame claim its caller hands it, and returns a proof that only the claim's own closing methods can mint, so a served record is of the claimed layout by construction rather than by convention. Each node claims its frame out of the free space its caller left, so the frame space divides without bookkeeping.
+
+Everything else on the trait has a default. `extent_at` and `extent` report how many items the node produces at a nesting level, `layout` reports the record layout, and `eval_batch` serves a whole range at once. The default `eval_batch` advertises no support and drivers fall back to per lane serves with copy out, so an override exists to beat that loop and never for correctness.
+
+Kernels written with the macro do not see `serve`. They receive typed inputs and call `eval` on them, and the generated code handles the claim, the protocol, and status folding.
+
+### Records
+
+A record is what flows between nodes: the element at offset 0 plus one field per attribute written upstream. Its `Layout` is computed at wiring time from the upstream write set and is never serialized. Records of inline layouts live in the `RecordValue` itself, and larger ones live as per lane views on the evaluation's `Frames`, which the root owns and every node claims its own frame out of. Only generated and wiring code touches offsets, so a safe kernel cannot misalign a field.
+
+`libraries/core-types/src/record/` is split by abstraction level, and each module's `//!` header states its job:
+
+| Module | Concern |
+| --- | --- |
+| `layout` | Wiring time shape facts: the layout a record takes and the writes it folds from. |
+| `access` | Raw typed access to a record at a wiring proven layout. |
+| `frames` | The evaluation's record frame storage. |
+| `serve` | The serving protocol: a node's own frame claim and the proof it closes with. |
+| `input` | Consumer side bindings onto a record input, and the drivers they run. |
+| `route` | Producer side routing: a source's translation into the union layout. |
+| `promote` | Transient to persistent promotion of records and their parked payloads. |
+| `owned` | The owned crossing: deep copies that outlive the evaluation their content borrowed. |
+| `run` | Runs and groups: many records of one layout, resident or owned. |
+| `testkit` | Law test scaffolding over the record tier. |
+
+Two words are used precisely throughout. An input is the consumer side of a connection, and a source is the producer side. Neither is called a wire; that word belongs to the editor UI.
+
+### Attributes
+
+An attribute is a named, typed channel that rides along with an element. A marker declares the name once, fixing its value type and its name specific default, and a census collects every declaration so name resolution, defaults, and diagnostics all happen at graph compile time. One name belongs to one marker, so a name can never mean two types. Declare markers with `core_types::attribute!`:
+
+```rust
+core_types::attribute! {
+	/// The measured length of an element.
+	pub Length("length"): f64;
+	/// A label parked in the arena by whoever writes it.
+	pub Label("label"): &str;
 }
 ```
-(Explanatory comments omitted; the actual definition is currently found in [`node-graph/graph-craft/src/document.rs`](https://github.com/GraphiteEditor/Graphite/blob/master/node-graph/graph-craft/src/document.rs))
 
-Each `DocumentNode` is of a particular type, for example the "Opacity" node type. You can define your own type of document node in `editor/src/messages/portfolio/document/node_graph/node_graph_message_handler/document_node_types.rs`. A sample document node type definition for the opacity node is shown:
+Values are `Copy` and pack directly into record fields. Anything with drop glue rides the arena instead: the marker declares a reference value such as `&str`, the writing kernel parks the payload in the arena, and the record field carries a reference good for the evaluation.
 
-```rs
-DocumentNodeDefinition {
-	name: "Opacity",
-	category: "Image Adjustments",
-	implementation: DocumentNodeImplementation::proto("graphene_core::raster::OpacityNode"),
-	inputs: vec![
-		DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-		DocumentInputType::value("Factor", TaggedValue::F32(100.), false),
-	],
-	outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-	properties: node_properties::multiply_opacity,
-	..Default::default()
-},
-```
+In a kernel, `Attr<A>` as a parameter is a read, yielding the declared default where nothing upstream wrote it. `Attr<A>` in the return tuple is a write, and the same marker on both sides is a modify. `OwnedAttr<A>` carries a value across the evaluation boundary, and `RemoveAttr<A>` subtracts the attribute from the layout. See `libraries/core-types/src/attribute.rs`, and `nodes/gcore/src/record.rs` for worked examples of every form.
 
-The identifier here must be the same as that of the proto-node which will be discussed soon (usually the path to the node implementation).
+### The arena
 
-> [!NOTE]
-> Nodes defined in `graphene_core` are re-exported by `graphene_std`. However if the strings for the type names do not match exactly then you will encounter an error.
+Two regions, both in `libraries/core-types/src/arena.rs`. The transient arena is reset at the top of every evaluation, so anything parked in it lives exactly as long as the evaluation that parked it. The persistent region backs promoted memo levels; it is flushed whole between evaluations and never during one, so no flush can land while a promoted value is still readable.
 
-## Properties panel
+`Arena::move_park` is the promotion. It copies a payload's header into the receiving region, hands over the drop obligation, and tombstones the source entry in place. The heap the payload owns is neither copied nor freed, since ownership travels with the obligation, and a payload two records share moves once. Region sizes and the flush policy live in `interpreted-executor/src/dynamic_executor.rs`.
 
-The input names are shown in the graph when an input is exposed (with a dot in the properties panel). The default input is used when a node is first created or when a link is disconnected. An input is comprised from a `TaggedValue` (allowing serialization of a dynamic type with serde) in addition to an exposed boolean, which defines if the input is shown as a dot in the node graph UI by default. In the opacity node, the "Color" input is shown but the "Factor" input is hidden from the graph by default, allowing for a less cluttered graph.
+### Serving
 
-The properties field is a function that defines a number input, which can be seen by selecting the opacity node in the graph. The code for this property is shown below:
+Evaluating a graph is a walk of `serve` calls down from the root. The root claims the frame buffer, each node claims its own frame out of what its caller left, and status rides the `GPoll` return: `Final`, `Partial` for a result that is correct but incomplete, `Pending` for work not yet ready, `Error`, and `Fallback` for a usable value paired with the error that degraded it. `StatusCell` folds each input's status into the serving node's own, which is what lets a kernel be written as though its inputs simply returned values.
 
-```rs
-pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let factor = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(100.).unit("%"), true);
+## Adding a node
 
-	vec![LayoutGroup::Row { widgets: factor }]
-}
-```
+Write a function and put `#[node_macro::node]` on it. The macro generates the node struct, the `Node` implementation, the registry entries, and the metadata the editor builds its catalog and properties panel from.
 
-## Graphene (proto node executor)
+```rust
+use core_types::Ctx;
+use core_types::attribute::{Attr, Opacity};
 
-The graphene crate (found in `gcore/`) and the graphene standard library (found in `gstd/`) is where actual implementation for nodes are located. 
-
-Implementing a node is done by defining a `struct` implementing the `Node` trait. The `Node` trait has a required function named `eval` that takes one generic input. A sample implementation for an opacity node acting on a color is seen below:
-
-```rs
-use crate::{Color, Node};
-
-#[derive(Debug, Clone, Copy)]
-pub struct OpacityNode<OpacityMultiplierInput> {
-	opacity_multiplier: OpacityMultiplierInput,
-}
-
-impl<'i, OpacityMultiplierInput: Node<'i, (), Output = f64> + 'i> Node<'i, Color> for OpacityNode<OpacityMultiplierInput> {
-	type Output = Color;
-	fn eval(&'i self, color: Color) -> Color {
-		let opacity_multiplier = self.opacity_multiplier.eval(()) as f32 / 100.;
-		Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
-	}
-}
-```
-
-The `eval` function can only take one input. To support more than one input, the node struct can store references to other nodes. This can be seen here, as the `opacity_multiplier` field, which is generic and is constrained to the trait `Node<'i, (), Output = f64>`. This means that it is a node with the input of `()` (no input is required to compute the opacity) and an output of an `f64`.
-
-To compute the value when executing the `OpacityNode`, we need to call `self.opacity_multiplier.eval(())`. This evaluates the node that provides the `opacity_multiplier` input, with the input value of `()`— nothing. This occurs each time the opacity node is run.
-
-To test this:
-```rs
-#[test]
-fn test_opacity_node() {
-	let opacity_node = OpacityNode {
-		opacity_multiplier: crate::value::CopiedNode(10_f64), // set opacity to 10%
-	};
-	assert_eq!(opacity_node.eval(Color::WHITE), Color::from_rgbaf32_unchecked(1., 1., 1., 0.1));
-}
-```
-
-The `graphene_core::value::CopiedNode` is a node that, when evaluated, copies `10_f32` and returns it.
-
-## Creating a new node
-
-Instead of manually implementing the `Node` trait with complex generics, one can use the `node` macro, which can be applied to a function like `opacity`. This will generate the struct, implementation, node_registry entry, document node definition and properties panel entries:
-
-```rs
+/// Scales the opacity attribute of every element passing through.
 #[node_macro::node(category("Raster: Adjustments"))]
-fn opacity(_input: (), #[default(424242)] color: Color, #[range] #[soft(0..100)] opacity_multiplier: f64) -> Color {
-	let opacity_multiplier = opacity_multiplier as f32 / 100.;
-	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
+fn multiply_opacity(
+	_: impl Ctx,
+	/// The element and its current opacity.
+	(element, opacity): (f64, Attr<Opacity>),
+	/// The factor to scale the opacity by.
+	#[default(1.)]
+	#[range]
+	#[soft(0..2)]
+	factor: f64,
+) -> (f64, Attr<Opacity>) {
+	(element, Attr(*opacity * factor))
 }
 ```
 
-## Additional Macro Options
+Reading that back: the first parameter is the evaluation context. A tuple parameter is a record input, binding the element alongside the attributes this kernel reads, while a plain parameter is an ordinary value input the user can set. The return tuple is the write set, and returning `Attr<Opacity>` after reading it makes this a modify rather than a fresh write.
 
-The macro invocation can be extended with additional attributes. The currently supported attributes are (`name`, `path`, `skip_impl`, `category`). When using generics the `#[implementations()]` attribute can be used to automatically populate the node_registry for you. You can also use the `default`, `expose`, `soft`, `hard`, and `range` attributes to influence how the properties are generated. The `#[soft(a..b)]` and `#[hard(a..b)]` attributes set the slider's suggested extent and its enforced clamp, respectively (either endpoint may be omitted, e.g. `0..` or `..100`; both endpoints are inclusive, so there is no `..=` form), and `#[range]` renders the input as a draggable slider. Values typed into the input may exceed the soft extent but are clamped to the hard bounds, so `#[soft]` is only meaningful together with `#[range]`.
+Doc comments are not decoration. The one on the function becomes the node's description in the editor's catalog, and the one on each parameter becomes that input's description.
 
-## Executing a document `NodeNetwork`
+Options on the invocation are `category`, `name`, `path`, `properties` (naming a function in `editor/src/messages/portfolio/document/node_graph/node_properties.rs` for a custom panel), `extent` (naming a function that computes the node's extent, for nodes that change the item count), and `skip_impl`.
 
-When the document graph is executed, the following steps occur:
-- The `NodeNetwork` is flattened using `NodeNetwork::flatten`. This involves removing any `DocumentNodeImplementation::Network` - which allow for nested document node networks. Instead, all of the inner nodes are moved into a single node graph.
-- The `NodeNetwork` is converted into a proto-graph. Each node's inputs are stored as a list of node IDs in the `ConstructionArgs` struct in the `ProtoNode`. Converting a document graph into a proto graph is done with `NodeNetwork::into_proto_networks`.
-- The newly created `ProtoNode`s are then converted into the corresponding constructor functions using the mapping defined in `node-graph/interpreted-executor/src/node_registry.rs`. This is done by `BorrowTree::push_node`.
-- The constructor functions are run with the `ConstructionArgs` enum. Constructors generally evaluate the result of these inputs, e.g. if you have a `Pi` node that is used as the second input to an `Add` node, the `Add` node's constructor will evaluate the `Pi` node. This is visible if you place a log statement in the `Pi` node's implementation.
-- The resolved functions are stored in a `BorrowTree`, which allows previous proto-nodes to be referenced as inputs by later nodes. The `BorrowTree` ensures nodes can't be removed while being referenced by other nodes.
+Per parameter there are `#[default(..)]`, `#[expose]`, `#[name(..)]`, `#[widget(..)]`, and `#[implementations(..)]`, which enumerates the concrete type rows a generic node registers. For numbers, `#[range]` renders a draggable slider, `#[soft(a..b)]` sets its suggested extent, and `#[hard(a..b)]` sets the enforced clamp. Either endpoint may be omitted and both are inclusive, so there is no `..=` form. Typed values may exceed the soft extent but are clamped to the hard bounds, so `#[soft]` only means anything together with `#[range]`. The macro checks these and will reject a `#[range]` missing an end, or a `#[soft]` bound equal to its `#[hard]` counterpart.
 
-The definition for the constructor of a node that applies the opacity transformation to each pixel of an image:
-```rs
-(
-	// Matches against the string defined in the document node.
-	ProtoNodeIdentifier::new("graphene_core::raster::OpacityNode"),
-	// This function is run when converting the `ProtoNode` struct into the desired struct.
-	|args| {
-		Box::pin(async move {
-			// Creates an instance of the struct that defines the node.
-			let node = construct_node!(args, graphene_core::raster::OpacityNode<_>, [f64]).await;
-			// Create a new map image node, that calls the `node` for each pixel.
-			let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
-			// Wraps this in a type erased future `Box<Pin<dyn core::future::Future<Output = T> + 'n>>` - this allows it to work with async.
-			let map_node = graphene_std::any::FutureWrapperNode::new(map_node);
-			// The `DynAnyNode` downcasts its input from a `Box<dyn DynAny>` i.e. dynamically typed, to the desired statically typed input value. It then runs the wrapped node and converts the result back into a dynamically typed `Box<dyn DynAny>`.
-			let any: DynAnyNode<Image<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
-			// Nodes are stored as type erased, which means they are `Box<dyn NodeIo + Node>`. This allows us to create dynamic graphs, using dynamic dispatch so we do not have to know all node combinations at compile time.
-			any.into_type_erased()
-		})
-	},
-	// Defines the call argument, return value, and inputs.
-	NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), vec![fn_type!((), f64)]),
-),
-```
+Registration is automatic. The macro emits a `ctor` constructor that inserts into `NODE_REGISTRY` and `NODE_METADATA` in `libraries/core-types/src/registry.rs` at process start, and `interpreted-executor/src/node_registry.rs` takes that table and adds a hand written set of conversion nodes to build the registry the compiler consumes. There is no separate definition table to edit; writing the function is the whole job. On wasm the `ctor` attribute is skipped and registration is driven explicitly instead.
 
-Nodes in the borrow stack take a `Box<dyn DynAny>` as input and output another `Box<dyn DynAny>`, to allow for any type. To use a specific type, we must downcast the values that have been passed in.
-However the `OpacityNode` only works on one pixel at a time, so we first insert a `MapImageNode` to call the `OpacityNode` for every pixel in the image.
-Finally we call `.into_type_erased()` on the result and that is inserted into the borrow stack.
+## From a document to a result
 
-We also need to add an implementation so that the user can change the opacity of just a single color. To simplify this process for raster nodes, a `raster_node!` macro is available which can simplify the definition of the opacity node to:
-```rs
-raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
-```
+A saved document arrives as a `NodeNetwork`. The preprocessor expands each proto node reference into the `DocumentNode` template built from its registry metadata, reconciling saved inputs against what the current definition expects, which is what lets old documents load against new node definitions. `NodeNetwork::flatten` then dissolves nested networks into one graph, `into_proto_networks` lowers it to a `ProtoNetwork`, and `TypingContext` resolves types against the registry. The executor pushes each `ProtoNode` into its `BorrowTree`, which keeps a node alive as long as anything references it, and `eval_root` resets the transient arena, sizes the frame buffer to the graph's need, and serves the output.
 
-There is also the more general `register_node!` for nodes that do not need to run per pixel.
-```rs
-register_node!(graphene_core::transform_nodes::SetTransformNode<_>, input: Vector, params: [DAffine2]),
-```
+## Deeper reading
+
+The design documentation for the record tier is the `//!` headers in the source. Read `libraries/core-types/src/record/mod.rs` first, then the submodule headers in the table above, then `node.rs`, `attribute.rs`, and `arena.rs`.
+
+Two RFCs cover work adjacent to this system:
+
+- [`rfcs/document-format.md`](rfcs/document-format.md), the `.gdd` on disk format and its CRDT delta model.
+- [`rfcs/fine-grained-context-caching.md`](rfcs/fine-grained-context-caching.md), a compilation pass that nullifies unused parts of the context to avoid needless cache invalidation.
 
 ## Debugging
 
-Debugging inside your node can be done with the `log::debug!()` macro, for example `log::debug!("The opacity is {opacity_multiplier}");`.
+`log::debug!()` works inside a node body. For running a graph without the editor in the way, `graphene-cli` loads a document, compiles it, evaluates it, and can list every registered node.
 
-We need a utility to easily view a graph as the various steps are applied. We also need a way to transparently see which constructors are being run, which nodes are being evaluated, and in what order.
-
-## Conclusion
-
-While we simplify the writing of nodes using the macro by hiding some of the details, creating nodes involves many files and concepts. We will work to continue making this system easier to use.
-
-Any contributions you might have would be greatly appreciated. If any parts of this guide are outdated or difficult to understand, please feel free to ask for help in the Graphite Discord. We are very happy to answer any questions :)
+If any of this is wrong or unclear, please ask in the Graphite Discord. We are happy to help.
