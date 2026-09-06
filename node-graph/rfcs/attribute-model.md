@@ -102,37 +102,21 @@ table at graph compile time, which is where every resolution happens
 anyway, and two user-supplied names colliding at different value types
 is a graph compile error naming both nodes.
 
-A write can also be generic over both the name and the value type. The
-attribute then arrives on its own wire, as an input whose element is
-`()`:
-
-```rs
-/// Attaches the attribute to the content.
-#[node_macro::node(category("Attributes"))]
-fn set_attribute<T, A, Y>(
-	_: impl Ctx,
-	element: T,
-	(_, attr): ((), Attr<Custom<A, Y>>),
-) -> (T, Attr<Custom<A, Y>>) {
-	(element, attr)
-}
-```
-
-A unit value component means the edge exists and carries only its
-attributes (`_: ()` still means no edge at all). The name enters the
-graph at a source node holding the constant text input, whose output
-type is filled at graph compile time, where user-supplied names join
-the name table anyway; the compiler pairs `A` and `Y` through the wire
-types, so the write set is derived from types alone, and the
-one-name-one-type check covers the binding, making a declared name
-targeted at a different type a graph compile error. A generic read
-resolves only when the input wire's type determines the binding
-uniquely, and anything else is a validation error. The node is one
-compiled instance: `A` and `Y` instantiate with tokens and the value
-rides the copy plan as a byte move, parked in the arena when its type
-has drop glue, so no implementations list exists. A kernel that
-computes on the value uses a bound and monomorphizes per its
-implementations list as usual.
+A write can also be generic over the name. The shape is settled but not
+yet built: the marker is `Generic<X, T>` with the value type declared
+concretely in the signature, so `Attr<Generic<X, f64>>` and
+`Attr<Generic<Y, f64>>` are two independently named f64 writes and no
+runtime type dispatch exists. The name itself arrives as a constant
+text input on the document node and joins the name table at graph
+compile time, which is where every resolution happens anyway; two
+user-supplied names colliding at different value types is a graph
+compile error naming both nodes, the same one-name-one-type check that
+covers declared markers. A generic read resolves only when the binding
+is unique, and anything else is a validation error. The node is one
+compiled instance per concrete value type; the name never enters
+monomorphization. The build is sequenced after the current cleanup,
+and its editor-facing access has to be design-checked against the
+typed attribute key API (#4352) before it lands.
 
 ## Reading and writing attributes
 
@@ -387,7 +371,7 @@ A name's type is unique by construction. For declared markers the census
 admits one marker per name, checked when the registry is built. For
 user-supplied names the binding forms at graph compile time, carrying the
 marker's declared value type, and two names colliding at different types
-is a graph compile error that names both nodes. Generic-typed writes
+is a graph compile error that names both nodes. Generic-named writes
 join the same table, carrying the name and value type their bindings
 resolve to, so the check runs over declared markers, user-supplied
 names, and generic instantiations together. We do not attempt
@@ -401,7 +385,9 @@ out, which keeps them stable when a structure node pushes a level
 level 0 is populated today: the packed-record tier is flat, so the
 binding rules below and the residency analysis that follows them are the
 intended design rather than the implemented one. The level in the key is
-what leaves room for both.
+what leaves room for both. Keying is frozen at level 0 for the parity
+landing: no re-leveling exists, a level other than 0 is unsupported,
+and catalog nodes assume level 0.
 
 The binding rules are:
 
@@ -842,34 +828,33 @@ from shading languages for residency.
 # Unresolved questions
 
 - Leveled attributes, the largest open area. Attributes at more than one
-  nesting level are designed but not built: the layout key carries a
-  level, and nothing populates a level above 0. Open within it are the
-  binding rules as stated (does a read really bind to the top level of
-  the wire it is destructured from, and is pinning element-reading nodes
-  to level 0 the right rule), how a structure node's per-copy write
-  lands in the former top row, whether residency is worth its analysis
-  or whether the extent machinery already answers it (an attribute whose
-  index function ignores the index is `Free`), and what the storage for
-  a level above 0 looks like given that the record tier is flat. The
-  UX half of the same question is the map/enter construct: how "set on
-  the parent" and "map over the children" read differently in the graph.
-  Until this is settled, the Repeat-around-Opacity requirement is
-  unmet.
+  nesting level are designed but not built, and the keying is frozen at
+  level 0 for this landing, which parity does not need. Open within the
+  area are the binding rules as stated (does a read really bind to the
+  top level of the wire it is destructured from, and is pinning
+  element-reading nodes to level 0 the right rule), how a structure
+  node's per-copy write lands in the former top row, whether residency
+  is worth its analysis or whether the extent machinery already answers
+  it (an attribute whose index function ignores the index is `Free`),
+  and what the storage for a level above 0 looks like given that the
+  record tier is flat. The UX half of the same question is the
+  map/enter construct: how "set on the parent" and "map over the
+  children" read differently in the graph. Until this is settled, the
+  Repeat-around-Opacity requirement is unmet.
 - Where and how the combine rule is declared on the attribute marker.
   Merge push-down and flatten both consume it, and inner-wins is the
   intended fallback.
 - The spelling of the push-down marker on the merge node, the one part
   of the additive shape the extent override cannot express.
-- Naming: `Attribute` trait vs. `Attr` wrapper. The authoring list type
-  is spelled `IList` here, as in the implementation, to keep it clear of
-  the legacy wire type's `List`; a rename to `List` is planned once that
-  type retires.
-- Generic-typed writes: where the default for a generically written
-  name comes from (a `Default` bound on the value vs. an input on the
-  name source), what `A` instantiates to at the Rust level, whether
-  attribute-only wires carry exactly one attribute by construction or
-  uniqueness is checked per read, and the graph UX of the name source
-  node.
+- Naming: the authoring list type is spelled `IList` here, as in the
+  implementation, to keep it clear of the legacy wire type's `List`; a
+  rename to `List` is planned once that type retires.
+- Generic-named writes: the shape is settled (`Generic<X, T>`, concrete
+  value type, name as a constant text input resolved at graph compile
+  time), and what remains open is where the default for a generically
+  written name comes from (a `Default` bound on the value vs. an input
+  on the name source) and the graph UX of the name source node, to be
+  design-checked against the typed attribute key API (#4352).
 - Whether evaluating at a lane outside the input's extent is clamped,
   wrapped, or a debug assertion.
 - `IList<IList<W>>` outputs, i.e. one node pushing two levels.
