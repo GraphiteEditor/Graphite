@@ -310,7 +310,7 @@ not. The tuple form composes with laziness: a lazy input declared
 each evaluation, so a kernel can branch on another input's attribute
 without evaluating the branch it rejects. It is a read declaration
 only: the lazy input's fields do not pass through to the output, since
-the kernel controls whether and how often the edge is evaluated;
+the kernel controls whether and how often the input is evaluated;
 forwarding a lazy input's attributes is routing.
 
 The rest of the authoring surface composes. Categories, per-parameter
@@ -561,18 +561,18 @@ every lift, one copy per invocation.
 | Signature form | Meaning | Lowering |
 | --- | --- | --- |
 | first non-context param | primary input | carrier record |
-| `_: ()` | no primary input | no carrier edge |
+| `_: ()` | no primary input | no carrier input |
 | `element: T` (unbounded, returned first) | explicit passthrough | erased byte carry, where `T` is instantiated with a zero-sized token, so the routing is checked by the type system and costs nothing |
 | `element: Concrete` / bound | element read | field read at offset 0, monomorphized per implementations list, binds level 0 |
 | `(x, a): (X, Attr<A>)` | input with attribute reads | the value as its ordinary lowering; each `Attr` an offset read into that input's record, or the default constant |
-| `(_, a): ((), Attr<A>)` | attribute-only input | wired record edge with unit element; the attribute is the payload |
+| `(_, a): ((), Attr<A>)` | attribute-only input | a wired record input with unit element; the attribute is the payload |
 | `Attr<A>` in the return tuple | attribute write | offset write into the output record |
 | `RemoveAttr<A>` in the return tuple | attribute delete | the name leaves the output layout; functionally a write of the default |
 | `OwnedAttr<A>` in an async source's return tuple | owned attribute write | the value crosses the future boundary as a deep copy taken before the first await, and parks into the serving arena at every lift; exhaustion surfaces as a poll |
-| `keys: IList<K>` | whole-extent input | wired edge, evaluated over its extent into a view |
-| plain parameters | wired value inputs | ordinary wired edges; attributes on their wires do not flow |
+| `keys: IList<K>` | whole-extent input | a wired input, evaluated over its extent into a view |
+| plain parameters | wired value inputs | ordinary wired value inputs; attributes on their wires do not flow |
 | `impl Node<Context<'_>, Output = Concrete>` | lazy value input | the value flows, attributes do not |
-| `impl Node<Context<'_>, Output = (T, Attr<A>, ..)>` | lazy input with attribute reads | each eval yields the element plus the declared reads, offsets resolved against that edge's layout; a read declaration only, and no field pass-through |
+| `impl Node<Context<'_>, Output = (T, Attr<A>, ..)>` | lazy input with attribute reads | each eval yields the element plus the declared reads, offsets resolved against that input's layout; a read declaration only, and no field pass-through |
 | `impl Node<Context<'_>, Output = T>` (unbounded) | source of an opaque record family | routing, see below |
 | `-> IList<W>` with a lazy subject and `DeriveCtx` | per-copy level production | the kernel splits the index and evaluates the subject at the pushed level |
 | `-> IList<W>` with a carrier subject | per-lane level production | the carrier binds once for the run; the kernel computes each lane's own fields |
@@ -640,10 +640,10 @@ sources are the lazy inputs whose `Output` is the generic; the element
 passthrough is the same mechanism with the carrier as the family's only
 source. Wiring computes the union of the sources' layouts and a
 translation plan per source (field moves plus default fills). The
-kernel-facing handles wrap the edges the same way the error dialect
-wraps status plumbing: evaluating a source evaluates its edge at the
+kernel-facing handles wrap the inputs the same way the error dialect
+wraps status plumbing: evaluating a source evaluates its input at the
 unchanged context and yields a value carrying the resulting record,
-either through the plan into that source's own buffer, or, when the
+either through the plan into a claim of that source's own, or, when the
 source's layout already equals the union, by forwarding the record
 pointer untouched. The forwarding case compiles to a conditional move
 plus a tail call; the +4.7ns per lane of a two-branch switch is the
@@ -652,12 +652,12 @@ costs +6.5ns per lane at eight attributes.
 
 The kernel routes these values as ordinary Rust values. It can evaluate
 any source any number of times, hold several results at once (per-source
-buffers keep them valid side by side), pass them through helper
+claims keep them valid side by side), pass them through helper
 functions, and return any of them. The returned value's record is the
 node's output, so provenance is carried by the value itself: element and
 attributes travel together, and returning a result obtained before some
 later evaluation is well-defined. A value is live until its own source
-is evaluated again, which overwrites that source's buffer; a kernel that
+is evaluated again, which reclaims that source's claim; a kernel that
 needs two results of one input side by side declares the input twice.
 The values are opaque and unforgeable, and inspecting one requires
 bounds on the generic, which is element access and monomorphization as
@@ -810,7 +810,7 @@ the wiring-computed byte plans, where it is irreducible.
   convergence (merge unions them, defaults answer switch mismatches) and
   the resolver is untouched.
 - The numbers cited throughout come from a reference prototype with
-  type-erased node edges (the indirect calls were verified in the
+  type-erased node inputs (the indirect calls were verified in the
   disassembly), thin LTO, 64k-lane workloads, and best-of-nine timing.
   Chain results use ten nodes and eight f64 attributes.
 
