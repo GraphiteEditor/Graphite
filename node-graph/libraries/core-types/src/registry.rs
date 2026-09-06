@@ -421,7 +421,7 @@ mod tests {
 		C: Ctx + crate::context::DeriveCtx,
 		T: Clone + 'static,
 		Vec<T>: Send + Sync + dyn_any::StaticTypeSized,
-		Node0: for<'x> crate::record::DerivedRecordEdge<'x, crate::context::Derived<'x, C>>,
+		Node0: for<'x> crate::record::DerivedRecordInput<'x, crate::context::Derived<'x, C>>,
 	{
 		fn serve<'e, 'l>(&self, input: &C, mut slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 		where
@@ -497,7 +497,7 @@ mod tests {
 	impl<C, Node0> Node<C> for ShiftFootprintNode<Node0>
 	where
 		C: Ctx + crate::context::DeriveCtx + crate::context::ExtractFootprint,
-		Node0: for<'x> crate::record::DerivedRecordEdge<'x, crate::context::Derived<'x, C>>,
+		Node0: for<'x> crate::record::DerivedRecordInput<'x, crate::context::Derived<'x, C>>,
 	{
 		fn serve<'e, 'l>(&self, input: &C, mut slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 		where

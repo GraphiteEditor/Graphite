@@ -999,7 +999,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			if routing_generic.as_ref().is_some_and(|generic| crate::codegen::classify::routing_source_output(source_ty, generic)) {
 				let source_generic = format_ident!("__Source{index}");
 				generics.push(quote! {
-					#source_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>
+					#source_generic: for<'__derived> #core_types::record::DerivedRecordInput<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>
 				});
 			}
 		}
@@ -1007,7 +1007,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	if lazy_carrier && derives {
 		let source_generic = format_ident!("__Source0");
 		generics.push(quote! {
-			#source_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>
+			#source_generic: for<'__derived> #core_types::record::DerivedRecordInput<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>
 		});
 	}
 	if flip {
@@ -1015,7 +1015,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			if matches!(&field.ty, ParsedFieldType::Node(_)) {
 				let source_generic = format_ident!("__Source{index}");
 				let derived_extra = derives
-					.then(|| quote!(+ for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>))
+					.then(|| quote!(+ for<'__derived> #core_types::record::DerivedRecordInput<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>))
 					.into_iter();
 				generics.push(quote! {
 					#source_generic: #core_types::node::Node<#ctx_ident> #(#derived_extra)*
@@ -1028,7 +1028,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			if matches!(&field.ty, ParsedFieldType::Node(_)) && matches!(crate::codegen::ir::lazy_binding(&node, index), LazyBinding::Element) {
 				let source_generic = format_ident!("__Source{index}");
 				let derived_extra = derives
-					.then(|| quote!(+ for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>))
+					.then(|| quote!(+ for<'__derived> #core_types::record::DerivedRecordInput<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>))
 					.into_iter();
 				generics.push(quote! {
 					#source_generic: #core_types::node::Node<#ctx_ident> #(#derived_extra)*
@@ -1059,7 +1059,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote!(#pat: &#ty)
 	});
 
-	let derived_edge = quote!(for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>);
+	let derived_edge = quote!(for<'__derived> #core_types::record::DerivedRecordInput<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>);
 	let lazy_bound = || match derives {
 		true => {
 			let derived_edge = derived_edge.clone();
@@ -1558,7 +1558,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let #query = |__copy: u64, __lvl: u8| {
 							let mut __frame = #core_types::context::IndexLink { index: 0, outer: None };
 							let __derived = #core_types::context::DeriveCtx::push_level(__input, &mut __frame, __copy, 0);
-							#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &__derived, __lvl, &__frames.scope())
+							#core_types::record::DerivedRecordInput::extent_at_derived(&self.#name, &__derived, __lvl, &__frames.scope())
 						};
 						let #arg = #core_types::extent::ExtentIn::new(&#query);
 					},
@@ -1650,7 +1650,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let __query = |_: u64, __lvl: u8| {
 						let __head = #core_types::context::DeriveCtx::index_head(__input);
 						let __derived = #core_types::context::DeriveCtx::replaced(__input, __head.index);
-						#core_types::record::DerivedRecordEdge::extent_at_derived(&self.#name, &__derived, __lvl, &__frames.scope())
+						#core_types::record::DerivedRecordInput::extent_at_derived(&self.#name, &__derived, __lvl, &__frames.scope())
 					};
 				},
 				_ => quote! {

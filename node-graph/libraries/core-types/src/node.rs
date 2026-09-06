@@ -606,7 +606,7 @@ impl<'a, 'f, N> LazyInput<'a, 'f, N> {
 	#[inline(always)]
 	pub fn eval<'e, Input>(&self, ctx: &Input) -> Result<crate::record::RecordValue<'e>, Interrupt>
 	where
-		N: crate::record::DerivedRecordEdge<'e, Input>,
+		N: crate::record::DerivedRecordInput<'e, Input>,
 		'f: 'e,
 	{
 		self.node.eval_derived(self.cell, self.input_index, ctx, self.frames)

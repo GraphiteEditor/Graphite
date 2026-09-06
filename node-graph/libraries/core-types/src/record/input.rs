@@ -12,12 +12,12 @@ use crate::node::Node;
 /// `for<'d> Node<Derived<'d, C>>` cannot also say the derived context's arena
 /// is at `'d`: the equality binding `ExtractArena<ArenaRef = &'d Arena>` is an
 /// unconstrained position under a higher rank.
-pub trait DerivedRecordEdge<'derived, C> {
+pub trait DerivedRecordInput<'derived, C> {
 	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C, frames: &Frames<'derived>) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt>;
 	fn extent_at_derived(&self, ctx: &C, level: u8, frames: &Frames<'derived>) -> GPoll<crate::gpoll::Extent>;
 }
 
-impl<'derived, C, N> DerivedRecordEdge<'derived, C> for N
+impl<'derived, C, N> DerivedRecordInput<'derived, C> for N
 where
 	N: Node<C>,
 	C: crate::context::ExtractArena<ArenaRef = &'derived crate::arena::Arena>,
@@ -248,7 +248,7 @@ impl<'a, 'e, Out, N> ElementEdge<'a, 'e, Out, N> {
 	/// again at the next one.
 	pub fn eval<'d, C>(&self, ctx: &C) -> GPoll<Out>
 	where
-		N: DerivedRecordEdge<'d, C>,
+		N: DerivedRecordInput<'d, C>,
 		'e: 'd,
 	{
 		let cell = crate::node::StatusCell::new();
@@ -316,7 +316,7 @@ impl<'a, 'e, Out, N> ElementLazyInput<'a, 'e, Out, N> {
 	/// the record's claim dies with the call.
 	pub fn eval<'d, C>(&self, ctx: &C) -> Result<Out, crate::gpoll::Interrupt>
 	where
-		N: DerivedRecordEdge<'d, C>,
+		N: DerivedRecordInput<'d, C>,
 		'e: 'd,
 	{
 		let scope = self.frames.scope();
@@ -351,7 +351,7 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 
 	pub fn eval<'d, C>(&self, ctx: &C) -> Result<RecordValue<'e>, crate::gpoll::Interrupt>
 	where
-		N: DerivedRecordEdge<'d, C>,
+		N: DerivedRecordInput<'d, C>,
 		'e: 'd,
 	{
 		Ok(self.node.eval_derived(self.cell, self.input_index, ctx, self.frames)?.rebind())
@@ -363,7 +363,7 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 	pub fn inner_extent<B>(&self, ctx: &B) -> Result<u64, crate::gpoll::Interrupt>
 	where
 		B: crate::context::DeriveCtx,
-		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
+		N: for<'d> DerivedRecordInput<'d, crate::context::Derived<'d, B>>,
 	{
 		inner_extent_of(self.node, ctx, 0, self.inner_levels, self.input_index, self.frames)
 	}
@@ -373,7 +373,7 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 	pub fn inner_extent_at<B>(&self, ctx: &B, copy: u64) -> Result<u64, crate::gpoll::Interrupt>
 	where
 		B: crate::context::DeriveCtx,
-		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
+		N: for<'d> DerivedRecordInput<'d, crate::context::Derived<'d, B>>,
 	{
 		inner_extent_of(self.node, ctx, copy, self.inner_levels, self.input_index, self.frames)
 	}
@@ -383,7 +383,7 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 fn inner_extent_of<B, N>(node: &N, ctx: &B, copy: u64, levels: u8, input_index: usize, frames: &Frames<'_>) -> Result<u64, crate::gpoll::Interrupt>
 where
 	B: crate::context::DeriveCtx,
-	N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
+	N: for<'d> DerivedRecordInput<'d, crate::context::Derived<'d, B>>,
 {
 	let mut frame = crate::context::IndexLink { index: 0, outer: None };
 	let derived = ctx.push_level(&mut frame, copy, 0);
@@ -405,7 +405,7 @@ where
 fn probed_inner<B, N>(node: &N, ctx: &B, copy: u64, input_index: usize, frames: &Frames<'_>) -> Result<u64, crate::gpoll::Interrupt>
 where
 	B: crate::context::DeriveCtx,
-	N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
+	N: for<'d> DerivedRecordInput<'d, crate::context::Derived<'d, B>>,
 {
 	let cell = crate::node::StatusCell::new();
 	let mut count: u64 = 0;
@@ -466,14 +466,14 @@ impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
 	pub fn inner_extent<B>(&self, ctx: &B) -> Result<u64, crate::gpoll::Interrupt>
 	where
 		B: crate::context::DeriveCtx,
-		N: for<'d> DerivedRecordEdge<'d, crate::context::Derived<'d, B>>,
+		N: for<'d> DerivedRecordInput<'d, crate::context::Derived<'d, B>>,
 	{
 		inner_extent_of(self.node, ctx, 0, self.inner_levels, self.input_index, self.frames)
 	}
 
 	pub fn eval<'d, C>(&self, ctx: &C) -> Result<Out, crate::gpoll::Interrupt>
 	where
-		N: DerivedRecordEdge<'d, C>,
+		N: DerivedRecordInput<'d, C>,
 		'e: 'd,
 	{
 		let value: RecordValue<'e> = self.node.eval_derived(self.cell, self.input_index, ctx, self.frames)?.rebind();
