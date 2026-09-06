@@ -79,9 +79,9 @@ pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>> + Send + Sync;
 pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>>;
 
 #[cfg(not(target_family = "wasm"))]
-type DynEdge = dyn std::any::Any + Send + Sync;
+type DynSource = dyn std::any::Any + Send + Sync;
 #[cfg(target_family = "wasm")]
-type DynEdge = dyn std::any::Any;
+type DynSource = dyn std::any::Any;
 
 pub fn record_type<T: 'static>() -> Type {
 	Type::Record(Box::new(concrete!(T)))
@@ -186,11 +186,11 @@ where
 }
 
 pub struct SourceHandle {
-	node: Box<DynEdge>,
-	share: fn(&DynEdge) -> Box<DynEdge>,
-	serialize: fn(&DynEdge) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
-	layout: fn(&DynEdge) -> &crate::record::Layout,
-	set_layout: fn(&mut DynEdge, crate::record::RecordLayout),
+	node: Box<DynSource>,
+	share: fn(&DynSource) -> Box<DynSource>,
+	serialize: fn(&DynSource) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
+	layout: fn(&DynSource) -> &crate::record::Layout,
+	set_layout: fn(&mut DynSource, crate::record::RecordLayout),
 	ty: Type,
 }
 
