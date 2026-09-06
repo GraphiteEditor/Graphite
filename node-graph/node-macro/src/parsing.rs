@@ -619,10 +619,10 @@ impl Parse for NodeFnAttributes {
 					let parsed_path: Path = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'batch', e.g., batch(my_batch)"))?;
 					batch = Some(parsed_path);
 				}
-				// Instructs the generated eval to report `Pending` instead of passing partial upstream values into this node.
+				// Keeps the plain-input lowering for this node during the record transition.
 				//
 				// Example usage:
-				// #[node_macro::node(..., no_partial, ...)]
+				// #[node_macro::node(..., plain, ...)]
 				"plain" => {
 					let path = meta.require_path_only()?;
 					if plain {
@@ -630,6 +630,10 @@ impl Parse for NodeFnAttributes {
 					}
 					plain = true;
 				}
+				// Instructs the generated eval to report `Pending` instead of passing partial upstream values into this node.
+				//
+				// Example usage:
+				// #[node_macro::node(..., no_partial, ...)]
 				"no_partial" => {
 					let path = meta.require_path_only()?;
 					if no_partial {

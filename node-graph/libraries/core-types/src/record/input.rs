@@ -207,8 +207,6 @@ impl<'a, 'e, N> RecordInput<'a, 'e, N> {
 	}
 }
 
-/// The raw lazy input handed to a poll kernel whose input rides records while
-/// the kernel consumes the plain element.
 /// # Safety
 /// `rec` must be a record of the layout the offsets were resolved against
 /// and `El` its element type; both are proven at wiring.
@@ -216,6 +214,8 @@ unsafe fn element_only<El: Clone>(rec: Rec<'_>, _reads: &[Option<usize>]) -> El 
 	unsafe { read_element::<El>(rec) }
 }
 
+/// The raw lazy input handed to a poll kernel whose input rides records while
+/// the kernel consumes the plain element.
 pub struct ElementInput<'a, 'e, Out, N> {
 	node: &'a N,
 	layout: &'a Layout,

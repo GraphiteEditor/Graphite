@@ -143,9 +143,6 @@ impl<Input, N> Node<Input> for SharedSource<N>
 where
 	N: Node<Input> + ?Sized,
 {
-	/// A node takes exactly its own frame out of its caller's free space: the
-	/// caller minted the claim and kept the cursor, so the frame accounting is
-	/// structural here and asserted where a claim is split.
 	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'e, 'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
 	where
 		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,

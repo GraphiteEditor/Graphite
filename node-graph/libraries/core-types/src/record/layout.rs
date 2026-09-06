@@ -334,7 +334,6 @@ pub fn empty_layout() -> &'static Layout {
 	EMPTY.get_or_init(Layout::default)
 }
 
-/// Declarative record-io metadata for a node type, emitted by the macro into
 /// A record node's output layout with the frame size and carrier copy plan derived from it.
 #[derive(Clone, Debug, Default)]
 pub struct RecordLayout {
@@ -347,6 +346,7 @@ pub struct RecordLayout {
 	pub lane_invariant: u32,
 }
 
+/// Declarative record-io metadata for a node type, emitted by the macro into
 /// its registry entry so the compiler can fold each input's layout without
 /// running the node's constructor. [`fold`](LayoutMeta::fold) reproduces the
 /// layout the constructor derives at wiring today; the compiler layout pass
@@ -436,13 +436,13 @@ impl LayoutMeta {
 		let layout = self.fold(inputs);
 		let frame_bytes = layout.frame_bytes();
 		let plan = match self.sources.first() {
-			// A reducer collapses its carrier's levels, so it writes a fresh record rather than copying fields down.
 			Some(&source) if self.level_delta >= 0 => {
 				let from = inputs[source as usize].expect("layout resolve source input has no layout");
 				let carry_element = matches!(self.element, ElementSpec::Carried);
 				let removes: Vec<(&str, u8)> = self.removes.clone();
 				copy_plan(from, &layout, carry_element, &removes)
 			}
+			// A reducer collapses its carrier's levels, so it writes a fresh record rather than copying fields down.
 			_ => Vec::new(),
 		};
 		RecordLayout {

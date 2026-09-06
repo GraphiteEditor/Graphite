@@ -423,10 +423,7 @@ pub(crate) fn flip_carrier(parsed: &ParsedNodeFn) -> bool {
 	!(async_kernel && lend.is_some())
 }
 
-/// Whether a plain node's lowering flips onto record inputs: sync,
-/// fully-concrete value-input nodes in this cut; batch, shader, async, lend,
-/// lazy, and generic nodes keep the plain lowering until their record forms
-/// land.
+/// Whether any value input declares `IList` nesting, so the node materializes a ranked input.
 pub(crate) fn has_materialized_input(parsed: &ParsedNodeFn) -> bool {
 	parsed
 		.fields
@@ -434,6 +431,7 @@ pub(crate) fn has_materialized_input(parsed: &ParsedNodeFn) -> bool {
 		.any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) if *list_levels > 0))
 }
 
+/// Whether a plain node's lowering flips onto record inputs.
 pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 	if record_shape(parsed).is_some() || has_record_io(parsed) || routing_io(parsed).is_some() || record_opaque(parsed) {
 		return false;
