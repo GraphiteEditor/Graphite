@@ -179,6 +179,8 @@ impl Spawner for WasmSpawner {
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
 		#[cfg(not(target_family = "wasm"))]
+		// The box is a trait object, so `Box::default()` cannot name the concrete spawner.
+		#[allow(clippy::box_default)]
 		let spawner: Box<DynSpawner> = Box::new(TokioSpawner::new());
 		#[cfg(target_family = "wasm")]
 		let spawner: Box<DynSpawner> = Box::new(WasmSpawner);

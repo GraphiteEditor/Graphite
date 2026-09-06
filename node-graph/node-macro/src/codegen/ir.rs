@@ -547,6 +547,8 @@ pub(crate) struct ItemShape {
 	pub(crate) attrs: Vec<LevelAttr>,
 }
 
+// Macro IR built once per node at expansion time, so the variant spread costs nothing at runtime.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Element {
 	Concrete(Type),
 	/// Indexes [`Node::generics`].

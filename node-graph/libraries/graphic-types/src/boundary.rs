@@ -16,6 +16,8 @@ use glam::{DAffine2, DVec2};
 use vector_types::GradientStops;
 
 /// The outcome of materializing a leveled wire into a group.
+// The group is the render path's success payload; boxing it would add a heap allocation per materialized level.
+#[allow(clippy::large_enum_variant)]
 pub enum LevelGroup<'e> {
 	Group(Group<'e>, Finality),
 	Pending,
