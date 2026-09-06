@@ -83,7 +83,6 @@ pub enum PenToolMessage {
 		colinear: Key,
 		move_anchor_with_handles: Key,
 	},
-	Redo,
 	Undo,
 	UpdateOptions {
 		options: PenOptionsUpdate,
@@ -483,30 +482,6 @@ impl PenToolData {
 			colinear: input.keyboard.key(colinear),
 			move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
 		}
-	}
-
-	/// Re-renders the preview after an undo/redo once the graph has re-evaluated, since the layer transform is
-	/// briefly stale until then and would place the preview off in the wrong space. Also suppresses the angle
-	/// modifiers (Ctrl, Shift) still held from the shortcut until each is released and pressed again.
-	fn refresh_preview_after_history(&mut self, responses: &mut VecDeque<Message>) {
-		self.suppress_lock_angle = true;
-		self.suppress_snap_angle = true;
-		self.modifiers.lock_angle = false;
-		self.modifiers.snap_angle = false;
-		self.angle_locked = false;
-
-		responses.add(DeferMessage::AfterGraphRun {
-			messages: vec![
-				PenToolMessage::PointerMove {
-					snap_angle: Key::Shift,
-					break_handle: Key::Alt,
-					lock_angle: Key::Control,
-					colinear: Key::KeyC,
-					move_anchor_with_handles: Key::Space,
-				}
-				.into(),
-			],
-		});
 	}
 
 	/// Check whether target handle is primary, end, or `self.handle_end`
@@ -1926,9 +1901,6 @@ impl Fsm for PenToolFsmState {
 					tool_data.buffering_merged_vector = false;
 					PenToolFsmState::DraggingHandle(tool_data.handle_mode)
 				} else {
-					if tool_data.handle_end.is_some() {
-						responses.add(DocumentMessage::StartTransaction);
-					}
 					// Merge two layers if the point is connected to the end point of another path
 
 					// This might not be the correct solution to artboards being included as the other layer,
@@ -2248,24 +2220,6 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::Ready
 			}
 			(_, PenToolMessage::Abort) => PenToolFsmState::Ready,
-			(PenToolFsmState::DraggingHandle(..) | PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => {
-				if tool_data.point_index > 0 {
-					tool_data.point_index -= 1;
-					tool_data.refresh_preview_after_history(responses);
-					PenToolFsmState::PlacingAnchor
-				} else {
-					responses.add(PenToolMessage::Abort);
-					self
-				}
-			}
-			(_, PenToolMessage::Redo) => {
-				tool_data.point_index = (tool_data.point_index + 1).min(tool_data.latest_points.len().saturating_sub(1));
-				tool_data.refresh_preview_after_history(responses);
-				match tool_data.point_index {
-					0 => PenToolFsmState::Ready,
-					_ => PenToolFsmState::PlacingAnchor,
-				}
-			}
 			_ => self,
 		}
 	}
