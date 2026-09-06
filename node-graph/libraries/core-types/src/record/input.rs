@@ -216,7 +216,7 @@ unsafe fn element_only<El: Clone>(rec: Rec<'_>, _reads: &[Option<usize>]) -> El 
 	unsafe { read_element::<El>(rec) }
 }
 
-pub struct ElementEdge<'a, 'e, Out, N> {
+pub struct ElementInput<'a, 'e, Out, N> {
 	node: &'a N,
 	layout: &'a Layout,
 	reads: &'a [Option<usize>],
@@ -224,7 +224,7 @@ pub struct ElementEdge<'a, 'e, Out, N> {
 	frames: &'a Frames<'e>,
 }
 
-impl<'a, 'e, El: Clone, N> ElementEdge<'a, 'e, El, N> {
+impl<'a, 'e, El: Clone, N> ElementInput<'a, 'e, El, N> {
 	pub fn new(node: &'a N, layout: &'a Layout, frames: &'a Frames<'e>) -> Self {
 		Self {
 			node,
@@ -236,7 +236,7 @@ impl<'a, 'e, El: Clone, N> ElementEdge<'a, 'e, El, N> {
 	}
 }
 
-impl<'a, 'e, Out, N> ElementEdge<'a, 'e, Out, N> {
+impl<'a, 'e, Out, N> ElementInput<'a, 'e, Out, N> {
 	/// `read` must be sound against the layout the offsets in `reads` were
 	/// resolved from; the macro proves both at wiring.
 	pub fn with_reads(node: &'a N, layout: &'a Layout, reads: &'a [Option<usize>], read: unsafe fn(Rec<'_>, &[Option<usize>]) -> Out, frames: &'a Frames<'e>) -> Self {

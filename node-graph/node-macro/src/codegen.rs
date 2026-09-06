@@ -1135,7 +1135,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					(LazyBinding::OpaqueRecord, _) => quote!(#pat: &#core_types::record::RecordInput<'_, #frames_lifetime, #source_generic>),
 					(LazyBinding::Element, true) => {
 						let out = lazy_read_out(field, output_type);
-						quote!(#pat: &#core_types::record::ElementEdge<'_, #frames_lifetime, #out, #source_generic>)
+						quote!(#pat: &#core_types::record::ElementInput<'_, #frames_lifetime, #out, #source_generic>)
 					}
 					(LazyBinding::Element, false) => {
 						let out = lazy_read_out(field, output_type);
@@ -1457,13 +1457,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let slot = format_ident!("__in_{index}");
 					match field.attribute_reads.is_empty() {
 						true => quote! {
-							let #name = #core_types::record::ElementEdge::<#output_type, _>::new(&self.#name, &self.#slot, &__lazy_frames);
+							let #name = #core_types::record::ElementInput::<#output_type, _>::new(&self.#name, &self.#slot, &__lazy_frames);
 						},
 						false => {
 							let arr = format_ident!("__reads_{index}");
 							let read_fn = format_ident!("__{}_read_{}", fn_name, index);
 							quote! {
-								let #name = #core_types::record::ElementEdge::with_reads(&self.#name, &self.#slot, &self.#arr, self::#read_fn, &__lazy_frames);
+								let #name = #core_types::record::ElementInput::with_reads(&self.#name, &self.#slot, &self.#arr, self::#read_fn, &__lazy_frames);
 							}
 						}
 					}
