@@ -1,3 +1,5 @@
+//! The record-crossing glue: group interiors carried between the owned, resident, and persistent regions.
+
 use super::Graphic;
 use core_types::Color;
 use core_types::list::{Item, List};

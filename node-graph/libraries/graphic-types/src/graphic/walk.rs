@@ -1,3 +1,5 @@
+//! The native-content walk: vector rows reached through a graphic's own storage, with no legacy conversion.
+
 use super::Graphic;
 use super::paint::{LanePaint, PaintColumns, PaintReach, is_paint_present, paint_graphics, set_paint_attribute_at};
 use crate::markers::{ATTR_FILL, ATTR_STROKE, Fill};

@@ -1,3 +1,5 @@
+//! The paint column level: fill and stroke read as lane columns and threaded down to the elements they reach.
+
 use super::{Graphic, IntoGraphicList};
 use crate::markers::{ATTR_FILL, ATTR_STROKE, Fill, Stroke};
 use core_types::ATTR_TRANSFORM;

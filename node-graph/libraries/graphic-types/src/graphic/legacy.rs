@@ -1,3 +1,5 @@
+//! The legacy bridge: record-backed groups rebuilt as owned legacy lists.
+
 use super::walk::push_lane_paint_into_interiors;
 use super::{Graphic, detable_items};
 use crate::markers::{ATTR_FILL, ATTR_STROKE};
