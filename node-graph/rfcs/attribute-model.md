@@ -7,7 +7,7 @@ declare their attribute reads and writes in their signatures, and the
 compiler resolves every access to a byte offset during wiring, so there is
 no name lookup at runtime. Storage and batch results are per-attribute
 columns. The contiguous record only exists as a per-lane view, assembled
-into activation frames on a per-thread stack. All of the machinery that could
+into frames claimed from the evaluation's frame space. All of the machinery that could
 corrupt a layout is generated code, so getting it wrong is a type error or
 a graph compile error rather than undefined behavior.
 
@@ -431,34 +431,37 @@ level with resolved offsets is the base case both are built on.
 
 ## Runtime representation
 
-- Every node's per-lane output is an activation frame on a per-thread
-  record stack, callee-fills-then-reclaims discipline: an evaluation
-  claims its frame at the stack pointer, evaluates its inputs beyond it,
-  writes its result into the frame, and then reclaims everything above
-  the frame while keeping the frame itself for its consumer. So a node
-  advances the stack by exactly its own frame, and every already-
-  evaluated input stays live until the node returns, which makes values
-  held across sibling evaluations safe by construction. "Allocating" a
-  result is pointer arithmetic; transients never touch the arena, and
-  publishing into a cache copies out of the stack. An inline node
-  returns its output by value with no frame, so it reclaims its inputs
-  by rewinding to its entry pointer instead. A loop that re-evaluates a
-  subtree per iteration rewinds to a checkpoint each time, reusing the
-  slots.
+- Every node's per-lane output lands in a frame claimed from the
+  evaluation's frame space: a grow-only buffer the executor owns and
+  lends down, sized at wiring by folding each path's frame need, so
+  exhaustion is an accounting failure a debug assertion catches rather
+  than a hot-path branch, and frame bytes carry no drop glue. A node's
+  caller mints the node's frame claim out of its own free space; the
+  node writes through the claim and closes it through `serve`, the
+  `Node` trait's one required method, whose `Served` proof is mintable
+  only by the claim's closing methods, so a served record is of the
+  claimed layout by construction. The claim carries the free space
+  beyond the frame, the node's inputs claim past it one after another,
+  and a claim's space is free again when the claim dies, on value,
+  error, and pending exits alike, with no per-exit ritual. "Allocating"
+  a result is cursor arithmetic; a droppable payload parks in the arena
+  once and the record carries the reference.
 - No global slot assignment exists: a node's wiring state is its own
   frame size, so incremental recompiles and instance reuse cannot
-  invalidate storage, and the stack belongs to whichever thread runs
-  the evaluation, created lazily in thread-local storage, so worker
-  counts never enter wiring. The reserve is the peak of a per-path fold
-  over the graph (a node's need is its own frame plus its inputs' frames
-  plus the deepest input's peak), computed once at wiring; it exceeds
-  the plain sum of node frames because fan-out re-evaluation keeps
-  several copies of a shared node's frame live at once.
-- Held record values are safe without a guard: a frame keeps its output
-  until its consumer reclaims it, so no input is released while a later
-  sibling evaluates. This relies on stack records being single-consumer,
-  which the frame-memo insertion at fan-out points guarantees by copying
-  a shared value off the stack rather than holding it across consumers.
+  invalidate storage. The frame space belongs to the evaluation rather
+  than to a thread, so worker counts never enter wiring. The reserve is
+  the peak of a per-path fold over the graph (a node's need is its own
+  frame plus its inputs' frames plus the deepest input's peak), computed
+  once at wiring; it exceeds the plain sum of node frames because
+  fan-out re-evaluation keeps several copies of a shared node's frame
+  live at once.
+- Held record values are safe without a guard: a claim keeps its record
+  until it dies, so no input is released while a later sibling
+  evaluates. Shared subtrees additionally rely on single consumption.
+  The compiler's boundary frame memos provide it where the
+  nullification pass inserts them; automatic insertion at every fan-out
+  is designed but not built, and until it lands it gates the
+  stack-return optimization for shared un-memoized subtrees.
 - Batch results are a run of lanes behind a resolved offset per field,
   and the target form is per-field columns, each statically Varying (an
   array) or Uniform (a single value) per the residency analysis. A node
@@ -470,7 +473,9 @@ level with resolved offsets is the base case both are built on.
   first implementation lays the run out as an array of records and
   resolves each marker to an offset within a lane; moving that to
   struct-of-arrays, and then to flat tables, happens behind the same
-  accessors.
+  accessors. A batched producer serves lanes in place over the caller's
+  scratch through a claimed run of same-layout slots, so a lane serves
+  with no staging copy.
 - A materialized level carries its lane count beside its layout and its
   storage, which is either an arena-resident run or an owned copy.
   Erased consumers (the Data panel, capture, deep copy) read the count
@@ -480,7 +485,7 @@ level with resolved offsets is the base case both are built on.
   a batch result, so materializing a level and returning a batch are one
   format. A record value is one pointer wide, and only a record whose
   layout is empty rides inside the value itself; everything else spills
-  to the stack.
+  to claimed frame space.
 - Alignment padding is what the column form buys. In a row, a `u8`
   element costs the same as a `u64`, while packed columns keep the cost
   proportional to the element size (2x cheaper than rows when
