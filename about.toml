@@ -22,8 +22,6 @@ accepted = [
 workarounds = ["ring"]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
-# Clearly Defined's API would occasionally (every few months) return errors for at least a full day (maybe some weird rate limiting?), but we can just disable to perform local checking (see #1653)
-no-clearly-defined = true
 
 # https://raw.githubusercontent.com/briansmith/webpki/main/LICENSE
 # is the ISC license but test code within the repo is BSD-3-Clause, but is not compiled into the crate when we use it

@@ -17,11 +17,11 @@ use winit::window::WindowId;
 
 use crate::dirs;
 use crate::event::{AppEvent, AppEventScheduler};
-use crate::input::{InputAction, InputState};
+use crate::input::InputState;
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
-use crate::ui::{UiCommand, UiInstance};
+use crate::ui::{InputEvent, UiCommand, UiInstance};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Preferences};
 use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
@@ -279,6 +279,9 @@ impl App {
 					let viewport_scale_y = if height != 0. { window_size.height as f64 / height } else { 1. };
 					render_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
 				}
+			}
+			DesktopFrontendMessage::WindowUpdateDirectInput { enabled } => {
+				self.input_state.set_direct_input(enabled);
 			}
 			DesktopFrontendMessage::UpdateUIScale { scale } => {
 				self.ui_scale = scale;
@@ -547,20 +550,16 @@ impl ApplicationHandler for App {
 			if let Some(window) = &self.window {
 				window.end_pointer_lock();
 			}
-			self.ui.send(UiCommand::Input(WindowEvent::PointerMoved {
-				device_id: None,
-				position: pointer_lock_position,
-				primary: true,
-				source: winit::event::PointerSource::Mouse,
-			}));
+			self.ui.send(UiCommand::Input(
+				InputEvent::pointer().position(pointer_lock_position).moved().modifiers(self.input_state.modifiers()).build(),
+			));
 		}
 
-		for action in self.input_state.process(&event) {
-			match action {
-				InputAction::Ui(event) => self.ui.send(UiCommand::Input(event)),
-				InputAction::Editor(message) => self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message)),
-			}
-		}
+		self.input_state.process(
+			&event,
+			|message| self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Input(message))),
+			|input| self.ui.send(UiCommand::Input(input)),
+		);
 
 		match event {
 			WindowEvent::CloseRequested => {

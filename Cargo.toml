@@ -140,7 +140,7 @@ wgpu = { version = "29.0", features = [
 	"strict_asserts",
 ] }
 once_cell = "1.13" # Remove and replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
-wasm-bindgen = "=0.2.121" # NOTICE: keep in sync with the `wasm-bindgen-cli` version pinned across CI workflows, devcontainer, Nix, and the `cargo-run` tool. We pin this version because wasm-bindgen upgrades may break various things.
+wasm-bindgen = "=0.2.121" # NOTICE: keep in sync with the `wasm-bindgen-cli` version pinned in `.github/workflows/build.yml`, `.devcontainer/devcontainer.json`, `.nix/dev.nix`, `.nix/pkgs/graphite.nix`, and `tools/cargo-run/src/requirements.rs`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
 js-sys = "=0.3.98"
 web-sys = { version = "=0.3.98", features = [

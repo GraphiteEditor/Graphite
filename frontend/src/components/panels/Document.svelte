@@ -15,6 +15,7 @@
 	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceColor, createSRgba8 } from "/src/utility-functions/colors";
 	import { pasteFile } from "/src/utility-functions/files";
+	import { cleanupInputField } from "/src/utility-functions/input";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived } from "/src/utility-functions/viewports";
@@ -566,6 +567,7 @@
 		viewportResizeObserver?.disconnect();
 		removeUpdatePixelRatio?.();
 		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
+		cleanupInputField(editor);
 
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
 		subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");
