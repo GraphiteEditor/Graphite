@@ -5,7 +5,7 @@ pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
 pub use graphite_editor::messages::frontend::utility_types::{DocumentInfo, FileFilter, PersistedState};
 pub use graphite_editor::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
-pub use graphite_editor::messages::input_mapper::utility_types::pointer::{EditorPointerState as PointerState, EditorPosition as Position, MouseKeys, ScrollDelta};
+pub use graphite_editor::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ScrollDelta};
 pub use graphite_editor::messages::prelude::DocumentId;
 pub use graphite_editor::messages::prelude::InputPreprocessorMessage as InputMessage;
 pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;
@@ -39,6 +39,9 @@ pub enum DesktopFrontendMessage {
 	},
 	UpdateUIScale {
 		scale: f64,
+	},
+	WindowUpdateDirectInput {
+		enabled: bool,
 	},
 	UpdateOverlays(vello::Scene),
 	PersistenceWriteDocument {
