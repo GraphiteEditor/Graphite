@@ -108,12 +108,12 @@ pub enum ConstructionError {
 	Type { expected: Box<Type>, found: Box<Type> },
 }
 
-pub struct SharedEdge<N: ?Sized> {
+pub struct SharedSource<N: ?Sized> {
 	ptr: std::ptr::NonNull<N>,
 	own: std::sync::Arc<N>,
 }
 
-impl<N: ?Sized> SharedEdge<N> {
+impl<N: ?Sized> SharedSource<N> {
 	pub fn new(own: std::sync::Arc<N>) -> Self {
 		Self {
 			ptr: std::ptr::NonNull::from(&*own),
@@ -135,11 +135,11 @@ impl<N: ?Sized> SharedEdge<N> {
 
 // SAFETY: `ptr` is derived from the owned Arc and never mutated through, so the edge is exactly as
 // thread safe as the payload it shares.
-unsafe impl<N: ?Sized + Send + Sync> Send for SharedEdge<N> {}
+unsafe impl<N: ?Sized + Send + Sync> Send for SharedSource<N> {}
 // SAFETY: as in Send.
-unsafe impl<N: ?Sized + Send + Sync> Sync for SharedEdge<N> {}
+unsafe impl<N: ?Sized + Send + Sync> Sync for SharedSource<N> {}
 
-impl<Input, N> Node<Input> for SharedEdge<N>
+impl<Input, N> Node<Input> for SharedSource<N>
 where
 	N: Node<Input> + ?Sized,
 {
@@ -218,15 +218,15 @@ impl EdgeHandle {
 	pub fn new_erased<N>(node: std::sync::Arc<N>, ty: Type) -> Self
 	where
 		N: ?Sized + 'static + for<'c> Node<ContextImpl<'c>>,
-		SharedEdge<N>: WasmNotSend + WasmNotSync,
+		SharedSource<N>: WasmNotSend + WasmNotSync,
 	{
 		Self {
-			node: Box::new(SharedEdge::new(node)),
-			share: |edge| Box::new(edge.downcast_ref::<SharedEdge<N>>().expect("share hook matches the stored edge type").share()),
-			serialize: |edge| Node::<ContextImpl>::serialize(edge.downcast_ref::<SharedEdge<N>>().expect("serialize hook matches the stored edge type")),
-			layout: |edge| Node::<ContextImpl>::layout(edge.downcast_ref::<SharedEdge<N>>().expect("layout hook matches the stored edge type")),
+			node: Box::new(SharedSource::new(node)),
+			share: |edge| Box::new(edge.downcast_ref::<SharedSource<N>>().expect("share hook matches the stored edge type").share()),
+			serialize: |edge| Node::<ContextImpl>::serialize(edge.downcast_ref::<SharedSource<N>>().expect("serialize hook matches the stored edge type")),
+			layout: |edge| Node::<ContextImpl>::layout(edge.downcast_ref::<SharedSource<N>>().expect("layout hook matches the stored edge type")),
 			set_layout: |edge, layout| {
-				let shared = edge.downcast_mut::<SharedEdge<N>>().expect("set_layout hook matches the stored edge type");
+				let shared = edge.downcast_mut::<SharedSource<N>>().expect("set_layout hook matches the stored edge type");
 				let node = std::sync::Arc::get_mut(&mut shared.own).expect("layout is installed before the node is shared");
 				Node::<ContextImpl>::set_layout(node, layout);
 				shared.rederive();
@@ -262,19 +262,19 @@ impl EdgeHandle {
 		(self.set_layout)(&mut *self.node, layout);
 	}
 
-	pub fn downcast_record<T: 'static>(self) -> Result<SharedEdge<ErasedRecordNode>, ConstructionError> {
+	pub fn downcast_record<T: 'static>(self) -> Result<SharedSource<ErasedRecordNode>, ConstructionError> {
 		self.downcast_erased(record_edge_type::<T>())
 	}
 
 	/// The erased record edge, for callers that dispatch on the layout rather
 	/// than a static element type. `None` for an edge erased to another node type.
-	pub fn record_edge(self) -> Option<SharedEdge<ErasedRecordNode>> {
-		self.node.downcast::<SharedEdge<ErasedRecordNode>>().ok().map(|edge| *edge)
+	pub fn record_edge(self) -> Option<SharedSource<ErasedRecordNode>> {
+		self.node.downcast::<SharedSource<ErasedRecordNode>>().ok().map(|edge| *edge)
 	}
 
-	pub fn downcast_erased<N: ?Sized + 'static>(self, expected: Type) -> Result<SharedEdge<N>, ConstructionError> {
+	pub fn downcast_erased<N: ?Sized + 'static>(self, expected: Type) -> Result<SharedSource<N>, ConstructionError> {
 		let found = self.ty;
-		self.node.downcast::<SharedEdge<N>>().map(|edge| *edge).map_err(|_| ConstructionError::Type {
+		self.node.downcast::<SharedSource<N>>().map(|edge| *edge).map_err(|_| ConstructionError::Type {
 			expected: Box::new(expected),
 			found: Box::new(found),
 		})
