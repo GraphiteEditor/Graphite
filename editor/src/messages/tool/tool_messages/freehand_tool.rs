@@ -1,7 +1,5 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
-use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{
 	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, reset_colors_on_deactivation, swap_fill_and_stroke,
@@ -10,7 +8,6 @@ use crate::messages::tool::common_functionality::color_selector::{
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::translation_transform_set;
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
-use crate::messages::tool::common_functionality::utility_functions::should_extend;
 use glam::DVec2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
@@ -42,7 +39,6 @@ impl Default for FreehandOptions {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum FreehandToolMessage {
 	// Standard messages
-	Overlays { context: OverlayContext },
 	Abort,
 	SelectionChanged,
 	WorkingColorChanged,
@@ -213,7 +209,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Free
 impl ToolTransition for FreehandTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			overlay_provider: Some(|context: OverlayContext| FreehandToolMessage::Overlays { context }.into()),
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
 			selection_changed: Some(FreehandToolMessage::SelectionChanged.into()),
 			graph_changed: Some(FreehandToolMessage::SelectionChanged.into()),
@@ -245,21 +240,10 @@ impl Fsm for FreehandToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext {
-			document,
-			input,
-			shape_editor,
-			viewport,
-			..
-		} = tool_action_data;
+		let ToolActionMessageContext { document, input, viewport, .. } = tool_action_data;
 
 		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
-			(_, FreehandToolMessage::Overlays { context: mut overlay_context }) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
-
-				self
-			}
 			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
@@ -267,19 +251,8 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.end_point = None;
 				tool_data.new_layer_viewport_start = None;
 
-				// Extend an endpoint of the selected path
-				let selected_nodes = document.network_interface.selected_nodes();
-				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata())) {
-					tool_data.layer = Some(layer);
-					tool_data.end_point = Some((position, point));
-
-					extend_path_with_next_segment(tool_data, position, true, responses);
-
-					return FreehandToolFsmState::Drawing;
-				}
-
 				if input.keyboard.key(append_to_selected) {
+					let selected_nodes = document.network_interface.selected_nodes();
 					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
 					let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
 					if let Some(layer) = existing_layer {
@@ -508,119 +481,6 @@ mod test_freehand {
 
 		let vector_and_transform_list = get_vector_and_transform_list(&mut editor).await;
 		verify_path_points(&vector_and_transform_list, expected_captured_points, 1.).expect("Path points verification failed");
-	}
-
-	#[tokio::test]
-	async fn test_extend_existing_path() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-
-		let initial_points = [DVec2::new(100., 100.), DVec2::new(200., 200.), DVec2::new(300., 100.)];
-
-		editor.select_tool(ToolType::Freehand).await;
-
-		let first_point = initial_points[0];
-		editor.move_mouse(first_point.x, first_point.y, ModifierKeys::empty(), MouseKeys::empty()).await;
-		editor.left_mousedown(first_point.x, first_point.y, ModifierKeys::empty()).await;
-
-		for &point in &initial_points[1..] {
-			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
-		}
-
-		let last_initial_point = initial_points[initial_points.len() - 1];
-		editor
-			.mouseup(
-				EditorPointerState {
-					editor_position: last_initial_point,
-					mouse_keys: MouseKeys::empty(),
-					..Default::default()
-				},
-				ModifierKeys::empty(),
-			)
-			.await;
-
-		let initial_vector_and_transform_list = get_vector_and_transform_list(&mut editor).await;
-		assert!(!initial_vector_and_transform_list.is_empty(), "No Vector geometry found after initial drawing");
-
-		let (initial_vector, initial_transform) = &initial_vector_and_transform_list[0];
-		let initial_point_count = initial_vector.point_domain.ids().len();
-		let initial_segment_count = initial_vector.segment_domain.ids().len();
-
-		assert!(initial_point_count >= 2, "Expected at least 2 points in initial path, found {initial_point_count}");
-		assert_eq!(
-			initial_segment_count,
-			initial_point_count - 1,
-			"Expected {} segments in initial path, found {}",
-			initial_point_count - 1,
-			initial_segment_count
-		);
-
-		let endpoints = initial_vector.anchor_endpoints().collect::<Vec<_>>();
-		assert!(!endpoints.is_empty(), "No extendable points found in the path");
-
-		let endpoint_id = endpoints[0];
-		let endpoint_pos_option = initial_vector.point_domain.position_from_id(endpoint_id);
-		assert!(endpoint_pos_option.is_some(), "Could not find position for endpoint");
-
-		let endpoint_pos = endpoint_pos_option.unwrap();
-		let endpoint_viewport_pos = initial_transform.transform_point2(endpoint_pos);
-
-		assert!(endpoint_viewport_pos.is_finite(), "Endpoint position is not finite");
-
-		let extension_points = [DVec2::new(400., 200.), DVec2::new(500., 100.)];
-
-		let layer_node_id = {
-			let document = editor.active_document();
-			let layer = document.metadata().all_layers().next().unwrap();
-			layer.to_node()
-		};
-
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_node_id] }).await;
-
-		editor.select_tool(ToolType::Freehand).await;
-
-		editor.move_mouse(endpoint_viewport_pos.x, endpoint_viewport_pos.y, ModifierKeys::empty(), MouseKeys::empty()).await;
-		editor.left_mousedown(endpoint_viewport_pos.x, endpoint_viewport_pos.y, ModifierKeys::empty()).await;
-
-		for &point in &extension_points {
-			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
-		}
-
-		let last_extension_point = extension_points[extension_points.len() - 1];
-		editor
-			.mouseup(
-				EditorPointerState {
-					editor_position: last_extension_point,
-					mouse_keys: MouseKeys::empty(),
-					..Default::default()
-				},
-				ModifierKeys::empty(),
-			)
-			.await;
-
-		let extended_vector_and_transform = get_vector_and_transform_list(&mut editor).await;
-		assert!(!extended_vector_and_transform.is_empty(), "No Vector geometry found after extension");
-
-		let (extended_vector, _) = &extended_vector_and_transform[0];
-		let extended_point_count = extended_vector.point_domain.ids().len();
-		let extended_segment_count = extended_vector.segment_domain.ids().len();
-
-		assert!(
-			extended_point_count > initial_point_count,
-			"Expected more points after extension, initial: {initial_point_count}, after extension: {extended_point_count}"
-		);
-
-		assert_eq!(
-			extended_segment_count,
-			extended_point_count - 1,
-			"Expected segments to be one less than points, points: {extended_point_count}, segments: {extended_segment_count}"
-		);
-
-		let layer_count = {
-			let document = editor.active_document();
-			document.metadata().all_layers().count()
-		};
-		assert_eq!(layer_count, 1, "Expected only one layer after extending path");
 	}
 
 	#[tokio::test]
