@@ -1132,7 +1132,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let out = lazy_read_out(field, output_type);
 						quote!(#pat: #core_types::record::DerivedLazyInput<'_, #frames_lifetime, #out, #source_generic>)
 					}
-					(LazyBinding::OpaqueRecord, _) => quote!(#pat: &#core_types::record::RecordEdgeInput<'_, #frames_lifetime, #source_generic>),
+					(LazyBinding::OpaqueRecord, _) => quote!(#pat: &#core_types::record::RecordInput<'_, #frames_lifetime, #source_generic>),
 					(LazyBinding::Element, true) => {
 						let out = lazy_read_out(field, output_type);
 						quote!(#pat: &#core_types::record::ElementEdge<'_, #frames_lifetime, #out, #source_generic>)
@@ -1484,7 +1484,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 				}
 				(LazyBinding::OpaqueRecord, _) => quote! {
-					let #name = #core_types::record::RecordEdgeInput::new(&self.#name, &self.__layout, &__lazy_frames);
+					let #name = #core_types::record::RecordInput::new(&self.#name, &self.__layout, &__lazy_frames);
 				},
 				(LazyBinding::Generic, false) => quote! {
 					let #name = #core_types::node::LazyInput::new(&self.#name, &__cell, #index, &__lazy_frames);

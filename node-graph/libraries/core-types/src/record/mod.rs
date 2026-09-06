@@ -23,7 +23,7 @@ mod testkit;
 
 pub use access::{Rec, RecordValue, apply_plan, borrow_element, erase_static, read_at, read_element, token_only, write_element, write_element_sized, write_field};
 pub use frames::{FrameArena, FrameScope, Frames};
-pub use input::{DerivedLazyInput, DerivedRecordInput, ElementEdge, ElementLazyInput, LevelStatus, RecordEdgeInput, RecordExtract, RecordLazyInput, fill_frames, materialize_batch, materialize_level};
+pub use input::{DerivedLazyInput, DerivedRecordInput, ElementEdge, ElementLazyInput, LevelStatus, RecordExtract, RecordInput, RecordLazyInput, fill_frames, materialize_batch, materialize_level};
 pub use layout::{
 	ElToken, ElementSpec, ElementWrite, ElementWritePick, ElementWritePickHashed, ElementWritePickPlain, FieldDesc, FieldOffset, FieldWrite, InputReads, Layout, LayoutMeta, RecordLayout, copy_plan,
 	element_dims, element_parked, element_write, element_write_hashed, empty_layout,

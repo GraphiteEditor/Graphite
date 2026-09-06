@@ -171,13 +171,13 @@ where
 /// its wiring-proven layout, the pairing the kernel's unsafe record
 /// operations rely on. The kernel must only pair the layout with values this
 /// edge produced.
-pub struct RecordEdgeInput<'a, 'e, N> {
+pub struct RecordInput<'a, 'e, N> {
 	node: &'a N,
 	layout: &'a Layout,
 	frames: &'a Frames<'e>,
 }
 
-impl<'a, 'e, N> RecordEdgeInput<'a, 'e, N> {
+impl<'a, 'e, N> RecordInput<'a, 'e, N> {
 	pub fn new(node: &'a N, layout: &'a Layout, frames: &'a Frames<'e>) -> Self {
 		Self { node, layout, frames }
 	}
