@@ -431,8 +431,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			register_metadata();
 		}
 	};
-	// Record nodes construct through the generated `wire` fn, which resolves
-	// offsets from the carrier layout; `new` cannot fill that state.
+	// Record nodes construct through `new` with the carrier layout, which
+	// resolves the offsets their reads and writes address.
 	let routing_layout_param = (routing_generic.is_some() || opaque).then(|| quote!(__layout: &gcore::record::Layout,)).into_iter();
 	let routing_layout_init = (routing_generic.is_some() || opaque).then(|| quote!(__layout: __layout.clone(),)).into_iter();
 	// The lane-invariance mask arrives with the resolved layout, so `new` starts
@@ -878,7 +878,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 	});
 	let derive_routing = derives && routing_generic.is_some();
-	// A kernel that holds records (a forwarded routing wire, or a lazy edge it
+	// A kernel that holds records (a forwarded routing source, or a lazy input it
 	// serves itself) names the record lifetime; unless it declared a serving
 	// lifetime of its own, the context binds the arena at that lifetime.
 	let kernel_lazy = parsed.fields.iter().any(|field| !field.is_data_field && matches!(field.ty, ParsedFieldType::Node(_)));
@@ -935,7 +935,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.map(|param| match param {
 			// Flipped kernels clone bare-typed elements out of their records,
-			// so those generics carry the bound wire values satisfy; a
+			// so those generics carry the bound input values satisfy; a
 			// generic only nested in a field's type stays as declared.
 			GenericParam::Type(type_param)
 				if flip
@@ -1044,7 +1044,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		}
 	}
-	// The record lifetime the kernel's wire types and arena bound name; the
+	// The record lifetime the kernel's input types and arena bound name; the
 	// impl infers it from the serving lifetime at every call.
 	if wants_record_lifetime {
 		generics.insert(0, quote!('__record));
@@ -1156,7 +1156,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let node_bounds = regular_fields.iter().enumerate().zip(&node_generics).map(|((index, field), node_generic)| {
 		let plain = quote!(#node_generic: #core_types::node::Node<#ctx_ident>);
-		// A lazy edge the kernel evaluates at derived contexts needs the
+		// A lazy input the kernel evaluates at derived contexts needs the
 		// derived form: the derived context's arena binding is unnameable
 		// under a higher rank.
 		let derived = quote!(#node_generic: #derived_edge);
@@ -1173,7 +1173,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				true => derived,
 				false => plain,
 			},
-			// An element-consuming lazy secondary rides a record edge, derivable
+			// An element-consuming lazy secondary rides a record input, derivable
 			// when the kernel evaluates it at derived contexts.
 			ParsedFieldType::Node(_) if record_io && matches!(ir::lazy_binding(&node, index), LazyBinding::Element) => match derives {
 				true => derived_plus,
@@ -1188,8 +1188,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let bound = lazy_bound();
 				quote!(#node_generic: #bound)
 			}
-			// Every wire is a record edge; a value input's element copies out of
-			// the record its edge serves.
+			// Every input is a record input; a value input's element copies out of
+			// the record its source serves.
 			ParsedFieldType::Regular(_) => plain,
 		}
 	});
@@ -1202,7 +1202,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		lend_outlives.push(quote!(#inner: #lifetime));
 	}
 
-	// The slot persists the plain value even on record wires, so the Clone
+	// The slot persists the plain value even on record inputs, so the Clone
 	// bound targets the slot type, not the (possibly lifted) trait output.
 	let slot_ty = crate::codegen::classify::slot_static_type(&parsed.output_type);
 	let mut async_bounds = match (async_fn, future_kernel) {
@@ -1263,8 +1263,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		#[allow(unused_mut, unused_variables)]
 		let mut __frame = __run.slot(__lane, &__lane_frames);
 	};
-	// A lazy edge claims beyond every input frame this node holds, and its
-	// cursor is shared, so the edges a kernel drives claim past each other.
+	// A lazy input claims beyond every input frame this node holds, and its
+	// cursor is shared, so the inputs a kernel drives claim past each other.
 	let lazy_frames_entry = quote! {
 		let __lazy_frames = __frame.frames().reborrow();
 	};
@@ -1296,7 +1296,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let non_exact = fail(quote!(#core_types::gpoll::GraphError::new(::std::concat!("reduce over a non-exact extent in ", ::std::stringify!(#fn_name)))));
 					let batch_error = fail(quote!(__error));
 					let batch_failed = fail(quote!(#core_types::gpoll::GraphError::new("reduce batch failed")));
-					// A fold consumes the whole subject wire: a deeper wire's
+					// A fold consumes the whole subject input: a deeper input's
 					// total flat span, sized under the evaluation context, so a
 					// fold inside a pushed level covers that copy's span. The
 					// span caches per (lane-normalized context, generation):
@@ -1369,7 +1369,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let #name = unsafe { #core_types::node::List::<#ty>::new(__batch) };
 					}
 				}
-				// A reading secondary input claims a record edge: the element and
+				// A reading secondary input claims a record input: the element and
 				// the declared reads copy out right after its eval.
 				ValueBinding::ReadingSecondary => {
 					let slot = format_ident!("__in_{index}");
@@ -1398,7 +1398,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let #name = unsafe { #core_types::record::borrow_element::<#ty>(self.#slot.rec(&#record_local)) };
 					}
 				}
-				// A flip value or a routing non-source value rides a record edge; the
+				// A flip value or a routing non-source value rides a record input; the
 				// element copies out into `name`. The mark/rewind that reclaims the
 				// record's frame is applied by the step lowering (see `reads_out`).
 				ValueBinding::RecordElement => {
@@ -1411,8 +1411,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
 					}
 				}
-				// A plain value rides a record edge like every other input; the
-				// element copies out against the edge's own layout, except for a
+				// A plain value rides a record input like every other input; the
+				// element copies out against the input's own layout, except for a
 				// routing source, whose record is what the kernel forwards.
 				ValueBinding::Plain => {
 					let read = (!routing_source(ty)).then(|| {
@@ -1432,7 +1432,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				}
 			},
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => match (ir::lazy_binding(&node, index), raw_lazy) {
-				// A raw poll edge is threaded straight through, so it does not bind here.
+				// A raw poll input is threaded straight through, so it does not bind here.
 				(LazyBinding::Generic, true) => quote!(),
 				(LazyBinding::DeriveRouting, _) => quote! {
 					let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index, self.__layout.depth.saturating_sub(#pushed_levels), &__lazy_frames);
@@ -1493,7 +1493,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	};
 
-	// A bind whose element copies out reclaims the edge's frame; a forwarded
+	// A bind whose element copies out reclaims the input's frame; a forwarded
 	// record must outlive the bind, so its frame stays.
 	let _reads_out_at = |index: usize| match &regular_fields[index].ty {
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => !routing_source(ty) && ir::value_binding(&node, index).reads_out(),
@@ -1518,7 +1518,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let call_args = regular_fields.iter().enumerate().filter(|(_, field)| !injected_name(&field.pat_ident.ident)).map(|(index, field)| {
 		let name = &field.pat_ident.ident;
 		match &field.ty {
-			// A lend param binds an owned edge; the kernel borrows the
+			// A lend param binds an owned input; the kernel borrows the
 			// evaluated value.
 			ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) if !flip => quote!(&#name),
 			ParsedFieldType::Regular(_) => quote!(#name),
@@ -1534,7 +1534,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// composite `extent(ctx, Level)`, which the trait derives from it. A node
 	// without `extent = fn` keeps the scalar default (one item at every level).
 	// The typed extent surface: the node's inputs in declaration order (values
-	// readable without unsafe, edges as per-level extent queries, derived
+	// readable without unsafe, inputs as per-level extent queries, derived
 	// content promoted per copy), then the level paired with the node's depth.
 	let extent_impl = if let Some(path) = &parsed.attributes.extent {
 		let mut arg_decls: Vec<TokenStream2> = Vec::new();
@@ -1565,7 +1565,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					_ => extent_edge(&query, &arg),
 				},
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match ir::value_binding(&node, index) {
-					// A ranked input materializes whole (the wire's total flat
+					// A ranked input materializes whole (the input's total flat
 					// span, as in eval), so a data-dependent extent can walk
 					// its lanes.
 					ValueBinding::Materialized => {
@@ -1603,7 +1603,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						};
 						quote! {
 							let #query = || {
-								// The element copies out by value, so the edge's
+								// The element copies out by value, so the input's
 								// claim dies with the query.
 								let __scope = __frames.scope();
 								#core_types::record::serve_input(&self.#name, __input, &__scope)
@@ -1613,7 +1613,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						}
 					}
 					// A carrier, lent, or materialized ranked input is a record
-					// edge; its extents are the queryable quantity.
+					// input; its extents are the queryable quantity.
 					_ => extent_edge(&query, &arg),
 				},
 			};
@@ -1853,7 +1853,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 	});
 	// Async slots persist plain values across evaluations; the source lifts
-	// the slot value onto its record wire at every merge point, into the
+	// the slot value onto its record input at every merge point, into the
 	// carried frame when the node has a carrier.
 	// A writing source stores the kernel's whole tuple as that plain value:
 	// the lift writes the attributes through the claim, then lifts the
@@ -1961,7 +1961,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let value_args = regular_fields.iter().skip(if skips_carrier { 0 } else { 1 }).map(|field| {
 			let name = &field.pat_ident.ident;
 			match &field.ty {
-				// A lend param binds an owned edge; the kernel borrows the
+				// A lend param binds an owned input; the kernel borrows the
 				// evaluated value.
 				ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => quote!(&#name),
 				_ => tuple_arg(field, quote!(#name)),
@@ -2230,7 +2230,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				&lazy_frames_entry,
 			);
 			// The rebind path with nothing hoisted: every non-carrier input binds
-			// fresh per lane, so an index-dependent edge reaches its own lane.
+			// fresh per lane, so an index-dependent input reaches its own lane.
 			let rebound_lane_binds: Vec<TokenStream2> = lazy_last(
 				regular_fields
 					.iter()

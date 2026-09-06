@@ -6,7 +6,7 @@
 
 use crate::gpoll::{Extent, GPoll};
 
-/// A wired value input; `get` evaluates the edge and yields the typed element.
+/// A wired value input; `get` evaluates the input and yields the typed element.
 pub struct ValueIn<'a, T> {
 	read: &'a dyn Fn() -> GPoll<T>,
 }
@@ -21,9 +21,9 @@ impl<'a, T> ValueIn<'a, T> {
 	}
 }
 
-/// An upstream edge's extents. For derived (per-copy) content the query runs
+/// An upstream input's extents. For derived (per-copy) content the query runs
 /// at the given copy's promoted context; `at` queries copy 0, the uniform
-/// default. For ordinary edges the copy is ignored.
+/// default. For ordinary inputs the copy is ignored.
 pub struct ExtentIn<'a> {
 	query: &'a dyn Fn(u64, u8) -> GPoll<Extent>,
 }
@@ -62,7 +62,7 @@ impl<'a, T> ListIn<'a, T> {
 		(self.get)()
 	}
 
-	/// The subject wire's total flat extent as a plain query.
+	/// The subject input's total flat extent as a plain query.
 	pub fn total(&self) -> GPoll<crate::gpoll::Extent> {
 		(self.total)()
 	}

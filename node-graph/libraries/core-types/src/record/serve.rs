@@ -179,7 +179,7 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 		Served { value: unsafe { self.finish() } }
 	}
 
-	/// Fills the frame from a record a forwarded wire already served, and
+	/// Fills the frame from a record a forwarded input already served, and
 	/// closes it: the source's frame sits above this claim and dies with its
 	/// drop, so the served record is this claim's own.
 	///

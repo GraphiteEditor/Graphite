@@ -347,7 +347,7 @@ pub struct RecordLayout {
 	pub lane_invariant: u32,
 }
 
-/// its registry entry so the compiler can fold each wire's layout without
+/// its registry entry so the compiler can fold each input's layout without
 /// running the node's constructor. [`fold`](LayoutMeta::fold) reproduces the
 /// layout the constructor derives at wiring today; the compiler layout pass
 /// calls it over the proto graph instead.
@@ -371,7 +371,7 @@ pub struct LayoutMeta {
 	/// `+1` for a creator, `-1` for a reducer.
 	pub level_delta: i8,
 	/// The materialized subject a reducer folds, as `(input, levels)`. The fold
-	/// consumes the whole subject wire, so only the node's own levels remain.
+	/// consumes the whole subject input, so only the node's own levels remain.
 	pub folded: Option<(u8, u8)>,
 }
 
@@ -419,7 +419,7 @@ impl LayoutMeta {
 		}
 		.without(&self.removes);
 		let depth = match self.folded {
-			// A fold consumes the whole subject wire (a deeper wire folds its
+			// A fold consumes the whole subject input (a deeper input folds its
 			// total flat span), so only the node's own levels remain.
 			Some(_) => self.level_delta.max(0) as u8,
 			None => (base.depth as i8 + self.level_delta).max(0) as u8,
@@ -484,7 +484,7 @@ pub const fn element_parked<T>() -> bool {
 	std::mem::needs_drop::<T>()
 }
 
-/// The element (size, align) a record wire of `T` carries.
+/// The element (size, align) a record input of `T` carries.
 pub fn element_dims<T>() -> (usize, usize) {
 	match element_parked::<T>() {
 		true => (size_of::<*const u8>(), align_of::<*const u8>()),
@@ -492,7 +492,7 @@ pub fn element_dims<T>() -> (usize, usize) {
 	}
 }
 
-/// The element slot a record wire of `T` carries, its erased glue bound at
+/// The element slot a record input of `T` carries, its erased glue bound at
 /// the statically-known type.
 pub fn element_write<T: Clone + Send + Sync + dyn_any::StaticTypeSized>() -> ElementWrite
 where

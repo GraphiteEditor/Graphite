@@ -173,7 +173,7 @@ impl DynamicExecutor {
 	/// Calls the `Node::serialize` for that specific node. A monitor serializes
 	/// its stored context snapshot, and this entry recreates the monitored
 	/// value from it as the legacy value the editor's downcasts expect: a
-	/// rank-0 wire yields its element and a leveled wire its legacy list.
+	/// rank-0 input yields its element and a leveled input its legacy list.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let result = self.tree.introspect(node_path)?;
 		if result.downcast_ref::<core_types::context::CtxSnapshot>().is_some() {
@@ -184,7 +184,7 @@ impl DynamicExecutor {
 		Ok(result)
 	}
 
-	/// Re-evaluates the monitored edge at `node_path` with its stored context
+	/// Re-evaluates the monitored input at `node_path` with its stored context
 	/// snapshot and hands the resulting resident batch to `read`, inside the
 	/// introspection window. The monitor stores only the context; the value is
 	/// recreated against current source data, so a read right after an
@@ -222,7 +222,7 @@ impl DynamicExecutor {
 			match core_types::record::serve_input(&edge, &ctx, &frames) {
 				GPoll::Final(value) | GPoll::Partial(value) => {
 					let rec = layout.rec(&value);
-					// SAFETY: the serve produced one live record of the edge's layout.
+					// SAFETY: the serve produced one live record of the input's layout.
 					let batch = unsafe { core_types::node::RecordBatch::new(rec.ptr(), 1, layout) };
 					read(layout, batch, &arena)
 				}

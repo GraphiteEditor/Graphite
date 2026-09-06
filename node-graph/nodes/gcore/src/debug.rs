@@ -28,7 +28,7 @@ fn unwrap_option<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<
 	input.unwrap_or_default()
 }
 
-/// Clones the element out of its record wire.
+/// Clones the element out of its record input.
 #[node_macro::node(category("Debug"))]
 fn clone<T: Clone>(_: impl Ctx, #[implementations(Raster<CPU>, f64)] value: &T) -> T {
 	value.clone()

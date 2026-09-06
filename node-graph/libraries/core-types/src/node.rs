@@ -16,7 +16,7 @@ pub enum BatchStatus<'a> {
 	/// mutate the lanes or reclaim the buffer for in-place reuse. The extent
 	/// hint is as for `Lent`.
 	Filled(RecordBatchMut<'a>, Finality, Extent),
-	/// No batch implementation behind this edge; a driver answers with the
+	/// No batch implementation behind this input; a driver answers with the
 	/// per-lane serve and copy-out loop ([`crate::record::fill_frames`]).
 	Unbatched,
 	Pending,
@@ -519,9 +519,9 @@ impl StatusCell {
 		Self { no_partial: true, ..Self::new() }
 	}
 
-	/// Claims the edge's own frame out of `frames`, serves through it, and
+	/// Claims the input's own frame out of `frames`, serves through it, and
 	/// folds the poll's status into the cell. The claim is the caller's, so
-	/// the edge's frame is claimed exactly once per evaluation.
+	/// the input's frame is claimed exactly once per evaluation.
 	#[inline(always)]
 	pub fn eval_input<'e, Input, N: Node<Input> + ?Sized>(&self, input_index: usize, node: &N, input: &Input, frames: &crate::record::Frames<'e>) -> Result<crate::record::RecordValue<'e>, Interrupt>
 	where
@@ -612,7 +612,7 @@ impl<'a, 'f, N> LazyInput<'a, 'f, N> {
 		self.node.eval_derived(self.cell, self.input_index, ctx, self.frames)
 	}
 
-	/// The edge's composite extent, for kernels that split or shift indices
+	/// The input's composite extent, for kernels that split or shift indices
 	/// over their sources.
 	#[inline(always)]
 	pub fn extent<'e, Input>(&self, ctx: &Input, at: Level) -> GPoll<Extent>

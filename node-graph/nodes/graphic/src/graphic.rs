@@ -372,9 +372,9 @@ pub fn stamp_layer_path<'e, T>(ctx: impl Ctx + ExtractArena<'e>, element: T, pat
 #[node_macro::node(category("General"), extent(extend_extent))]
 pub fn extend<T>(
 	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
-	/// The wire whose lanes appear at the start of the extended level.
+	/// The input whose lanes appear at the start of the extended level.
 	base: impl Node<Context<'_>, Output = T>,
-	/// The wire whose lanes appear at the end of the extended level.
+	/// The input whose lanes appear at the end of the extended level.
 	#[expose]
 	new: impl Node<Context<'_>, Output = T>,
 ) -> Result<T, Interrupt> {
@@ -488,7 +488,7 @@ pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(
 }
 
 /// The elementwise `Graphic` coercion the compiler-inserted converts use: each
-/// lane's element converts on its own, so a typed wire feeds a graphic input
+/// lane's element converts on its own, so a typed source feeds a graphic input
 /// without changing the level's shape. Registered under the convert identifier.
 #[node_macro::node(category(""))]
 pub fn to_graphic_element<'e, T: graphic_types::graphic::IntoGraphicElement>(
@@ -537,7 +537,7 @@ fn to_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level:
 	GPoll::Final(Extent::Exactly(0))
 }
 
-/// The transitional level bridge: the wire's records as the legacy list an
+/// The transitional level bridge: the input's records as the legacy list an
 /// unconverted consumer expects, attributes copied through their erased
 /// reads and content kept in its native form. Registered under the legacy
 /// convert identifiers; the rows die with the last legacy consumer.

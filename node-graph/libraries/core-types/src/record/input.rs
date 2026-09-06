@@ -7,7 +7,7 @@ use super::serve::{FrameClaim, Served, serve_input};
 use crate::gpoll::GPoll;
 use crate::node::Node;
 
-/// A record edge evaluable at a derived context, yielding the record at that
+/// A record input evaluable at a derived context, yielding the record at that
 /// context's lifetime. The lifetime is a trait parameter because a bound like
 /// `for<'d> Node<Derived<'d, C>>` cannot also say the derived context's arena
 /// is at `'d`: the equality binding `ExtractArena<ArenaRef = &'d Arena>` is an
@@ -31,7 +31,7 @@ where
 	}
 }
 
-/// Fills caller scratch with one frame per lane of `range`: the edge serves
+/// Fills caller scratch with one frame per lane of `range`: the input serves
 /// into the lane's own region of the slab, and the lane's own frame space is
 /// free again at the next lane, so the frame peak stays at one lane's need and
 /// every lane's bytes are distinct.
@@ -78,9 +78,9 @@ where
 	BatchStatus::Filled(run.finish(), finality, hint)
 }
 
-/// The driver a consumer runs on a record edge: a resident batch returns with
+/// The driver a consumer runs on a record input: a resident batch returns with
 /// no allocation, a node's own batch impl gets `n * frame_bytes` of arena
-/// scratch, and an unbatched edge falls back to the [`fill_frames`] loop.
+/// scratch, and an unbatched input falls back to the [`fill_frames`] loop.
 pub fn materialize_batch<'a, 'e, C, N>(node: &'a N, input: &'a C, range: std::ops::Range<u64>, arena: &'a crate::arena::Arena, frames: &Frames<'e>) -> crate::node::BatchStatus<'a>
 where
 	C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
@@ -110,14 +110,14 @@ where
 	}
 }
 
-/// The outcome of materializing a leveled edge's whole flat span.
+/// The outcome of materializing a leveled input's whole flat span.
 pub enum LevelStatus<'a> {
 	Batch(crate::node::RecordBatch<'a>, crate::gpoll::Finality),
 	Pending,
 	Error(crate::gpoll::GraphError),
 }
 
-/// Evaluates a leveled edge's whole flat span into one batch: an exact total
+/// Evaluates a leveled input's whole flat span into one batch: an exact total
 /// fills once, a lower bound drains by guess-and-double until a short fill,
 /// each reply's hint seeding the next guess. The boundary consumers' driver;
 /// reducers inline the same protocol with their span offsets.
@@ -167,10 +167,10 @@ where
 	}
 }
 
-/// The raw lazy record edge handed to a record-opaque kernel: the wire plus
+/// The raw lazy record input handed to a record-opaque kernel: the input plus
 /// its wiring-proven layout, the pairing the kernel's unsafe record
 /// operations rely on. The kernel must only pair the layout with values this
-/// edge produced.
+/// input produced.
 pub struct RecordInput<'a, 'e, N> {
 	node: &'a N,
 	layout: &'a Layout,
@@ -186,8 +186,8 @@ impl<'a, 'e, N> RecordInput<'a, 'e, N> {
 		self.layout
 	}
 
-	/// Serves the edge through the kernel's own claim: the kernel's output
-	/// layout is the edge's, so the claim it was handed is the edge's frame.
+	/// Serves the input through the kernel's own claim: the kernel's output
+	/// layout is the input's, so the claim it was handed is the input's frame.
 	pub fn serve<'l, C>(&self, ctx: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 	where
 		N: Node<C>,
@@ -196,7 +196,7 @@ impl<'a, 'e, N> RecordInput<'a, 'e, N> {
 		self.node.serve(ctx, slot)
 	}
 
-	/// [`materialize_level`] over the edge: the wire's whole flat span as one
+	/// [`materialize_level`] over the input: the input's whole flat span as one
 	/// batch.
 	pub fn materialize_level<'b, C>(&'b self, ctx: &'b C, arena: &'b crate::arena::Arena) -> LevelStatus<'b>
 	where
@@ -207,7 +207,7 @@ impl<'a, 'e, N> RecordInput<'a, 'e, N> {
 	}
 }
 
-/// The raw lazy edge handed to a poll kernel whose wire rides records while
+/// The raw lazy input handed to a poll kernel whose input rides records while
 /// the kernel consumes the plain element.
 /// # Safety
 /// `rec` must be a record of the layout the offsets were resolved against
@@ -243,7 +243,7 @@ impl<'a, 'e, Out, N> ElementInput<'a, 'e, Out, N> {
 		Self { node, layout, reads, read, frames }
 	}
 
-	/// The edge's element at `ctx`, read out of a record claimed beyond the
+	/// The input's element at `ctx`, read out of a record claimed beyond the
 	/// kernel's own frame; the claim dies with the call, so the record is free
 	/// again at the next one.
 	pub fn eval<'d, C>(&self, ctx: &C) -> GPoll<Out>
@@ -254,14 +254,14 @@ impl<'a, 'e, Out, N> ElementInput<'a, 'e, Out, N> {
 		let cell = crate::node::StatusCell::new();
 		let scope = self.frames.scope();
 		match self.node.eval_derived(&cell, 0, ctx, &scope) {
-			// SAFETY: the read copies out by value against the edge's own layout.
+			// SAFETY: the read copies out by value against the input's own layout.
 			Ok(value) => cell.finish(unsafe { (self.read)(self.layout.rec(&value), self.reads) }),
 			Err(interrupt) => interrupt.into(),
 		}
 	}
 }
 
-/// The lazy input handed to a kernel whose edge rides a record wire while
+/// The lazy input handed to a kernel whose input rides a record while
 /// the kernel consumes the plain element, or the element beside its declared
 /// attribute reads.
 #[derive(Clone, Copy)]
@@ -321,12 +321,12 @@ impl<'a, 'e, Out, N> ElementLazyInput<'a, 'e, Out, N> {
 	{
 		let scope = self.frames.scope();
 		let value = self.node.eval_derived(self.cell, self.input_index, ctx, &scope)?;
-		// SAFETY: the reads are the edge's own layout's, resolved at wiring.
+		// SAFETY: the reads are the input's own layout's, resolved at wiring.
 		Ok(unsafe { (self.read)(self.layout.rec(&value), self.reads) })
 	}
 }
 
-/// The lazy record input handed to a kernel that evaluates its edges under
+/// The lazy record input handed to a kernel that evaluates its inputs under
 /// derived contexts: evaluating rebinds the record to the kernel's routing
 /// lifetime, so the value escapes the derivation scope.
 #[derive(Clone, Copy)]
@@ -357,7 +357,7 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 		Ok(self.node.eval_derived(self.cell, self.input_index, ctx, self.frames)?.rebind())
 	}
 
-	/// The flat lane count of one copy: the product of the edge's inner-level
+	/// The flat lane count of one copy: the product of the input's inner-level
 	/// extents, queried uniform across copies (at copy 0). The dividend of a
 	/// structure node's decompose-and-promote.
 	pub fn inner_extent<B>(&self, ctx: &B) -> Result<u64, crate::gpoll::Interrupt>
@@ -368,7 +368,7 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 		inner_extent_of(self.node, ctx, 0, self.inner_levels, self.input_index, self.frames)
 	}
 
-	/// The flat lane count of the copy at `copy`, for edges whose inner
+	/// The flat lane count of the copy at `copy`, for inputs whose inner
 	/// extents vary per copy.
 	pub fn inner_extent_at<B>(&self, ctx: &B, copy: u64) -> Result<u64, crate::gpoll::Interrupt>
 	where
@@ -399,7 +399,7 @@ where
 	Ok(inner)
 }
 
-/// The flat lane count of one copy of a lower-bound edge, probed by
+/// The flat lane count of one copy of a lower-bound input, probed by
 /// evaluating lanes to the past-end signal. The probed records are
 /// discarded, and their statuses land in a scratch cell.
 fn probed_inner<B, N>(node: &N, ctx: &B, copy: u64, input_index: usize, frames: &Frames<'_>) -> Result<u64, crate::gpoll::Interrupt>
@@ -483,9 +483,9 @@ impl<'a, 'e, Out, N> DerivedLazyInput<'a, 'e, Out, N> {
 	}
 }
 
-/// A plain probe over a record wire, cloning the element out of the parked
+/// A plain probe over a record input, cloning the element out of the parked
 /// reference when it carries drop glue. Registry constructors wrap a record
-/// edge in one to feed a node's plain value input, keeping the wire kind
+/// input in one to feed a node's plain value input, keeping the input kind
 /// uniform.
 pub struct RecordExtract<El, N> {
 	edge: N,
@@ -504,13 +504,13 @@ impl<El, N> RecordExtract<El, N> {
 }
 
 impl<El: Clone + 'static, N> RecordExtract<El, N> {
-	/// The edge's element, copied out of its record.
+	/// The input's element, copied out of its record.
 	pub fn eval<'e, C>(&self, input: &C, frames: &Frames<'e>) -> GPoll<El>
 	where
 		N: Node<C>,
 		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
-		// The element copies out by value, so the edge's claim dies with
+		// The element copies out by value, so the input's claim dies with
 		// the scope.
 		let scope = frames.scope();
 		serve_input(&self.edge, input, &scope).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })

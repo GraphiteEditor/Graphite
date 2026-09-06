@@ -266,7 +266,7 @@ macro_rules! tagged_value {
 				}
 			}
 
-			/// The record layout of this value's edge: leveled for the list-carrying
+			/// The record layout of this value's source: leveled for the list-carrying
 			/// variants, element-only at rank 0 otherwise. `None` for a
 			/// [`Self::TypeDefault`] whose named type is outside `for_each_type_default!`.
 			pub fn value_layout(&self) -> Option<core_types::record::Layout> {
@@ -309,7 +309,7 @@ macro_rules! tagged_value {
 				}
 			}
 
-			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a value edge typed by [`Self::ty`].
+			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a value source typed by [`Self::ty`].
 			pub fn to_edge(self) -> Result<EdgeHandle, String> {
 				match self {
 					// ===============
@@ -358,7 +358,7 @@ macro_rules! tagged_value {
 				}
 			}
 
-			/// Evaluates a typed edge and converts the landed value into a tagged value, with the coverage of [`Self::try_from_any`].
+			/// Evaluates a typed source and converts the landed value into a tagged value, with the coverage of [`Self::try_from_any`].
 			pub fn from_edge<'f>(handle: EdgeHandle, ctx: &Context<'f>, frames: &core_types::record::Frames<'f>) -> Result<GPoll<Self>, String> {
 				let ty = handle.ty().clone();
 				// =======================
@@ -447,7 +447,7 @@ macro_rules! tagged_value {
 						$( if name == core_types::normalize_type_name(std::any::type_name::<$ty>()) { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == core_types::normalize_type_name(std::any::type_name::<List<f64>>()) { return Some(TaggedValue::F64Array(Vec::new())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<List<BrushStroke>>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
-						// Leveled wires type by their element; each element name maps to the
+						// Leveled inputs type by their element; each element name maps to the
 						// same tagged default as its legacy list form.
 						if name == core_types::normalize_type_name(std::any::type_name::<Color>()) { return Some(TaggedValue::Color(Some(Color::default()))) }
 						if name == core_types::normalize_type_name(std::any::type_name::<GradientStops>()) { return Some(TaggedValue::Gradient(GradientStops::default())) }
@@ -705,7 +705,7 @@ impl TaggedValue {
 
 		match ty {
 			Type::Generic(_) => None,
-			// A leveled wire's default is its element's default, as in `from_type`.
+			// A leveled input's default is its element's default, as in `from_type`.
 			Type::Record(inner) => TaggedValue::from_primitive_string(string, inner),
 			Type::Concrete(concrete_type) => {
 				let ty = concrete_type.id?;

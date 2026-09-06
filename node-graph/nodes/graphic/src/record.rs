@@ -178,7 +178,7 @@ fn flat_map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 }
 
 /// Rank-model level collapse: two nested levels become one flat level. The
-/// flat index already spans the edge's depth, so the eval forwards it.
+/// flat index already spans the input's depth, so the eval forwards it.
 #[node_macro::node(category("Test"), extent(flatten_levels_extent))]
 fn flatten_levels<T>(ctx: impl Ctx + DeriveCtx + ExtractIndex, content: impl Node<Context<'_>, Output = IList<IList<T>>>) -> Result<IList<T>, Interrupt> {
 	let head = ctx.index_head();

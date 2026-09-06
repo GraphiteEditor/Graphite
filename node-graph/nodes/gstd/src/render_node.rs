@@ -75,7 +75,7 @@ fn render_intermediate<T: dyn_any::StaticTypeSized + 'static + Render + WasmNotS
 	Ok(intermediate_of(&data, render_params))
 }
 
-/// The leveled form of `render_intermediate`: the wire's records materialize
+/// The leveled form of `render_intermediate`: the input's records materialize
 /// into a run, which renders directly.
 #[node_macro::node(category(""))]
 fn render_intermediate_leveled<T: Clone + Send + Sync + core_types::CacheHash + dyn_any::StaticTypeSized + 'static>(

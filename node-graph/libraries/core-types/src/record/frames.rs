@@ -45,7 +45,7 @@ impl FrameArena {
 /// node's inputs claim beyond its frame, one after another, and the space they
 /// used is free again once the claim dies: the release is the claim's
 /// lifetime, not a rewind contract. The cursor is shared through `&self` so
-/// the lazy edges a kernel holds claim beyond each other rather than over each
+/// the lazy inputs a kernel holds claim beyond each other rather than over each
 /// other. Covariant in `'e`, so a claim minted at the evaluation shortens onto
 /// a derived context's arena lifetime.
 pub struct Frames<'e> {

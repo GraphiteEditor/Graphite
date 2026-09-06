@@ -388,13 +388,13 @@ pub(crate) enum LazyBinding {
 }
 
 impl ValueBinding {
-	/// Copies an element out of a record edge, so the frame is reclaimed after.
+	/// Copies an element out of a record input, so the frame is reclaimed after.
 	pub(crate) fn reads_out(&self) -> bool {
 		matches!(self, ValueBinding::ReadingSecondary | ValueBinding::RecordElement | ValueBinding::Plain)
 	}
 }
 
-/// A record node's lazy inputs consumed as plain elements: their record edges
+/// A record node's lazy inputs consumed as plain elements: their record inputs
 /// need a layout slot at wiring, like the reading secondaries.
 pub(crate) fn element_lazy_indices(regular_fields: &[&ParsedField], node: &Node) -> Vec<usize> {
 	if !matches!(node_kind(node), NodeKind::RecordIo) {
@@ -454,7 +454,7 @@ fn has_attr_io(node: &Node) -> bool {
 pub(crate) fn materialized_levels(node: &Node, index: usize) -> u8 {
 	let input = &node.inputs[index];
 	// An eager input's declared `IList` nesting IS its materialization count,
-	// independent of the rank delta; lazy edges never materialize.
+	// independent of the rank delta; lazy inputs never materialize.
 	match input.evaluation {
 		Evaluation::Eager => input.shape.depth,
 		Evaluation::Lazy => 0,

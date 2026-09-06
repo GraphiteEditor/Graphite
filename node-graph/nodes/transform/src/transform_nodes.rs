@@ -11,7 +11,7 @@ use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
 
-/// Applies the specified transform to each lane of the input wire, composing onto the lane's transform attribute.
+/// Applies the specified transform to each lane of the input, composing onto the lane's transform attribute.
 #[node_macro::node(category("Math: Transform"), extent(transform_extent))]
 fn transform<T>(
 	ctx: impl Ctx + DeriveCtx + ModifyFootprint,
@@ -88,14 +88,14 @@ fn reset_transform<T>(_: impl Ctx, (element, transform): (T, Attr<TransformAttr>
 	(element, Attr(row_transform))
 }
 
-/// Overwrites the transform of each lane of the input wire with the specified transform.
+/// Overwrites the transform of each lane of the input with the specified transform.
 #[node_macro::node(category("Math: Transform"))]
 fn replace_transform<T>(_: impl Ctx + InjectFootprint, (element, _content_transform): (T, Attr<TransformAttr>), transform: DAffine2) -> (T, Attr<TransformAttr>) {
 	(element, Attr(transform))
 }
 
 // TODO: Figure out how this node should behave once #2982 is implemented.
-/// Obtains the transform of the first lane of the input wire, if present.
+/// Obtains the transform of the first lane of the input, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
 fn extract_transform<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops)] content: IList<T>) -> DAffine2 {
 	match content.len() {

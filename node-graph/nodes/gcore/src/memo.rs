@@ -21,11 +21,11 @@ pub struct MemoLevel {
 
 /// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
-/// Stores a deep copy of the last record (a scalar wire) or the last whole
-/// level (a leveled wire) that flowed through this node and replays it on
+/// Stores a deep copy of the last record (a scalar input) or the last whole
+/// level (a leveled input) that flowed through this node and replays it on
 /// subsequent renders if the context has not changed. The owned copies survive
 /// a persistent flush, so this is the memo for content whose recomputation is
-/// expensive. A leveled wire's cache key normalizes the addressed lane away,
+/// expensive. A leveled input's cache key normalizes the addressed lane away,
 /// so per-lane pulls share one materialization of the content instead of
 /// re-evaluating it per lane.
 #[node_macro::node(category("General"), path(graphene_core::memo))]
@@ -35,8 +35,8 @@ fn memoize<'e, 'l>(
 	content: impl Node<Context<'_>>,
 	slot: FrameClaim<'e, 'l>,
 ) -> GPoll<Served<'e>> {
-	// A scalar wire's value may depend on the consuming lane (index readers),
-	// so only a leveled wire, whose level covers every lane by construction,
+	// A scalar input's value may depend on the consuming lane (index readers),
+	// so only a leveled input, whose level covers every lane by construction,
 	// keys with the lane normalized away.
 	let leveled = content.layout().depth > 0;
 	let lane = match leveled {
@@ -89,7 +89,7 @@ fn memoize<'e, 'l>(
 		return match content.materialize_level(&ctx, ctx.arena()) {
 			LevelStatus::Batch(batch, finality) => {
 				let layout = content.layout();
-				// SAFETY: the batch came from this edge, so it carries the edge's layout.
+				// SAFETY: the batch came from this input, so it carries the input's layout.
 				let lanes: Vec<OwnedRecord> = (0..batch.len()).map(|index| unsafe { OwnedRecord::copy_out(layout, batch.get(index).rec()) }).collect();
 				let entry = MemoLevel {
 					key,
@@ -115,7 +115,7 @@ fn memoize<'e, 'l>(
 	};
 	if let Some((value, finality)) = publishable {
 		let layout = content.layout();
-		// SAFETY: the value came from this edge, so it carries the edge's
+		// SAFETY: the value came from this input, so it carries the input's
 		// layout, and one record of it is a batch of one lane.
 		let batch = unsafe { core_types::node::RecordBatch::new(layout.rec(value).ptr(), 1, layout) };
 		// SAFETY: as above.
@@ -151,8 +151,8 @@ fn frame_memo<'e, 'l>(
 	content: impl Node<Context<'_>>,
 	slot: FrameClaim<'e, 'l>,
 ) -> GPoll<Served<'e>> {
-	// A scalar wire's value may depend on the consuming lane (index readers),
-	// so only a leveled wire, whose level covers every lane by construction,
+	// A scalar input's value may depend on the consuming lane (index readers),
+	// so only a leveled input, whose level covers every lane by construction,
 	// keys with the lane normalized away.
 	let leveled = content.layout().depth > 0;
 	let lane = match leveled {
@@ -198,7 +198,7 @@ fn frame_memo<'e, 'l>(
 	if leveled {
 		return match content.materialize_level(&ctx, ctx.arena()) {
 			LevelStatus::Batch(batch, finality) => {
-				// SAFETY: the batch came from this edge, so it carries the edge's layout.
+				// SAFETY: the batch came from this input, so it carries the input's layout.
 				let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) };
 				*cache.lock().unwrap() = span.map(|span| SpanLevel { key, span, finality });
 				match lane < batch.len() {
@@ -220,7 +220,7 @@ fn frame_memo<'e, 'l>(
 	};
 	if let Some((value, finality)) = publishable {
 		let layout = content.layout();
-		// SAFETY: the value came from this edge, so it carries the edge's
+		// SAFETY: the value came from this input, so it carries the input's
 		// layout, and one record of it is a batch of one lane.
 		let batch = unsafe { core_types::node::RecordBatch::new(layout.rec(value).ptr(), 1, layout) };
 		// SAFETY: as above.
@@ -235,7 +235,7 @@ type MonitorValue = Arc<Mutex<Option<CtxSnapshot>>>;
 /// The Monitor node is used by the editor to access the data flowing through
 /// it. It stores only the evaluation context: the output is pure over
 /// (context, source generations), so introspection recreates it by
-/// re-evaluating this edge with the rehydrated snapshot.
+/// re-evaluating this input with the rehydrated snapshot.
 #[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
 fn monitor<'e, 'l>(
 	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + ModifyIndex + Copy,

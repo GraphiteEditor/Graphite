@@ -232,7 +232,7 @@ pub enum Type {
 	Fn(Box<Type>, Box<Type>),
 	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
-	/// A packed record wire over the element type; the layout stays node-resident metadata.
+	/// A packed record input over the element type; the layout stays node-resident metadata.
 	Record(Box<Type>),
 }
 

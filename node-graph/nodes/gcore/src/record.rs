@@ -1,5 +1,5 @@
 //! Pilot record nodes exercising the macro's record-tier attribute io:
-//! per-input tuple reads resolved against each input's wire, offset writes,
+//! per-input tuple reads resolved against each input, offset writes,
 //! `RemoveAttr` layout subtraction, the ElToken byte-carry for passthrough
 //! elements, and the `_: ()` no-carrier form. These are the flat-wave law
 //! tests; the node forms are the production authoring surface, and the
@@ -1494,8 +1494,8 @@ mod tests {
 		}
 	}
 
-	/// The compiler clears an input's bit when its edge reads the addressed
-	/// lane; the batch must then re-evaluate that edge per lane, since hoisting
+	/// The compiler clears an input's bit when its source reads the addressed
+	/// lane; the batch must then re-evaluate that source per lane, since hoisting
 	/// a lane-varying value serves the range's first lane to all of them.
 	#[test]
 	fn batch_rebinds_an_eager_input_the_compiler_cannot_prove_invariant() {

@@ -44,7 +44,7 @@ pub(crate) struct ParsedNodeFn {
 }
 
 /// An `Attr<Marker>` slot in a parameter's read tuple: a declared attribute
-/// read on that input's wire, not a wired input of its own.
+/// read on that input, not a wired input of its own.
 #[derive(Clone, Debug)]
 pub(crate) struct AttributeRead {
 	pub(crate) pat_ident: PatIdent,
@@ -152,7 +152,7 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) batch: Option<Path>,
 	/// Whether partial upstream values are mapped to `Pending` instead of flowing into this node
 	pub(crate) no_partial: bool,
-	/// Whether this node keeps the plain-wire lowering during the record transition
+	/// Whether this node keeps the plain-input lowering during the record transition
 	pub(crate) plain: bool,
 }
 
@@ -218,7 +218,7 @@ pub struct ParsedField {
 	pub unit: Option<LitStr>,
 	pub is_data_field: bool,
 	/// The attribute reads destructured from this input's tuple, resolved
-	/// against this input's wire.
+	/// against this input.
 	pub(crate) attribute_reads: Vec<AttributeRead>,
 }
 
@@ -829,7 +829,7 @@ fn is_frame_claim(ty: &Type) -> bool {
 }
 
 /// Splits a lazy input's `Output = (T, Attr<..>..)` tuple into the element
-/// type (the wire type) and the declared reads on that edge. A tuple without
+/// type (the input type) and the declared reads on that input. A tuple without
 /// `Attr` slots is an ordinary tuple output and passes through untouched.
 fn split_lazy_reads(output_type: Type) -> syn::Result<(Type, Vec<AttributeRead>)> {
 	let Type::Tuple(tuple) = &output_type else {
@@ -865,7 +865,7 @@ fn split_lazy_reads(output_type: Type) -> syn::Result<(Type, Vec<AttributeRead>)
 
 /// Parses a `(value, reads..): (T, Attr<..>..)` parameter: the value component
 /// is an ordinary field of the value type, each `Attr` component a read bound
-/// to this input's wire.
+/// to this input.
 fn parse_read_tuple(pat_tuple: &syn::PatTuple, ty: &Type, attrs: &[Attribute], index: usize) -> syn::Result<ParsedField> {
 	let spelling = "an input with attribute reads destructures as `(value, Attr<..>)` over `(T, Attr<..>)`";
 	let Type::Tuple(ty_tuple) = ty else {
@@ -1031,7 +1031,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	// Data fields act as internal state, using interior mutability to cache data between node evaluations.
 	//
 	// Normally, an input parameter is a construction argument to the node that is stored as a field on the node struct.
-	// Specifically, its struct field stores the connected upstream node (an evaluatable lambda that returns data of the connection wire's type).
+	// Specifically, its struct field stores the connected upstream node (an evaluatable lambda that returns data of the connection's type).
 	// By comparison, a data field is also stored as a field on the node struct, allowing it to persist state between evaluations.
 	// But it acts as internal state only, not exposed as a parameter in the UI or able to be wired to another node.
 	//
@@ -1166,7 +1166,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		}
 
 		let input_type = node_input_type.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input>` or `impl Node<Input, Output = OutputType>`"))?;
-		// A subject named without an output is a whole-record wire: the kernel
+		// A subject named without an output is a whole-record input: the kernel
 		// serves it through its own claim rather than reading an element.
 		let output_type = node_output_type.unwrap_or_else(|| syn::parse_quote!(Served<'_>));
 		if !matches!(&value_source, ParsedValueSource::None) {

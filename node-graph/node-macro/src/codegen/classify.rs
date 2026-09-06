@@ -131,7 +131,7 @@ pub(crate) fn lazy_read_fields<'a>(regular_fields: &[&'a ParsedField]) -> Vec<(u
 }
 
 /// The indices (into the unit-skipped regular fields) of value inputs whose
-/// reads resolve against their own wire rather than the carrier's.
+/// reads resolve against their own input rather than the carrier's.
 pub(crate) fn reading_secondary_indices(regular_fields: &[&ParsedField], skips_carrier: bool) -> Vec<usize> {
 	regular_fields
 		.iter()
@@ -177,7 +177,7 @@ pub(crate) fn substitute_ident_types(ty: &Type, assignments: &[(Ident, Type)]) -
 }
 
 /// Replaces the routing generic in a derive-routing kernel's return type with
-/// the routing record value, since the kernel's edges rebind to '__record.
+/// the routing record value, since the kernel's inputs rebind to '__record.
 pub(crate) fn substitute_routing_record(output: &Type, generic: &Ident, core_types: &TokenStream2) -> Type {
 	struct Subst<'a> {
 		generic: &'a Ident,
@@ -295,7 +295,7 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 		return None;
 	}
 	// An async source's slot stores the kernel's plain tuple; the per-eval lift
-	// writes it through the claim, and the reads have no wire to bind against.
+	// writes it through the claim, and the reads have no input to bind against.
 	if source && (has_reads || writes.is_none()) {
 		return None;
 	}
@@ -306,7 +306,7 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 	// A first-field lazy carrier: the kernel evaluates the derived content
 	// itself and returns its opaque row token beside the write set.
 	let lazy_carrier = matches!(&carrier_field.ty, ParsedFieldType::Node(_));
-	// Lazy secondaries are consumed as plain elements; raw record edges and
+	// Lazy secondaries are consumed as plain elements; raw record inputs and
 	// ranked outputs have no element binding here.
 	let unsupported_lazy_secondary = |field: &ParsedField| match &field.ty {
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => is_served(output_type) || crate::codegen::ir::strip_ilist(output_type).1 > 0 || !field.attribute_reads.is_empty(),
@@ -423,7 +423,7 @@ pub(crate) fn flip_carrier(parsed: &ParsedNodeFn) -> bool {
 	!(async_kernel && lend.is_some())
 }
 
-/// Whether a plain node's lowering flips onto record wires: sync,
+/// Whether a plain node's lowering flips onto record inputs: sync,
 /// fully-concrete value-input nodes in this cut; batch, shader, async, lend,
 /// lazy, and generic nodes keep the plain lowering until their record forms
 /// land.
@@ -467,7 +467,7 @@ pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 					return false;
 				}
 			}
-			// A named lifetime is the serving lifetime: wire types substitute
+			// A named lifetime is the serving lifetime: input types substitute
 			// its erased projection in registry and layout contexts.
 			GenericParam::Lifetime(_) => {}
 			GenericParam::Const(_) => return false,
@@ -520,7 +520,7 @@ pub(crate) fn is_served(ty: &Type) -> bool {
 }
 
 /// Whether a kernel operates on whole records: it serves through the claim it
-/// was handed, receives raw record edges paired with the node's layout, and
+/// was handed, receives raw record inputs paired with the node's layout, and
 /// takes on the record APIs' unsafe contracts itself.
 pub(crate) fn record_opaque(parsed: &ParsedNodeFn) -> bool {
 	is_served(&slot_value_type(&parsed.output_type))
@@ -723,7 +723,7 @@ pub(crate) fn type_disqualifies(ty: &Type) -> bool {
 	visitor.found
 }
 
-/// The wire type with every named serving lifetime replaced: `'static` for
+/// The input type with every named serving lifetime replaced: `'static` for
 /// registry, layout, and declaration contexts (the erased projection shares
 /// its type id and layout), `'_` for eval bindings, where inference recovers
 /// the serving lifetime.
@@ -749,7 +749,7 @@ pub(crate) fn substitute_lifetimes(ty: &Type, replacement: &str) -> Type {
 	ty
 }
 
-/// The serving lifetime a wire type names, so a materialized binding can tie
+/// The serving lifetime an input type names, so a materialized binding can tie
 /// the list view to the element's own region.
 pub(crate) fn named_serving_lifetime(ty: &Type) -> Option<Lifetime> {
 	struct Find {

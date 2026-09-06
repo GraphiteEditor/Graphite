@@ -72,7 +72,7 @@ pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetada
 
 pub use crate::NodeIOTypes;
 
-/// Element-independent by erasure; the wire's `Type::Record(El)` keeps element reads proven at wiring.
+/// Element-independent by erasure; the input's `Type::Record(El)` keeps element reads proven at wiring.
 #[cfg(not(target_family = "wasm"))]
 pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>> + Send + Sync;
 #[cfg(target_family = "wasm")]
@@ -133,7 +133,7 @@ impl<N: ?Sized> SharedSource<N> {
 	}
 }
 
-// SAFETY: `ptr` is derived from the owned Arc and never mutated through, so the edge is exactly as
+// SAFETY: `ptr` is derived from the owned Arc and never mutated through, so the source is exactly as
 // thread safe as the payload it shares.
 unsafe impl<N: ?Sized + Send + Sync> Send for SharedSource<N> {}
 // SAFETY: as in Send.

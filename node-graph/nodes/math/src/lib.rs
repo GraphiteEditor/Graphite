@@ -1027,7 +1027,7 @@ mod graphene_test {
 		core_types::record::test_frames(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12))
 	}
 
-	/// Lifts a plain-element test source onto a record wire, returned beside its
+	/// Lifts a plain-element test source onto a record input, returned beside its
 	/// element-only layout for the generated node's constructor.
 	fn lifted<T, F>(kernel: F) -> (LiftedSource<T, F>, Layout)
 	where

@@ -1,5 +1,5 @@
-/// The node behind every value edge: clones its constant onto the record
-/// wire per evaluation.
+/// The node behind every value source: clones its constant onto the record
+/// input per evaluation.
 pub struct ValueSource<T> {
 	value: T,
 	layout: crate::record::Layout,
@@ -41,7 +41,7 @@ where
 	crate::registry::EdgeHandle::new_record::<T>(std::sync::Arc::new(ValueSource::new(value)) as std::sync::Arc<crate::registry::ErasedRecordNode>)
 }
 
-/// The node behind a leveled value edge: a constant list served as one level,
+/// The node behind a leveled value source: a constant list served as one level,
 /// one lane per item, with the list's length as the exact extent.
 pub struct LeveledValueSource<T> {
 	values: Vec<T>,

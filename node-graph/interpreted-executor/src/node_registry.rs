@@ -128,7 +128,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.into_iter()
 			.map(|entry| (graphene_std::graphic::to_graphic::IDENTIFIER.clone(), entry)),
 	);
-	// The transitional level bridge: a leveled wire materializes into the legacy
+	// The transitional level bridge: a leveled input materializes into the legacy
 	// list an unconverted consumer expects. The rows are keyed under the legacy
 	// convert identifiers and die with the last legacy consumer.
 	node_types.extend(
@@ -367,7 +367,7 @@ mod tests {
 		}
 	}
 
-	/// One wire kind: every row consumes and produces record wires. A plain
+	/// One input kind: every row consumes and produces records. A plain
 	/// io type here would need a bridge adapter, and those are gone.
 	#[test]
 	fn every_registry_row_is_record_typed() {

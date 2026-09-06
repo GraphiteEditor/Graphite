@@ -244,7 +244,7 @@ impl IndexLevels {
 		self.0 == u32::MAX
 	}
 
-	/// The same requirement seen from outside an edge whose innermost `supplied`
+	/// The same requirement seen from outside an input whose innermost `supplied`
 	/// levels the reading node drives itself, and whose chain sits `delta`
 	/// deeper than that node's. A supplied level leaves no requirement behind;
 	/// the rest renumber by the depth difference. An all-levels mask stays

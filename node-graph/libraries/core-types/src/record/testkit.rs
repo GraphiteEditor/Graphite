@@ -90,8 +90,8 @@ where
 }
 
 /// Law-test scaffolding: a kernel closure served onto an element-only record
-/// wire (the element lands at offset 0, parked when it carries drop glue). No
-/// production path constructs one; value edges are
+/// input (the element lands at offset 0, parked when it carries drop glue). No
+/// production path constructs one; value sources are
 /// [`crate::value::ValueSource`].
 pub struct LiftedSource<El, F> {
 	kernel: F,

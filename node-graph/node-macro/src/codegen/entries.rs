@@ -15,7 +15,7 @@ pub(crate) fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_fi
 	}
 }
 
-/// The registry rows of a flipped plain node: every wire is a record wire,
+/// The registry rows of a flipped plain node: every input is a record input,
 /// inputs resolve their layouts off the claimed handles, and the output is an
 /// element-only record of the kernel's return type.
 fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields: &[&ParsedField]) -> TokenStream2 {
@@ -179,20 +179,20 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 	}
 }
 
-/// Which record wire an input claims and how its value is recovered. Base slots
-/// are the record edges whose layouts form the output; value slots are record
-/// edges read for their layout.
+/// Which record an input claims and how its value is recovered. Base slots
+/// are the record inputs whose layouts form the output; value slots are record
+/// inputs read for their layout.
 enum SlotKind {
-	/// A generic record edge whose element is only known at runtime; the runtime
+	/// A generic record input whose element is only known at runtime; the runtime
 	/// type is captured for the output wrap or the union.
 	BaseGeneric(String),
 	/// A concrete record carrier read for its layout.
 	BaseConcrete(Type),
-	/// A concrete record edge read for its layout only.
+	/// A concrete record input read for its layout only.
 	Value(Type),
-	/// A record edge whose element extracts to the node's plain value input.
+	/// A record input whose element extracts to the node's plain value input.
 	Extracted(Type),
-	/// A ranked record edge consumed whole; no layout rides to the constructor.
+	/// A ranked record input consumed whole; no layout rides to the constructor.
 	Ranked(Type),
 }
 
@@ -203,7 +203,7 @@ impl SlotKind {
 }
 
 /// The single registry row shared by record-io, routing, and opaque nodes: one
-/// instance covers the wire, each input's edge type and downcast follow its
+/// instance covers the input, each input's type and downcast follow its
 /// slot, and the output layout folds from the base slots.
 fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields: &[&ParsedField]) -> TokenStream2 {
 	use crate::codegen::ir;
@@ -212,8 +212,8 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 	let core_types = quote!(gcore);
 	let lend = |field: &ParsedField| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }));
 
-	// A subject is its record edge (concrete carrier or erased generic); a
-	// non-subject value rides a record edge when it reads its layout.
+	// A subject is its record input (concrete carrier or erased generic); a
+	// non-subject value rides a record input when it reads its layout.
 	let slots: Option<Vec<SlotKind>> = regular_fields
 		.iter()
 		.enumerate()
@@ -228,7 +228,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 			}
 			match &field.ty {
 				// An element-consuming lazy secondary of a record node rides a
-				// record edge with a layout slot, like a reading secondary.
+				// record input with a layout slot, like a reading secondary.
 				ParsedFieldType::Node(NodeParsedField { output_type, .. })
 					if matches!(ir::node_kind(&node), ir::NodeKind::RecordIo) && matches!(ir::lazy_binding(&node, index), ir::LazyBinding::Element) =>
 				{
@@ -241,8 +241,8 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match ir::value_binding(&node, index) {
 					ir::ValueBinding::Materialized => Some(SlotKind::Ranked(ty.clone())),
 					ir::ValueBinding::ReadingSecondary | ir::ValueBinding::RecordElement => Some(SlotKind::Value(ty.clone())),
-					// One wire kind: a record node's plain value still rides a
-					// record edge, extracted to its element at construction.
+					// One input kind: a record node's plain value still rides a
+					// record input, extracted to its element at construction.
 					_ if matches!(ir::node_kind(&node), ir::NodeKind::RecordIo) => Some(SlotKind::Extracted(ty.clone())),
 					_ => {
 						emit_error!(field.pat_ident.span(), "plain (non-record) io is unsupported: this value input needs a record edge");
@@ -359,7 +359,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 						let #layout = #handle.layout().clone();
 						let #name = #handle.downcast_record::<#value_ty>()?;
 					},
-					// The node reads the element off the edge's own layout, so
+					// The node reads the element off the input's own layout, so
 					// neither slot rides a layout to the constructor.
 					SlotKind::Extracted(value_ty) | SlotKind::Ranked(value_ty) => quote! {
 						let #name = inputs.next().unwrap().downcast_record::<#value_ty>()?;
@@ -382,7 +382,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 				quote!(Some(#meta))
 			};
 
-			// The output wire and node wrap follow the output element: a concrete (or
+			// The output type and node wrap follow the output element: a concrete (or
 			// row-assigned) element is a typed record; a generic or opaque element is
 			// an erased record carrying the first base slot's runtime type.
 			let output_element = match &node.output.shape.element {

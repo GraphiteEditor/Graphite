@@ -208,7 +208,7 @@ impl Extent {
 	}
 
 	/// The sum of two extents, used to concatenate a level; a free operand
-	/// counts as one lane, so a scalar edge joins a concat as a single item,
+	/// counts as one lane, so a scalar input joins a concat as a single item,
 	/// and a lower-bound operand keeps the sum a lower bound.
 	pub fn sum(a: GPoll<Extent>, b: GPoll<Extent>) -> GPoll<Extent> {
 		let lanes = |extent| match extent {

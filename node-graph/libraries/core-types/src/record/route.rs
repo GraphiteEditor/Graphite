@@ -61,7 +61,7 @@ impl SourcePlan {
 	}
 }
 
-/// A routing input's claimed edge plus its wiring-resolved [`SourcePlan`].
+/// A routing input's claimed source plus its wiring-resolved [`SourcePlan`].
 /// Evaluating it yields the source's record translated to the union layout
 /// (or forwarded untouched when the layouts already agree), so the kernel
 /// holds and returns record values without ever seeing the representation.
@@ -99,7 +99,7 @@ where
 		};
 		match serve_input(&self.edge, input, &mut slot.frames().reborrow()) {
 			GPoll::Final(value) => {
-				// SAFETY: the value came from this edge, so it carries the
+				// SAFETY: the value came from this source, so it carries the
 				// plan's source layout.
 				unsafe { slot.translate(plan.source.rec(&value), plan) };
 				// SAFETY: the translation completes the union record.

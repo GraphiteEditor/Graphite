@@ -44,7 +44,7 @@ impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
 
 /// Wraps each row's element into a type-erased attribute. Lets nodes that accept a source attribute
 /// from any `List<U>` express their signature as `AttributeDyn` and avoid monomorphizing
-/// over `U`; the compiler inserts this convert to bridge concrete-typed graph wires to the dyn input.
+/// over `U`; the compiler inserts this convert to bridge concrete-typed graph sources to the dyn input.
 impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeDyn, ()> for List<T> {
 	fn convert(self, _: Footprint, _: ()) -> AttributeDyn {
 		let values: Vec<T> = self.into_iter().map(|row| row.into_element()).collect();
@@ -54,7 +54,7 @@ impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash 
 
 /// Wraps a value into a type-erased attribute value. Lets nodes that take a per-item value source
 /// (such as `write_attribute`'s value-producing input) be generic over the destination list type
-/// alone, with the compiler-inserted convert handling each concrete value type at the wire level.
+/// alone, with the compiler-inserted convert handling each concrete value type at the input level.
 impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeValueDyn, ()> for T {
 	fn convert(self, _: Footprint, _: ()) -> AttributeValueDyn {
 		AttributeValueDyn(Box::new(self))

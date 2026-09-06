@@ -102,7 +102,7 @@ fn boolean_core<'e>(
 #[node_macro::node(category("Vector: Modifier"), memoize)]
 fn boolean_operation<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + core_types::InjectIndex + Copy,
-	/// The wire of vector paths to perform the boolean operation on. Nested groups are automatically flattened.
+	/// The input of vector paths to perform the boolean operation on. Nested groups are automatically flattened.
 	content: IList<Graphic<'static>>,
 	/// Which boolean operation to perform on the paths.
 	///
