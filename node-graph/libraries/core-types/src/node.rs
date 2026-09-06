@@ -212,8 +212,7 @@ impl<'a, T> Deref for Lane<'a, T> {
 }
 
 /// A materialized nesting level handed to a folding kernel: a thin element-typed
-/// view over the [`RecordBatch`] the level was collected into. The eventual
-/// `List` once `IList` is renamed.
+/// view over the [`RecordBatch`] the level was collected into.
 #[derive(Debug)]
 pub struct List<'a, T> {
 	batch: RecordBatch<'a>,

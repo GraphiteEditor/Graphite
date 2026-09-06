@@ -1041,7 +1041,6 @@ fn valid_type(from: &Type, to: &Type) -> bool {
 		// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
 		// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
 		(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
-		// A lend input is substitutable exactly when the lent values are.
 		// A record input is substitutable exactly when the elements are.
 		(Type::Record(in1), Type::Record(in2)) => valid_type(in1, in2),
 		// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).

@@ -1399,8 +1399,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 				}
 				// A flip value or a routing non-source value rides a record input; the
-				// element copies out into `name`. The mark/rewind that reclaims the
-				// record's frame is applied by the step lowering (see `reads_out`).
+				// element copies out into `name`.
 				ValueBinding::RecordElement => {
 					let slot = format_ident!("__in_{index}");
 					quote! {

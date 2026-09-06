@@ -480,8 +480,7 @@ impl<T: crate::bounds::BoundingBox + dyn_any::StaticTypeSized> crate::bounds::Bo
 
 /// Records nested inside one element: a single homogeneous run. The `row`
 /// holds the group's own attribute record. A group that sits on a lane leaves
-/// it `None`, because that lane's record carries the attributes. The typed
-/// segment stack returns when merge constructs segments.
+/// it `None`, because that lane's record carries the attributes.
 #[derive(Clone, Debug)]
 pub struct Group<'e> {
 	pub row: Option<GroupItem<'e>>,

@@ -171,8 +171,7 @@ fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll
 	}
 }
 
-/// The layer-path stamp: the flip-time replacement for the Merge
-/// subnetwork's named attribute write.
+/// The layer-path stamp: writes the owning layer's document node path on each lane.
 #[node_macro::node(category("Test"))]
 fn stamp_layer_path<'e, T>(ctx: impl Ctx + ExtractArena<'e>, element: T, path: Vec<NodeId>) -> Result<(T, Attr<'e, EditorLayerPath>), Interrupt> {
 	let (parked, _) = ctx.arena().alloc(path).ok_or(GraphError {
