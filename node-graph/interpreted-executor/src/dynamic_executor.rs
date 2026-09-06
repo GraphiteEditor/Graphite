@@ -197,7 +197,7 @@ impl DynamicExecutor {
 		let edge = self
 			.tree
 			.get_by_path(node_path)
-			.and_then(SourceHandle::record_edge)
+			.and_then(SourceHandle::record_source)
 			.ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
 		let persistent = self.persistent.lock().unwrap_or_else(PoisonError::into_inner);

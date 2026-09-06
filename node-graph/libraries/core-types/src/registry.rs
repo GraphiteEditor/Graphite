@@ -263,9 +263,9 @@ impl SourceHandle {
 		self.downcast_erased(record_edge_type::<T>())
 	}
 
-	/// The erased record edge, for callers that dispatch on the layout rather
-	/// than a static element type. `None` for an edge erased to another node type.
-	pub fn record_edge(self) -> Option<SharedSource<ErasedRecordNode>> {
+	/// The erased record source, for callers that dispatch on the layout rather
+	/// than a static element type. `None` for a source erased to another node type.
+	pub fn record_source(self) -> Option<SharedSource<ErasedRecordNode>> {
 		self.node.downcast::<SharedSource<ErasedRecordNode>>().ok().map(|edge| *edge)
 	}
 
