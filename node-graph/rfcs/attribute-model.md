@@ -316,7 +316,10 @@ forwarding a lazy input's attributes is routing.
 The rest of the authoring surface composes. Categories, per-parameter
 doc comments, `#[default]`, `#[hard]`, `#[expose]`, widget overrides, and
 the kernel dialects (`Result<_, Interrupt>` with `?`, `GPoll` returns,
-async sources) all compose with the forms above.
+async sources) all compose with the forms above. An async source writes
+its attributes through its claim like any other node; a reference-valued
+attribute crosses the future boundary as an owned deep copy, covered in
+the reference section.
 
 # Reference-level explanation
 
@@ -495,6 +498,64 @@ level with resolved offsets is the base case both are built on.
   bounded by graph depth. Until then a run pays a row's padding on every
   lane, which is the cost the struct-of-arrays step removes.
 
+## Arenas, promotion, and memos
+
+Droppable payloads and every borrow a record lends live in two arena
+regions per executor. The transient arena is reset at the end of every
+evaluation: allocation is a bump, a parked payload registers a drop
+obligation, and the reset is a cursor rewind plus the registered drops.
+The persistent region holds what must outlive an evaluation (published
+memo spans, moved payloads) and flushes as a whole epoch, only between
+evaluations and only after a refused reservation. Every crossing from
+outside storage into a region is generation-checked, so a stale handle
+is a cache miss, never a dangle.
+
+Two rules the split rests on, both bought with measurements:
+
+- The retention law: arena occupancy is not a proxy for retained heap.
+  A park costs one pointer in the region while owning arbitrary heap
+  outside it (a 52x gap was measured), so a single region cannot
+  decouple transient droppable heap from span lifetime; the one-arena
+  epoch design this replaced ran a real document to a 12.3 GiB OOM.
+  The split, plus a per-park retained-heap hint kept as a lower bound,
+  is the answer.
+- The sharing law: sharing a payload between persistent entries is
+  sound because persistent invalidation is epochal, every entry dying
+  at one flush; per-entry eviction would need the refcounts this design
+  avoids. One level down, a reference-valued attribute field's header
+  is never provenance-shared: it clones, or moves where the payload
+  owns all of its content and the transient arena confirms the
+  reference is its own park keyed by the payload's static type. The
+  move is a header memcpy with the drop obligation and its heap hint
+  transferred, the source entry tombstoned in place, and a
+  per-generation forwarding map so a payload two records share moves
+  once.
+
+Promotion into the persistent region is copy-on-write over provenance:
+a reference already persistent or `'static` is shared pointer for
+pointer, a transient leaf payload moves its header, and region bytes
+memcpy. Types with arena-resident interiors register promote glue in
+element- and field-keyed registries, so nested content takes the same
+dispatch instead of a deep copy through an owned intermediate.
+
+Two memo nodes ride this, with different contracts. The frame memo is
+the cheap span-only memo the compiler inserts at nullification
+boundaries: it publishes a promoted level into the persistent region
+keyed on the lane-normalized context, a hit before the next flush
+serves straight out of the region, and a flush makes an entry
+unreachable, never wrong. The explicit memoize node is two-tier: the
+same span fast path over deep copies that survive flushes, so
+author-marked expensive content never pays recomputation for a flush.
+
+An async source's future outlives the evaluation that spawns it and may
+outlive a persistent epoch, so a reference-valued attribute cannot
+cross into it as a region handle: a flush would invalidate the handle
+mid-flight, and pinning the park would need the refcounts the sharing
+law avoids. It crosses as an owned deep copy instead (`OwnedAttr`),
+taken through the field glue before the first await while the spawning
+evaluation's storage is live, and parked into the serving arena at
+every lift, one copy per invocation.
+
 ## Kernel io lowering
 
 | Signature form | Meaning | Lowering |
@@ -507,6 +568,7 @@ level with resolved offsets is the base case both are built on.
 | `(_, a): ((), Attr<A>)` | attribute-only input | wired record edge with unit element; the attribute is the payload |
 | `Attr<A>` in the return tuple | attribute write | offset write into the output record |
 | `RemoveAttr<A>` in the return tuple | attribute delete | the name leaves the output layout; functionally a write of the default |
+| `OwnedAttr<A>` in an async source's return tuple | owned attribute write | the value crosses the future boundary as a deep copy taken before the first await, and parks into the serving arena at every lift; exhaustion surfaces as a poll |
 | `keys: IList<K>` | whole-extent input | wired edge, evaluated over its extent into a view |
 | plain parameters | wired value inputs | ordinary wired edges; attributes on their wires do not flow |
 | `impl Node<Context<'_>, Output = Concrete>` | lazy value input | the value flows, attributes do not |
