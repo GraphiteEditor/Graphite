@@ -2,7 +2,6 @@ use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_network_node_type, resolve_proto_node_type};
-use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -303,19 +302,12 @@ impl Fsm for SplineToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext {
-			document,
-			input,
-			shape_editor,
-			viewport,
-			..
-		} = tool_action_data;
+		let ToolActionMessageContext { document, input, viewport, .. } = tool_action_data;
 
 		let ToolMessage::Spline(event) = event else { return self };
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
 			(_, SplineToolMessage::Overlays { context: mut overlay_context }) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 				self
 			}
