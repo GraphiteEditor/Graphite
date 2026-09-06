@@ -58,6 +58,7 @@ jobs:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
       SCCACHE_DIR: /var/lib/github-actions/.cache
+      # NOTICE: keep these tool versions in sync with the other jobs in this file, `.devcontainer/devcontainer.json`, `.nix/dev.nix` and `.nix/pkgs/graphite.nix` (wasm-bindgen-cli), `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
       BINARYEN_VERSION: "130"
     steps:
@@ -302,9 +303,11 @@ jobs:
       pull-requests: write
 
     env:
+      # NOTICE: keep these tool versions in sync with the other jobs in this file, `.devcontainer/devcontainer.json`, `.nix/dev.nix` and `.nix/pkgs/graphite.nix` (wasm-bindgen-cli), `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
       BINARYEN_VERSION: "130"
-      CARGO_ABOUT_VERSION: "0.9.0"
+      CARGO_ABOUT_VERSION: "0.9.2"
+      CARGO_BINSTALL_VERSION: "1.23.0"
 
     steps:
       - name: 📥 Clone repository
@@ -341,7 +344,9 @@ jobs:
             frontend/package-lock.json
 
       - name: 📦 Install Cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
+        uses: cargo-bins/cargo-binstall@v1.23.0
+        with:
+          version: ${{ env.CARGO_BINSTALL_VERSION }}
 
       - name: 🚧 Install native dependencies
         shell: pwsh
@@ -497,9 +502,11 @@ jobs:
       pull-requests: write
 
     env:
+      # NOTICE: keep these tool versions in sync with the other jobs in this file, `.devcontainer/devcontainer.json`, `.nix/dev.nix` and `.nix/pkgs/graphite.nix` (wasm-bindgen-cli), `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
       BINARYEN_VERSION: "130"
-      CARGO_ABOUT_VERSION: "0.9.0"
+      CARGO_ABOUT_VERSION: "0.9.2"
+      CARGO_BINSTALL_VERSION: "1.23.0"
 
     steps:
       - name: 📥 Clone repository
@@ -535,6 +542,11 @@ jobs:
             package-lock.json
             frontend/package-lock.json
 
+      - name: 📦 Install Cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.23.0
+        with:
+          version: ${{ env.CARGO_BINSTALL_VERSION }}
+
       - name: 🚧 Install native dependencies
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -544,8 +556,7 @@ jobs:
           brew install \
             pkg-config \
             openssl@3 \
-            llvm \
-            cargo-binstall
+            llvm
 
           echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
