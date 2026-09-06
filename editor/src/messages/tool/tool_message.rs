@@ -76,8 +76,6 @@ pub enum ToolMessage {
 	},
 	DeactivateTools,
 	InitTools,
-	PreUndo,
-	Redo,
 	RefreshToolOptions,
 	RefreshToolShelf,
 	ResetColors,
@@ -90,7 +88,6 @@ pub enum ToolMessage {
 	},
 	ToggleSelectVsPath,
 	SwapColors,
-	Undo,
 	UpdateCursor,
 	UpdateHints,
 	UpdateSelectionMode {
