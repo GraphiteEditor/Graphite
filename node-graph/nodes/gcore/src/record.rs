@@ -1742,7 +1742,7 @@ mod tests {
 		let head = ctx.index_head();
 		for (lane, element) in [(0u64, 10.), (1, 11.)] {
 			let lane_frames = frames.scope();
-			let GPoll::Final(value) = core_types::record::serve_edge(&node, &ctx.promoted(&head, lane), &lane_frames) else {
+			let GPoll::Final(value) = core_types::record::serve_input(&node, &ctx.promoted(&head, lane), &lane_frames) else {
 				panic!("expected a final record at lane {lane}");
 			};
 			let rec = out.rec(&value);
@@ -2180,7 +2180,7 @@ mod tests {
 			checked_multiply_opacity_layout_meta(),
 			&[Some(&source_layout)],
 		);
-		let GPoll::Error(error) = core_types::record::serve_edge(&failing, &ctx, &frames) else {
+		let GPoll::Error(error) = core_types::record::serve_input(&failing, &ctx, &frames) else {
 			panic!("expected an error");
 		};
 		assert!(error.kind == "negative factor");
@@ -2481,7 +2481,7 @@ mod tests {
 
 		for pass in ["the spawning eval", "the slot hit"] {
 			let scoped = frames.scope();
-			let GPoll::Final(value) = core_types::record::serve_edge(&node, &ctx, &scoped) else {
+			let GPoll::Final(value) = core_types::record::serve_input(&node, &ctx, &scoped) else {
 				panic!("an inline completion is final on {pass}");
 			};
 			let rec = layout.rec(&value);
@@ -2521,7 +2521,7 @@ mod tests {
 				),
 				&f64_layout(&[]),
 			);
-			let GPoll::Final(value) = core_types::record::serve_edge(&node, &ctx, &frames) else {
+			let GPoll::Final(value) = core_types::record::serve_input(&node, &ctx, &frames) else {
 				panic!("expected a final record");
 			};
 			let element = unsafe { Node::<ContextImpl>::layout(&node).rec(&value).element::<f64>() };
@@ -2621,7 +2621,7 @@ mod tests {
 			label_layout_meta(),
 			&[Some(&labeled)],
 		);
-		let GPoll::Final(value) = core_types::record::serve_edge(&chain, &ctx, &frames) else {
+		let GPoll::Final(value) = core_types::record::serve_input(&chain, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		let rec = relabeled.rec(&value);
@@ -2867,7 +2867,7 @@ mod tests {
 
 		let chain = ForwardRecordNode::new(RecordSource::new(f64_record_source(&layout, 4., vec![("opacity", 0.25)]), &layout, &layout.clone()), &layout);
 
-		let GPoll::Final(value) = core_types::record::serve_edge(&chain, &ctx, &frames) else {
+		let GPoll::Final(value) = core_types::record::serve_input(&chain, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		let rec = layout.rec(&value);
@@ -2955,7 +2955,7 @@ mod tests {
 		};
 		let memo = crate::memo::MemoizeNode::new(source, &layout);
 
-		let GPoll::Partial(_) = core_types::record::serve_edge(&memo, &ctx, &frames) else {
+		let GPoll::Partial(_) = core_types::record::serve_input(&memo, &ctx, &frames) else {
 			panic!("expected a partial record");
 		};
 		let GPoll::Partial(served) = core_types::record::capture(&memo, &ctx, &frames) else {
@@ -2985,7 +2985,7 @@ mod tests {
 			let scope = scope_fixture(&generations, &first_arena).with_persistent(&persistent);
 			let ctx = ContextImpl::root(&scope);
 			let mut first = frames.reborrow();
-			let GPoll::Final(_) = core_types::record::serve_edge(&memo, &ctx, &mut first) else {
+			let GPoll::Final(_) = core_types::record::serve_input(&memo, &ctx, &mut first) else {
 				panic!("expected a final record");
 			};
 		}
@@ -2995,7 +2995,7 @@ mod tests {
 		let later_arena = Arena::new(1024).unwrap();
 		let scope = scope_fixture(&generations, &later_arena).with_persistent(&persistent);
 		let ctx = ContextImpl::root(&scope);
-		let GPoll::Final(value) = core_types::record::serve_edge(&memo, &ctx, &frames) else {
+		let GPoll::Final(value) = core_types::record::serve_input(&memo, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		let rec = labeled.rec(&value);

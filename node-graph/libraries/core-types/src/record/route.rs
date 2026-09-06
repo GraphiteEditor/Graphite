@@ -3,7 +3,7 @@
 use super::access::{Rec, apply_plan};
 use super::frames::Frames;
 use super::layout::{Layout, copy_plan};
-use super::serve::{FrameClaim, Served, serve_edge};
+use super::serve::{FrameClaim, Served, serve_input};
 use crate::attribute;
 use crate::gpoll::GPoll;
 use crate::node::Node;
@@ -97,7 +97,7 @@ where
 		let Some(plan) = &self.plan else {
 			return self.edge.serve(input, slot);
 		};
-		match serve_edge(&self.edge, input, &mut slot.frames().reborrow()) {
+		match serve_input(&self.edge, input, &mut slot.frames().reborrow()) {
 			GPoll::Final(value) => {
 				// SAFETY: the value came from this edge, so it carries the
 				// plan's source layout.

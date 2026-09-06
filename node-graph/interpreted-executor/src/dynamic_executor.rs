@@ -219,7 +219,7 @@ impl DynamicExecutor {
 				_ => None,
 			}
 		} else {
-			match core_types::record::serve_edge(&edge, &ctx, &frames) {
+			match core_types::record::serve_input(&edge, &ctx, &frames) {
 				GPoll::Final(value) | GPoll::Partial(value) => {
 					let rec = layout.rec(&value);
 					// SAFETY: the serve produced one live record of the edge's layout.
@@ -697,7 +697,7 @@ mod test {
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 		let frames = core_types::record::test_frames(layout.frame_bytes());
-		let GPoll::Final(value) = core_types::record::serve_edge(&edge, &ctx, &frames) else {
+		let GPoll::Final(value) = core_types::record::serve_input(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { core_types::record::read_element::<u32>(layout.rec(&value)) }, 2);
@@ -742,7 +742,7 @@ mod test {
 		let layout = handle.layout().clone();
 		let edge = handle.duplicate().downcast_record::<f64>().unwrap();
 		let frames = core_types::record::test_frames(executor.tree().stack_need());
-		let GPoll::Final(value) = core_types::record::serve_edge(&edge, &ctx, &frames) else {
+		let GPoll::Final(value) = core_types::record::serve_input(&edge, &ctx, &frames) else {
 			panic!("the flipped clone must evaluate over record wires, got a non-final poll");
 		};
 		assert_eq!(unsafe { core_types::record::read_element::<f64>(layout.rec(&value)) }, 7.);
@@ -769,7 +769,7 @@ mod test {
 		let ctx = ContextImpl::root(&scope);
 		let edge = executor.tree().get(NodeId(2)).unwrap().downcast_record::<graphene_std::raster::color::Color>().unwrap();
 		let frames = core_types::record::test_frames(executor.tree().stack_need());
-		let result = core_types::record::serve_edge(&edge, &ctx, &frames);
+		let result = core_types::record::serve_input(&edge, &ctx, &frames);
 		// The empty raster level folds to an empty palette: past-end at lane 0.
 		assert!(
 			matches!(&result, GPoll::Error(error) if error.kind == core_types::gpoll::ErrorKind::PastEnd),

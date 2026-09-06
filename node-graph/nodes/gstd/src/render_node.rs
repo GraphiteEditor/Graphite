@@ -274,7 +274,7 @@ mod tests {
 				lane_invariant: u32::MAX,
 			},
 		);
-		let GPoll::Final(result) = core_types::record::serve_edge(&graph, &ctx, &frames) else {
+		let GPoll::Final(result) = core_types::record::serve_input(&graph, &ctx, &frames) else {
 			panic!("create_context must complete synchronously");
 		};
 		let output: &RenderOutput = unsafe { core_types::record::borrow_element(layout.rec(&result)) };

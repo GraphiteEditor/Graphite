@@ -32,5 +32,5 @@ pub use owned::{OwnedRecord, deepen_field_value, register_deep_element_clone, re
 pub use promote::{Promotion, assert_promoted, register_element_promote, register_field_promote, register_retained_heap};
 pub use route::{RecordSource, SourcePlan};
 pub use run::{Group, GroupItem, RunBuilder, RunColumn, RunView};
-pub use serve::{FrameClaim, MaterializedSpan, Served, SlotRun, serve_edge};
+pub use serve::{FrameClaim, MaterializedSpan, Served, SlotRun, serve_input};
 pub use testkit::{LiftedSource, ServedRecord, capture, test_frames};

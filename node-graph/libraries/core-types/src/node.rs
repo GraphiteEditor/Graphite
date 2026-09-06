@@ -631,7 +631,7 @@ mod tests {
 
 	use crate::arena::Arena;
 	use crate::context::ExtractArena;
-	use crate::record::{LiftedSource, serve_edge};
+	use crate::record::{LiftedSource, serve_input};
 
 	#[derive(Clone, Copy)]
 	struct TestInput<'a> {
@@ -676,7 +676,7 @@ mod tests {
 		let layout = Node::<TestInput>::layout(&node).clone();
 		let erased: Box<dyn Node<TestInput>> = Box::new(node);
 		let frames = crate::record::test_frames(1 << 12);
-		let GPoll::Final(value) = serve_edge(&*erased, &input, &frames) else {
+		let GPoll::Final(value) = serve_input(&*erased, &input, &frames) else {
 			panic!("the erased edge must serve a final record");
 		};
 		// SAFETY: the record was served at `layout`, whose element is the output.

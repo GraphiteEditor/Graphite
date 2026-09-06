@@ -280,7 +280,7 @@ impl<'e> Served<'e> {
 /// Claims `node`'s own frame from `frames` and serves through it: the
 /// caller-side half of [`Node::serve`], for drivers that want the record
 /// rather than the proof.
-pub fn serve_edge<'e, C, N>(node: &N, input: &C, frames: &Frames<'e>) -> GPoll<RecordValue<'e>>
+pub fn serve_input<'e, C, N>(node: &N, input: &C, frames: &Frames<'e>) -> GPoll<RecordValue<'e>>
 where
 	N: Node<C> + ?Sized,
 	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,

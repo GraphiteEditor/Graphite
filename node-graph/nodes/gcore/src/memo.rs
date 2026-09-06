@@ -307,7 +307,7 @@ mod tests {
 		assert!(handle.serialize().is_none(), "no snapshot before the first eval");
 
 		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
-		let GPoll::Final(_) = core_types::record::serve_edge(&edge, &ctx, &frames) else {
+		let GPoll::Final(_) = core_types::record::serve_input(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 
@@ -334,7 +334,7 @@ mod tests {
 		let handle = EdgeHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
 
 		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
-		let GPoll::Final(_) = core_types::record::serve_edge(&edge, &ctx, &frames) else {
+		let GPoll::Final(_) = core_types::record::serve_input(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 
@@ -496,7 +496,7 @@ mod tests {
 		let served_at = |arena: &Arena| {
 			let scope = scope_fixture(&generations, arena).with_persistent(&persistent);
 			let ctx = ContextImpl::root(&scope);
-			let GPoll::Final(value) = core_types::record::serve_edge(&memo, &ctx, &frames) else {
+			let GPoll::Final(value) = core_types::record::serve_input(&memo, &ctx, &frames) else {
 				panic!("the memo must serve a final record");
 			};
 			let element: &String = unsafe { core_types::record::borrow_element(layout.rec(&value)) };
@@ -627,7 +627,7 @@ mod tests {
 		let at = |lane: u64| {
 			let mut ctx = ContextImpl::root(&scope);
 			core_types::context::InjectIndex::set_index(&mut ctx, lane);
-			core_types::record::serve_edge(&memo, &ctx, &frames)
+			core_types::record::serve_input(&memo, &ctx, &frames)
 		};
 
 		let GPoll::Final(value) = at(1) else {
@@ -655,10 +655,10 @@ mod tests {
 		let layout = element_layout::<String>();
 		let memo = FrameMemoNode::new(lifted::<String>("lent out".to_string()), &layout);
 
-		let GPoll::Final(first) = core_types::record::serve_edge(&memo, &ctx, &frames) else {
+		let GPoll::Final(first) = core_types::record::serve_input(&memo, &ctx, &frames) else {
 			panic!("the miss must publish the record");
 		};
-		let GPoll::Final(second) = core_types::record::serve_edge(&memo, &ctx, &frames) else {
+		let GPoll::Final(second) = core_types::record::serve_input(&memo, &ctx, &frames) else {
 			panic!("the hit must revive the published record");
 		};
 		let first: &String = unsafe { core_types::record::borrow_element(layout.rec(&first)) };
@@ -679,7 +679,7 @@ mod tests {
 		let served_at = |arena: &Arena| {
 			let scope = scope_fixture(&generations, arena).with_persistent(&persistent);
 			let ctx = ContextImpl::root(&scope);
-			let GPoll::Final(value) = core_types::record::serve_edge(&memo, &ctx, &frames) else {
+			let GPoll::Final(value) = core_types::record::serve_input(&memo, &ctx, &frames) else {
 				panic!("the span memo must serve a final record");
 			};
 			let element: &String = unsafe { core_types::record::borrow_element(layout.rec(&value)) };

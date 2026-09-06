@@ -1606,7 +1606,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								// The element copies out by value, so the edge's
 								// claim dies with the query.
 								let __scope = __frames.scope();
-								#core_types::record::serve_edge(&self.#name, __input, &__scope)
+								#core_types::record::serve_input(&self.#name, __input, &__scope)
 									.map(|__value| unsafe { #core_types::record::read_element::<#ty>(#layout.rec(&__value)) })
 							};
 							let #arg = #core_types::extent::ValueIn::new(&#query);

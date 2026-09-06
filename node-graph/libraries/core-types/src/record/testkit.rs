@@ -3,7 +3,7 @@
 use super::frames::{FrameArena, Frames};
 use super::layout::{Layout, element_write};
 use super::owned::OwnedRecord;
-use super::serve::{FrameClaim, Served, serve_edge};
+use super::serve::{FrameClaim, Served, serve_input};
 use crate::gpoll::GPoll;
 use crate::node::Node;
 
@@ -81,7 +81,7 @@ where
 {
 	let scope = frames.scope();
 	let layout = node.layout().clone();
-	serve_edge(node, ctx, &scope).map(|value| ServedRecord {
+	serve_input(node, ctx, &scope).map(|value| ServedRecord {
 		// SAFETY: the poll served `value` at the node's declared layout and
 		// nothing has claimed frames since.
 		record: unsafe { OwnedRecord::copy_out(&layout, layout.rec(&value)) },

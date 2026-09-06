@@ -1014,7 +1014,7 @@ mod graphene_test {
 	use core_types::context::{ContextImpl, EvalScope};
 	use core_types::gpoll::{Finality, GPoll};
 	use core_types::node::{BatchStatus, Node};
-	use core_types::record::{Layout, LiftedSource, RecordValue, serve_edge};
+	use core_types::record::{Layout, LiftedSource, RecordValue, serve_input};
 	use core_types::registry::{ErasedRecordNode, construct};
 	use core_types::value::record_value_edge;
 	use std::mem::MaybeUninit;
@@ -1073,7 +1073,7 @@ mod graphene_test {
 		let graph = installed(AddNode::<_, _, f64, f64>::new(a, b, &la, &lb), &out);
 		let frames = frames_for(&[&la, &lb, &out]);
 
-		let GPoll::Final(value) = serve_edge(&graph, &ctx, &frames) else {
+		let GPoll::Final(value) = serve_input(&graph, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(element::<f64>(&out, &value), 3.0);
@@ -1122,7 +1122,7 @@ mod graphene_test {
 		let edge = wired.downcast_record::<bool>().unwrap();
 		let frames = frames_for(&[&layout]);
 
-		let GPoll::Final(value) = serve_edge(&edge, &ctx, &frames) else {
+		let GPoll::Final(value) = serve_input(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert!(element::<bool>(&layout, &value));
@@ -1168,7 +1168,7 @@ mod graphene_test {
 		let edge = wired.downcast_record::<f64>().unwrap();
 		let frames = frames_for(&[&layout]);
 
-		let GPoll::Final(value) = serve_edge(&edge, &ctx, &frames) else {
+		let GPoll::Final(value) = serve_input(&edge, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(element::<f64>(&layout, &value), 4.0);
@@ -1215,7 +1215,7 @@ mod graphene_test {
 		let out = Node::<ContextImpl>::layout(&graph).clone();
 		let frames = frames_for(&[&lc, &lt, &lf, &out]);
 
-		let GPoll::Final(value) = serve_edge(&graph, &ctx, &frames) else {
+		let GPoll::Final(value) = serve_input(&graph, &ctx, &frames) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(element::<f64>(&out, &value), 1.0);
@@ -1241,8 +1241,8 @@ mod graphene_test {
 		let out = Node::<ContextImpl>::layout(&partial).clone();
 		let frames = frames_for(&[&lc1, &lp1, &lpa1, &lc2, &lp2, &lpa2, &out]);
 
-		assert!(matches!(serve_edge(&pending, &ctx, &frames), GPoll::Pending));
-		let GPoll::Partial(value) = serve_edge(&partial, &ctx, &frames) else {
+		assert!(matches!(serve_input(&pending, &ctx, &frames), GPoll::Pending));
+		let GPoll::Partial(value) = serve_input(&partial, &ctx, &frames) else {
 			panic!("expected a partial record");
 		};
 		assert_eq!(element::<f64>(&out, &value), 7.0);
@@ -1262,7 +1262,7 @@ mod graphene_test {
 		let out = Node::<ContextImpl>::layout(&graph).clone();
 		let frames = frames_for(&[&lc, &lt, &lf, &out]);
 
-		let GPoll::Partial(value) = serve_edge(&graph, &ctx, &frames) else {
+		let GPoll::Partial(value) = serve_input(&graph, &ctx, &frames) else {
 			panic!("expected a partial record");
 		};
 		assert_eq!(element::<f64>(&out, &value), 1.0);
@@ -1280,7 +1280,7 @@ mod graphene_test {
 		let graph = installed(AddNode::<_, _, f64, f64>::new(fallback, src, &lfb, &ls), &out);
 		let frames = frames_for(&[&lfb, &ls, &out]);
 
-		let GPoll::Fallback(boxed) = serve_edge(&graph, &ctx, &frames) else {
+		let GPoll::Fallback(boxed) = serve_input(&graph, &ctx, &frames) else {
 			panic!("fallback must propagate with the computed stand-in");
 		};
 		assert_eq!(element::<f64>(&out, &boxed.0), 5.0);

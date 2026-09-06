@@ -3,7 +3,7 @@
 use super::access::{Rec, RecordValue, read_element};
 use super::frames::Frames;
 use super::layout::Layout;
-use super::serve::{FrameClaim, Served, serve_edge};
+use super::serve::{FrameClaim, Served, serve_input};
 use crate::gpoll::GPoll;
 use crate::node::Node;
 
@@ -513,6 +513,6 @@ impl<El: Clone + 'static, N> RecordExtract<El, N> {
 		// The element copies out by value, so the edge's claim dies with
 		// the scope.
 		let scope = frames.scope();
-		serve_edge(&self.edge, input, &scope).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
+		serve_input(&self.edge, input, &scope).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
 	}
 }

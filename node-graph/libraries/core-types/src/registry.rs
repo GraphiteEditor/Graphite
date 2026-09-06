@@ -326,7 +326,7 @@ mod tests {
 	use std::sync::Arc;
 	use std::sync::atomic::{AtomicU32, Ordering};
 
-	use crate::record::{FrameClaim, Layout, LiftedSource, Served, element_write, read_element, serve_edge};
+	use crate::record::{FrameClaim, Layout, LiftedSource, Served, element_write, read_element, serve_input};
 
 	fn counting() -> LiftedSource<u32, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<u32>> {
 		let count = AtomicU32::new(0);
@@ -383,7 +383,7 @@ mod tests {
 		assert_eq!(*handle.ty(), concrete!(String));
 
 		let wired = handle.downcast_erased::<ErasedRecordNode>(concrete!(String)).unwrap();
-		let GPoll::Final(value) = serve_edge(&wired, &ctx, &frames) else {
+		let GPoll::Final(value) = serve_input(&wired, &ctx, &frames) else {
 			panic!("borrow-carrying output must serve through the erased edge");
 		};
 		// SAFETY: the record was served at `layout`, whose element is the borrow.
@@ -466,7 +466,7 @@ mod tests {
 		let erased: Box<ErasedRecordNode> = Box::new(nested);
 		let frames = crate::record::test_frames(1 << 12);
 
-		let GPoll::Final(value) = serve_edge(&*erased, &ctx, &frames) else {
+		let GPoll::Final(value) = serve_input(&*erased, &ctx, &frames) else {
 			panic!("nested repeat must evaluate");
 		};
 		// SAFETY: the record was served at `layout`, whose element is the output.
@@ -545,7 +545,7 @@ mod tests {
 		let graph = ShiftFootprintNode::new(shifted, shifted_layout);
 		let layout = Node::<ContextImpl>::layout(&graph).clone();
 
-		let GPoll::Final(value) = serve_edge(&graph, &ctx, &frames) else {
+		let GPoll::Final(value) = serve_input(&graph, &ctx, &frames) else {
 			panic!("the footprint shift must reach the content");
 		};
 		// SAFETY: the record was served at `layout`, whose element is the resolution.
@@ -599,10 +599,10 @@ mod tests {
 		let second = duplicate.downcast_record::<u32>().unwrap();
 		// SAFETY: each record was served at `layout`, whose element is the count.
 		let count = |value| unsafe { layout.rec(&value).element::<u32>() };
-		assert_eq!(serve_edge(&first, &ctx, &frames).map(count), GPoll::Final(1));
-		assert_eq!(serve_edge(&second, &ctx, &frames).map(count), GPoll::Final(2));
+		assert_eq!(serve_input(&first, &ctx, &frames).map(count), GPoll::Final(1));
+		assert_eq!(serve_input(&second, &ctx, &frames).map(count), GPoll::Final(2));
 
 		drop(first);
-		assert_eq!(serve_edge(&second, &ctx, &frames).map(count), GPoll::Final(3));
+		assert_eq!(serve_input(&second, &ctx, &frames).map(count), GPoll::Final(3));
 	}
 }

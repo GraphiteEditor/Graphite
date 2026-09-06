@@ -708,7 +708,7 @@ mod tests {
 		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(1)), "the group is the level's single lane");
 
 		let head = ctx.index_head();
-		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0), &frames) else {
+		let GPoll::Final(value) = record::serve_input(&node, &ctx.promoted(&head, 0), &frames) else {
 			panic!("expected a final record");
 		};
 		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(out.rec(&value)) }) else {
@@ -744,7 +744,7 @@ mod tests {
 		let out = Node::<ContextImpl>::layout(&node).clone();
 
 		let head = ctx.index_head();
-		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0), &frames) else {
+		let GPoll::Final(value) = record::serve_input(&node, &ctx.promoted(&head, 0), &frames) else {
 			panic!("expected a final record");
 		};
 		let copy = unsafe { (out.element.clone_out)(out.rec(&value).ptr()) };
@@ -846,7 +846,7 @@ mod tests {
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
 		let head = ctx.index_head();
-		let GPoll::Final(value) = record::serve_edge(&node, &ctx.promoted(&head, 0), &frames) else {
+		let GPoll::Final(value) = record::serve_input(&node, &ctx.promoted(&head, 0), &frames) else {
 			panic!("expected a final record");
 		};
 		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(out.rec(&value)) }) else {
@@ -882,7 +882,7 @@ mod tests {
 			// SAFETY: the element is cloned out inside the scope, so no borrow
 			// into the frame escapes it.
 			let scope = frames.scope();
-			let GPoll::Final(value) = record::serve_edge(&wrapped, &ctx.promoted(&head, 0), &scope) else {
+			let GPoll::Final(value) = record::serve_input(&wrapped, &ctx.promoted(&head, 0), &scope) else {
 				panic!("expected a final record");
 			};
 			let group = unsafe { record::borrow_element::<Graphic>(wrap_out.rec(&value)) }.clone();
