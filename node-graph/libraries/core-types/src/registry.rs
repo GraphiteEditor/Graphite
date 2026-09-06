@@ -91,8 +91,8 @@ pub fn record_source_type<T: 'static>() -> Type {
 	Type::Fn(Box::new(concrete!(Context)), Box::new(record_type::<T>()))
 }
 
-/// The record edge type of a token row, generic over the element.
-pub fn generic_record_edge_type(name: &'static str) -> Type {
+/// The record source type of a token row, generic over the element.
+pub fn generic_record_source_type(name: &'static str) -> Type {
 	Type::Fn(Box::new(concrete!(Context)), Box::new(Type::Record(Box::new(Type::Generic(std::borrow::Cow::Borrowed(name))))))
 }
 

@@ -339,7 +339,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 			}
 
 			let input_types = slots.iter().map(|slot| match slot {
-				SlotKind::BaseGeneric(name) => quote!(gcore::registry::generic_record_edge_type(#name)),
+				SlotKind::BaseGeneric(name) => quote!(gcore::registry::generic_record_source_type(#name)),
 				SlotKind::BaseConcrete(ty) | SlotKind::Value(ty) | SlotKind::Extracted(ty) | SlotKind::Ranked(ty) => quote!(gcore::registry::record_source_type::<#ty>()),
 			});
 
