@@ -23,6 +23,7 @@ mod utility;
 mod view;
 
 pub use consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
+pub use input::event::{InputEvent, InputEventBuilder, MouseButton, PointerInputEventBuilder, PointerPosition, UnknownPosition};
 
 pub struct UiContext<S: Stage = Started> {
 	inner: S::ContextData,
@@ -69,7 +70,6 @@ impl UiContext<Started> {
 		Ok(UiInstance {
 			inner: Arc::new(UiInstanceInner {
 				host: self.inner.clone(),
-				input: Mutex::new(input::InputState::default()),
 				events: Mutex::new(events),
 				queue,
 				shutdown_complete: Mutex::new(shutdown_complete),
@@ -143,7 +143,6 @@ pub struct UiInstance {
 
 pub(crate) struct UiInstanceInner {
 	host: Arc<HostHandle>,
-	input: Mutex<input::InputState>,
 	events: Mutex<Receiver<UiEvent>>,
 	queue: events::EventQueue,
 	shutdown_complete: Mutex<Receiver<()>>,
@@ -154,18 +153,7 @@ impl UiInstance {
 	pub fn send(&self, command: UiCommand) {
 		let shared = &self.inner;
 		match command {
-			UiCommand::Input(event) => {
-				let events = {
-					let Ok(mut input) = shared.input.lock() else {
-						tracing::error!("Failed to lock the input state");
-						return;
-					};
-					input::translate(&mut input, &event)
-				};
-				if !events.is_empty() {
-					shared.host.send(HostControlMessage::Input(events));
-				}
-			}
+			UiCommand::Input(event) => shared.host.send(HostControlMessage::Input(event)),
 			UiCommand::Resized { width, height } => shared.host.send(HostControlMessage::UpdateViewInfo(view::ViewInfoUpdate::Size { width, height })),
 			UiCommand::ScaleChanged(scale) => shared.host.send(HostControlMessage::UpdateViewInfo(view::ViewInfoUpdate::Scale(scale))),
 			UiCommand::Refresh => shared.host.send(HostControlMessage::RefreshViewInfo),
@@ -222,7 +210,7 @@ impl Drop for UiInstanceInner {
 
 #[derive(Debug)]
 pub enum UiCommand {
-	Input(winit::event::WindowEvent),
+	Input(InputEvent),
 	Resized { width: u32, height: u32 },
 	ScaleChanged(f64),
 	Refresh,

@@ -8,7 +8,7 @@ use crate::view::ViewInfoUpdate;
 
 #[derive(Serialize, Deserialize)]
 pub(crate) enum HostControlMessage {
-	Input(Vec<InputEvent>),
+	Input(InputEvent),
 	UpdateViewInfo(ViewInfoUpdate),
 	RefreshViewInfo,
 	SendWebMessage(Vec<u8>),
