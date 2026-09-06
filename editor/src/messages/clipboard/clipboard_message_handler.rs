@@ -88,10 +88,6 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					ClipboardContent::Image { .. } => {
 						log::error!("Image copying is not yet supported");
 					}
-					// THis is where the text/json is getting copied from
-					// Idea is to rather than copy it only as text, I want to
-					// move it to the node to get the svg preview and trhen from
-					// there send both the data as a single write item.
 					ClipboardContent::Graphite(graphite) => {
 						let graphite_json = format!("{CLIPBOARD_PREFIX}{graphite}");
 						responses.add(PortfolioMessage::RequestSvgTextCopy { graphite_json });
@@ -104,7 +100,6 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 
 			ClipboardMessage::CopyLayers => {
 				if current_tool == &ToolType::Path {
-					log::debug!("Copying some path");
 					responses.add(PathToolMessage::Copy);
 					return;
 				}
@@ -117,7 +112,6 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					responses.add(NodeGraphMessage::Copy);
 					return;
 				}
-				debug!("Copying something else");
 
 				let mut buffer = Vec::new();
 
@@ -218,14 +212,12 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				}
 
 				if bytes_to_load.is_empty() {
-					log::debug!("Bytes to load are empty");
 					let mut items = items;
 					items.extend(resources.into_iter().map(ClipboardItem::Resource));
 					if let Some(content) = serialize_clipboard(&items) {
 						responses.add(ClipboardMessage::Write { content });
 					}
 				} else {
-					log::debug!("Not empty instance of bytes");
 					// Load the embedded bytes from the resource storage, then write
 					let load_handle = resource_storage.resources();
 					responses.add(async move {

@@ -468,7 +468,6 @@ impl NodeGraphExecutor {
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(_) => {}
 				NodeGraphUpdate::SvgTextCopyClipboard(svg_string, graphite_json) => {
-					debug!("svg: {}", svg_string);
 					responses.add(FrontendMessage::TriggerClipboardSvgWrite { svg_string, graphite_json });
 				}
 			}
