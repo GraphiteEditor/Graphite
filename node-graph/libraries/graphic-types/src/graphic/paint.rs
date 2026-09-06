@@ -183,10 +183,7 @@ fn forced_paint<'a, A: Attribute>(paint: LanePaint<'a>) -> Option<A::Value<'a>> 
 		size_of::<Option<&'a List<Graphic<'a>>>>(),
 		"the paint value form must span the marker's value"
 	);
-	// SAFETY: the census admits one value type per attribute name and panics on
-	// a conflict at registration, and the asserts above re-check it, so a marker
-	// named `fill` or `stroke` carries this crate's `Option<&List<Graphic>>`
-	// value form at the same size.
+	// SAFETY: the census admits one value type per attribute name, so a `fill` or `stroke` marker carries this crate's `Option<&List<Graphic>>` at the asserted size.
 	Some(unsafe { std::mem::transmute_copy::<Option<&'a List<Graphic>>, A::Value<'a>>(&Some(slot)) })
 }
 

@@ -151,9 +151,7 @@ struct OwnedLanes {
 	fields: Vec<(usize, Vec<Box<dyn crate::list::AnyAttributeValue>>)>,
 }
 
-// SAFETY: the same argument as for `RecordValue`. The element bounds and the
-// parking discipline make the record bytes thread-safe, and their validity
-// is tied to the shared arena.
+// SAFETY: as for `RecordValue`.
 unsafe impl Send for GroupItem<'_> {}
 // SAFETY: as `Send`.
 unsafe impl Sync for GroupItem<'_> {}
