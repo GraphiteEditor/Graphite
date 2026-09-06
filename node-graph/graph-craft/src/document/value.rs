@@ -10,7 +10,7 @@ use core_types::list::List;
 use core_types::registry::SourceHandle;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
-use core_types::value::{leveled_record_value_edge, record_value_source};
+use core_types::value::{leveled_record_value_source, record_value_source};
 use core_types::{CacheHash, Color, ContextModification, MemoHash, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
@@ -323,7 +323,7 @@ macro_rules! tagged_value {
 						macro_rules! check_level {
 							($list:ty, $element:ty) => {
 								if name == core_types::normalize_type_name(std::any::type_name::<$list>()) {
-									return Ok(leveled_record_value_edge(Vec::<$element>::new()));
+									return Ok(leveled_record_value_source(Vec::<$element>::new()));
 								}
 							};
 						}
@@ -332,16 +332,16 @@ macro_rules! tagged_value {
 						check_level!(List<Raster<CPU>>, Raster<CPU>);
 						// One default lane rather than an empty level: an unwired path input
 						// starts from a blank vector, as the legacy path modify synthesized itself.
-						if name == core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) { return Ok(leveled_record_value_edge(vec![Vector::default()])); }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) { return Ok(leveled_record_value_source(vec![Vector::default()])); }
 						check_level!(List<String>, String);
 						if name == core_types::normalize_type_name(std::any::type_name::<DocumentNode>()) { return Ok(record_value_source(DocumentNode::default())); }
 						if name == core_types::normalize_type_name(std::any::type_name::<Resource>()) { return Ok(record_value_source(Resource::default())); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_edge()
 					}
-					Self::F64Array(values) => Ok(leveled_record_value_edge(values)),
-					Self::Color(color) => Ok(leveled_record_value_edge(color.into_iter().collect::<Vec<_>>())),
-					Self::Gradient(stops) => Ok(leveled_record_value_edge(vec![stops])),
-					Self::BrushStrokes(strokes) => Ok(leveled_record_value_edge(strokes)),
+					Self::F64Array(values) => Ok(leveled_record_value_source(values)),
+					Self::Color(color) => Ok(leveled_record_value_source(color.into_iter().collect::<Vec<_>>())),
+					Self::Gradient(stops) => Ok(leveled_record_value_source(vec![stops])),
+					Self::BrushStrokes(strokes) => Ok(leveled_record_value_source(strokes)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================

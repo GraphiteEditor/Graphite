@@ -90,8 +90,8 @@ where
 	}
 }
 
-/// The native record edge of a constant level: the edge type is the element's.
-pub fn leveled_record_value_edge<T: Clone + Send + Sync + crate::CacheHash + PartialEq + dyn_any::StaticTypeSized + 'static>(values: Vec<T>) -> crate::registry::SourceHandle
+/// The native record source of a constant level: the source type is the element's.
+pub fn leveled_record_value_source<T: Clone + Send + Sync + crate::CacheHash + PartialEq + dyn_any::StaticTypeSized + 'static>(values: Vec<T>) -> crate::registry::SourceHandle
 where
 	T::Static: Clone + Send + Sync,
 {
