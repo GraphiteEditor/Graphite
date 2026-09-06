@@ -48,7 +48,7 @@ pub trait Attribute: 'static {
 
 	/// Re-parks the owned clone [`Self::read_erased`] produced into fresh
 	/// field storage; `None` for plain values, which ride the byte copy.
-	const REPARK: Option<unsafe fn(&dyn AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>> = None;
+	const REPARK: Option<crate::list::ReparkFn> = None;
 }
 
 /// A kernel-facing attribute value. A parameter `Attr<A>` is a read of `A`

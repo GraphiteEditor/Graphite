@@ -43,7 +43,7 @@ pub(in crate::record) fn deep_element_glue(type_id: std::any::TypeId) -> Option<
 #[derive(Clone, Copy)]
 pub(in crate::record) struct DeepFieldGlue {
 	pub(in crate::record) copy_out: fn(&dyn crate::list::AnyAttributeValue) -> Option<Box<dyn crate::list::AnyAttributeValue>>,
-	pub(in crate::record) replay: fn(&dyn crate::list::AnyAttributeValue, &crate::arena::Arena) -> Option<Option<Box<dyn crate::list::AnyAttributeValue>>>,
+	pub(in crate::record) replay: crate::list::FieldReplayFn,
 }
 
 static DEEP_FIELD_VALUES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, DeepFieldGlue>>> = std::sync::LazyLock::new(Default::default);
@@ -52,7 +52,7 @@ static DEEP_FIELD_VALUES: std::sync::LazyLock<std::sync::Mutex<std::collections:
 /// Called at startup from the crate that owns the type.
 pub fn register_deep_field_value<T: 'static>(
 	copy_out: fn(&dyn crate::list::AnyAttributeValue) -> Option<Box<dyn crate::list::AnyAttributeValue>>,
-	replay: fn(&dyn crate::list::AnyAttributeValue, &crate::arena::Arena) -> Option<Option<Box<dyn crate::list::AnyAttributeValue>>>,
+	replay: crate::list::FieldReplayFn,
 ) {
 	DEEP_FIELD_VALUES.lock().unwrap().insert(std::any::TypeId::of::<T>(), DeepFieldGlue { copy_out, replay });
 }

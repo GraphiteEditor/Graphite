@@ -15,7 +15,7 @@ pub struct FieldWrite {
 	pub align: usize,
 	pub type_id: std::any::TypeId,
 	pub read_erased: unsafe fn(*const u8) -> Box<dyn crate::list::AnyAttributeValue>,
-	pub repark: Option<unsafe fn(&dyn crate::list::AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>>,
+	pub repark: Option<crate::list::ReparkFn>,
 	/// Hashes the field's content. `None` means the stored bytes are the
 	/// content, which holds for every unparked value.
 	pub content_hash: Option<unsafe fn(*const u8, &mut dyn core::hash::Hasher)>,
@@ -64,7 +64,7 @@ pub struct FieldDesc {
 	pub align: usize,
 	pub type_id: std::any::TypeId,
 	pub read_erased: unsafe fn(*const u8) -> Box<dyn crate::list::AnyAttributeValue>,
-	pub repark: Option<unsafe fn(&dyn crate::list::AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>>,
+	pub repark: Option<crate::list::ReparkFn>,
 	/// Hashes the field's content. `None` means the stored bytes are the
 	/// content, which holds for every unparked value.
 	pub content_hash: Option<unsafe fn(*const u8, &mut dyn core::hash::Hasher)>,

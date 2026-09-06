@@ -85,6 +85,12 @@ pub trait AnyAttributeValue: std::any::Any + Send + Sync {
 	fn into_attribute(self: Box<Self>, key: &str, preceding_defaults: usize) -> Box<dyn AnyAttribute>;
 }
 
+/// Re-parks an owned attribute value into fresh field storage; `None` reports arena exhaustion.
+pub type ReparkFn = unsafe fn(&dyn AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>;
+
+/// Replays an owned attribute value into a serving arena; `Some(None)` is unchanged, `None` reports arena exhaustion.
+pub type FieldReplayFn = fn(&dyn AnyAttributeValue, &crate::arena::Arena) -> Option<Option<Box<dyn AnyAttributeValue>>>;
+
 impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 'static> AnyAttributeValue for T {
 	/// Clones this value into a new boxed trait object.
 	fn clone_box(&self) -> Box<dyn AnyAttributeValue> {
