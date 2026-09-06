@@ -1148,12 +1148,12 @@ mod graphene_test {
 		assert_eq!(entries.len(), 6);
 		assert_eq!(
 			entries[0].io.inputs,
-			vec![core_types::registry::record_edge_type::<f64>(), core_types::registry::record_edge_type::<f64>()]
+			vec![core_types::registry::record_source_type::<f64>(), core_types::registry::record_source_type::<f64>()]
 		);
 		assert_eq!(entries[0].io.return_value, core_types::registry::record_type::<f64>());
 		assert_eq!(
 			entries[3].io.inputs,
-			vec![core_types::registry::record_edge_type::<DVec2>(), core_types::registry::record_edge_type::<DVec2>()]
+			vec![core_types::registry::record_source_type::<DVec2>(), core_types::registry::record_source_type::<DVec2>()]
 		);
 		assert_eq!(entries[3].io.return_value, core_types::registry::record_type::<DVec2>());
 
@@ -1179,7 +1179,7 @@ mod graphene_test {
 		// Routing forwards the whole record, so the branch types need no rows.
 		let entries = super::_switch_mod::switch_entries();
 		assert_eq!(entries.len(), 1);
-		assert_eq!(entries[0].io.inputs[0], core_types::registry::record_edge_type::<bool>());
+		assert_eq!(entries[0].io.inputs[0], core_types::registry::record_source_type::<bool>());
 		assert!(matches!(&entries[0].io.return_value, core_types::Type::Record(element) if matches!(**element, core_types::Type::Generic(_))));
 		assert_eq!(entries[0].io.inputs.len(), 3);
 	}

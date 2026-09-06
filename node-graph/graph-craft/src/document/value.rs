@@ -364,19 +364,19 @@ macro_rules! tagged_value {
 				// =======================
 				// RECORD WIRES, WHICH LAND AS THEIR ELEMENT
 				// =======================
-				if ty == core_types::registry::record_edge_type::<()>() {
+				if ty == core_types::registry::record_source_type::<()>() {
 					let edge = handle.downcast_record::<()>().map_err(|e| format!("{e:?}"))?;
 					return Ok(core_types::record::serve_input(&edge, ctx, frames).map(|_| TaggedValue::None));
 				}
 				$(
-					if ty == core_types::registry::record_edge_type::<$ty>() {
+					if ty == core_types::registry::record_source_type::<$ty>() {
 						let layout = handle.layout().clone();
 						let edge = handle.downcast_record::<$ty>().map_err(|e| format!("{e:?}"))?;
 						return Ok(core_types::record::serve_input(&edge, ctx, frames)
 							.map(|value| TaggedValue::$identifier(unsafe { core_types::record::read_element::<$ty>(layout.rec(&value)) })));
 					}
 				)*
-				if ty == core_types::registry::record_edge_type::<RenderOutput>() {
+				if ty == core_types::registry::record_source_type::<RenderOutput>() {
 					let layout = handle.layout().clone();
 					let edge = handle.downcast_record::<RenderOutput>().map_err(|e| format!("{e:?}"))?;
 					return Ok(core_types::record::serve_input(&edge, ctx, frames)
@@ -919,27 +919,27 @@ mod typedefault_dispatch {
 mod leveled_edges {
 	use super::*;
 	use core_types::descriptor;
-	use core_types::registry::record_edge_type;
+	use core_types::registry::record_source_type;
 
 	#[test]
 	fn list_variants_produce_leveled_edges_typed_by_element() {
 		let edge = TaggedValue::F64Array(vec![1., 2., 3.]).to_edge().unwrap();
-		assert_eq!(edge.ty(), &record_edge_type::<f64>());
+		assert_eq!(edge.ty(), &record_source_type::<f64>());
 		assert_eq!(edge.layout().depth, 1);
 
 		let edge = TaggedValue::Color(Some(Color::default())).to_edge().unwrap();
-		assert_eq!(edge.ty(), &record_edge_type::<Color>());
+		assert_eq!(edge.ty(), &record_source_type::<Color>());
 		assert_eq!(edge.layout().depth, 1);
 
 		let edge = TaggedValue::TypeDefault(descriptor!(List<Graphic>)).to_edge().unwrap();
-		assert_eq!(edge.ty(), &record_edge_type::<Graphic>());
+		assert_eq!(edge.ty(), &record_source_type::<Graphic>());
 		assert_eq!(edge.layout().depth, 1);
 	}
 
 	#[test]
 	fn scalar_variants_keep_their_rank_zero_edges() {
 		let edge = TaggedValue::Bool(true).to_edge().unwrap();
-		assert_eq!(edge.ty(), &record_edge_type::<bool>());
+		assert_eq!(edge.ty(), &record_source_type::<bool>());
 		assert_eq!(edge.layout().depth, 0);
 	}
 
@@ -961,7 +961,7 @@ mod leveled_edges {
 #[cfg(test)]
 mod record_defaults {
 	use super::*;
-	use core_types::registry::record_edge_type;
+	use core_types::registry::record_source_type;
 
 	// The registry can present a record row first (wasm registration order),
 	// so primitive defaults must parse through the record wrapping.
@@ -969,7 +969,7 @@ mod record_defaults {
 	fn primitive_defaults_parse_through_record_wires() {
 		let leveled = core_types::registry::record_type::<f64>();
 		assert_eq!(TaggedValue::from_primitive_string("2.", &leveled), Some(TaggedValue::F64(2.)));
-		assert_eq!(TaggedValue::from_primitive_string("5", &record_edge_type::<u32>()), Some(TaggedValue::U32(5)));
-		assert_eq!(TaggedValue::from_primitive_string("true", &record_edge_type::<bool>()), Some(TaggedValue::Bool(true)));
+		assert_eq!(TaggedValue::from_primitive_string("5", &record_source_type::<u32>()), Some(TaggedValue::U32(5)));
+		assert_eq!(TaggedValue::from_primitive_string("true", &record_source_type::<bool>()), Some(TaggedValue::Bool(true)));
 	}
 }

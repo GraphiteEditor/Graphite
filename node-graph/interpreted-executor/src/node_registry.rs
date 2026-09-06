@@ -217,7 +217,7 @@ mod node_registry_macros {
 					io: NodeIOTypes::new(
 						concrete!(Context),
 						core_types::registry::record_type::<$to>(),
-						vec![core_types::registry::record_edge_type::<$from>()],
+						vec![core_types::registry::record_source_type::<$from>()],
 					),
 					constructor: |inputs| {
 						if inputs.len() != 1 {
@@ -284,10 +284,10 @@ mod node_registry_macros {
 						concrete!(Context),
 						core_types::registry::record_type::<$to>(),
 						vec![
-							core_types::registry::record_edge_type::<$from>(),
-							core_types::registry::record_edge_type::<$convert>(),
-							core_types::registry::record_edge_type::<RuntimeHandle>(),
-							core_types::registry::record_edge_type::<SourceId>(),
+							core_types::registry::record_source_type::<$from>(),
+							core_types::registry::record_source_type::<$convert>(),
+							core_types::registry::record_source_type::<RuntimeHandle>(),
+							core_types::registry::record_source_type::<SourceId>(),
 						],
 					),
 					constructor: |inputs| {
@@ -327,7 +327,7 @@ mod node_registry_macros {
 					io: NodeIOTypes::new(
 						concrete!(Context),
 						core_types::registry::record_type::<$to>(),
-						vec![core_types::registry::record_edge_type::<$from>(), core_types::registry::record_edge_type::<$convert>()],
+						vec![core_types::registry::record_source_type::<$from>(), core_types::registry::record_source_type::<$convert>()],
 					),
 					constructor: |inputs| {
 						if inputs.len() != 2 {

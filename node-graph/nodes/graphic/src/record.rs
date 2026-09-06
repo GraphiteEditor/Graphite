@@ -551,9 +551,9 @@ mod tests {
 		let entries = _flat_map_mod::flat_map_entries();
 		assert_eq!(entries.len(), 6, "one registry row per content implementation");
 		let content_types: Vec<core_types::Type> = entries.iter().map(|entry| entry.io.inputs[0].clone()).collect();
-		assert_eq!(content_types[0], core_types::registry::record_edge_type::<Graphic>());
-		assert_eq!(content_types[1], core_types::registry::record_edge_type::<Vector>());
-		assert_eq!(content_types[5], core_types::registry::record_edge_type::<String>());
+		assert_eq!(content_types[0], core_types::registry::record_source_type::<Graphic>());
+		assert_eq!(content_types[1], core_types::registry::record_source_type::<Vector>());
+		assert_eq!(content_types[5], core_types::registry::record_source_type::<String>());
 		// The subject and the output stay erased across rows.
 		assert_eq!(entries[0].io.inputs[1], entries[5].io.inputs[1]);
 		assert_eq!(entries[0].io.return_value, entries[5].io.return_value);

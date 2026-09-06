@@ -87,7 +87,7 @@ pub fn record_type<T: 'static>() -> Type {
 	Type::Record(Box::new(concrete!(T)))
 }
 
-pub fn record_edge_type<T: 'static>() -> Type {
+pub fn record_source_type<T: 'static>() -> Type {
 	Type::Fn(Box::new(concrete!(Context)), Box::new(record_type::<T>()))
 }
 
@@ -209,7 +209,7 @@ unsafe impl Sync for SourceHandle {}
 
 impl SourceHandle {
 	pub fn new_record<T: 'static>(node: std::sync::Arc<ErasedRecordNode>) -> Self {
-		Self::new_erased(node, record_edge_type::<T>())
+		Self::new_erased(node, record_source_type::<T>())
 	}
 
 	pub fn new_erased<N>(node: std::sync::Arc<N>, ty: Type) -> Self
@@ -260,7 +260,7 @@ impl SourceHandle {
 	}
 
 	pub fn downcast_record<T: 'static>(self) -> Result<SharedSource<ErasedRecordNode>, ConstructionError> {
-		self.downcast_erased(record_edge_type::<T>())
+		self.downcast_erased(record_source_type::<T>())
 	}
 
 	/// The erased record source, for callers that dispatch on the layout rather
@@ -559,7 +559,7 @@ mod tests {
 		}
 		let entry = RegistryEntry {
 			layout_meta: None,
-			io: NodeIOTypes::new(concrete!(Context), record_type::<u32>(), vec![record_edge_type::<String>()]),
+			io: NodeIOTypes::new(concrete!(Context), record_type::<u32>(), vec![record_source_type::<String>()]),
 			constructor: construct_strlen,
 		};
 
@@ -572,8 +572,8 @@ mod tests {
 		assert_eq!(
 			construct(&entry, vec![mistyped]).unwrap_err(),
 			ConstructionError::Type {
-				expected: Box::new(record_edge_type::<String>()),
-				found: Box::new(record_edge_type::<f64>()),
+				expected: Box::new(record_source_type::<String>()),
+				found: Box::new(record_source_type::<f64>()),
 			}
 		);
 	}
@@ -589,7 +589,7 @@ mod tests {
 		let layout = Node::<ContextImpl>::layout(&counting).clone();
 		let handle = SourceHandle::new_record::<u32>(Arc::new(counting) as Arc<ErasedRecordNode>);
 		let duplicate = handle.duplicate();
-		assert_eq!(*duplicate.ty(), record_edge_type::<u32>());
+		assert_eq!(*duplicate.ty(), record_source_type::<u32>());
 		let frames = crate::record::test_frames(1 << 12);
 
 		let first = handle.downcast_record::<u32>().unwrap();

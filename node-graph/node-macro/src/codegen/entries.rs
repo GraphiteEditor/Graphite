@@ -130,7 +130,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 		};
 		let assignment_types = assignment_types.iter();
 		let turbofish = quote!(::<#(#node_underscores,)* #(#assignment_types,)*>);
-		let input_types = row.iter().map(|ty| quote!(gcore::registry::record_edge_type::<#ty>()));
+		let input_types = row.iter().map(|ty| quote!(gcore::registry::record_source_type::<#ty>()));
 		let downcasts = names.iter().zip(row.iter()).enumerate().map(|(index, (name, ty))| {
 			let handle = format_ident!("__handle_{index}");
 			let layout = format_ident!("__layout_{index}");
@@ -340,7 +340,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 
 			let input_types = slots.iter().map(|slot| match slot {
 				SlotKind::BaseGeneric(name) => quote!(gcore::registry::generic_record_edge_type(#name)),
-				SlotKind::BaseConcrete(ty) | SlotKind::Value(ty) | SlotKind::Extracted(ty) | SlotKind::Ranked(ty) => quote!(gcore::registry::record_edge_type::<#ty>()),
+				SlotKind::BaseConcrete(ty) | SlotKind::Value(ty) | SlotKind::Extracted(ty) | SlotKind::Ranked(ty) => quote!(gcore::registry::record_source_type::<#ty>()),
 			});
 
 			let downcasts = names.iter().zip(&slots).enumerate().map(|(index, (name, slot))| {

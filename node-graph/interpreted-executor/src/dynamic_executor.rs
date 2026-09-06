@@ -788,7 +788,7 @@ mod test {
 
 		let executor = build_executor(network);
 		let value = executor.tree().get(NodeId(0)).unwrap();
-		assert_eq!(value.ty(), &core_types::registry::record_edge_type::<f64>());
+		assert_eq!(value.ty(), &core_types::registry::record_source_type::<f64>());
 		assert_eq!(value.layout().depth, 0);
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
 	}
