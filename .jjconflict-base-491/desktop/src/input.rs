@@ -6,6 +6,18 @@ use winit::keyboard::ModifiersState;
 use crate::ui::{InputEvent, MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
 use crate::wrapper::messages::{EditorPointerState, InputMessage, ModifierKeys, MouseKeys, ScrollDelta};
 
+// Marks input event as observe-only, meaning it should not result in any input messages being send by the frontend.
+// And should instead be ignored by frontend input processing and only be used to update the UI state (hover, cursor).
+// TODO(Timon): Remove and find a less hacky solution
+trait ObserveOnlyExt {
+	fn observe_only(self) -> Self;
+}
+impl ObserveOnlyExt for crate::ui::InputEventBuilder {
+	fn observe_only(self) -> Self {
+		self.num_lock(true)
+	}
+}
+
 pub(crate) struct InputState {
 	start: Instant,
 	viewport_info: Option<ViewportInfo>,
@@ -96,13 +108,18 @@ impl InputState {
 				};
 				match route {
 					Route::Ui => ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).build()),
-					Route::Editor => editor_callback(InputMessage::PointerMove {
-						editor_mouse_state: match source {
-							PointerSource::TabletTool { kind, data } => self.tablet_pointer_state(kind, data),
-							_ => self.pointer_state(),
-						},
-						modifier_keys: self.modifier_keys(),
-					}),
+					Route::Editor => {
+						if !self.pointer_locked() {
+							ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).observe_only().build());
+						}
+						editor_callback(InputMessage::PointerMove {
+							editor_mouse_state: match source {
+								PointerSource::TabletTool { kind, data } => self.tablet_pointer_state(kind, data),
+								_ => self.pointer_state(),
+							},
+							modifier_keys: self.modifier_keys(),
+						});
+					}
 				}
 			}
 			WindowEvent::PointerEntered { position, .. } => {
@@ -160,14 +177,18 @@ impl InputState {
 				let count = mouse_button.map_or(1, |button| self.click_tracker.input(*position, button, *state));
 
 				let back_or_forward = matches!(mouse_button, Some(MouseButton::Back | MouseButton::Forward));
+				let pointer = InputEvent::pointer().position(*position);
+				let input = match state {
+					ElementState::Pressed => pointer.pressed(button.clone(), count),
+					ElementState::Released => pointer.released(button.clone(), count),
+				}
+				.modifiers(self.modifiers);
 				if self.pointer_locked() || keys.is_empty() || !(back_or_forward || route == Route::Editor) {
-					let pointer = InputEvent::pointer().position(*position);
-					let input = match state {
-						ElementState::Pressed => pointer.pressed(button.clone(), count),
-						ElementState::Released => pointer.released(button.clone(), count),
-					};
-					ui_callback(input.modifiers(self.modifiers).build());
+					ui_callback(input.build());
 					return;
+				}
+				if route == Route::Editor {
+					ui_callback(input.observe_only().build());
 				}
 
 				let editor_mouse_state = match button {
