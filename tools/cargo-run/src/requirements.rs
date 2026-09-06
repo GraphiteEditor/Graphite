@@ -54,6 +54,7 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			command: "wasm-bindgen",
 			args: &["--version"],
 			name: "Wasm Bindgen",
+			// NOTICE: keep in sync with the `wasm-bindgen` crate in `Cargo.toml` and the `wasm-bindgen-cli` version pinned in `.github/workflows/build.yml`, `.devcontainer/devcontainer.json`, `.nix/dev.nix`, and `.nix/pkgs/graphite.nix`
 			version: Some("=0.2.121"),
 			install: "cargo install -f wasm-bindgen-cli@0.2.121".into(),
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
@@ -63,7 +64,9 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			command: "cargo-about",
 			args: &["--version"],
 			name: "Cargo About",
-			install: "cargo install cargo-about".into(),
+			// NOTICE: keep in sync with the `cargo-about` version pinned in `.github/workflows/build.yml` and `.devcontainer/devcontainer.json`
+			version: Some(">=0.9.2"),
+			install: "cargo install -f cargo-about@0.9.2".into(),
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()
 		},
