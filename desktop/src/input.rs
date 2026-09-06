@@ -1,4 +1,5 @@
-use std::time::Instant;
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 use winit::dpi::PhysicalPosition;
 use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, PointerSource, TabletToolData, TabletToolKind, WindowEvent};
 use winit::keyboard::ModifiersState;
@@ -21,11 +22,12 @@ impl ObserveOnlyExt for crate::ui::InputEventBuilder {
 pub(crate) struct InputState {
 	start: Instant,
 	viewport_info: Option<ViewportInfo>,
+	direct_input: bool,
 	modifiers: ModifiersState,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_state: PointerState,
 	click_tracker: ClickTracker,
-	direct_input: bool,
+	shake_tracker: ShakeTracker,
 }
 
 impl InputState {
@@ -33,11 +35,12 @@ impl InputState {
 		Self {
 			start: Instant::now(),
 			viewport_info: None,
+			direct_input: false,
 			modifiers: ModifiersState::default(),
 			pointer_position: PhysicalPosition::default(),
 			pointer_state: PointerState::Hover { route: Route::Ui },
 			click_tracker: ClickTracker::default(),
-			direct_input: false,
+			shake_tracker: ShakeTracker::default(),
 		}
 	}
 
@@ -112,13 +115,15 @@ impl InputState {
 						if !self.pointer_locked() {
 							ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).observe_only().build());
 						}
-						editor_callback(InputMessage::PointerMove {
-							editor_mouse_state: match source {
-								PointerSource::TabletTool { kind, data } => self.tablet_pointer_state(kind, data),
-								_ => self.pointer_state(),
-							},
-							modifier_keys: self.modifier_keys(),
-						});
+						let editor_mouse_state = match source {
+							PointerSource::TabletTool { kind, data } => self.tablet_pointer_state(kind, data),
+							_ => self.pointer_state(),
+						};
+						let modifier_keys = self.modifier_keys();
+						if self.shake_tracker.detect(*position, self.start.elapsed()) {
+							editor_callback(InputMessage::PointerShake { editor_mouse_state, modifier_keys });
+						}
+						editor_callback(InputMessage::PointerMove { editor_mouse_state, modifier_keys });
 					}
 				}
 			}
@@ -381,4 +386,68 @@ struct Click {
 	time: Instant,
 	position: (i32, i32),
 	count: u32,
+}
+
+#[derive(Default)]
+struct ShakeTracker {
+	samples: VecDeque<(PhysicalPosition<f64>, Duration)>,
+	last: Option<Duration>,
+}
+
+// Keep heuristic and constants in sync with `detectShake` in `frontend/src/utility-functions/input.ts`.
+impl ShakeTracker {
+	const SENSITIVITY_DIRECTION_CHANGES: usize = 3;
+	const SENSITIVITY_DISTANCE_TO_DISPLACEMENT_RATIO: f64 = 0.1;
+	const DETECTION_WINDOW: Duration = Duration::from_millis(500);
+	const DEBOUNCE: Duration = Duration::from_millis(1000);
+
+	fn detect(&mut self, position: PhysicalPosition<f64>, now: Duration) -> bool {
+		self.samples.push_back((position, now));
+
+		while self.samples.front().is_some_and(|&(_, time)| now.saturating_sub(time) > Self::DETECTION_WINDOW) {
+			self.samples.pop_front();
+		}
+
+		if self.samples.len() <= 3 || self.last.is_some_and(|time| now.saturating_sub(time) <= Self::DEBOUNCE) {
+			return false;
+		}
+
+		let mut total_distance_squared = 0.;
+		for i in 1..self.samples.len() {
+			let (p1, _) = self.samples[i - 1];
+			let (p2, _) = self.samples[i];
+			total_distance_squared += (p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2);
+		}
+
+		let mut direction_changes = 0;
+		let mut average = PhysicalPosition::new(0., 0.);
+		let interior_count = self.samples.len() - 2;
+		for i in 0..interior_count {
+			let (p1, _) = self.samples[i];
+			let (p2, _) = self.samples[i + 1];
+			let (p3, _) = self.samples[i + 2];
+
+			let vector1 = (p2.x - p1.x, p2.y - p1.y);
+			let vector2 = (p3.x - p2.x, p3.y - p2.y);
+			if vector1.0 * vector2.0 + vector1.1 * vector2.1 < 0. {
+				direction_changes += 1;
+			}
+
+			average.x += p2.x;
+			average.y += p2.y;
+		}
+		average.x /= interior_count as f64;
+		average.y /= interior_count as f64;
+
+		let (last, _) = self.samples[self.samples.len() - 1];
+		let displacement_squared = (last.x - average.x).powi(2) + (last.y - average.y).powi(2);
+
+		if Self::SENSITIVITY_DISTANCE_TO_DISPLACEMENT_RATIO * total_distance_squared >= displacement_squared && direction_changes >= Self::SENSITIVITY_DIRECTION_CHANGES {
+			self.last = Some(now);
+			self.samples.clear();
+			return true;
+		}
+
+		false
+	}
 }
