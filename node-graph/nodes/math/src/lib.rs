@@ -1016,7 +1016,7 @@ mod graphene_test {
 	use core_types::node::{BatchStatus, Node};
 	use core_types::record::{Layout, LiftedSource, RecordValue, serve_input};
 	use core_types::registry::{ErasedRecordNode, construct};
-	use core_types::value::record_value_edge;
+	use core_types::value::record_value_source;
 	use std::mem::MaybeUninit;
 
 	fn scope_fixture(arena: &Arena) -> EvalScope<'_> {
@@ -1111,7 +1111,7 @@ mod graphene_test {
 		let ctx = ContextImpl::root(&scope);
 
 		let entries = super::_logical_or_mod::logical_or_entries();
-		let mut wired = construct(&entries[0], vec![record_value_edge(true), record_value_edge(false)]).unwrap();
+		let mut wired = construct(&entries[0], vec![record_value_source(true), record_value_source(false)]).unwrap();
 		let layout = out_layout::<bool>();
 		wired.set_layout(core_types::record::RecordLayout {
 			frame_bytes: layout.frame_bytes(),
@@ -1157,7 +1157,7 @@ mod graphene_test {
 		);
 		assert_eq!(entries[3].io.return_value, core_types::registry::record_type::<DVec2>());
 
-		let mut wired = construct(&entries[0], vec![record_value_edge(1.5f64), record_value_edge(2.5f64)]).unwrap();
+		let mut wired = construct(&entries[0], vec![record_value_source(1.5f64), record_value_source(2.5f64)]).unwrap();
 		let layout = out_layout::<f64>();
 		wired.set_layout(core_types::record::RecordLayout {
 			frame_bytes: layout.frame_bytes(),

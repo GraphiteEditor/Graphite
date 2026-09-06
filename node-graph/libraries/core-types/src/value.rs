@@ -33,8 +33,8 @@ where
 	}
 }
 
-/// The native record edge of a constant.
-pub fn record_value_edge<T: Clone + Send + Sync + dyn_any::StaticTypeSized + 'static>(value: T) -> crate::registry::SourceHandle
+/// The native record source of a constant.
+pub fn record_value_source<T: Clone + Send + Sync + dyn_any::StaticTypeSized + 'static>(value: T) -> crate::registry::SourceHandle
 where
 	T::Static: Clone + Send + Sync,
 {

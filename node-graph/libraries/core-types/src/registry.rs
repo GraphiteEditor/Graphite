@@ -555,7 +555,7 @@ mod tests {
 			let mut args = args.into_iter();
 			let value = args.next().ok_or(ConstructionError::Arity { expected: 1, got: 0 })?.downcast_record::<String>()?;
 			drop(value);
-			Ok(crate::value::record_value_edge(0u32))
+			Ok(crate::value::record_value_source(0u32))
 		}
 		let entry = RegistryEntry {
 			layout_meta: None,
@@ -563,12 +563,12 @@ mod tests {
 			constructor: construct_strlen,
 		};
 
-		let owned = crate::value::record_value_edge("typed".to_string());
+		let owned = crate::value::record_value_source("typed".to_string());
 		assert!(construct(&entry, vec![owned]).is_ok());
 
 		assert_eq!(construct(&entry, vec![]).unwrap_err(), ConstructionError::Arity { expected: 1, got: 0 });
 
-		let mistyped = crate::value::record_value_edge(1.0f64);
+		let mistyped = crate::value::record_value_source(1.0f64);
 		assert_eq!(
 			construct(&entry, vec![mistyped]).unwrap_err(),
 			ConstructionError::Type {

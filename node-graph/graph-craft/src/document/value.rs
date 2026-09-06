@@ -10,7 +10,7 @@ use core_types::list::List;
 use core_types::registry::SourceHandle;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
-use core_types::value::{leveled_record_value_edge, record_value_edge};
+use core_types::value::{leveled_record_value_edge, record_value_source};
 use core_types::{CacheHash, Color, ContextModification, MemoHash, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
@@ -315,7 +315,7 @@ macro_rules! tagged_value {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
-					Self::None => Ok(record_value_edge(())),
+					Self::None => Ok(record_value_source(())),
 					Self::TypeDefault(td) => {
 						let name = td.name.as_ref();
 						// The list-typed defaults serve an empty level; the rest construct
@@ -334,8 +334,8 @@ macro_rules! tagged_value {
 						// starts from a blank vector, as the legacy path modify synthesized itself.
 						if name == core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) { return Ok(leveled_record_value_edge(vec![Vector::default()])); }
 						check_level!(List<String>, String);
-						if name == core_types::normalize_type_name(std::any::type_name::<DocumentNode>()) { return Ok(record_value_edge(DocumentNode::default())); }
-						if name == core_types::normalize_type_name(std::any::type_name::<Resource>()) { return Ok(record_value_edge(Resource::default())); }
+						if name == core_types::normalize_type_name(std::any::type_name::<DocumentNode>()) { return Ok(record_value_source(DocumentNode::default())); }
+						if name == core_types::normalize_type_name(std::any::type_name::<Resource>()) { return Ok(record_value_source(Resource::default())); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_edge()
 					}
 					Self::F64Array(values) => Ok(leveled_record_value_edge(values)),
@@ -345,16 +345,16 @@ macro_rules! tagged_value {
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(x) => Ok(record_value_edge(x)), )*
+					$( Self::$identifier(x) => Ok(record_value_source(x)), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(x) => Ok(record_value_edge(x)),
-					Self::NodeIdPath(path) => Ok(record_value_edge(path)),
-					Self::DocumentNode(node) => Ok(record_value_edge(node)),
-					Self::ContextModification(modification) => Ok(record_value_edge(modification)),
-					Self::EditorApi(x) => Ok(record_value_edge(x)),
-					Self::ResourceHash(x) => Ok(record_value_edge(x)),
+					Self::RenderOutput(x) => Ok(record_value_source(x)),
+					Self::NodeIdPath(path) => Ok(record_value_source(path)),
+					Self::DocumentNode(node) => Ok(record_value_source(node)),
+					Self::ContextModification(modification) => Ok(record_value_source(modification)),
+					Self::EditorApi(x) => Ok(record_value_source(x)),
+					Self::ResourceHash(x) => Ok(record_value_source(x)),
 				}
 			}
 
