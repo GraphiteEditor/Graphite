@@ -83,7 +83,10 @@ pub enum PenToolMessage {
 		colinear: Key,
 		move_anchor_with_handles: Key,
 	},
+	/// Sent once the document has reverted a history step and the graph has re-evaluated, so an in-progress drawing rewinds to the previous anchor.
 	Undo,
+	/// Sent once the document has re-applied a history step and the graph has re-evaluated, so an in-progress drawing advances to the restored anchor.
+	Redo,
 	UpdateOptions {
 		options: PenOptionsUpdate,
 	},
@@ -286,7 +289,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenT
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
 			PenToolFsmState::Ready | PenToolFsmState::GRSHandle => actions!(PenToolMessageDiscriminant;
-				Undo,
 				DragStart,
 				DragStop,
 				Confirm,
@@ -605,7 +607,7 @@ impl PenToolData {
 
 	/// Check whether moving the initially created point.
 	fn moving_start_point(&self) -> bool {
-		self.latest_points.len() == 1 && self.latest_point().is_some_and(|point| point.pos == self.next_point)
+		self.point_index == 0 && self.latest_point().is_some_and(|point| point.pos == self.next_point)
 	}
 
 	// When the vector transform changes, the positions of the points must be recalculated.
@@ -620,6 +622,31 @@ impl PenToolData {
 				point.handle_start = point.pos;
 			}
 		}
+	}
+
+	/// Re-anchors the in-progress preview segment on the current anchor after undo or redo moved it, using the re-evaluated layer transform.
+	fn resume_preview_from_current_anchor(&mut self, snap_data: SnapData, transform: DAffine2, vector: &Vector, responses: &mut VecDeque<Message>) {
+		// The segments meeting the current anchor are the ones whose handles the overlays show and the angle lock references
+		let connected_segments: Vec<SegmentId> = self
+			.latest_point()
+			.map(|point| vector.all_connected(point.id).map(|handle| handle.segment).collect())
+			.unwrap_or_default();
+		(self.prior_segment, self.prior_segments) = match connected_segments.as_slice() {
+			[] => (None, None),
+			[segment] => (Some(*segment), None),
+			_ => (None, Some(connected_segments)),
+		};
+
+		// Release any engaged angle lock, and ignore the lock-angle and snap-angle keys still held from the shortcut until they are pressed anew
+		self.angle_locked = false;
+		self.switch_to_free_on_ctrl_release = false;
+		self.suppress_lock_angle = true;
+		self.suppress_snap_angle = true;
+		self.modifiers.lock_angle = false;
+		self.modifiers.snap_angle = false;
+
+		let mouse = snap_data.input.mouse.position;
+		self.place_anchor(snap_data, transform, mouse, responses);
 	}
 
 	/// If the user places the anchor on top of the previous anchor, it becomes sharp and the outgoing handle may be dragged.
@@ -710,7 +737,15 @@ impl PenToolData {
 		false
 	}
 
+	/// Finishes the drag by placing the handle or segment, then closes the history step that the click opened.
 	fn finish_placing_handle(&mut self, snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+		let state = self.place_handle_or_segment(snap_data, transform, responses);
+		responses.add(DocumentMessage::EndTransaction);
+		state
+	}
+
+	/// The first drag of a path only records the initial anchor's outgoing handle, and every later drag inserts a segment.
+	fn place_handle_or_segment(&mut self, snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		let document = snap_data.document;
 		let next_handle_start = self.next_handle_start;
 		let handle_start = self.latest_point()?.handle_start;
@@ -719,7 +754,6 @@ impl PenToolData {
 		self.handle_end_offset = None;
 		self.handle_start_offset = None;
 		let Some(handle_end) = self.handle_end else {
-			responses.add(DocumentMessage::EndTransaction);
 			self.handle_end = Some(next_handle_start);
 			self.place_anchor(snap_data, transform, mouse, responses);
 			self.latest_point_mut()?.handle_start = next_handle_start;
@@ -817,7 +851,6 @@ impl PenToolData {
 		}
 		self.path_closed = false;
 		self.prior_segment_endpoint = None;
-		responses.add(DocumentMessage::EndTransaction);
 		Some(if close_subpath { PenToolFsmState::Ready } else { PenToolFsmState::PlacingAnchor })
 	}
 
@@ -1901,6 +1934,9 @@ impl Fsm for PenToolFsmState {
 					tool_data.buffering_merged_vector = false;
 					PenToolFsmState::DraggingHandle(tool_data.handle_mode)
 				} else {
+					// Each segment placement is its own history step, spanning from this click through the release that finalizes it
+					responses.add(DocumentMessage::StartTransaction);
+
 					// Merge two layers if the point is connected to the end point of another path
 
 					// This might not be the correct solution to artboards being included as the other layer,
@@ -1927,12 +1963,63 @@ impl Fsm for PenToolFsmState {
 				}
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::RemovePreviousHandle) => {
-				if let Some(last_point) = tool_data.latest_points.last_mut() {
+				if let Some(last_point) = tool_data.latest_point_mut() {
 					last_point.handle_start = last_point.pos;
 					responses.add(OverlaysMessage::Draw);
 				} else {
 					log::trace!("No latest point available to modify handle_start.");
 				}
+				self
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => {
+				let vector = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer));
+				let anchor_exists = |point: &LastPoint| vector.as_ref().is_some_and(|vector| vector.point_domain.position_from_id(point.id).is_some());
+
+				// Rewind past the anchors the reverted path no longer contains, remembering them so redo can advance back through them
+				while tool_data.point_index > 0 && !tool_data.latest_point().is_some_and(anchor_exists) {
+					tool_data.point_index -= 1;
+				}
+
+				// Undoing the initial anchor removed the whole in-progress path, so the drawing is over
+				let initial_anchor_remains = tool_data.latest_point().is_some_and(anchor_exists);
+				let Some(vector) = vector.filter(|_| initial_anchor_remains) else {
+					tool_data.cleanup(responses);
+					tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
+					responses.add(OverlaysMessage::Draw);
+
+					return PenToolFsmState::Ready;
+				};
+
+				tool_data.resume_preview_from_current_anchor(SnapData::new(document, input, viewport), transform, &vector, responses);
+				self
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::Redo) => {
+				let Some(vector) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) else {
+					return self;
+				};
+
+				// Advance only through the remembered anchors the re-applied step actually brought back
+				let anchor_exists = |point: &LastPoint| vector.point_domain.position_from_id(point.id).is_some();
+				let mut advanced = false;
+				while tool_data.latest_points.get(tool_data.point_index + 1).is_some_and(anchor_exists) {
+					tool_data.point_index += 1;
+					advanced = true;
+				}
+
+				if advanced {
+					tool_data.resume_preview_from_current_anchor(SnapData::new(document, input, viewport), transform, &vector, responses);
+				}
+				self
+			}
+			// The history step changed the path beneath the handle being transformed, so cancel the transform (returning to anchor placement) before catching up
+			(PenToolFsmState::GRSHandle, PenToolMessage::Undo) => {
+				responses.add(TransformLayerMessage::CancelTransformOperation);
+				responses.add(PenToolMessage::Undo);
+				self
+			}
+			(PenToolFsmState::GRSHandle, PenToolMessage::Redo) => {
+				responses.add(TransformLayerMessage::CancelTransformOperation);
+				responses.add(PenToolMessage::Redo);
 				self
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
@@ -2147,7 +2234,7 @@ impl Fsm for PenToolFsmState {
 				if let Some((vector, layer)) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)).zip(layer) {
 					let single_point_in_layer = vector.point_domain.ids().len() == 1;
 					tool_data.finish_placing_handle(SnapData::new(document, input, viewport), transform, responses);
-					let latest_points = tool_data.latest_points.len() == 1;
+					let latest_points = tool_data.point_index == 0;
 
 					if latest_points && single_point_in_layer {
 						responses.add(NodeGraphMessage::DeleteNodes {
@@ -2288,5 +2375,245 @@ impl Fsm for PenToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+	}
+}
+
+#[cfg(test)]
+mod test_pen_tool {
+	use crate::test_utils::test_prelude::*;
+	use graphene_std::vector::Vector;
+
+	/// The single Pen-drawn path layer and its vector, or `None` once the layer has been undone away.
+	fn drawn_path(editor: &EditorTestUtils) -> Option<(LayerNodeIdentifier, Vector)> {
+		let document = editor.active_document();
+		let path_identifier = DefinitionIdentifier::Network("Path".into());
+		let mut path_layers = document
+			.metadata()
+			.all_layers()
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &path_identifier));
+
+		let layer = path_layers.next()?;
+		assert!(path_layers.next().is_none(), "Expected a single path layer");
+		let vector = document.network_interface.compute_modified_vector(layer).expect("Path layer has no vector");
+		Some((layer, vector))
+	}
+
+	fn assert_path_shape(editor: &EditorTestUtils, points: usize, segments: usize) {
+		let (_, vector) = drawn_path(editor).expect("Expected a drawn path");
+		assert_eq!(vector.point_domain.ids().len(), points, "Unexpected point count");
+		assert_eq!(vector.segment_domain.ids().len(), segments, "Unexpected segment count");
+	}
+
+	/// Asserts the path's anchors sit at the given viewport positions, in placement order, and that each segment joins consecutive anchors.
+	fn assert_anchors(editor: &EditorTestUtils, expected: &[DVec2]) {
+		let (layer, vector) = drawn_path(editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+
+		let anchor_ids = vector.point_domain.ids();
+		assert_eq!(anchor_ids.len(), expected.len(), "Unexpected point count");
+		for (index, (&id, &expected_position)) in anchor_ids.iter().zip(expected).enumerate() {
+			let position = layer_to_viewport.transform_point2(vector.point_domain.position_from_id(id).unwrap());
+			assert!(
+				position.distance(expected_position) < 1e-6,
+				"Anchor {index} is at {position:?} but was expected at {expected_position:?}"
+			);
+		}
+
+		let segment_ids = vector.segment_domain.ids();
+		assert_eq!(segment_ids.len(), expected.len().saturating_sub(1), "Unexpected segment count");
+		for (index, &segment) in segment_ids.iter().enumerate() {
+			assert_eq!(vector.segment_start_from_id(segment), Some(anchor_ids[index]), "Segment {index} does not start at anchor {index}");
+			assert_eq!(vector.segment_end_from_id(segment), Some(anchor_ids[index + 1]), "Segment {index} does not end at anchor {}", index + 1);
+		}
+	}
+
+	async fn click_pen(editor: &mut EditorTestUtils, position: DVec2) {
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, position, ModifierKeys::empty()).await;
+	}
+
+	async fn undo(editor: &mut EditorTestUtils) {
+		editor.handle_message(DocumentMessage::Undo).await;
+	}
+
+	async fn redo(editor: &mut EditorTestUtils) {
+		editor.handle_message(DocumentMessage::Redo).await;
+	}
+
+	const A: DVec2 = DVec2::new(100., 100.);
+	const B: DVec2 = DVec2::new(200., 100.);
+	const C: DVec2 = DVec2::new(200., 200.);
+	const D: DVec2 = DVec2::new(100., 200.);
+
+	#[tokio::test]
+	async fn each_segment_and_the_closing_click_are_their_own_history_steps() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		click_pen(&mut editor, A).await;
+		assert_path_shape(&editor, 3, 3);
+
+		undo(&mut editor).await;
+		assert_path_shape(&editor, 3, 2);
+		undo(&mut editor).await;
+		assert_path_shape(&editor, 2, 1);
+		undo(&mut editor).await;
+		assert_path_shape(&editor, 1, 0);
+		undo(&mut editor).await;
+		assert!(drawn_path(&editor).is_none(), "Undoing the initial point should remove the path layer");
+
+		for (points, segments) in [(1, 0), (2, 1), (3, 2), (3, 3)] {
+			redo(&mut editor).await;
+			assert_path_shape(&editor, points, segments);
+		}
+	}
+
+	#[tokio::test]
+	async fn undo_while_drawing_rewinds_one_segment_and_keeps_drawing_from_the_previous_anchor() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		assert_anchors(&editor, &[A, B, C]);
+
+		undo(&mut editor).await;
+		assert_anchors(&editor, &[A, B]);
+
+		// The next anchor continues the same path from B, and placing it discards the rewound tail so redo has nothing left to re-apply
+		click_pen(&mut editor, D).await;
+		assert_anchors(&editor, &[A, B, D]);
+		redo(&mut editor).await;
+		assert_anchors(&editor, &[A, B, D]);
+
+		// Rewinding twice in a row walks back one anchor each time
+		undo(&mut editor).await;
+		undo(&mut editor).await;
+		assert_anchors(&editor, &[A]);
+		click_pen(&mut editor, C).await;
+		assert_anchors(&editor, &[A, C]);
+	}
+
+	#[tokio::test]
+	async fn redo_while_drawing_advances_one_segment_and_keeps_drawing_from_the_restored_anchor() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+
+		undo(&mut editor).await;
+		undo(&mut editor).await;
+		assert_anchors(&editor, &[A]);
+
+		redo(&mut editor).await;
+		assert_anchors(&editor, &[A, B]);
+
+		// Redo with nothing further to re-apply changes nothing
+		redo(&mut editor).await;
+		assert_anchors(&editor, &[A, B, C]);
+		redo(&mut editor).await;
+		assert_anchors(&editor, &[A, B, C]);
+
+		click_pen(&mut editor, D).await;
+		assert_anchors(&editor, &[A, B, C, D]);
+	}
+
+	#[tokio::test]
+	async fn undo_of_the_initial_point_ends_the_drawing() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		assert_anchors(&editor, &[A]);
+
+		undo(&mut editor).await;
+		assert!(drawn_path(&editor).is_none(), "Undoing the initial point should remove the path layer");
+
+		// The tool is idle again, so the next clicks start a fresh path
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		assert_anchors(&editor, &[B, C]);
+	}
+
+	#[tokio::test]
+	async fn undo_is_refused_while_a_segment_is_being_placed() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		editor.move_mouse(B.x, B.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(B.x, B.y, ModifierKeys::empty()).await;
+
+		undo(&mut editor).await;
+		assert_anchors(&editor, &[A]);
+
+		editor.left_mouseup(B.x, B.y, ModifierKeys::empty()).await;
+		assert_anchors(&editor, &[A, B]);
+
+		undo(&mut editor).await;
+		assert_anchors(&editor, &[A]);
+	}
+
+	#[tokio::test]
+	async fn undo_during_a_handle_transform_cancels_the_transform_and_rewinds() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+
+		// Drag out C's handle so there is one to transform, then start grabbing it
+		let handle = C + DVec2::new(50., 50.);
+		editor.move_mouse(C.x, C.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(C.x, C.y, ModifierKeys::empty()).await;
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(handle.x, handle.y, ModifierKeys::empty()).await;
+		assert_anchors(&editor, &[A, B, C]);
+		editor.press(Key::KeyG, ModifierKeys::empty()).await;
+		assert!(transforming(&editor), "Expected the handle transform to be in progress");
+
+		undo(&mut editor).await;
+		assert!(!transforming(&editor), "Expected the undo to cancel the handle transform");
+		assert_anchors(&editor, &[A, B]);
+
+		click_pen(&mut editor, D).await;
+		assert_anchors(&editor, &[A, B, D]);
+	}
+
+	fn transforming(editor: &EditorTestUtils) -> bool {
+		editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler.is_transforming()
+	}
+
+	#[tokio::test]
+	async fn modifiers_held_from_the_undo_shortcut_do_not_constrain_the_rewound_preview() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let along_the_line = DVec2::new(300., 100.);
+		let off_the_line = DVec2::new(300., 200.);
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, along_the_line).await;
+
+		// Ctrl stays held through the undo, as it does when pressing Ctrl+Z
+		let key_down = InputPreprocessorMessage::KeyDown {
+			key: Key::Control,
+			modifier_keys: ModifierKeys::CONTROL,
+			key_repeat: false,
+		};
+		editor.handle_message(key_down).await;
+		undo(&mut editor).await;
+		assert_anchors(&editor, &[A, B]);
+
+		// Were the still-held Ctrl treated as lock-angle, this anchor would be projected onto the horizontal line through B
+		editor.move_mouse(off_the_line.x, off_the_line.y, ModifierKeys::CONTROL, MouseKeys::empty()).await;
+		editor.left_mousedown(off_the_line.x, off_the_line.y, ModifierKeys::CONTROL).await;
+		editor.left_mouseup(off_the_line.x, off_the_line.y, ModifierKeys::CONTROL).await;
+		assert_anchors(&editor, &[A, B, off_the_line]);
 	}
 }
