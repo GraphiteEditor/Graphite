@@ -93,7 +93,7 @@ Which generations a subgraph observes is determined at compile time by the same 
 
 ## Caching
 
-Memo nodes hash the (retain-filtered) context, generations included. `Final` and `Partial` are both cached; partials are safe because the finalizing bump changes the key. `Pending` and `Error` are never cached. Two memo tiers exist with different contracts: the persistent memo owns its entries and is a bounded LRU (contexts that change every evaluation would otherwise grow it without bound), while the frame memo stores entries in the per-evaluation arena, lends borrows on hits, and is invalidated en masse by the arena generation bump, which makes compiler-inserted caching effectively free.
+Memo nodes hash the (retain-filtered) context, generations included. `Final` and `Partial` are both cached; partials are safe because the finalizing bump changes the key. `Pending` and `Error` are never cached. Two memo nodes exist with different contracts. The frame memo is the cheap one the compiler inserts at nullification boundaries: it publishes a promoted span into the persistent arena region keyed on the lane-normalized context, hits serve straight out of the region until the region's epoch flush, and a flush makes an entry unreachable, never wrong, so compiler-inserted caching costs a re-publish rather than a deep copy. The explicit memoize node is two-tier: the same span fast path over deep copies that survive flushes, for content whose recomputation is what the author is paying to avoid. The arena split, promotion, and the laws they rest on are covered in the attribute RFC's arena section.
 
 ## Runtime
 
@@ -127,17 +127,26 @@ Scheduling semantics: generations are read once per evaluation (completions land
 
 ```rs
 pub trait Node<Input> {
-    type Output;
-    fn eval(&self, input: &Input) -> GPoll<Self::Output>;
+    /// Serves the node's record through the caller's claim; the proof is
+    /// mintable only by the claim's closing methods.
+    fn serve<'e, 'l>(&self, input: &Input, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>;
     /// Rank polymorphism extension point, scalar (`Free`) by default.
-    fn extent(&self, input: &Input) -> GPoll<Extent> { ... }
+    fn extent(&self, input: &Input, level: Level) -> GPoll<Extent> { ... }
     /// Batched evaluation; the default body is the per-lane spec loop.
-    fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>,
-                      scratch: Option<&'a mut [MaybeUninit<Self::Output>]>)
-        -> BatchStatus<'a, Self::Output>
-    where Input: InjectIndex + Copy { ... }
+    fn eval_batch<'a, 'e>(&'a self, input: &'a Input, range: Range<u64>,
+                          scratch: Option<&'a mut [MaybeUninit<u64>]>,
+                          frames: &Frames<'e>) -> BatchStatus<'a>
+    where Input: InjectIndex + Copy + ExtractArena<ArenaRef = &'e Arena> { ... }
 }
 ```
+
+With the record model there is no `Output` associated type: every node
+serves a record whose layout is wiring state, the element at offset 0,
+and `serve` is the one required method. The caller mints the claim out
+of its own frame space at the node's declared layout, so a served
+record is of that layout by construction, and kernels evaluate their
+inputs through generated handles that own the claims (the `eval` name
+survives on those handles and on the batch path).
 
 Three load-bearing shape decisions:
 
@@ -145,7 +154,7 @@ Three load-bearing shape decisions:
 - **No lifetime parameter on the trait.** With `&self`, any lifetime in the output can only come from the input type, so lending impls quantify over it: `impl<'e> Node<Context<'e>> for Lend { type Output = &'e T; }`. `GPoll` is fixed in the signature the way `Poll` is fixed in `Future`.
 - **Input by reference.** `Input` is the owned context type; calls pass `&Context`. A modifying node keeps one mutable local, mutates it between calls (per-lane index stepping is one u64 store), and lends `&local` down; sound because inputs are second-class (never stored). This halved erased-edge cost versus by-value contexts (48 bytes of ABI traffic became one pointer).
 
-The batching law: `eval` is the sole semantic interface, and any `eval_batch` override must be indistinguishable from the default per-lane loop; overrides are optimization, never semantics. `extent` reports a node's domain (`Free` for index-invariant, `Exactly(n)` for bounded), with uncertainty riding the `GPoll` status axis like any other value.
+The batching law: `serve` is the sole semantic interface, and any `eval_batch` override must be indistinguishable from the default per-lane loop; overrides are optimization, never semantics. `extent` reports a node's domain (`Free` for index-invariant, `Exactly(n)` for bounded), with uncertainty riding the `GPoll` status axis like any other value.
 
 ## Context
 
@@ -201,8 +210,8 @@ Codegen requirements: the stand-in and error share a box, the status axis is fla
 # Unresolved questions
 
 - Partial epochs: futures that publish intermediate data (streams, progressive decode) want a weaker invalidation than completion.
-- Arena ownership and reset policy in the editor executor (the largest undesigned integration piece).
-- LRU capacity policy; exact policy for provisional errors.
+- Arena sizing and growth on exhaustion (grow-and-retry across frames); ownership and the reset policy landed with the two-arena split, transient reset per evaluation and persistent epoch flush after a refused reservation.
+- Exact policy for provisional errors.
 - `Send`/wasm: spawned futures need `Send` on native only; the arena's concurrency claims need loom before any multi-threaded executor.
 
 # Future possibilities
