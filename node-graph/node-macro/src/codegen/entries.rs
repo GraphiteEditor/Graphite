@@ -161,7 +161,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 					let mut inputs = inputs.into_iter();
 					#(#downcasts)*
 					let __node = #struct_name #turbofish::new(#(#names,)* #(#layout_args)*);
-					Ok(gcore::registry::EdgeHandle::new_record::<#row_output>(::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>))
+					Ok(gcore::registry::SourceHandle::new_record::<#row_output>(::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>))
 				},
 			}
 		})
@@ -394,7 +394,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 			let (io_output, wrap) = match &output_element {
 				Some(element) => (
 					quote!(gcore::registry::record_type::<#element>()),
-					quote!(Ok(gcore::registry::EdgeHandle::new_record::<#element>(::std::sync::Arc::new(__node)))),
+					quote!(Ok(gcore::registry::SourceHandle::new_record::<#element>(::std::sync::Arc::new(__node)))),
 				),
 				None => {
 					let name = match &node.output.shape.element {
@@ -404,7 +404,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 					let base_ty = format_ident!("__ty_{}", base_indices[0]);
 					(
 						quote!(gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed(#name))))),
-						quote!(Ok(gcore::registry::EdgeHandle::new_erased(::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>, #base_ty))),
+						quote!(Ok(gcore::registry::SourceHandle::new_erased(::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>, #base_ty))),
 					)
 				}
 			};

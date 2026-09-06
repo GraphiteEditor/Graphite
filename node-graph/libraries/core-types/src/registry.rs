@@ -185,7 +185,7 @@ where
 	}
 }
 
-pub struct EdgeHandle {
+pub struct SourceHandle {
 	node: Box<DynEdge>,
 	share: fn(&DynEdge) -> Box<DynEdge>,
 	serialize: fn(&DynEdge) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
@@ -194,20 +194,20 @@ pub struct EdgeHandle {
 	ty: Type,
 }
 
-impl std::fmt::Debug for EdgeHandle {
+impl std::fmt::Debug for SourceHandle {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("EdgeHandle").field("ty", &self.ty).finish_non_exhaustive()
+		f.debug_struct("SourceHandle").field("ty", &self.ty).finish_non_exhaustive()
 	}
 }
 
 // SAFETY: wasm is single threaded, so the marker-free payload never actually crosses a thread.
 #[cfg(target_family = "wasm")]
-unsafe impl Send for EdgeHandle {}
+unsafe impl Send for SourceHandle {}
 // SAFETY: as in Send.
 #[cfg(target_family = "wasm")]
-unsafe impl Sync for EdgeHandle {}
+unsafe impl Sync for SourceHandle {}
 
-impl EdgeHandle {
+impl SourceHandle {
 	pub fn new_record<T: 'static>(node: std::sync::Arc<ErasedRecordNode>) -> Self {
 		Self::new_erased(node, record_edge_type::<T>())
 	}
@@ -278,7 +278,7 @@ impl EdgeHandle {
 	}
 }
 
-pub type NodeConstructor = fn(Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError>;
+pub type NodeConstructor = fn(Vec<SourceHandle>) -> Result<SourceHandle, ConstructionError>;
 
 #[derive(Clone)]
 pub struct RegistryEntry {
@@ -290,7 +290,7 @@ pub struct RegistryEntry {
 	pub layout_meta: Option<crate::record::LayoutMeta>,
 }
 
-pub fn construct(entry: &RegistryEntry, inputs: Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError> {
+pub fn construct(entry: &RegistryEntry, inputs: Vec<SourceHandle>) -> Result<SourceHandle, ConstructionError> {
 	if inputs.len() != entry.io.inputs.len() {
 		return Err(ConstructionError::Arity {
 			expected: entry.io.inputs.len(),
@@ -376,7 +376,7 @@ mod tests {
 
 		let node = LendNode::new("held");
 		let layout = Node::<ContextImpl>::layout(&node).clone();
-		let handle = EdgeHandle::new_erased(Arc::new(node) as Arc<ErasedRecordNode>, concrete!(String));
+		let handle = SourceHandle::new_erased(Arc::new(node) as Arc<ErasedRecordNode>, concrete!(String));
 		assert_eq!(*handle.ty(), concrete!(String));
 
 		let wired = handle.downcast_erased::<ErasedRecordNode>(concrete!(String)).unwrap();
@@ -551,7 +551,7 @@ mod tests {
 
 	#[test]
 	fn construct_checks_arity_and_types() {
-		fn construct_strlen(args: Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError> {
+		fn construct_strlen(args: Vec<SourceHandle>) -> Result<SourceHandle, ConstructionError> {
 			let mut args = args.into_iter();
 			let value = args.next().ok_or(ConstructionError::Arity { expected: 1, got: 0 })?.downcast_record::<String>()?;
 			drop(value);
@@ -587,7 +587,7 @@ mod tests {
 
 		let counting = counting();
 		let layout = Node::<ContextImpl>::layout(&counting).clone();
-		let handle = EdgeHandle::new_record::<u32>(Arc::new(counting) as Arc<ErasedRecordNode>);
+		let handle = SourceHandle::new_record::<u32>(Arc::new(counting) as Arc<ErasedRecordNode>);
 		let duplicate = handle.duplicate();
 		assert_eq!(*duplicate.ty(), record_edge_type::<u32>());
 		let frames = crate::record::test_frames(1 << 12);

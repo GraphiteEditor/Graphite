@@ -34,11 +34,11 @@ where
 }
 
 /// The native record edge of a constant.
-pub fn record_value_edge<T: Clone + Send + Sync + dyn_any::StaticTypeSized + 'static>(value: T) -> crate::registry::EdgeHandle
+pub fn record_value_edge<T: Clone + Send + Sync + dyn_any::StaticTypeSized + 'static>(value: T) -> crate::registry::SourceHandle
 where
 	T::Static: Clone + Send + Sync,
 {
-	crate::registry::EdgeHandle::new_record::<T>(std::sync::Arc::new(ValueSource::new(value)) as std::sync::Arc<crate::registry::ErasedRecordNode>)
+	crate::registry::SourceHandle::new_record::<T>(std::sync::Arc::new(ValueSource::new(value)) as std::sync::Arc<crate::registry::ErasedRecordNode>)
 }
 
 /// The node behind a leveled value source: a constant list served as one level,
@@ -91,9 +91,9 @@ where
 }
 
 /// The native record edge of a constant level: the edge type is the element's.
-pub fn leveled_record_value_edge<T: Clone + Send + Sync + crate::CacheHash + PartialEq + dyn_any::StaticTypeSized + 'static>(values: Vec<T>) -> crate::registry::EdgeHandle
+pub fn leveled_record_value_edge<T: Clone + Send + Sync + crate::CacheHash + PartialEq + dyn_any::StaticTypeSized + 'static>(values: Vec<T>) -> crate::registry::SourceHandle
 where
 	T::Static: Clone + Send + Sync,
 {
-	crate::registry::EdgeHandle::new_record::<T>(std::sync::Arc::new(LeveledValueSource::new(values)) as std::sync::Arc<crate::registry::ErasedRecordNode>)
+	crate::registry::SourceHandle::new_record::<T>(std::sync::Arc::new(LeveledValueSource::new(values)) as std::sync::Arc<crate::registry::ErasedRecordNode>)
 }

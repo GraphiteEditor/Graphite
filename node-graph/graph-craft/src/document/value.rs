@@ -7,7 +7,7 @@ use core_types::color::SRGBA8;
 use core_types::context::Context;
 use core_types::gpoll::GPoll;
 use core_types::list::List;
-use core_types::registry::EdgeHandle;
+use core_types::registry::SourceHandle;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::value::{leveled_record_value_edge, record_value_edge};
@@ -310,7 +310,7 @@ macro_rules! tagged_value {
 			}
 
 			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a value source typed by [`Self::ty`].
-			pub fn to_edge(self) -> Result<EdgeHandle, String> {
+			pub fn to_edge(self) -> Result<SourceHandle, String> {
 				match self {
 					// ===============
 					// MANUAL VARIANTS
@@ -359,7 +359,7 @@ macro_rules! tagged_value {
 			}
 
 			/// Evaluates a typed source and converts the landed value into a tagged value, with the coverage of [`Self::try_from_any`].
-			pub fn from_edge<'f>(handle: EdgeHandle, ctx: &Context<'f>, frames: &core_types::record::Frames<'f>) -> Result<GPoll<Self>, String> {
+			pub fn from_edge<'f>(handle: SourceHandle, ctx: &Context<'f>, frames: &core_types::record::Frames<'f>) -> Result<GPoll<Self>, String> {
 				let ty = handle.ty().clone();
 				// =======================
 				// RECORD WIRES, WHICH LAND AS THEIR ELEMENT

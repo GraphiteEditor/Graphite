@@ -2,7 +2,7 @@ use crate::node_registry;
 use core_types::arena::Arena;
 use core_types::context::{ContextImpl, DynSlot, EvalScope, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, VarArg, VarArgLink, VarArgSlots};
 use core_types::gpoll::GPoll;
-use core_types::registry::EdgeHandle;
+use core_types::registry::SourceHandle;
 use core_types::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner};
 use graph_craft::Type;
 use graph_craft::document::NodeId;
@@ -197,7 +197,7 @@ impl DynamicExecutor {
 		let edge = self
 			.tree
 			.get_by_path(node_path)
-			.and_then(EdgeHandle::record_edge)
+			.and_then(SourceHandle::record_edge)
 			.ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
 		let persistent = self.persistent.lock().unwrap_or_else(PoisonError::into_inner);
@@ -363,7 +363,7 @@ impl std::fmt::Display for IntrospectError {
 ///
 /// # Fields
 ///
-/// * `nodes`: A [`HashMap`] of [`NodeId`]s to tuples of [`EdgeHandle`] and [`Path`].
+/// * `nodes`: A [`HashMap`] of [`NodeId`]s to tuples of [`SourceHandle`] and [`Path`].
 ///   This stores the actual node instances and their associated paths.
 ///
 /// * `source_map`: A [`HashMap`] from [`Path`] to tuples of [`NodeId`] and [`NodeTypes`].
@@ -373,7 +373,7 @@ impl std::fmt::Display for IntrospectError {
 #[derive(Default)]
 pub struct BorrowTree {
 	/// A hashmap of node IDs and dynamically typed nodes.
-	nodes: HashMap<NodeId, (EdgeHandle, Path)>,
+	nodes: HashMap<NodeId, (SourceHandle, Path)>,
 	/// A hashmap from the document path to the proto node ID.
 	source_map: HashMap<Path, (NodeId, NodeTypes)>,
 	/// The record-stack reserve, folded from the graph at construction.
@@ -410,11 +410,11 @@ impl BorrowTree {
 		Ok((new_nodes, old_nodes))
 	}
 
-	fn node_deps(&self, nodes: &[NodeId]) -> Vec<EdgeHandle> {
+	fn node_deps(&self, nodes: &[NodeId]) -> Vec<SourceHandle> {
 		nodes.iter().map(|node| self.nodes.get(node).unwrap().0.duplicate()).collect()
 	}
 
-	fn store_node(&mut self, node: EdgeHandle, id: NodeId, path: Path) {
+	fn store_node(&mut self, node: SourceHandle, id: NodeId, path: Path) {
 		self.nodes.insert(id, (node, path));
 	}
 
@@ -425,12 +425,12 @@ impl BorrowTree {
 		node.serialize().ok_or(IntrospectError::NoData)
 	}
 
-	pub fn get(&self, id: NodeId) -> Option<EdgeHandle> {
+	pub fn get(&self, id: NodeId) -> Option<SourceHandle> {
 		self.nodes.get(&id).map(|(node, _)| node.duplicate())
 	}
 
 	/// The edge handle for the node at a document path.
-	pub fn get_by_path(&self, node_path: &[NodeId]) -> Option<EdgeHandle> {
+	pub fn get_by_path(&self, node_path: &[NodeId]) -> Option<SourceHandle> {
 		let (id, _) = self.source_map.get(node_path)?;
 		self.get(*id)
 	}

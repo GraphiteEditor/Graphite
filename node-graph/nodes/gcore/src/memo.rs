@@ -262,7 +262,7 @@ mod tests {
 	use core_types::context::{ContextImpl, EvalScope};
 	use core_types::node::Node;
 	use core_types::record::LiftedSource;
-	use core_types::registry::{EdgeHandle, ErasedRecordNode};
+	use core_types::registry::{SourceHandle, ErasedRecordNode};
 	use std::sync::atomic::{AtomicU32, Ordering};
 
 	fn lifted<T: Clone + Send + Sync + core_types::StaticTypeSized>(value: T) -> LiftedSource<T, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<T>>
@@ -303,7 +303,7 @@ mod tests {
 
 		let layout = element_layout::<u32>();
 		let monitor = MonitorNode::new(lifted::<u32>(11u32), &layout);
-		let handle = EdgeHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
+		let handle = SourceHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
 		assert!(handle.serialize().is_none(), "no snapshot before the first eval");
 
 		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
@@ -331,7 +331,7 @@ mod tests {
 		let source = core_types::value::LeveledValueSource::new(vec![10u32, 20, 30]);
 		let layout = Node::<ContextImpl>::layout(&source).clone();
 		let monitor = MonitorNode::new(source, &layout);
-		let handle = EdgeHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
+		let handle = SourceHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
 
 		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
 		let GPoll::Final(_) = core_types::record::serve_input(&edge, &ctx, &frames) else {
@@ -475,8 +475,8 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let layout = element_layout::<u32>();
-		let edge = EdgeHandle::new_record::<u32>(Arc::new(counting()) as Arc<ErasedRecordNode>);
-		let memoized = EdgeHandle::new_record::<u32>(Arc::new(MemoizeNode::new(edge.downcast_record::<u32>().unwrap(), &layout)) as Arc<ErasedRecordNode>);
+		let edge = SourceHandle::new_record::<u32>(Arc::new(counting()) as Arc<ErasedRecordNode>);
+		let memoized = SourceHandle::new_record::<u32>(Arc::new(MemoizeNode::new(edge.downcast_record::<u32>().unwrap(), &layout)) as Arc<ErasedRecordNode>);
 		let stacked = MemoizeNode::new(memoized.downcast_record::<u32>().unwrap(), &layout);
 		let stacked = core_types::record::RecordExtract::<u32, _>::new(stacked, &layout);
 
