@@ -438,7 +438,6 @@ pub(in crate::graphic) fn push_lane_paint_into_interiors(list: &mut List<Graphic
 	}
 }
 
-/// The graphic with every `Group` converted to its legacy form.
 /// The count [`map_groups_to_legacy`] would expose through [`Graphic::as_vector`],
 /// read from the run's lanes instead of materializing the legacy list. Mirrors
 /// [`group_to_legacy_graphic`]'s typed-run path, where `Vector` is tried first.

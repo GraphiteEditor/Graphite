@@ -46,6 +46,7 @@ pub(crate) fn run_to_legacy_list<T: Clone + Send + Sync + dyn_any::StaticTypeSiz
 	Some(list)
 }
 
+/// The graphic with every `Group` converted to its legacy form.
 pub fn map_groups_to_legacy<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 	match graphic {
 		Graphic::Group(group) => group_to_legacy_graphic(group),
