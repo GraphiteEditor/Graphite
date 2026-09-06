@@ -20,6 +20,7 @@ let canvasFocused = true;
 let inPointerLock = false;
 let lastShakeTime = 0;
 const shakeSamples: { x: number; y: number; time: number }[] = [];
+const openFloatingMenus = new Set<string>();
 
 // Keyboard events
 
@@ -243,8 +244,14 @@ export function onWheelScroll(e: WheelEvent, editor: EditorWrapper) {
 
 // Receives a custom event dispatched when the user begins interactively editing with the text tool.
 // We keep a copy of the text input element to check against when it's active for text entry.
-export function onModifyInputField(e: CustomEvent) {
+export function onModifyInputField(e: CustomEvent, editor: EditorWrapper) {
 	textToolInteractiveInputElement = e.detail;
+	updateDirectInput(editor);
+}
+
+export function cleanupInputField(editor: EditorWrapper) {
+	textToolInteractiveInputElement = undefined;
+	updateDirectInput(editor);
 }
 
 // Window events
@@ -386,4 +393,21 @@ function potentiallyRestoreCanvasFocus(e: Event) {
 		canvasFocused = true;
 		app?.focus();
 	}
+}
+
+// Direct input (desktop only)
+
+// Desktop may route viewport pointer input directly to the editor if no floating menus are open
+export function updateDirectInput(editor: EditorWrapper) {
+	if (import.meta.env.MODE !== "native") return;
+
+	const uiCapturesViewport = openFloatingMenus.size > 0 || textToolInteractiveInputElement !== undefined;
+	editor.appWindowDirectInput(!uiCapturesViewport);
+}
+
+export function onFloatingMenuOpenChange(menuId: string, open: boolean, editor: EditorWrapper) {
+	if (open) openFloatingMenus.add(menuId);
+	else openFloatingMenus.delete(menuId);
+
+	updateDirectInput(editor);
 }
