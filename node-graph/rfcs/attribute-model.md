@@ -750,19 +750,25 @@ cannot misalign an offset. Kernels see contexts only as an opaque
 `impl Ctx + ...` they cannot construct, and lifetimes keep them from
 stashing handles in node state.
 
-That is the property the design is for, and reaching it is work rather
-than a consequence. Type identity is stamped on every layout field and
-checked where layouts are built and where the safe builders write, which
-is the enforcement this rests on. What is not yet closed, and is tracked
-as such: a producer whose layout was never installed writes through a
-path that assumes the inline width, an owned record replays against a
-caller-supplied layout it does not check, and the record stack's own
-bounds check is a debug assertion while its buffer can be reset under
-live records. Each is reachable from safe code, so the claim above holds
-by the discipline of the generated code and not yet by construction. The
-direction is to replace the emitted raw operations with a small set of
-checked surfaces, so that the remaining unsafe is the erased glue and
-the wiring-computed byte plans, where it is irreducible.
+That is the property the design is for, and the enforcement now rests
+on construction at the seams that used to be open. Type identity is
+stamped on every layout field and on the element write, and both
+participate in layout equality, so the union's shared-element assertion
+and the identity-forwarding decision distinguish same-shape
+different-type layouts. Retiring the inline register-return path in
+favor of always-spill removed the one producer that wrote without an
+installed layout. Serving closes only through a frame claim's own
+methods, whose proof cannot be minted elsewhere, and assertion reads go
+through an owned capture at the node's declared layout rather than raw
+frame reads. Serving lifetimes make an arena-resident value
+inexpressible beyond its evaluation in safe code, and an arena move is
+keyed by the park's static type, so a mistyped or unkeyed reference
+declines into the clone path instead of moving foreign bytes. What
+remains unsafe is the irreducible core, the erased glue and the
+wiring-computed byte plans, plus a small tracked set of open seams of
+which the hoist mask's positional contract is the last
+soundness-relevant survivor; an adversarial audit round over every
+safety contract is scheduled before this lands upstream.
 
 # Drawbacks
 
