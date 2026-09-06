@@ -315,7 +315,7 @@ pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
 	/// This describes a (document) node implemented as a proto node.
 	///
-	/// A proto node identifier which can be found in `node_registry.rs`.
+	/// A proto node identifier, resolved against `NODE_REGISTRY` in `core-types/src/registry.rs`.
 	#[serde(alias = "Unresolved")] // TODO: Eventually remove this alias document upgrade code
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special: it invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
