@@ -19,7 +19,7 @@ impl<'e> Artboard<'e> {
 		Self(content)
 	}
 
-	pub fn as_graphic_list(&self) -> &List<Graphic> {
+	pub fn as_graphic_list(&self) -> &List<Graphic<'_>> {
 		&self.0
 	}
 

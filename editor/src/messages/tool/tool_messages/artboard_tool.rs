@@ -576,7 +576,7 @@ mod test_artboard {
 
 	/// A leveled wire introspects as its whole legacy list, so each `extend`
 	/// occurrence yields one list rather than one element.
-	async fn get_artboards(editor: &mut EditorTestUtils) -> List<Artboard> {
+	async fn get_artboards(editor: &mut EditorTestUtils) -> List<Artboard<'_>> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),

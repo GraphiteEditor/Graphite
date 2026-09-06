@@ -65,10 +65,10 @@ pub(in crate::graphic) fn detable_items<'e, T: Clone + Send + Sync + 'static>(li
 /// never constructs a legacy interior.
 pub trait IntoGraphicElement: Clone + Send + Sync + CacheHash + 'static {
 	/// `None` reports arena exhaustion.
-	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic>;
+	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic<'_>>;
 }
 
-fn list_group<T: Clone + Send + Sync + CacheHash + PartialEq + dyn_any::StaticTypeSized>(list: List<T>, arena: &core_types::arena::Arena) -> Option<Graphic>
+fn list_group<T: Clone + Send + Sync + CacheHash + PartialEq + dyn_any::StaticTypeSized>(list: List<T>, arena: &core_types::arena::Arena) -> Option<Graphic<'_>>
 where
 	T::Static: Clone + Send + Sync,
 {
@@ -82,13 +82,13 @@ macro_rules! into_graphic_element {
 	($($leaf:ident: $element:ty;)*) => {
 		$(
 			impl IntoGraphicElement for $element {
-				fn into_graphic_element(self, _arena: &core_types::arena::Arena) -> Option<Graphic> {
+				fn into_graphic_element(self, _arena: &core_types::arena::Arena) -> Option<Graphic<'_>> {
 					Some(Graphic::$leaf(self))
 				}
 			}
 
 			impl IntoGraphicElement for List<$element> {
-				fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic> {
+				fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic<'_>> {
 					list_group(self, arena)
 				}
 			}
@@ -106,13 +106,13 @@ into_graphic_element! {
 }
 
 impl IntoGraphicElement for Graphic<'static> {
-	fn into_graphic_element(self, _arena: &core_types::arena::Arena) -> Option<Graphic> {
+	fn into_graphic_element(self, _arena: &core_types::arena::Arena) -> Option<Graphic<'_>> {
 		Some(self)
 	}
 }
 
 impl IntoGraphicElement for List<Graphic<'static>> {
-	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic> {
+	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic<'_>> {
 		list_group(self, arena)
 	}
 }
@@ -340,7 +340,7 @@ impl From<DVec2> for Graphic<'_> {
 // Note: List conversions handled by blanket impl in gcore
 
 impl<'e> Graphic<'e> {
-	pub fn as_graphic(&self) -> Option<&List<Graphic>> {
+	pub fn as_graphic(&self) -> Option<&List<Graphic<'_>>> {
 		match self {
 			Graphic::Graphic(graphic) => Some(graphic),
 			_ => None,
