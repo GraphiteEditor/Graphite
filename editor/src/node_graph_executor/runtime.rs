@@ -109,6 +109,10 @@ impl InternalNodeGraphUpdateSender {
 	fn send_eyedropper_preview(&self, raster: Raster<CPU>) {
 		self.0.send(NodeGraphUpdate::EyedropperPreview(raster)).expect("Failed to send response")
 	}
+
+	fn send_svg_text_clipboard(&self, svg_string: String, text_string: String) {
+		self.0.send(NodeGraphUpdate::SvgTextCopyClipboard(svg_string, text_string)).expect("Failed to send response")
+	}
 }
 
 impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {

@@ -52,6 +52,7 @@ pub enum NodeGraphUpdate {
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
+	SvgTextCopyClipboard(String, String),
 }
 
 #[derive(Debug, Default)]
@@ -813,9 +814,8 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	pub fn copy_svg_clipboard(&self, graphite_json: String) {
-		// TODO: See if to propagat ethe error here or move it up.
-		self.runtime_io.send(GraphRuntimeRequest::CopySvgTextClipboard(graphite_json));
+	pub fn copy_svg_clipboard(&self, graphite_json: String, selected_nodes: Vec<NodeId>) {
+		self.runtime_io.send(GraphRuntimeRequest::CopySvgTextClipboard(graphite_json, selected_nodes));
 	}
 }
 
