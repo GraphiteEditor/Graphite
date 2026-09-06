@@ -467,6 +467,10 @@ impl NodeGraphExecutor {
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(_) => {}
+				NodeGraphUpdate::SvgTextCopyClipboard(svg_string, graphite_json) => {
+					debug!("svg: {}", svg_string);
+					responses.add(FrontendMessage::TriggerClipboardSvgWrite { svg_string, graphite_json });
+				}
 			}
 		}
 
@@ -815,7 +819,9 @@ impl NodeGraphExecutor {
 	}
 
 	pub fn copy_svg_clipboard(&self, graphite_json: String, selected_nodes: Vec<NodeId>) {
-		self.runtime_io.send(GraphRuntimeRequest::CopySvgTextClipboard(graphite_json, selected_nodes));
+		self.runtime_io
+			.send(GraphRuntimeRequest::CopySvgTextClipboard(graphite_json, selected_nodes))
+			.expect("Failed to send runtime request");
 	}
 }
 
