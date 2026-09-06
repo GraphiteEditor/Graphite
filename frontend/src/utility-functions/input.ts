@@ -303,6 +303,7 @@ function pointerAttributes(e: PointerEvent): [number, number | undefined, number
 	return [e.timeStamp, isPen ? e.pressure : undefined, isPen ? e.tiltX : undefined, isPen ? e.tiltY : undefined, isPen ? e.twist : undefined, isPen ? e.tangentialPressure : undefined, eraser];
 }
 
+// Keep heuristic and constants in sync with `ShakeTracker` in `desktop/src/input.rs`.
 function detectShake(e: PointerEvent | MouseEvent): boolean {
 	const SENSITIVITY_DIRECTION_CHANGES = 3;
 	const SENSITIVITY_DISTANCE_TO_DISPLACEMENT_RATIO = 0.1;
