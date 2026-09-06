@@ -48,7 +48,7 @@ fn generics(parsed: &ParsedNodeFn) -> Vec<Generic> {
 
 fn inputs(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &[Ident]) -> Vec<Input> {
 	let routing = routing_io(parsed);
-	let carrier_subject = flip_carrier(parsed) || record_shape(parsed).map_or(false, |shape| !shape.skips_carrier());
+	let carrier_subject = flip_carrier(parsed) || record_shape(parsed).is_some_and(|shape| !shape.skips_carrier());
 	fields
 		.iter()
 		.enumerate()
@@ -263,13 +263,16 @@ fn ilist_inner(ty: &Type) -> Option<Type> {
 /// caller since it is the one row-dependent facet; the rest folds from the node.
 pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_types: &TokenStream2) -> TokenStream2 {
 	let sources = layout_sources(node).into_iter().map(|index| index as u8);
-	let reads = node.inputs.iter().enumerate().filter_map(|(index, input)| {
-		(matches!(input.evaluation, Evaluation::Eager) && !input.shape.attrs.is_empty()).then(|| {
+	let reads = node
+		.inputs
+		.iter()
+		.enumerate()
+		.filter(|(_, input)| matches!(input.evaluation, Evaluation::Eager) && !input.shape.attrs.is_empty())
+		.map(|(index, input)| {
 			let descs = field_writes(&input.shape.attrs, core_types);
 			let index = index as u8;
 			quote!(#core_types::record::InputReads { input: #index, reads: ::std::vec![#(#descs),*] })
-		})
-	});
+		});
 	let writes = field_writes(&node.output.shape.attrs, core_types);
 	let removes = node.output.removes.iter().map(|attr| {
 		let marker = &attr.marker;
@@ -859,9 +862,7 @@ mod tests {
 		let routing_source = |ty: &Type| generic.as_ref().is_some_and(|generic| crate::codegen::classify::routing_source_output(ty, generic));
 		match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => {
-				if record && !skips_carrier && index == 0 {
-					"carrier"
-				} else if carrier_flip && index == 0 {
+				if index == 0 && ((record && !skips_carrier) || carrier_flip) {
 					"carrier"
 				} else if flip && lend.is_some() {
 					"lend"

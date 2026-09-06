@@ -312,7 +312,7 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => is_served(output_type) || crate::codegen::ir::strip_ilist(output_type).1 > 0 || !field.attribute_reads.is_empty(),
 		ParsedFieldType::Regular(_) => false,
 	};
-	if parsed.fields.iter().skip(lazy_carrier as usize).any(|field| unsupported_lazy_secondary(field)) {
+	if parsed.fields.iter().skip(lazy_carrier as usize).any(unsupported_lazy_secondary) {
 		return None;
 	}
 	let reads_well_placed = parsed.fields.iter().enumerate().all(|(index, field)| {
@@ -575,7 +575,7 @@ pub(crate) fn routing_io(parsed: &ParsedNodeFn) -> Option<RoutingIo> {
 			}
 		}
 	}
-	(sources > 0).then(|| RoutingIo { generic: ident })
+	(sources > 0).then_some(RoutingIo { generic: ident })
 }
 
 pub(crate) fn bare_ident(ty: &Type) -> Option<&Ident> {

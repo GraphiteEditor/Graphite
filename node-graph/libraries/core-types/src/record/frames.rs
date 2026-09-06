@@ -176,7 +176,6 @@ mod tests {
 			let scope = frames.scope();
 			let mut claim = scope.claim(&layout);
 			addresses.push(claim.dst() as usize);
-			drop(claim);
 			drop(scope);
 			assert_eq!(frames.free_words(), free, "the scope returns its claims");
 		}

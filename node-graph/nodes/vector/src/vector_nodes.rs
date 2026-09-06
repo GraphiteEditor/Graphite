@@ -1577,7 +1577,7 @@ fn emit_legacy_lane<'e>(
 /// one group lane, lane 0's layer path stamped on the wrapper.
 fn wrap_vector_level(content: core_types::node::List<'_, Vector>) -> List<Graphic<'_>> {
 	let item = content.as_group_item();
-	let layer_path: Vec<NodeId> = match content.len() > 0 {
+	let layer_path: Vec<NodeId> = match !content.is_empty() {
 		true => content.lane(0).attr::<EditorLayerPath>().to_vec(),
 		false => Vec::new(),
 	};

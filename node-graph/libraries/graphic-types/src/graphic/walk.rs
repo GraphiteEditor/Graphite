@@ -553,9 +553,9 @@ mod run_tests {
 
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<core_types::attribute::Transform>(0)], 2).unwrap();
-		for lane in 0..2 {
-			let lane = builder.push(vectors[lane].clone()).unwrap();
-			builder.attr::<core_types::attribute::Transform>(lane, transforms[lane]);
+		for (vector, transform) in vectors.iter().zip(transforms) {
+			let lane = builder.push(vector.clone()).unwrap();
+			builder.attr::<core_types::attribute::Transform>(lane, transform);
 		}
 		let item = builder.finish();
 		let run = RunView::<Vector>::new(&item).expect("the run holds vector elements");

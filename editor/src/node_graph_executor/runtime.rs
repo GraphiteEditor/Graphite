@@ -546,10 +546,10 @@ impl NodeRuntime {
 					Some(())
 				}
 			});
-			if result.is_err() {
+			if let Err(_error) = result {
 				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
 				#[cfg(debug_assertions)]
-				warn!("Failed to introspect monitor node {}", result.unwrap_err());
+				warn!("Failed to introspect monitor node {}", _error);
 			}
 		}
 	}

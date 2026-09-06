@@ -97,7 +97,7 @@ where
 		let Some(plan) = &self.plan else {
 			return self.edge.serve(input, slot);
 		};
-		match serve_input(&self.edge, input, &mut slot.frames().reborrow()) {
+		match serve_input(&self.edge, input, &slot.frames().reborrow()) {
 			GPoll::Final(value) => {
 				// SAFETY: the value came from this source, so it carries the
 				// plan's source layout.

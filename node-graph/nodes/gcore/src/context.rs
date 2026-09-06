@@ -48,7 +48,7 @@ fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> List<GradientStops> {
 }
 
 /// The mapped row riding as vararg 0, in the production single-item shape.
-fn vararg_list<'a, T: 'static>(ctx: &'a impl ExtractVarArgs) -> Option<&'a List<T>> {
+fn vararg_list<T: 'static>(ctx: &impl ExtractVarArgs) -> Option<&List<T>> {
 	let arg = ctx.vararg(0).ok()?;
 	(arg as &dyn std::any::Any).downcast_ref::<List<T>>()
 }

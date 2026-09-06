@@ -197,7 +197,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let field_pushed_levels: Vec<u8> = regular_fields
 		.iter()
 		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) if *list_levels > 0 => *list_levels as u8,
+			ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) if *list_levels > 0 => *list_levels,
 			ParsedFieldType::Node(_) => pushed_levels,
 			_ => 0,
 		})
@@ -2433,20 +2433,20 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.iter()
 				.enumerate()
 				.filter(|(index, _)| ir::materialized_levels(&node, *index) == 0)
-				.filter_map(|(_, field)| match &field.ty {
+				.map(|(_, field)| match &field.ty {
 					// The conditional arena-park moves a lend element once.
-					ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => Some({
+					ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
 						let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
 						quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static)
-					}),
-					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some({
+					}
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => {
 						let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
 						quote!(#ty: ::core::clone::Clone)
-					}),
-					ParsedFieldType::Node(NodeParsedField { output_type, .. }) => Some({
+					}
+					ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
 						let output_type = &crate::codegen::classify::substitute_lifetimes(output_type, "'static");
 						quote!(#output_type: ::core::clone::Clone)
-					}),
+					}
 				})
 				.collect();
 			let out = crate::codegen::classify::substitute_lifetimes(&slot_value_type(&parsed.output_type), "'static");

@@ -178,7 +178,7 @@ impl DynamicExecutor {
 		let result = self.tree.introspect(node_path)?;
 		if result.downcast_ref::<core_types::context::CtxSnapshot>().is_some() {
 			return self
-				.introspect_with(node_path, |layout, batch, arena| graphic_types::boundary::batch_to_legacy(layout, batch, arena))
+				.introspect_with(node_path, graphic_types::boundary::batch_to_legacy)
 				.map(Arc::from);
 		}
 		Ok(result)

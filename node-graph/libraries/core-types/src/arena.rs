@@ -196,7 +196,7 @@ impl Arena {
 				let count = COUNT.fetch_add(1, Ordering::Relaxed);
 				if reserved.is_none() {
 					eprintln!("arena> EXHAUSTED after {count} allocations, wanted {size} bytes\n{}", std::backtrace::Backtrace::force_capture());
-				} else if count % 20000 == 0 {
+				} else if count.is_multiple_of(20000) {
 					eprintln!("arena> {count} allocations, offset {}, this {size} bytes", self.offset.load(Ordering::Relaxed));
 				}
 			}

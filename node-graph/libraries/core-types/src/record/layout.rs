@@ -33,7 +33,7 @@ impl FieldWrite {
 			unsafe { &*ptr.cast::<V>() }.cache_hash(&mut state);
 		}
 		unsafe fn content_eq<V: PartialEq>(a: *const u8, b: *const u8) -> bool {
-			unsafe { &*a.cast::<V>() == &*b.cast::<V>() }
+			unsafe { *a.cast::<V>() == *b.cast::<V>() }
 		}
 		Self {
 			name: A::NAME,
@@ -656,7 +656,7 @@ mod tests {
 		#[derive(Clone, dyn_any::DynAny)]
 		struct Opaque;
 
-		let hashed = (&ElementWritePick::<String>(std::marker::PhantomData)).element_write();
+		let hashed = ElementWritePick::<String>(std::marker::PhantomData).element_write();
 		assert!(hashed.content_hash.is_some() && hashed.content_eq.is_some());
 		let plain = (&ElementWritePick::<Opaque>(std::marker::PhantomData)).element_write();
 		assert!(plain.content_hash.is_none() && plain.content_eq.is_none());

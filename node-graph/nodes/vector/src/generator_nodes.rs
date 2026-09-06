@@ -433,7 +433,7 @@ mod tests {
 	#[test]
 	fn qr_code_test() {
 		let qr = qr_code(&(), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
-		assert!(qr.point_domain.ids().len() > 0);
-		assert!(qr.segment_domain.ids().len() > 0);
+		assert!(!qr.point_domain.ids().is_empty());
+		assert!(!qr.segment_domain.ids().is_empty());
 	}
 }

@@ -885,8 +885,7 @@ mod tests {
 			let GPoll::Final(value) = record::serve_input(&wrapped, &ctx.promoted(&head, 0), &scope) else {
 				panic!("expected a final record");
 			};
-			let group = unsafe { record::borrow_element::<Graphic>(wrap_out.rec(&value)) }.clone();
-			group
+			unsafe { record::borrow_element::<Graphic>(wrap_out.rec(&value)) }.clone()
 		};
 
 		// One row holding the wrapped group flattens back to the lanes, the

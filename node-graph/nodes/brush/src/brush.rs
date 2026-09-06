@@ -83,10 +83,7 @@ fn brush_stamp_generator(_: impl Ctx, #[unit(" px")] diameter: f64, color: Color
 
 /// Used to efficiently paint brush strokes. Applies the same texture repeatedly at different positions with proper blending and boundary handling.
 #[node_macro::node(category(""), skip_impl)]
-fn blit<BlendFn>(_: impl Ctx, mut target: List<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> List<Raster<CPU>>
-where
-	BlendFn: Fn(Color, Color) -> Color,
-{
+fn blit<BlendFn: Fn(Color, Color) -> Color>(_: impl Ctx, mut target: List<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> List<Raster<CPU>> {
 	if positions.is_empty() {
 		return target;
 	}

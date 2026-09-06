@@ -86,7 +86,7 @@ fn memoize<'e, 'l>(
 		return serve(entry, slot);
 	}
 	if leveled {
-		return match content.materialize_level(&ctx, ctx.arena()) {
+		return match content.materialize_level(ctx, ctx.arena()) {
 			LevelStatus::Batch(batch, finality) => {
 				let layout = content.layout();
 				// SAFETY: the batch came from this input, so it carries the input's layout.
@@ -107,7 +107,7 @@ fn memoize<'e, 'l>(
 		};
 	}
 	// The output layout is the content's, so the claim is the content's frame.
-	let result = content.serve(&ctx, slot);
+	let result = content.serve(ctx, slot);
 	let publishable = match &result {
 		GPoll::Final(served) => Some((served.record(), Finality::AllFinal)),
 		GPoll::Partial(served) => Some((served.record(), Finality::Partial)),
@@ -196,7 +196,7 @@ fn frame_memo<'e, 'l>(
 		return serve(published.get(lane).rec().ptr(), finality, slot);
 	}
 	if leveled {
-		return match content.materialize_level(&ctx, ctx.arena()) {
+		return match content.materialize_level(ctx, ctx.arena()) {
 			LevelStatus::Batch(batch, finality) => {
 				// SAFETY: the batch came from this input, so it carries the input's layout.
 				let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) };
@@ -212,7 +212,7 @@ fn frame_memo<'e, 'l>(
 		};
 	}
 	// The output layout is the content's, so the claim is the content's frame.
-	let result = content.serve(&ctx, slot);
+	let result = content.serve(ctx, slot);
 	let publishable = match &result {
 		GPoll::Final(served) => Some((served.record(), Finality::AllFinal)),
 		GPoll::Partial(served) => Some((served.record(), Finality::Partial)),
@@ -246,7 +246,7 @@ fn monitor<'e, 'l>(
 	if ctx.index() == 0 {
 		*io.lock().unwrap() = Some(CtxSnapshot::capture(ctx));
 	}
-	content.serve(&ctx, slot)
+	content.serve(ctx, slot)
 }
 
 fn serialize_monitor(io: &MonitorValue) -> Option<Arc<dyn std::any::Any + Send + Sync>> {

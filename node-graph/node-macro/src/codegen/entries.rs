@@ -100,7 +100,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 		}
 	}
 	let alias_params: Vec<&GenericParam> = candidate_params.iter().zip(&kept).filter(|(_, kept)| **kept).map(|(param, _)| *param).collect();
-	let alias_param_idents: Vec<Ident> = alias_params.iter().map(|param| param_ident(param)).collect();
+	let alias_param_idents: Vec<Ident> = alias_params.iter().map(param_ident).collect();
 	let alias_param_tokens: Vec<TokenStream2> = alias_params.iter().map(|param| quote!(#param)).collect();
 	let output_alias = format_ident!("__{}_output", fn_name);
 	let alias_def = match alias_param_tokens.is_empty() {

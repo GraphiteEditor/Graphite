@@ -171,7 +171,7 @@ impl<'e> GroupItem<'e> {
 		// A run already living in the target region needs no copy: the arena is
 		// insert-only within a generation, so the lanes cannot move or change
 		// while the adopting item borrows them.
-		if batch.len() > 0 && arena.contains(batch.frames_ptr()) {
+		if !batch.is_empty() && arena.contains(batch.frames_ptr()) {
 			return Some(Self {
 				layout,
 				storage: ItemStorage::Resident(batch.frames_ptr()),

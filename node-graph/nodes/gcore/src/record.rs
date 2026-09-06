@@ -2983,8 +2983,8 @@ mod tests {
 		{
 			let scope = scope_fixture(&generations, &first_arena).with_persistent(&persistent);
 			let ctx = ContextImpl::root(&scope);
-			let mut first = frames.reborrow();
-			let GPoll::Final(_) = core_types::record::serve_input(&memo, &ctx, &mut first) else {
+			let first = frames.reborrow();
+			let GPoll::Final(_) = core_types::record::serve_input(&memo, &ctx, &first) else {
 				panic!("expected a final record");
 			};
 		}
