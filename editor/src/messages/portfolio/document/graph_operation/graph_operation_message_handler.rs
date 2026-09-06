@@ -56,6 +56,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_settings, transform);
 				}
 			}
+			GraphOperationMessage::FillMeshGradientSet { layer, mesh_gradient } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.fill_mesh_gradient_set(mesh_gradient);
+				}
+			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.opacity_fill_set(fill);
@@ -109,6 +114,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::GradientInterpolationSet { layer, gradient_interpolation } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.gradient_interpolation_set(gradient_interpolation);
+				}
+			}
+			GraphOperationMessage::MeshGradientSet { layer, mesh_gradient } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.mesh_gradient_set(mesh_gradient);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {

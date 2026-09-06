@@ -67,7 +67,7 @@ pub fn selected_segments_for_layer(vector: &Vector, state: &SelectedLayerState) 
 	selected_segments
 }
 
-fn overlay_bezier_handles(segment: PathSeg, segment_id: SegmentId, transform: DAffine2, is_selected: impl Fn(ManipulatorPointId) -> bool, overlay_context: &mut OverlayContext) {
+pub fn overlay_bezier_handles(segment: PathSeg, segment_id: SegmentId, transform: DAffine2, is_selected: impl Fn(ManipulatorPointId) -> bool, overlay_context: &mut OverlayContext) {
 	let segment = Affine::new(transform.to_cols_array()) * segment;
 	let segment_start = point_to_dvec2(segment.start());
 	let segment_end = point_to_dvec2(segment.end());

@@ -22,6 +22,8 @@ pub enum ToolMessage {
 	Fill(FillToolMessage),
 	#[child]
 	Gradient(GradientToolMessage),
+	#[child]
+	MeshGradient(MeshGradientToolMessage),
 
 	#[child]
 	Path(PathToolMessage),
@@ -58,6 +60,7 @@ pub enum ToolMessage {
 	ActivateToolEyedropper,
 	ActivateToolFill,
 	ActivateToolGradient,
+	ActivateToolMeshGradient,
 	// Vector tools
 	ActivateToolPath,
 	ActivateToolPen,
