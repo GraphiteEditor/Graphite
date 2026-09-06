@@ -540,7 +540,7 @@ fn to_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level:
 /// The transitional level bridge: the input's records as the legacy list an
 /// unconverted consumer expects, attributes copied through their erased
 /// reads and content kept in its native form. Registered under the legacy
-/// convert identifiers; the rows die with the last legacy consumer.
+/// convert identifiers.
 #[node_macro::node(category(""))]
 pub fn level_to_list<T: Clone + Send + Sync + CacheHash + dyn_any::StaticTypeSized>(
 	_: impl Ctx,

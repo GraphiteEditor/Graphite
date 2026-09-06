@@ -208,8 +208,7 @@ mod test_fill {
 	use graphene_std::color::SRGBA8;
 	use graphene_std::vector::fill;
 
-	/// Paint inputs are single-typed now, so the monitored wire carries the
-	/// colors themselves and the `Graphic` conversion sits downstream of it.
+	/// The monitored fill wire carries `Color`; the `Graphic` conversion sits downstream of the monitor.
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Color> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,

@@ -327,7 +327,6 @@ fn paint_table(paint: core_types::node::List<'_, Graphic<'_>>) -> List<Graphic<'
 }
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
-/// The gradient transform fallback spans the lane's own bounds rather than the whole content's.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
 fn fill<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
@@ -1767,8 +1766,6 @@ fn path_is_closed(
 		.unwrap_or(false)
 }
 
-// Converts with the write-attribute family: the record form needs a lazy
-// value input on a record node, which the macro does not accept yet, and it
 /// Sets each anchor point's position to the value the mapped input produces, with the point's
 /// index and current position provided via context.
 #[node_macro::node(category("Vector"), path(graphene_core::vector), extent(map_points_extent))]

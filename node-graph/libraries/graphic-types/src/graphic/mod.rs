@@ -200,7 +200,7 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 
 					flatten_recursive(output, sub_list, extract_variant, lane_layer_path.as_deref());
 				}
-				// A bridge row's native group flattens through its legacy lowering; the arm dies with the legacy interior.
+				// A bridge row's native group flattens through its legacy lowering.
 				Graphic::Group(group) => {
 					let lowered = List::new_from_item(Item::from_parts(group_to_legacy_graphic(&group), attributes.clone()));
 					flatten_recursive(output, lowered, extract_variant, parent_layer_path);

@@ -381,7 +381,7 @@ attribute! {
 	/// Maps the unit square `[(0, 0), (1, 1)]` (top-left convention) onto the 'Text' node's
 	/// text frame in this item's local space. Each item carries the frame relative to its own
 	/// glyph origin so it survives 'Index Elements' filtering. The Text tool reads this to
-	/// position its drag cage. Stored as an affine to allow non-axis-aligned frames in the future.
+	/// position its drag cage.
 	pub EditorTextFrame("editor:text_frame"): DAffine2;
 	/// Byte offset where a regex match begins ('Regex Find All' and 'Regex Capture' text nodes).
 	pub Start("start"): u64;

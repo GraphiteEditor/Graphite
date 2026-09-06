@@ -185,7 +185,7 @@ fn frame_memo<'e, 'l>(
 	};
 	let past_end = || GPoll::Error(Box::new(core_types::gpoll::GraphError::past_end()));
 	let entry = cache.lock().unwrap().as_ref().filter(|entry| entry.key == key).map(|entry| (entry.span, entry.finality));
-	// A span that no longer resolves was flushed; the miss below re-publishes.
+	// A span that no longer resolves was flushed.
 	if let Some((span, finality)) = entry
 		&& let Some(published) = span.batch(persistent, content.layout())
 	{

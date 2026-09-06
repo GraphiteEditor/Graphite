@@ -20,9 +20,7 @@ pub fn load_demo(file_name: &str) -> DocumentMessageHandler {
 	DocumentMessageHandler::deserialize_document(&content).unwrap_or_else(|e| panic!("Failed to deserialize {path}: {e:?}"))
 }
 
-/// Dev tool for the flip: runs each demo through the full open-time migration and writes the
-/// re-saved form into the directory named by `DEMO_OUT`, so the CLI can render migrated copies
-/// while the checked-in originals stay pristine until the flip's re-save.
+/// Dev tool: writes each demo's migrated re-save into the directory named by `DEMO_OUT`, leaving the checked-in originals untouched.
 #[test]
 #[ignore = "dev tool: set DEMO_OUT and run explicitly"]
 fn migrate_demo_artwork_into_demo_out() {

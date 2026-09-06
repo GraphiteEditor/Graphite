@@ -285,7 +285,7 @@ pub struct RegistryEntry {
 	pub io: NodeIOTypes,
 	pub constructor: NodeConstructor,
 	/// Declarative record-io metadata for the compiler layout pass; `None` for
-	/// nodes whose layout the pass does not yet fold (routing/opaque, hand-written
+	/// nodes whose layout the pass does not fold (routing/opaque, hand-written
 	/// rows), which keep the construction-time path.
 	pub layout_meta: Option<crate::record::LayoutMeta>,
 }

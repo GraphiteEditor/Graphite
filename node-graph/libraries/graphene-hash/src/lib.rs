@@ -238,8 +238,7 @@ impl_tuple!(A, B, C, D, E);
 impl_tuple!(A, B, C, D, E, F);
 
 /// rustc-hash's polynomial hash with the state pinned to u64, so keys match across native and wasm targets.
-/// The state starts at a nonzero seed: zero-initialized fx absorbs leading zero words, which produced
-/// a real wrong-value memo hit in the prototype.
+/// The state starts at a nonzero seed, since zero-initialized fx absorbs leading zero words.
 #[derive(Clone)]
 pub struct FxHasher64 {
 	hash: u64,
