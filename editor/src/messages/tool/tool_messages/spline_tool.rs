@@ -315,7 +315,8 @@ impl Fsm for SplineToolFsmState {
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
 			(_, SplineToolMessage::Overlays { context: mut overlay_context }) => {
-				open_path_endpoint_overlays(document, shape_editor, &mut overlay_context);
+				let pointer = (self == SplineToolFsmState::Ready).then_some(input.mouse.position);
+				open_path_endpoint_overlays(document, shape_editor, pointer, &mut overlay_context);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 				self
 			}

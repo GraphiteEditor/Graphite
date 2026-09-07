@@ -201,6 +201,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Free
 			FreehandToolFsmState::Ready => actions!(FreehandToolMessageDiscriminant;
 				DragStart,
 				DragStop,
+				PointerMove,
 			),
 			FreehandToolFsmState::Drawing => actions!(FreehandToolMessageDiscriminant;
 				DragStop,
@@ -257,7 +258,12 @@ impl Fsm for FreehandToolFsmState {
 		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
 			(_, FreehandToolMessage::Overlays { context: mut overlay_context }) => {
-				open_path_endpoint_overlays(document, shape_editor, &mut overlay_context);
+				let pointer = (self == FreehandToolFsmState::Ready).then_some(input.mouse.position);
+				open_path_endpoint_overlays(document, shape_editor, pointer, &mut overlay_context);
+				self
+			}
+			(FreehandToolFsmState::Ready, FreehandToolMessage::PointerMove) => {
+				responses.add(OverlaysMessage::Draw);
 				self
 			}
 			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart { append_to_selected }) => {
