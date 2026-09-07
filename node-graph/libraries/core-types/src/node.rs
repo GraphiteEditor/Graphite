@@ -106,9 +106,10 @@ pub struct RecordBatchMut<'a> {
 
 impl<'a> RecordBatchMut<'a> {
 	/// Minted only by a [`crate::record::SlotRun`] finishing its served lanes,
-	/// which is what makes the initialized prefix a fact rather than a contract.
+	/// which serve in ascending order with no gaps, so the initialized prefix is
+	/// a fact rather than a contract.
 	pub(crate) fn new(scratch: &'a mut [MaybeUninit<u64>], len: usize, layout: &'a crate::record::Layout) -> Self {
-		debug_assert!(len * layout.lane_stride() <= scratch.len() * 8);
+		debug_assert!(len.checked_mul(layout.lane_stride()).is_some_and(|need| need <= scratch.len() * 8));
 		Self { scratch, len, layout }
 	}
 

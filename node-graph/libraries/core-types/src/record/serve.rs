@@ -20,8 +20,13 @@ pub struct SlotRun<'a> {
 }
 
 impl<'a> SlotRun<'a> {
+	/// `None` where the scratch cannot hold `len` lanes. The products are
+	/// checked: the stride is a multiple of 8, so a wrapped one would pass the
+	/// capacity test vacuously.
 	pub(in crate::record) fn new(scratch: &'a mut [std::mem::MaybeUninit<u64>], len: usize, layout: &'a Layout) -> Option<SlotRun<'a>> {
-		(scratch.len() * 8 >= len * layout.lane_stride()).then_some(SlotRun { scratch, layout, len, filled: 0 })
+		let need = len.checked_mul(layout.lane_stride())?;
+		let capacity = scratch.len().checked_mul(8)?;
+		(capacity >= need).then_some(SlotRun { scratch, layout, len, filled: 0 })
 	}
 
 	pub fn layout(&self) -> &'a Layout {
@@ -310,6 +315,17 @@ mod tests {
 		frame_arena.reserve(1 << 10);
 		let frames = frame_arena.frames();
 		frames.claim(&layout).element(1u32, &arena);
+	}
+
+	#[test]
+	fn a_run_refuses_a_lane_count_whose_stride_product_overflows() {
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[]);
+		let mut scratch = [std::mem::MaybeUninit::<u64>::uninit(); 4];
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(64);
+		let frames = frame_arena.frames();
+		let wrapping = usize::MAX / layout.lane_stride() + 1;
+		assert!(frames.run(&mut scratch, wrapping, &layout).is_none(), "a wrapped capacity product must not pass the check");
 	}
 
 	#[test]

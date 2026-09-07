@@ -90,7 +90,10 @@ where
 	let Some(len) = range.end.checked_sub(range.start).and_then(|len| usize::try_from(len).ok()) else {
 		return BatchStatus::InvalidRange;
 	};
-	let words = len * node.layout().lane_stride() / 8;
+	// Checked: a wrapped product would size the scratch below the run.
+	let Some(words) = len.checked_mul(node.layout().lane_stride()).map(|bytes| bytes / 8) else {
+		return BatchStatus::InvalidRange;
+	};
 	let exhausted = || {
 		BatchStatus::Error(crate::gpoll::GraphError {
 			kind: crate::gpoll::ErrorKind::ArenaExhausted,
