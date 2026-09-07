@@ -127,6 +127,7 @@ mod network_interface_tests {
 			.into_iter()
 			.find_map(|msg| match msg {
 				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+				FrontendMessage::TriggerClipboardSvgAndJsonWrite { graphite_json, .. } => Some(graphite_json),
 				_ => None,
 			})
 			.expect("copy message should be dispatched");
