@@ -201,6 +201,26 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 	}
 }
 
+/// Draws an anchor overlay at each endpoint of every open path on the selected layers, in the selected style for endpoints that are part of the path editing selection.
+pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &ShapeState, overlay_context: &mut OverlayContext) {
+	if !overlay_context.visibility_settings.anchors() {
+		return;
+	}
+
+	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+		let transform = document.metadata().transform_to_viewport(layer);
+		let selected_layer_state = shape_editor.selected_shape_state.get(&layer);
+
+		for id in vector.anchor_endpoints() {
+			let Some(position) = vector.point_domain.position_from_id(id) else { continue };
+
+			let selected = selected_layer_state.is_some_and(|state| state.is_point_selected(ManipulatorPointId::Anchor(id)));
+			overlay_context.manipulator_anchor(transform.transform_point2(position), selected, None);
+		}
+	}
+}
+
 pub fn hex_to_rgba_u8(hex: &str) -> [u8; 4] {
 	let hex = hex.trim().trim_start_matches('#');
 	if hex.len() != 6 && hex.len() != 8 {

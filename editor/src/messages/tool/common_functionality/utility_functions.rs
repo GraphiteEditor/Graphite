@@ -58,6 +58,30 @@ where
 	best
 }
 
+/// Finds the endpoint of an open path closest to the goal (in viewport space) across the given layers, if one lies within the tolerance.
+/// Only anchors with a single connected segment qualify, so closed paths are never matched. Returns the endpoint's position in the layer's local space.
+pub fn closest_open_path_endpoint(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
+	let mut best = None;
+	let mut best_distance_squared = tolerance * tolerance;
+
+	for layer in layers {
+		let to_viewport = document.metadata().transform_to_viewport(layer);
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+
+		for id in vector.anchor_endpoints() {
+			let Some(position) = vector.point_domain.position_from_id(id) else { continue };
+
+			let distance_squared = to_viewport.transform_point2(position).distance_squared(goal);
+			if distance_squared < best_distance_squared {
+				best = Some((layer, id, position));
+				best_distance_squared = distance_squared;
+			}
+		}
+	}
+
+	best
+}
+
 /// Calculates the bounding box of the layer's text, based on the settings for max width and height specified in the typesetting config.
 pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> Quad {
 	// Use the `editor:text_frame` attribute if available (handles multi-item glyphs and the 'Index Elements' node)
