@@ -70,6 +70,7 @@ pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
 	EditorPreferencesUpdate(EditorPreferences),
+	CopySvgTextClipboard(String, Vec<NodeId>),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -107,6 +108,10 @@ impl InternalNodeGraphUpdateSender {
 
 	fn send_eyedropper_preview(&self, raster: Raster<CPU>) {
 		self.0.send(NodeGraphUpdate::EyedropperPreview(raster)).expect("Failed to send response")
+	}
+
+	fn send_svg_text_clipboard(&self, svg_string: String, text_string: String) {
+		self.0.send(NodeGraphUpdate::SvgTextCopyClipboard(svg_string, text_string)).expect("Failed to send response")
 	}
 }
 
@@ -162,6 +167,7 @@ impl NodeRuntime {
 		let mut graph = None;
 		let mut eyedropper = None;
 		let mut execution = None;
+		let mut svg_clipboard = None;
 		for request in self.receiver.try_iter() {
 			match request {
 				GraphRuntimeRequest::GraphUpdate(_) => graph = Some(request),
@@ -182,6 +188,7 @@ impl NodeRuntime {
 					}
 				}
 				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
+				GraphRuntimeRequest::CopySvgTextClipboard(..) => svg_clipboard = Some(request),
 			}
 		}
 
@@ -193,7 +200,7 @@ impl NodeRuntime {
 			eyedropper.render_config.pointer = execution.render_config.pointer;
 		}
 
-		let requests = [preferences, graph, eyedropper, execution].into_iter().flatten();
+		let requests = [preferences, graph, eyedropper, execution, svg_clipboard].into_iter().flatten();
 
 		for request in requests {
 			match request {
@@ -339,6 +346,59 @@ impl NodeRuntime {
 						inspect_result,
 					});
 					return texture;
+				}
+				GraphRuntimeRequest::CopySvgTextClipboard(text_string_clipboard, selected_node_ids) => {
+					let mut combined_graphics = List::<Graphic>::new();
+
+					for monitor_node_path in &self.monitor_nodes {
+						// Skip inspect monitor node if active
+						if self.inspect_state.as_ref().is_some_and(|state| monitor_node_path.last().copied() == Some(state.monitor_node)) {
+							continue;
+						}
+
+						let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
+							continue;
+						};
+
+						if selected_node_ids.contains(&parent_network_node_id) {
+							// Introspect using the full monitor node path
+							if let Ok(introspected_data) = self.executor.introspect(monitor_node_path) {
+								if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
+									combined_graphics.extend(io.output.clone());
+								} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Graphic>>>() {
+									combined_graphics.push(io.output.clone());
+								}
+							}
+						}
+					}
+
+					if combined_graphics.is_empty() {
+						self.sender.send_svg_text_clipboard(String::new(), text_string_clipboard);
+						return None;
+					}
+
+					let bounds = graphene_std::renderer::graphic_list_bounding_box(&combined_graphics, DAffine2::IDENTITY);
+					let raw_bounds = match bounds {
+						RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
+						_ => [DVec2::ZERO, DVec2::ONE],
+					};
+
+					let footprint = Footprint {
+						transform: DAffine2::from_translation(DVec2::new(raw_bounds[0].x, raw_bounds[0].y)),
+						resolution: UVec2::new((raw_bounds[1].x - raw_bounds[0].x).abs().ceil() as u32, (raw_bounds[1].y - raw_bounds[0].y).abs().ceil() as u32).max(UVec2::ONE),
+						quality: RenderQuality::Full,
+					};
+
+					let render_params = RenderParams {
+						footprint,
+						thumbnail: false,
+						..Default::default()
+					};
+					let mut render = SvgRender::new();
+					combined_graphics.render_svg(&mut render, &render_params);
+					render.format_svg(raw_bounds[0], raw_bounds[1]);
+
+					self.sender.send_svg_text_clipboard(render.svg.to_svg_string(), text_string_clipboard);
 				}
 			}
 		}

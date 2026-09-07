@@ -80,19 +80,22 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				}
 			}
 			ClipboardMessage::Write { content } => {
-				let text = match content {
+				match content {
 					ClipboardContent::Svg(_) => {
 						log::error!("SVG copying is not yet supported");
-						return;
+						// Need to fix this.
 					}
 					ClipboardContent::Image { .. } => {
 						log::error!("Image copying is not yet supported");
-						return;
 					}
-					ClipboardContent::Graphite(graphite) => format!("{CLIPBOARD_PREFIX}{graphite}"),
-					ClipboardContent::Text(text) => text,
-				};
-				responses.add(FrontendMessage::TriggerClipboardWrite { content: text });
+					ClipboardContent::Graphite(graphite) => {
+						let graphite_json = format!("{CLIPBOARD_PREFIX}{graphite}");
+						responses.add(PortfolioMessage::RequestSvgTextCopy { graphite_json });
+					}
+					ClipboardContent::Text(text) => {
+						responses.add(FrontendMessage::TriggerClipboardWrite { content: text });
+					}
+				}
 			}
 
 			ClipboardMessage::CopyLayers => {

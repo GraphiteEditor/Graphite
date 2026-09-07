@@ -23,6 +23,20 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 	subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {
 		insertAtCaret(data.content);
 	});
+
+	subscriptions.subscribeFrontendMessage("TriggerClipboardSvgWrite", (data) => {
+		// Adopted from https://developer.mozilla.org/en-US/docs/Web/API/ClipboardItem#browser_compatibility
+		if (ClipboardItem.supports("image/svg+xml")) {
+			navigator.clipboard?.write?.([
+				new ClipboardItem({
+					"image/svg+xml": data.svg_string,
+					"text/plain": data.graphite_json,
+				}),
+			]);
+		} else {
+			navigator.clipboard?.writeText?.(data.graphite_json);
+		}
+	});
 }
 
 export function destroyClipboardManager() {
@@ -30,6 +44,7 @@ export function destroyClipboardManager() {
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
+	subscriptions.unsubscribeFrontendMessage("TriggerClipboardSvgWrite");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
 }

@@ -119,6 +119,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerClipboardWrite { content } => {
 			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content });
 		}
+		FrontendMessage::TriggerClipboardSvgWrite { graphite_json, .. } => {
+			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content: graphite_json });
+		}
 		FrontendMessage::WindowPointerLock => {
 			dispatcher.respond(DesktopFrontendMessage::PointerLock);
 		}
