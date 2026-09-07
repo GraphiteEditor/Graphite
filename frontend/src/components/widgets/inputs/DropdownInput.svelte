@@ -46,7 +46,7 @@
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;
 	let initialSelectedIndex: number | undefined = undefined;
-	let selectionMade = false;
+	let activeEntryOnOpen: string | undefined = undefined;
 	let open = false;
 
 	$: watchSelectedIndex(selectedIndex);
@@ -55,11 +55,18 @@
 	$: watchOpen(open);
 
 	function watchOpen(open: boolean) {
-		if (!open && initialSelectedIndex !== undefined && !selectionMade) {
-			dispatch("hoverOutEntry", initialSelectedIndex);
+		if (open) {
+			initialSelectedIndex = selectedIndex;
+			activeEntryOnOpen = activeEntry.value;
+		} else {
+			// Suppress hoverOutEntry if a new selection was made
+			const selectionMade = activeEntryOnOpen !== undefined && activeEntry.value !== activeEntryOnOpen;
+			if (initialSelectedIndex !== undefined && !selectionMade) {
+				dispatch("hoverOutEntry", initialSelectedIndex);
+			}
+			initialSelectedIndex = undefined;
+			activeEntryOnOpen = undefined;
 		}
-		initialSelectedIndex = open ? selectedIndex : undefined;
-		selectionMade = false;
 	}
 
 	// Called only when `selectedIndex` is changed from outside this component
@@ -82,7 +89,6 @@
 			if (initialSelectedIndex !== undefined) dispatch("hoverInEntry", initialSelectedIndex);
 			const index = entries.flat().findIndex((entry) => entry.value === activeEntry.value);
 			if (index !== -1) {
-				selectionMade = true;
 				dispatch("selectedIndex", index);
 			} else {
 				// eslint-disable-next-line no-console
