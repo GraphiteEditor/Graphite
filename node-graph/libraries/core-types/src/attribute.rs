@@ -154,10 +154,15 @@ pub struct AttributeInfo {
 	pub write_stored: unsafe fn(&dyn AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>,
 }
 
+/// The default's object representation, staged through zeroed storage so a
+/// value with padding or an unused payload (`Option<f64>`'s `None`) hands the
+/// caller deterministic bytes rather than whatever the stack held.
 fn write_default_bytes<A: Attribute>(out: &mut [u8]) {
 	assert_eq!(out.len(), size_of::<A::Value<'static>>());
-	let value: A::Value<'static> = A::default();
-	unsafe { std::ptr::copy_nonoverlapping((&raw const value).cast::<u8>(), out.as_mut_ptr(), size_of::<A::Value<'static>>()) };
+	let mut staged = std::mem::MaybeUninit::<A::Value<'static>>::zeroed();
+	staged.write(A::default());
+	// SAFETY: the staging holds a live value of the type `out` is sized for.
+	unsafe { std::ptr::copy_nonoverlapping(staged.as_ptr().cast::<u8>(), out.as_mut_ptr(), size_of::<A::Value<'static>>()) };
 }
 
 fn field_write_at<A: Attribute>(level: u8) -> crate::record::FieldWrite
