@@ -1265,6 +1265,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 	// A lazy input claims beyond every input frame this node holds, and its
 	// cursor is shared, so the inputs a kernel drives claim past each other.
+	// The snapshot copies the cursor where it stands, so every frame the node
+	// still reads after the kernel runs (the carrier's included) must have been
+	// claimed before it.
 	let lazy_frames_entry = quote! {
 		let __lazy_frames = __frame.frames().reborrow();
 	};
@@ -1807,6 +1810,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.filter(|field| matches!(field.ty, ParsedFieldType::Regular(_)))
 		.map(|field| &field.pat_ident.ident)
 		.collect();
+	let tail_form = if async_fn {
+		Tail::SpawnAsyncFn
+	} else if future_kernel {
+		Tail::SpawnFuture
+	} else {
+		match ir::node_kind(&node) {
+			ir::NodeKind::RecordIo => Tail::Record,
+			ir::NodeKind::Flip => Tail::Flip,
+			ir::NodeKind::Routing | ir::NodeKind::Opaque => Tail::Forward,
+		}
+	};
 	// A carried tail claims the node's frame first, evaluates the carrier
 	// beyond it, and carries its fields; every exit closes the frame through
 	// `lift_poll_into`.
@@ -1850,6 +1864,37 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		})
 	});
+	// A record tail's carrier claim, the one the plan and the kernel read
+	// `__src_rec` out of.
+	let carrier_eval = (record_io && !skips_carrier && !lazy_carrier).then(|| {
+		let name = &regular_fields[0].pat_ident.ident;
+		quote! {
+			let __src = match __cell.eval_input(0, &self.#name, __input, __frame.frames()) {
+				Ok(value) => value,
+				Err(interrupt) => return interrupt.into()
+			};
+			let __src_rec = self.__carrier.rec(&__src);
+		}
+	});
+	// The carrier's record stays claimed and readable through the kernel call, so
+	// its claim runs before the lazy snapshot and the lazy handles claim past it
+	// rather than over it. With no lazy input there is no snapshot and the claim
+	// stays in the tail.
+	let has_lazy = regular_fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_)));
+	let hoisted_carrier = match (has_lazy, tail_form) {
+		(false, _) => TokenStream2::new(),
+		(true, Tail::Record) => carrier_eval.clone().unwrap_or_default(),
+		(true, _) => carried_prelude.clone().unwrap_or_default(),
+	};
+	let carried_prelude = match has_lazy {
+		true => None,
+		false => carried_prelude,
+	};
+	let carrier_eval = match has_lazy {
+		true => None,
+		false => carrier_eval,
+	};
+	let lazy_entry = quote!(#hoisted_carrier #lazy_frames_entry);
 	// Async slots persist plain values across evaluations; the source lifts
 	// the slot value onto its record input at every merge point, into the
 	// carried frame when the node has a carrier.
@@ -1966,16 +2011,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		});
 		let record_kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #carrier_arg)* #(, #value_args)*));
-		let carrier_eval = (!skips_carrier && !lazy_carrier).then(|| {
-			let name = &regular_fields[0].pat_ident.ident;
-			quote! {
-				let __src = match __cell.eval_input(0, &self.#name, __input, __frame.frames()) {
-					Ok(value) => value,
-					Err(interrupt) => return interrupt.into()
-				};
-				let __src_rec = self.__carrier.rec(&__src);
-			}
-		});
 		let carry = (!skips_carrier && !lazy_carrier).then(|| quote!(unsafe { __frame.carry(__src_rec, &self.__plan) };));
 		// A lazy carrier's source record is the token the kernel returned; its
 		// content frames sit above the claim and stay readable until its drop.
@@ -2097,17 +2132,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			__cell.merge(__frame.lift_served(#core_types::gpoll::GPoll::Final(__kernel_value), #core_types::context::ExtractArena::arena(__input)))
 		}
 	});
-	let tail_form = if async_fn {
-		Tail::SpawnAsyncFn
-	} else if future_kernel {
-		Tail::SpawnFuture
-	} else {
-		match ir::node_kind(&node) {
-			ir::NodeKind::RecordIo => Tail::Record,
-			ir::NodeKind::Flip => Tail::Flip,
-			ir::NodeKind::Routing | ir::NodeKind::Opaque => Tail::Forward,
-		}
-	};
 	let lower_tail = |form: Tail| match form {
 		Tail::Forward => lift.clone(),
 		Tail::Record => record_tail.clone().expect("a record-io node has a record tail"),
@@ -2225,7 +2249,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let clamp = clamp_tokens(field);
 						(field, quote!(#body #clamp))
 					}),
-				&lazy_frames_entry,
+				&lazy_entry,
 			);
 			// The rebind path with nothing hoisted: every non-carrier input binds
 			// fresh per lane, so an index-dependent input reaches its own lane.
@@ -2242,7 +2266,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let clamp = clamp_tokens(field);
 						(field, quote!(#body #clamp))
 					}),
-				&lazy_frames_entry,
+				&lazy_entry,
 			);
 			// A hoisted value is moved into every lane's kernel call, so each
 			// lane consumes a clone; view and borrow binds copy freely.
@@ -2694,7 +2718,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			EvalStep::Bind(index, field) => {
 				let body = bind_body(*index, field, false, &quote!(__frame.frames()));
 				match matches!(field.ty, ParsedFieldType::Node(_)) && !std::mem::replace(&mut lazy_declared, true) {
-					true => quote!(#lazy_frames_entry #body),
+					true => quote!(#lazy_entry #body),
 					false => body,
 				}
 			}

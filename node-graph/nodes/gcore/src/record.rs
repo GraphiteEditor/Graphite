@@ -360,6 +360,15 @@ fn offset(_: impl Ctx, element: f64, by: &f64) -> f64 {
 	element + *by
 }
 
+/// Test-only flip node holding a borrow of its lent carrier across a lazy
+/// input's evaluation: the borrow points into the carrier's frame, so the lazy
+/// input's claim has to start beyond it.
+#[node_macro::node(category("Test"))]
+fn lend_across_lazy(ctx: impl Ctx, element: &f64, addend: impl Node<Context<'_>, Output = f64>) -> Result<f64, Interrupt> {
+	let added = addend.eval(ctx)?;
+	Ok(*element + added)
+}
+
 #[node_macro::node(category("Test"))]
 async fn double_async(_: impl Ctx, element: f64) -> f64 {
 	element * 2.
@@ -2339,6 +2348,35 @@ mod tests {
 			panic!("expected a final record");
 		};
 		assert_eq!(served.element::<f64>(), 42., "the parked borrow survives the carrier evaluation reusing its frame");
+		assert_eq!(served.attr::<Opacity>(), 0.25);
+	}
+
+	#[test]
+	fn a_lent_carrier_borrow_survives_a_lazy_inputs_claim() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let carrier_layout = f64_layout(&["opacity"]);
+		let addend_layout = f64_layout(&["opacity"]);
+		assert!(carrier_layout.frame_bytes() != 0, "the lend must borrow into a spilled frame for the claims to overlap");
+		let frames = frames_for(&[&carrier_layout, &addend_layout]);
+
+		let node = install(
+			LendAcrossLazyNode::new(
+				f64_record_source(&carrier_layout, 2., vec![("opacity", 0.25)]),
+				f64_record_source(&addend_layout, 40., vec![("opacity", 0.5)]),
+				&carrier_layout,
+				&addend_layout,
+			),
+			lend_across_lazy_layout_meta(),
+			&[Some(&carrier_layout), None],
+		);
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx, &frames) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(served.element::<f64>(), 42., "the lazy input claims beyond the carrier's frame, so the borrow keeps its element");
 		assert_eq!(served.attr::<Opacity>(), 0.25);
 	}
 
