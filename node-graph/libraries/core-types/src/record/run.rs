@@ -788,20 +788,21 @@ mod tests {
 	fn owned_items_replay_re_parked_payloads_after_the_source_dies() {
 		let layout = Layout::default().with_writes(0, element_write_hashed::<String>(), &[FieldWrite::of::<crate::attribute::Name>(0)]);
 		let stride = layout.lane_stride();
-		let mut bytes = vec![0u8; stride * 2];
+		// Word storage: the parked element and the `&str` field are 8-aligned.
+		let mut bytes = vec![0u64; (stride * 2).div_ceil(8)];
 
 		let owned = {
 			let arena = crate::arena::Arena::new(1024).unwrap();
 			for lane in 0..2 {
-				let base = unsafe { bytes.as_mut_ptr().add(lane * stride) };
+				let base = unsafe { bytes.as_mut_ptr().cast::<u8>().add(lane * stride) };
 				unsafe { write_element(base, format!("element {lane}"), &arena) }.unwrap();
 				let (name, _) = arena.alloc(format!("field {lane}")).unwrap();
 				unsafe { write_field::<&str>(base, layout.offset_of("name", 0).unwrap(), name.as_str()) };
 			}
-			let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr(), 2, &layout)) };
+			let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr().cast(), 2, &layout)) };
 			item.copy_out()
 		};
-		bytes.fill(u8::MAX);
+		bytes.fill(u64::MAX);
 
 		let arena = crate::arena::Arena::new(1024).unwrap();
 		let replayed = owned.replay(&arena).unwrap();
@@ -882,10 +883,11 @@ mod tests {
 	#[should_panic(expected = "an owned item replays")]
 	fn an_owned_item_refuses_reads() {
 		let layout = Layout::default().with_writes(0, element_write_hashed::<String>(), &[]);
-		let mut bytes = vec![0u8; layout.lane_stride()];
+		// Word storage: the parked element slot holds an 8-aligned reference.
+		let mut bytes = vec![0u64; layout.lane_stride().div_ceil(8)];
 		let arena = crate::arena::Arena::new(1024).unwrap();
-		unsafe { write_element(bytes.as_mut_ptr(), String::from("parked"), &arena) }.unwrap();
-		let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr(), 1, &layout)) };
+		unsafe { write_element(bytes.as_mut_ptr().cast(), String::from("parked"), &arena) }.unwrap();
+		let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr().cast(), 1, &layout)) };
 		item.copy_out().lanes();
 	}
 }
