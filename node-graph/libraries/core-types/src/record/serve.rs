@@ -119,7 +119,9 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	///
 	/// # Safety
 	/// `src` must be a live record of the plan's source layout, and the plan
-	/// must be the wiring-resolved plan of this frame's layout.
+	/// must be the wiring-resolved plan of this frame's layout. `src` must not
+	/// overlap this frame; an input's frame is split off beyond the claim, so
+	/// serving the source through [`Self::frames`] establishes it.
 	pub unsafe fn carry(&mut self, src: Rec<'_>, plan: &[(usize, usize, usize)]) {
 		unsafe { apply_plan(src, self.dst(), plan) };
 		self.filled_fields = true;
@@ -219,8 +221,9 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// Translates a source record into the frame through a wiring-resolved plan.
 	///
 	/// # Safety
-	/// `src` must be a live record of `plan`'s source layout, and `plan` must
-	/// translate into this frame's layout.
+	/// `src` must be a live record of `plan`'s source layout, `plan` must
+	/// translate into this frame's layout, and `src` must not overlap this
+	/// frame, as [`Self::carry`] requires.
 	pub unsafe fn translate(&mut self, src: Rec<'_>, plan: &SourcePlan) {
 		unsafe { plan.translate(src, self.dst()) };
 		self.filled_fields = true;

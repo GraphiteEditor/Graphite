@@ -221,7 +221,9 @@ pub(in crate::record) unsafe fn lift_poll_into<'e, T: Send + Sync + dyn_any::Sta
 
 /// # Safety
 /// `src` must be a record of the plan's source layout and `dst` a buffer of
-/// the plan's target layout; both are proven at wiring.
+/// the plan's target layout; both are proven at wiring. The two records must
+/// not overlap: a plan routinely carries identity moves, so each entry copies
+/// non-overlapping and an aliasing pair is undefined on the first copy.
 pub unsafe fn apply_plan(src: Rec<'_>, dst: *mut u8, plan: &[(usize, usize, usize)]) {
 	for &(from, to, size) in plan {
 		unsafe { std::ptr::copy_nonoverlapping(src.ptr().add(from), dst.add(to), size) };
