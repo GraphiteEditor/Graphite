@@ -5,6 +5,15 @@ use super::layout::{ElementWrite, FieldOffset, FieldWrite, Layout, element_write
 use super::owned::deep_field_glue;
 use super::promote::{Promotion, promote_record};
 
+/// A group's element is compared and hashed by content, so it needs glue: the
+/// byte fallback would read a padded element type's uninitialized padding.
+fn assert_element_glue(layout: &Layout) {
+	assert!(
+		layout.element.size == 0 || layout.element.content_hash.is_some(),
+		"a run's element adopts only with content glue; declare it with `element_write_hashed`"
+	);
+}
+
 /// Builds a resident run lane by lane: fresh frames in the arena at a layout
 /// derived from the element glue and field writes, elements pushed in order
 /// and attributes written onto pushed lanes. The finished item's frames are
@@ -22,7 +31,7 @@ impl<'e> RunBuilder<'e> {
 	/// `None` reports arena exhaustion.
 	pub fn new(arena: &'e crate::arena::Arena, element: ElementWrite, fields: &[FieldWrite], len: usize) -> Option<Self> {
 		let layout = Layout::default().with_writes(0, element, fields);
-		assert!(!layout.element.parked || layout.element.content_hash.is_some(), "a parked element adopts only with content glue");
+		assert_element_glue(&layout);
 		for field in &layout.fields {
 			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");
 		}
@@ -163,7 +172,7 @@ impl<'e> GroupItem<'e> {
 	/// bytes.
 	pub fn adopt(batch: crate::node::RecordBatch<'_>, arena: &'e crate::arena::Arena) -> Option<Self> {
 		let layout = batch.layout().clone();
-		assert!(!layout.element.parked || layout.element.content_hash.is_some(), "a parked element adopts only with content glue");
+		assert_element_glue(&layout);
 		for field in &layout.fields {
 			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");
 		}
@@ -243,7 +252,7 @@ impl<'e> GroupItem<'e> {
 	/// qualify, caller stack scratch does not.
 	pub unsafe fn from_resident(batch: crate::node::RecordBatch<'e>) -> Self {
 		let layout = batch.layout().clone();
-		assert!(!layout.element.parked || layout.element.content_hash.is_some(), "a parked element adopts only with content glue");
+		assert_element_glue(&layout);
 		for field in &layout.fields {
 			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");
 		}
@@ -529,7 +538,12 @@ impl<'e> Group<'e> {
 }
 
 /// Compares one record region of `layout` by content. Regions without glue
-/// compare as bytes, which is the content for unparked values.
+/// compare as bytes, which is the content for unparked values. Only written
+/// spans are read: the element's own bytes and each field's own bytes, never
+/// the element-to-field seam or the lane's stride tail, which no writer
+/// touches. The element always carries glue (`assert_element_glue`) and
+/// `FieldWrite::of` always installs field glue, so a padded value's own
+/// padding never reaches the byte fallback either.
 unsafe fn record_content_eq(layout: &Layout, a: *const u8, b: *const u8) -> bool {
 	let bytes_eq = |offset: usize, size: usize| unsafe { std::slice::from_raw_parts(a.add(offset), size) == std::slice::from_raw_parts(b.add(offset), size) };
 	let element = match layout.element.content_eq {
@@ -614,7 +628,6 @@ impl graphene_hash::CacheHash for Group<'_> {
 mod tests {
 	use super::*;
 	use crate::record::access::{read_element, write_field};
-	use crate::record::layout::element_write;
 	use crate::record::test_support::f64_field;
 
 	#[test]
@@ -625,7 +638,7 @@ mod tests {
 
 		let arena = crate::arena::Arena::new(4096).unwrap();
 		let transform = DAffine2::from_translation((5., 6.).into());
-		let mut builder = RunBuilder::new(&arena, element_write::<f64>(), &[FieldWrite::of::<Transform>(0), FieldWrite::of::<Opacity>(0)], 2).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<f64>(), &[FieldWrite::of::<Transform>(0), FieldWrite::of::<Opacity>(0)], 2).unwrap();
 		for lane in 0..2 {
 			let lane = builder.push(lane as f64).unwrap();
 			builder.attr::<Transform>(lane, transform);
@@ -655,7 +668,7 @@ mod tests {
 		use crate::lane::LaneSource;
 
 		let arena = crate::arena::Arena::new(1024).unwrap();
-		let mut builder = RunBuilder::new(&arena, element_write::<f64>(), &[], 1).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<f64>(), &[], 1).unwrap();
 		builder.push(0f64).unwrap();
 		let item = builder.finish();
 		let run = RunView::<f64>::new(&item).expect("the run holds f64 elements");
@@ -667,7 +680,7 @@ mod tests {
 	fn an_interior_run_already_persistent_is_shared() {
 		let transient = crate::arena::Arena::new(4096).unwrap();
 		let persistent = crate::arena::Arena::new(4096).unwrap();
-		let layout = Layout::default().with_writes(1, element_write::<f64>(), &[f64_field("opacity")]);
+		let layout = Layout::default().with_writes(1, element_write_hashed::<f64>(), &[f64_field("opacity")]);
 		let stride = layout.lane_stride();
 
 		let mut buffer = vec![0u64; (2 * stride).div_ceil(8)];
@@ -689,7 +702,7 @@ mod tests {
 	#[test]
 	fn adopting_within_one_region_shares_the_run() {
 		let arena = crate::arena::Arena::new(4096).unwrap();
-		let layout = Layout::default().with_writes(1, element_write::<f64>(), &[f64_field("opacity")]);
+		let layout = Layout::default().with_writes(1, element_write_hashed::<f64>(), &[f64_field("opacity")]);
 		let stride = layout.lane_stride();
 
 		let mut buffer = vec![0u64; (2 * stride).div_ceil(8)];
@@ -709,7 +722,7 @@ mod tests {
 	#[test]
 	fn adopted_lanes_round_trip_through_the_group_item() {
 		let arena = crate::arena::Arena::new(1024).unwrap();
-		let layout = Layout::default().with_writes(1, element_write::<f64>(), &[f64_field("opacity")]);
+		let layout = Layout::default().with_writes(1, element_write_hashed::<f64>(), &[f64_field("opacity")]);
 		let stride = layout.lane_stride();
 		let offset = layout.offset_of("opacity", 0).unwrap();
 
