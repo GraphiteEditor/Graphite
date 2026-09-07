@@ -2859,8 +2859,14 @@ mod tests {
 		let frames = frames_for(&[&layout]);
 		let base = {
 			let probe = frames.scope();
-			// SAFETY: nothing reads the probe's record; only its address is taken.
-			let value = unsafe { probe.claim(&layout).finish() };
+			let mut claim = probe.claim(&layout);
+			claim.element(0f64, &arena).expect("the arena holds the element");
+			for name in ["opacity", "length"] {
+				// SAFETY: the offset is this claim's own layout's, at the f64 the field was declared with.
+				unsafe { claim.attr_at(layout.offset_of(name, 0).expect("the fixture declares the field"), 0f64) };
+			}
+			// SAFETY: the element and both fields complete the record.
+			let value = unsafe { claim.finish() };
 			layout.rec(&value).ptr()
 		};
 
