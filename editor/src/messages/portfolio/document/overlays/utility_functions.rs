@@ -132,7 +132,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 	let display_handles = overlay_context.visibility_settings.handles();
 	let display_anchors = overlay_context.visibility_settings.anchors();
 
-	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		if display_path {
@@ -201,15 +201,15 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 	}
 }
 
-/// Draws an anchor overlay at each endpoint of every open path on the selected layers, in the selected style for endpoints that are part of the path editing selection.
+/// Draws an anchor overlay at each endpoint of every open path on the selected visible layers, in the selected style for endpoints that are part of the path editing selection.
 pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &ShapeState, overlay_context: &mut OverlayContext) {
 	if !overlay_context.visibility_settings.anchors() {
 		return;
 	}
 
-	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
-		let transform = document.metadata().transform_to_viewport(layer);
+		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		let selected_layer_state = shape_editor.selected_shape_state.get(&layer);
 
 		for id in vector.anchor_endpoints() {

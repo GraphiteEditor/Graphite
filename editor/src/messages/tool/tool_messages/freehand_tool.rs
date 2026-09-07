@@ -269,8 +269,8 @@ impl Fsm for FreehandToolFsmState {
 
 				// Pressing on the endpoint of a selected open path continues that path in place, keeping the layer, its selection, and its style
 				let selected_nodes = document.network_interface.selected_nodes();
-				let selected_layers = selected_nodes.selected_layers(document.metadata());
-				if let Some((layer, endpoint, position)) = closest_open_path_endpoint(document, input.mouse.position, SNAP_POINT_TOLERANCE, selected_layers) {
+				let selected_visible_layers = selected_nodes.selected_visible_layers(&document.network_interface);
+				if let Some((layer, endpoint, position)) = closest_open_path_endpoint(document, input.mouse.position, SNAP_POINT_TOLERANCE, selected_visible_layers) {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((position, endpoint));
 
@@ -278,12 +278,14 @@ impl Fsm for FreehandToolFsmState {
 				}
 
 				if input.keyboard.key(append_to_selected) {
-					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
-					let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
+					let mut appendable_layers = selected_nodes
+						.selected_visible_layers(&document.network_interface)
+						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+					let existing_layer = appendable_layers.next().filter(|_| appendable_layers.next().is_none());
 					if let Some(layer) = existing_layer {
 						tool_data.layer = Some(layer);
 
-						let transform = document.metadata().transform_to_viewport(layer);
+						let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 						let position = transform.inverse().transform_point2(input.mouse.position);
 
 						extend_path_with_next_segment(tool_data, position, false, responses);
@@ -316,7 +318,7 @@ impl Fsm for FreehandToolFsmState {
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
-					let transform = document.metadata().transform_to_viewport(layer);
+					let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 
 					// For newly created layers, the deferred TransformSet may not yet be reflected
 					// in the metadata, so compute local position from the known viewport start.
@@ -865,5 +867,85 @@ mod test_freehand {
 
 		assert_eq!(layer_count(&editor), 1, "Releasing without moving should not create a layer");
 		assert_eq!(point_and_segment_counts(&editor, layer), initial_counts, "Releasing without moving should leave the path unchanged");
+	}
+
+	#[tokio::test]
+	async fn test_hidden_layer_endpoint_is_not_extended() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let layer = draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		let initial_counts = point_and_segment_counts(&editor, layer);
+		let (endpoints, _) = endpoint_and_other_anchor_viewport_positions(&editor, layer);
+		let endpoint = *endpoints.first().expect("The stroke should have endpoints");
+
+		// Where the hidden layer's endpoint would land without its transform
+		let metadata = editor.active_document().metadata();
+		let untransformed_endpoint = metadata
+			.document_to_viewport
+			.transform_point2(metadata.transform_to_viewport(layer).inverse().transform_point2(endpoint));
+
+		editor
+			.handle_message(NodeGraphMessage::ToggleVisibility {
+				node_id: layer.to_node(),
+				network_path: Vec::new(),
+			})
+			.await;
+		assert_eq!(editor.get_selected_layer().await, Some(layer), "Hiding the layer should leave it selected");
+
+		editor
+			.drag_path(&[endpoint + DVec2::new(2., -2.), DVec2::new(400., 150.), DVec2::new(500., 100.)], ModifierKeys::empty())
+			.await;
+		assert_eq!(layer_count(&editor), 2, "A stroke at a hidden layer's endpoint should create a new layer");
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor
+			.drag_path(
+				&[untransformed_endpoint, untransformed_endpoint + DVec2::new(100., 50.), untransformed_endpoint + DVec2::new(200., 0.)],
+				ModifierKeys::empty(),
+			)
+			.await;
+		assert_eq!(
+			layer_count(&editor),
+			3,
+			"A stroke where the hidden layer's untransformed endpoint would sit should also create a new layer"
+		);
+
+		editor
+			.handle_message(NodeGraphMessage::ToggleVisibility {
+				node_id: layer.to_node(),
+				network_path: Vec::new(),
+			})
+			.await;
+		assert_eq!(point_and_segment_counts(&editor, layer), initial_counts, "The hidden layer should be untouched");
+	}
+
+	#[tokio::test]
+	async fn test_locked_layer_endpoint_is_extended() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let layer = draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		let (initial_point_count, _) = point_and_segment_counts(&editor, layer);
+		let (endpoints, _) = endpoint_and_other_anchor_viewport_positions(&editor, layer);
+		let endpoint = *endpoints.last().expect("The stroke should have endpoints");
+
+		editor
+			.handle_message(NodeGraphMessage::ToggleLocked {
+				node_id: layer.to_node(),
+				network_path: Vec::new(),
+			})
+			.await;
+		assert_eq!(editor.get_selected_layer().await, Some(layer), "Locking the layer should leave it selected");
+
+		let continuation = [endpoint + DVec2::new(2., -2.), DVec2::new(400., 150.), DVec2::new(500., 100.)];
+		editor.drag_path(&continuation, ModifierKeys::empty()).await;
+
+		// Locking only blocks viewport picking by the Select tool, so a selected locked layer stays editable
+		assert_eq!(layer_count(&editor), 1, "A selected locked layer's endpoint should still be continued from");
+
+		let (point_count, segment_count) = point_and_segment_counts(&editor, layer);
+		assert_eq!(point_count, initial_point_count + continuation.len() - 1, "Each pointer move after the press should add a point");
+		assert_eq!(segment_count, point_count - 1, "The continued stroke should form a single open path");
 	}
 }

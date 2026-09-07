@@ -44,7 +44,7 @@ where
 	closest_candidate_point(document, goal, max_distance, layers, |vector| vector.anchor_points().filter(|&id| !exclude(id)).collect())
 }
 
-/// Determines the closest of each layer's candidate points to the goal (in viewport space) under max_distance. Returns the point's position in the layer's local space.
+/// Determines the closest of each visible layer's candidate points to the goal (in viewport space) under max_distance. Returns the point's position in the layer's local space.
 fn closest_candidate_point(
 	document: &DocumentMessageHandler,
 	goal: DVec2,
@@ -56,7 +56,11 @@ fn closest_candidate_point(
 	let mut best_distance_squared = max_distance * max_distance;
 
 	for layer in layers {
-		let viewspace = document.metadata().transform_to_viewport(layer);
+		if !document.network_interface.is_layer_visible(layer) {
+			continue;
+		}
+
+		let viewspace = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 		for id in candidates(&vector) {
