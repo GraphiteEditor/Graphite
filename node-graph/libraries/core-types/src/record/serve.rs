@@ -130,8 +130,14 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// Writes a field at its wiring-resolved offset.
 	///
 	/// # Safety
-	/// `offset` must be this layout's resolved offset for a field of `T`.
+	/// `offset` must be this layout's resolved offset for a field of `T`. A
+	/// generated write offset defaults to 0 until `set_layout` installs it, so
+	/// the debug assertion catches a serve that ran before the install.
 	pub unsafe fn attr_at<T>(&mut self, offset: usize, value: T) {
+		debug_assert!(
+			self.layout.fields.iter().any(|field| field.offset == offset),
+			"attribute write at an offset this layout does not carry; the layout must install before serving"
+		);
 		unsafe { write_field(self.dst(), offset, value) };
 		self.filled_fields = true;
 	}
