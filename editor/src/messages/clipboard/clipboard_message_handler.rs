@@ -524,6 +524,7 @@ mod test {
 			.into_iter()
 			.find_map(|message| match message {
 				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+				FrontendMessage::TriggerClipboardSvgWrite { graphite_json, .. } => Some(graphite_json),
 				_ => None,
 			})
 			.expect("copying layers should write a payload to the clipboard")

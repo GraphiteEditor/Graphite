@@ -200,7 +200,7 @@ impl NodeRuntime {
 			eyedropper.render_config.pointer = execution.render_config.pointer;
 		}
 
-		let requests = [preferences, graph, eyedropper, execution, svg_clipboard].into_iter().flatten();
+		let requests = [preferences, graph, eyedropper, svg_clipboard, execution].into_iter().flatten();
 
 		for request in requests {
 			match request {

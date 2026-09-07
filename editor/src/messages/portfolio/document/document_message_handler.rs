@@ -4317,7 +4317,7 @@ mod document_message_handler_tests {
 			})
 			.await;
 
-		let instrumented = editor.eval_graph().await.unwrap();
+		let (instrumented, _) = editor.eval_graph().await.unwrap();
 
 		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass without checking anything
 		let base_lengths: Vec<usize> = instrumented
