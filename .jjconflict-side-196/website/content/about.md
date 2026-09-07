@@ -165,7 +165,7 @@ In addition to the work of the Core Team listed above, over a hundred other cont
 
 ## License
 
-The Graphite editor source code is published under the terms of the Apache License 2.0. See below for details and exclusions:
+Graphite source code is MIT/Apache 2.0 dual-licensed, while visual assets in official builds are covered by the Graphite Branding License:
 
 <a href="/license" class="button arrow">License</a>
 
