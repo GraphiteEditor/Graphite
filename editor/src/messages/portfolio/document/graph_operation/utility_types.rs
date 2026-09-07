@@ -616,7 +616,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(mesh_gradient_value_id) = get_upstream_mesh_gradient_value_node_id(output_layer, self.network_interface) else {
 			return;
 		};
-		let input_connector = InputConnector::node(mesh_gradient_value_id, graphene_std::math_nodes::mesh_gradient_value::MeshGradientInput);
+		let input_connector = InputConnector::node(mesh_gradient_value_id, graphene_std::gradient_nodes::mesh_gradient::mesh_gradient_value::MeshGradientInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::MeshGradient(mesh_gradient), false), false);
 	}
 

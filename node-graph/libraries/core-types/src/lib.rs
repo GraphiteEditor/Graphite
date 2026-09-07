@@ -10,6 +10,7 @@ pub mod memo;
 pub mod misc;
 pub mod none;
 pub mod ops;
+pub mod paint;
 pub mod registry;
 pub mod render_complexity;
 pub mod transform;

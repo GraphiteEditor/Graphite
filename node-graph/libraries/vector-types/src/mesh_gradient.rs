@@ -1,5 +1,5 @@
 use std::array;
-use std::ops::{Add, Mul};
+use std::ops::{Add, Deref, Mul, Sub};
 
 use core_types::list::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item};
 use core_types::{Color, render_complexity::RenderComplexity};
@@ -16,250 +16,6 @@ use crate::{
 		misc::{BezierHandles, HandleId, HandleType, pathseg_points, point_to_dvec2},
 	},
 };
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MeshGradientCorner {
-	pub index: usize,
-	pub point_id: PointId,
-	pub position: DVec2,
-	pub color: Color,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MeshGradientEdge {
-	pub segment_id: SegmentId,
-	pub segment: PathSeg,
-	pub start: PointId,
-	pub end: PointId,
-}
-
-/// Resolved patch of a mesh gradient.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MeshPatch {
-	/// Patch index in row-major order.
-	pub index: usize,
-	/// Corner positions. [top-left, top-right, bottom-left, bottom-right]
-	pub corners: [DVec2; 4],
-	/// Corner colors. [top-left, top-right, bottom-left, bottom-right]
-	pub colors: [Color; 4],
-	/// Edges defining the patch. [top, bottom, left, right]
-	pub edges: [PathSeg; 4],
-}
-
-impl MeshPatch {
-	/// The patch outline as one closed subpath, in mesh-local coordinates.
-	/// Walks `top`, `right`, then `bottom` and `left` reversed, which is the only traversal of [`Self::edges`]'s
-	/// `[top, bottom, left, right]` order that stays connected end-to-end.
-	pub fn boundary_path(&self) -> BezPath {
-		let [top, bottom, left, right] = self.edges;
-		let mut boundary = BezPath::from_path_segments([top, right, bottom.reverse(), left.reverse()].into_iter());
-		boundary.close_path();
-		boundary
-	}
-
-	/// Checks for foldovers by sampling the position Jacobian over the patch.
-	pub fn sampled_no_foldover(&self) -> bool {
-		const SUBDIVISIONS: usize = 64;
-		const RELATIVE_EPSILON: f64 = 1e-6;
-		const FOLDOVER_SAFETY_ANGLE_DEGREES: f64 = 5.;
-		let minimum_normalized_jacobian = FOLDOVER_SAFETY_ANGLE_DEGREES.to_radians().sin();
-		let position_bezier_net = coons_to_position_bezier_net(&self.corners, &self.edges);
-
-		for row in 0..=SUBDIVISIONS {
-			let v = row as f64 / SUBDIVISIONS as f64;
-			for column in 0..=SUBDIVISIONS {
-				let u = column as f64 / SUBDIVISIONS as f64;
-				let jacobian = position_jacobian(&position_bezier_net, u, v);
-				let derivative_u = jacobian.x_axis;
-				let derivative_v = jacobian.y_axis;
-				let scale = derivative_u.length() * derivative_v.length();
-				let determinant = derivative_u.perp_dot(derivative_v);
-
-				if !scale.is_finite() || !determinant.is_finite() || determinant <= (RELATIVE_EPSILON + minimum_normalized_jacobian) * scale {
-					return false;
-				}
-			}
-		}
-
-		true
-	}
-}
-
-/// Row-major storage for values arranged in a rectangular mesh grid.
-#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct MeshGrid<T> {
-	rows: usize,
-	columns: usize,
-	values: Vec<T>,
-}
-
-impl<T> MeshGrid<T> {
-	fn new(values: Vec<T>, rows: usize, columns: usize) -> Option<Self> {
-		(values.len() == rows.checked_mul(columns)?).then_some(Self { rows, columns, values })
-	}
-
-	fn index(&self, row: usize, column: usize) -> Option<usize> {
-		if row >= self.rows || column >= self.columns {
-			return None;
-		}
-		row.checked_mul(self.columns)?.checked_add(column)
-	}
-
-	fn get(&self, row: usize, column: usize) -> Option<&T> {
-		self.values.get(self.index(row, column)?)
-	}
-
-	fn get_flat(&self, index: usize) -> Option<&T> {
-		self.values.get(index)
-	}
-
-	fn get_flat_mut(&mut self, index: usize) -> Option<&mut T> {
-		self.values.get_mut(index)
-	}
-
-	fn dimensions(&self) -> [usize; 2] {
-		[self.rows, self.columns]
-	}
-
-	fn splice_lines(&mut self, axis: MeshGridLineAxis, removed: std::ops::Range<usize>, inserted_lines: &[&[T]]) -> Option<()>
-	where
-		T: Copy,
-	{
-		let [across_count, along_count] = axis.logical_indices(self.rows, self.columns);
-		if removed.start > removed.end || removed.end > along_count || inserted_lines.iter().any(|line| line.len() != across_count) {
-			return None;
-		}
-
-		let removed_count = removed.end - removed.start;
-		let inserted_count = inserted_lines.len();
-		let new_along_count = along_count - removed_count + inserted_count;
-		let [new_rows, new_columns] = axis.physical_indices(across_count, new_along_count);
-		let mut new_values = Vec::with_capacity(new_rows.checked_mul(new_columns)?);
-
-		for new_row in 0..new_rows {
-			for new_column in 0..new_columns {
-				let [across, along] = axis.logical_indices(new_row, new_column);
-				if along >= removed.start && along < removed.start + inserted_count {
-					new_values.push(inserted_lines[along - removed.start][across]);
-				} else {
-					let original_along = if along < removed.start { along } else { along - inserted_count + removed_count };
-					let [original_row, original_column] = axis.physical_indices(across, original_along);
-					new_values.push(self.values[original_row * self.columns + original_column]);
-				}
-			}
-		}
-
-		self.rows = new_rows;
-		self.columns = new_columns;
-		self.values = new_values;
-		Some(())
-	}
-}
-
-/// Maps row and column insertion onto one operation that splits edges along an axis and connects them across the other axis.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum MeshGridLineAxis {
-	Row,
-	Column,
-}
-
-impl MeshGridLineAxis {
-	fn physical_indices(self, across: usize, along: usize) -> [usize; 2] {
-		match self {
-			Self::Column => [across, along],
-			Self::Row => [along, across],
-		}
-	}
-
-	fn logical_indices(self, row: usize, column: usize) -> [usize; 2] {
-		match self {
-			Self::Column => [row, column],
-			Self::Row => [column, row],
-		}
-	}
-
-	fn uv(self, along: f32, across: f32) -> [f32; 2] {
-		match self {
-			Self::Column => [along, across],
-			Self::Row => [across, along],
-		}
-	}
-
-	fn edge_grids<'a, T>(self, horizontal: &'a MeshGrid<T>, vertical: &'a MeshGrid<T>) -> (&'a MeshGrid<T>, &'a MeshGrid<T>) {
-		match self {
-			Self::Column => (horizontal, vertical),
-			Self::Row => (vertical, horizontal),
-		}
-	}
-
-	fn edge_grids_mut<'a, T>(self, horizontal: &'a mut MeshGrid<T>, vertical: &'a mut MeshGrid<T>) -> (&'a mut MeshGrid<T>, &'a mut MeshGrid<T>) {
-		match self {
-			Self::Column => (horizontal, vertical),
-			Self::Row => (vertical, horizontal),
-		}
-	}
-}
-
-/// The serialized exchange form of a mesh gradient: its patches, with whole-mesh settings as sibling fields
-/// serialized only when non-default.
-#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct MeshGradientSurface {
-	pub mesh: MeshGradient,
-	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientSpace::is_default"))]
-	pub gradient_space: GradientSpace,
-	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientInterpolation::is_default"))]
-	pub gradient_interpolation: GradientInterpolation,
-}
-
-impl Default for MeshGradientSurface {
-	fn default() -> Self {
-		Self {
-			mesh: MeshGradient::default(),
-			gradient_space: GradientSpace::default(),
-			gradient_interpolation: GradientInterpolation::Smooth,
-		}
-	}
-}
-
-impl From<MeshGradient> for MeshGradientSurface {
-	fn from(mesh: MeshGradient) -> Self {
-		Self { mesh, ..Default::default() }
-	}
-}
-
-// The runtime wire form: whole-mesh settings ride as the mesh gradient item's attributes in its containing list,
-// where the Fill kernel, chain setter nodes, and renderers read and write them
-impl From<MeshGradientSurface> for Item<MeshGradient> {
-	fn from(surface: MeshGradientSurface) -> Self {
-		let mut item = Item::new_from_element(surface.mesh);
-		if !surface.gradient_space.is_default() {
-			item.set_attribute(ATTR_GRADIENT_SPACE, surface.gradient_space);
-		}
-		if !surface.gradient_interpolation.is_default() {
-			item.set_attribute(ATTR_GRADIENT_INTERPOLATION, surface.gradient_interpolation);
-		}
-		item
-	}
-}
-
-impl From<&Item<MeshGradient>> for MeshGradientSurface {
-	fn from(item: &Item<MeshGradient>) -> Self {
-		Self {
-			mesh: item.element().clone(),
-			gradient_space: item.attribute_cloned_or_default(ATTR_GRADIENT_SPACE),
-			gradient_interpolation: item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION),
-		}
-	}
-}
-
-/// Returns the affine that fits the mesh gradient geometry to the provided bounds.
-pub fn initial_mesh_gradient_transform_for_bounding_box(bounds: [DVec2; 2]) -> DAffine2 {
-	let [min, max] = bounds;
-	let size = max - min;
-	DAffine2::from_cols(DVec2::new(size.x, 0.), DVec2::new(0., size.y), min)
-}
 
 /// Mesh gradient defined by multiple coons patches.
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
@@ -346,11 +102,14 @@ impl MeshGradient {
 			}
 		}
 
+		// FIXME: only for debug purpose
+		let colors = [Color::RED, Color::GREEN, Color::BLUE, Color::YELLOW];
 		let corner_colors = (0..corner_rows)
 			.flat_map(|row| {
 				(0..corner_columns).map(move |column| {
-					let luminance = (row + column).is_multiple_of(2) as u8 as f32;
-					Color::from_luminance(luminance)
+					let corner_index = row * corner_columns + column;
+					let color_index = corner_index % colors.len();
+					colors[color_index]
 				})
 			})
 			.collect();
@@ -693,29 +452,371 @@ impl MeshGradient {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeshGradientCorner {
+	pub index: usize,
+	pub point_id: PointId,
+	pub position: DVec2,
+	pub color: Color,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeshGradientEdge {
+	pub segment_id: SegmentId,
+	pub segment: PathSeg,
+	pub start: PointId,
+	pub end: PointId,
+}
+
+/// Resolved patch of a mesh gradient.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeshPatch {
+	/// Patch index in row-major order.
+	pub index: usize,
+	/// Corner positions. [top-left, top-right, bottom-left, bottom-right]
+	pub corners: [DVec2; 4],
+	/// Corner colors. [top-left, top-right, bottom-left, bottom-right]
+	pub colors: [Color; 4],
+	/// Edges defining the patch. [top, bottom, left, right]
+	pub edges: [PathSeg; 4],
+}
+
+impl MeshPatch {
+	/// The patch outline as one closed subpath, in mesh-local coordinates.
+	/// Walks `top`, `right`, then `bottom` and `left` reversed, which is the only traversal of [`Self::edges`]'s
+	/// `[top, bottom, left, right]` order that stays connected end-to-end.
+	pub fn boundary_path(&self) -> BezPath {
+		let [top, bottom, left, right] = self.edges;
+		let mut boundary = BezPath::from_path_segments([top, right, bottom.reverse(), left.reverse()].into_iter());
+		boundary.close_path();
+		boundary
+	}
+
+	/// Checks for foldovers by sampling the position Jacobian over the patch.
+	pub fn sampled_no_foldover(&self) -> bool {
+		const SUBDIVISIONS: usize = 64;
+		const RELATIVE_EPSILON: f64 = 1e-6;
+		const FOLDOVER_SAFETY_ANGLE_DEGREES: f64 = 5.;
+		let minimum_normalized_jacobian = FOLDOVER_SAFETY_ANGLE_DEGREES.to_radians().sin();
+		let position_bezier_net = coons_to_position_bezier_net(&self.corners, &self.edges);
+
+		for row in 0..=SUBDIVISIONS {
+			let v = row as f64 / SUBDIVISIONS as f64;
+			for column in 0..=SUBDIVISIONS {
+				let u = column as f64 / SUBDIVISIONS as f64;
+				let jacobian = position_jacobian(&position_bezier_net, u, v);
+				let derivative_u = jacobian.x_axis;
+				let derivative_v = jacobian.y_axis;
+				let scale = derivative_u.length() * derivative_v.length();
+				let determinant = derivative_u.perp_dot(derivative_v);
+
+				if !scale.is_finite() || !determinant.is_finite() || determinant <= (RELATIVE_EPSILON + minimum_normalized_jacobian) * scale {
+					return false;
+				}
+			}
+		}
+
+		true
+	}
+}
+
+/// Row-major storage for values arranged in a rectangular mesh grid.
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+struct MeshGrid<T> {
+	rows: usize,
+	columns: usize,
+	values: Vec<T>,
+}
+
+impl<T> MeshGrid<T> {
+	fn new(values: Vec<T>, rows: usize, columns: usize) -> Option<Self> {
+		(values.len() == rows.checked_mul(columns)?).then_some(Self { rows, columns, values })
+	}
+
+	fn index(&self, row: usize, column: usize) -> Option<usize> {
+		if row >= self.rows || column >= self.columns {
+			return None;
+		}
+		row.checked_mul(self.columns)?.checked_add(column)
+	}
+
+	fn get(&self, row: usize, column: usize) -> Option<&T> {
+		self.values.get(self.index(row, column)?)
+	}
+
+	fn get_flat(&self, index: usize) -> Option<&T> {
+		self.values.get(index)
+	}
+
+	fn get_flat_mut(&mut self, index: usize) -> Option<&mut T> {
+		self.values.get_mut(index)
+	}
+
+	fn dimensions(&self) -> [usize; 2] {
+		[self.rows, self.columns]
+	}
+
+	fn splice_lines(&mut self, axis: MeshGridLineAxis, removed: std::ops::Range<usize>, inserted_lines: &[&[T]]) -> Option<()>
+	where
+		T: Copy,
+	{
+		let [across_count, along_count] = axis.logical_indices(self.rows, self.columns);
+		if removed.start > removed.end || removed.end > along_count || inserted_lines.iter().any(|line| line.len() != across_count) {
+			return None;
+		}
+
+		let removed_count = removed.end - removed.start;
+		let inserted_count = inserted_lines.len();
+		let new_along_count = along_count - removed_count + inserted_count;
+		let [new_rows, new_columns] = axis.physical_indices(across_count, new_along_count);
+		let mut new_values = Vec::with_capacity(new_rows.checked_mul(new_columns)?);
+
+		for new_row in 0..new_rows {
+			for new_column in 0..new_columns {
+				let [across, along] = axis.logical_indices(new_row, new_column);
+				if along >= removed.start && along < removed.start + inserted_count {
+					new_values.push(inserted_lines[along - removed.start][across]);
+				} else {
+					let original_along = if along < removed.start { along } else { along - inserted_count + removed_count };
+					let [original_row, original_column] = axis.physical_indices(across, original_along);
+					new_values.push(self.values[original_row * self.columns + original_column]);
+				}
+			}
+		}
+
+		self.rows = new_rows;
+		self.columns = new_columns;
+		self.values = new_values;
+		Some(())
+	}
+}
+
+/// Maps row and column insertion onto one operation that splits edges along an axis and connects them across the other axis.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MeshGridLineAxis {
+	Row,
+	Column,
+}
+
+impl MeshGridLineAxis {
+	fn physical_indices(self, across: usize, along: usize) -> [usize; 2] {
+		match self {
+			Self::Column => [across, along],
+			Self::Row => [along, across],
+		}
+	}
+
+	fn logical_indices(self, row: usize, column: usize) -> [usize; 2] {
+		match self {
+			Self::Column => [row, column],
+			Self::Row => [column, row],
+		}
+	}
+
+	fn uv(self, along: f32, across: f32) -> [f32; 2] {
+		match self {
+			Self::Column => [along, across],
+			Self::Row => [across, along],
+		}
+	}
+
+	fn edge_grids<'a, T>(self, horizontal: &'a MeshGrid<T>, vertical: &'a MeshGrid<T>) -> (&'a MeshGrid<T>, &'a MeshGrid<T>) {
+		match self {
+			Self::Column => (horizontal, vertical),
+			Self::Row => (vertical, horizontal),
+		}
+	}
+
+	fn edge_grids_mut<'a, T>(self, horizontal: &'a mut MeshGrid<T>, vertical: &'a mut MeshGrid<T>) -> (&'a mut MeshGrid<T>, &'a mut MeshGrid<T>) {
+		match self {
+			Self::Column => (horizontal, vertical),
+			Self::Row => (vertical, horizontal),
+		}
+	}
+}
+
+/// The serialized exchange form of a mesh gradient: its patches, with whole-mesh settings as sibling fields
+/// serialized only when non-default.
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MeshGradientSurface {
+	pub mesh: MeshGradient,
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientSpace::is_default"))]
+	pub gradient_space: GradientSpace,
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientInterpolation::is_default"))]
+	pub gradient_interpolation: GradientInterpolation,
+}
+
+impl Default for MeshGradientSurface {
+	fn default() -> Self {
+		Self {
+			mesh: MeshGradient::default(),
+			gradient_space: GradientSpace::default(),
+			gradient_interpolation: GradientInterpolation::Smooth,
+		}
+	}
+}
+
+impl From<MeshGradient> for MeshGradientSurface {
+	fn from(mesh: MeshGradient) -> Self {
+		Self { mesh, ..Default::default() }
+	}
+}
+
+// The runtime wire form: whole-mesh settings ride as the mesh gradient item's attributes in its containing list,
+// where the Fill kernel, chain setter nodes, and renderers read and write them
+impl From<MeshGradientSurface> for Item<MeshGradient> {
+	fn from(surface: MeshGradientSurface) -> Self {
+		let mut item = Item::new_from_element(surface.mesh);
+		if !surface.gradient_space.is_default() {
+			item.set_attribute(ATTR_GRADIENT_SPACE, surface.gradient_space);
+		}
+		if !surface.gradient_interpolation.is_default() {
+			item.set_attribute(ATTR_GRADIENT_INTERPOLATION, surface.gradient_interpolation);
+		}
+		item
+	}
+}
+
+impl From<&Item<MeshGradient>> for MeshGradientSurface {
+	fn from(item: &Item<MeshGradient>) -> Self {
+		Self {
+			mesh: item.element().clone(),
+			gradient_space: item.attribute_cloned_or_default(ATTR_GRADIENT_SPACE),
+			gradient_interpolation: item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION),
+		}
+	}
+}
+
+/// Returns the affine that fits the mesh gradient geometry to the provided bounds.
+pub fn initial_mesh_gradient_transform_for_bounding_box(bounds: [DVec2; 2]) -> DAffine2 {
+	let [min, max] = bounds;
+	let size = max - min;
+	DAffine2::from_cols(DVec2::new(size.x, 0.), DVec2::new(0., size.y), min)
+}
+
 #[derive(Clone, Copy)]
-struct PatchColorDerivatives {
-	u: Vec4,
-	v: Vec4,
+pub struct PatchColorDerivatives {
+	pub u: Vec4,
+	pub v: Vec4,
 }
 
 #[derive(Clone)]
-enum MeshPatchInterpolation {
+pub enum MeshPatchInterpolation {
 	Stepped,
 	Linear,
 	Smooth {
 		/// Derivatives of corner colors for bicubic hermite interpolation. [top-left, top-right, bottom-left, bottom-right]
 		color_derivatives: [PatchColorDerivatives; 4],
 		/// The Bezier restatement of the Hermite color data, built alongside it so the two cannot drift apart.
-		color_bezier_net: Box<[[Vec4; 4]; 4]>,
+		color_bezier_net: Box<BicubicBezierNet<Vec4>>,
 	},
+}
+
+pub trait Lerp {
+	fn lerp(self, rhs: Self, time: f64) -> Self;
+	fn midpoint(self, rhs: Self) -> Self;
+}
+
+impl Lerp for DVec2 {
+	fn lerp(self, rhs: Self, time: f64) -> Self {
+		DVec2::lerp(self, rhs, time)
+	}
+	fn midpoint(self, rhs: Self) -> Self {
+		DVec2::midpoint(self, rhs)
+	}
+}
+
+impl Lerp for Vec4 {
+	fn lerp(self, rhs: Self, time: f64) -> Self {
+		Vec4::lerp(self, rhs, time as f32)
+	}
+	fn midpoint(self, rhs: Self) -> Self {
+		Vec4::midpoint(self, rhs)
+	}
+}
+
+#[derive(Copy, Clone)]
+pub struct BicubicBezierNet<T: Copy>([[T; 4]; 4]);
+
+impl<T: Copy> Deref for BicubicBezierNet<T> {
+	type Target = [[T; 4]; 4];
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl<T: Copy + Sub<Output = T>> Sub for BicubicBezierNet<T> {
+	type Output = Self;
+	fn sub(self, rhs: Self) -> Self::Output {
+		BicubicBezierNet(array::from_fn(|v| array::from_fn(|u| self[v][u] - rhs[v][u])))
+	}
+}
+
+impl<T: Copy + Lerp> BicubicBezierNet<T> {
+	pub fn from_quadrilateral(corners: &[T; 4]) -> Self {
+		let [top_left, top_right, bottom_left, bottom_right] = *corners;
+		BicubicBezierNet(array::from_fn(|v_index| {
+			let v = v_index as f64 / 3.;
+			let left = top_left.lerp(bottom_left, v);
+			let right = top_right.lerp(bottom_right, v);
+			array::from_fn(|u_index| {
+				let u = u_index as f64 / 3.;
+				left.lerp(right, u)
+			})
+		}))
+	}
+
+	pub fn corners(&self) -> [T; 4] {
+		[self[0][0], self[0][3], self[3][0], self[3][3]]
+	}
+
+	pub fn corners_clockwise(&self) -> [T; 4] {
+		[self[0][0], self[0][3], self[3][3], self[3][0]]
+	}
+
+	pub fn subdivide(&self) -> [Self; 4] {
+		let subdivide_cubic_bezier = |points: &[T; 4]| {
+			let [p0, p1, p2, p3] = *points;
+			let a = p0.midpoint(p1);
+			let b = p1.midpoint(p2);
+			let c = p2.midpoint(p3);
+			let d = a.midpoint(b);
+			let e = b.midpoint(c);
+			let f = d.midpoint(e);
+			([p0, a, d, f], [f, e, c, p3])
+		};
+
+		let transpose = |m: [[T; 4]; 4]| -> [[T; 4]; 4] { std::array::from_fn(|i| std::array::from_fn(|j| m[j][i])) };
+
+		let split_rows = |m: &[[T; 4]; 4]| {
+			let split = m.map(|row| subdivide_cubic_bezier(&row));
+			let first: [[T; 4]; 4] = std::array::from_fn(|i| split[i].0);
+			let second: [[T; 4]; 4] = std::array::from_fn(|i| split[i].1);
+			(first, second)
+		};
+
+		let split_cols = |m: [[T; 4]; 4]| {
+			let (top, bottom) = split_rows(&transpose(m));
+			(transpose(top), transpose(bottom))
+		};
+
+		let (left, right) = split_rows(self);
+		let (top_left, bottom_left) = split_cols(left);
+		let (top_right, bottom_right) = split_cols(right);
+
+		[Self(top_left), Self(top_right), Self(bottom_left), Self(bottom_right)]
+	}
 }
 
 /// A cached mesh patch for subdivision into subpatches in rendering phase.
 #[derive(Clone)]
 pub struct MeshPatchEvaluator {
+	index: usize,
 	// Bicubic Bezier patch representation of the Coons patch.
-	position_bezier_net: [[DVec2; 4]; 4],
+	position_bezier_net: BicubicBezierNet<DVec2>,
 	/// Color-space channels and straight alpha. [top-left, top-right, bottom-left, bottom-right]
 	colors: [Vec4; 4],
 	/// Color space for interpolation.
@@ -725,6 +826,22 @@ pub struct MeshPatchEvaluator {
 }
 
 impl MeshPatchEvaluator {
+	pub fn index(&self) -> usize {
+		self.index
+	}
+
+	pub fn colors(&self) -> [Vec4; 4] {
+		self.colors
+	}
+
+	pub fn position_bezier_net(&self) -> BicubicBezierNet<DVec2> {
+		self.position_bezier_net
+	}
+
+	pub fn interpolation_method(&self) -> &MeshPatchInterpolation {
+		&self.interpolation
+	}
+
 	/// Evaluates the raw interpolated color-space channels using the selected interpolation method.
 	fn evaluate_channels(&self, u: f32, v: f32) -> [f32; 4] {
 		let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = self.colors;
@@ -886,6 +1003,8 @@ pub enum MeshGradientEvaluatorError {
 pub struct MeshGradientEvaluator {
 	/// List of required data for color interpolation, row major order.
 	patches: Vec<MeshPatchEvaluator>,
+	patch_rows: usize,
+	patch_columns: usize,
 	space: GradientSpace,
 	interpolation: GradientInterpolation,
 }
@@ -1018,6 +1137,7 @@ impl MeshGradientEvaluator {
 				};
 
 				patch_color_data.push(MeshPatchEvaluator {
+					index: row * patch_columns + column,
 					position_bezier_net,
 					colors: patch_colors,
 					space,
@@ -1028,9 +1148,15 @@ impl MeshGradientEvaluator {
 
 		Ok(Self {
 			patches: patch_color_data,
+			patch_rows,
+			patch_columns,
 			space,
 			interpolation,
 		})
+	}
+
+	pub fn patch_dimension(&self) -> (i64, i64) {
+		(self.patch_rows as i64, self.patch_columns as i64)
 	}
 
 	pub fn interpolation_method(&self) -> GradientInterpolation {
@@ -1091,7 +1217,7 @@ fn pathseg_to_cubic_bez(pathseg: PathSeg) -> CubicBez {
 }
 
 /// Evaluates a cubic Bezier curve at `time` using the Bernstein basis.
-fn evaluate_cubic_bezier_bernstein<C: Copy + Mul<T, Output = C> + Add<Output = C>, T: Float>(control_points: &[C; 4], time: T) -> C {
+pub fn evaluate_cubic_bezier_bernstein<C: Copy + Mul<T, Output = C> + Add<Output = C>, T: Float>(control_points: &[C; 4], time: T) -> C {
 	let [a, b, c, d] = *control_points;
 	let one_minus_time: T = T::one() - time;
 	let three = T::one() + T::one() + T::one();
@@ -1099,12 +1225,12 @@ fn evaluate_cubic_bezier_bernstein<C: Copy + Mul<T, Output = C> + Add<Output = C
 }
 
 /// Restates a Coons patch as the control net of the equivalent bicubic Bezier surface.
-fn coons_to_position_bezier_net(corners: &[DVec2; 4], edges: &[PathSeg; 4]) -> [[DVec2; 4]; 4] {
+fn coons_to_position_bezier_net(corners: &[DVec2; 4], edges: &[PathSeg; 4]) -> BicubicBezierNet<DVec2> {
 	let cubic_bez_to_points_array = |bez: CubicBez| [bez.p0, bez.p1, bez.p2, bez.p3].map(point_to_dvec2);
 	let [top_left_pos, top_right_pos, bottom_left_pos, bottom_right_pos] = corners;
 	let [top_control_points, bottom_control_points, left_control_points, right_control_points] = array::from_fn(|i| cubic_bez_to_points_array(pathseg_to_cubic_bez(edges[i])));
 
-	array::from_fn(|j| {
+	BicubicBezierNet(array::from_fn(|j| {
 		let v = j as f64 / 3.;
 		array::from_fn(|i| {
 			let u = i as f64 / 3.;
@@ -1120,11 +1246,11 @@ fn coons_to_position_bezier_net(corners: &[DVec2; 4], edges: &[PathSeg; 4]) -> [
 
 			top_bottom_lerped_point + left_right_lerped_point - bilerped_corner_point
 		})
-	})
+	}))
 }
 
 /// Restates a patch's Hermite color data as the control net of the equivalent bicubic Bezier surface.
-fn hermite_to_color_bezier_net(colors: &[Vec4; 4], color_derivatives: &[PatchColorDerivatives; 4]) -> [[Vec4; 4]; 4] {
+fn hermite_to_color_bezier_net(colors: &[Vec4; 4], color_derivatives: &[PatchColorDerivatives; 4]) -> BicubicBezierNet<Vec4> {
 	let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = *colors;
 	let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = *color_derivatives;
 
@@ -1147,11 +1273,13 @@ fn hermite_to_color_bezier_net(colors: &[Vec4; 4], color_derivatives: &[PatchCol
 
 	let points_mat = hermite_channels.map(|hermite| hermite_to_bezier_axis * hermite * hermite_to_bezier_axis_transpose);
 
-	std::array::from_fn(|v| std::array::from_fn(|u| Vec4::new(points_mat[0].col(u)[v], points_mat[1].col(u)[v], points_mat[2].col(u)[v], points_mat[3].col(u)[v])))
+	BicubicBezierNet(std::array::from_fn(|v| {
+		std::array::from_fn(|u| Vec4::new(points_mat[0].col(u)[v], points_mat[1].col(u)[v], points_mat[2].col(u)[v], points_mat[3].col(u)[v]))
+	}))
 }
 
 /// Returns Jacobian matrix of the UV position in a single Coons patch.
-fn position_jacobian(position_bezier_net: &[[DVec2; 4]; 4], u: f64, v: f64) -> DMat2 {
+fn position_jacobian(position_bezier_net: &BicubicBezierNet<DVec2>, u: f64, v: f64) -> DMat2 {
 	let evaluate_quadratic_bezier = |control_points: &[DVec2; 3], time: f64| {
 		let [p0, p1, p2] = control_points;
 		let one_minus_time = 1. - time;

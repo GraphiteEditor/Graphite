@@ -4,12 +4,13 @@ use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_APPEARANCE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
+use core_types::paint::PaintRenderParams;
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
-use core_types::transform::{Footprint, Transform};
+use core_types::transform::{ApplyTransform, Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
-	ExtractAll, OwnedContextImpl,
+	ExtractAll, InjectPaintRenderParams, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -326,11 +327,12 @@ where
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
 async fn fill<V>(
-	_: impl Ctx,
+	ctx: impl Ctx + ExtractAll + CloneVarArgs + InjectPaintRenderParams,
 	/// The content with vector paths to apply the fill style to.
 	#[implementations(Vector, Graphic)]
 	content: Item<V>,
-	#[default(Color::BLACK)] paint: Item<Graphic>,
+	// FIXME: Discuss preparing mesh-gradient textures before render_intermediate instead of at Fill inputs. Tagged values on Fill cannot trigger GPU pipeline.
+	#[implementations(Context -> List<Graphic>)] paint: impl Node<'n, Context<'static>, Output = List<Graphic>>,
 	_backup_color: Item<Color>,
 	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: Item<Gradient>,
 	_gradient_form: Item<GradientForm>,
@@ -348,8 +350,17 @@ where
 	let (_has_mesh_transform, _mesh_transform) = (_has_mesh_transform.into_element(), *_mesh_transform.element());
 
 	let mut content = content;
+	// FIXME: find the way to avoid evaluating transform both from fill and gpu node
+	let fallback_paint_to_target = (!_has_mesh_transform).then(|| initial_mesh_gradient_transform_for_bounding_box(paint_target_bounds(&mut content)));
 	// The paint is the element alone: keeping the wire envelope's attributes would nest the paint as a group, changing how it renders
-	let mut paint = paint.into_element();
+	let item_transform = content.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+	let mut paint_ctx = OwnedContextImpl::from(ctx.clone()).with_paint_render_params(PaintRenderParams { fallback_paint_to_target });
+	if let Some(mut footprint) = ctx.try_footprint().copied() {
+		footprint.apply_transform(&item_transform);
+		paint_ctx.set_footprint(footprint);
+	};
+	let paint_list: List<Graphic> = paint.eval(paint_ctx.into_context()).await;
+	let mut paint = paint_list.into_iter().next().map(|item| item.into_element()).unwrap_or_default();
 
 	// Stamp the styling inputs onto any gradient or mesh-gradient paint missing them, whether the paint arrived as a picker value or a wire
 	let (needs_form, needs_gradient_transform) = match &paint {
@@ -360,6 +371,7 @@ where
 		),
 		_ => (false, false),
 	};
+
 	let needs_mesh_transform = match &paint {
 		Graphic::MeshGradient(item) => item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none(),
 		Graphic::MeshGradientList(list) => list.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none(),
@@ -373,12 +385,7 @@ where
 		}
 		initial_gradient_transform_for_bounding_box(paint_target_bounds(&mut content))
 	});
-	let stamped_mesh_transform = needs_mesh_transform.then(|| {
-		if _has_mesh_transform {
-			return _mesh_transform;
-		}
-		initial_mesh_gradient_transform_for_bounding_box(paint_target_bounds(&mut content))
-	});
+	let stamped_mesh_transform = needs_mesh_transform.then(|| fallback_paint_to_target.unwrap_or(_mesh_transform));
 
 	match &mut paint {
 		Graphic::Gradient(item) => {

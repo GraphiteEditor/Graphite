@@ -4,7 +4,7 @@ use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::transform::Footprint;
 use core_types::{Color, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::vector_types::Gradient;
+use graphic_types::vector_types::{Gradient, MeshGradient};
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
@@ -31,6 +31,7 @@ async fn context_modification<T>(
 		Context -> Item<Color>,
 		Context -> Item<Artboard>,
 		Context -> Item<Gradient>,
+		Context -> Item<MeshGradient>,
 		Context -> Item<NodeIdPath>,
 		Context -> Item<AttributeValueDyn>,
 		Context -> List<String>,
@@ -43,6 +44,7 @@ async fn context_modification<T>(
 		Context -> List<Color>,
 		Context -> List<Artboard>,
 		Context -> List<Gradient>,
+		Context -> List<MeshGradient>,
 		Context -> ListDyn,
 	)]
 	value: impl Node<Context<'static>, Output = T>,

@@ -958,13 +958,12 @@ impl Fsm for MeshGradientToolFsmState {
 								.map(|[min, max]| min.midpoint(max))
 								.unwrap_or(initial_corner)
 						};
-						let constrained_gradient = constrain_to_valid_region(snapped_local_mouse, valid_region_center, resolve_center, candidate_gradient);
-
-						if let Some(gradient) = constrained_gradient {
-							selected_mesh.surface.mesh = gradient;
-							selected_mesh.update_gradient_in_graph(responses);
-							responses.add(OverlaysMessage::Draw);
-						}
+						// let constrained_gradient = constrain_to_valid_region(snapped_local_mouse, valid_region_center, resolve_center, candidate_gradient);
+						let mut gradient = mesh.clone();
+						gradient.set_corner_position(corner_index, snapped_local_mouse);
+						selected_mesh.surface.mesh = gradient;
+						selected_mesh.update_gradient_in_graph(responses);
+						responses.add(OverlaysMessage::Draw);
 					}
 					MeshGradientTarget::Segment {
 						segment_id,
@@ -996,11 +995,20 @@ impl Fsm for MeshGradientToolFsmState {
 								.unwrap_or(initial_local_mouse)
 						};
 
-						if let Some(gradient) = constrain_to_valid_region(snapped_local_mouse, valid_region_center, resolve_center, candidate_gradient) {
-							selected_mesh.surface.mesh = gradient;
-							selected_mesh.update_gradient_in_graph(responses);
-							responses.add(OverlaysMessage::Draw);
-						}
+						// if let Some(gradient) = constrain_to_valid_region(snapped_local_mouse, valid_region_center, resolve_center, candidate_gradient) {
+						let mut gradient = mesh.clone();
+						let delta = snapped_local_mouse - initial_local_mouse;
+						gradient.set_edge_handles(
+							*segment_id,
+							BezierHandles::Cubic {
+								handle_start: initial_handles[0] + delta,
+								handle_end: initial_handles[1] + delta,
+							},
+						);
+						selected_mesh.surface.mesh = gradient;
+						selected_mesh.update_gradient_in_graph(responses);
+						responses.add(OverlaysMessage::Draw);
+						// }
 					}
 					MeshGradientTarget::Handle {
 						handle_id,
@@ -1026,11 +1034,13 @@ impl Fsm for MeshGradientToolFsmState {
 								.unwrap_or(initial_handle)
 						};
 
-						if let Some(gradient) = constrain_to_valid_region(new_handle_position, valid_region_center, resolve_center, candidate_gradient) {
-							selected_mesh.surface.mesh = gradient;
-							selected_mesh.update_gradient_in_graph(responses);
-							responses.add(OverlaysMessage::Draw);
-						}
+						// if let Some(gradient) = constrain_to_valid_region(new_handle_position, valid_region_center, resolve_center, candidate_gradient) {
+						let mut gradient = mesh.clone();
+						gradient.set_handle_position(*handle_id, new_handle_position);
+						selected_mesh.surface.mesh = gradient;
+						selected_mesh.update_gradient_in_graph(responses);
+						responses.add(OverlaysMessage::Draw);
+						// }
 					}
 				};
 

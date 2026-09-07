@@ -1,9 +1,7 @@
 mod mesh_gradient;
 
 use crate::render_ext::{PaintTarget, RenderExt};
-use crate::renderer::mesh_gradient::{
-	MESH_COLOR_ERROR_TOLERANCE, MESH_POSITION_ERROR_TOLERANCE, SvgMeshPatchRenderer, render_vello_subpatch_alpha, render_vello_subpatch_color, subdivide_patches_adaptive,
-};
+use crate::renderer::mesh_gradient::SvgMeshPatchRenderer;
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::blending::{BlendMode, apply_blend_mode};
 use core_types::bounds::BoundingBox;
@@ -11,7 +9,7 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::consts::DEFAULT_FONT_SIZE;
-use core_types::list::ATTR_APPEARANCE;
+use core_types::list::{ATTR_APPEARANCE, ATTR_TEXTURE};
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
@@ -1094,7 +1092,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => render_raster_gpu_item_to_vello(ItemRef::Item(item), scene, transform, context, render_params),
 			Graphic::Color(item) => render_color_item_to_vello(ItemRef::Item(item), scene, render_params),
 			Graphic::Gradient(item) => render_gradient_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
-			Graphic::MeshGradient(item) => render_mesh_gradient_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
+			Graphic::MeshGradient(item) => render_mesh_gradient_item_to_vello(ItemRef::Item(item), scene, transform, context, render_params),
 			Graphic::Text(item) => render_text_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::VectorList(list) => list.render_to_vello(scene, transform, context, render_params),
@@ -3006,9 +3004,9 @@ impl Render for List<MeshGradient> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for index in 0..self.len() {
-			render_mesh_gradient_item_to_vello(ItemRef::ListItem(self, index), scene, parent_transform, render_params);
+			render_mesh_gradient_item_to_vello(ItemRef::ListItem(self, index), scene, parent_transform, context, render_params);
 		}
 	}
 
@@ -3094,86 +3092,13 @@ fn render_mesh_gradient_item_svg(item: ItemRef<'_, MeshGradient>, render: &mut S
 }
 
 /// Draws one item of mesh gradient content into the Vello scene.
-fn render_mesh_gradient_item_to_vello(item: ItemRef<'_, MeshGradient>, scene: &mut Scene, parent_transform: DAffine2, render_params: &RenderParams) {
-	use vello::peniko;
-	let Some(mesh_gradient) = item.element() else { return };
+fn render_mesh_gradient_item_to_vello(item: ItemRef<'_, MeshGradient>, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let texture: Option<Texture> = item.attribute_cloned_or_default(ATTR_TEXTURE);
+	let Some(texture) = texture else { return };
 
-	if let RenderMode::Outline = render_params.render_mode {
-		return;
-	}
-
-	let infinite_rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
-	let mesh_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let has_transparency = mesh_gradient.corners().any(|corner| !corner.color.is_opaque());
-	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
-
-	let space: GradientSpace = item.attribute_cloned_or_default(ATTR_GRADIENT_SPACE);
-	let interpolation_method: GradientInterpolation = item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION);
-	let Some(evaluator) = mesh_gradient.evaluator(space, interpolation_method).ok() else { return };
-	let viewport_zoom = if render_params.viewport_zoom > 0. { render_params.viewport_zoom } else { 1. };
-	let position_error_tolerance = MESH_POSITION_ERROR_TOLERANCE / viewport_zoom;
-	let Some(subpatches) = subdivide_patches_adaptive(&evaluator, mesh_transform, parent_transform, position_error_tolerance, MESH_COLOR_ERROR_TOLERANCE) else {
-		return;
-	};
-
-	// Vello approximates each Coons patch in two stages:
-	//
-	// 1. Adaptively subdivide its geometry into sufficiently accurate parallelograms.
-	// 2. Paint each subpatch from two adaptively sampled horizontal edge gradients blended by an adaptively sampled vertical mask.
-	//
-	// The subpatch is inflated to hide rasterization seams, then the completed color is clipped once so
-	// overlapping paint does not receive edge coverage independently.
-
-	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
-	let mut item_layer = false;
-	if opacity < 1. || blend_mode_attr != BlendMode::default() {
-		let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
-		scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &infinite_rect);
-		item_layer = true;
-	}
-
-	// Clip all inflated subpatches to the original mesh boundary.
-	let mesh_boundary = mesh_gradient.boundary_path();
-	scene.push_layer(
-		peniko::Fill::NonZero,
-		peniko::Mix::Normal,
-		1.,
-		kurbo::Affine::new((parent_transform * mesh_transform).to_cols_array()),
-		&mesh_boundary,
-	);
-
-	for patch_subpatches in subpatches.chunk_by(|a, b| a.patch_index == b.patch_index) {
-		let Some(patch_evaluator) = evaluator.patch_evaluator(patch_subpatches[0].patch_index) else {
-			continue;
-		};
-
-		for subpatch in patch_subpatches {
-			render_vello_subpatch_color(scene, patch_evaluator, subpatch, parent_transform, viewport_zoom);
-		}
-	}
-
-	if has_transparency {
-		// Render alpha as an inflated opaque grayscale field, then use its luminance to mask the completed RGB mesh once.
-		// Opaque overlap avoids both transparent accumulation and anti-aliasing gaps between subpatches.
-		scene.push_luminance_mask_layer(peniko::Fill::NonZero, 1., kurbo::Affine::scale(f64::INFINITY), &infinite_rect);
-		for patch_subpatches in subpatches.chunk_by(|a, b| a.patch_index == b.patch_index) {
-			let Some(patch_evaluator) = evaluator.patch_evaluator(patch_subpatches[0].patch_index) else {
-				continue;
-			};
-
-			for subpatch in patch_subpatches {
-				render_vello_subpatch_alpha(scene, patch_evaluator, subpatch, parent_transform, viewport_zoom);
-			}
-		}
-		scene.pop_layer();
-	}
-	scene.pop_layer();
-
-	if item_layer {
-		scene.pop_layer();
-	}
+	let raster_item_ref = ItemRef::Item(&Item::from(Raster::<GPU>::new_gpu(texture)));
+	render_raster_gpu_item_to_vello(raster_item_ref, scene, parent_transform * transform, context, render_params);
 }
 
 fn collect_mesh_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, MeshGradient>>, metadata: &mut RenderMetadata, element_id: Option<NodeId>) {

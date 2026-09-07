@@ -512,7 +512,7 @@ pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
 
 /// Try to find a "Mesh Gradient Value" node that is connected to a "Fill" node, or to a layer directly.
 pub fn get_upstream_mesh_gradient_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
-	get_upstream_paint_value_node_id(layer, network_interface, graphene_std::math_nodes::mesh_gradient_value::IDENTIFIER)
+	get_upstream_paint_value_node_id(layer, network_interface, graphene_std::gradient_nodes::mesh_gradient::mesh_gradient_value::IDENTIFIER)
 }
 
 /// A mesh gradient read back out of the graph.
@@ -550,7 +550,7 @@ pub fn get_mesh_gradient_paint(layer: LayerNodeIdentifier, network_interface: &N
 
 	// Otherwise the mesh comes from a 'Mesh Gradient Value' node feeding the chain, whose placement the Fill node fits
 	let value_node = network_interface.document_network().nodes.get(&get_upstream_mesh_gradient_value_node_id(layer, network_interface)?)?;
-	let TaggedValue::MeshGradient(surface) = value_node.input(graphene_std::math_nodes::mesh_gradient_value::MeshGradientInput)?.as_value()? else {
+	let TaggedValue::MeshGradient(surface) = value_node.input(graphene_std::gradient_nodes::mesh_gradient::mesh_gradient_value::MeshGradientInput)?.as_value()? else {
 		return None;
 	};
 

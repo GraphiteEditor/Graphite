@@ -1499,12 +1499,6 @@ fn gradient_stretch(
 	gradient
 }
 
-/// Constructs a mesh gradient value composed of a grid of patches defined by colored corners and curved boundary segments.
-#[node_macro::node(category("Value"))]
-fn mesh_gradient_value(_: impl Ctx, _primary: (), mesh_gradient: Item<MeshGradient>) -> Item<MeshGradient> {
-	mesh_gradient
-}
-
 /// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"))]
 fn evaluate_gradient(
