@@ -502,7 +502,9 @@ impl NodeRuntime {
 				// Graphic run: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
 				if type_id == std::any::TypeId::of::<Graphic>() {
 					if update_thumbnails {
-						// SAFETY: the batch is resident for the read.
+						// SAFETY: `introspect_with`'s closure is higher-ranked over the batch's
+						// lifetime, so the item cannot escape this read window, which the
+						// frames outlive.
 						let item = unsafe { GroupItem::from_resident(batch) };
 						let bounds = graphene_std::renderer::graphic_list_bounding_box(&RunView::<Graphic>::new(&item)?, DAffine2::IDENTITY);
 						let group = Graphic::Group(Group { row: None, content: item });
@@ -514,7 +516,9 @@ impl NodeRuntime {
 				// clips content to those rectangles so anything outside isn't visible
 				else if type_id == std::any::TypeId::of::<Artboard>() {
 					if update_thumbnails {
-						// SAFETY: the batch is resident for the read.
+						// SAFETY: `introspect_with`'s closure is higher-ranked over the batch's
+						// lifetime, so the item cannot escape this read window, which the
+						// frames outlive.
 						let item = unsafe { GroupItem::from_resident(batch) };
 						let run = RunView::<Artboard>::new(&item)?;
 						let bounds = artboard_clip_bounds(&run);
@@ -524,7 +528,9 @@ impl NodeRuntime {
 				}
 				// Vector run: vector modifications
 				else if type_id == std::any::TypeId::of::<Vector>() {
-					// SAFETY: the batch is resident for the read.
+					// SAFETY: `introspect_with`'s closure is higher-ranked over the batch's
+					// lifetime, so the item cannot escape this read window, which the
+					// frames outlive.
 					let item = unsafe { GroupItem::from_resident(batch) };
 					let run = RunView::<Vector>::new(&item)?;
 					use graphene_std::core_types::lane::LaneSource;
@@ -534,7 +540,9 @@ impl NodeRuntime {
 				// String run: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
 				else if type_id == std::any::TypeId::of::<String>() {
 					if update_thumbnails {
-						// SAFETY: the batch is resident for the read.
+						// SAFETY: `introspect_with`'s closure is higher-ranked over the batch's
+						// lifetime, so the item cannot escape this read window, which the
+						// frames outlive.
 						let item = unsafe { GroupItem::from_resident(batch) };
 						let run = RunView::<String>::new(&item)?;
 						let bounds = graphene_std::renderer::text_list_bounding_box(&run, DAffine2::IDENTITY);

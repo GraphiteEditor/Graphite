@@ -248,8 +248,11 @@ impl<'e> GroupItem<'e> {
 	/// A `GroupItem` over the batch's frames, without copying.
 	///
 	/// # Safety
-	/// The frames must stay valid for the evaluation. Arena-resident batches
-	/// qualify, caller stack scratch does not.
+	/// The item borrows the batch's frames at `'e`, so the frames must stay
+	/// valid for the whole of `'e` and nothing derived from the item may outlive
+	/// it. Arena-resident batches span the evaluation; a caller's serve scratch
+	/// spans only the window it lends the batch for, which is sound exactly when
+	/// `'e` is bounded to that window.
 	pub unsafe fn from_resident(batch: crate::node::RecordBatch<'e>) -> Self {
 		let layout = batch.layout().clone();
 		assert_element_glue(&layout);
