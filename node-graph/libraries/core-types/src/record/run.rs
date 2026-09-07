@@ -279,7 +279,14 @@ impl<'e> GroupItem<'e> {
 		let frames = self.frames();
 		// SAFETY: the constructors store `len` lanes of `layout` at the
 		// layout's stride, and the erased glue reads each lane's own region.
-		let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(frames, self.len * stride) }.into();
+		// A lane's seam and stride tail are never written, so the copy stays
+		// untyped: a `&[u8]` over the frames would read those bytes.
+		let mut staged = Vec::<u8>::with_capacity(self.len * stride);
+		let bytes = unsafe {
+			std::ptr::copy_nonoverlapping(frames, staged.as_mut_ptr(), self.len * stride);
+			staged.set_len(self.len * stride);
+			staged.into_boxed_slice()
+		};
 		let elements = self
 			.layout
 			.element

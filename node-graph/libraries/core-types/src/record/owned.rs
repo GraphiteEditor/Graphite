@@ -100,7 +100,14 @@ impl OwnedRecord {
 	/// # Safety
 	/// `rec` must be a live record of `layout`.
 	pub unsafe fn copy_out(layout: &Layout, rec: Rec<'_>) -> OwnedRecord {
-		let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into();
+		// The element-to-field seam is never written, so the copy stays untyped:
+		// a `&[u8]` over the frame would read those bytes.
+		let mut staged = Vec::<u8>::with_capacity(layout.size);
+		let bytes = unsafe {
+			std::ptr::copy_nonoverlapping(rec.ptr(), staged.as_mut_ptr(), layout.size);
+			staged.set_len(layout.size);
+			staged.into_boxed_slice()
+		};
 		let element = layout.element.parked.then(|| unsafe { (layout.element.clone_out)(rec.ptr()) });
 		let fields = layout
 			.fields
@@ -141,6 +148,34 @@ mod tests {
 	use crate::record::access::{read_element, write_element, write_field};
 	use crate::record::frames::FrameArena;
 	use crate::record::layout::{FieldWrite, element_write};
+
+	#[test]
+	fn a_padded_layout_copies_out_without_reading_its_seam() {
+		// A 4-byte element before an 8-aligned field leaves [4, 8) unwritten.
+		let layout = Layout::default().with_writes(0, element_write::<u32>(), &[FieldWrite::of::<crate::attribute::Opacity>(0)]);
+		let offset = layout.offset_of("opacity", 0).unwrap();
+		assert_eq!((layout.element.size, offset), (4, 8), "the fixture needs the element-to-field seam");
+
+		let arena = crate::arena::Arena::new(1024).unwrap();
+		let scratch = arena.alloc_scratch::<u64>(layout.frame_bytes().div_ceil(8)).unwrap();
+		let base: *mut u8 = scratch.as_mut_ptr().cast();
+		unsafe { write_element(base, 7u32, &arena) }.unwrap();
+		unsafe { write_field::<f64>(base, offset, 0.5) };
+
+		let copy = unsafe { OwnedRecord::copy_out(&layout, Rec::new(base.cast_const())) };
+
+		let replay_arena = crate::arena::Arena::new(1024).unwrap();
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(layout.frame_bytes());
+		let frames = frame_arena.frames();
+		let mut slot = frames.claim(&layout);
+		copy.replay_into(&mut slot, &replay_arena).unwrap();
+		// SAFETY: the replay completes the record in the claimed frame.
+		let value = unsafe { slot.finish() };
+		let rec = layout.rec(&value);
+		assert_eq!(unsafe { read_element::<u32>(rec) }, 7);
+		assert_eq!(unsafe { rec.read::<f64>(offset) }, 0.5);
+	}
 
 	#[test]
 	fn owned_records_replay_re_parked_payloads_after_the_source_dies() {
