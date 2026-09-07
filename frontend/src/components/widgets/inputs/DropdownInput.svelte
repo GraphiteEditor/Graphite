@@ -54,6 +54,9 @@
 	$: watchOpen(open);
 
 	function watchOpen(open: boolean) {
+		if (!open && initialSelectedIndex !== undefined) {
+			dispatch("hoverOutEntry", initialSelectedIndex);
+		}
 		initialSelectedIndex = open ? selectedIndex : undefined;
 	}
 
