@@ -202,7 +202,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 }
 
 /// Draws an anchor overlay at each endpoint of every open path on the selected layers, in the selected style for endpoints that are part of the path editing selection.
-pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &ShapeState, overlay_context: &mut OverlayContext) {
+pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &ShapeState, overlay_context: &mut OverlayContext) {
 	if !overlay_context.visibility_settings.anchors() {
 		return;
 	}

@@ -366,7 +366,15 @@ impl Vector {
 
 	/// Anchor points at the ends of open subpaths. These are points with exactly one connection by a segment to another anchor.
 	pub fn anchor_endpoints(&self) -> impl Iterator<Item = PointId> + '_ {
-		self.anchor_points().enumerate().filter(|&(index, _)| self.segment_domain.connected_count(index) == 1).map(|(_, id)| id)
+		// O(points + segments): tally every point's connections in a single pass
+		let mut connected_counts = vec![0_usize; self.point_domain.ids().len()];
+		for &point_index in self.segment_domain.start_point().iter().chain(self.segment_domain.end_point()) {
+			if let Some(count) = connected_counts.get_mut(point_index) {
+				*count += 1;
+			}
+		}
+
+		self.anchor_points().zip(connected_counts).filter(|&(_, count)| count == 1).map(|(id, _)| id)
 	}
 
 	/// Computes if all the connected handles are colinear for an anchor, or if that handle is colinear for a handle.

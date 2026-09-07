@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::SNAP_POINT_TOLERANCE;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
-use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
+use crate::messages::portfolio::document::overlays::utility_functions::open_path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{
@@ -257,7 +257,7 @@ impl Fsm for FreehandToolFsmState {
 		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
 			(_, FreehandToolMessage::Overlays { context: mut overlay_context }) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
+				open_path_endpoint_overlays(document, shape_editor, &mut overlay_context);
 				self
 			}
 			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart { append_to_selected }) => {
@@ -278,7 +278,6 @@ impl Fsm for FreehandToolFsmState {
 				}
 
 				if input.keyboard.key(append_to_selected) {
-					let selected_nodes = document.network_interface.selected_nodes();
 					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
 					let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
 					if let Some(layer) = existing_layer {
