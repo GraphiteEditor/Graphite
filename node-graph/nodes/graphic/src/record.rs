@@ -750,10 +750,11 @@ mod tests {
 		let copy = unsafe { (out.element.clone_out)(out.rec(&value).ptr()) };
 
 		let replay_arena = Arena::new(1 << 16).unwrap();
-		let mut slot = [0u8; 8];
-		unsafe { (out.element.repark)(&*copy, slot.as_mut_ptr(), &replay_arena) }.expect("the arena holds the replay");
+		// Word storage: a parked element slot holds an 8-aligned reference.
+		let mut slot = [0u64; 1];
+		unsafe { (out.element.repark)(&*copy, slot.as_mut_ptr().cast(), &replay_arena) }.expect("the arena holds the replay");
 		// SAFETY: the re-park wrote a parked `Graphic` element into `slot`.
-		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(record::Rec::new(slot.as_ptr())) }) else {
+		let Graphic::Group(group) = (unsafe { record::borrow_element::<Graphic>(record::Rec::new(slot.as_ptr().cast())) }) else {
 			panic!("the replay restores the group element");
 		};
 		let item = &group.content;
