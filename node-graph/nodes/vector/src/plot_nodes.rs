@@ -7,7 +7,7 @@ use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::Value;
 use std::collections::{HashMap, HashSet};
-use vector_types::subpath;
+use vector_types::vector::misc::bezpath_from_anchors_and_handles;
 
 const TOLERANCE_FACTOR: f64 = 0.005;
 
@@ -126,57 +126,66 @@ fn function_plot(
 	/// Width of the plot's bounding box
 	#[unit(" px")]
 	#[default(100)]
-	width: f64,
+	width: Item<f64>,
 	/// Height of the plot's bounding box
 	#[unit(" px")]
 	#[default(100)]
-	height: f64,
+	height: Item<f64>,
 	/// A math expression for x(t). For y = f(x) functions simply enter x.
 	#[default(sin(t + pi / 2))]
-	x_expression: String,
+	x_expression: Item<String>,
 	/// A math expression for y(t). For y = f(x) functions simply enter f(x).
 	#[default(sin(2 * t))]
-	y_expression: String,
+	y_expression: Item<String>,
 	/// Minimum value for the parameter to evaluate.
 	#[default(0.)]
-	parameter_min_value: f64,
+	parameter_min_value: Item<f64>,
 	/// Maximum value for the parameter to evaluate.
 	#[default(6.28318530718)]
-	parameter_max_value: f64,
+	parameter_max_value: Item<f64>,
 	/// Level of sampling detail
 	#[default(7)]
-	level_of_detail: u32,
+	level_of_detail: Item<u32>,
 	/// Discontinuity detection sensitivity
 	#[default(0.3)]
-	discontinuity_sensitivity: f64,
+	discontinuity_sensitivity: Item<f64>,
 	/// Auto close
 	#[default(true)]
-	auto_close: bool,
+	auto_close: Item<bool>,
 	/// Plot Axes
 	#[default(true)]
-	plot_axes: bool,
+	plot_axes: Item<bool>,
 ) -> List<Vector> {
 	let mut plots = List::new();
-	let (x_node, y_node, variable_name) = match parse_plot_expressions(&x_expression, &y_expression) {
+	let (x_node, y_node, variable_name) = match parse_plot_expressions(x_expression.element(), y_expression.element()) {
 		Some(result) => result,
 		None => return plots,
 	};
 
-	let (sample_points, bounds) = match sample_plot_curve(&x_node, &y_node, &variable_name, parameter_min_value, parameter_max_value, level_of_detail) {
+	let (sample_points, bounds) = match sample_plot_curve(
+		&x_node,
+		&y_node,
+		&variable_name,
+		*parameter_min_value.element(),
+		*parameter_max_value.element(),
+		*level_of_detail.element(),
+	) {
 		Some(result) => result,
 		None => return plots,
 	};
 
-	let plot_transform = calculate_plot_transform(&bounds, width, height);
+	let plot_transform = calculate_plot_transform(&bounds, *width.element(), *height.element());
 
-	let segments = detect_curve_segments(sample_points, discontinuity_sensitivity);
+	let segments = detect_curve_segments(sample_points, *discontinuity_sensitivity.element());
 
 	for mut segment_anchors in segments {
 		fit_plot_to_bounds(&mut segment_anchors, &plot_transform);
 
 		let mut closed = false;
 
-		if auto_close && let (Some(first), Some(last)) = (segment_anchors.first(), segment_anchors.last()) {
+		if *auto_close.element()
+			&& let (Some(first), Some(last)) = (segment_anchors.first(), segment_anchors.last())
+		{
 			let distance = first.distance(*last);
 
 			closed = distance < 1.;
@@ -185,7 +194,9 @@ fn function_plot(
 			}
 		}
 
-		let shape = Vector::from_subpath(subpath::Subpath::from_anchors(segment_anchors, closed));
+		let bezpath = bezpath_from_anchors_and_handles(segment_anchors.into_iter().map(|anchor| (anchor, None, None)), closed);
+
+		let shape = Vector::from_bezpath(bezpath);
 
 		if plots.is_empty() {
 			plots = List::new_from_element(shape);
@@ -194,10 +205,12 @@ fn function_plot(
 		}
 	}
 
-	if plot_axes {
+	if *plot_axes.element() {
 		let axes = build_plot_axes(&bounds, &plot_transform);
 		for axis in axes {
-			let shape = Vector::from_subpath(subpath::Subpath::from_anchors(axis, false));
+			let bezpath = bezpath_from_anchors_and_handles(axis.into_iter().map(|anchor| (anchor, None, None)), false);
+
+			let shape = Vector::from_bezpath(bezpath);
 
 			if plots.is_empty() {
 				plots = List::new_from_element(shape);
@@ -543,10 +556,10 @@ fn parse_plot_expressions(x_expression: &str, y_expression: &str) -> Option<(ast
 }
 
 fn parse_expression(expression: &str) -> Option<(ast::Node, HashSet<String>)> {
-	let (node, _unit) = match ast::Node::try_parse_from_str(expression) {
-		Ok(expr) => expr,
+	let node = match ast::Node::try_parse_from_str(expression) {
+		Ok(node) => node,
 		Err(e) => {
-			warn!("Invalid expression: `{expression}`\n{e:?}");
+			warn!("Invalid expression: ``{expression}`\n{e:?}");
 			return None;
 		}
 	};
@@ -583,6 +596,12 @@ fn collect_variables(node: &ast::Node, vars: &mut HashSet<String>) {
 			for arg in expr {
 				collect_variables(arg, vars);
 			}
+		}
+
+		ast::Node::Conditional { condition, if_block, else_block } => {
+			collect_variables(condition, vars);
+			collect_variables(if_block, vars);
+			collect_variables(else_block, vars);
 		}
 	}
 }

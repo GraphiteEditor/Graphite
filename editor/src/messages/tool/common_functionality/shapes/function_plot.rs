@@ -45,11 +45,11 @@ impl FunctionPlot {
 			let end = document_to_viewport.inverse().transform_point2(end);
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 1),
+				input_connector: InputConnector::node(node_id, graphene_std::vector::plot_nodes::function_plot::WidthInput),
 				input: NodeInput::value(TaggedValue::F64((start.x - end.x).abs()), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 2),
+				input_connector: InputConnector::node(node_id, graphene_std::vector::plot_nodes::function_plot::HeightInput),
 				input: NodeInput::value(TaggedValue::F64((start.y - end.y).abs()), false),
 			});
 			responses.add(GraphOperationMessage::TransformSet {
