@@ -87,7 +87,10 @@ pub fn replay_field_value(value: &dyn crate::list::AnyAttributeValue, arena: &cr
 pub struct OwnedRecord {
 	pub(in crate::record) bytes: Box<[u8]>,
 	pub(in crate::record) element: Option<Box<dyn std::any::Any + Send + Sync>>,
-	fields: Vec<(usize, Box<dyn crate::list::AnyAttributeValue>)>,
+	/// Each copied field's index in the copy's layout, that field's declared
+	/// value type, and the owned value. The type rides along so a replay can
+	/// re-check the field it resolves rather than trusting the caller's claim.
+	fields: Vec<(usize, std::any::TypeId, Box<dyn crate::list::AnyAttributeValue>)>,
 }
 
 impl std::fmt::Debug for OwnedRecord {
@@ -114,16 +117,25 @@ impl OwnedRecord {
 			.iter()
 			.enumerate()
 			.filter(|(_, field)| field.repark.is_some())
-			.map(|(index, field)| (index, deepen_field_value(unsafe { (field.read_erased)(rec.ptr().add(field.offset)) })))
+			.map(|(index, field)| (index, field.type_id, deepen_field_value(unsafe { (field.read_erased)(rec.ptr().add(field.offset)) })))
 			.collect();
 		OwnedRecord { bytes, element, fields }
 	}
 
 	/// Replays the copy into a caller's claim, re-parking droppable payloads
-	/// against `arena`; the claim's layout is the one the copy was taken at,
-	/// and `None` reports arena exhaustion.
+	/// against `arena`; `None` reports arena exhaustion. The claim's layout must
+	/// be the one the copy was taken at, which the checks below establish rather
+	/// than assume: the copy carries no layout of its own, so a mismatched claim
+	/// would otherwise write past the frame or re-park a field through another
+	/// field's glue.
 	pub fn replay_into(&self, slot: &mut FrameClaim<'_, '_>, arena: &crate::arena::Arena) -> Option<()> {
 		let layout = slot.layout;
+		assert_eq!(self.bytes.len(), layout.size, "a replay lands in the layout the copy was taken at");
+		assert_eq!(self.element.is_some(), layout.element.parked, "a replay lands in the layout the copy was taken at");
+		for &(index, type_id, _) in &self.fields {
+			let field = layout.fields.get(index).expect("a replay lands in the layout the copy was taken at");
+			assert_eq!(field.type_id, type_id, "a replay lands in the layout the copy was taken at");
+		}
 		self.write_into(layout, slot.dst(), arena)
 	}
 
@@ -132,7 +144,7 @@ impl OwnedRecord {
 		if let Some(element) = &self.element {
 			unsafe { (layout.element.repark)(&**element, dst, arena) }?;
 		}
-		for (index, value) in &self.fields {
+		for (index, _, value) in &self.fields {
 			let field = &layout.fields[*index];
 			let repark = field.repark.expect("copied fields carry re-park glue");
 			let resident = replay_field_value(&**value, arena)?;
