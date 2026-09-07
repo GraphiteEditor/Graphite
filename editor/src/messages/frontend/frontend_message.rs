@@ -153,7 +153,7 @@ pub enum FrontendMessage {
 	TriggerClipboardWrite {
 		content: String,
 	},
-	TriggerClipboardSvgWrite {
+	TriggerClipboardSvgAndJsonWrite {
 		svg_string: String,
 		graphite_json: String,
 	},
