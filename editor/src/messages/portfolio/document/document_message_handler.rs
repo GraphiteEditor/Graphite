@@ -917,7 +917,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(SelectToolMessage::Abort);
 				responses.add(DocumentMessage::DocumentHistoryForward);
-				responses.add(ToolMessage::Redo);
+
+				// The Pen tool advances its in-progress drawing to match the re-applied document once the graph has re-evaluated
+				if *current_tool == ToolType::Pen {
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![PenToolMessage::Redo.into()],
+					});
+				}
+
 				responses.add(OverlaysMessage::Draw);
 				responses.add(EventMessage::SelectionChanged);
 			}
@@ -1529,10 +1536,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
 					return;
 				}
-				responses.add(ToolMessage::PreUndo);
-				responses.add(DocumentMessage::DocumentHistoryBackward);
+
+				// The Pen tool keeps drawing across an undo, so instead of aborting beforehand it rewinds to match the reverted document once the graph has re-evaluated
+				if *current_tool == ToolType::Pen {
+					responses.add(DocumentMessage::DocumentHistoryBackward);
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![PenToolMessage::Undo.into()],
+					});
+				} else {
+					responses.add(EventMessage::ToolAbort);
+					responses.add(DocumentMessage::DocumentHistoryBackward);
+				}
+
 				responses.add(OverlaysMessage::Draw);
-				responses.add(ToolMessage::Undo);
 				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::UngroupSelectedLayers => {
