@@ -52,7 +52,7 @@ pub enum NodeGraphUpdate {
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
-	SvgTextCopyClipboard(String, String),
+	SvgTextCopyClipboard { svg_string: String, graphite_json: String },
 }
 
 #[derive(Debug, Default)]
@@ -467,7 +467,7 @@ impl NodeGraphExecutor {
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(_) => {}
-				NodeGraphUpdate::SvgTextCopyClipboard(svg_string, graphite_json) => {
+				NodeGraphUpdate::SvgTextCopyClipboard { svg_string, graphite_json } => {
 					responses.add(FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string, graphite_json });
 				}
 			}
