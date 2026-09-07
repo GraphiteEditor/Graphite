@@ -51,15 +51,18 @@ impl<'a> SlotRun<'a> {
 
 	/// Records lane `lane` as served; the proof came from that lane's slot. An
 	/// inline record rides the value's own storage, so it takes the one copy
-	/// the run makes.
+	/// the run makes. Lanes serve in ascending order with no gaps, so the
+	/// filled count is an initialized prefix rather than a high-water mark.
 	pub fn served(&mut self, lane: usize, proof: &Served<'_>) {
+		assert!(lane < self.len, "lane {lane} out of bounds for a run of {}", self.len);
+		assert_eq!(lane, self.filled, "lane {lane} serves out of order after {} filled lanes", self.filled);
 		if self.layout.size == 0 {
 			let stride = self.layout.lane_stride();
-			// SAFETY: in-bounds by the capacity check `new` made, and the lane
-			// takes the whole inline record.
+			// SAFETY: in-bounds by the assert against the capacity check `new`
+			// made, and the lane takes the whole inline record.
 			unsafe { std::ptr::copy_nonoverlapping(self.layout.rec(proof.record()).ptr(), self.scratch.as_mut_ptr().cast::<u8>().add(lane * stride), stride) };
 		}
-		self.filled = self.filled.max(lane + 1);
+		self.filled = lane + 1;
 	}
 
 	/// The served lanes as the caller's exclusive batch.
@@ -315,6 +318,24 @@ mod tests {
 		frame_arena.reserve(1 << 10);
 		let frames = frame_arena.frames();
 		frames.claim(&layout).element(1u32, &arena);
+	}
+
+	#[test]
+	#[should_panic(expected = "serves out of order")]
+	fn a_run_refuses_a_gapped_serve() {
+		let arena = crate::arena::Arena::new(1024).unwrap();
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[]);
+		let mut scratch = [std::mem::MaybeUninit::<u64>::uninit(); 8];
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(1 << 10);
+		let frames = frame_arena.frames();
+		let mut run = frames.run(&mut scratch, 3, &layout).unwrap();
+		let lane_frames = frames.scope();
+		let slot = run.slot(2, &lane_frames);
+		let GPoll::Final(proof) = slot.lift_served(GPoll::Final(1.0f64), &arena) else {
+			panic!("expected a final record");
+		};
+		run.served(2, &proof);
 	}
 
 	#[test]
