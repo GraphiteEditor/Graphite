@@ -1,5 +1,8 @@
 use super::tool_prelude::*;
+use crate::consts::SNAP_POINT_TOLERANCE;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
+use crate::messages::portfolio::document::overlays::utility_functions::open_path_endpoint_overlays;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{
 	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, reset_colors_on_deactivation, swap_fill_and_stroke,
@@ -8,6 +11,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::translation_transform_set;
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
+use crate::messages::tool::common_functionality::utility_functions::closest_open_path_endpoint;
 use glam::DVec2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
@@ -39,6 +43,7 @@ impl Default for FreehandOptions {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum FreehandToolMessage {
 	// Standard messages
+	Overlays { context: OverlayContext },
 	Abort,
 	SelectionChanged,
 	WorkingColorChanged,
@@ -196,6 +201,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Free
 			FreehandToolFsmState::Ready => actions!(FreehandToolMessageDiscriminant;
 				DragStart,
 				DragStop,
+				PointerMove,
 			),
 			FreehandToolFsmState::Drawing => actions!(FreehandToolMessageDiscriminant;
 				DragStop,
@@ -209,6 +215,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Free
 impl ToolTransition for FreehandTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			overlay_provider: Some(|context: OverlayContext| FreehandToolMessage::Overlays { context }.into()),
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
 			selection_changed: Some(FreehandToolMessage::SelectionChanged.into()),
 			graph_changed: Some(FreehandToolMessage::SelectionChanged.into()),
@@ -240,10 +247,25 @@ impl Fsm for FreehandToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext { document, input, viewport, .. } = tool_action_data;
+		let ToolActionMessageContext {
+			document,
+			input,
+			viewport,
+			shape_editor,
+			..
+		} = tool_action_data;
 
 		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
+			(_, FreehandToolMessage::Overlays { context: mut overlay_context }) => {
+				let pointer = (self == FreehandToolFsmState::Ready).then_some(input.mouse.position);
+				open_path_endpoint_overlays(document, shape_editor, pointer, &mut overlay_context);
+				self
+			}
+			(FreehandToolFsmState::Ready, FreehandToolMessage::PointerMove) => {
+				responses.add(OverlaysMessage::Draw);
+				self
+			}
 			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
@@ -251,14 +273,25 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.end_point = None;
 				tool_data.new_layer_viewport_start = None;
 
+				// Pressing on the endpoint of a selected open path continues that path in place, keeping the layer, its selection, and its style
+				let selected_nodes = document.network_interface.selected_nodes();
+				let selected_visible_layers = selected_nodes.selected_visible_layers(&document.network_interface);
+				if let Some((layer, endpoint, position)) = closest_open_path_endpoint(document, input.mouse.position, SNAP_POINT_TOLERANCE, selected_visible_layers) {
+					tool_data.layer = Some(layer);
+					tool_data.end_point = Some((position, endpoint));
+
+					return FreehandToolFsmState::Drawing;
+				}
+
 				if input.keyboard.key(append_to_selected) {
-					let selected_nodes = document.network_interface.selected_nodes();
-					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
-					let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
+					let mut appendable_layers = selected_nodes
+						.selected_visible_layers(&document.network_interface)
+						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+					let existing_layer = appendable_layers.next().filter(|_| appendable_layers.next().is_none());
 					if let Some(layer) = existing_layer {
 						tool_data.layer = Some(layer);
 
-						let transform = document.metadata().transform_to_viewport(layer);
+						let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 						let position = transform.inverse().transform_point2(input.mouse.position);
 
 						extend_path_with_next_segment(tool_data, position, false, responses);
@@ -291,7 +324,7 @@ impl Fsm for FreehandToolFsmState {
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
-					let transform = document.metadata().transform_to_viewport(layer);
+					let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 
 					// For newly created layers, the deferred TransformSet may not yet be reflected
 					// in the metadata, so compute local position from the known viewport start.
@@ -401,7 +434,7 @@ mod test_freehand {
 	use crate::messages::tool::common_functionality::stroke_options::StrokeOptionsUpdate;
 	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
 	use crate::test_utils::test_prelude::*;
-	use glam::{DAffine2, DVec2};
+	use glam::{DAffine2, DMat2, DVec2};
 	use graphene_std::vector::Vector;
 
 	async fn get_vector_and_transform_list(editor: &mut EditorTestUtils) -> Vec<(Vector, DAffine2)> {
@@ -650,5 +683,275 @@ mod test_freehand {
 			custom_line_weight,
 			stroke_width.unwrap()
 		);
+	}
+
+	/// Draws a Freehand stroke through the given viewport positions and returns the layer it created, which the tool leaves selected.
+	async fn draw_freehand_stroke(editor: &mut EditorTestUtils, points: &[DVec2]) -> LayerNodeIdentifier {
+		editor.select_tool(ToolType::Freehand).await;
+		editor.drag_path(points, ModifierKeys::empty()).await;
+		editor.get_selected_layer().await.expect("The Freehand stroke should create and select a layer")
+	}
+
+	fn layer_count(editor: &EditorTestUtils) -> usize {
+		editor.active_document().metadata().all_layers().count()
+	}
+
+	fn point_and_segment_counts(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> (usize, usize) {
+		let vector = editor.active_document().network_interface.compute_modified_vector(layer).expect("Layer should have vector geometry");
+		(vector.point_domain.ids().len(), vector.segment_domain.ids().len())
+	}
+
+	/// The viewport positions of the layer's anchors, split into the endpoints of its open paths and every other anchor.
+	fn endpoint_and_other_anchor_viewport_positions(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> (Vec<DVec2>, Vec<DVec2>) {
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("Layer should have vector geometry");
+		let transform = document.metadata().transform_to_viewport(layer);
+
+		let endpoints: Vec<_> = vector.anchor_endpoints().collect();
+		let viewport_position = |id| vector.point_domain.position_from_id(id).map(|position| transform.transform_point2(position));
+
+		let endpoint_positions = endpoints.iter().filter_map(|&id| viewport_position(id)).collect();
+		let other_positions = vector.anchor_points().filter(|id| !endpoints.contains(id)).filter_map(viewport_position).collect();
+		(endpoint_positions, other_positions)
+	}
+
+	const INITIAL_STROKE: [DVec2; 3] = [DVec2::new(100., 100.), DVec2::new(200., 150.), DVec2::new(300., 100.)];
+
+	#[tokio::test]
+	async fn test_extend_open_path_from_endpoint() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let layer = draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		let (initial_point_count, initial_segment_count) = point_and_segment_counts(&editor, layer);
+		assert_eq!(initial_segment_count, initial_point_count - 1, "The initial stroke should be a single open path");
+
+		// Press just inside the snapping tolerance of an endpoint, then keep drawing
+		let (endpoints, _) = endpoint_and_other_anchor_viewport_positions(&editor, layer);
+		let endpoint = *endpoints.last().expect("The stroke should have endpoints");
+		let continuation = [endpoint + DVec2::new(2., -2.), DVec2::new(400., 150.), DVec2::new(500., 100.)];
+		editor.drag_path(&continuation, ModifierKeys::empty()).await;
+
+		assert_eq!(layer_count(&editor), 1, "Continuing from an endpoint should not create a new layer");
+		assert_eq!(editor.get_selected_layer().await, Some(layer), "The selection should be left as it was");
+
+		let (point_count, segment_count) = point_and_segment_counts(&editor, layer);
+		assert_eq!(point_count, initial_point_count + continuation.len() - 1, "Each pointer move after the press should add a point");
+		assert_eq!(segment_count, point_count - 1, "The continued stroke should form a single open path");
+	}
+
+	#[tokio::test]
+	async fn test_stroke_away_from_endpoint_creates_new_layer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let layer = draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		let initial_counts = point_and_segment_counts(&editor, layer);
+
+		editor.drag_path(&[DVec2::new(100., 300.), DVec2::new(200., 350.), DVec2::new(300., 300.)], ModifierKeys::empty()).await;
+
+		assert_eq!(layer_count(&editor), 2, "A stroke starting away from any endpoint should create a new layer");
+		assert_eq!(point_and_segment_counts(&editor, layer), initial_counts, "The existing path should be untouched");
+	}
+
+	#[tokio::test]
+	async fn test_middle_anchor_does_not_extend() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Four pointer positions capture three points, so the path has an anchor that is not an endpoint
+		let layer = draw_freehand_stroke(&mut editor, &[DVec2::new(100., 100.), DVec2::new(200., 150.), DVec2::new(300., 100.), DVec2::new(400., 150.)]).await;
+		let initial_counts = point_and_segment_counts(&editor, layer);
+
+		let (_, other_anchors) = endpoint_and_other_anchor_viewport_positions(&editor, layer);
+		let middle_anchor = *other_anchors.first().expect("The stroke should have an anchor between its endpoints");
+		editor
+			.drag_path(&[middle_anchor, middle_anchor + DVec2::new(0., 100.), middle_anchor + DVec2::new(0., 200.)], ModifierKeys::empty())
+			.await;
+
+		assert_eq!(layer_count(&editor), 2, "Only the endpoints of a path should be continued from");
+		assert_eq!(point_and_segment_counts(&editor, layer), initial_counts, "The existing path should be untouched");
+	}
+
+	#[tokio::test]
+	async fn test_closed_path_never_extends() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.draw_rect(100., 100., 300., 300.).await;
+		let rectangle = editor.get_selected_layer().await.expect("The rectangle should be selected");
+		let (endpoints, corners) = endpoint_and_other_anchor_viewport_positions(&editor, rectangle);
+		assert!(endpoints.is_empty(), "A closed path has no endpoints");
+		let corner = *corners.first().expect("The rectangle should have corner anchors");
+
+		editor.select_tool(ToolType::Freehand).await;
+		editor.drag_path(&[corner, corner + DVec2::new(100., 50.), corner + DVec2::new(200., 0.)], ModifierKeys::empty()).await;
+
+		assert_eq!(layer_count(&editor), 2, "Pressing on a closed path's anchor should start a new layer");
+	}
+
+	#[tokio::test]
+	async fn test_extend_after_layer_transform() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let layer = draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		let (initial_point_count, _) = point_and_segment_counts(&editor, layer);
+
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.3, DVec2::new(40., -25.)),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		let transform = editor.active_document().metadata().transform_to_viewport(layer);
+		assert!(!transform.matrix2.abs_diff_eq(DMat2::IDENTITY, 1e-6), "The layer should be rotated and scaled");
+
+		// Press within tolerance of where an endpoint now sits in the viewport, then keep drawing
+		let (endpoints, _) = endpoint_and_other_anchor_viewport_positions(&editor, layer);
+		let endpoint = *endpoints.first().expect("The stroke should have endpoints");
+		let continuation = [endpoint + DVec2::new(-2., 2.), endpoint + DVec2::new(80., 60.), endpoint + DVec2::new(160., 20.)];
+		editor.drag_path(&continuation, ModifierKeys::empty()).await;
+
+		assert_eq!(layer_count(&editor), 1, "Continuing from a transformed layer's endpoint should not create a new layer");
+
+		let (point_count, segment_count) = point_and_segment_counts(&editor, layer);
+		assert_eq!(point_count, initial_point_count + continuation.len() - 1, "Each pointer move after the press should add a point");
+		assert_eq!(segment_count, point_count - 1, "The continued stroke should form a single open path");
+
+		// The new points are stored in the layer's local space, so they should sit under the pointer once transformed back to the viewport
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("Layer should have vector geometry");
+		let transform = document.metadata().transform_to_viewport(layer);
+		for &pointer_position in &continuation[1..] {
+			let under_pointer = vector
+				.point_domain
+				.positions()
+				.iter()
+				.any(|&position| transform.transform_point2(position).distance(pointer_position) < 1.);
+			assert!(under_pointer, "Expected a point under the pointer at {pointer_position:?}");
+		}
+	}
+
+	#[tokio::test]
+	async fn test_endpoint_takes_priority_over_shift_append() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let layer = draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		let (initial_point_count, _) = point_and_segment_counts(&editor, layer);
+
+		let (endpoints, _) = endpoint_and_other_anchor_viewport_positions(&editor, layer);
+		let endpoint = *endpoints.last().expect("The stroke should have endpoints");
+		let continuation = [endpoint + DVec2::new(2., 2.), DVec2::new(400., 150.), DVec2::new(500., 100.)];
+		editor.drag_path(&continuation, ModifierKeys::SHIFT).await;
+
+		assert_eq!(layer_count(&editor), 1, "Shift should keep drawing on the selected layer");
+
+		// Appending a disconnected subpath would leave the layer with one fewer segment than a single continued path has
+		let (point_count, segment_count) = point_and_segment_counts(&editor, layer);
+		assert_eq!(point_count, initial_point_count + continuation.len() - 1, "Each pointer move after the press should add a point");
+		assert_eq!(segment_count, point_count - 1, "Shift on an endpoint should continue the path rather than append a new subpath");
+	}
+
+	#[tokio::test]
+	async fn test_press_and_release_on_endpoint_leaves_path_unchanged() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let layer = draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		let initial_counts = point_and_segment_counts(&editor, layer);
+
+		let (endpoints, _) = endpoint_and_other_anchor_viewport_positions(&editor, layer);
+		let endpoint = *endpoints.last().expect("The stroke should have endpoints");
+		editor.move_mouse(endpoint.x, endpoint.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(endpoint.x, endpoint.y, ModifierKeys::empty()).await;
+		editor.left_mouseup(endpoint.x, endpoint.y, ModifierKeys::empty()).await;
+
+		assert_eq!(layer_count(&editor), 1, "Releasing without moving should not create a layer");
+		assert_eq!(point_and_segment_counts(&editor, layer), initial_counts, "Releasing without moving should leave the path unchanged");
+	}
+
+	#[tokio::test]
+	async fn test_hidden_layer_endpoint_is_not_extended() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let layer = draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		let initial_counts = point_and_segment_counts(&editor, layer);
+		let (endpoints, _) = endpoint_and_other_anchor_viewport_positions(&editor, layer);
+		let endpoint = *endpoints.first().expect("The stroke should have endpoints");
+
+		// Where the hidden layer's endpoint would land without its transform
+		let metadata = editor.active_document().metadata();
+		let untransformed_endpoint = metadata
+			.document_to_viewport
+			.transform_point2(metadata.transform_to_viewport(layer).inverse().transform_point2(endpoint));
+
+		editor
+			.handle_message(NodeGraphMessage::ToggleVisibility {
+				node_id: layer.to_node(),
+				network_path: Vec::new(),
+			})
+			.await;
+		assert_eq!(editor.get_selected_layer().await, Some(layer), "Hiding the layer should leave it selected");
+
+		editor
+			.drag_path(&[endpoint + DVec2::new(2., -2.), DVec2::new(400., 150.), DVec2::new(500., 100.)], ModifierKeys::empty())
+			.await;
+		assert_eq!(layer_count(&editor), 2, "A stroke at a hidden layer's endpoint should create a new layer");
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor
+			.drag_path(
+				&[untransformed_endpoint, untransformed_endpoint + DVec2::new(100., 50.), untransformed_endpoint + DVec2::new(200., 0.)],
+				ModifierKeys::empty(),
+			)
+			.await;
+		assert_eq!(
+			layer_count(&editor),
+			3,
+			"A stroke where the hidden layer's untransformed endpoint would sit should also create a new layer"
+		);
+
+		editor
+			.handle_message(NodeGraphMessage::ToggleVisibility {
+				node_id: layer.to_node(),
+				network_path: Vec::new(),
+			})
+			.await;
+		assert_eq!(point_and_segment_counts(&editor, layer), initial_counts, "The hidden layer should be untouched");
+	}
+
+	#[tokio::test]
+	async fn test_locked_layer_endpoint_is_extended() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let layer = draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		let (initial_point_count, _) = point_and_segment_counts(&editor, layer);
+		let (endpoints, _) = endpoint_and_other_anchor_viewport_positions(&editor, layer);
+		let endpoint = *endpoints.last().expect("The stroke should have endpoints");
+
+		editor
+			.handle_message(NodeGraphMessage::ToggleLocked {
+				node_id: layer.to_node(),
+				network_path: Vec::new(),
+			})
+			.await;
+		assert_eq!(editor.get_selected_layer().await, Some(layer), "Locking the layer should leave it selected");
+
+		let continuation = [endpoint + DVec2::new(2., -2.), DVec2::new(400., 150.), DVec2::new(500., 100.)];
+		editor.drag_path(&continuation, ModifierKeys::empty()).await;
+
+		// Locking only blocks viewport picking by the Select tool, so a selected locked layer stays editable
+		assert_eq!(layer_count(&editor), 1, "A selected locked layer's endpoint should still be continued from");
+
+		let (point_count, segment_count) = point_and_segment_counts(&editor, layer);
+		assert_eq!(point_count, initial_point_count + continuation.len() - 1, "Each pointer move after the press should add a point");
+		assert_eq!(segment_count, point_count - 1, "The continued stroke should form a single open path");
 	}
 }

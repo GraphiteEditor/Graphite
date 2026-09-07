@@ -2,6 +2,7 @@ use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_network_node_type, resolve_proto_node_type};
+use crate::messages::portfolio::document::overlays::utility_functions::open_path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -302,12 +303,20 @@ impl Fsm for SplineToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext { document, input, viewport, .. } = tool_action_data;
+		let ToolActionMessageContext {
+			document,
+			input,
+			viewport,
+			shape_editor,
+			..
+		} = tool_action_data;
 
 		let ToolMessage::Spline(event) = event else { return self };
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
 			(_, SplineToolMessage::Overlays { context: mut overlay_context }) => {
+				let pointer = (self == SplineToolFsmState::Ready).then_some(input.mouse.position);
+				open_path_endpoint_overlays(document, shape_editor, pointer, &mut overlay_context);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 				self
 			}
@@ -565,7 +574,10 @@ fn try_merging_lastest_endpoint(document: &DocumentMessageHandler, tool_data: &m
 		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 
 	let exclude = |p: PointId| preview_point.is_some_and(|pp| pp == p) || *last_endpoint == p;
-	let position = document.metadata().transform_to_viewport(current_layer).transform_point2(*last_endpoint_position);
+	let position = document
+		.metadata()
+		.transform_to_viewport_if_feeds(current_layer, &document.network_interface)
+		.transform_point2(*last_endpoint_position);
 
 	let (layer, endpoint, _) = closest_point(document, position, PATH_JOIN_THRESHOLD, layers, exclude)?;
 	tool_data.merge_layers.insert(layer);
