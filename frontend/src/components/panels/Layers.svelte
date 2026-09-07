@@ -695,6 +695,7 @@
 		.control-bar {
 			height: 32px;
 			flex: 0 0 auto;
+			padding-left: 4px;
 			padding-right: 15px;
 
 			border-bottom: 1px solid var(--color-2-mildblack);
