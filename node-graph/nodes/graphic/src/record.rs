@@ -881,7 +881,11 @@ mod tests {
 		let head = ctx.index_head();
 		let group = {
 			// SAFETY: the element is cloned out inside the scope, so no borrow
-			// into the frame escapes it.
+			// into the frame escapes it. The clone is shallow, so the `'static`
+			// the `GraphicSource` rows infer launders a borrow of `arena`: it is
+			// contained because `arena` outlives every use below and this test
+			// never resets it, so the interior stays resident for the whole
+			// generation the group is read in.
 			let scope = frames.scope();
 			let GPoll::Final(value) = record::serve_input(&wrapped, &ctx.promoted(&head, 0), &scope) else {
 				panic!("expected a final record");
