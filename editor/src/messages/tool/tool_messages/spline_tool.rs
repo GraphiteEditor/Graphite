@@ -573,7 +573,10 @@ fn try_merging_lastest_endpoint(document: &DocumentMessageHandler, tool_data: &m
 		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 
 	let exclude = |p: PointId| preview_point.is_some_and(|pp| pp == p) || *last_endpoint == p;
-	let position = document.metadata().transform_to_viewport(current_layer).transform_point2(*last_endpoint_position);
+	let position = document
+		.metadata()
+		.transform_to_viewport_if_feeds(current_layer, &document.network_interface)
+		.transform_point2(*last_endpoint_position);
 
 	let (layer, endpoint, _) = closest_point(document, position, PATH_JOIN_THRESHOLD, layers, exclude)?;
 	tool_data.merge_layers.insert(layer);
