@@ -1,14 +1,12 @@
 [package]
 name = "node-macro"
-publish = false
-version = "0.0.0"
-rust-version = "1.88"
-authors = ["Graphite Authors <contact@graphite.art>"]
-edition = "2024"
-readme = "../../README.md"
-homepage = "https://graphite.art"
-repository = "https://github.com/GraphiteEditor/Graphite"
-license = "MIT OR Apache-2.0"
+# Inherited from workspace - start
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+# Inherited from workspace - end
 
 [lib]
 proc-macro = true

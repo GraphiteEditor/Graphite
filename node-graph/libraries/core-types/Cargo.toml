@@ -1,10 +1,13 @@
 [package]
 name = "core-types"
-version = "0.1.0"
-edition = "2024"
 description = "Core types and traits for Graphene node system"
-authors = ["Graphite Authors <contact@graphite.art>"]
-license = "MIT OR Apache-2.0"
+# Inherited from workspace - start
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+# Inherited from workspace - end
 
 [features]
 default = ["serde"]

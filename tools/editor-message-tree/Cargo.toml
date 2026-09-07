@@ -1,10 +1,13 @@
 [package]
 name = "editor-message-tree"
 description = "Tool to generate developer documentation for the editor message system structure"
-edition.workspace = true
+# Inherited from workspace - start
 version.workspace = true
 license.workspace = true
 authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+# Inherited from workspace - end
 
 [dependencies]
 # Local dependencies
