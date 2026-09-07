@@ -111,6 +111,7 @@ impl<'e> Frames<'e> {
 			inline: RecordValue::zeroed(),
 			frame,
 			free: self.reborrow(),
+			filled_fields: false,
 		}
 	}
 

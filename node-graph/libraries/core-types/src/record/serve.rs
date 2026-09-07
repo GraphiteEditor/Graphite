@@ -46,6 +46,7 @@ impl<'a> SlotRun<'a> {
 			inline: RecordValue::zeroed(),
 			frame: (self.layout.frame_bytes() != 0).then_some(frame),
 			free: frames.reborrow(),
+			filled_fields: false,
 		}
 	}
 
@@ -82,6 +83,9 @@ pub struct FrameClaim<'e, 'l> {
 	pub(in crate::record) inline: RecordValue<'static>,
 	pub(in crate::record) frame: Option<*mut u8>,
 	pub(in crate::record) free: Frames<'e>,
+	/// Set by the writes that fill the declared fields, so the safe closers can
+	/// refuse a field-bearing frame that was never filled.
+	pub(in crate::record) filled_fields: bool,
 }
 
 impl<'e, 'l> FrameClaim<'e, 'l> {
@@ -118,6 +122,7 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// must be the wiring-resolved plan of this frame's layout.
 	pub unsafe fn carry(&mut self, src: Rec<'_>, plan: &[(usize, usize, usize)]) {
 		unsafe { apply_plan(src, self.dst(), plan) };
+		self.filled_fields = true;
 	}
 
 	/// Writes a field at its wiring-resolved offset.
@@ -126,6 +131,7 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// `offset` must be this layout's resolved offset for a field of `T`.
 	pub unsafe fn attr_at<T>(&mut self, offset: usize, value: T) {
 		unsafe { write_field(self.dst(), offset, value) };
+		self.filled_fields = true;
 	}
 
 	/// Writes the element; `None` reports arena exhaustion for a parked
@@ -140,9 +146,17 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// Lifts a kernel's poll into the frame and closes it: the element
 	/// writes on value polls, every poll keeps the frame claimed, and arena
 	/// exhaustion of a parked element reports as an error poll. Panics where
-	/// the element does not match the wired layout.
+	/// the element does not match the wired layout, or where a field-bearing
+	/// layout closes on a frame no carry or field write ever filled, since the
+	/// [`Served`] proof certifies the whole record and the fields would be the
+	/// prior frame's bytes.
 	pub fn lift<T: Send + Sync + dyn_any::StaticTypeSized>(mut self, poll: GPoll<T>, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
 		self.check_element::<T>();
+		assert!(
+			self.layout.fields.is_empty() || self.filled_fields,
+			"a layout with {} fields must carry or write them before lifting",
+			self.layout.fields.len()
+		);
 		let frame_bytes = self.layout.frame_bytes();
 		let dst = self.dst();
 		// SAFETY: the frame is this layout's fresh claim, the element check
@@ -158,6 +172,7 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// references outlive the serving evaluation.
 	pub unsafe fn fill_copy(&mut self, src: *const u8) {
 		unsafe { std::ptr::copy_nonoverlapping(src, self.dst(), self.layout.size) };
+		self.filled_fields = true;
 	}
 
 	/// The served record. The frame stays claimed for the consumer; the drop
@@ -208,6 +223,7 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// translate into this frame's layout.
 	pub unsafe fn translate(&mut self, src: Rec<'_>, plan: &SourcePlan) {
 		unsafe { plan.translate(src, self.dst()) };
+		self.filled_fields = true;
 	}
 }
 
@@ -321,6 +337,17 @@ mod tests {
 	}
 
 	#[test]
+	fn a_run_refuses_a_lane_count_whose_stride_product_overflows() {
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[]);
+		let mut scratch = [std::mem::MaybeUninit::<u64>::uninit(); 4];
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(64);
+		let frames = frame_arena.frames();
+		let wrapping = usize::MAX / layout.lane_stride() + 1;
+		assert!(frames.run(&mut scratch, wrapping, &layout).is_none(), "a wrapped capacity product must not pass the check");
+	}
+
+	#[test]
 	#[should_panic(expected = "serves out of order")]
 	fn a_run_refuses_a_gapped_serve() {
 		let arena = crate::arena::Arena::new(1024).unwrap();
@@ -336,17 +363,6 @@ mod tests {
 			panic!("expected a final record");
 		};
 		run.served(2, &proof);
-	}
-
-	#[test]
-	fn a_run_refuses_a_lane_count_whose_stride_product_overflows() {
-		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[]);
-		let mut scratch = [std::mem::MaybeUninit::<u64>::uninit(); 4];
-		let mut frame_arena = FrameArena::new();
-		frame_arena.reserve(64);
-		let frames = frame_arena.frames();
-		let wrapping = usize::MAX / layout.lane_stride() + 1;
-		assert!(frames.run(&mut scratch, wrapping, &layout).is_none(), "a wrapped capacity product must not pass the check");
 	}
 
 	#[test]
