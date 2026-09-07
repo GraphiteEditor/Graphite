@@ -155,6 +155,11 @@ impl Default for ElementWrite {
 	}
 }
 
+/// The widest alignment a record may need. Frames are a `Vec<u64>`, lanes
+/// stride at a multiple of 8, and run slabs come from `alloc_scratch::<u64>`,
+/// so nothing below a record can promise more.
+pub const MAX_ALIGN: usize = 8;
+
 /// A record layout: the element at offset 0, then the written attributes in
 /// canonical order (descending alignment, then size, then name, then level).
 /// Layouts are derived data, a pure function of the upstream write set.
@@ -198,8 +203,9 @@ impl Layout {
 
 	/// The union of this layout's fields and `writes` over `element` at
 	/// `depth`, in canonical order. A (name, level) written at a different
-	/// size is a type conflict and panics; the census keeps declared names to
-	/// one type, so this only fires on wiring bugs.
+	/// size is a type conflict and panics, as does an element or attribute
+	/// wider than [`MAX_ALIGN`]; the census keeps declared names to one type,
+	/// so these only fire on wiring bugs.
 	pub fn with_writes(&self, depth: u8, element: ElementWrite, writes: &[FieldWrite]) -> Layout {
 		let mut merged: Vec<FieldWrite> = self.fields.iter().map(FieldDesc::as_write).collect();
 		for &write in writes {
@@ -207,6 +213,10 @@ impl Layout {
 				Some(existing) => assert_eq!(existing.type_id, write.type_id, "attribute `{}` written at two different types", write.name),
 				None => merged.push(write),
 			}
+		}
+		assert!(element.align <= MAX_ALIGN, "a record element aligns to at most {MAX_ALIGN} bytes, but this one needs {}", element.align);
+		for write in &merged {
+			assert!(write.align <= MAX_ALIGN, "attribute `{}` aligns to at most {MAX_ALIGN} bytes, but needs {}", write.name, write.align);
 		}
 		merged.sort_by(|a, b| b.align.cmp(&a.align).then(b.size.cmp(&a.size)).then(a.name.cmp(b.name)).then(a.level.cmp(&b.level)));
 		let mut offset = element.size;
@@ -617,6 +627,18 @@ mod tests {
 		assert_eq!(layout.offset_of("flag", 0), Some(20));
 		assert_eq!(layout.size, 21);
 		assert_eq!(layout.align, 8);
+	}
+
+	#[test]
+	#[should_panic(expected = "a record element aligns to at most 8 bytes")]
+	fn an_over_aligned_element_is_refused_at_wiring() {
+		Layout::default().with_writes(0, element_write::<u128>(), &[]);
+	}
+
+	#[test]
+	#[should_panic(expected = "attribute `wide` aligns to at most 8 bytes")]
+	fn an_over_aligned_attribute_is_refused_at_wiring() {
+		Layout::default().with_writes(0, element_write::<f64>(), &[sized_field("wide", 16, 16)]);
 	}
 
 	#[test]
