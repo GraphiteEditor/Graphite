@@ -3,7 +3,7 @@ mod legacy;
 mod paint;
 mod walk;
 
-pub(crate) use glue::list_contains_groups;
+pub(crate) use glue::{list_contains_groups, map_attribute_groups_to_owned, map_attribute_groups_to_persistent, map_attribute_groups_to_resident};
 pub use glue::{map_groups_to_owned, map_groups_to_persistent, map_groups_to_resident};
 pub(crate) use legacy::run_to_legacy_list;
 pub use legacy::{group_to_legacy_graphic, group_to_legacy_list, map_groups_to_legacy, map_paint_attrs_to_legacy, run_to_list};
