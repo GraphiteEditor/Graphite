@@ -217,6 +217,9 @@ unsafe impl Send for SourceHandle {}
 #[cfg(target_family = "wasm")]
 unsafe impl Sync for SourceHandle {}
 
+#[cfg(all(target_family = "wasm", target_feature = "atomics"))]
+compile_error!("SourceHandle's wasm Send/Sync rest on a single-threaded build; a +atomics target needs the stored node bounded instead");
+
 impl SourceHandle {
 	pub fn new_record<T: 'static>(node: std::sync::Arc<ErasedRecordNode>) -> Self {
 		Self::new_erased(node, record_source_type::<T>())

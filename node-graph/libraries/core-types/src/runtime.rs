@@ -30,6 +30,9 @@ unsafe impl Send for RuntimeHandle {}
 #[cfg(target_family = "wasm")]
 unsafe impl Sync for RuntimeHandle {}
 
+#[cfg(all(target_family = "wasm", target_feature = "atomics"))]
+compile_error!("RuntimeHandle's wasm Send/Sync rest on a single-threaded build; a +atomics target needs the payload bounded instead");
+
 impl std::fmt::Debug for RuntimeHandle {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("RuntimeHandle").finish_non_exhaustive()
@@ -101,6 +104,9 @@ unsafe impl<S> Send for GraphRuntime<S> {}
 // SAFETY: as in Send.
 #[cfg(target_family = "wasm")]
 unsafe impl<S> Sync for GraphRuntime<S> {}
+
+#[cfg(all(target_family = "wasm", target_feature = "atomics"))]
+compile_error!("GraphRuntime's wasm Send/Sync are unbounded in S and rest on a single-threaded build; a +atomics target needs S bounded instead");
 
 impl<S> GraphRuntime<S> {
 	pub fn new(spawner: S) -> Self {
