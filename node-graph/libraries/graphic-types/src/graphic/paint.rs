@@ -45,9 +45,10 @@ pub fn vector_can_reduce_to_clip_path<S: LaneSource<Element = Vector>>(source: &
 
 		let fill_opaque_or_absent = paint_graphics::<Fill, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_guaranteed_fully_opaque()));
 
-		// Master deleted `Vector::stroke`, so the stroke width term has no source here; only the paint term is left, which reduces to a clip path less often but never wrongly.
-		let stroke_invisible_or_transparent =
-			paint_graphics::<Stroke, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_guaranteed_fully_transparent()));
+		// The stroke weight rides the stroke paint list, the carrier that replaced the deleted `Vector::stroke` field.
+		let stroke_invisible_or_transparent = paint_graphics::<Stroke, _>(source, index).is_none_or(|graphic_list| {
+			graphic_list.attribute_cloned_or::<f64>(core_types::list::ATTR_WEIGHT, 0, 0.) <= 0. || graphic_list.element(0).is_none_or(|graphic| graphic.is_guaranteed_fully_transparent())
+		});
 
 		opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
 	})
