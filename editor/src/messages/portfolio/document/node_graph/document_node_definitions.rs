@@ -14,6 +14,7 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::concrete;
+use graph_craft::descriptor;
 use graphene_std::extract_xy::XY;
 use graphene_std::list::List;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
@@ -162,7 +163,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						// Collection of the content into the layer's group; the wrap keeps the content level's element type for the legacy boundary
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 1)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::wrap_graphic::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::into_group::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -1)),
 							..Default::default()
 						},
@@ -203,7 +204,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					.collect(),
 					..Default::default()
 				}),
-				inputs: vec![NodeInput::type_default(concrete!(List<Graphic>), true), NodeInput::type_default(concrete!(List<Graphic>), true)],
+				inputs: vec![NodeInput::type_default(descriptor!(List<Graphic>), true), NodeInput::type_default(descriptor!(List<Graphic>), true)],
 				input_metadata: vec![("Base", "TODO").into(), ("Content", "TODO").into()],
 				output_names: vec!["Out".to_string()],
 				node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
@@ -297,8 +298,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				}),
 				inputs: vec![
-					NodeInput::type_default(concrete!(List<Artboard>), true),
-					NodeInput::type_default(concrete!(List<Graphic>), true),
+					NodeInput::type_default(descriptor!(List<Artboard>), true),
+					NodeInput::type_default(descriptor!(List<Graphic>), true),
 					NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 					NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
 					NodeInput::value(TaggedValue::Color(Color::WHITE), false),
@@ -493,11 +494,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				}),
 				inputs: vec![
-					NodeInput::type_default(concrete!(List<Vector>), true),
+					NodeInput::type_default(descriptor!(List<Vector>), true),
 					NodeInput::value(TaggedValue::F64(10.), false),
 					NodeInput::value(TaggedValue::Bool(Default::default()), false),
 					NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
-					NodeInput::type_default(concrete!(List<Vector>), false),
+					NodeInput::type_default(descriptor!(List<Vector>), false),
 				],
 				input_metadata: vec![
 					("Content", "TODO").into(),
@@ -583,7 +584,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					.collect(),
 					..Default::default()
 				}),
-				inputs: vec![NodeInput::type_default(concrete!(List<Vector>), true)],
+				inputs: vec![NodeInput::type_default(descriptor!(List<Vector>), true)],
 				input_metadata: vec![("Vector", "TODO").into()],
 				output_names: vec!["Vector".to_string()],
 				node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
@@ -673,7 +674,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				}),
 				inputs: vec![
-					NodeInput::type_default(concrete!(List<Vector>), true),
+					NodeInput::type_default(descriptor!(List<Vector>), true),
 					NodeInput::value(
 						TaggedValue::Footprint(Footprint {
 							transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
@@ -750,7 +751,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					.collect(),
 					..Default::default()
 				}),
-				inputs: vec![NodeInput::type_default(concrete!(List<Raster<CPU>>), true)],
+				inputs: vec![NodeInput::type_default(descriptor!(List<Raster<CPU>>), true)],
 				input_metadata: vec![("Image", "TODO").into()],
 				output_names: vec!["".to_string(), "Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
 				..Default::default()
@@ -803,7 +804,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			category: "",
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Extract,
-				inputs: vec![NodeInput::type_default(concrete!(DocumentNode), true)],
+				inputs: vec![NodeInput::type_default(descriptor!(DocumentNode), true)],
 				input_metadata: vec![("Node", "TODO").into()],
 				output_names: vec!["Document Node".to_string()],
 				..Default::default()
@@ -917,7 +918,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				}),
 				inputs: vec![
-					NodeInput::type_default(concrete!(Vector), true),
+					NodeInput::type_default(descriptor!(Vector), true),
 					NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
 				],
 				input_metadata: vec![("Content", "TODO").into(), ("Modification", "TODO").into()],
@@ -1585,7 +1586,7 @@ impl InputTypeConstraint {
 
 				// Find the union of all the possible types from the dynamic executor implementations
 				let mut result_accepted = Self::empty();
-				for node_io in implementations.keys() {
+				for node_io in implementations.iter().map(|entry| &entry.io) {
 					if let Some(input_type) = node_io.inputs.get(input_index) {
 						result_accepted.insert(input_type);
 					}

@@ -194,7 +194,7 @@ impl NodeNetworkInterface {
 					log::error!("Proto node {node:?} not found in the node registry, in layer_chain_hosts_node");
 					return false;
 				};
-				implementations.keys().any(|node_io| node_io.inputs.first().is_some_and(|content| content.nested_type() == element))
+				implementations.iter().map(|entry| &entry.io).any(|node_io| node_io.inputs.first().is_some_and(|content| content.nested_type() == element))
 			}
 			None => !matches!(chain_type, TypeSource::Invalid),
 		}

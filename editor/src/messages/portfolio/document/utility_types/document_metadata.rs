@@ -236,11 +236,8 @@ impl DocumentMetadata {
 	/// bounds for non-vector layers (groups, raster, text, color, gradient).
 	pub fn bounding_box_document_with_stroke(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
 		if let Some(vector) = self.layer_vector_data.get(&layer) {
-			let stroke = self
-				.layer_appearance_attributes
-				.get(&layer)
-				.and_then(|appearance| appearance.first_coverage_of(graphene_std::Cover::Stroke))
-				.map(graphene_std::Coverage::stroke_params);
+			// The stroke geometry rides the stroke paint list's own attribute columns, the carrier that replaced the deleted `Vector::stroke`.
+			let stroke = self.layer_stroke_attributes.get(&layer).map(|paint| graphene_std::renderer::stroke_params(paint));
 			if let Some(bounds) = vector.stroke_inclusive_bounding_box_with_transform(self.transform_to_document(layer), stroke.as_ref()) {
 				return Some(bounds);
 			}

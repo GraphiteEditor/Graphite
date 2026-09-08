@@ -388,7 +388,7 @@ const ATTR_PAINT_ORDER: &str = "paint_order";
 /// `Vector::stroke` is gone upstream. In our paint model a lane's stroke is the `ATTR_STROKE`
 /// `List<Graphic>`, so the stroke's GEOMETRY parameters ride that list's own attribute columns, on the
 /// same names master's `Coverage` uses. Mirrors `vector_nodes::stroke_params`, which writes them.
-fn stroke_params(paint: &List<Graphic>) -> StrokeStyle {
+pub fn stroke_params(paint: &List<Graphic>) -> StrokeStyle {
 	let defaults = StrokeStyle::default();
 	StrokeStyle {
 		weight: paint.attribute_cloned_or(ATTR_WEIGHT, 0, defaults.weight),

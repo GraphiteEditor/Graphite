@@ -2767,7 +2767,7 @@ impl DocumentMessageHandler {
 		}
 
 		let solidify_stroke_definition = document_node_definitions::resolve_proto_node_type(graphene_std::vector::solidify_stroke::IDENTIFIER).expect("Solidify Stroke node should exist");
-		let item_at_index_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::item_at_index::IDENTIFIER).expect("Item at Index node should exist");
+		let item_at_index_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::index_elements::IDENTIFIER).expect("Item at Index node should exist");
 
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
@@ -2777,13 +2777,14 @@ impl DocumentMessageHandler {
 				continue;
 			}
 
-			let appearance = self.network_interface.document_metadata().layer_appearance_attributes.get(&layer);
+			let metadata = self.network_interface.document_metadata();
+			let fill_paint = metadata.layer_fill_attributes.get(&layer);
+			let stroke_paint = metadata.layer_stroke_attributes.get(&layer);
 
-			let has_fill = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
+			let has_fill = fill_paint.is_some_and(|paint| paint.element(0).is_some_and(|graphic| !graphic.is_guaranteed_fully_transparent()));
 			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
-			let has_stroke = appearance.is_some_and(|appearance| {
-				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
-					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_guaranteed_fully_transparent())
+			let has_stroke = stroke_paint.is_some_and(|paint| {
+				graphene_std::renderer::stroke_params(paint).has_renderable_stroke() && paint.element(0).is_some_and(|graphic| !graphic.is_guaranteed_fully_transparent())
 			});
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.

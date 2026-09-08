@@ -12,7 +12,7 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graph_craft::{ProtoNodeIdentifier, concrete};
+use graph_craft::{ProtoNodeIdentifier, concrete, descriptor};
 use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
@@ -71,8 +71,8 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard as the primary export for the document network.
 	pub fn create_artboard(&mut self, new_id: NodeId, location: DVec2, dimensions: DVec2, background: Color, clip: bool) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_network_node_type("Artboard").expect("Node").node_template_input_override([
-			Some(NodeInput::type_default(concrete!(List<Artboard>), true)),
-			Some(NodeInput::type_default(concrete!(List<Graphic>), true)),
+			Some(NodeInput::type_default(descriptor!(List<Artboard>), true)),
+			Some(NodeInput::type_default(descriptor!(List<Graphic>), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(location), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(dimensions), false)),
 			Some(NodeInput::value(TaggedValue::Color(background), false)),
@@ -86,7 +86,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let boolean = resolve_proto_node_type(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER)
 			.expect("Boolean node does not exist")
 			.node_template_input_override([
-				Some(NodeInput::type_default(concrete!(List<Graphic>), true)),
+				Some(NodeInput::type_default(descriptor!(List<Graphic>), true)),
 				Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 			]);
 
@@ -98,7 +98,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_blend_data(&mut self, layer: LayerNodeIdentifier, count: f64) -> NodeId {
 		let blend = resolve_network_node_type("Blend")
 			.expect("Blend node does not exist")
-			.node_template_input_override([Some(NodeInput::type_default(concrete!(List<Graphic>), true)), Some(NodeInput::value(TaggedValue::F64(count), false))]);
+			.node_template_input_override([Some(NodeInput::type_default(descriptor!(List<Graphic>), true)), Some(NodeInput::value(TaggedValue::F64(count), false))]);
 
 		let blend_id = NodeId::new();
 		self.network_interface.insert_node(blend_id, blend, &[]);
@@ -110,7 +110,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_morph_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {
 		let morph = resolve_proto_node_type(graphene_std::vector::morph::IDENTIFIER)
 			.expect("Morph node does not exist")
-			.node_template_input_override([Some(NodeInput::type_default(concrete!(List<Graphic>), true)), Some(NodeInput::value(TaggedValue::F64(0.5), false))]);
+			.node_template_input_override([Some(NodeInput::type_default(descriptor!(List<Graphic>), true)), Some(NodeInput::value(TaggedValue::F64(0.5), false))]);
 
 		let morph_id = NodeId::new();
 		self.network_interface.insert_node(morph_id, morph, &[]);
@@ -859,9 +859,9 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeJoin(stroke.join), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::MiterLimitInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
-		// Our stroke node keeps a paint order input rather than encoding the order by Fill/Stroke node adjacency
+		// Our stroke node keeps a paint order input rather than encoding the order by Fill/Stroke node adjacency, and master's `Stroke` no longer carries one to copy
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(Default::default()), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashPatternInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::DashPattern(stroke.dash_lengths), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput);

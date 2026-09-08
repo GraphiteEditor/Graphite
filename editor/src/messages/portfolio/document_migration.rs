@@ -9,7 +9,7 @@ use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
-use graph_craft::{Type, concrete};
+use graph_craft::{Type, concrete, descriptor};
 use graphene_std::Color;
 use graphene_std::ParameterRef;
 use graphene_std::ProtoNodeIdentifier;
@@ -148,7 +148,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::graphic::FlattenVectorNode", "graphene_core::graphic_element::FlattenVectorNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::item_at_index::IDENTIFIER,
+		node: graphene_std::graphic::index_elements::IDENTIFIER,
 		aliases: &[
 			"graphene_core::graphic_element::IndexNode",
 			"graphene_core::graphic::IndexNode",
@@ -158,15 +158,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::read_attribute_gradient_form::IDENTIFIER,
-		aliases: &["graphic_nodes::graphic::ReadAttributeGradientTypeNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::graphic::read_attribute_gradient_spread::IDENTIFIER,
-		aliases: &["graphic_nodes::graphic::ReadAttributeSpreadMethodNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::graphic::remove_at_index::IDENTIFIER,
+		node: graphene_std::graphic::omit_element::IDENTIFIER,
 		aliases: &["graphic_nodes::graphic::OmitElementNode"],
 	},
 	NodeReplacement {
@@ -784,7 +776,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::ClosePathNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::list_length::IDENTIFIER,
+		node: graphene_std::vector::count_elements::IDENTIFIER,
 		aliases: &["graphene_core::vector::CountElementsNode"],
 	},
 	NodeReplacement {
@@ -1425,10 +1417,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::copy_to_points::IDENTIFIER) {
 			let mut node_template = node_definition.default_node_template();
 			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[1].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[0].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[0].clone(), network_path);
 			for (index, input) in old_inputs.into_iter().enumerate().skip(2) {
-				document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
 			}
 		}
 
@@ -1436,10 +1428,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) {
 			let mut node_template = node_definition.default_node_template();
 			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[1].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[0].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[0].clone(), network_path);
 			for (index, input) in old_inputs.into_iter().enumerate().skip(2) {
-				document.network_interface.set_input(&InputConnector::node(*node_id, index), input, network_path);
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
 			}
 		}
 
@@ -1898,7 +1890,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// The stored no-paint sentinel was the `List<Graphic>` type default before the paint connectors ranked down to `Item<Graphic>`.
 	// This must run before the stale-List-default cleanup below, which would otherwise adopt the definition's default paint.
 	{
-		let legacy_no_paint = TaggedValue::TypeDefault(concrete!(List<graphene_std::Graphic>));
+		let legacy_no_paint = TaggedValue::TypeDefault(descriptor!(List<graphene_std::Graphic>));
 		let paint_parameters: &[ParameterRef] = &[graphene_std::vector::fill::PaintInput.into(), graphene_std::vector::stroke::PaintInput.into()];
 		for parameter in paint_parameters {
 			if reference != DefinitionIdentifier::ProtoNode(parameter.node_identifier.clone()) {
@@ -2490,7 +2482,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		};
 
 		// Create List Length node: counts content `List` items → N
-		let Some(list_length_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::list_length::IDENTIFIER)) else {
+		let Some(list_length_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::count_elements::IDENTIFIER)) else {
 			log::error!("Could not get list_length node from definition when upgrading morph");
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 			return None;
@@ -2717,7 +2709,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 			document.network_interface.set_input(
 				&InputConnector::node_at_index(*node_id, 0),
-				NodeInput::type_default(concrete!(graphene_std::vector::Vector), true),
+				NodeInput::type_default(descriptor!(graphene_std::vector::Vector), true),
 				network_path,
 			);
 
@@ -2767,7 +2759,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				.input_from_connector(&InputConnector::node_at_index(*node_id, index), network_path)
 				.is_some_and(|stored_input| match stored_input {
 					NodeInput::Value { tagged_value, .. } => match &**tagged_value {
-						TaggedValue::TypeDefault(stored_type) if matches!(stored_type, Type::Record(_)) && !tagged_value.is_no_paint() => {
+						// Our type defaults name their type rather than carrying a structural rank, so a list-carrying wire is recognized by its name.
+						TaggedValue::TypeDefault(stored_type) if stored_type.name.contains("list::List<") && !tagged_value.is_no_paint() => {
 							!matches!(definition_input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, TaggedValue::TypeDefault(definition_type) if definition_type == stored_type))
 						}
 						_ => false,
@@ -2905,11 +2898,15 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
 		&& name == "Upload Texture"
 	{
-		let mut node_template = resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-		if let Some(content) = old_inputs.first() {
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), content.clone(), network_path);
+		// Our `upload_texture` node belongs to the optional wgpu-executor crate rather than to platform_application_io, so the conversion only exists in a GPU build.
+		#[cfg(feature = "gpu")]
+		{
+			let mut node_template = resolve_proto_node_type(wgpu_executor::texture_conversion::upload_texture::IDENTIFIER)?.default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+			let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+			if let Some(content) = old_inputs.first() {
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), content.clone(), network_path);
+			}
 		}
 	}
 

@@ -393,10 +393,11 @@ fn fill<'e>(
 	_backup_gradient: IList<Gradient>,
 	_gradient_form: GradientForm,
 	_gradient_spread: GradientSpread,
-	_transform: Option<DAffine2>,
+	_has_transform: bool,
+	_transform: DAffine2,
 ) -> Result<(Vector, Attr<'e, Fill>), Interrupt> {
 	let mut paint = paint_table(paint);
-	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_form, _gradient_spread, _transform);
+	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_form, _gradient_spread, _has_transform.then_some(_transform));
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
@@ -413,14 +414,15 @@ fn fill_graphic_leveled<'e>(
 	_backup_gradient: IList<Gradient>,
 	_gradient_form: GradientForm,
 	_gradient_spread: GradientSpread,
-	_transform: Option<DAffine2>,
+	_has_transform: bool,
+	_transform: DAffine2,
 ) -> Result<(Graphic<'static>, Attr<'e, Fill>), Interrupt> {
 	let bounds = match BoundingBox::bounding_box(&element, DAffine2::IDENTITY, false) {
 		RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		_ => None,
 	};
 	let mut paint = paint_table(paint);
-	default_gradient_paint(&mut paint, bounds, _gradient_form, _gradient_spread, _transform);
+	default_gradient_paint(&mut paint, bounds, _gradient_form, _gradient_spread, _has_transform.then_some(_transform));
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
