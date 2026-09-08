@@ -31,6 +31,8 @@ pub enum EvalError {
 
 /// Settles an operation's result: no operation may produce NaN, so an indeterminate form is an error, and the value takes
 /// its canonical form so that a zero imaginary part or a signed zero never changes a later result.
+// Inlined with the canonical form it calls, since these run after every operation where a call would cost as much as the work
+#[inline(always)]
 fn settle(value: Value) -> Result<Value, EvalError> {
 	let Value::Number(number) = value;
 	if number.is_nan() {
@@ -41,6 +43,7 @@ fn settle(value: Value) -> Result<Value, EvalError> {
 
 /// The canonical form of a value the host supplied for `name`, like [`settle`], except that NaN (which only a host can
 /// supply) is an error naming its source.
+#[inline(always)]
 fn canonical_host_value(name: &str, value: Value) -> Result<Value, EvalError> {
 	let Value::Number(number) = value;
 	if number.is_nan() {
@@ -52,12 +55,7 @@ fn canonical_host_value(name: &str, value: Value) -> Result<Value, EvalError> {
 /// Resolves a name against the environment before the builtin constants, so a binding of exactly that spelling shadows the builtin.
 /// The `\` prefix skips the environment.
 fn resolve_value<V: ValueProvider, F: FunctionProvider>(context: &EvalContext<V, F>, name: &str) -> Option<Value> {
-	let constant = |name: &str| {
-		Constant::from_name(name).map(|constant| match constant.value() {
-			Literal::Float(real) => Value::from_f64(real),
-			Literal::Complex(complex) => Value::Number(Number::Complex(complex)),
-		})
-	};
+	let constant = |name: &str| Constant::from_name(name).map(|constant| Value::Number(constant.value()));
 
 	match name.strip_prefix('\\') {
 		Some(builtin_name) => constant(builtin_name),
@@ -69,8 +67,8 @@ impl Node {
 	pub fn eval<V: ValueProvider, F: FunctionProvider>(&self, context: &EvalContext<V, F>) -> Result<Value, EvalError> {
 		match self {
 			Node::Lit(lit) => match lit {
-				Literal::Float(num) => Ok(Value::from_f64(*num)),
-				Literal::Complex(num) => Ok(Value::Number(Number::Complex(*num))),
+				Literal::Integer(integer) => Ok(Value::from_i64(*integer)),
+				Literal::Float(float) => Ok(Value::from_f64(*float)),
 			},
 
 			Node::BinOp { lhs, op, rhs } => match (lhs.eval(context)?, rhs.eval(context)?) {
@@ -100,20 +98,17 @@ impl Node {
 				// A `!=` chain asserts every pair distinct, while the ordered chains assert each adjacent pair's relation; every pair is checked so an unsupported comparison errors regardless of the others
 				let holds = if rest.iter().all(|(op, _)| *op == BinaryOp::Neq) {
 					let numbers: Vec<Number> = std::iter::once(first).chain(rest.iter().map(|(_, number)| *number)).collect();
-					numbers
-						.iter()
-						.enumerate()
-						.all(|(index, a)| numbers[index + 1..].iter().all(|b| a.binary_op(BinaryOp::Neq, *b) == Some(Number::Real(1.))))
+					numbers.iter().enumerate().all(|(index, a)| numbers[index + 1..].iter().all(|b| a != b))
 				} else {
 					let mut holds = true;
 					let mut previous = first;
 					for (op, number) in rest {
-						holds &= previous.binary_op(op, number).ok_or(EvalError::OperatorTypeError)? == Number::Real(1.);
+						holds &= previous.binary_op(op, number).ok_or(EvalError::OperatorTypeError)?.as_bool() == Some(true);
 						previous = number;
 					}
 					holds
 				};
-				Ok(Value::from_f64(holds as u8 as f64))
+				Ok(Value::from_bool(holds))
 			}
 			Node::Var(name) => {
 				let value = resolve_value(context, name).ok_or_else(|| EvalError::MissingValue(name.clone()))?;
@@ -121,7 +116,7 @@ impl Node {
 			}
 			Node::FnCall { name, expr } => {
 				// Arguments land in a stack buffer when they fit (builtins take at most 5), avoiding a heap allocation per call
-				let mut stack_values = [Value::from_f64(0.); 5];
+				let mut stack_values = [Value::from_i64(0); 5];
 				let heap_values: Vec<Value>;
 				let values: &[Value] = if expr.len() <= stack_values.len() {
 					for (slot, argument) in stack_values.iter_mut().zip(expr) {

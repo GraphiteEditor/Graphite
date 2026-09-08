@@ -1,7 +1,6 @@
-use crate::ast::Literal;
+use crate::value::{Complex, Number};
 use chumsky::input::{Input, ValueInput};
 use chumsky::span::SimpleSpan;
-use num_complex::Complex64;
 use std::fmt;
 use std::ops::Range;
 
@@ -9,6 +8,8 @@ pub type Span = SimpleSpan;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'src> {
+	/// A whole-number literal that fits exact integer storage.
+	Integer(i64),
 	Float(f64),
 	Ident(&'src str),
 
@@ -46,6 +47,7 @@ pub enum Token<'src> {
 impl<'src> fmt::Display for Token<'src> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
+			Token::Integer(x) => write!(f, "{x}"),
 			Token::Float(x) => write!(f, "{x}"),
 			Token::Ident(name) => write!(f, "{name}"),
 
@@ -92,19 +94,19 @@ pub enum Constant {
 }
 
 impl Constant {
-	pub fn value(self) -> Literal {
+	pub fn value(self) -> Number {
 		use Constant::*;
 		use std::f64::consts;
 		match self {
-			Pi => Literal::Float(consts::PI),
-			Tau => Literal::Float(consts::TAU),
-			E => Literal::Float(consts::E),
+			Pi => Number::Real(consts::PI),
+			Tau => Number::Real(consts::TAU),
+			E => Number::Real(consts::E),
 			// TODO: Replace with f64::GOLDEN_RATIO when we bump MSRV to 1.94
-			Phi => Literal::Float(1.618033988749895),
-			Inf => Literal::Float(f64::INFINITY),
-			I => Literal::Complex(Complex64::new(0., 1.)),
-			True => Literal::Float(1.),
-			False => Literal::Float(0.),
+			Phi => Number::Real(1.618033988749895),
+			Inf => Number::Real(f64::INFINITY),
+			I => Number::Complex(Complex::new(0., 1.)),
+			True => Number::from_bool(true),
+			False => Number::from_bool(false),
 		}
 	}
 
@@ -266,7 +268,7 @@ impl<'a> Lexer<'a> {
 			.take_while(|&(_, c)| unicode_ident::is_xid_continue(c) || c == '.')
 			.last()
 			.map_or(preceding.len(), |(index, _)| index);
-		Lexer::new(&preceding[run_start..]).last().is_some_and(|token| matches!(token, Token::Float(_)))
+		Lexer::new(&preceding[run_start..]).last().is_some_and(|token| matches!(token, Token::Integer(_) | Token::Float(_)))
 	}
 
 	// A `.`-led literal can't follow an operand (`sqrt(4).5`), which must write its leading zero instead
@@ -284,7 +286,7 @@ impl<'a> Lexer<'a> {
 			.is_some_and(|c| ends_operand(c) || (c == '|' && self.bar_at(preceding.len() - 1) == Some(Bar::Close)))
 	}
 
-	fn lex_number(&mut self) -> Option<f64> {
+	fn lex_number(&mut self) -> Option<Token<'a>> {
 		let start_pos = self.pos;
 		let (int_digits, int_value) = self.consume_digits();
 		let mut got_digit = int_digits > 0;
@@ -315,11 +317,22 @@ impl<'a> Lexer<'a> {
 			return None;
 		}
 
-		// Accumulation is exact up to 15 digits; longer or fractional literals get std's correctly-rounded parsing
+		// A whole number is kept exact while it fits integer storage (18 digits always do), and the accumulation is exact up
+		// to 15 digits; longer whole literals and fractional ones get std's correctly-rounded parsing
+		let literal = &self.input[start_pos..self.pos];
 		if plain_integer && int_digits <= 15 {
-			return Some(int_value);
+			return Some(Token::Integer(int_value as i64));
 		}
-		self.input[start_pos..self.pos].parse::<f64>().ok()
+		if plain_integer && let Ok(integer) = literal.parse::<i64>() {
+			return Some(Token::Integer(integer));
+		}
+
+		// A literal spelled as a real, like `2.0` or `1e3`, still names a whole number, so it takes integer storage while it fits
+		let float = literal.parse::<f64>().ok()?;
+		Some(match Number::real_or_integer(float) {
+			Number::Integer(integer) => Token::Integer(integer),
+			_ => Token::Float(float),
+		})
 	}
 
 	/// Consumes identifier continuation characters: Unicode's `XID_Continue`, which covers letters, digits,
@@ -433,7 +446,7 @@ impl<'a> Lexer<'a> {
 			c if c.is_ascii_digit() || (c == '.' && self.peek().is_some_and(|c| c.is_ascii_digit())) => {
 				self.pos = start;
 				match self.lex_number() {
-					Some(number) => Float(number),
+					Some(number) => number,
 					// Consume the whole malformed numeric run so the error span covers it and lexing makes forward progress
 					None => {
 						self.pos = start;

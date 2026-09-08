@@ -4,6 +4,7 @@ use crate::context::ValueProvider;
 use crate::lexer::{Lexer, Token};
 use crate::value::{Number, Value};
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 
 /// How a lone reducer token combines the items it is applied across.
 #[derive(Clone, Copy)]
@@ -59,48 +60,79 @@ pub fn classify_reducer(source: &str, bindings: impl ValueProvider) -> Option<Re
 impl Reducer {
 	/// Evaluates this reducer across the given items, or `None` for an ill-formed application, like a NaN item, a fold of an
 	/// empty list under an operator with no identity element, or an indeterminate result, since no operation produces NaN.
-	pub fn evaluate(&self, items: &[f64]) -> Option<f64> {
-		if items.iter().any(|item| item.is_nan()) {
+	pub fn evaluate(&self, items: &[Value]) -> Option<Value> {
+		if items.iter().any(|Value::Number(number)| number.is_nan()) {
 			return None;
 		}
-		self.evaluate_unsettled(items).filter(|result| !result.is_nan())
+		let Value::Number(result) = self.evaluate_unsettled(items)?;
+		(!result.is_nan()).then(|| Value::Number(result.canonical()))
 	}
 
-	fn evaluate_unsettled(&self, items: &[f64]) -> Option<f64> {
+	fn evaluate_unsettled(&self, items: &[Value]) -> Option<Value> {
+		// Items take canonical form first, so a fold reads a whole real as the integer its written-out expression would
+		let numbers = items.iter().map(|Value::Number(number)| number.canonical());
 		match self {
 			Reducer::FoldLeft(op) => {
-				let mut iter = items.iter();
-				let Some(&first) = iter.next() else { return op.identity_element() };
-				let folded = iter.try_fold(Number::Real(first), |accumulated, &item| accumulated.binary_op(*op, Number::Real(item)));
-				folded?.as_real()
+				let mut iter = numbers;
+				let Some(first) = iter.next() else { return op.identity_element() };
+				iter.try_fold(first, |accumulated, item| accumulated.binary_op(*op, item)).map(Value::Number)
 			}
 
 			Reducer::FoldRight(op) => {
-				let mut iter = items.iter().rev();
-				let &first = iter.next()?;
-				let folded = iter.try_fold(Number::Real(first), |accumulated, &item| Number::Real(item).binary_op(*op, accumulated));
-				folded?.as_real()
+				let mut iter = numbers.rev();
+				let first = iter.next()?;
+				iter.try_fold(first, |accumulated, item| item.binary_op(*op, accumulated)).map(Value::Number)
 			}
 
 			// A chain over zero or one items is true, since no pair exists to fail the relation
 			Reducer::ChainAdjacent(op) => {
-				let satisfied = items.windows(2).all(|pair| Number::Real(pair[0]).binary_op(*op, Number::Real(pair[1])) == Some(Number::Real(1.)));
-				Some(if satisfied { 1. } else { 0. })
+				let satisfied = items.windows(2).all(|pair| {
+					let (Value::Number(lhs), Value::Number(rhs)) = (pair[0], pair[1]);
+					lhs.binary_op(*op, rhs).and_then(Number::as_bool) == Some(true)
+				});
+				Some(Value::from_bool(satisfied))
 			}
 
-			// Unifying -0 with 0 (NaN is already rejected) gives equal items equal bits, so hashing finds a repeat in O(n)
+			// Canonical form stores each value one way (and NaN is already rejected), so equal items share a key and hashing finds a repeat in O(n)
 			Reducer::ChainDistinct => {
 				let mut seen = HashSet::new();
-				let distinct = items.iter().all(|&item| seen.insert(if item == 0. { 0 } else { item.to_bits() }));
-				Some(if distinct { 1. } else { 0. })
+				let distinct = numbers.map(CanonicalBits::of).all(|key| seen.insert(key));
+				Some(Value::from_bool(distinct))
 			}
 
-			Reducer::Function(function) => {
-				let values: Vec<Value> = items.iter().map(|&item| Value::from_f64(item)).collect();
-				// Canonical like a settled result, so a mean that lands on the real line reads as real
-				let Value::Number(result) = function(&values)?;
-				result.canonical().as_real()
+			Reducer::Function(function) => function(items),
+		}
+	}
+}
+
+/// A canonical number's storage as hashable bits, which equal numbers share.
+#[derive(PartialEq, Eq)]
+enum CanonicalBits {
+	Integer(i64),
+	Real(u64),
+	Complex(u64, u64),
+}
+
+// Hashes the bits alone, leaving equality to tell the variants apart, which spares hashing the variant for every item
+impl Hash for CanonicalBits {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		match *self {
+			CanonicalBits::Integer(integer) => state.write_i64(integer),
+			CanonicalBits::Real(bits) => state.write_u64(bits),
+			CanonicalBits::Complex(real_bits, imaginary_bits) => {
+				state.write_u64(real_bits);
+				state.write_u64(imaginary_bits);
 			}
+		}
+	}
+}
+
+impl CanonicalBits {
+	fn of(canonical: Number) -> Self {
+		match canonical {
+			Number::Integer(integer) => Self::Integer(integer),
+			Number::Real(real) => Self::Real(real.to_bits()),
+			Number::Complex(complex) => Self::Complex(complex.re.to_bits(), complex.im.to_bits()),
 		}
 	}
 }
@@ -110,10 +142,12 @@ mod tests {
 	use super::*;
 	use crate::ast;
 	use crate::context::{EvalContext, NothingMap, ValueMap};
+	use crate::value::Complex;
 	use std::collections::HashMap;
 
 	fn run(source: &str, items: &[f64]) -> Option<f64> {
-		classify_reducer(source, NothingMap).and_then(|reducer| reducer.evaluate(items))
+		let items: Vec<Value> = items.iter().map(|&item| Value::from_f64(item)).collect();
+		classify_reducer(source, NothingMap).and_then(|reducer| reducer.evaluate(&items)).and_then(|value| value.as_real())
 	}
 
 	#[test]
@@ -131,12 +165,12 @@ mod tests {
 	#[test]
 	fn bindings_shadow_reducer_function_names() {
 		// A lone token reduces across the items if it classifies, and otherwise evaluates as an expression over the bindings
-		let evaluate = |source: &str, items: &[f64], bindings: &ValueMap| match classify_reducer(source, bindings) {
-			Some(reducer) => reducer.evaluate(items),
+		let evaluate = |source: &str, items: &[Value], bindings: &ValueMap| match classify_reducer(source, bindings) {
+			Some(reducer) => reducer.evaluate(items)?.as_real(),
 			None => ast::Node::try_parse_from_str(source).ok()?.eval(&EvalContext::new(bindings, NothingMap)).ok()?.as_real(),
 		};
 
-		let items = [5., 2., 8.];
+		let items = [5., 2., 8.].map(Value::from_f64);
 		let unbound = ValueMap::default();
 		let min_bound = ValueMap(HashMap::from([("min".to_string(), Value::from_f64(42.))]));
 
@@ -198,6 +232,28 @@ mod tests {
 		assert_eq!(run("xor", &[1., 1., 1.]), Some(1.));
 		assert_eq!(run("min", &[]), None);
 		assert_eq!(run("count", &[]), Some(0.));
+	}
+
+	#[test]
+	fn integer_items_fold_exactly() {
+		// Integer items accumulate in integer storage, so a sum beyond the reals' 2^53 limit stays exact
+		let items = [Value::from_i64(1 << 53), Value::from_i64(1)];
+		let sum = classify_reducer("+", NothingMap).unwrap().evaluate(&items).unwrap();
+		assert_eq!(sum.as_i64(), Some((1 << 53) + 1));
+
+		// Whole real items do the same, since the written-out expression would read them as integers
+		let items = [Value::from_f64((1_i64 << 53) as f64), Value::from_f64(1.)];
+		let sum = classify_reducer("+", NothingMap).unwrap().evaluate(&items).unwrap();
+		assert_eq!(sum.as_i64(), Some((1 << 53) + 1));
+	}
+
+	#[test]
+	fn distinctness_compares_values_rather_than_storage() {
+		let distinct = |items: &[Value]| classify_reducer("!=", NothingMap).unwrap().evaluate(items).and_then(|value| value.as_bool());
+
+		assert_eq!(distinct(&[Value::from_i64(2), Value::from_f64(2.)]), Some(false));
+		assert_eq!(distinct(&[Value::from_f64(3.), Value::from(Complex::new(3., 0.))]), Some(false));
+		assert_eq!(distinct(&[Value::from_i64(1 << 53), Value::from_i64((1 << 53) + 1)]), Some(true));
 	}
 
 	#[test]

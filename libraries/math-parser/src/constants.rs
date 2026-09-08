@@ -1,23 +1,65 @@
 use crate::ast::BinaryOp;
 use crate::value::{Complex, Number, Value, complex_divide, complex_log_gamma};
 use num_complex::ComplexFloat;
+use std::cmp::Ordering;
 use std::f64::consts::{LN_2, PI, TAU};
 
 pub type BuiltinFunction = fn(&[Value]) -> Option<Value>;
 
-/// The largest magnitude below which every integer is exactly representable in f64.
-const EXACT_INTEGER_LIMIT: f64 = (1_u64 << f64::MANTISSA_DIGITS) as f64;
-
-/// Truncates an operand to a nonnegative integer for `gcd`/`lcm`, or `None` when it is non-finite or beyond f64's exactly-representable integer range.
-fn integer_operand(value: f64) -> Option<u128> {
-	let value = value.trunc();
-	(value.is_finite() && value.abs() <= EXACT_INTEGER_LIMIT).then(|| (value as i64).unsigned_abs() as u128)
+/// Whether the value is a whole real number, which the integer functions require rather than rounding to.
+fn is_whole(value: &Value) -> bool {
+	value.as_real().is_some_and(|real| real.fract() == 0.)
 }
 
-/// Reads a combinatorics count as a whole number from zero up to f64's exactly-representable limit, or `None` for a fractional one rather than rounding it.
+/// Reads an operand's magnitude for `gcd`/`lcm`, or `None` unless it is a whole number within the widest storage.
+fn integer_operand(value: &Value) -> Option<u128> {
+	value.as_i128().filter(|_| is_whole(value)).map(i128::unsigned_abs)
+}
+
+/// Reads a combinatorics count, or `None` unless it is a whole number.
 fn whole_count(value: &Value) -> Option<u64> {
-	let value = value.as_real()?;
-	(value.fract() == 0. && (0. ..=EXACT_INTEGER_LIMIT).contains(&value)).then_some(value as u64)
+	value.as_u64().filter(|_| is_whole(value))
+}
+
+/// Wraps a computed magnitude, which takes the real form only in the one case it exceeds integer storage.
+fn integer_value(magnitude: u128) -> Value {
+	i64::try_from(magnitude).map_or(Value::from_f64(magnitude as f64), Value::from_i64)
+}
+
+/// Reads exactly `N` real arguments, or `None` when the count differs or an argument is not a real number.
+fn reals<const N: usize>(values: &[Value]) -> Option<[f64; N]> {
+	if values.len() != N {
+		return None;
+	}
+
+	let mut reals = [0.; N];
+	for (real, value) in reals.iter_mut().zip(values) {
+		*real = value.as_real()?;
+	}
+	Some(reals)
+}
+
+/// Rounds a real, passing an integer through since it is already whole.
+fn rounding(values: &[Value], function: fn(f64) -> f64) -> Option<Value> {
+	if let [whole @ Value::Number(Number::Integer(_))] = values {
+		return Some(*whole);
+	}
+	let [x] = reals(values)?;
+	Some(Value::from_f64(function(x)))
+}
+
+/// The argument ordered `extreme` of all the others (the earliest among equals), returning that operand itself. A complex argument has no order and errors.
+fn extremum(values: &[Value], extreme: Ordering) -> Option<Value> {
+	let (mut kept, rest) = values.split_first()?;
+	// The first argument meets no comparison of its own, so its order is checked here
+	kept.as_real()?;
+	for candidate in rest {
+		let (Value::Number(kept_number), Value::Number(candidate_number)) = (kept, candidate);
+		if candidate_number.real_ordering(*kept_number)? == extreme {
+			kept = candidate;
+		}
+	}
+	Some(*kept)
 }
 
 /// Accumulates one multiplicative `step` per iteration, stopping once the running product reaches infinity, since it stays there.
@@ -57,18 +99,18 @@ fn scale_of(numbers: impl Iterator<Item = Complex>) -> f64 {
 /// Applies a one-argument function that may climb into the complex plane: a real result that does not exist,
 /// like `sqrt(-4)`, `ln(-1)`, or `asin(2)`, is recomputed as the function's principal complex value.
 fn climbing(values: &[Value], real_function: fn(f64) -> f64, complex_function: fn(Complex) -> Complex) -> Option<Value> {
-	match values {
-		[Value::Number(Number::Real(real))] => {
-			let result = real_function(*real);
+	let [Value::Number(number)] = values else { return None };
+	match number.as_real() {
+		Some(real) => {
+			let result = real_function(real);
 			let result = if result.is_nan() {
-				Value::from(complex_function(Complex::new(*real, 0.)))
+				Value::from(complex_function(Complex::new(real, 0.)))
 			} else {
 				Value::from_f64(result)
 			};
 			Some(result)
 		}
-		[Value::Number(Number::Complex(complex))] => Some(Value::from(complex_function(*complex))),
-		_ => None,
+		None => Some(Value::from(complex_function(number.as_complex()))),
 	}
 }
 
@@ -124,7 +166,7 @@ pub fn gcd(a: u128, b: u128) -> u128 {
 	a
 }
 
-/// Computes the least common multiple of two nonnegative integers. Operands within f64's exact integer range cannot overflow it.
+/// Computes the least common multiple of two nonnegative integers. Operands that fit in i64 cannot overflow it.
 pub fn lcm(a: u128, b: u128) -> u128 {
 	checked_lcm(a, b).unwrap_or_default()
 }
@@ -156,16 +198,41 @@ fn whole_falling_factorial(n: f64, r: u64) -> f64 {
 	bounded_product(0..r, |accumulated, k| accumulated * (n - k as f64))
 }
 
+/// [`whole_binomial`] in integer storage, or `None` once the product outgrows it.
+fn exact_binomial(n: u64, r: u64) -> Option<u128> {
+	if r > n {
+		return Some(0);
+	}
+	let r = r.min(n - r);
+	(1..=r).try_fold(1_u128, |accumulated, k| Some(accumulated.checked_mul((n - r + k) as u128)? / k as u128))
+}
+
+/// [`whole_falling_factorial`] in integer storage, or `None` once the product outgrows it.
+fn exact_falling_factorial(n: u64, r: u64) -> Option<u128> {
+	if r > n {
+		return Some(0);
+	}
+	(0..r).try_fold(1_u128, |accumulated, k| accumulated.checked_mul((n - k) as u128))
+}
+
 /// The falling factorial `x (x - 1) ... (x - r + 1)` over any top, or the binomial coefficient dividing it by `r!`, by direct
 /// product (a negative whole top as `(-1)^r` times that of `|x| + r - 1`), or past a few thousand terms of any other top, the gamma function.
 fn combinatorial(x: Number, r: u64, binomial: bool) -> Value {
 	if let Some(real) = x.as_real()
 		&& (real.fract() == 0. || real.is_infinite())
 	{
-		let sign = if real < 0. && r % 2 == 1 { -1. } else { 1. };
+		let negative = real < 0. && r % 2 == 1;
 		let top = if real < 0. { r as f64 - 1. - real } else { real };
-		let product = if binomial { whole_binomial(top, r) } else { whole_falling_factorial(top, r) };
-		return Value::from_f64(sign * product);
+
+		// Exact while the top fits and the product stays within integer storage, continuing in the reals past either
+		let exact = (top < u64::MAX as f64).then(|| if binomial { exact_binomial(top as u64, r) } else { exact_falling_factorial(top as u64, r) });
+		return match exact.flatten().map(i64::try_from) {
+			Some(Ok(magnitude)) => Value::from_i64(if negative { -magnitude } else { magnitude }),
+			_ => {
+				let product = if binomial { whole_binomial(top, r) } else { whole_falling_factorial(top, r) };
+				Value::from_f64(if negative { -product } else { product })
+			}
+		};
 	}
 
 	// The direct product keeps small cases exact at a step per count, so only a count past a few thousand takes the gamma function
@@ -268,90 +335,71 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		"log" => fixed_arity(|values| match values {
 			[value] => climbing(std::slice::from_ref(value), f64::log10, |z| z.log10()),
 			// Change of base, staying real when it can and climbing into the complex plane when it cannot
-			[Value::Number(Number::Real(x)), Value::Number(Number::Real(base))] => {
-				let log = x.ln() / base.ln();
-				Some(if log.is_nan() {
-					Value::from(Complex::new(*x, 0.).ln() / Complex::new(*base, 0.).ln())
-				} else {
-					Value::from_f64(log)
-				})
-			}
-			[Value::Number(x), Value::Number(base)] => Some(Value::from(x.as_complex().ln() / base.as_complex().ln())),
+			[Value::Number(x), Value::Number(base)] => match (x.as_real(), base.as_real()) {
+				(Some(x), Some(base)) => {
+					let log = x.ln() / base.ln();
+					Some(if log.is_nan() {
+						Value::from(Complex::new(x, 0.).ln() / Complex::new(base, 0.).ln())
+					} else {
+						Value::from_f64(log)
+					})
+				}
+				_ => Some(Value::from(x.as_complex().ln() / base.as_complex().ln())),
+			},
 			_ => None,
 		}),
 
-		"root" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(x)), Value::Number(Number::Real(n))] => {
-				// An odd root of a negative real is real, where `powf` alone would climb to the principal complex root
-				if *x < 0. && n.rem_euclid(2.) == 1. {
-					return Some(Value::from_f64(-(-x).powf(1. / *n)));
-				}
-				let root = x.powf(1. / *n);
-				Some(if root.is_nan() { Value::from(Complex::new(*x, 0.).powf(1. / *n)) } else { Value::from_f64(root) })
-			}
-			[Value::Number(Number::Complex(x)), Value::Number(Number::Real(n))] => Some(Value::from(x.powf(1. / *n))),
+		"root" => fixed_arity(|values| {
+			let [Value::Number(x), Value::Number(n)] = values else { return None };
 			// A complex degree is the general power `x^(1/n)`
-			[Value::Number(x), Value::Number(n)] => Some(Value::from(x.as_complex().powc(n.as_complex().inv()))),
-			_ => None,
+			let Some(n) = n.as_real() else {
+				return Some(Value::from(x.as_complex().powc(n.as_complex().inv())));
+			};
+			match x.as_real() {
+				Some(x) => {
+					// An odd root of a negative real is real, where `powf` alone would climb to the principal complex root
+					if x < 0. && n.rem_euclid(2.) == 1. {
+						return Some(Value::from_f64(-(-x).powf(1. / n)));
+					}
+					let root = x.powf(1. / n);
+					Some(if root.is_nan() { Value::from(Complex::new(x, 0.).powf(1. / n)) } else { Value::from_f64(root) })
+				}
+				None => Some(Value::from(x.as_complex().powf(1. / n))),
+			}
 		}),
 
 		// Geometry Functions
 		// Folding pairwise hypotenuses gives the root of the sum of squares without ever squaring, avoiding overflow
 		"hypot" => variadic(|values| Some(Value::from_f64(real_operands(values)?.fold(0., f64::hypot)))),
 
-		"atan2" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(y)), Value::Number(Number::Real(x))] => Some(Value::Number(Number::Real(y.atan2(*x)))),
-			_ => None,
+		"atan2" => fixed_arity(|values| {
+			let [y, x] = reals(values)?;
+			Some(Value::from_f64(y.atan2(x)))
 		}),
 
 		// Mapping Functions
 		// Each part's absolute value, where `|x|` is instead the one magnitude of the whole value
 		"abs" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.abs()))),
+			[Value::Number(Number::Integer(integer))] => Some(integer.checked_abs().map_or(Value::from_f64((*integer as f64).abs()), Value::from_i64)),
+			[Value::Number(Number::Real(real))] => Some(Value::from_f64(real.abs())),
 			[Value::Number(Number::Complex(complex))] => Some(Value::from(Complex::new(complex.re.abs(), complex.im.abs()))),
 			_ => None,
 		}),
 
-		"floor" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.floor()))),
-			_ => None,
-		}),
+		"floor" => fixed_arity(|values| rounding(values, f64::floor)),
+		"ceil" => fixed_arity(|values| rounding(values, f64::ceil)),
+		"round" => fixed_arity(|values| rounding(values, f64::round)),
 
-		"ceil" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.ceil()))),
-			_ => None,
-		}),
-
-		"round" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.round()))),
-			_ => None,
-		}),
-
-		"clamp" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(x)), Value::Number(Number::Real(min)), Value::Number(Number::Real(max))] => Some(Value::Number(Number::Real(x.clamp(*min, *max)))),
-			_ => None,
+		"clamp" => fixed_arity(|values| {
+			let [Value::Number(x), Value::Number(min), Value::Number(max)] = values else { return None };
+			// The bounds apply in turn, so the upper one wins where they cross
+			let at_least = if min.real_ordering(*x)? == Ordering::Greater { min } else { x };
+			Some(Value::Number(if max.real_ordering(*at_least)? == Ordering::Less { *max } else { *at_least }))
 		}),
 
 		// Variadic across one or more real arguments
-		"min" => variadic(|values| {
-			let [Value::Number(Number::Real(first)), rest @ ..] = values else { return None };
-			let mut min = *first;
-			for value in rest {
-				let Value::Number(Number::Real(real)) = value else { return None };
-				min = min.min(*real);
-			}
-			Some(Value::Number(Number::Real(min)))
-		}),
-
-		"max" => variadic(|values| {
-			let [Value::Number(Number::Real(first)), rest @ ..] = values else { return None };
-			let mut max = *first;
-			for value in rest {
-				let Value::Number(Number::Real(real)) = value else { return None };
-				max = max.max(*real);
-			}
-			Some(Value::Number(Number::Real(max)))
-		}),
+		"min" => variadic(|values| extremum(values, Ordering::Less)),
+		"max" => variadic(|values| extremum(values, Ordering::Greater)),
 
 		// Statistics across one or more arguments, with the median and mode over real ones since they need an order
 		// TODO: Offer `avg` and `average` as autocomplete aliases in the expression widget, resolving to `mean`
@@ -443,79 +491,74 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			mode.map(Value::from_f64)
 		}),
 
-		"count" => variadic(|values| Some(Value::from_f64(values.len() as f64))),
+		"count" => variadic(|values| Some(Value::from_i64(values.len() as i64))),
 
 		// Variadic parity across logical operands, which must each be exactly 0 or 1
 		"xor" => variadic(|values| {
 			let mut parity = false;
 			for value in values {
-				let Value::Number(Number::Real(real)) = value else { return None };
-				if *real == 1. {
-					parity = !parity;
-				} else if *real != 0. {
-					return None;
-				}
+				parity ^= value.as_bool()?;
 			}
-			Some(Value::from_f64(parity as u8 as f64))
+			Some(Value::from_bool(parity))
 		}),
 
-		"lerp" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b)), Value::Number(Number::Real(t))] => Some(Value::from_f64(lerp(*a, *b, *t))),
-			_ => None,
+		"lerp" => fixed_arity(|values| {
+			let [a, b, t] = reals(values)?;
+			Some(Value::from_f64(lerp(a, b, t)))
 		}),
 
-		"remap" => fixed_arity(|values| match values {
-			[
-				Value::Number(Number::Real(value)),
-				Value::Number(Number::Real(in_a)),
-				Value::Number(Number::Real(in_b)),
-				Value::Number(Number::Real(out_a)),
-				Value::Number(Number::Real(out_b)),
-			] => Some(Value::from_f64(lerp(*out_a, *out_b, inverse_lerp(*value, *in_a, *in_b)))),
-			_ => None,
+		"remap" => fixed_arity(|values| {
+			let [value, in_a, in_b, out_a, out_b] = reals(values)?;
+			Some(Value::from_f64(lerp(out_a, out_b, inverse_lerp(value, in_a, in_b))))
 		}),
 
-		"trunc" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.trunc()))),
-			_ => None,
+		"trunc" => fixed_arity(|values| rounding(values, f64::trunc)),
+
+		"fract" => fixed_arity(|values| {
+			let [x] = reals(values)?;
+			Some(Value::from_f64(x.fract()))
 		}),
 
-		"fract" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.fract()))),
-			_ => None,
+		"sign" => fixed_arity(|values| {
+			let [x] = reals(values)?;
+			Some(Value::from_i64(if x > 0. {
+				1
+			} else if x < 0. {
+				-1
+			} else {
+				0
+			}))
 		}),
 
-		"sign" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(real))] => {
-				let s = if *real > 0. {
-					1.
-				} else if *real < 0. {
-					-1.
-				} else {
-					0.
-				};
-				Some(Value::Number(Number::Real(s)))
+		"mod" => fixed_arity(|values| {
+			// Integers stay exact, reaching the reals only for a zero modulus or `i64::MIN` modulo `-1`
+			if let [Value::Number(Number::Integer(x)), Value::Number(Number::Integer(modulus))] = values
+				&& let Some(remainder) = x.checked_rem(*modulus)
+			{
+				return Some(Value::from_i64(if remainder != 0 && (remainder < 0) != (*modulus < 0) { remainder + modulus } else { remainder }));
 			}
-			_ => None,
+
+			let [x, modulus] = reals(values)?;
+			// Floored, so a truncated remainder with the opposite sign from the modulus moves over by one modulus
+			let remainder = x % modulus;
+			Some(Value::from_f64(if remainder != 0. && (remainder < 0.) != (modulus < 0.) { remainder + modulus } else { remainder }))
 		}),
 
-		"mod" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(x)), Value::Number(Number::Real(modulus))] => {
-				// Floored, so a truncated remainder with the opposite sign from the modulus moves over by one modulus
-				let remainder = x % modulus;
-				Some(Value::from_f64(if remainder != 0. && (remainder < 0.) != (*modulus < 0.) { remainder + modulus } else { remainder }))
-			}
-			_ => None,
-		}),
-
+		// Integer functions, exact throughout integer storage
 		"gcd" => variadic(|values| {
-			let reduced = real_operands(values)?.try_fold(0_u128, |accumulated, real| Some(gcd(accumulated, integer_operand(real)?)))?;
-			Some(Value::from_f64(reduced as f64))
+			if values.is_empty() {
+				return None;
+			}
+			let reduced = values.iter().try_fold(0_u128, |accumulated, value| Some(gcd(accumulated, integer_operand(value)?)))?;
+			Some(integer_value(reduced))
 		}),
 
 		"lcm" => variadic(|values| {
-			let reduced = real_operands(values)?.try_fold(1_u128, |accumulated, real| checked_lcm(accumulated, integer_operand(real)?))?;
-			Some(Value::from_f64(reduced as f64))
+			if values.is_empty() {
+				return None;
+			}
+			let reduced = values.iter().try_fold(1_u128, |accumulated, value| checked_lcm(accumulated, integer_operand(value)?))?;
+			Some(integer_value(reduced))
 		}),
 
 		// Combinatorics over any top and a whole count: `choose(x, r)` is the binomial coefficient and `pick(x, r)` the falling factorial
@@ -530,10 +573,12 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		}),
 
 		// The conjugate negates the imaginary part
-		"conj" => fixed_arity(|values| match values {
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.conj()))),
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(*real))),
-			_ => None,
+		"conj" => fixed_arity(|values| {
+			let [Value::Number(number)] = values else { return None };
+			Some(Value::Number(match number {
+				Number::Complex(complex) => Number::Complex(complex.conj()),
+				real => *real,
+			}))
 		}),
 
 		_ => return None,

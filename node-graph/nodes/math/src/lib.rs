@@ -61,14 +61,15 @@ fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> 
 
 /// Converts a node item type to and from the values the expression evaluator runs in.
 trait ExpressionValue: Copy + Default {
-	fn into_f64(self) -> f64;
+	/// Binds this value into the expression language, exactly for an integer.
+	fn into_value(self) -> Value;
 	/// Reads an evaluated result as this type, or `None` when it does not fit, like a complex number read as a Number.
 	fn from_value(value: &Value) -> Option<Self>;
 }
 
 impl ExpressionValue for f64 {
-	fn into_f64(self) -> f64 {
-		self
+	fn into_value(self) -> Value {
+		Value::from_f64(self)
 	}
 	fn from_value(value: &Value) -> Option<Self> {
 		value.as_real()
@@ -89,19 +90,19 @@ fn output<T: ExpressionValue>(result: Option<Value>) -> T {
 }
 
 impl ExpressionValue for i64 {
-	fn into_f64(self) -> f64 {
-		self as f64
+	fn into_value(self) -> Value {
+		Value::from_i64(self)
 	}
 
-	// Evaluation happens in real numbers, so the result snaps to the nearest whole number (the graph's one Number to Integer rule)
+	// A fractional result snaps to the nearest whole number (the graph's one Number to Integer rule)
 	fn from_value(value: &Value) -> Option<Self> {
 		value.as_i64()
 	}
 }
 
 impl ExpressionValue for bool {
-	fn into_f64(self) -> f64 {
-		self as u8 as f64
+	fn into_value(self) -> Value {
+		Value::from_bool(self)
 	}
 
 	// A truth value is exactly 0 or 1 in the expression language, so any other result does not fit
@@ -112,13 +113,13 @@ impl ExpressionValue for bool {
 
 /// Supplies the value of `x` for the "Math f(x)" node's expression.
 struct SingleVariableMathContext {
-	x: f64,
+	x: Value,
 }
 
 impl ValueProvider for SingleVariableMathContext {
 	fn get_value(&self, name: &str) -> Option<Value> {
 		// Bound by exact spelling, per the language's rule that a binding shadows the builtin of exactly its spelling
-		(name == "x").then(|| Value::from_f64(self.x))
+		(name == "x").then_some(self.x)
 	}
 }
 
@@ -147,7 +148,7 @@ fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 
 	let (value, attributes) = value.into_parts();
 
-	let x = value.into_f64();
+	let x = value.into_value();
 	let result = output(parsed.parse(fx.element()).and_then(|expression| evaluate_expression(&expression, SingleVariableMathContext { x })));
 
 	Item::from_parts(result, attributes)
@@ -155,7 +156,7 @@ fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 
 /// Binds the items of the "Math f(…)" node's list to the positional variables `a`, `b`, `c`, and so on.
 struct PositionalMathContext {
-	items: Vec<f64>,
+	items: Vec<Value>,
 }
 
 impl ValueProvider for PositionalMathContext {
@@ -170,9 +171,9 @@ impl ValueProvider for PositionalMathContext {
 		// as `\e` and `\i`; an unwired letter reads as its default of 0, except that a constant's letter stays the constant
 		let index = (letter as u8 - b'a') as usize;
 		match self.items.get(index) {
-			Some(item) => Some(Value::from_f64(*item)),
+			Some(item) => Some(*item),
 			None if Constant::from_name(name).is_some() => None,
-			None => Some(Value::from_f64(0.)),
+			None => Some(Value::from_i64(0)),
 		}
 	}
 }
@@ -200,7 +201,7 @@ fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	let _ = output_type;
 
 	let expression = f.element();
-	let items: Vec<f64> = values.iter_element_values().map(|&value| value.into_f64()).collect();
+	let items: Vec<Value> = values.iter_element_values().map(|&value| value.into_value()).collect();
 	let bindings = PositionalMathContext { items };
 
 	// A lone operator or variadic function name applies across all items rather than parsing as an expression
@@ -209,7 +210,7 @@ fn math_f<T: ExpressionValue, U: ExpressionValue>(
 			warn!("The `{expression}` reducer cannot be applied to {} items", bindings.items.len());
 			return Item::new_from_element(U::default());
 		};
-		return Item::new_from_element(output(Some(Value::from_f64(result))));
+		return Item::new_from_element(output(Some(result)));
 	}
 
 	let result = output(parsed.parse(expression).and_then(|expression| evaluate_expression(&expression, bindings)));
