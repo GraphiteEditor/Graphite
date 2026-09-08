@@ -1,4 +1,7 @@
-use crate::renderer::{RenderParams, format_transform_matrix, gradient_placement, transform_is_invertible};
+use crate::renderer::{
+	ClearGuardPlacement, ItemRef, RenderParams, composite_paint_colors, faded_paint_color, format_transform_matrix, gradient_placement, gradient_settings_from_item, spread_adjusted_samples,
+	transform_is_invertible,
+};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::Color;
 use core_types::attribute::Transform;
@@ -7,12 +10,12 @@ use core_types::list::List;
 use core_types::uuid::generate_uuid;
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
-use graphic_types::vector_types::gradient::GradientType;
-use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
+use graphic_types::vector_types::gradient::GradientForm;
+use graphic_types::vector_types::markers::{GradientForm as GradientFormAttr, GradientSpread as GradientSpreadAttr};
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
-use vector_types::GradientStops;
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::Gradient;
+use vector_types::gradient::GradientSpread;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -76,17 +79,106 @@ impl RenderExt for List<Color> {
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
-		_render_params: &RenderParams,
+		render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
 		render_color_paint(self, target)
 	}
 }
 
-impl RenderExt for List<GradientStops> {
-	type Output = u64;
+/// Adds one gradient item's def into `svg_defs` and returns the gradient ID, or `None` when the item is absent.
+/// `for_mask` keeps the fill opacity at full, as [`ItemRef::paint_opacity`] explains.
+fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2, for_mask: bool) -> Option<u64> {
+	let mut stop = String::new();
 
-	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
+	let item = item?;
+	let stops = item.element()?;
+	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let local_gradient_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let settings = gradient_settings_from_item(item);
+
+	let (mut samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
+
+	let paint_opacity = item.paint_opacity(for_mask);
+	if paint_opacity < 1. {
+		for (_, color, _) in &mut samples {
+			*color = color.with_alpha(color.a() * paint_opacity);
+		}
+	}
+
+	for (position, color, original_midpoint) in samples {
+		stop.push_str("<stop");
+		if position != 0. {
+			let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
+		}
+		let _ = write!(stop, r##" stop-color="#{}""##, SRGBA8::from(color).to_rgb_hex());
+		if color.a() < 1. {
+			let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
+		}
+		if let Some(midpoint) = original_midpoint {
+			let _ = write!(stop, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
+		}
+		stop.push_str(" />")
+	}
+
+	// A gradient with no stops paints as solid black, matching `Gradient::evaluate` (a stopless def would otherwise render as no paint per the SVG spec)
+	if stop.is_empty() {
+		stop.push_str(r##"<stop stop-color="#000000""##);
+		if paint_opacity < 1. {
+			let _ = write!(stop, r#" stop-opacity="{}""#, (paint_opacity * 1000.).round() / 1000.);
+		}
+		stop.push_str(" />");
+	}
+
+	// Need to cancel out the element's transform as it is already applied to the path itself.
+	let element_transform_inverse = if transform_is_invertible(element_transform) {
+		element_transform.inverse()
+	} else {
+		DAffine2::IDENTITY
+	};
+
+	let document_transform = item_transform * local_gradient_transform;
+
+	let placement = gradient_placement(document_transform, gradient_form);
+	let gradient_transform = format_transform_matrix(element_transform_inverse * placement);
+	let gradient_transform = if gradient_transform.is_empty() {
+		String::new()
+	} else {
+		format!(r#" gradientTransform="{gradient_transform}""#)
+	};
+
+	let gradient_spread = if matches!(settings.spread, GradientSpread::Pad | GradientSpread::Clear) {
+		String::new()
+	} else {
+		format!(r#" spreadMethod="{}""#, settings.spread.svg_name())
+	};
+
+	let gradient_id = generate_uuid();
+
+	match gradient_form {
+		GradientForm::Linear => {
+			let _ = write!(
+				svg_defs,
+				r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread}{gradient_transform}>{}</linearGradient>"#,
+				gradient_id, stop
+			);
+		}
+		GradientForm::Radial => {
+			let _ = write!(
+				svg_defs,
+				r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread}{gradient_transform}>{}</radialGradient>"#,
+				gradient_id, stop
+			);
+		}
+	}
+
+	Some(gradient_id)
+}
+
+impl RenderExt for List<Gradient> {
+	type Output = Option<u64>;
+
+	/// Adds the gradient def through mutating the first argument, returning the gradient ID, or `None` when the list is empty.
 	fn render(
 		&self,
 		svg_defs: &mut String,
@@ -94,7 +186,7 @@ impl RenderExt for List<GradientStops> {
 		element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
-		_render_params: &RenderParams,
+		render_params: &RenderParams,
 		_target: PaintTarget,
 	) -> Self::Output {
 		render_gradient_paint(self, svg_defs, item_transform, element_transform)
@@ -103,14 +195,14 @@ impl RenderExt for List<GradientStops> {
 
 /// Adds the gradient def through mutating `svg_defs`, returning the gradient
 /// ID, over any gradient lane source.
-pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientStops>>(source: &S, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> u64 {
+pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = Gradient>>(source: &S, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> u64 {
 	let mut stop = String::new();
 
 	{
 		let Some(stops) = source.element(0) else { return 0 };
-		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(0);
+		let gradient_type: GradientForm = source.attr::<GradientFormAttr>(0);
 		let local_gradient_transform: DAffine2 = source.attr::<Transform>(0);
-		let spread_method: GradientSpreadMethod = source.attr::<SpreadMethod>(0);
+		let spread_method: GradientSpread = source.attr::<GradientSpreadAttr>(0);
 
 		for (position, color, original_midpoint) in stops.interpolated_samples() {
 			stop.push_str("<stop");
@@ -144,7 +236,7 @@ pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientS
 			format!(r#" gradientTransform="{gradient_transform}""#)
 		};
 
-		let spread_method = if spread_method == GradientSpreadMethod::Pad {
+		let spread_method = if spread_method == GradientSpread::Pad {
 			String::new()
 		} else {
 			format!(r#" spreadMethod="{}""#, spread_method.svg_name())
@@ -153,14 +245,14 @@ pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientS
 		let gradient_id = generate_uuid();
 
 		match gradient_type {
-			GradientType::Linear => {
+			GradientForm::Linear => {
 				let _ = write!(
 					svg_defs,
 					r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method}{gradient_transform}>{}</linearGradient>"#,
 					gradient_id, stop
 				);
 			}
-			GradientType::Radial => {
+			GradientForm::Radial => {
 				let _ = write!(
 					svg_defs,
 					r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method}{gradient_transform}>{}</radialGradient>"#,
@@ -176,7 +268,7 @@ pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientS
 impl RenderExt for Stroke {
 	type Output = String;
 
-	/// Provide the shape-related SVG attributes for the stroke. The paint-related attributes for the stroke are generated from `List<Graphic>.render` with `PaintTarget::Stroke`.
+	/// Provide the shape-related SVG attributes for the stroke. The paint-related attributes for the stroke are generated from `Graphic::render` with `PaintTarget::Stroke`.
 	fn render(
 		&self,
 		_svg_defs: &mut String,
@@ -202,7 +294,6 @@ impl RenderExt for Stroke {
 		let stroke_join = (self.join != StrokeJoin::Miter).then_some(self.join);
 		let stroke_join_miter_limit = (self.join_miter_limit != 4.).then_some(self.join_miter_limit);
 		let stroke_align = (self.align != StrokeAlign::Center).then_some(self.align);
-		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || render_params.override_paint_order).then_some(PaintOrder::StrokeBelow);
 
 		// Render the needed stroke attributes
 		let mut attributes = String::new();
@@ -227,7 +318,7 @@ impl RenderExt for Stroke {
 		if let Some(stroke_join_miter_limit) = stroke_join_miter_limit {
 			let _ = write!(&mut attributes, r#" stroke-miterlimit="{stroke_join_miter_limit}""#);
 		}
-		if paint_order.is_some() {
+		if render_params.stroke_below {
 			let _ = write!(&mut attributes, r#" style="paint-order: stroke;" "#);
 		}
 		attributes
@@ -247,7 +338,6 @@ impl RenderExt for List<Graphic<'_>> {
 		render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
-		let fill_graphic = self.element(0);
 		let paint_attr = target.paint_attr();
 
 		match fill_graphic {
@@ -256,7 +346,7 @@ impl RenderExt for List<Graphic<'_>> {
 				let gradient_id = render_gradient_paint(&core_types::lane::LeafLane::new(self, 0, gradient), svg_defs, item_transform, element_transform);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
-			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) | Some(Graphic::Group(_)) => {
+			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::GraphicList(_)) | Some(Graphic::Text(_)) | Some(Graphic::Group(_)) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };
@@ -271,14 +361,13 @@ impl RenderExt for List<Graphic<'_>> {
 					.map(|id| format!(r##" {paint_attr}="url(#{id})""##))
 					.unwrap_or_else(|| format!(r#" {paint_attr}="none""#))
 			}
-			None => format!(r#" {paint_attr}="none""#),
 		}
 	}
 }
 
-/// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic list as the paint content, and returns the pattern ID.
+/// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic as the paint content, and returns the pattern ID.
 /// Currently, this function is only used for clipping-based filling and stroking, not considering tiling yet.
-fn render_svg_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, stroke_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
+fn render_svg_pattern(svg_defs: &mut String, paint: &Graphic, stroke_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
 	let min = bounds.transform_point2(DVec2::ZERO);
 	let max = bounds.transform_point2(DVec2::ONE);
 	let size = max - min;
@@ -288,7 +377,7 @@ fn render_svg_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, 
 
 	// Render the pattern content recursively
 	let mut content = SvgRender::new();
-	fill_graphic_list.render_svg(&mut content, &render_params.for_pattern());
+	paint.render_svg(&mut content, &render_params.for_pattern());
 
 	// Unwrap the inner def element
 	write!(svg_defs, "{}", content.svg_defs).unwrap();

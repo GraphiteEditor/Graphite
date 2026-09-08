@@ -37,8 +37,7 @@ pub enum PathStep {
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VectorTableTab {
 	#[default]
-	Properties,
 	Points,
 	Segments,
-	Regions,
+	Handles,
 }

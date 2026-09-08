@@ -1,6 +1,7 @@
 use crate::list::{Attribute, AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
+use crate::math::float_noise::round_away_float_noise;
 use crate::transform::Footprint;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHash;
 
 /// The [`Convert`] trait allows for conversion between Rust primitive numeric types.
@@ -17,11 +18,26 @@ pub trait ConvertAsync<T, C>: Sized {
 	fn convert(self, footprint: Footprint, converter: C) -> crate::runtime::SourceFuture<T>;
 }
 
-impl<T: ToString + Send> Convert<String, ()> for T {
-	/// Converts this type into a `String` using its `ToString` implementation.
+/// Implements the [`Convert`] trait for formatting a type into a `String` via [`ToString`].
+macro_rules! impl_convert_to_string {
+	($($from:ty),* $(,)?) => {
+		$(
+			impl Convert<String, ()> for $from {
+				#[inline]
+				fn convert(self, _: Footprint, _converter: ()) -> String {
+					self.to_string()
+				}
+			}
+		)*
+	};
+}
+impl_convert_to_string!(f32, u32, u64, i32, i64, bool, DVec2, DAffine2);
+
+// Denoised so 0.1 + 0.2 reaches the string as "0.3" rather than "0.30000000000000004"
+impl Convert<String, ()> for f64 {
 	#[inline]
 	fn convert(self, _: Footprint, _converter: ()) -> String {
-		self.to_string()
+		round_away_float_noise(self).to_string()
 	}
 }
 
@@ -77,8 +93,7 @@ impl Convert<DVec2, ()> for DVec2 {
 }
 
 /// Constructs `Self` from a single anchor point at the given position. Implemented by the vector crate's
-/// path type so the `Convert` impl below can build a single-point path without core-types depending on
-/// that crate (mirroring how [`ListConvert`] bridges per-item list conversions).
+/// path type so a position wire can convert to a single-point path without core-types depending on that crate.
 pub trait FromAnchorPosition {
 	fn from_anchor_position(position: DVec2) -> Self;
 }

@@ -1,6 +1,6 @@
 use crate::application::Editor;
-use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
-use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
+use crate::messages::input_mapper::utility_types::keyboard::ModifierKeys;
+use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
@@ -9,8 +9,6 @@ use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::{DVec2, UVec2};
-use graph_craft::document::DocumentNode;
-use graphene_std::InputAccessor;
 use graphene_std::raster::color::Color;
 use graphene_std::uuid::NodeId;
 
@@ -98,6 +96,10 @@ impl EditorTestUtils {
 			panic!("Failed to evaluate graph: {e}");
 		}
 
+		// Sweep the network interface's structural invariants so any desync fails at the message that caused it
+		let violations = self.active_document().network_interface.validate_invariants();
+		assert!(violations.is_empty(), "Network interface invariant violations:\n{}", violations.join("\n"));
+
 		frontend_messages_from_msg
 	}
 
@@ -124,7 +126,7 @@ impl EditorTestUtils {
 		self.move_mouse(position.x, position.y, modifier_keys, MouseKeys::empty()).await;
 
 		self.mousedown(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: position,
 				mouse_keys: button,
 				..Default::default()
@@ -134,7 +136,7 @@ impl EditorTestUtils {
 		.await;
 
 		self.mouseup(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: position,
 				..Default::default()
 			},
@@ -153,10 +155,10 @@ impl EditorTestUtils {
 		self.move_mouse(x2, y2, modifier_keys, MouseKeys::LEFT).await;
 
 		self.mouseup(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: (x2, y2).into(),
 				mouse_keys: MouseKeys::empty(),
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys,
 		)
@@ -173,10 +175,10 @@ impl EditorTestUtils {
 		self.move_mouse(100., 100., ModifierKeys::default(), MouseKeys::LEFT).await;
 
 		self.mousedown(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: (100., 100.).into(),
 				mouse_keys: MouseKeys::LEFT | MouseKeys::RIGHT,
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			ModifierKeys::default(),
 		)
@@ -191,17 +193,8 @@ impl EditorTestUtils {
 		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap()
 	}
 
-	pub fn get_node<'a, T: InputAccessor<'a, DocumentNode>>(&'a self) -> impl Iterator<Item = T> + 'a {
-		self.active_document()
-			.network_interface
-			.document_network()
-			.recursive_nodes()
-			.inspect(|(_, node, _)| println!("{:#?}", node.implementation))
-			.filter_map(move |(_, document, _)| T::new_with_source(document))
-	}
-
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
-		let editor_mouse_state = EditorMouseState {
+		let editor_mouse_state = EditorPointerState {
 			editor_position: ViewportPosition::new(x, y),
 			mouse_keys,
 			..Default::default()
@@ -209,11 +202,11 @@ impl EditorTestUtils {
 		self.input(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys }).await;
 	}
 
-	pub async fn mousedown(&mut self, editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys) {
+	pub async fn mousedown(&mut self, editor_mouse_state: EditorPointerState, modifier_keys: ModifierKeys) {
 		self.input(InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys }).await;
 	}
 
-	pub async fn mouseup(&mut self, editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys) {
+	pub async fn mouseup(&mut self, editor_mouse_state: EditorPointerState, modifier_keys: ModifierKeys) {
 		self.handle_message(InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys }).await;
 	}
 
@@ -226,10 +219,10 @@ impl EditorTestUtils {
 
 	pub async fn left_mousedown(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys) {
 		self.mousedown(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: (x, y).into(),
 				mouse_keys: MouseKeys::LEFT,
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys,
 		)
@@ -238,10 +231,10 @@ impl EditorTestUtils {
 
 	pub async fn left_mouseup(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys) {
 		self.mouseup(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: (x, y).into(),
 				mouse_keys: MouseKeys::empty(),
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys,
 		)
@@ -294,10 +287,10 @@ impl EditorTestUtils {
 
 	pub async fn double_click(&mut self, position: DVec2) {
 		self.handle_message(InputPreprocessorMessage::DoubleClick {
-			editor_mouse_state: EditorMouseState {
+			editor_mouse_state: EditorPointerState {
 				editor_position: position,
 				mouse_keys: MouseKeys::LEFT,
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys: ModifierKeys::empty(),
 		})
@@ -318,10 +311,10 @@ impl EditorTestUtils {
 		}
 
 		self.mouseup(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: points[points.len() - 1],
 				mouse_keys: MouseKeys::empty(),
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys,
 		)
@@ -341,11 +334,19 @@ impl EditorTestUtils {
 	}
 
 	pub async fn create_node_by_name(&mut self, node_type: DefinitionIdentifier) -> NodeId {
+		self.create_node(node_type, None).await
+	}
+
+	pub async fn create_node_by_name_at(&mut self, node_type: DefinitionIdentifier, x: i32, y: i32) -> NodeId {
+		self.create_node(node_type, Some((x, y))).await
+	}
+
+	async fn create_node(&mut self, node_type: DefinitionIdentifier, xy: Option<(i32, i32)>) -> NodeId {
 		let node_id = NodeId::new();
 		self.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(node_id),
 			node_type,
-			xy: None,
+			xy,
 			add_transaction: true,
 		})
 		.await;
@@ -372,8 +373,8 @@ pub mod test_prelude {
 	pub use crate::application::Editor;
 	pub use crate::float_eq;
 	pub use crate::messages::clipboard::utility_types::ClipboardContentRaw;
-	pub use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
-	pub use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+	pub use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
+	pub use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
 	pub use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	pub use crate::messages::prelude::*;
@@ -386,7 +387,6 @@ pub mod test_prelude {
 	pub use graph_craft::document::DocumentNode;
 	pub use graphene_std::raster::{Color, Image};
 	pub use graphene_std::transform::Footprint;
-	pub use graphene_std::{InputAccessor, InputAccessorSource};
 
 	#[macro_export]
 	macro_rules! float_eq {

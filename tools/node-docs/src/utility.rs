@@ -7,19 +7,22 @@ pub fn category_description(category: &str) -> &str {
 	match category {
 		"Animation" => indoc!(
 			"
-			Nodes in this category enable the creation of animated, real-time, and interactive motion graphics involving paramters that change over time.
+			Nodes in this category enable the creation of animated, real-time, and interactive motion graphics involving parameters that change over time.
 
 			These nodes require that playback is activated by pressing the play button above the viewport.
 			"
 		),
+		"Attributes: Read" => "Nodes in this category read the values of a named attribute stored on the items of a list, outputting them as a new list of the requested data type.",
+		"Attributes: Write" => "Nodes in this category store a named attribute on the items of a list, with a value that is calculated individually for each item.",
 		"Blending" => "Nodes in this category control how overlapping graphical content is composited together, considering blend modes, opacity, and clipping.",
-		"Color" => "Nodes in this category deal with selecting and manipulating colors, gradients, and palettes.",
+		"Color" => "Nodes in this category deal with selecting and manipulating colors and palettes.",
 		"Debug" => indoc!(
 			"
 			Nodes in this category are temporarily included for debugging purposes by Graphite's developers. They may have rare potential uses for advanced users, but are not intended for general use and will be removed in future releases.
 			"
 		),
 		"General" => "Nodes in this category deal with general data handling, such as merging and flattening graphical elements.",
+		"Gradient" => "Nodes in this category build gradients and adjust the placement of their color stops, as well as the shape and repetition of the transition between them.",
 		"Context" => "Nodes in this category read data from the evaluation context supplied by downstream nodes, such as the current loop iteration index.",
 		"Repeat" => "Nodes in this category enable the duplication, arrangement, and looped generation of graphical elements.",
 		"Math: Arithmetic" => "Nodes in this category perform common arithmetic operations on numerical values (and where applicable, `vec2` values).",
@@ -27,8 +30,9 @@ pub fn category_description(category: &str) -> &str {
 		"Math: Numeric" => "Nodes in this category perform discontinuous numeric operations such as rounding, clamping, mapping, and randomization.",
 		"Math: Transform" => "Nodes in this category perform transformations on graphical elements and calculations involving transformation matrices.",
 		"Math: Trig" => "Nodes in this category perform trigonometric operations such as sine, cosine, tangent, and their inverses.",
-		"Math: Vector" => "Nodes in this category perform operations involving `vec2` values (points or arrows in 2D space) such as the dot product, normalization, and distance calculations.",
+		"Math: Vec2" => "Nodes in this category perform operations involving `vec2` values (points or arrows in 2D space) such as the dot product, normalization, and distance calculations.",
 		"Raster: Adjustment" => "Nodes in this category perform per-pixel color adjustments on raster graphics, such as brightness and contrast modifications.",
+		"Raster: Brush" => "Nodes in this category paint raster imagery from the strokes drawn with the Brush tool, controlling the size, hardness, flow, and color of the marks they leave behind.",
 		"Raster: Channels" => "Nodes in this category enable channel-specific manipulation of the RGB and alpha channels of raster graphics.",
 		"Raster: Filter" => "Nodes in this category apply filtering effects to raster graphics such as blurs and sharpening.",
 		"Raster: Pattern" => "Nodes in this category generate procedural raster patterns, fractals, textures, and noise.",
@@ -36,6 +40,7 @@ pub fn category_description(category: &str) -> &str {
 		"Text" => "Nodes in this category support the manipulation, formatting, and rendering of text strings.",
 		"Text: Regex" => "Nodes in this category perform string operations involving regular expressions, such as pattern matching and replacement.",
 		"Text: JSON" => "Nodes in this category perform string operations involving JSON data, such as parsing and stringifying.",
+		"Type Assertion" => "Nodes in this category assert that a value is of a specific data type, which may be used to invoke automatic conversions to the desired type.",
 		"Value" => "Nodes in this category supply data values of common types such as numbers, colors, booleans, and strings.",
 		"Vector: Measure" => "Nodes in this category perform measurements and analysis on vector graphics, such as length/area calculations, path traversal, and hit testing.",
 		"Vector: Modifier" => "Nodes in this category modify the geometry of vector graphics, such as boolean operations, smoothing, and morphing.",

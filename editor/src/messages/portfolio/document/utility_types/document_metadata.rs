@@ -9,10 +9,10 @@ use graph_craft::document::NodeId;
 use graphene_std::Graphic;
 use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
-use graphene_std::subpath;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::Vector;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
-use graphene_std::vector::{PointId, Vector};
+use kurbo::{Affine, BezPath};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 use std::sync::Arc;
@@ -193,11 +193,13 @@ impl DocumentMetadata {
 		self.visual_targets(layer)?
 			.iter()
 			.filter_map(|click_target| match click_target.target_type() {
-				ClickTargetType::Subpath(subpath) => subpath.loose_bounding_box_with_transform(transform),
-				ClickTargetType::CompoundPath(subpaths) => subpaths
-					.iter()
-					.filter_map(|subpath| subpath.loose_bounding_box_with_transform(transform))
-					.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)]),
+				ClickTargetType::Path(path) => {
+					let mut transformed = path.clone();
+					transformed.apply_affine(Affine::new(transform.to_cols_array()));
+
+					let control_box = transformed.control_box();
+					(!transformed.is_empty()).then(|| [DVec2::new(control_box.min_x(), control_box.min_y()), DVec2::new(control_box.max_x(), control_box.max_y())])
+				}
 				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
 			})
 			.reduce(Quad::combine_bounds)
@@ -233,10 +235,15 @@ impl DocumentMetadata {
 	/// stroke geometry when the layer is a vector with a stroke style. Falls back to the click-target-based
 	/// bounds for non-vector layers (groups, raster, text, color, gradient).
 	pub fn bounding_box_document_with_stroke(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
-		if let Some(vector) = self.layer_vector_data.get(&layer)
-			&& let Some(bounds) = vector.stroke_inclusive_bounding_box_with_transform(self.transform_to_document(layer))
-		{
-			return Some(bounds);
+		if let Some(vector) = self.layer_vector_data.get(&layer) {
+			let stroke = self
+				.layer_appearance_attributes
+				.get(&layer)
+				.and_then(|appearance| appearance.first_coverage_of(graphene_std::Cover::Stroke))
+				.map(graphene_std::Coverage::stroke_params);
+			if let Some(bounds) = vector.stroke_inclusive_bounding_box_with_transform(self.transform_to_document(layer), stroke.as_ref()) {
+				return Some(bounds);
+			}
 		}
 		self.bounding_box_document(layer)
 	}
@@ -251,11 +258,10 @@ impl DocumentMetadata {
 		self.all_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
 	}
 
-	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &subpath::Subpath<PointId>> {
-		self.visual_targets(layer).unwrap_or(&[]).iter().flat_map(|target| match target.target_type() {
-			ClickTargetType::Subpath(subpath) => std::slice::from_ref(subpath),
-			ClickTargetType::CompoundPath(subpaths) => subpaths.as_slice(),
-			ClickTargetType::FreePoint(_) => &[],
+	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &BezPath> {
+		self.visual_targets(layer).unwrap_or(&[]).iter().filter_map(|target| match target.target_type() {
+			ClickTargetType::Path(path) => Some(path),
+			ClickTargetType::FreePoint(_) => None,
 		})
 	}
 

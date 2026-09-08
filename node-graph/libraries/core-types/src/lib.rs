@@ -13,6 +13,7 @@ pub mod math;
 pub mod memo;
 pub mod misc;
 pub mod node;
+pub mod none;
 pub mod ops;
 pub mod record;
 pub mod registry;
@@ -31,8 +32,9 @@ pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
 pub use graphene_hash;
 pub use graphene_hash::CacheHash;
 pub use list::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_TEXT_FRAME, ATTR_END, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT,
-	ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_NAME, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_START, ATTR_TRANSFORM, ATTR_TYPE,
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_TEXT_FRAME, ATTR_END, ATTR_FONT_SIZE, ATTR_GRADIENT_CYCLIC,
+	ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION,
+	ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_NAME, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_START, ATTR_TRANSFORM, ATTR_TYPE,
 };
 pub use memo::MemoHash;
 pub use no_std_types::AsU32;
@@ -69,4 +71,24 @@ pub trait NodeInputDecleration {
 	const INDEX: usize;
 	fn identifier() -> ProtoNodeIdentifier;
 	type Result;
+}
+
+/// Master spells this trait `NodeParameter`; our node macro emits `NodeInputDecleration`.
+pub use NodeInputDecleration as NodeParameter;
+
+/// A runtime reference to one parameter of one proto node, for heterogeneous tables and runtime-chosen parameters.
+/// Convert a symbol with `.into()`; unlike a raw index, the node identifier and index always stay paired.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ParameterRef {
+	pub node_identifier: ProtoNodeIdentifier,
+	pub input_index: usize,
+}
+
+impl<P: NodeParameter> From<P> for ParameterRef {
+	fn from(_: P) -> Self {
+		ParameterRef {
+			node_identifier: P::identifier(),
+			input_index: P::INDEX,
+		}
+	}
 }

@@ -1,5 +1,5 @@
 use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, SLOWING_DIVISOR};
-use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
+use crate::messages::input_mapper::utility_types::pointer::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::transformation::{Axis, 
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
 use crate::messages::tool::tool_messages::select_tool;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
@@ -161,7 +162,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				let selected_segments = shape_editor.selected_segments().collect::<HashSet<_>>();
 				let mut affected_points = shape_editor.selected_points().copied().collect::<Vec<_>>();
 
-				for (segment_id, _, start, end) in vector.segment_bezier_iter() {
+				for (segment_id, _, start, end) in vector.segment_iter() {
 					if selected_segments.contains(&segment_id) {
 						affected_points.push(ManipulatorPointId::Anchor(start));
 						affected_points.push(ManipulatorPointId::Anchor(end));
@@ -217,7 +218,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 				let format_rounded = |value: f64, precision: usize| {
 					if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
-						format!("{value:.precision$}").trim_end_matches('0').trim_end_matches('.').to_string()
+						format_rounded(value, precision)
 					} else {
 						self.typing.string.clone()
 					}
@@ -583,7 +584,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {
-				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
+				let target_layers = document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
 			TransformLayerMessage::TypeBackspace => {

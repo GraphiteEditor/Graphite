@@ -12,10 +12,10 @@ use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster::Image;
-use graphene_std::subpath::BezierHandles;
-use graphene_std::vector::misc::HandleId;
+use graphene_std::vector::misc::{BezierHandles, HandleId, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 use graphite_proc_macros::{ExtractField, message_handler_data};
+use kurbo::ParamCurve;
 use std::sync::Arc;
 
 const CLIPBOARD_PREFIX: &str = "graphite: ";
@@ -182,13 +182,8 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				let mut resource_ids = HashSet::new();
 				for item in &items {
 					match item {
-						ClipboardItem::Layer(entry) => entry
-							.nodes
-							.iter()
-							.for_each(|(_, template)| network_interface::collect_node_resources(&template.document_node, &mut resource_ids)),
-						ClipboardItem::Nodes(nodes) => nodes
-							.iter()
-							.for_each(|(_, template)| network_interface::collect_node_resources(&template.document_node, &mut resource_ids)),
+						ClipboardItem::Layer(entry) => entry.nodes.iter().for_each(|(_, template)| network_interface::collect_template_resources(template, &mut resource_ids)),
+						ClipboardItem::Nodes(nodes) => nodes.iter().for_each(|(_, template)| network_interface::collect_template_resources(template, &mut resource_ids)),
 						ClipboardItem::Vector(_) | ClipboardItem::Resource(_) => {}
 					}
 				}
@@ -252,9 +247,20 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				let mut vectors = Vec::new();
 				let mut resources = Vec::new();
 				for item in items {
+					// Pasted templates skip document migration, so stored types normalize here
 					match item {
-						ClipboardItem::Layer(entry) => layers.push(entry),
-						ClipboardItem::Nodes(nodes) => node_groups.push(nodes),
+						ClipboardItem::Layer(mut entry) => {
+							for (_, template) in &mut entry.nodes {
+								template.normalize_stored_types();
+							}
+							layers.push(entry);
+						}
+						ClipboardItem::Nodes(mut nodes) => {
+							for (_, template) in &mut nodes {
+								template.normalize_stored_types();
+							}
+							node_groups.push(nodes);
+						}
 						ClipboardItem::Vector(vector) => vectors.push(vector),
 						ClipboardItem::Resource(resource) => resources.push(resource),
 					}
@@ -419,7 +425,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 
 						// Create new segment ids and add the segments into the existing Vector path
 						let mut segments_map = HashMap::new();
-						for (segment_id, bezier, start, end) in new_vector.segment_bezier_iter() {
+						for (segment_id, segment, start, end) in new_vector.segment_iter() {
 							let (Some(&start_point), Some(&end_point)) = (points_map.get(&start), points_map.get(&end)) else {
 								warn!("Skipping pasted vector segment with an unknown endpoint");
 								continue;
@@ -428,10 +434,12 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 							let new_segment_id = SegmentId::generate();
 							segments_map.insert(segment_id, new_segment_id);
 
-							let handles = match bezier.handles {
+							let segment_start = point_to_dvec2(segment.start());
+							let segment_end = point_to_dvec2(segment.end());
+							let handles = match segment_to_handles(&segment) {
 								BezierHandles::Linear => [None, None],
-								BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
-								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
+								BezierHandles::Quadratic { handle } => [Some(handle - segment_start), None],
+								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - segment_start), Some(handle_end - segment_end)],
 							};
 
 							let points = [start_point, end_point];

@@ -3,6 +3,7 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "/src/managers/input";
+	import { roundAwayFloatNoise } from "/src/utility-functions/numbers";
 	import { browserVersion } from "/src/utility-functions/platform";
 	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -213,9 +214,19 @@
 	function displayText(displayValue: number | undefined, unit: string): string {
 		if (displayValue === undefined) return "-";
 
-		const roundingPower = 10 ** Math.max(displayDecimalPlaces, 0);
+		const decimalPlaces = Math.max(displayDecimalPlaces, 0);
+		const roundingPower = 10 ** decimalPlaces;
 
-		const unitlessDisplayValue = Math.round(displayValue * roundingPower) / roundingPower;
+		// Values within floating point noise of zero (including -0) display as unsigned zero, unless the field's decimal precision is fine enough to display them
+		const effectiveValue = Math.abs(displayValue) < Math.min(1e-12, 0.5 / roundingPower) ? 0 : roundAwayFloatNoise(displayValue);
+		const unitlessDisplayValue = Math.round(effectiveValue * roundingPower) / roundingPower;
+
+		// Trailing zeros are trimmed only when the display is exact, so a truncated value keeps its decimal places (like "0.00" or "3.10") to indicate the truncation
+		if (unitlessDisplayValue !== effectiveValue) {
+			const sign = unitlessDisplayValue === 0 && effectiveValue < 0 ? "-" : "";
+			return `${sign}${unitlessDisplayValue.toFixed(decimalPlaces)}${unPluralize(unit, displayValue)}`;
+		}
+
 		return `${unitlessDisplayValue}${unPluralize(unit, displayValue)}`;
 	}
 
@@ -230,9 +241,8 @@
 	// ===========================
 
 	function onTextFocused() {
-		// The degree of precision allowed in the number that's shown when editing the number field, where additional precision is removed to round out floating point errors.
-		const MAX_PRECISION = 12;
-		const noFloatingImprecisionValue = value === undefined ? undefined : Number(value.toPrecision(MAX_PRECISION));
+		// The number shown when editing the field, with floating point imprecision noise removed
+		const noFloatingImprecisionValue = value === undefined ? undefined : roundAwayFloatNoise(value);
 
 		if (value === undefined) text = "";
 		else if (unitIsHiddenWhenEditing) text = `${noFloatingImprecisionValue}`;
@@ -854,7 +864,7 @@
 				padding: calc(var(--widget-height) / 2 - var(--arrow-radius)) 0;
 				border: none;
 				border-radius: 2px;
-				background: rgba(var(--color-1-nearblack-rgb), 0.5);
+				background: rgb(from var(--color-1-nearblack) r g b / 0.5);
 				// An outline can appear when pressing the arrow button with left click then hitting Escape, so this stops that from showing
 				outline: none;
 				// TODO: This is a quick, imperfect way to make the arrow buttons appear like they're behind the text (without messing with the element click targets if we used z-index).
@@ -929,7 +939,6 @@
 				height: 100%;
 				padding: 0;
 				margin: 0;
-				-webkit-appearance: none; // Required until Safari 15.4 (Graphite supports 15.0+)
 				appearance: none;
 				background: none;
 				cursor: default;
@@ -954,7 +963,6 @@
 
 				// Chromium and Safari
 				&::-webkit-slider-thumb {
-					-webkit-appearance: none; // Required until Safari 15.4 (Graphite supports 15.0+)
 					appearance: none;
 					border-radius: 2px;
 					width: 4px;

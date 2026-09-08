@@ -10,7 +10,7 @@ use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::GraphError;
 use core_types::gpoll::Interrupt;
 use core_types::gpoll::{Extent, GPoll};
-use core_types::list::{Item, ItemAttributeValues, List};
+use core_types::list::{ATTR_ALIGN, ATTR_CAP, ATTR_DASH_OFFSET, ATTR_DASH_PATTERN, ATTR_JOIN, ATTR_JOIN_MITER_LIMIT, ATTR_WEIGHT, Item, ItemAttributeValues, List};
 use core_types::node::Lane;
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::Transform;
@@ -26,21 +26,23 @@ use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
+use vector_types::GradientForm;
+use vector_types::GradientSpread;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
-use vector_types::subpath::{BezierHandles, ManipulatorGroup};
-use vector_types::vector::PointDomain;
-use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
+use vector_types::markers::{ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPREAD};
+use vector_types::vector::algorithms::bezpath_algorithms::{
+	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
+};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
+use vector_types::vector::algorithms::offset_bezpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use vector_types::vector::misc::{
-	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
-	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
+	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, ManipulatorGroup, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,
+	bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
-use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
-use vector_types::{GradientSpreadMethod, GradientType};
+use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::{PointDomain, PointId, SegmentDomain, SegmentId, VectorExt};
 
 /// The standard row attributes a per-lane re-emission carries from its
 /// materialized source lane, parked for the fresh output row.
@@ -55,7 +57,7 @@ fn carried_lane_attrs<'e>(arena: &'e core_types::arena::Arena, lane: core_types:
 
 /// The gradient color for one assign-colors position, replaying the
 /// randomized draws up to it.
-fn assign_color_at(gradient: &GradientStops, position: usize, length: usize, randomize: bool, seed: SeedValue, repeat_every: u32) -> Color {
+fn assign_color_at(gradient: &Gradient, position: usize, length: usize, randomize: bool, seed: SeedValue, repeat_every: u32) -> Color {
 	let factor = match randomize {
 		true => {
 			let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
@@ -71,7 +73,45 @@ fn assign_color_at(gradient: &GradientStops, position: usize, length: usize, ran
 			_ => position as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
 		},
 	};
-	gradient.evaluate(factor)
+	// The factor spans 0..=1, so the spread stays Pad rather than wrapping the last element onto the first stop
+	let settings = GradientSettings {
+		spread: Default::default(),
+		..GradientSettings::from(gradient)
+	};
+	gradient.evaluate(factor, settings)
+}
+
+/// Paint order has no census name upstream, since master expresses it as `Appearance` list order instead.
+const ATTR_PAINT_ORDER: &str = "paint_order";
+
+/// `Vector::stroke` is gone upstream. In our paint model a lane's stroke is the `ATTR_STROKE`
+/// `List<Graphic>`, so the stroke's GEOMETRY parameters ride that list's own attribute columns, on the
+/// same names master's `Coverage` uses (`ATTR_TRANSFORM` among them, for the stroke authoring space).
+/// Master carries the same parameters on an `Appearance` coverage instead; only the carrier differs.
+fn set_stroke_params(paint: &mut List<Graphic>, stroke: &Stroke) {
+	paint.set_attribute(ATTR_WEIGHT, 0, stroke.weight);
+	paint.set_attribute(ATTR_DASH_PATTERN, 0, DashPattern::from(stroke.dash_lengths.clone()));
+	paint.set_attribute(ATTR_DASH_OFFSET, 0, stroke.dash_offset);
+	paint.set_attribute(ATTR_CAP, 0, stroke.cap);
+	paint.set_attribute(ATTR_JOIN, 0, stroke.join);
+	paint.set_attribute(ATTR_JOIN_MITER_LIMIT, 0, stroke.join_miter_limit);
+	paint.set_attribute(ATTR_ALIGN, 0, stroke.align);
+	paint.set_attribute(ATTR_TRANSFORM, 0, stroke.transform);
+}
+
+/// The stroke parameters carried by a stroke paint list, each absent column falling back to its default.
+fn stroke_params(paint: &List<Graphic>) -> Stroke {
+	let defaults = Stroke::default();
+	Stroke {
+		weight: paint.attribute_cloned_or(ATTR_WEIGHT, 0, defaults.weight),
+		dash_lengths: paint.attribute::<DashPattern>(ATTR_DASH_PATTERN, 0).map(DashPattern::clamped_lengths).unwrap_or_default(),
+		dash_offset: paint.attribute_cloned_or(ATTR_DASH_OFFSET, 0, defaults.dash_offset),
+		cap: paint.attribute_cloned_or(ATTR_CAP, 0, defaults.cap),
+		join: paint.attribute_cloned_or(ATTR_JOIN, 0, defaults.join),
+		join_miter_limit: paint.attribute_cloned_or(ATTR_JOIN_MITER_LIMIT, 0, defaults.join_miter_limit),
+		align: paint.attribute_cloned_or(ATTR_ALIGN, 0, defaults.align),
+		transform: paint.attribute_cloned_or(ATTR_TRANSFORM, 0, defaults.transform),
+	}
 }
 
 /// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
@@ -87,8 +127,9 @@ fn assign_colors<'e>(
 	/// Whether to style the stroke.
 	stroke: bool,
 	/// The range of colors to select from.
+	#[default(Color::BLACK, Color::WHITE)]
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
-	gradient: IList<GradientStops>,
+	gradient: IList<Gradient>,
 	/// Whether to reverse the gradient.
 	reverse: bool,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
@@ -119,7 +160,7 @@ fn assign_colors<'e>(
 	let reversed;
 	let gradient_element = match reverse {
 		true => {
-			reversed = gradient_element.reversed();
+			reversed = gradient_element.reversed(GradientSettings::from(gradient_element).cyclic);
 			&reversed
 		}
 		false => gradient_element,
@@ -133,7 +174,7 @@ fn assign_colors<'e>(
 		true => Some(parked),
 		false => existing_fill,
 	};
-	let stroke_attr = match stroke && element.stroke.is_some() {
+	let stroke_attr = match stroke && existing_stroke.is_some() {
 		true => Some(parked),
 		false => existing_stroke,
 	};
@@ -145,7 +186,7 @@ fn assign_colors_extent(
 	content: ListIn<'_, Vector>,
 	_fill: ValueIn<'_, bool>,
 	_stroke: ValueIn<'_, bool>,
-	_gradient: ListIn<'_, GradientStops>,
+	_gradient: ListIn<'_, Gradient>,
 	_reverse: ValueIn<'_, bool>,
 	_randomize: ValueIn<'_, bool>,
 	_seed: ValueIn<'_, SeedValue>,
@@ -168,7 +209,7 @@ fn assign_colors_graphic<'e>(
 	#[data] lane_offsets: std::sync::Arc<std::sync::Mutex<Option<LaneOffsets>>>,
 	#[default(true)] fill: bool,
 	stroke: bool,
-	gradient: IList<GradientStops>,
+	gradient: IList<Gradient>,
 	reverse: bool,
 	randomize: bool,
 	seed: SeedValue,
@@ -188,7 +229,7 @@ fn assign_colors_graphic<'e>(
 	let reversed;
 	let gradient_element = match reverse {
 		true => {
-			reversed = gradient_element.reversed();
+			reversed = gradient_element.reversed(GradientSettings::from(gradient_element).cyclic);
 			&reversed
 		}
 		false => gradient_element,
@@ -225,10 +266,12 @@ fn assign_colors_graphic<'e>(
 		Graphic::Group(group) if group.row.is_none() => graphic_types::graphic::run_to_list::<Vector>(&group.content),
 		_ => None,
 	};
+	// A stroke to recolor is stroke paint on the row, or on the lane it cascades from
+	let lane_has_stroke = content.lane(lane).attr::<StrokeAttr>().is_some_and(is_paint_present);
 	let element = match rows {
 		Some(mut rows) => {
 			for row in 0..rows.len() {
-				let has_stroke = rows.element(row).is_some_and(|vector| vector.stroke.is_some());
+				let has_stroke = lane_has_stroke || has_paint::<StrokeAttr, _>(&rows, row);
 				let color = assign_color_at(gradient_element, position + row, length, randomize, seed, repeat_every);
 				let paint = List::new_from_element(color).into_graphic_list();
 				if fill {
@@ -261,7 +304,7 @@ fn assign_colors_graphic_extent(
 	content: ListIn<'_, Graphic>,
 	_fill: ValueIn<'_, bool>,
 	_stroke: ValueIn<'_, bool>,
-	_gradient: ListIn<'_, GradientStops>,
+	_gradient: ListIn<'_, Gradient>,
 	_reverse: ValueIn<'_, bool>,
 	_randomize: ValueIn<'_, bool>,
 	_seed: ValueIn<'_, SeedValue>,
@@ -288,19 +331,19 @@ fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic<'stat
 
 /// The gradient defaulting the legacy fill performed, applied to the nested
 /// stops list the paint table wraps.
-fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: Option<DAffine2>) {
-	let has_type = paint.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_some();
-	let has_spread = paint.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_some();
+fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>, gradient_form: GradientForm, gradient_spread: GradientSpread, transform: Option<DAffine2>) {
+	let has_form = paint.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_some();
+	let has_spread = paint.iter_attribute_values::<GradientSpread>(ATTR_GRADIENT_SPREAD).is_some();
 	let has_transform = paint.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_some();
 	for index in 0..paint.len() {
 		if !matches!(paint.element(index), Some(Graphic::Gradient(_))) {
 			continue;
 		}
-		if !has_type {
-			paint.set_attribute(ATTR_GRADIENT_TYPE, index, gradient_type);
+		if !has_form {
+			paint.set_attribute(ATTR_GRADIENT_FORM, index, gradient_form);
 		}
 		if !has_spread {
-			paint.set_attribute(ATTR_SPREAD_METHOD, index, spread_method);
+			paint.set_attribute(ATTR_GRADIENT_SPREAD, index, gradient_spread);
 		}
 		if !has_transform {
 			let transform = transform.unwrap_or_else(|| {
@@ -334,15 +377,15 @@ fn fill<'e>(
 	(element, _content_fill): (Vector, Attr<Fill>),
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
-	fill: IList<Graphic<'static>>,
+	paint: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
-	_backup_gradient: IList<GradientStops>,
-	_gradient_type: GradientType,
-	_spread_method: GradientSpreadMethod,
+	_backup_gradient: IList<Gradient>,
+	_gradient_form: GradientForm,
+	_gradient_spread: GradientSpread,
 	_transform: Option<DAffine2>,
 ) -> Result<(Vector, Attr<'e, Fill>), Interrupt> {
-	let mut paint = paint_table(fill);
-	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _spread_method, _transform);
+	let mut paint = paint_table(paint);
+	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_form, _gradient_spread, _transform);
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
@@ -354,19 +397,19 @@ fn fill<'e>(
 fn fill_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	(element, _content_fill): (Graphic<'static>, Attr<Fill>),
-	#[default(Color::BLACK)] fill: IList<Graphic<'static>>,
+	#[default(Color::BLACK)] paint: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
-	_backup_gradient: IList<GradientStops>,
-	_gradient_type: GradientType,
-	_spread_method: GradientSpreadMethod,
+	_backup_gradient: IList<Gradient>,
+	_gradient_form: GradientForm,
+	_gradient_spread: GradientSpread,
 	_transform: Option<DAffine2>,
 ) -> Result<(Graphic<'static>, Attr<'e, Fill>), Interrupt> {
 	let bounds = match BoundingBox::bounding_box(&element, DAffine2::IDENTITY, false) {
 		RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		_ => None,
 	};
-	let mut paint = paint_table(fill);
-	default_gradient_paint(&mut paint, bounds, _gradient_type, _spread_method, _transform);
+	let mut paint = paint_table(paint);
+	default_gradient_paint(&mut paint, bounds, _gradient_form, _gradient_spread, _transform);
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
@@ -395,49 +438,29 @@ fn stroke<'e>(
 	miter_limit: f64,
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
 	paint_order: PaintOrder,
-	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	dash_lengths: IList<f64>,
+	/// The stroke dash pattern. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
+	dash_pattern: DashPattern,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
 ) -> Result<(Vector, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
-	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
 	let mut stroke = Stroke {
 		weight,
-		dash_lengths,
+		dash_lengths: dash_pattern.clamped_lengths(),
 		dash_offset,
 		cap,
 		join,
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
-		paint_order,
 	};
 	stroke.transform *= *content_transform;
 
-	let mut element = element;
-	element.stroke = Some(stroke);
-
-	let paint = paint_table(paint);
+	let mut paint = paint_table(paint);
+	set_stroke_params(&mut paint, &stroke);
+	paint.set_attribute(ATTR_PAINT_ORDER, 0, paint_order);
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(*content_transform), Attr(Some(parked))))
-}
-
-/// The vector items of a graphic lane's interior, one wrap level deep, the
-/// reach of the pre-flip broadcast over a legacy list.
-fn for_each_interior_vector_mut(element: &mut Graphic, mut f: impl FnMut(&mut Vector, DAffine2)) {
-	match element {
-		Graphic::Vector(vector) => f(vector, DAffine2::IDENTITY),
-		Graphic::Graphic(children) => {
-			for index in 0..children.len() {
-				let transform: DAffine2 = children.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-				if let Some(Graphic::Vector(vector)) = children.element_mut(index) {
-					f(vector, transform);
-				}
-			}
-		}
-		_ => {}
-	}
 }
 
 /// The stroke over graphic lanes: the style applies to the interior vectors,
@@ -456,30 +479,24 @@ fn stroke_graphic_leveled<'e>(
 	join: StrokeJoin,
 	#[default(4.)] miter_limit: f64,
 	paint_order: PaintOrder,
-	dash_lengths: IList<f64>,
+	dash_pattern: DashPattern,
 	#[unit(" px")] dash_offset: f64,
 ) -> Result<(Graphic<'static>, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
-	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
-	let stroke = Stroke {
+	let mut stroke = Stroke {
 		weight,
-		dash_lengths,
+		dash_lengths: dash_pattern.clamped_lengths(),
 		dash_offset,
 		cap,
 		join,
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
-		paint_order,
 	};
+	stroke.transform *= *content_transform;
 
-	let mut element = element;
-	for_each_interior_vector_mut(&mut element, |vector, transform| {
-		let mut stroke = stroke.clone();
-		stroke.transform *= transform;
-		vector.stroke = Some(stroke);
-	});
-
-	let paint = paint_table(paint);
+	let mut paint = paint_table(paint);
+	set_stroke_params(&mut paint, &stroke);
+	paint.set_attribute(ATTR_PAINT_ORDER, 0, paint_order);
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(*content_transform), Attr(Some(parked))))
 }
@@ -622,10 +639,7 @@ fn round_corners(
 	// Convert 0-100 to 0-0.5
 	let edge_length_limit = edge_length_limit * 0.005;
 
-	let mut result = Vector {
-		stroke: source.stroke.clone(),
-		..Default::default()
-	};
+	let mut result = Vector::default();
 
 	// Grab the initial point ID as a stable starting point
 	let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
@@ -722,21 +736,10 @@ pub fn merge_by_distance(
 pub mod extrude_algorithms {
 	use glam::DVec2;
 	use kurbo::{ParamCurve, ParamCurveDeriv};
-	use vector_types::subpath::BezierHandles;
-	use vector_types::vector::StrokeId;
+	use vector_types::vector::misc::BezierHandles;
 	use vector_types::vector::misc::ExtrudeJoiningAlgorithm;
 
-	/// Convert [`vector_types::subpath::Bezier`] to [`kurbo::PathSeg`].
-	fn bezier_to_path_seg(bezier: vector_types::subpath::Bezier) -> kurbo::PathSeg {
-		let [start, end] = [(bezier.start().x, bezier.start().y), (bezier.end().x, bezier.end().y)];
-		match bezier.handles {
-			BezierHandles::Linear => kurbo::Line::new(start, end).into(),
-			BezierHandles::Quadratic { handle } => kurbo::QuadBez::new(start, (handle.x, handle.y), end).into(),
-			BezierHandles::Cubic { handle_start, handle_end } => kurbo::CubicBez::new(start, (handle_start.x, handle_start.y), (handle_end.x, handle_end.y), end).into(),
-		}
-	}
-
-	/// Convert [`kurbo::CubicBez`] to [`vector_types::subpath::BezierHandles`].
+	/// Convert [`kurbo::CubicBez`] to [`vector_types::vector::misc::BezierHandles`].
 	fn cubic_to_handles(cubic_bez: kurbo::CubicBez) -> BezierHandles {
 		BezierHandles::Cubic {
 			handle_start: DVec2::new(cubic_bez.p1.x, cubic_bez.p1.y),
@@ -766,9 +769,9 @@ pub mod extrude_algorithms {
 		let mut next_segment = vector.segment_domain.next_id();
 
 		for segment_index in 0..segment_count {
-			let (_, _, bezier) = vector.segment_points_from_index(segment_index);
+			let (_, _, segment) = vector.segment_points_from_index(segment_index);
 			let mut start_index = vector.segment_domain.start_point()[segment_index];
-			let pathseg = bezier_to_path_seg(bezier).to_cubic();
+			let pathseg = segment.to_cubic();
 			let mut start_t = 0.;
 
 			for split_t in find_splits(pathseg, direction) {
@@ -779,7 +782,7 @@ pub mod extrude_algorithms {
 
 				let middle_point_index = vector.point_domain.len();
 				vector.point_domain.push(middle_point, DVec2::new(first.end().x, first.end().y));
-				vector.segment_domain.push(start_segment, start_index, middle_point_index, first_handles, StrokeId::ZERO);
+				vector.segment_domain.push(start_segment, start_index, middle_point_index, first_handles);
 				vector.segment_domain.set_start_point(segment_index, middle_point_index);
 				vector.segment_domain.set_handles(segment_index, second_handles);
 
@@ -805,7 +808,6 @@ pub mod extrude_algorithms {
 				vector.segment_domain.start_point()[index] + points_count,
 				vector.segment_domain.end_point()[index] + points_count,
 				vector.segment_domain.handles()[index].apply_transformation(|x| x + direction),
-				vector.segment_domain.stroke()[index],
 			);
 		}
 	}
@@ -856,9 +858,7 @@ pub mod extrude_algorithms {
 				continue;
 			}
 
-			vector
-				.segment_domain
-				.push(next_segment.next_id(), index, index + first_half_points, BezierHandles::Linear, StrokeId::ZERO);
+			vector.segment_domain.push(next_segment.next_id(), index, index + first_half_points, BezierHandles::Linear);
 		}
 	}
 
@@ -867,7 +867,7 @@ pub mod extrude_algorithms {
 		let mut next_segment = vector.segment_domain.next_id();
 		let first_half = vector.point_domain.len() / 2;
 		for index in 0..first_half {
-			vector.segment_domain.push(next_segment.next_id(), index, index + first_half, BezierHandles::Linear, StrokeId::ZERO);
+			vector.segment_domain.push(next_segment.next_id(), index, index + first_half, BezierHandles::Linear);
 		}
 	}
 
@@ -983,8 +983,6 @@ fn box_warp(_: impl Ctx, (vector, transform): (Vector, Attr<TransformAttr>), #[e
 			bilinear_interpolate(t, &dst_corners)
 		});
 	}
-
-	result.set_stroke_transform(DAffine2::IDENTITY);
 
 	// Reset the transform since we've applied it directly to the points
 	(result, Attr(DAffine2::IDENTITY))
@@ -1131,25 +1129,24 @@ fn auto_tangents(
 ) -> (Vector, Attr<TransformAttr>) {
 	let transform: DAffine2 = *lane_transform;
 
-	let mut result = Vector {
-		stroke: source.stroke.clone(),
-		..Default::default()
-	};
+	let mut result = Vector::default();
 
-	for mut subpath in source.stroke_bezier_paths() {
-		subpath.apply_transform(transform);
+	for (mut manipulators_list, is_closed) in source.stroke_manipulator_groups() {
+		for manipulators in &mut manipulators_list {
+			manipulators.apply_transform(transform);
+		}
 
-		let manipulators_list = subpath.manipulator_groups();
 		if manipulators_list.len() < 2 {
 			// Not enough points for softening or handle removal
-			result.append_subpath(subpath, true);
+			let mut bezpath = bezpath_from_manipulator_groups(&manipulators_list, is_closed);
+			bezpath.apply_affine(Affine::new(transform.inverse().to_cols_array()));
+			result.append_bezpath(bezpath);
 			continue;
 		}
 
 		let mut new_manipulators_list = Vec::with_capacity(manipulators_list.len());
 		// Track which manipulator indices were given auto-tangent (colinear) handles
 		let mut auto_tangented = vec![false; manipulators_list.len()];
-		let is_closed = subpath.closed();
 
 		for i in 0..manipulators_list.len() {
 			let current = &manipulators_list[i];
@@ -1266,19 +1263,14 @@ fn auto_tangents(
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 fn bounding_box(_: impl Ctx, vector: Vector) -> Vector {
-	let mut result = vector
+	vector
 		.bounding_box_rect()
 		.map(|bbox| {
 			let mut vector = Vector::default();
 			vector.append_bezpath(bbox.to_path(DEFAULT_ACCURACY));
 			vector
 		})
-		.unwrap_or_default();
-
-	result.stroke = vector.stroke.clone();
-	result.set_stroke_transform(DAffine2::IDENTITY);
-
-	result
+		.unwrap_or_default()
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
@@ -1296,7 +1288,7 @@ fn as_vector(_: impl Ctx, value: Vector) -> Vector {
 	value
 }
 
-/// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
+/// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
 fn points_to_polyline(_: impl Ctx, mut points: Vector, #[default(true)] closed: bool) -> Vector {
 	let mut segment_domain = SegmentDomain::new();
@@ -1306,15 +1298,11 @@ fn points_to_polyline(_: impl Ctx, mut points: Vector, #[default(true)] closed: 
 
 	if points_count >= 2 {
 		(0..points_count - 1).for_each(|i| {
-			segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
+			segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear);
 		});
 
 		if closed && points_count != 2 {
-			segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
-
-			points
-				.region_domain
-				.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap(), FillId::generate());
+			segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear);
 		}
 	}
 
@@ -1323,17 +1311,153 @@ fn points_to_polyline(_: impl Ctx, mut points: Vector, #[default(true)] closed: 
 	points
 }
 
+/// Evens out the distances between points by applying Lloyd's relaxation, moving every interior point toward the center of its Voronoi cell.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+fn relax_points(
+	_: impl Ctx,
+	/// A vector path or point cloud to relax.
+	mut source: Vector,
+	/// The number of relaxation steps to apply. A fractional value runs the whole steps and then blends partway toward one more step, so the amount of relaxation can be animated smoothly.
+	#[default(1.)]
+	#[hard(0..1000)]
+	iterations: f64,
+) -> Vector {
+	let relaxed = crate::voronoi::relax_sites(source.point_domain.positions(), iterations);
+	for ((_, position), new_position) in source.point_domain.positions_mut().zip(relaxed) {
+		*position = new_position;
+	}
+
+	source
+}
+
+/// Builds a Voronoi diagram from the anchor points. Each point claims the region of space closest to it, and those regions tessellate the plane. Cells around the outside are clipped to the convex hull of the points so the diagram stays finite.
+///
+/// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh.
+#[node_macro::node(category("Vector"), path(core_types::vector))]
+fn voronoi_cells(_: impl Ctx, mut source: Vector, connect_cells: bool) -> Vector {
+	let sites = source.point_domain.positions().to_vec();
+	let cells = crate::voronoi::voronoi_cells(&sites);
+	if !cells.is_empty() {
+		replace_with_polygons(&mut source, cells, connect_cells);
+	}
+
+	source
+}
+
+/// Builds a Delaunay triangulation connecting the anchor points. It is the geometric dual of the **Voronoi** node: a mesh of triangles in which no point lies inside any triangle's circumscribed circle.
+///
+/// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh.
+#[node_macro::node(category("Vector"), path(core_types::vector))]
+fn triangulate(_: impl Ctx, mut source: Vector, connect_cells: bool) -> Vector {
+	let sites = source.point_domain.positions().to_vec();
+	let triangles = crate::voronoi::delaunay_triangles(&sites);
+	if !triangles.is_empty() {
+		// `delaunator` emits triangle vertices clockwise; reverse to `[a, c, b]` so triangles wind counter-clockwise to
+		// match the Voronoi cells and the rest of the framework's fill winding.
+		let polygons = triangles.iter().map(|&[a, b, c]| vec![sites[a], sites[c], sites[b]]).collect();
+		replace_with_polygons(&mut source, polygons, connect_cells);
+	}
+
+	source
+}
+
+/// Replaces a vector's geometry (points and segments) with the given closed polygons, preserving its style.
+///
+/// Without `connect_cells`, each polygon becomes its own closed subpath.
+/// With it, coincident vertices are welded and each shared edge is emitted once, producing a connected mesh.
+pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2>>, connect_cells: bool) {
+	let mut point_domain = PointDomain::new();
+	let mut segment_domain = SegmentDomain::new();
+	let mut next_point = PointId::ZERO;
+	let mut next_segment = SegmentId::ZERO;
+
+	if !connect_cells {
+		for polygon in &polygons {
+			if polygon.len() < 3 {
+				continue;
+			}
+
+			let base = point_domain.ids().len();
+			for &position in polygon {
+				point_domain.push(next_point.next_id(), position);
+			}
+
+			let count = polygon.len();
+			for i in 0..count {
+				let start = base + i;
+				let end = base + (i + 1) % count;
+				segment_domain.push(next_segment.next_id(), start, end, BezierHandles::Linear);
+			}
+		}
+	} else {
+		// Weld vertices that fall in the same quantization cell so adjacent polygons share points,
+		// and emit each undirected edge only once so adjacent polygons share segments.
+		let tolerance = mesh_weld_tolerance(&polygons);
+		let mut vertex_lookup: HashMap<(i64, i64), usize> = HashMap::new();
+		let mut seen_edges: HashSet<(usize, usize)> = HashSet::new();
+
+		for polygon in &polygons {
+			if polygon.len() < 2 {
+				continue;
+			}
+
+			let indices: Vec<usize> = polygon
+				.iter()
+				.map(|&position| {
+					let key = ((position.x / tolerance).round() as i64, (position.y / tolerance).round() as i64);
+					*vertex_lookup.entry(key).or_insert_with(|| {
+						let index = point_domain.ids().len();
+						point_domain.push(next_point.next_id(), position);
+						index
+					})
+				})
+				.collect();
+
+			let count = indices.len();
+			for i in 0..count {
+				let start = indices[i];
+				let end = indices[(i + 1) % count];
+				if start == end {
+					continue;
+				}
+				// Emit shared walls in index-canonical direction: a cycle can't be monotone in point index,
+				// so no cell's boundary can wind coherently and read as deliberate negative space
+				let edge = if start < end { (start, end) } else { (end, start) };
+				if seen_edges.insert(edge) {
+					segment_domain.push(next_segment.next_id(), edge.0, edge.1, BezierHandles::Linear);
+				}
+			}
+		}
+	}
+
+	vector.point_domain = point_domain;
+	vector.segment_domain = segment_domain;
+}
+
+/// The distance below which two mesh vertices are welded into one, scaled to the diagram's size so it tracks coordinate magnitude.
+fn mesh_weld_tolerance(polygons: &[Vec<DVec2>]) -> f64 {
+	let mut min = DVec2::splat(f64::MAX);
+	let mut max = DVec2::splat(f64::MIN);
+	for polygon in polygons {
+		for &position in polygon {
+			min = min.min(position);
+			max = max.max(position);
+		}
+	}
+
+	let diagonal = (max - min).length();
+	// Floor the tolerance so an extremely tiny diagram can't underflow `diagonal * 1e-6` to zero, which would divide by
+	// zero when quantizing vertices and weld everything into a single point.
+	if diagonal.is_finite() && diagonal > 0. { (diagonal * 1e-6).max(1e-12) } else { 1e-6 }
+}
+
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("offset_path_properties"))]
 fn offset_path(_: impl Ctx, (vector, lane_transform): (Vector, Attr<TransformAttr>), distance: f64, join: StrokeJoin, #[default(4.)] miter_limit: f64) -> (Vector, Attr<TransformAttr>) {
 	let transform_attribute: DAffine2 = *lane_transform;
 	let transform = Affine::new(transform_attribute.to_cols_array());
 
 	let bezpaths = vector.stroke_bezpath_iter();
-	let mut result = Vector {
-		stroke: vector.stroke.clone(),
-		..Default::default()
-	};
-	result.set_stroke_transform(DAffine2::IDENTITY);
+	let mut result = Vector::default();
 
 	// Perform operation on all subpaths in this shape.
 	for mut bezpath in bezpaths {
@@ -1370,9 +1494,16 @@ fn solidify_rows(flattened: List<Vector>) -> List<Vector> {
 		.into_iter()
 		.zip(has_fills)
 		.flat_map(|(row, has_fill)| {
-			let (mut vector, attributes) = row.into_parts();
+			let (vector, attributes) = row.into_parts();
 
-			let stroke = vector.stroke.clone().unwrap_or_default();
+			// Master reads the stroke off an `Appearance` coverage; ours reads the parameters our stroke node
+			// wrote onto the `ATTR_STROKE` paint list, alongside the paint itself
+			let stroke_paint = attributes.get::<Option<List<Graphic>>>(ATTR_STROKE).cloned().flatten();
+			let stroke = stroke_paint.as_ref().map(stroke_params).unwrap_or_default();
+			let paint_order = stroke_paint
+				.as_ref()
+				.map(|paint| paint.attribute_cloned_or_default::<PaintOrder>(ATTR_PAINT_ORDER, 0))
+				.unwrap_or_default();
 			let bezpaths = vector.stroke_bezpath_iter();
 			let mut solidified_stroke = Vector::default();
 
@@ -1388,9 +1519,8 @@ fn solidify_rows(flattened: List<Vector>) -> List<Vector> {
 				StrokeCap::Square => kurbo::Cap::Square,
 			};
 			let dash_offset = stroke.dash_offset;
-			let dash_pattern = stroke.dash_lengths;
+			let dash_pattern = stroke.dash_lengths.clone();
 			let miter_limit = stroke.join_miter_limit;
-			let paint_order = stroke.paint_order;
 
 			let stroke_style = kurbo::Stroke::new(stroke.weight)
 				.with_caps(cap)
@@ -1421,13 +1551,13 @@ fn solidify_rows(flattened: List<Vector>) -> List<Vector> {
 
 			// If the original vector has a fill, preserve it as a separate item with the stroke cleared.
 			let fill_row = has_fill.then(|| {
-				vector.stroke = None;
 				let mut fill_attributes = attributes.clone();
 				// No stroke remains on the fill row
 				fill_attributes.remove::<Option<List<Graphic>>>(ATTR_STROKE);
 				Item::from_parts(vector, fill_attributes)
 			});
 
+			// The outlined stroke geometry becomes a fill painted with the original stroke's paint
 			let mut stroke_attributes = attributes;
 			// Drop the original fill and use the stroke paint to fill the outlined stroke
 			stroke_attributes.remove::<Option<List<Graphic>>>(ATTR_FILL);
@@ -1695,7 +1825,6 @@ fn separate_subpaths_core(content: List<Vector>) -> List<Vector> {
 				return vec![row];
 			}
 
-			let stroke = row.element().stroke.clone();
 			let (_, attributes) = row.into_parts();
 
 			bezpaths
@@ -1703,7 +1832,6 @@ fn separate_subpaths_core(content: List<Vector>) -> List<Vector> {
 				.map(|bezpath| {
 					let mut vector = Vector::default();
 					vector.append_bezpath(bezpath);
-					vector.stroke = stroke.clone();
 
 					Item::from_parts(vector, attributes.clone())
 				})
@@ -1810,7 +1938,7 @@ fn map_points_extent(content: ListIn<'_, Vector>, _mapped: ExtentIn<'_>, level: 
 }
 
 #[allow(clippy::type_complexity)]
-fn flatten_path_core<'e>(
+fn combine_paths_core<'e>(
 	arena: &'e core_types::arena::Arena,
 	flattened: List<Vector>,
 	snapshot: List<Graphic<'static>>,
@@ -1840,10 +1968,6 @@ fn flatten_path_core<'e>(
 
 		let source_transform = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		output.concat(element, source_transform, collision_hash_seed);
-
-		// TODO: Make this instead use the first encountered stroke
-		// Use the last encountered stroke as the output stroke
-		output.stroke = element.stroke.clone();
 
 		primary_source = Some((index, source_transform));
 	}
@@ -1888,9 +2012,9 @@ fn flatten_path_core<'e>(
 	Ok((output, Attr(DAffine2::IDENTITY), Attr(fill), Attr(stroke), Attr(layer_path.as_slice()), Attr(Some(merged_layers))))
 }
 
-// TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
+// TODO: Make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub fn flatten_path<'e>(
+pub fn combine_paths<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Graphic<'static>>,
 ) -> Result<
@@ -1907,13 +2031,13 @@ pub fn flatten_path<'e>(
 	let item = content.as_group_item();
 	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Run(&item));
 	let snapshot = graphic_types::graphic::run_to_list::<Graphic>(&item).expect("the run holds the row's element type");
-	flatten_path_core(ctx.arena(), flattened, snapshot)
+	combine_paths_core(ctx.arena(), flattened, snapshot)
 }
 
-/// The path flattening over a plain vector level, as [`flatten_path`].
-/// Registered under the flatten path identifier.
+/// The path combining over a plain vector level, as [`combine_paths`].
+/// Registered under the combine paths identifier.
 #[node_macro::node(category(""))]
-pub fn flatten_path_vector<'e>(
+pub fn combine_paths_vector<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Vector>,
 ) -> Result<
@@ -1930,10 +2054,10 @@ pub fn flatten_path_vector<'e>(
 	let wrapper = wrap_vector_level(content);
 	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Legacy(&wrapper));
 	let snapshot = legacy_graphic_list_of(content);
-	flatten_path_core(ctx.arena(), flattened, snapshot)
+	combine_paths_core(ctx.arena(), flattened, snapshot)
 }
 
-pub use _flatten_path_vector_mod::flatten_path_vector_entries;
+pub use _combine_paths_vector_mod::combine_paths_vector_entries;
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("sample_polyline_properties"), memoize)]
@@ -1964,16 +2088,7 @@ fn sample_polyline(
 		}
 	};
 
-	let mut element = element;
-	let mut result = Vector {
-		point_domain: Default::default(),
-		segment_domain: Default::default(),
-		region_domain: Default::default(),
-		colinear_manipulators: Default::default(),
-		stroke: std::mem::take(&mut element.stroke),
-	};
-	// Transfer the stroke transform from the input vector content to the result.
-	result.set_stroke_transform(*transform);
+	let mut result = Vector::default();
 
 	for local_bezpath in element.stroke_bezpath_iter() {
 		// Apply the transform to compute sample locations in world space (for correct distance-based spacing)
@@ -2036,10 +2151,7 @@ fn simplify(
 	let transform = Affine::new(transform_attribute.to_cols_array());
 	let inverse_transform = transform.inverse();
 
-	let mut result = Vector {
-		stroke: content.stroke.clone(),
-		..Default::default()
-	};
+	let mut result = Vector::default();
 
 	for mut bezpath in content.stroke_bezpath_iter() {
 		bezpath.apply_affine(transform);
@@ -2126,10 +2238,7 @@ fn decimate(
 	let transform = Affine::new(transform_attribute.to_cols_array());
 	let inverse_transform = transform.inverse();
 
-	let mut result = Vector {
-		stroke: content.stroke.clone(),
-		..Default::default()
-	};
+	let mut result = Vector::default();
 
 	for mut bezpath in content.stroke_bezpath_iter() {
 		bezpath.apply_affine(transform);
@@ -2203,10 +2312,7 @@ fn cut_path_core(mut content: List<Vector>, progression: f64, reverse: bool, par
 	let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
 
 	if let Some((row_index, bezpath)) = bezpaths.get(index).cloned() {
-		let mut result_vector = Vector {
-			stroke: content.element(row_index).unwrap().stroke.clone(),
-			..Default::default()
-		};
+		let mut result_vector = Vector::default();
 
 		for (_, (_, bezpath)) in bezpaths.iter().enumerate().filter(|(i, (ri, _))| *i != index && *ri == row_index) {
 			result_vector.append_bezpath(bezpath.clone());
@@ -2447,10 +2553,6 @@ fn scatter_points(
 		}
 	}
 
-	// Transfer the style from the input vector content to the result.
-	result.stroke = element.stroke.clone();
-	result.set_stroke_transform(DAffine2::IDENTITY);
-
 	result
 }
 
@@ -2474,8 +2576,6 @@ fn spline(_: impl Ctx, element: Vector) -> Vector {
 			solve_spline_first_handle_open(&positions)
 		};
 
-		let stroke_id = StrokeId::ZERO;
-
 		// Create segments with computed Bezier handles and add them to the output vector element's segment domain.
 		for i in 0..(positions.len() - if closed { 0 } else { 1 }) {
 			let next_index = (i + 1) % positions.len();
@@ -2487,7 +2587,7 @@ fn spline(_: impl Ctx, element: Vector) -> Vector {
 			let handle_end = positions[next_index] * 2. - first_handles[next_index];
 			let handles = BezierHandles::Cubic { handle_start, handle_end };
 
-			segment_domain.push(next_id.next_id(), start_index, end_index, handles, stroke_id);
+			segment_domain.push(next_id.next_id(), start_index, end_index, handles);
 		}
 	}
 
@@ -2644,7 +2744,7 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 
 	/// Subdivides the last segment of a manipulator group list at its midpoint, adding one new manipulator.
 	/// For closed paths, the "last segment" is the closing segment from the last back to the first manipulator.
-	fn subdivide_last_manipulator_segment(manips: &mut Vec<ManipulatorGroup<PointId>>, closed: bool) {
+	fn subdivide_last_manipulator_segment(manips: &mut Vec<ManipulatorGroup>, closed: bool) {
 		let len = manips.len();
 		if len < 2 {
 			return;
@@ -2690,36 +2790,28 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		}
 	}
 
-	/// Pushes a subpath (list of manipulators) directly into a Vector's point, segment, and region domains,
+	/// Pushes a subpath (list of manipulators) directly into a Vector's point and segment domains,
 	/// bypassing the BezPath intermediate representation used by `append_bezpath`.
-	fn push_manipulators_to_vector(vector: &mut Vector, manips: &[ManipulatorGroup<PointId>], closed: bool, point_id: &mut PointId, segment_id: &mut SegmentId) {
+	fn push_manipulators_to_vector(vector: &mut Vector, manips: &[ManipulatorGroup], closed: bool, point_id: &mut PointId, segment_id: &mut SegmentId) {
 		let Some(first) = manips.first() else { return };
 
 		let first_point_index = vector.point_domain.ids().len();
 		vector.point_domain.push_unchecked(point_id.next_id(), first.anchor);
 		let mut prev_point_index = first_point_index;
-		let mut first_segment_id = None;
 
 		for manip_window in manips.windows(2) {
 			let point_index = vector.point_domain.ids().len();
 			vector.point_domain.push_unchecked(point_id.next_id(), manip_window[1].anchor);
 
 			let handles = handles_from_manips(manip_window[0].out_handle, manip_window[1].in_handle);
-			let seg_id = segment_id.next_id();
-			first_segment_id.get_or_insert(seg_id);
-			vector.segment_domain.push_unchecked(seg_id, prev_point_index, point_index, handles, StrokeId::ZERO);
+			vector.segment_domain.push_unchecked(segment_id.next_id(), prev_point_index, point_index, handles);
 
 			prev_point_index = point_index;
 		}
 
 		if closed && manips.len() > 1 {
 			let handles = handles_from_manips(manips.last().unwrap().out_handle, manips[0].in_handle);
-			let closing_seg_id = segment_id.next_id();
-			first_segment_id.get_or_insert(closing_seg_id);
-			vector.segment_domain.push_unchecked(closing_seg_id, prev_point_index, first_point_index, handles, StrokeId::ZERO);
-
-			let region_id = vector.region_domain.next_id();
-			vector.region_domain.push_unchecked(region_id, first_segment_id.unwrap()..=closing_seg_id, FillId::ZERO);
+			vector.segment_domain.push_unchecked(segment_id.next_id(), prev_point_index, first_point_index, handles);
 		}
 	}
 
@@ -2754,7 +2846,7 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		};
 
 		// This keeps the gradient metadata attributes, which ride the paint lane
-		let gradient_paint = |metadata_source: &List<Graphic>, stops: GradientStops, transform: Option<DAffine2>| -> List<Graphic> {
+		let gradient_paint = |metadata_source: &List<Graphic>, stops: Gradient, transform: Option<DAffine2>| -> List<Graphic> {
 			let mut out = List::new_from_item(Item::from_parts(Graphic::Gradient(stops), metadata_source.clone_item_attributes(0)));
 			if let Some(transform) = transform {
 				out.set_attribute(ATTR_TRANSFORM, 0, transform);
@@ -3043,25 +3135,7 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		return List::new_from_item(Item::from_parts(endpoint_element.clone(), attributes));
 	}
 
-	let stroke = match (source_element.stroke.as_ref(), target_element.stroke.as_ref()) {
-		(Some(a), Some(b)) => Some(a.lerp(b, time)),
-		(Some(a), None) => {
-			if time < 0.5 {
-				Some(a.clone())
-			} else {
-				None
-			}
-		}
-		(None, Some(b)) => {
-			if time < 0.5 {
-				None
-			} else {
-				Some(b.clone())
-			}
-		}
-		(None, None) => None,
-	};
-	let mut vector = Vector { stroke, ..Default::default() };
+	let mut vector = Vector::default();
 
 	let fill_paint = {
 		let source = content.attr::<Fill>(source_index).filter(|paint| is_paint_present(paint));
@@ -3087,7 +3161,6 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 	// Pre-allocate domain storage based on total manipulator counts across all subpaths
 	let mut total_points = 0;
 	let mut total_segments = 0;
-	let mut total_regions = 0;
 	for ((source_manips, source_closed), (target_manips, _)) in source_subpaths.iter().zip(target_subpaths.iter()) {
 		if source_manips.is_empty() || target_manips.is_empty() {
 			continue;
@@ -3095,20 +3168,13 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		let manip_count = source_manips.len().max(target_manips.len());
 		total_points += manip_count;
 		total_segments += if *source_closed { manip_count } else { manip_count.saturating_sub(1) };
-		if *source_closed {
-			total_regions += 1;
-		}
 	}
 	for (manips, closed) in extra_source.iter().chain(extra_target.iter()) {
 		total_points += manips.len();
 		total_segments += if *closed { manips.len() } else { manips.len().saturating_sub(1) };
-		if *closed {
-			total_regions += 1;
-		}
 	}
 	vector.point_domain.reserve(total_points);
 	vector.segment_domain.reserve(total_segments);
-	vector.region_domain.reserve(total_regions);
 
 	let mut point_id = PointId::ZERO;
 	let mut segment_id = SegmentId::ZERO;
@@ -3129,7 +3195,7 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		}
 
 		// Build interpolated manipulator groups
-		let mut interpolated: Vec<ManipulatorGroup<PointId>> = source_manips
+		let mut interpolated: Vec<ManipulatorGroup> = source_manips
 			.iter()
 			.zip(target_manips.iter())
 			.map(|(s, t)| ManipulatorGroup {
@@ -3605,7 +3671,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 
 		for &[start, end] in new_segments {
 			let handles = BezierHandles::Linear;
-			vector.segment_domain.push(next_id.next_id(), start, end, handles, StrokeId::ZERO);
+			vector.segment_domain.push(next_id.next_id(), start, end, handles);
 		}
 	}
 
@@ -3640,7 +3706,7 @@ fn point_inside(_: impl Ctx, source: IList<Vector>, point: DVec2) -> bool {
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-fn count_elements<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Artboard, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<T>) -> f64 {
+fn count_elements<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Artboard, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<T>) -> f64 {
 	content.len() as f64
 }
 
@@ -3731,17 +3797,17 @@ fn centroid(_: impl Ctx, vector: IList<Vector>, centroid_type: CentroidType) -> 
 
 	for index in 0..vector.len() {
 		let element = vector.element_ref(index);
-		for subpath in element.stroke_bezier_paths() {
+		for bezpath in element.stroke_bezpath_iter() {
 			let partial = match centroid_type {
-				CentroidType::Area => subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
-				CentroidType::Length => subpath.length_centroid_and_length(None, true),
+				CentroidType::Area => bezpath_area_centroid_and_area(&bezpath, Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
+				CentroidType::Length => bezpath_length_centroid_and_length(&bezpath, None, true),
 			};
-			if let Some((subpath_centroid, area_or_length)) = partial {
+			if let Some((path_centroid, area_or_length)) = partial {
 				let transform: DAffine2 = vector.lane(index).attr::<TransformAttr>();
-				let subpath_centroid = transform.transform_point2(subpath_centroid);
+				let path_centroid = transform.transform_point2(path_centroid);
 
 				sum += area_or_length;
-				centroid += area_or_length * subpath_centroid;
+				centroid += area_or_length * path_centroid;
 			}
 		}
 	}
@@ -3778,6 +3844,7 @@ mod test {
 	use graphic_types::graphic::paint_graphics;
 	use kurbo::{CubicBez, Ellipse, Point, Rect};
 	use vector_types::vector::algorithms::bezpath_algorithms::{TValue, trim_pathseg};
+	use vector_types::vector::algorithms::shapes::ellipse_bezpath;
 	use vector_types::vector::misc::pathseg_abs_diff_eq;
 
 	fn vector_node_from_bezpath(bezpath: BezPath) -> List<Vector> {
@@ -3787,12 +3854,12 @@ mod test {
 	#[test]
 	fn bounding_box() {
 		let bounding_box = super::bounding_box(&(), Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)));
-		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
+		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
-			.region_manipulator_groups()
+			.stroke_manipulator_groups()
 			.next()
 			.unwrap()
-			.1
+			.0
 			.iter()
 			.map(|manipulators| manipulators.anchor)
 			.collect::<Vec<DVec2>>();
@@ -3802,12 +3869,12 @@ mod test {
 		// The box spans local space, so a lane rotation leaves it unchanged
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let bounding_box = super::bounding_box(&(), square);
-		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
+		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
-			.region_manipulator_groups()
+			.stroke_manipulator_groups()
 			.next()
 			.unwrap()
-			.1
+			.0
 			.iter()
 			.map(|manipulators| manipulators.anchor)
 			.collect::<Vec<DVec2>>();

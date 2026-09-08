@@ -33,7 +33,7 @@ use graphic_types::markers::EditorMergedLayers;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 #[cfg(target_family = "wasm")]
-use graphic_types::vector_types::gradient::GradientStops;
+use graphic_types::vector_types::gradient::Gradient;
 #[cfg(target_family = "wasm")]
 use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use std::sync::Arc;
@@ -212,7 +212,7 @@ async fn rasterize<T: WasmNotSend + Clone>(
 		List<Raster<CPU>>,
 		List<Graphic>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 	)]
 	mut data: List<T>,
 	footprint: Footprint,
@@ -282,12 +282,17 @@ pub fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Arc<PlatformEd
 pub fn resource(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> SourceFuture<GPoll<Resource>> {
 	let application_io = editor_api.application_io.clone();
 	Box::pin(async move {
+		// An older document can name a resource whose bytes are gone, so hand back an empty one and keep the document loading
 		let Some(application_io) = application_io else {
-			return GPoll::error("ApplicationIo not available");
+			log::error!("Resource {hash} is unavailable because the platform's application IO is missing");
+			return GPoll::Final(Resource::empty());
 		};
 		match application_io.load_resource(hash).await {
 			Some(resource) => GPoll::Final(resource),
-			None => GPoll::error("resource not found"),
+			None => {
+				log::error!("Resource {hash} was not found in storage");
+				GPoll::Final(Resource::empty())
+			}
 		}
 	})
 }

@@ -74,7 +74,6 @@
 		if (activeEntrySkipWatcher) {
 			activeEntrySkipWatcher = false;
 		} else if (activeEntry !== DASH_ENTRY) {
-			// We need to set to the initial value first to track a right history step, as if we hover in initial selection.
 			if (initialSelectedIndex !== undefined) dispatch("hoverInEntry", initialSelectedIndex);
 			const index = entries.flat().findIndex((entry) => entry.value === activeEntry.value);
 			if (index !== -1) {
@@ -134,7 +133,7 @@
 		{tooltipShortcut}
 		on:click={() => !disabled && (open = true)}
 		on:blur={unFocusDropdownBox}
-		tabindex={disabled ? -1 : 0}
+		tabindex={disabled ? undefined : 0}
 		data-floating-menu-spawner
 	>
 		{#if activeEntry.icon}

@@ -1,12 +1,13 @@
 use crate::messages::frontend::IconName;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::message::Message;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use derivative::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::transform::ReferencePoint;
-use graphene_std::vector::style::{FillChoiceUI, GradientStopsUI};
+use graphene_std::vector::style::{FillChoice, GradientHueDirection, GradientInterpolation, GradientSpace, GradientStops};
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -147,6 +148,35 @@ impl std::hash::Hash for MenuListEntry {
 		self.label.hash(state);
 		self.icon.hash(state);
 		self.disabled.hash(state);
+	}
+}
+
+impl MenuListEntry {
+	/// One entry per variant of a choice type enum, keeping the choice type's section groupings, shown as the variant's label alongside its icon when it has one.
+	pub fn sections_from_choice_type<E>(to_message: impl Fn(E) -> Message + Clone + Send + Sync + 'static) -> MenuListEntrySections
+	where
+		E: graphene_std::choice_type::ChoiceTypeStatic + 'static,
+	{
+		E::list()
+			.iter()
+			.map(|section| {
+				section
+					.iter()
+					.map(|(variant, metadata)| {
+						let to_message = to_message.clone();
+						let variant = *variant;
+
+						let entry = MenuListEntry::new(metadata.name)
+							.label(metadata.label)
+							.tooltip_label(metadata.label)
+							.tooltip_description(metadata.description.unwrap_or_default())
+							.on_update(move |_| to_message(variant));
+
+						if let Some(icon) = metadata.icon { entry.icon(icon) } else { entry }
+					})
+					.collect()
+			})
+			.collect()
 	}
 }
 
@@ -344,6 +374,30 @@ pub struct RadioEntryData {
 	pub on_commit: WidgetCallback<()>,
 }
 
+impl RadioEntryData {
+	/// One entry per variant of a choice type enum, shown as the variant's icon when it has one and its text label otherwise.
+	pub fn list_from_choice_type<E>(to_message: impl Fn(E) -> Message + Clone + Send + Sync + 'static) -> Vec<Self>
+	where
+		E: graphene_std::choice_type::ChoiceTypeStatic + 'static,
+	{
+		E::list()
+			.iter()
+			.flat_map(|section| section.iter())
+			.map(|(variant, metadata)| {
+				let to_message = to_message.clone();
+				let variant = *variant;
+
+				let entry = RadioEntryData::new(metadata.name)
+					.tooltip_label(metadata.label)
+					.tooltip_description(metadata.description.unwrap_or_default())
+					.on_update(move |_| to_message(variant));
+
+				if let Some(icon) = metadata.icon { entry.icon(icon) } else { entry.label(metadata.label) }
+			})
+			.collect()
+	}
+}
+
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
@@ -520,7 +574,7 @@ pub struct ColorPresetsInput {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ColorPresetsInputUpdate {
-	Preset(FillChoiceUI),
+	Preset(FillChoice<SRGBA8>),
 	EyedropperColorCode(String),
 }
 
@@ -531,16 +585,28 @@ pub struct SpectrumInput {
 	// Content
 	/// The colored gradient drawn behind the markers (display-only, caller-owned).
 	#[widget_builder(constructor)]
-	pub track: GradientStopsUI,
-	/// CSS `linear-gradient(...)` string for the track strip's `background-image`. Auto-populated from `track` at layout-send time.
-	#[serde(rename = "trackCSS")]
+	pub track: GradientStops<SRGBA8>,
+	/// The color space the track's stops interpolate in, used to bake `track_samples`. Not sent to the frontend.
+	#[serde(skip)]
+	pub track_space: GradientSpace,
+	/// Whether the track's stops wrap as a cycle, used to bake `track_samples` and by the frontend to draw the wrapped interval's midpoint diamond.
+	#[serde(rename = "trackCyclic")]
+	pub track_cyclic: bool,
+	/// The hue direction the track's stops interpolate with in a polar space, used to bake `track_samples`. Not sent to the frontend.
+	#[serde(skip)]
+	pub track_hue_direction: GradientHueDirection,
+	/// The path the track's stops interpolate along, used to bake `track_samples` and by the frontend to suppress the midpoint diamonds when stepped.
+	#[serde(rename = "trackInterpolation")]
+	pub track_interpolation: GradientInterpolation,
+	/// Straight-alpha samples the frontend draws as the stops of an SVG gradient filling the track strip. Auto-populated from `track` at layout-send time.
+	#[serde(rename = "trackSamples")]
 	#[widget_builder(skip)]
-	pub track_css: String,
-	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated from `track`'s first stop.
+	pub track_samples: Vec<SpectrumSample>,
+	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated by evaluating `track` at position 0.
 	#[serde(rename = "trackStartCSS")]
 	#[widget_builder(skip)]
 	pub track_start_css: String,
-	/// Hex string for the track strip's rightmost solid-color end-cap. Auto-populated from `track`'s last stop.
+	/// Hex string for the track strip's rightmost solid-color end-cap. Auto-populated by evaluating `track` at position 1.
 	#[serde(rename = "trackEndCSS")]
 	#[widget_builder(skip)]
 	pub track_end_css: String,
@@ -579,19 +645,43 @@ pub struct SpectrumInput {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpectrumMarker {
-	/// Position (0..1) of the marker along the spectrum track.
+	/// Position of the marker along the spectrum track, normally from 0 to 1. A shifted or stretched non-cyclic ramp can
+	/// place it outside that range, where the track draws only the markers falling within its visible span.
 	position: f64,
-	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true. The last marker's value is ignored.
+	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true.
+	/// The last marker's value controls the wrapped interval when `track_cyclic` is set, and is otherwise ignored.
 	midpoint: f64,
-	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`].
+	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`],
+	/// discarding any transparency so the handle always shows the RGB that steers the interpolation.
 	#[serde(rename = "handleColorCSS")]
 	handle_color_css: String,
 }
 
 impl SpectrumMarker {
 	pub fn new(position: f64, midpoint: f64, handle_color: Color) -> Self {
-		let handle_color_css = SRGBA8::from(handle_color).to_css_hex();
+		let handle_color_css = format!("#{}", SRGBA8::from(handle_color).to_rgb_hex());
 		Self { position, midpoint, handle_color_css }
+	}
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SpectrumSample {
+	/// Position (0..1) of the sample along the spectrum track, drawn as the SVG stop's `offset`.
+	position: f64,
+	/// `#rrggbb` hex of the sample's color, drawn as the SVG stop's `stop-color`.
+	color: String,
+	/// Straight alpha (0..1) of the sample, drawn as the SVG stop's `stop-opacity`.
+	alpha: f32,
+}
+
+impl SpectrumSample {
+	pub fn new(position: f64, color: Color) -> Self {
+		Self {
+			position,
+			color: format!("#{}", SRGBA8::from(color).to_rgb_hex()),
+			alpha: color.a(),
+		}
 	}
 }
 

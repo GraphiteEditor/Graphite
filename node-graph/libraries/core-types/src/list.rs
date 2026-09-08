@@ -1,7 +1,8 @@
 use crate::attribute::Attribute as _;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::transform::ApplyTransform;
-use dyn_any::{StaticType, StaticTypeSized};
+use crate::uuid::NodeId;
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::DAffine2;
 use graphene_hash::CacheHash;
 use std::fmt::Debug;
@@ -36,6 +37,84 @@ pub const ATTR_LETTER_SPACING: &str = crate::attribute::LetterSpacing::NAME;
 pub const ATTR_MAX_WIDTH: &str = crate::attribute::MaxWidth::NAME;
 pub const ATTR_MAX_HEIGHT: &str = crate::attribute::MaxHeight::NAME;
 pub const ATTR_LETTER_TILT: &str = crate::attribute::LetterTilt::NAME;
+
+// Name aliases for markers declared below core-types, so code here and in
+// sibling crates can spell the name without depending on the owning crate.
+// The marker, and with it the value type and the default, lives in the crate
+// named beside each name; these are the string only.
+// vector-types (gradient and stroke coverage):
+pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
+pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
+pub const ATTR_GRADIENT_SPACE: &str = "gradient_space";
+pub const ATTR_GRADIENT_HUE_DIRECTION: &str = "gradient_hue_direction";
+pub const ATTR_GRADIENT_INTERPOLATION: &str = "gradient_interpolation";
+pub const ATTR_GRADIENT_CYCLIC: &str = "gradient_cyclic";
+pub const ATTR_POSITION: &str = "position";
+pub const ATTR_MIDPOINT: &str = "midpoint";
+pub const ATTR_WEIGHT: &str = "weight";
+pub const ATTR_DASH_OFFSET: &str = "dash_offset";
+pub const ATTR_CAP: &str = "cap";
+pub const ATTR_JOIN: &str = "join";
+pub const ATTR_JOIN_MITER_LIMIT: &str = "join_miter_limit";
+pub const ATTR_ALIGN: &str = "align";
+// graphic-types (paint):
+pub const ATTR_APPEARANCE: &str = "appearance";
+pub const ATTR_PAINT: &str = "paint";
+// vector-types (stroke coverage, value type is not `Copy` so it has no marker yet):
+pub const ATTR_DASH_PATTERN: &str = "dash_pattern";
+// brush-types (per-stroke styling):
+pub const ATTR_COLOR: &str = "color";
+pub const ATTR_DIAMETER: &str = "diameter";
+pub const ATTR_HARDNESS: &str = "hardness";
+pub const ATTR_FLOW: &str = "flow";
+
+// =====================
+// TYPE: NodeIdPath
+// =====================
+
+/// A single path of `NodeId`s locating a node (or its owning layer) within the nested document graph.
+/// Wraps a `List<NodeId>` so it flows as one rank-0 value (`Item<NodeIdPath>`) rather than a rank-1
+/// `List<NodeId>` that the element-wise machinery would wrongly zip over per ID.
+#[derive(Default, Debug, Clone, PartialEq, CacheHash, DynAny)]
+pub struct NodeIdPath(pub List<NodeId>);
+
+impl From<Vec<NodeId>> for NodeIdPath {
+	fn from(ids: Vec<NodeId>) -> Self {
+		Self(ids.into_iter().map(Item::new_from_element).collect())
+	}
+}
+
+// ================
+// TYPE: Bundle
+// ================
+
+/// A whole `List<T>` treated as one rank-0 value (`Item<Bundle<T>>`) rather than a rank-1 `List<T>`.
+/// Bundling a collection lets it pass through a connector that selects or carries the entire collection as one opaque
+/// cell (such as a Switch branch), instead of the element-wise machinery zipping over it per element.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Bundle<T>(pub List<T>);
+
+impl<T> Default for Bundle<T> {
+	fn default() -> Self {
+		Self(List::default())
+	}
+}
+
+impl<T: CacheHash> CacheHash for Bundle<T> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.0.cache_hash(state);
+	}
+}
+
+impl<T> From<List<T>> for Bundle<T> {
+	fn from(list: List<T>) -> Self {
+		Self(list)
+	}
+}
+
+unsafe impl<T: StaticTypeSized> StaticType for Bundle<T> {
+	type Static = Bundle<T::Static>;
+}
 
 // ===========================
 // Implicit attribute defaults
@@ -81,6 +160,13 @@ pub trait AnyAttributeValue: std::any::Any + Send + Sync {
 	/// Returns a debug-formatted string representation of this value.
 	fn display_string(&self) -> String;
 
+	/// Hashes this value into the given hasher (object-safe wrapper around `CacheHash`).
+	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher);
+
+	/// Compares this value to another for value-by-value equality (object-safe wrapper around `PartialEq`).
+	/// Returns `false` if the underlying types differ.
+	fn eq_dyn(&self, other: &dyn AnyAttributeValue) -> bool;
+
 	/// Wraps this scalar value into a new attribute, preceded by `preceding_defaults` implicit defaults for `key`.
 	fn into_attribute(self: Box<Self>, key: &str, preceding_defaults: usize) -> Box<dyn AnyAttribute>;
 }
@@ -115,6 +201,17 @@ impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 
 	/// Returns a debug-formatted string representation of this value.
 	fn display_string(&self) -> String {
 		format!("{:?}", self)
+	}
+
+	/// Hashes this value into the given hasher (object-safe wrapper around `CacheHash`).
+	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher) {
+		self.cache_hash(&mut DynHasher(state));
+	}
+
+	/// Compares this value to another for value-by-value equality (object-safe wrapper around `PartialEq`).
+	/// Returns `false` if the underlying types differ.
+	fn eq_dyn(&self, other: &dyn AnyAttributeValue) -> bool {
+		other.as_any().downcast_ref::<Self>().is_some_and(|other| self == other)
 	}
 
 	/// Wraps this scalar value into a new attribute, preceded by `preceding_defaults` implicit defaults for `key`.
@@ -385,8 +482,7 @@ unsafe impl StaticType for AttributeDyn {
 // ==================
 
 /// Type-erased single attribute value, used as a node graph parameter type.
-/// Lets a node accept a value of any concrete type via the auto-inserted `Convert<AttributeValueDyn, ()>`
-/// without monomorphizing over the value type.
+/// Lets a node accept a value of any valid concrete type via the auto-inserted input adapter conversion without monomorphizing over the value type.
 pub struct AttributeValueDyn(pub Box<dyn AnyAttributeValue>);
 
 impl Clone for AttributeValueDyn {
@@ -527,6 +623,17 @@ impl Debug for ItemAttributeValues {
 	}
 }
 
+impl PartialEq for ItemAttributeValues {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.len() == other.0.len()
+			&& self
+				.0
+				.iter()
+				.zip(&other.0)
+				.all(|((self_key, self_value), (other_key, other_value))| self_key == other_key && self_value.eq_dyn(other_value.as_ref()))
+	}
+}
+
 impl ItemAttributeValues {
 	/// Creates an empty set of attributes.
 	pub fn new() -> Self {
@@ -600,6 +707,16 @@ impl ItemAttributeValues {
 	/// Returns an iterator over the stored (key, value) pairs, in insertion order.
 	pub fn iter(&self) -> impl Iterator<Item = (&str, &dyn AnyAttributeValue)> {
 		self.0.iter().map(|(key, value)| (key.as_str(), &**value))
+	}
+
+	/// Returns a type-erased reference to the value of the attribute with the given key, if it exists.
+	pub fn get_any(&self, key: &str) -> Option<&dyn std::any::Any> {
+		self.0.iter().find_map(|(existing_key, value)| if existing_key == key { Some((**value).as_any()) } else { None })
+	}
+
+	/// Returns an iterator over key and type-erased value pairs of all stored attributes, in insertion order.
+	pub fn iter_any(&self) -> impl Iterator<Item = (&str, &dyn std::any::Any)> {
+		self.0.iter().map(|(key, value)| (key.as_str(), (**value).as_any()))
 	}
 
 	/// Returns a debug-formatted string representation of the attribute value for the given key, if it exists.
@@ -1155,7 +1272,7 @@ impl<T: CacheHash> CacheHash for List<T> {
 		self.element.cache_hash(state);
 
 		// Hash every attribute attribute (key + values) rather than just the well-known ones, so changes to user-defined keys
-		// (e.g., gradient_type, spread_method) invalidate downstream graph caches as expected
+		// (e.g., gradient_form, gradient_spread) invalidate downstream graph caches as expected
 		for (key, attribute) in &self.attributes.attributes {
 			std::hash::Hash::hash(key.as_str(), state);
 			attribute.cache_hash_dyn(state);
@@ -1221,10 +1338,23 @@ impl<T> FromIterator<Item<T>> for List<T> {
 /// An owned item containing an element of type `T` and a set of type-erased scalar attributes.
 ///
 /// Used to build individual items before pushing them into a [`List`], or when consuming items out of a list via [`IntoIterator`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Item<T> {
 	element: T,
 	attributes: ItemAttributeValues,
+}
+
+impl<T: BoundingBox> BoundingBox for Item<T> {
+	/// Computes the element's bounding box, composing the item's transform attribute with the given transform.
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
+		self.element().bounding_box(transform * item_transform, include_stroke)
+	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
+		self.element().thumbnail_bounding_box(transform * item_transform, include_stroke)
+	}
 }
 
 impl<T: Default> Default for Item<T> {
@@ -1233,9 +1363,15 @@ impl<T: Default> Default for Item<T> {
 	}
 }
 
-impl<T: PartialEq> PartialEq for Item<T> {
-	fn eq(&self, other: &Self) -> bool {
-		self.element == other.element
+impl<T: CacheHash> CacheHash for Item<T> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.element.cache_hash(state);
+
+		// Hash every attribute (key + value) so attribute changes invalidate downstream caches, mirroring `List`
+		for (key, attribute) in &self.attributes.0 {
+			std::hash::Hash::hash(key.as_str(), state);
+			attribute.cache_hash_dyn(state);
+		}
 	}
 }
 
@@ -1325,6 +1461,42 @@ impl<T> Item<T> {
 	pub fn remove_attribute<U: 'static>(&mut self, key: &str) -> Option<U> {
 		self.attributes.remove(key)
 	}
+}
+
+impl<T> From<T> for Item<T> {
+	fn from(element: T) -> Self {
+		Self::new_from_element(element)
+	}
+}
+
+impl<T> From<Item<T>> for List<T> {
+	fn from(item: Item<T>) -> Self {
+		Self::new_from_item(item)
+	}
+}
+
+impl<T> From<T> for List<T> {
+	fn from(element: T) -> Self {
+		Self::new_from_element(element)
+	}
+}
+
+impl<T> ApplyTransform for Item<T> {
+	/// Right-multiplies the modification into the item's transform attribute.
+	fn apply_transform(&mut self, modification: &DAffine2) {
+		let transform = self.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM);
+		*transform *= *modification;
+	}
+
+	/// Left-multiplies the modification into the item's transform attribute.
+	fn left_apply_transform(&mut self, modification: &DAffine2) {
+		let transform = self.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM);
+		*transform = *modification * *transform;
+	}
+}
+
+unsafe impl<T: StaticTypeSized> StaticType for Item<T> {
+	type Static = Item<T::Static>;
 }
 
 // ===========

@@ -6,7 +6,8 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::DocumentToolData;
 use graphene_std::Color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::color::SRGBA8;
+use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 /// Color selector widgets seen in [`LayoutTarget::ToolOptions`] bar.
 pub struct ToolColorOptions {
@@ -85,8 +86,8 @@ impl ToolColorOptions {
 		// In the mixed state (`fill_choice` is `None`) the dash overlay covers the swatch, so the underlying widget value just drives the picker's initial position.
 		// `FillChoice::None` gives it a neutral starting point.
 		let mixed_color = self.fill_choice.is_none();
-		// Convert the internal linear-light `FillChoice` to the JS-boundary `FillChoiceUI` (with `SRGBA8` colors) for the widget value.
-		let widget_value = FillChoiceUI::from(self.fill_choice.as_ref().unwrap_or(&FillChoice::None));
+		// Convert the internal linear-light `FillChoice` to the JS-boundary `FillChoice<SRGBA8>` (with `SRGBA8` colors) for the widget value.
+		let widget_value = FillChoice::<SRGBA8>::from(self.fill_choice.as_ref().unwrap_or(&FillChoice::None));
 		let mixed_enabled = self.enabled.is_none();
 		// In the mixed-enabled state the underlying `checked` value is hidden behind the indeterminate dash.
 		// The frontend's click handler sends `true` when the user resolves the mixed state by clicking.
@@ -124,6 +125,9 @@ pub struct DrawingToolState {
 	pub miter_limit: Option<f64>,
 	/// Paint order from the selection. `None` = mixed.
 	pub paint_order: Option<PaintOrder>,
+	/// Whether any selected layer has a lone adjacent Fill/Stroke pair for the paint order to swap.
+	/// Stays true with an empty selection, where the radio still sets the default for new shapes.
+	pub paint_order_applicable: bool,
 	/// Dash lengths from the selection. `None` = mixed.
 	pub dash_lengths: Option<Vec<f64>>,
 	/// Dash offset from the selection. `None` = mixed.
@@ -149,6 +153,7 @@ impl DrawingToolState {
 			stroke_join: Some(StrokeJoin::default()),
 			miter_limit: Some(4.),
 			paint_order: Some(PaintOrder::default()),
+			paint_order_applicable: true,
 			dash_lengths: Some(Vec::new()),
 			dash_offset: Some(0.),
 			last_synced_selection: Vec::new(),
@@ -182,12 +187,20 @@ impl DrawingToolState {
 			cap: self.stroke_cap.unwrap_or_default(),
 			join: self.stroke_join.unwrap_or_default(),
 			join_miter_limit: self.miter_limit.unwrap_or(4.),
-			paint_order: self.paint_order.unwrap_or_default(),
 			dash_lengths: self.effective_dash_lengths(),
 			dash_offset: self.dash_offset.unwrap_or(0.),
 			transform: glam::DAffine2::IDENTITY,
 		};
 		responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
+	}
+
+	/// Queues the paint order rewrite for a freshly created `layer`. The order is the relative position of the
+	/// Stroke and Fill nodes in the chain, so this must run after both the stroke and fill have been applied.
+	pub fn apply_stroke_order_to_new_layer(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+		let paint_order = self.paint_order.unwrap_or_default();
+		if paint_order != PaintOrder::default() {
+			responses.add(GraphOperationMessage::StrokeOrderSet { layer, paint_order });
+		}
 	}
 }
 
@@ -303,14 +316,23 @@ pub fn sync_drawing_state(drawing: &mut DrawingToolState, natural_fill_enabled: 
 /// Reads the stroke proto-node inputs (align, cap, join, miter limit, paint order, dash lengths, dash offset) across the selection and updates
 /// the matching fields on `drawing`. Each field becomes `None` (mixed) when selected strokes disagree. With no selection, fields are left as-is.
 fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessageHandler) -> bool {
-	let strokes: Vec<_> = document
-		.network_interface
-		.selected_nodes()
-		.selected_layers_except_artboards(&document.network_interface)
+	let layers = graph_modification_utils::paintable_selected_layers(document);
+
+	// The order radio only swaps a layer's lone adjacent Fill/Stroke pair, so it grays out when no selected
+	// layer has one; with nothing selected it still sets the default order for new shapes
+	let paint_order_applicable = layers.is_empty() || layers.iter().any(|&layer| graph_modification_utils::stroke_paint_order_applicable(layer, &document.network_interface));
+	let mut applicability_changed = false;
+	if drawing.paint_order_applicable != paint_order_applicable {
+		drawing.paint_order_applicable = paint_order_applicable;
+		applicability_changed = true;
+	}
+
+	let strokes: Vec<_> = layers
+		.into_iter()
 		.filter_map(|layer| graph_modification_utils::get_stroke_options(layer, &document.network_interface))
 		.collect();
 	if strokes.is_empty() {
-		return false;
+		return applicability_changed;
 	}
 
 	fn unanimous<T: PartialEq + Clone>(values: impl IntoIterator<Item = T>) -> Option<T> {
@@ -327,7 +349,7 @@ fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessag
 	let new_dash_lengths = unanimous(strokes.iter().map(|s| &s.dash_lengths)).cloned();
 	let new_dash_offset = unanimous(strokes.iter().map(|s| s.dash_offset));
 
-	let mut changed = false;
+	let mut changed = applicability_changed;
 
 	if drawing.stroke_align != new_align {
 		drawing.stroke_align = new_align;
@@ -390,14 +412,9 @@ pub fn sync_fill_only(fill: &mut ToolColorOptions, natural_fill_enabled: bool, f
 	}
 }
 
-/// True if at least one (non-artboard) layer is currently selected.
-pub fn has_selection(document: &DocumentMessageHandler) -> bool {
-	document
-		.network_interface
-		.selected_nodes()
-		.selected_layers_except_artboards(&document.network_interface)
-		.next()
-		.is_some()
+/// True if at least one selected layer can take paint, making the swatches edit the selection instead of the tool's own colors.
+pub fn has_paintable_selection(document: &DocumentMessageHandler) -> bool {
+	!graph_modification_utils::paintable_selected_layers(document).is_empty()
 }
 
 /// Applies a user-picked fill (gradient or solid). With a selection, writes to the layers; with none, pushes a solid to the swap-routed working color slot.
@@ -410,7 +427,7 @@ pub fn apply_fill_only_color_pick(fill: &mut ToolColorOptions, fill_choice: Fill
 	fill.fill_choice = Some(fill_choice.clone());
 	fill.enabled = Some(true);
 	fill.tracks_working_color = false;
-	if has_selection(document) {
+	if has_paintable_selection(document) {
 		if document.network_interface.transaction_status() == TransactionStatus::Finished {
 			responses.add(DocumentMessage::StartTransaction);
 		}
@@ -425,7 +442,7 @@ pub fn apply_stroke_color_pick(drawing: &mut DrawingToolState, color: Option<Col
 	drawing.stroke.fill_choice = Some(color.map_or(FillChoice::None, FillChoice::Solid));
 	drawing.stroke.enabled = Some(true);
 	drawing.stroke.tracks_working_color = false;
-	if has_selection(document) {
+	if has_paintable_selection(document) {
 		if document.network_interface.transaction_status() == TransactionStatus::Finished {
 			responses.add(DocumentMessage::StartTransaction);
 		}
@@ -446,7 +463,7 @@ pub fn apply_fill_enabled(drawing: &mut DrawingToolState, enabled: bool, global:
 /// Single-slot variant of [`apply_fill_enabled`]. `working_color` is the fallback used when re-ticking or unticking from a mixed state.
 pub fn apply_fill_only_enabled(fill: &mut ToolColorOptions, enabled: bool, working_color: Color, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	fill.enabled = Some(enabled);
-	if has_selection(document) {
+	if has_paintable_selection(document) {
 		responses.add(DocumentMessage::AddTransaction);
 	}
 	if enabled {
@@ -470,7 +487,7 @@ pub fn apply_fill_only_enabled(fill: &mut ToolColorOptions, enabled: bool, worki
 /// Toggles the stroke checkbox: mirrors [`apply_fill_enabled`].
 pub fn apply_stroke_enabled(drawing: &mut DrawingToolState, enabled: bool, global: &DocumentToolData, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.stroke.enabled = Some(enabled);
-	if has_selection(document) {
+	if has_paintable_selection(document) {
 		responses.add(DocumentMessage::AddTransaction);
 	}
 	if enabled {
@@ -492,7 +509,7 @@ pub fn apply_stroke_enabled(drawing: &mut DrawingToolState, enabled: bool, globa
 /// Applies a user-edited stroke weight to the selection, also persisting it as the no-selection default.
 pub fn apply_line_weight(drawing: &mut DrawingToolState, line_weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.line_weight = Some(line_weight);
-	if !has_selection(document) {
+	if !has_paintable_selection(document) {
 		drawing.default_line_weight = line_weight;
 	}
 	graph_modification_utils::set_stroke_weight_for_selected_layers(line_weight, document, responses);
@@ -506,7 +523,7 @@ pub fn apply_working_colors(drawing: &mut DrawingToolState, global: &DocumentToo
 
 /// Refreshes a single swatch from the given working color, subject to the rules in [`apply_working_colors`].
 pub fn refresh_slot_working_color(slot: &mut ToolColorOptions, working_color: Color, document: &DocumentMessageHandler) {
-	if slot.fill_choice.is_some() && (!has_selection(document) || slot.tracks_working_color) {
+	if slot.fill_choice.is_some() && (!has_paintable_selection(document) || slot.tracks_working_color) {
 		slot.fill_choice = Some(solid(working_color));
 	}
 }
@@ -523,7 +540,7 @@ pub fn reset_colors_on_deactivation(drawing: &mut DrawingToolState, global: &Doc
 pub fn swap_fill_and_stroke(drawing: &mut DrawingToolState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.colors_swapped = !drawing.colors_swapped;
 
-	if has_selection(document) {
+	if has_paintable_selection(document) {
 		responses.add(DocumentMessage::AddTransaction);
 	}
 
@@ -538,7 +555,7 @@ pub fn swap_fill_and_stroke(drawing: &mut DrawingToolState, document: &DocumentM
 	drawing.fill.tracks_working_color = new_fill_tracks;
 	drawing.stroke.tracks_working_color = new_stroke_tracks;
 
-	if has_selection(document) {
+	if has_paintable_selection(document) {
 		// Apply to layers only when we have a concrete value (`None` means mixed, no single value to broadcast).
 		if drawing.fill.is_active()
 			&& let Some(choice) = new_fill
@@ -578,7 +595,7 @@ pub enum WeightSyncOutcome {
 
 /// Inspects the selection and returns how the weight widget should update.
 pub fn compute_weight_sync(document: &DocumentMessageHandler) -> WeightSyncOutcome {
-	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
+	let layers = graph_modification_utils::paintable_selected_layers(document);
 
 	if layers.is_empty() {
 		return WeightSyncOutcome::NoSelection;

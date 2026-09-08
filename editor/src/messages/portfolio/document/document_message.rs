@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::utility_types::misc::{GroupFolderType, SnappingState};
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -245,7 +245,7 @@ pub enum DocumentMessage {
 		vector_data: HashMap<NodeId, Arc<Vector>>,
 	},
 	// `Message` is only serialized at `editor_wrapper.rs`, and only inputs from JS pass through it.
-	// `UpdateFillAttributes` and `UpdateStrokeAttributes` are produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
+	// `UpdateFillAttributes`/`UpdateStrokeAttributes` are produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so they never reach that serialization point.
 	#[serde(skip)]
 	UpdateFillAttributes {
 		fill_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,

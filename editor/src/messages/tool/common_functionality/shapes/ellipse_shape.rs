@@ -37,11 +37,11 @@ impl Ellipse {
 			let radius = ((start - end) / 2. / viewport_zoom(document)).abs();
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 1),
+				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::ellipse::RadiusXInput),
 				input: NodeInput::value(TaggedValue::F64(radius.x), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 2),
+				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::ellipse::RadiusYInput),
 				input: NodeInput::value(TaggedValue::F64(radius.y), false),
 			});
 			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), DVec2::ONE));
@@ -75,8 +75,8 @@ mod test_ellipse {
 				let node_graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
 				let ellipse_node = node_graph_layer.upstream_node_id_from_protonode(ellipse::IDENTIFIER)?;
 				Some(ResolvedEllipse {
-					radius_x: instrumented.grab_protonode_input::<ellipse::RadiusXInput>(&vec![ellipse_node], &editor.runtime).unwrap(),
-					radius_y: instrumented.grab_protonode_input::<ellipse::RadiusYInput>(&vec![ellipse_node], &editor.runtime).unwrap(),
+					radius_x: instrumented.grab_ranked_input::<ellipse::RadiusXInput, f64>(&vec![ellipse_node], &editor.runtime).unwrap(),
+					radius_y: instrumented.grab_ranked_input::<ellipse::RadiusYInput, f64>(&vec![ellipse_node], &editor.runtime).unwrap(),
 					transform: document.metadata().transform_to_document(layer),
 				})
 			})

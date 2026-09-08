@@ -61,8 +61,48 @@ macro_rules! generic {
 	($type:ty) => {{ $crate::Type::Generic($crate::Cow::Borrowed(stringify!($type))) }};
 }
 
+/// Constructs the [`Type`] of an `Item` holding the given element type, e.g. `item!(f64)` is the type of an `Item<f64>`.
+/// The two-argument form tags the element descriptor with an alias, preserving the source spelling for widget dispatch.
+#[macro_export]
+macro_rules! item {
+	(Item<$inner:ty>) => {
+		$crate::Type::Item(Box::new($crate::item!($inner)))
+	};
+	($element:ty) => {
+		$crate::Type::Item(Box::new($crate::concrete!($element)))
+	};
+	($element:ty, $alias:ty) => {
+		$crate::Type::Item(Box::new($crate::concrete!($element, $alias)))
+	};
+}
+
+/// Constructs the [`Type`] of a `List` holding the given element type, e.g. `list!(f64)` is the type of a `List<f64>`.
+#[macro_export]
+macro_rules! list {
+	(List<$inner:ty>) => {
+		$crate::Type::List(Box::new($crate::list!($inner)))
+	};
+	($element:ty) => {
+		$crate::Type::List(Box::new($crate::concrete!($element)))
+	};
+}
+
+// The `List<...>`/`Item<...>` rules must appear before the generic `$type:ty` rules, and in each macro that sees the literal tokens,
+// because a type captured as `ty` becomes opaque to any inner macro's ranked pattern
 #[macro_export]
 macro_rules! future {
+	(List<$inner:ty>) => {
+		$crate::Type::Future(Box::new($crate::list!($inner)))
+	};
+	(List<$inner:ty>, $name:ty) => {
+		$crate::Type::Future(Box::new($crate::list!($inner)))
+	};
+	(Item<$inner:ty>) => {
+		$crate::Type::Future(Box::new($crate::item!($inner)))
+	};
+	(Item<$inner:ty>, $name:ty) => {
+		$crate::Type::Future(Box::new($crate::item!($inner, $name)))
+	};
 	($type:ty) => {{ $crate::Type::Future(Box::new(concrete!($type))) }};
 	($type:ty, $name:ty) => {
 		$crate::Type::Future(Box::new(concrete!($type, $name)))
@@ -71,8 +111,26 @@ macro_rules! future {
 
 #[macro_export]
 macro_rules! fn_type_fut {
+	(List<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
+	};
+	(Item<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))
+	};
 	($type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!(())), Box::new(future!($type)))
+	};
+	($in_type:ty, List<$inner:ty>, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
+	};
+	($in_type:ty, List<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
+	};
+	($in_type:ty, Item<$inner:ty>, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner, $inner)))))
+	};
+	($in_type:ty, Item<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))
 	};
 	($in_type:ty, $type:ty, alias: $outname:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type, $outname)))
@@ -375,12 +433,13 @@ pub fn make_type_user_readable(ty: &str) -> String {
 		.replace("UVec2", "Vec2")
 		.replace("&str", "String");
 
-	rewrite_list_as_array_brackets(&ty)
+	rewrite_ranked_type_wrappers(&ty)
 }
 
-/// Rewrites `List<T>` as `T[]`. Handles nesting (e.g. `List<List<Vector>>` becomes `Vector[][]`).
-/// Respects word boundaries so unrelated identifiers that happen to end in `List` are not affected.
-fn rewrite_list_as_array_brackets(input: &str) -> String {
+/// Rewrites `List<T>` and the whole-collection `Bundle<T>` as `T[]`, and unwraps `Item<T>` to `T`, so ranked wires read as their element type.
+/// Handles nesting (e.g. `List<List<Vector>>` becomes `Vector[][]`).
+/// Respects word boundaries so unrelated identifiers that happen to end in `List` or `Item` are not affected.
+fn rewrite_ranked_type_wrappers(input: &str) -> String {
 	let bytes = input.as_bytes();
 	let mut result = String::with_capacity(input.len());
 	let mut i = 0;
@@ -391,8 +450,27 @@ fn rewrite_list_as_array_brackets(input: &str) -> String {
 			let inner_start = i + b"List<".len();
 			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
 				let inner = &input[inner_start..close];
-				result.push_str(&rewrite_list_as_array_brackets(inner));
+				result.push_str(&rewrite_ranked_type_wrappers(inner));
 				result.push_str("[]");
+				i = close + 1;
+				continue;
+			}
+		}
+		if at_word_boundary && bytes[i..].starts_with(b"Bundle<") {
+			let inner_start = i + b"Bundle<".len();
+			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
+				let inner = &input[inner_start..close];
+				result.push_str(&rewrite_ranked_type_wrappers(inner));
+				result.push_str("[]");
+				i = close + 1;
+				continue;
+			}
+		}
+		if at_word_boundary && bytes[i..].starts_with(b"Item<") {
+			let inner_start = i + b"Item<".len();
+			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
+				let inner = &input[inner_start..close];
+				result.push_str(&rewrite_ranked_type_wrappers(inner));
 				i = close + 1;
 				continue;
 			}

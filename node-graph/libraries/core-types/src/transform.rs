@@ -217,6 +217,23 @@ impl From<()> for Footprint {
 	}
 }
 
+/// Consumes an item's `transform` attribute by baking it into the underlying value itself.
+pub trait BakeTransform {
+	fn bake_transform(&mut self, transform: &DAffine2);
+}
+
+impl BakeTransform for DAffine2 {
+	fn bake_transform(&mut self, transform: &DAffine2) {
+		*self = *transform * *self;
+	}
+}
+
+impl BakeTransform for DVec2 {
+	fn bake_transform(&mut self, transform: &DAffine2) {
+		*self = transform.transform_point2(*self);
+	}
+}
+
 pub trait ApplyTransform {
 	fn apply_transform(&mut self, modification: &DAffine2);
 	fn left_apply_transform(&mut self, modification: &DAffine2);

@@ -14,6 +14,7 @@ pub use paint::{
 pub use walk::{GraphicLevel, GraphicLevelColumn, RowStep, VectorRow, direct_vector_len, flatten_vector_rows, group_is_empty, lane_attributes, run_lane_attributes, walk_vector_rows};
 use walk::{group_all_clipped, group_bounding_box, group_is_fully_transparent, group_is_opaque, group_render_complexity};
 
+use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
@@ -24,7 +25,7 @@ use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::GradientStops;
+use vector_types::Gradient;
 pub use vector_types::Vector;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
@@ -33,19 +34,22 @@ pub use vector_types::Vector;
 /// transitionally the legacy `Graphic` list.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
 pub enum Graphic<'e> {
-	Graphic(List<Graphic<'e>>),
+	GraphicList(List<Graphic<'e>>),
 	Vector(Vector),
 	RasterCPU(Raster<CPU>),
 	RasterGPU(Raster<GPU>),
 	Color(Color),
-	Gradient(GradientStops),
+	Gradient(Gradient),
 	Text(String),
+	Stroke(Stroke),
+	/// Transitional typed list, kept because master's brush nodes match on it directly.
+	StrokeList(List<Stroke>),
 	Group(core_types::record::Group<'e>),
 }
 
 impl Default for Graphic<'_> {
 	fn default() -> Self {
-		Self::Graphic(List::new())
+		Self::GraphicList(List::new())
 	}
 }
 
@@ -101,8 +105,9 @@ into_graphic_element! {
 	RasterCPU: Raster<CPU>;
 	RasterGPU: Raster<GPU>;
 	Color: Color;
-	Gradient: GradientStops;
+	Gradient: Gradient;
 	Text: String;
+	Stroke: Stroke;
 }
 
 impl IntoGraphicElement for Graphic<'static> {
@@ -146,9 +151,9 @@ impl From<Color> for Graphic<'_> {
 }
 // Note: List<Color> -> Option<Color> is in gcore (Color is defined there)
 
-// GradientStops
-impl From<GradientStops> for Graphic<'_> {
-	fn from(gradient: GradientStops) -> Self {
+// Gradient
+impl From<Gradient> for Graphic<'_> {
+	fn from(gradient: Gradient) -> Self {
 		Graphic::Gradient(gradient)
 	}
 }
@@ -158,6 +163,33 @@ impl From<String> for Graphic<'_> {
 	fn from(text: String) -> Self {
 		Graphic::Text(text)
 	}
+}
+
+// Stroke
+impl From<Stroke> for Graphic<'_> {
+	fn from(stroke: Stroke) -> Self {
+		Graphic::Stroke(stroke)
+	}
+}
+
+impl From<List<Stroke>> for Graphic<'_> {
+	fn from(strokes: List<Stroke>) -> Self {
+		Graphic::StrokeList(strokes)
+	}
+}
+
+/// Whether the list is a single bare leaf carrying no attribute of its own, so
+/// wrapping it collapses no structure and rebuilding it would be busywork.
+/// Master reads one `appearance` here; our paint is still the fill and stroke pair.
+pub fn is_lone_anonymous_leaf(content: &List<Graphic>) -> bool {
+	content.len() == 1
+		&& !matches!(content.element(0), Some(Graphic::GraphicList(_)))
+		&& content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).is_none()
+		&& content.attribute::<f64>(ATTR_OPACITY, 0).is_none()
+		&& content.attribute::<f64>(ATTR_OPACITY_FILL, 0).is_none()
+		&& content.attribute::<List<Graphic>>(crate::markers::ATTR_FILL, 0).is_none()
+		&& content.attribute::<List<Graphic>>(crate::markers::ATTR_STROKE, 0).is_none()
+		&& content.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, 0).is_none()
 }
 
 /// Deeply flattens a `List<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
@@ -181,7 +213,7 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 			match element {
 				// Compose the parent's transform/opacity/fill onto each child, but only for attributes the parent carries.
 				// A child lacking one is padded with the composition identity (`1.` for opacity/fill, identity for transform), so composing through it is a no-op.
-				Graphic::Graphic(mut sub_list) => {
+				Graphic::GraphicList(mut sub_list) => {
 					if parent_has_transform {
 						for v in sub_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 							*v = current_transform * *v;
@@ -251,7 +283,7 @@ impl TryFromGraphic for Color {
 	}
 }
 
-impl TryFromGraphic for GradientStops {
+impl TryFromGraphic for Gradient {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		if let Graphic::Gradient(t) = graphic { Some(List::new_from_element(t)) } else { None }
 	}
@@ -306,7 +338,7 @@ impl IntoGraphicList for List<Color> {
 	}
 }
 
-impl IntoGraphicList for List<GradientStops> {
+impl IntoGraphicList for List<Gradient> {
 	fn into_graphic_list(self) -> List<Graphic<'static>> {
 		detable_items(self, Graphic::Gradient)
 	}
@@ -340,16 +372,16 @@ impl From<DVec2> for Graphic<'_> {
 // Note: List conversions handled by blanket impl in gcore
 
 impl<'e> Graphic<'e> {
-	pub fn as_graphic(&self) -> Option<&List<Graphic<'_>>> {
+	pub fn as_graphic_list(&self) -> Option<&List<Graphic<'_>>> {
 		match self {
-			Graphic::Graphic(graphic) => Some(graphic),
+			Graphic::GraphicList(graphic) => Some(graphic),
 			_ => None,
 		}
 	}
 
-	pub fn as_graphic_mut(&mut self) -> Option<&mut List<Graphic<'e>>> {
+	pub fn as_graphic_list_mut(&mut self) -> Option<&mut List<Graphic<'e>>> {
 		match self {
-			Graphic::Graphic(graphic) => Some(graphic),
+			Graphic::GraphicList(graphic) => Some(graphic),
 			_ => None,
 		}
 	}
@@ -382,7 +414,7 @@ impl<'e> Graphic<'e> {
 		}
 
 		match self {
-			Graphic::Graphic(list) => all_clipped(list),
+			Graphic::GraphicList(list) => all_clipped(list),
 			Graphic::Group(group) => group_all_clipped(group),
 			_ => false,
 		}
@@ -395,42 +427,43 @@ impl<'e> Graphic<'e> {
 		}
 	}
 
-	pub fn is_opaque(&self) -> bool {
+	pub fn is_guaranteed_fully_opaque(&self) -> bool {
 		match self {
-			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
+			Graphic::GraphicList(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_guaranteed_fully_opaque),
 			// A bare leaf carries no paint attribute, which rides its lane, so
 			// nothing here claims opacity.
 			Graphic::Vector(_) => false,
 			Graphic::Color(color) => color.is_opaque(),
-			Graphic::Gradient(stops) => stops.iter().all(|stop| stop.color.is_opaque()),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			Graphic::Gradient(gradient) => !gradient.is_empty() && gradient.iter().all(|stop| stop.color.is_opaque()),
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) | Graphic::Stroke(_) | Graphic::StrokeList(_) => false,
 			Graphic::Group(group) => group_is_opaque(group),
 		}
 	}
 
-	pub fn is_fully_transparent(&self) -> bool {
+	pub fn is_guaranteed_fully_transparent(&self) -> bool {
 		match self {
-			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
-			// A bare leaf carries no paint attribute, so only an unstroked
-			// vector is invisible on its own.
-			Graphic::Vector(vector) => vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()),
+			Graphic::GraphicList(list) => list.iter_element_values().all(Graphic::is_guaranteed_fully_transparent),
+			// A bare leaf carries no paint attribute, which rides its lane, so
+			// nothing here can prove invisibility.
+			Graphic::Vector(_) => false,
 			Graphic::Color(color) => color.a() == 0.,
-			Graphic::Gradient(stops) => stops.iter().all(|stop| stop.color.a() == 0.),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			// A stopless ramp paints solid black, so it counts as transparent only once it has stops.
+			Graphic::Gradient(gradient) => !gradient.is_empty() && gradient.iter().all(|stop| stop.color.a() == 0.),
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) | Graphic::Stroke(_) | Graphic::StrokeList(_) => false,
 			Graphic::Group(group) => group_is_fully_transparent(group),
 		}
 	}
 
 	/// True if this paint opaquely covers the entire fill region.
 	/// Vector, Raster, and a nested Graphic may leave gaps, so they return false.
-	pub fn covers_opaquely(&self) -> bool {
-		matches!(self, Graphic::Color(_) | Graphic::Gradient(_)) && self.is_opaque()
+	pub fn is_guaranteed_to_cover_opaquely(&self) -> bool {
+		matches!(self, Graphic::Color(_) | Graphic::Gradient(_)) && self.is_guaranteed_fully_opaque()
 	}
 
 	/// Whether the graphic holds no content: a leaf always holds its element.
 	pub fn is_empty(&self) -> bool {
 		match self {
-			Graphic::Graphic(list) => list.is_empty(),
+			Graphic::GraphicList(list) => list.is_empty(),
 			Graphic::Group(group) => group_is_empty(group),
 			_ => false,
 		}
@@ -443,10 +476,12 @@ impl BoundingBox for Graphic<'_> {
 			Graphic::Vector(vector) => BoundingBox::bounding_box(vector, transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
-			Graphic::Graphic(list) => list.bounding_box(transform, include_stroke),
+			Graphic::GraphicList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.bounding_box(transform, include_stroke),
 			Graphic::Text(text) => text.bounding_box(transform, include_stroke),
+			// Brush strokes carry no vector outline; a brush node renders them to rasters.
+			Graphic::Stroke(_) | Graphic::StrokeList(_) => RenderBoundingBox::None,
 			Graphic::Group(group) => group_bounding_box(group, transform, include_stroke, false),
 		}
 	}
@@ -456,10 +491,11 @@ impl BoundingBox for Graphic<'_> {
 			Graphic::Vector(vector) => vector.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
-			Graphic::Graphic(graphic) => graphic.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::GraphicList(graphic) => graphic.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Stroke(_) | Graphic::StrokeList(_) => RenderBoundingBox::None,
 			Graphic::Group(group) => group_bounding_box(group, transform, include_stroke, true),
 		}
 	}
@@ -484,13 +520,15 @@ impl<'e> ListConvert<Graphic<'e>> for Raster<GPU> {
 impl RenderComplexity for Graphic<'_> {
 	fn render_complexity(&self) -> usize {
 		match self {
-			Self::Graphic(list) => list.render_complexity(),
+			Self::GraphicList(list) => list.render_complexity(),
 			Self::Vector(list) => list.render_complexity(),
 			Self::RasterCPU(list) => list.render_complexity(),
 			Self::RasterGPU(list) => list.render_complexity(),
 			Self::Color(list) => list.render_complexity(),
 			Self::Gradient(list) => list.render_complexity(),
 			Self::Text(list) => list.render_complexity(),
+			Self::Stroke(stroke) => stroke.position.len(),
+			Self::StrokeList(strokes) => (0..strokes.len()).filter_map(|index| strokes.element(index)).map(|stroke| stroke.position.len()).sum(),
 			Self::Group(group) => group_render_complexity(group),
 		}
 	}
@@ -594,7 +632,7 @@ mod tests {
 		let flattened: List<Vector> = graphics.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
 
-		let mut group = List::new_from_element(Graphic::Graphic(List::new_from_element(vector_graphic())));
+		let mut group = List::new_from_element(Graphic::GraphicList(List::new_from_element(vector_graphic())));
 		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
 		let flattened: List<Vector> = group.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
@@ -612,33 +650,33 @@ mod graphic_is_opaque_tests {
 		Graphic::Color(color)
 	}
 
-	fn gradient_graphic(gradient: GradientStops) -> Graphic<'static> {
+	fn gradient_graphic(gradient: Gradient) -> Graphic<'static> {
 		Graphic::Gradient(gradient)
 	}
 
 	#[test]
 	fn opaque_color_is_opaque() {
 		let g = color_graphic(1.);
-		assert!(g.is_opaque());
+		assert!(g.is_guaranteed_fully_opaque());
 	}
 
 	#[test]
 	fn transparent_color_is_not_opaque() {
 		let g = color_graphic(0.5);
-		assert!(!g.is_opaque());
+		assert!(!g.is_guaranteed_fully_opaque());
 	}
 
 	#[test]
 	fn vector_is_not_opaque() {
 		let g = Graphic::Vector(Vector::default());
-		assert!(!g.is_opaque());
+		assert!(!g.is_guaranteed_fully_opaque());
 	}
 
 	#[test]
 	fn gradient_with_all_opaque_stops_is_opaque() {
 		let color_1 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
 		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
-		let gradient = GradientStops::new(vec![
+		let gradient = Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -651,14 +689,14 @@ mod graphic_is_opaque_tests {
 			},
 		]);
 		let g = gradient_graphic(gradient);
-		assert!(g.is_opaque());
+		assert!(g.is_guaranteed_fully_opaque());
 	}
 
 	#[test]
 	fn gradient_with_transparent_stop_is_not_opaque() {
 		let color_1 = Color::from_rgbaf32(1., 0., 0., 0.5).unwrap();
 		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
-		let gradient = GradientStops::new(vec![
+		let gradient = Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -671,7 +709,7 @@ mod graphic_is_opaque_tests {
 			},
 		]);
 		let g = gradient_graphic(gradient);
-		assert!(!g.is_opaque());
+		assert!(!g.is_guaranteed_fully_opaque());
 	}
 }
 
@@ -682,11 +720,11 @@ mod test_support {
 	use core_types::record::{RunBuilder, element_write_hashed};
 	use glam::DVec2;
 	use vector_types::Vector;
-	use vector_types::subpath::Subpath;
+	use vector_types::vector::algorithms::shapes::rectangle_bezpath;
 	use vector_types::vector::PointId;
 
 	pub(in crate::graphic) fn unit_square_at(corner: DVec2) -> Vector {
-		Vector::from_subpath(Subpath::<PointId>::new_rectangle(corner, corner + DVec2::ONE))
+		Vector::from_bezpath(rectangle_bezpath(corner, corner + DVec2::ONE))
 	}
 
 	pub(in crate::graphic) fn native_group_paint<'a>(vector: &Vector, arena: &'a core_types::arena::Arena) -> List<Graphic<'a>> {

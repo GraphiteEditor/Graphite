@@ -1,17 +1,20 @@
+use brush_types::Stroke;
 use core_types::attribute::{Attr, EditorLayerPath, Transform as TransformAttr};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt, Level};
-use core_types::list::List;
-use core_types::registry::types::{Angle, SignedInteger};
+use core_types::list::{Item, List, ListDyn};
+use core_types::registry::types::{Angle, SeedValue, SignedInteger};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyIndex};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{Graphic, IntoGraphicList};
+use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
 use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
-
-use vector_types::{GradientStop, GradientStops, ReferencePoint};
+use rand::SeedableRng;
+use rand::seq::SliceRandom;
+use std::cmp::Ordering;
+use vector_types::{Gradient, ReferencePoint};
 
 /// Resolves a signed index over `total` lanes: negatives count from the end,
 /// out of range resolves to nothing.
@@ -98,7 +101,7 @@ fn omit_element_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: Level
 pub fn extract_element<T: Clone + Default + Send + Sync + CacheHash + 'static>(
 	_: impl Ctx,
 	/// The `List` of data to extract from.
-	#[implementations(String, f64, NodeId, Color, GradientStops, Vector, Raster<CPU>, Graphic, Artboard)]
+	#[implementations(String, f64, NodeId, Color, Gradient, Vector, Raster<CPU>, Graphic, Artboard)]
 	list: IList<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,
@@ -112,7 +115,7 @@ pub fn extract_element<T: Clone + Default + Send + Sync + CacheHash + 'static>(
 #[node_macro::node(category("General"))]
 fn map<Row: Clone + Send + Sync + CacheHash + 'static, T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<T>, Interrupt> {
 	let mut remaining = ctx.index();
@@ -425,9 +428,9 @@ fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll
 #[node_macro::node(category(""))]
 pub fn legacy_layer_extend<T: Send + Clone>(
 	_: impl Ctx,
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)] base: List<T>,
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)] base: List<T>,
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
 	new: List<T>,
 	nested_node_path: List<NodeId>,
 ) -> List<T> {
@@ -447,21 +450,21 @@ pub fn legacy_layer_extend<T: Send + Clone>(
 	base
 }
 
-/// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.
-/// The wrapped run keeps the level's element type, so the legacy boundary can
-/// lower a wrapped vector level to the bare typed graphic the pre-flip wrap made.
+/// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
+/// The collected run keeps the level's element type, so the legacy boundary can
+/// lower a collected vector level to the bare typed graphic the pre-flip wrap made.
 /// The inverse of this node is 'Flatten Graphic'.
-#[node_macro::node(category("General"), extent(wrap_graphic_extent))]
-pub fn wrap_graphic<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
+#[node_macro::node(category("General"), extent(into_group_extent))]
+pub fn into_group<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] content: IList<T>,
 ) -> Result<IList<Graphic<'e>>, Interrupt> {
 	let item = content.as_group_item();
 	Ok(Graphic::Group(core_types::record::Group { row: None, content: item }))
 }
 
 /// The collected group is the level's single lane.
-fn wrap_graphic_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Extent> {
+fn into_group_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Extent> {
 	GPoll::Final(Extent::Exactly(1))
 }
 
@@ -469,7 +472,9 @@ fn wrap_graphic_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Ext
 /// unchanged; a typed level nests as one graphic lane, keeping the pre-flip list
 /// collapse (`to_graphic_typed` serves those rows). The legacy list rows accept an
 /// unconverted producer's list value as one element, built as a native group.
-#[node_macro::node(category("General"))]
+/// Out of the catalog since the split into 'As Graphic' and 'Into Group'; the identifier stays
+/// because the registry serves the typed and unit rows under it.
+#[node_macro::node(category(""))]
 pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(
 	ctx: impl Ctx + core_types::context::ExtractArena<'e>,
 	#[implementations(
@@ -479,12 +484,20 @@ pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<String>,
+		List<Stroke>,
 	)]
 	content: T,
 ) -> Result<Graphic<'e>, Interrupt> {
 	content.into_graphic_element(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
+}
+
+/// Type-asserts a value to be graphical content, converting each item of other content types into its matching form.
+/// Use the 'Into Group' node instead to collect the content into a single group.
+#[node_macro::node(category("General"))]
+pub fn as_graphic<'e>(_: impl Ctx, value: Graphic<'e>) -> Graphic<'e> {
+	value
 }
 
 /// The elementwise `Graphic` coercion the compiler-inserted converts use: each
@@ -499,14 +512,14 @@ pub fn to_graphic_element<'e, T: graphic_types::graphic::IntoGraphicElement>(
 		Raster<CPU>,
 		Raster<GPU>,
 		Color,
-		GradientStops,
+		Gradient,
 		String,
 		List<Graphic>,
 		List<Vector>,
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<String>,
 	)]
 	content: T,
@@ -520,7 +533,7 @@ pub fn to_graphic_element<'e, T: graphic_types::graphic::IntoGraphicElement>(
 #[node_macro::node(category(""), extent(wrap_graphic_extent))]
 pub fn to_graphic_typed<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
-	#[implementations(Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
+	#[implementations(Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] content: IList<T>,
 ) -> Result<IList<Graphic<'e>>, Interrupt> {
 	let item = content.as_group_item();
 	Ok(Graphic::Group(core_types::record::Group { row: None, content: item }))
@@ -544,7 +557,7 @@ fn to_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level:
 #[node_macro::node(category(""))]
 pub fn level_to_list<T: Clone + Send + Sync + CacheHash + dyn_any::StaticTypeSized>(
 	_: impl Ctx,
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] value: IList<T>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] value: IList<T>,
 	_converter: (),
 ) -> List<T> {
 	let item = value.as_group_item();
@@ -598,22 +611,22 @@ pub fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Gr
 	// TODO: we stash the pre-flattened list on the output so `List<Vector>::collect_metadata` can recurse into it,
 	// TODO: which conflates render output with editor metadata and forces the pre-compensation dance below.
 	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
-	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Flatten Path,
+	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Combine Paths,
 	// TODO: Morph, Rasterize) become unnecessary.
-	if !output.is_empty() {
+	if !output.is_empty() && !is_lone_anonymous_leaf(&graphic_list) {
 		// Item 0 carries a composed transform inherited from the flattened input, but the merged_layers
 		// already holds the original transforms; pre-compensate by item 0's inverse so the renderer's
 		// `upstream_footprint *= item_0_transform` recursion cancels out and leaves the originals intact.
-		let mut graphic_list = graphic_list;
+		let mut merged_layers = graphic_list;
 		let item_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		if item_0_transform.matrix2.determinant().abs() > f64::EPSILON {
 			let inverse = item_0_transform.inverse();
-			for transform in graphic_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			for transform in merged_layers.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 				*transform = inverse * *transform;
 			}
 		}
 
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, Some(graphic_list));
+		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, Some(merged_layers));
 	}
 
 	output
@@ -631,19 +644,333 @@ pub fn flatten_color<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Gra
 	content.into_flattened_list()
 }
 
-/// Converts a `Graphic[]` into a `GradientStops[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
+/// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
-pub fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<GradientStops>)] content: T) -> List<GradientStops> {
+pub fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Gradient>)] content: T) -> List<Gradient> {
 	content.into_flattened_list()
 }
 
-/// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
-#[node_macro::node(category("Color"))]
-fn colors_to_gradient(_: impl Ctx, colors: IList<Color>) -> GradientStops {
-	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
-	match colors.len() {
-		0 => GradientStops::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
-		1 => GradientStops::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
-		total => GradientStops::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
+/// Constructs a gradient from a `Color[]`, where each color becomes a gradient stop. A `position` attribute on the colors places their stops along the ramp and a `midpoint` attribute skews each transition, while colors carrying neither are distributed evenly across the 0 to 1 range.
+#[node_macro::node(category("Gradient"), name("Colors to Gradient"))]
+fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> Gradient {
+	Gradient::from(colors.into_flattened_list::<Color>())
+}
+
+/// Unwraps a gradient into a `Color[]` of its stops, keeping any `position` and `midpoint` attributes that place them along the ramp. Attributes belonging to the gradient as a whole (like spread and interpolation), rather than its individual color stops, are not preserved.
+#[node_macro::node(category("Gradient"), name("Gradient to Colors"))]
+fn gradient_to_colors(_: impl Ctx, gradient: Gradient) -> List<Color> {
+	gradient.into_color_list()
+}
+
+/// Keeps chosen items from a list (those corresponding to `true` values) and discards the others (those corresponding to `false` values) based on the *Keep Pattern* bool list. A short pattern is repeated over the remainder of the filtered list, allowing a pattern like `[true, false]` to keep every other item starting from the first. An empty pattern keeps all items.
+#[node_macro::node(category("General"))]
+fn filter<T: Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list of data to filter.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// The list of true and false values that determines which corresponding items are kept (`true`) and discarded (`false`). The pattern may repeat if it is shorter than the list of data.
+	keep_pattern: List<bool>,
+) -> List<T> {
+	// Tile the keep pattern over the items, so a short pattern repeats from the start
+	let pattern = keep_pattern.iter_element_values().as_slice();
+	if pattern.is_empty() {
+		return list;
 	}
+
+	list.into_iter().enumerate().filter_map(|(index, item)| pattern[index % pattern.len()].then_some(item)).collect()
+}
+
+/// Reverses the order of the items in a list, so the last item comes first and the first comes last.
+#[node_macro::node(category("General"))]
+fn reverse<T: Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list of data to reverse.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+) -> List<T> {
+	list.into_iter().rev().collect()
+}
+
+/// Shifts the items in a list by a number of positions. With wrapping, items pushed off one end reappear at the other. Otherwise they are dropped, shortening the list.
+#[node_macro::node(category("General"))]
+fn shift<T: Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list of data to shift.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// How many positions to shift each item. Positive values shift items toward the start of the list, negative toward the end.
+	amount: SignedInteger,
+	/// Whether items shifted off one end wrap around to the other. When off, they are dropped and the list gets shorter.
+	#[default(true)]
+	wrap: bool,
+) -> List<T> {
+	let amount = amount as i64;
+	let len = list.len() as i64;
+	if len == 0 {
+		return list;
+	}
+
+	let mut items: Vec<Item<T>> = list.into_iter().collect();
+	if wrap {
+		items.rotate_left((((amount % len) + len) % len) as usize);
+		items.into_iter().collect()
+	} else if amount >= 0 {
+		items.into_iter().skip(amount.min(len) as usize).collect()
+	} else {
+		items.into_iter().take((len + amount).max(0) as usize).collect()
+	}
+}
+
+/// Randomly reorders the items in a list. The same seed always produces the same ordering.
+#[node_macro::node(category("General"))]
+fn shuffle<T: Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list to have its items randomly reordered.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// Seed to determine the unique variation of the random shuffle ordering. The same seed always produces the same ordering.
+	seed: SeedValue,
+) -> List<T> {
+	let mut items: Vec<Item<T>> = list.into_iter().collect();
+
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+	items.shuffle(&mut rng);
+
+	items.into_iter().collect()
+}
+
+/// Generates a list of evenly spaced numbers, starting at a value and progressing by a step (which may be positive, negative, or zero) for a given count.
+#[node_macro::node(category("General"), name("Number Sequence"))]
+fn number_sequence(
+	_: impl Ctx,
+	_primary: (),
+	/// The first number in the sequence.
+	start: f64,
+	/// The amount added to reach each successive number.
+	#[default(1.)]
+	step: f64,
+	/// How many numbers to generate.
+	#[default(10)]
+	count: u32,
+) -> List<f64> {
+	(0..count).map(|index| Item::new_from_element(start + step * index as f64)).collect()
+}
+
+/// Counts out the index of each item in a list (0, 1, 2, and so on), producing a list of numbers with one for each item.
+#[node_macro::node(category("General"))]
+fn list_indices(
+	_: impl Ctx,
+	/// The list whose items are counted.
+	list: ListDyn,
+	/// The number that the count begins from for the first item.
+	start_index: SignedInteger,
+) -> List<f64> {
+	(0..list.len()).map(|index| Item::new_from_element(start_index + index as f64)).collect()
+}
+
+/// Extracts a portion of a list, starting at "Start" and ending before "End".
+///
+/// Negative indices count from the end of the list. If the index of "Start" equals or exceeds "End", the result is an empty list.
+#[node_macro::node(category("General"))]
+fn list_slice<T: Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list of data to take a portion of.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// The index of the first item in the portion. Negative indices count from the end of the list.
+	start: SignedInteger,
+	/// The index the portion ends before, which is not included. Zero or negative indices count from the end of the list.
+	end: SignedInteger,
+) -> List<T> {
+	let total_items = list.len();
+
+	let start = if start < 0. {
+		total_items.saturating_sub(start.abs() as usize)
+	} else {
+		(start as usize).min(total_items)
+	};
+	let end = if end <= 0. {
+		total_items.saturating_sub(end.abs() as usize)
+	} else {
+		(end as usize).min(total_items)
+	};
+
+	if start >= end {
+		return List::new();
+	}
+
+	list.into_iter().skip(start).take(end - start).collect()
+}
+
+/// Pairwise ordering used by the Sort node for element values. Types without a natural
+/// order compare as equal, so the stable sort leaves their items in their original relative positions.
+pub trait ElementOrder {
+	fn element_order(&self, _other: &Self) -> Ordering {
+		Ordering::Equal
+	}
+}
+impl ElementOrder for String {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.cmp(other)
+	}
+}
+impl ElementOrder for bool {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.cmp(other)
+	}
+}
+impl ElementOrder for f32 {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.total_cmp(other)
+	}
+}
+impl ElementOrder for f64 {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.total_cmp(other)
+	}
+}
+impl ElementOrder for u32 {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.cmp(other)
+	}
+}
+impl ElementOrder for u64 {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.cmp(other)
+	}
+}
+impl ElementOrder for DVec2 {}
+impl ElementOrder for DAffine2 {}
+impl ElementOrder for Vector {}
+impl ElementOrder for Graphic<'_> {}
+impl ElementOrder for Raster<CPU> {}
+impl ElementOrder for Raster<GPU> {}
+impl ElementOrder for Color {}
+impl ElementOrder for Gradient {}
+impl ElementOrder for Artboard<'_> {}
+
+/// Reorders a list's items from smallest to largest, either by each item's own value or by a parallel list of sortable values in the *Sort Order* input. The sort is stable, so items with the same sort order retain their relative positions.
+#[node_macro::node(category("General"))]
+fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list of data to reorder.
+	#[implementations(
+		List<String>, List<bool>, List<f32>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f32>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f32>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+	)]
+	list: List<T>,
+	/// The optional list of orderable values, corresponding item-to-item with the input list, to sort by instead of the items' own values.
+	#[expose]
+	#[implementations(
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+	)]
+	sort_order: List<U>,
+	/// Reverses the sorted list order, following descending order instead of ascending (numbers largest-to-smallest, strings Z-to-A, etc.).
+	reverse: bool,
+) -> List<T> {
+	// Order by the parallel keys when provided (repeating the last if there are fewer keys than items), otherwise by the element values themselves
+	let keys = sort_order.iter_element_values().as_slice();
+	let elements: Vec<&T> = list.iter_element_values().collect();
+
+	let mut order: Vec<usize> = (0..list.len()).collect();
+	order.sort_by(|&a, &b| {
+		let ordering = match keys {
+			[] => elements[a].element_order(elements[b]),
+			keys => keys[a.min(keys.len() - 1)].element_order(&keys[b.min(keys.len() - 1)]),
+		};
+		if reverse { ordering.reverse() } else { ordering }
+	});
+
+	let mut result = List::new();
+	for index in order {
+		if let Some(item) = list.clone_item(index) {
+			result.push(item);
+		}
+	}
+
+	result
 }

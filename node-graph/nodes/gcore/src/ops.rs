@@ -9,6 +9,7 @@ fn passthrough<T: Send>(_: impl Ctx, content: T) -> T {
 	content
 }
 
+/// Shifts a whole value onto a connector's type through the std `Into` trait, serving the whole-`List` erasure onto `ListDyn` under the input adapter identifier.
 #[node_macro::node(category(""), skip_impl)]
 fn into<T: Send + Into<O>, O: Send>(_: impl Ctx, value: T, #[data] _out_ty: PhantomData<O>) -> O {
 	value.into()

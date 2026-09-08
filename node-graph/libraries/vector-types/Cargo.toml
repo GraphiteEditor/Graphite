@@ -20,6 +20,7 @@ node-macro = { workspace = true }
 # Workspace dependencies
 bitflags = { workspace = true }
 bytemuck = { workspace = true }
+color = { workspace = true }
 num-traits = { workspace = true }
 glam = { workspace = true }
 kurbo = { workspace = true }
@@ -36,3 +37,7 @@ serde = { workspace = true, optional = true }
 tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 fixedbitset = "0.5.7"
+
+[dev-dependencies]
+# Workspace dependencies
+serde_json = { workspace = true }

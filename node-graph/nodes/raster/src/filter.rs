@@ -94,9 +94,9 @@ fn blur(
 	#[range]
 	#[hard(0..)]
 	#[soft(..100)]
-	radius: PixelLength,
+	radius: Item<PixelLength>,
 	/// Use a lower-quality box kernel instead of a circular Gaussian kernel. This is faster but produces boxy artifacts.
-	box_blur: bool,
+	box_blur: Item<bool>,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
 ) -> Raster<CPU> {

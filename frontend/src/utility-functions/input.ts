@@ -20,6 +20,7 @@ let canvasFocused = true;
 let inPointerLock = false;
 let lastShakeTime = 0;
 const shakeSamples: { x: number; y: number; time: number }[] = [];
+const openFloatingMenus = new Set<string>();
 
 // Keyboard events
 
@@ -107,11 +108,18 @@ export async function onKeyUp(e: KeyboardEvent, editor: EditorWrapper, dialogSto
 
 // Pointer events
 
+// On desktop, num lock marks events as observe-only, do not redirect them to the editor.
+function isObserveOnly(e: MouseEvent): boolean {
+	return import.meta.env.MODE === "native" && e.getModifierState("NumLock");
+}
+
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentStore: DocumentStore) {
 	potentiallyRestoreCanvasFocus(e);
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
+
+	if (isObserveOnly(e)) return;
 
 	// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu, or the graph overlay, on top of the canvas
 	// TODO: A better approach is to pass along a boolean to the backend's input preprocessor so it can know if it's being occluded by the GUI.
@@ -123,11 +131,17 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
-	editor.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+
+	const coalesced = e.pointerType === "pen" && typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : [];
+	const samples = coalesced.length > 0 ? coalesced : [e];
+	for (const sample of samples) editor.onMouseMove(sample.clientX, sample.clientY, sample.buttons, modifiers, ...pointerAttributes(sample));
 }
 
 export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStore: DialogStore) {
 	potentiallyRestoreCanvasFocus(e);
+	potentiallyClearTextSelection(e);
+
+	if (isObserveOnly(e)) return;
 
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
 	const isTargetingCanvas = !inFloatingMenu && e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
@@ -152,7 +166,7 @@ export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStor
 
 	if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
+		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
 	}
 }
 
@@ -167,16 +181,16 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-	if (textToolInteractiveInputElement) return;
+	if (isObserveOnly(e) || textToolInteractiveInputElement) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
+	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
 }
 
 // Mouse events
 
 export function onPotentialDoubleClick(e: MouseEvent, editor: EditorWrapper) {
-	if (textToolInteractiveInputElement || inPointerLock) return;
+	if (isObserveOnly(e) || textToolInteractiveInputElement || inPointerLock) return;
 
 	// Allow only events within the viewport or node graph boundaries
 	const isTargetingCanvas = e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
@@ -239,8 +253,14 @@ export function onWheelScroll(e: WheelEvent, editor: EditorWrapper) {
 
 // Receives a custom event dispatched when the user begins interactively editing with the text tool.
 // We keep a copy of the text input element to check against when it's active for text entry.
-export function onModifyInputField(e: CustomEvent) {
+export function onModifyInputField(e: CustomEvent, editor: EditorWrapper) {
 	textToolInteractiveInputElement = e.detail;
+	updateDirectInput(editor);
+}
+
+export function cleanupInputField(editor: EditorWrapper) {
+	textToolInteractiveInputElement = undefined;
+	updateDirectInput(editor);
 }
 
 // Window events
@@ -277,6 +297,13 @@ export function onFocusOut() {
 	canvasFocused = false;
 }
 
+function pointerAttributes(e: PointerEvent): [number, number | undefined, number | undefined, number | undefined, number | undefined, number | undefined, boolean] {
+	const isPen = e.pointerType === "pen";
+	const eraser = isPen && (e.buttons & 0b10_0000) !== 0; // Pen eraser end is reported as the 32 button bit
+	return [e.timeStamp, isPen ? e.pressure : undefined, isPen ? e.tiltX : undefined, isPen ? e.tiltY : undefined, isPen ? e.twist : undefined, isPen ? e.tangentialPressure : undefined, eraser];
+}
+
+// Keep heuristic and constants in sync with `ShakeTracker` in `desktop/src/input.rs`.
 function detectShake(e: PointerEvent | MouseEvent): boolean {
 	const SENSITIVITY_DIRECTION_CHANGES = 3;
 	const SENSITIVITY_DISTANCE_TO_DISPLACEMENT_RATIO = 0.1;
@@ -351,9 +378,23 @@ function targetIsTextField(target: EventTarget | HTMLElement | undefined): boole
 	);
 }
 
+function potentiallyClearTextSelection(e: PointerEvent) {
+	const target = e.target instanceof Element ? e.target : undefined;
+	if (target && (targetIsTextField(target) || window.getComputedStyle(target).userSelect !== "none")) return;
+
+	// A text control's selection lives in its shadow tree, which the document's `Selection` reports as collapsed and cannot clear, so each control holding one is collapsed through its own API
+	const controls = window.document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("textarea, input[type='text']");
+	controls.forEach((control) => {
+		const caret = control.selectionStart;
+		if (typeof caret === "number" && caret !== control.selectionEnd) control.setSelectionRange(caret, caret);
+	});
+
+	window.getSelection()?.removeAllRanges();
+}
+
 function potentiallyRestoreCanvasFocus(e: Event) {
 	const appElement = window.document.querySelector("[data-app-container]");
-	const app = appElement instanceof HTMLElement ? appElement : null;
+	const app = appElement instanceof HTMLElement ? appElement : undefined;
 
 	const newInCanvasArea =
 		(e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-graph]")) instanceof Element &&
@@ -362,4 +403,21 @@ function potentiallyRestoreCanvasFocus(e: Event) {
 		canvasFocused = true;
 		app?.focus();
 	}
+}
+
+// Direct input (desktop only)
+
+// Desktop may route viewport pointer input directly to the editor if no floating menus are open
+export function updateDirectInput(editor: EditorWrapper) {
+	if (import.meta.env.MODE !== "native") return;
+
+	const uiCapturesViewport = openFloatingMenus.size > 0 || textToolInteractiveInputElement !== undefined;
+	editor.appWindowDirectInput(!uiCapturesViewport);
+}
+
+export function onFloatingMenuOpenChange(menuId: string, open: boolean, editor: EditorWrapper) {
+	if (open) openFloatingMenus.add(menuId);
+	else openFloatingMenus.delete(menuId);
+
+	updateDirectInput(editor);
 }

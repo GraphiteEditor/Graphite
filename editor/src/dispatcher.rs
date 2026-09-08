@@ -36,7 +36,7 @@ pub struct DispatcherMessageHandlers {
 	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	pub(crate) resource_storage_message_handler: ResourceStorageMessageHandler,
-	tool_message_handler: ToolMessageHandler,
+	pub(crate) tool_message_handler: ToolMessageHandler,
 	viewport_message_handler: ViewportMessageHandler,
 }
 
@@ -96,8 +96,9 @@ impl Dispatcher {
 		s
 	}
 
+	#[cfg(test)]
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		let mut s = Self::default();
+		let mut s = Self::new(Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new()), None);
 		s.message_handlers.portfolio_message_handler = PortfolioMessageHandler::with_executor(executor);
 		s
 	}

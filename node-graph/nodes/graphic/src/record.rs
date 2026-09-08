@@ -11,7 +11,7 @@ use glam::DAffine2;
 use graphic_types::Vector;
 use graphic_types::graphic::Graphic;
 use raster_types::{CPU, Raster};
-use vector_types::{GradientStop, GradientStops};
+use vector_types::{GradientStop, Gradient};
 
 /// Whether the walk can descend into a group: the run holds `Graphic`
 /// elements.
@@ -39,7 +39,7 @@ pub(crate) fn group_locate<'e>(group: &core_types::record::Group<'e>, transform:
 /// itself otherwise.
 pub(crate) fn leaf_count(graphic: &Graphic, fully_flatten: bool, depth: usize) -> usize {
 	match graphic {
-		Graphic::Graphic(children) if fully_flatten || depth == 0 => (0..children.len())
+		Graphic::GraphicList(children) if fully_flatten || depth == 0 => (0..children.len())
 			.map(|index| children.element(index).map_or(0, |child| leaf_count(child, fully_flatten, depth + 1)))
 			.sum(),
 		Graphic::Group(group) if (fully_flatten || depth == 0) && group_expands(group) => group_leaf_count(group, fully_flatten, depth),
@@ -51,7 +51,7 @@ pub(crate) fn leaf_count(graphic: &Graphic, fully_flatten: bool, depth: usize) -
 /// along its path composed onto `transform`.
 pub(crate) fn locate<'e>(graphic: &Graphic<'e>, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic<'e>, DAffine2)> {
 	match graphic {
-		Graphic::Graphic(children) if fully_flatten || depth == 0 => (0..children.len()).find_map(|index| {
+		Graphic::GraphicList(children) if fully_flatten || depth == 0 => (0..children.len()).find_map(|index| {
 			let child = children.element(index)?;
 			let child_transform: DAffine2 = children.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			locate(child, transform * child_transform, fully_flatten, depth + 1, remaining)
@@ -113,12 +113,12 @@ fn wrap_extent(_content: ListIn<'_, Graphic>, _level: LevelIn) -> GPoll<Extent> 
 /// Rank-model colors-to-gradient: the color level folds into one gradient
 /// with evenly spaced stops.
 #[node_macro::node(category("Test"))]
-fn to_gradient(_: impl Ctx, colors: IList<Color>) -> GradientStops {
+fn to_gradient(_: impl Ctx, colors: IList<Color>) -> Gradient {
 	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
 	match colors.len() {
-		0 => GradientStops::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
-		1 => GradientStops::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
-		total => GradientStops::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
+		0 => Gradient::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
+		1 => Gradient::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
+		total => Gradient::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
 	}
 }
 
@@ -135,7 +135,7 @@ pub(crate) fn vararg_row<Row: Clone + Send + Sync + 'static>(content: core_types
 #[node_macro::node(category("Test"))]
 fn map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<IList<T>>, Interrupt> {
 	let mut remaining = ctx.index();
@@ -159,7 +159,7 @@ fn map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 #[node_macro::node(category("Test"))]
 fn flat_map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<T>, Interrupt> {
 	let mut remaining = ctx.index();
@@ -317,7 +317,7 @@ mod tests {
 			list.push(Item::new_from_element(child));
 			list.set_attribute(ATTR_TRANSFORM, index, transform);
 		}
-		Graphic::Graphic(list)
+		Graphic::GraphicList(list)
 	}
 
 	fn text_of<'a>(graphic: &'a Graphic<'_>) -> &'a str {
@@ -636,7 +636,7 @@ mod tests {
 		let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, 2), &frames) else {
 			panic!("expected a final record");
 		};
-		let Graphic::Graphic(children) = record.element::<Graphic>() else {
+		let Graphic::GraphicList(children) = record.element::<Graphic>() else {
 			panic!("lane 2 keeps the subgroup element");
 		};
 		assert_eq!(children.len(), 1);
@@ -809,14 +809,14 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let layout = Layout::default().with_writes(1, record::element_write_hashed::<Color>(), &[]);
-		let out = Layout::default().with_writes(0, record::element_write_hashed::<GradientStops>(), &[]);
+		let out = Layout::default().with_writes(0, record::element_write_hashed::<Gradient>(), &[]);
 		let build = |colors: Vec<Color>| install_flip(ToGradientNode::new(RecordSource::new(ColorSource { layout: layout.clone(), colors }, &layout, &layout), &layout), &out);
 		let stops_of = |colors: Vec<Color>| {
 			let node = build(colors);
 			let GPoll::Final(record) = record::capture(&node, &ctx, &frames) else {
 				panic!("expected a final record");
 			};
-			record.element::<GradientStops>()
+			record.element::<Gradient>()
 		};
 
 		let three = stops_of(vec![Color::BLACK, Color::WHITE, Color::BLACK]);

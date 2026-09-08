@@ -839,6 +839,31 @@ pub struct TypingContext {
 	lookup: Cow<'static, Registry>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
+	promotions: HashMap<NodeId, Vec<(usize, Promotion)>>,
+}
+
+/// A rank adapter which type resolution marks for insertion between a wire and a connector whose ranks differ,
+/// carrying the element type the adapter is registered under.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Promotion {
+	/// Raises an `Item<X>` wire onto a `List<X>` connector as a one-element list.
+	ItemToList(Type),
+	/// Bundles a whole `List<X>` wire into one opaque `Item<Bundle<X>>` cell.
+	Bundle(Type),
+	/// Unbundles an `Item<Bundle<X>>` wire back into the whole `List<X>`.
+	Unbundle(Type),
+}
+
+impl Promotion {
+	/// The registry identifier of the adapter node monomorphized for this promotion's element type.
+	pub fn adapter_identifier(&self) -> ProtoNodeIdentifier {
+		let (adapter_name, element) = match self {
+			Self::ItemToList(element) => ("graphene_core::ops::ItemToListNode", element),
+			Self::Bundle(element) => ("graphene_core::ops::BundleNode", element),
+			Self::Unbundle(element) => ("graphene_core::ops::UnbundleNode", element),
+		};
+		ProtoNodeIdentifier::with_owned_string(format!("{adapter_name}<{}>", element.identifier_name()))
+	}
 }
 
 impl TypingContext {
@@ -867,7 +892,18 @@ impl TypingContext {
 
 	pub fn remove_inference(&mut self, node_id: NodeId) -> Option<NodeIOTypes> {
 		self.constructor.remove(&node_id);
+		self.promotions.remove(&node_id);
 		self.inferred.remove(&node_id)
+	}
+
+	/// Returns the input positions of a node which type resolution marked for rank promotion, with each position's adapter.
+	pub fn promotions(&self, node_id: NodeId) -> Option<&Vec<(usize, Promotion)>> {
+		self.promotions.get(&node_id)
+	}
+
+	/// Looks up the sole constructor registered under an adapter identifier, such as an Item -> List promotion adapter.
+	pub fn adapter_constructor(&self, identifier: &ProtoNodeIdentifier) -> Option<NodeConstructor> {
+		self.lookup.get(identifier).and_then(|implementations| implementations.values().next().copied())
 	}
 
 	/// Returns the node constructor for a given node id.
@@ -1196,7 +1232,7 @@ mod test {
 		// If this assert fails: These NodeIds seem to be changing when you modify TaggedValue, just update them.
 		assert_eq!(
 			ids,
-			vec![NodeId(12815475172301479638), NodeId(13251389748338817266), NodeId(7166921994790432021), NodeId(15318519137317483318)]
+			vec![NodeId(12331852515109999872), NodeId(5084548161767585362), NodeId(14635346976242256925), NodeId(16015195863711239715)]
 		);
 	}
 

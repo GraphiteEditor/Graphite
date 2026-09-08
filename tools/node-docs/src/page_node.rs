@@ -177,13 +177,9 @@ fn write_inputs(page: &mut std::fs::File, valid_input_types: &[Vec<core_types::T
 			{
 				let default_value = default_value.trim_end_matches('.').trim_end_matches(".0"); // Display whole-number floats as integers
 
-				let render_color = |color| format!(r#"<span style="padding-right: 100px; border: 2px solid var(--color-fog); background: {color}"></span>"#);
-				let default_value = match default_value {
-					"Color::BLACK" => render_color("black"),
-					"GradientStops([(0.0, Color { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 }), (1.0, Color { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 })])" => {
-						render_color("linear-gradient(to right, black, white)")
-					}
-					_ => format!("`{default_value}{}`", field.unit.unwrap_or_default()),
+				let default_value = match field.default_colors {
+					Some(colors) => color_swatch(colors),
+					None => format!("`{default_value}{}`", field.unit.unwrap_or_default()),
 				};
 
 				details.push(format!("<p>*Default:*&nbsp;{default_value}</p>"));
@@ -208,6 +204,17 @@ fn write_inputs(page: &mut std::fs::File, valid_input_types: &[Vec<core_types::T
 		);
 		page.write_all(content.as_bytes()).expect("Failed to write to node page file");
 	}
+}
+
+/// A bordered swatch painted with one color, or with several as the stops of a left-to-right gradient.
+fn color_swatch(colors: &[core_types::Color]) -> String {
+	let hex: Vec<String> = colors.iter().map(|&color| format!("#{}", core_types::color::SRGBA8::from(color).to_rgba_hex())).collect();
+	let background = match hex.as_slice() {
+		[single] => single.clone(),
+		multiple => format!("linear-gradient(to right, {})", multiple.join(", ")),
+	};
+
+	format!(r#"<span style="padding-right: 100px; border: 2px solid var(--color-fog); background: {background}"></span>"#)
 }
 
 fn write_outputs(page: &mut std::fs::File, valid_primary_outputs: &[core_types::Type]) {

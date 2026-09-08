@@ -6,17 +6,16 @@ use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_transforms, is_paint_present, set_paint_attribute, set_paint_attribute_at};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::vector_types::GradientStops;
-use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
-use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
-use graphic_types::vector_types::vector::PointId;
+use graphic_types::vector_types::markers::{ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPREAD};
+use graphic_types::vector_types::vector::VectorExt;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use graphic_types::vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
+use graphic_types::vector_types::vector::algorithms::shapes::rectangle_bezpath;
+use graphic_types::vector_types::{Gradient, GradientForm, GradientSpread};
 use graphic_types::{ATTR_FILL, ATTR_STROKE, Graphic, IntoGraphicList, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
-use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
+use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathEl, PathSeg, Point, QuadBez};
 pub use vector_types::vector::misc::BooleanOperation;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
@@ -44,6 +43,8 @@ fn boolean_core<'e>(
 	),
 	core_types::gpoll::Interrupt,
 > {
+	use core_types::lane::LaneSource;
+
 	// The first index is the bottom of the stack
 	let mut result_vector_list = boolean_operation_on_vector_list(&flattened, operation);
 
@@ -54,7 +55,15 @@ fn boolean_core<'e>(
 
 		let result_vector = result_vector_list.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
-		result_vector.set_stroke_transform(DAffine2::IDENTITY);
+
+		// The geometry is baked into identity space, so a copied paint authoring space would be stale.
+		// Master drops it off each `Appearance` coverage; our paint rides `ATTR_FILL`/`ATTR_STROKE`, so it drops off there.
+		let stale_paint = [(ATTR_FILL, result_vector_list.attr::<Fill>(0).cloned()), (ATTR_STROKE, result_vector_list.attr::<Stroke>(0).cloned())];
+		for (key, paint) in stale_paint {
+			let Some(mut paint) = paint else { continue };
+			paint.remove_attribute(ATTR_TRANSFORM);
+			set_paint_attribute_at(&mut result_vector_list, 0, key, paint);
+		}
 
 		// Clean up the boolean operation result by merging duplicated points
 		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
@@ -75,7 +84,6 @@ fn boolean_core<'e>(
 	};
 
 	let element = result_vector_list.element(0).cloned().unwrap_or_default();
-	use core_types::lane::LaneSource;
 	let fill = park_paint(result_vector_list.attr::<Fill>(0).filter(|paint| is_paint_present(paint)).cloned())?;
 	let stroke = park_paint(result_vector_list.attr::<Stroke>(0).filter(|paint| is_paint_present(paint)).cloned())?;
 	let layer_path: Vec<NodeId> = result_vector_list.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, 0).cloned().unwrap_or_default();
@@ -244,12 +252,7 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 
 		bake_paint_transforms(&mut attributes, copy_from_transform);
 
-		let copy_from = vector.element(index).unwrap();
-		let element = Vector {
-			stroke: copy_from.stroke.clone(),
-			..Default::default()
-		};
-		Item::from_parts(element, attributes)
+		Item::from_parts(Vector::default(), attributes)
 	} else {
 		Item::<Vector>::default()
 	};
@@ -268,8 +271,8 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		}
 	};
 	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
-	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
-		row.element_mut().append_subpath(subpath, false);
+	for contour in contours.contours() {
+		row.element_mut().append_bezpath(closed(contour.path.clone()));
 	}
 
 	list.push(row);
@@ -289,10 +292,10 @@ fn raster_stand_in_rows<S: core_types::lane::LaneSource>(image: &S, parent_trans
 			let fill: f64 = image.attr::<OpacityFill>(i);
 			let clip: bool = image.attr::<ClippingMask>(i);
 
-			let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-			subpath.apply_transform(parent_transform * row_transform);
+			let mut bezpath = rectangle_bezpath(DVec2::ZERO, DVec2::ONE);
+			bezpath.apply_affine(Affine::new((parent_transform * row_transform).to_cols_array()));
 
-			let element = Vector::from_subpath(subpath);
+			let element = Vector::from_bezpath(bezpath);
 
 			let mut item = Item::new_from_element(element)
 				.with_attribute(ATTR_BLEND_MODE, blend_mode)
@@ -311,31 +314,25 @@ fn raster_stand_in_rows<S: core_types::lane::LaneSource>(image: &S, parent_trans
 fn color_paint_row(color: Color, mut attributes: core_types::list::ItemAttributeValues) -> Item<Vector> {
 	set_paint_attribute(&mut attributes, ATTR_FILL, List::new_from_element(color));
 
-	let mut element = Vector::default();
-	element.set_stroke_transform(DAffine2::IDENTITY);
-
-	Item::from_parts(element, attributes)
+	Item::from_parts(Vector::default(), attributes)
 }
 
 /// A gradient row: an empty vector carrying the stops as its fill paint, the
 /// gradient keys moved onto the paint.
-fn gradient_paint_row(stops: GradientStops, mut attributes: core_types::list::ItemAttributeValues) -> Item<Vector> {
-	let mut gradient_paint = List::new_from_element(Graphic::Gradient(stops));
+fn gradient_paint_row(gradient: Gradient, mut attributes: core_types::list::ItemAttributeValues) -> Item<Vector> {
+	let mut gradient_paint = List::new_from_element(Graphic::Gradient(gradient));
 	if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
 		gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
 	}
-	if let Some(gradient_type) = attributes.remove::<GradientType>(ATTR_GRADIENT_TYPE) {
-		gradient_paint.set_attribute(ATTR_GRADIENT_TYPE, 0, gradient_type);
+	if let Some(gradient_form) = attributes.remove::<GradientForm>(ATTR_GRADIENT_FORM) {
+		gradient_paint.set_attribute(ATTR_GRADIENT_FORM, 0, gradient_form);
 	}
-	if let Some(spread_method) = attributes.remove::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-		gradient_paint.set_attribute(ATTR_SPREAD_METHOD, 0, spread_method);
+	if let Some(gradient_spread) = attributes.remove::<GradientSpread>(ATTR_GRADIENT_SPREAD) {
+		gradient_paint.set_attribute(ATTR_GRADIENT_SPREAD, 0, gradient_spread);
 	}
 	attributes.insert(ATTR_FILL, Some(gradient_paint));
 
-	let mut element = Vector::default();
-	element.set_stroke_transform(DAffine2::IDENTITY);
-
-	Item::from_parts(element, attributes)
+	Item::from_parts(Vector::default(), attributes)
 }
 
 /// A text lane's rows: the shaped glyph vectors under the composed transform.
@@ -413,7 +410,7 @@ fn flatten_vector_run_into<'a>(out: &mut List<Vector>, level: GraphicLevel<'a>, 
 		let composed = transform * level.attr::<TransformAttr>(index);
 		match element {
 			Graphic::Vector(vector) => push_leaf_vector_row(out, level, index, vector, transform, reach),
-			Graphic::Graphic(children) => push_union(out, flatten_vector_run(GraphicLevel::Legacy(children), composed, reach.nested())),
+			Graphic::GraphicList(children) => push_union(out, flatten_vector_run(GraphicLevel::Legacy(children), composed, reach.nested())),
 			Graphic::Group(group) => flatten_group(out, group, composed, reach),
 			Graphic::RasterCPU(raster) => push_rows(out, raster_stand_in_rows(&LeafLane::new(&level, index, raster), transform)),
 			Graphic::RasterGPU(raster) => push_rows(out, raster_stand_in_rows(&LeafLane::new(&level, index, raster), transform)),
@@ -423,6 +420,8 @@ fn flatten_vector_run_into<'a>(out: &mut List<Vector>, level: GraphicLevel<'a>, 
 				let one = List::new_from_item(Item::from_parts(text.clone(), graphic_types::graphic::lane_attributes(level, index)));
 				push_rows(out, text_rows(&one, composed));
 			}
+			// Brush strokes have no vector outline; a brush node renders them to rasters
+			Graphic::Stroke(_) => {}
 		}
 	}
 }
@@ -445,7 +444,7 @@ fn flatten_group(out: &mut List<Vector>, group: &core_types::record::Group, comp
 			out,
 			(0..color.len()).filter_map(|i| Some(color_paint_row(*color.element(i)?, color.clone_item_attributes(i)))).collect(),
 		);
-	} else if let Some(gradient) = graphic_types::graphic::run_to_list::<GradientStops>(item) {
+	} else if let Some(gradient) = graphic_types::graphic::run_to_list::<Gradient>(item) {
 		push_rows(
 			out,
 			(0..gradient.len())
@@ -473,65 +472,36 @@ fn quantize_segment(seg: PathSeg) -> PathSeg {
 	}
 }
 
-fn to_bez_path(vector: &Vector, transform: DAffine2) -> BezPath {
-	let mut path = BezPath::new();
-	for subpath in vector.stroke_bezier_paths() {
-		push_subpath(&mut path, &subpath, transform);
+/// Every operand and result region is treated as closed, so an open path gets its closing segment here.
+fn closed(mut path: BezPath) -> BezPath {
+	if !path.elements().is_empty() && path.elements().last() != Some(&PathEl::ClosePath) {
+		path.close_path();
 	}
 	path
 }
 
-fn push_subpath(path: &mut BezPath, subpath: &Subpath<PointId>, transform: DAffine2) {
+fn to_bez_path(vector: &Vector, transform: DAffine2) -> BezPath {
 	let transform = Affine::new(transform.to_cols_array());
-	let mut first = true;
+	let mut path = BezPath::new();
 
-	for seg in subpath.iter_closed() {
-		let quantized = quantize_segment(transform * seg);
-		if first {
-			first = false;
-			path.move_to(quantized.start());
+	for subpath in vector.stroke_bezpath_iter() {
+		let mut first = true;
+
+		for segment in closed(subpath).segments() {
+			let quantized = quantize_segment(transform * segment);
+			if first {
+				first = false;
+				path.move_to(quantized.start());
+			}
+			path.push(quantized.as_path_el());
 		}
-		path.push(quantized.as_path_el());
-	}
-	path.close_path();
-}
 
-fn from_bez_paths<'a>(paths: impl Iterator<Item = &'a BezPath>) -> Vec<Subpath<PointId>> {
-	let mut all_subpaths = Vec::new();
-
-	for path in paths {
-		let cubics: Vec<CubicBez> = path.segments().map(|segment| segment.to_cubic()).collect();
-		let mut manipulators_list = Vec::new();
-		let mut current_start = None;
-
-		for (index, cubic) in cubics.iter().enumerate() {
-			let d = |p: Point| DVec2::new(p.x, p.y);
-			let [start, handle1, handle2, end] = [d(cubic.p0), d(cubic.p1), d(cubic.p2), d(cubic.p3)];
-
-			if current_start.is_none() {
-				// Use the correct in-handle (None) and out-handle for the start point
-				manipulators_list.push(ManipulatorGroup::new(start, None, Some(handle1)));
-			} else {
-				// Update the out-handle of the previous point
-				if let Some(last) = manipulators_list.last_mut() {
-					last.out_handle = Some(handle1);
-				}
-			}
-
-			// Add the end point with the correct in-handle and out-handle (None)
-			manipulators_list.push(ManipulatorGroup::new(end, Some(handle2), None));
-
-			current_start = Some(end);
-
-			// Check if this is the last segment
-			if index == cubics.len() - 1 {
-				all_subpaths.push(Subpath::new(manipulators_list, true));
-				manipulators_list = Vec::new(); // Reset manipulators for the next path
-			}
+		if !first {
+			path.close_path();
 		}
 	}
 
-	all_subpaths
+	path
 }
 
 pub fn boolean_intersect(a: &BezPath, b: &BezPath) -> Vec<BezPath> {
@@ -550,7 +520,7 @@ mod tests {
 	use core_types::record::Group;
 
 	fn square(corner: DVec2) -> Vector {
-		Vector::from_subpath(Subpath::<PointId>::new_rectangle(corner, corner + DVec2::ONE))
+		Vector::from_bezpath(rectangle_bezpath(corner, corner + DVec2::ONE))
 	}
 
 	fn black_paint() -> List<Graphic<'static>> {

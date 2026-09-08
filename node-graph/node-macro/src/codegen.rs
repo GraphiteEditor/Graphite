@@ -306,6 +306,20 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.collect();
 
+	let default_colors: Vec<_> = regular_fields
+		.iter()
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField {
+				value_source: ParsedValueSource::Default(data),
+				..
+			}) => match color_constant_paths(data) {
+				Some(paths) => quote!(Some(&[#(#paths),*])),
+				None => quote!(None),
+			},
+			_ => quote!(None),
+		})
+		.collect();
+
 	let value_sources: Vec<_> = regular_fields
 		.iter()
 		.map(|field| match &field.ty {
@@ -667,6 +681,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								hidden: #input_hidden,
 								exposed: #exposed,
 								value_source: #value_sources,
+								default_colors: #default_colors,
 								default_type: #default_types,
 								number_soft_min: #number_soft_min_values,
 								number_soft_max: #number_soft_max_values,
@@ -2814,4 +2829,24 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		entries,
 		..Default::default()
 	})
+}
+
+/// The colors of a `#[default(..)]` expression, when every element of it is a `Color::*` constant.
+fn color_constant_paths(tokens: &TokenStream2) -> Option<Vec<syn::ExprPath>> {
+	use syn::parse::Parser;
+
+	let expressions = Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated.parse2(tokens.clone()).ok()?;
+	if expressions.is_empty() {
+		return None;
+	}
+
+	expressions
+		.into_iter()
+		.map(|expression| {
+			let syn::Expr::Path(path) = expression else { return None };
+			let segments = &path.path.segments;
+			let is_color_constant = path.qself.is_none() && segments.len() == 2 && segments[0].ident == "Color" && segments.iter().all(|segment| segment.arguments.is_none());
+			is_color_constant.then_some(path)
+		})
+		.collect()
 }

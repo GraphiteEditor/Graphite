@@ -3,7 +3,7 @@ use core_types::list::List;
 use core_types::transform::Footprint;
 use core_types::{CacheHash, Color, Context, Ctx, DeriveCtx, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime};
 use glam::{DAffine2, DVec2};
-use graphic_types::vector_types::GradientStops;
+use graphic_types::vector_types::Gradient;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
@@ -36,17 +36,20 @@ fn real_time(
 	/// The time and date component to be produced as a number.
 	component: RealTimeMode,
 ) -> f64 {
+	let component = component.into_element();
 	let real_time = ctx.try_real_time().unwrap_or_default();
 
 	// TODO: Implement proper conversion using and existing time implementation
-	match component {
+	let result = match component {
 		RealTimeMode::Utc => real_time,
 		RealTimeMode::Year => (real_time / DAY / 365.25).floor() + 1970., // TODO: Factor in a chosen timezone
 		RealTimeMode::Hour => (real_time / 1000. / 3600.).floor() % 24.,  // TODO: Factor in a chosen timezone
 		RealTimeMode::Minute => (real_time / 1000. / 60.).floor() % 60.,  // TODO: Factor in a chosen timezone
 		RealTimeMode::Second => (real_time / 1000.).floor() % 60.,
 		RealTimeMode::Millisecond => real_time % 1000.,
-	}
+	};
+
+	Item::new_from_element(result)
 }
 
 /// Produces the time, in seconds on the timeline, since the beginning of animation playback.
@@ -58,7 +61,7 @@ fn animation_time(
 	#[unit("/sec")]
 	rate: f64,
 ) -> f64 {
-	ctx.try_animation_time().unwrap_or_default() * rate
+	Item::new_from_element(ctx.try_animation_time().unwrap_or_default() * *rate.element())
 }
 
 #[node_macro::node(category("Debug"))]
@@ -74,16 +77,23 @@ fn quantize_real_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
+		Context -> Vector,
+		Context -> Graphic,
+		Context -> Raster<CPU>,
+		Context -> Raster<GPU>,
+		Context -> Color,
+		Context -> Gradient,
+		Context -> Artboard,
+		Context -> List<String>,
+		Context -> List<f64>,
+		Context -> List<DVec2>,
 		Context -> List<Vector>,
 		Context -> List<Graphic>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
+		Context -> List<Gradient>,
 		Context -> List<Artboard>,
-		Context -> List<GradientStops>,
-		Context -> List<String>,
-		Context -> List<f64>,
-		Context -> (),
 	)]
 	value: impl Node<Context<'_>, Output = T>,
 	#[default(1)]
@@ -92,6 +102,7 @@ fn quantize_real_time<T>(
 ) -> GPoll<T> {
 	let time = ctx.try_real_time().unwrap_or_default();
 	let time = time / 1000.;
+	let quantum = quantum.into_element();
 	let mut quantized_time = (time * quantum.recip()).round() / quantum.recip();
 	if !quantized_time.is_finite() {
 		quantized_time = time;
@@ -114,16 +125,23 @@ fn quantize_animation_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
+		Context -> Vector,
+		Context -> Graphic,
+		Context -> Raster<CPU>,
+		Context -> Raster<GPU>,
+		Context -> Color,
+		Context -> Gradient,
+		Context -> Artboard,
+		Context -> List<String>,
+		Context -> List<f64>,
+		Context -> List<DVec2>,
 		Context -> List<Vector>,
 		Context -> List<Graphic>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
+		Context -> List<Gradient>,
 		Context -> List<Artboard>,
-		Context -> List<GradientStops>,
-		Context -> List<String>,
-		Context -> List<f64>,
-		Context -> (),
 	)]
 	value: impl Node<Context<'_>, Output = T>,
 	#[default(1)]
@@ -131,6 +149,7 @@ fn quantize_animation_time<T>(
 	quantum: f64,
 ) -> GPoll<T> {
 	let time = ctx.try_animation_time().unwrap_or_default();
+	let quantum = quantum.into_element();
 	let mut quantized_time = (time * quantum.recip()).round() / quantum.recip();
 	if !quantized_time.is_finite() {
 		quantized_time = time;
@@ -142,7 +161,7 @@ fn quantize_animation_time<T>(
 /// Produces the current position of the user's pointer within the document canvas.
 #[node_macro::node(category("Animation"))]
 fn pointer_position(ctx: impl Ctx + ExtractPointerPosition) -> DVec2 {
-	ctx.try_pointer_position().unwrap_or_default()
+	Item::new_from_element(ctx.try_pointer_position().unwrap_or_default())
 }
 
 // TODO: These nodes require more sophisticated algorithms for giving the correct result

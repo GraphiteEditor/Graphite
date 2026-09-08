@@ -140,7 +140,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 				"List<Raster<CPU>>",
 				"List<Raster<GPU>>",
 				"List<Color>",
-				"List<GradientStops>",
+				"List<Gradient>",
 				"List<String>",
 			])
 			.map(|(entry, target)| (ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{target}>")), entry)),
@@ -191,10 +191,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		// This might be caused by the stringify! macro
 		let mut new_name = id.as_str().replace('\n', " ");
 
-		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
-		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode"))
-			&& let Some((path, _generics)) = new_name.split_once("<")
-		{
+		// Remove struct generics for all nodes except the adapter identifiers, whose element suffix distinguishes their rows
+		let element_suffixed_adapter = new_name.starts_with("input_adapter<")
+			|| new_name.starts_with("graphene_core::ops::ItemToListNode<")
+			|| new_name.starts_with("graphene_core::ops::BundleNode<")
+			|| new_name.starts_with("graphene_core::ops::UnbundleNode<");
+		if !element_suffixed_adapter && let Some((path, _generics)) = new_name.split_once("<") {
 			new_name = path.to_string();
 		}
 

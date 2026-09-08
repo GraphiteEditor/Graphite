@@ -47,7 +47,7 @@ impl MergeByDistanceExt for Vector {
 		// Collect points and segments to delete at the end to avoid invalidating indices
 		let mut points_to_delete = FxHashSet::default();
 		let mut segments_to_delete = FxHashSet::default();
-		for (mut collapse_set, average_pos) in collapse.into_iter().zip(average_position.into_iter()) {
+		for (mut collapse_set, average_pos) in collapse.into_iter().zip(average_position) {
 			// Remove any segments where both endpoints are in the collapse set
 			segments_to_delete.extend(self.segment_domain.iter().filter_map(|(id, start_offset, end_offset, _)| {
 				let start = self.point_domain.ids()[start_offset];
@@ -94,10 +94,6 @@ impl MergeByDistanceExt for Vector {
 			points_to_delete.extend(collapse_set)
 		}
 
-		// Remove faces whose start or end segments are removed
-		// TODO: Adjust faces and only delete if all (or all but one) segments are removed
-		self.region_domain
-			.retain_with_region(|_, segment_range| segments_to_delete.contains(segment_range.start()) || segments_to_delete.contains(segment_range.end()));
 		self.segment_domain.retain(|id| !segments_to_delete.contains(id), usize::MAX);
 		self.point_domain.retain(&mut self.segment_domain, |id| !points_to_delete.contains(id));
 	}
@@ -197,7 +193,6 @@ impl MergeByDistanceExt for Vector {
 			let start = self.segment_domain.start_point()[segment_idx];
 			let end = self.segment_domain.end_point()[segment_idx];
 			let handles = self.segment_domain.handles()[segment_idx];
-			let stroke = self.segment_domain.stroke()[segment_idx];
 
 			// Get new indices for start and end points
 			let new_start = point_index_map[start].unwrap();
@@ -205,7 +200,7 @@ impl MergeByDistanceExt for Vector {
 
 			// Skip segments where start and end points were merged
 			if new_start != new_end {
-				new_segment_domain.push(id, new_start, new_end, handles, stroke);
+				new_segment_domain.push(id, new_start, new_end, handles);
 			}
 		}
 
@@ -224,7 +219,7 @@ pub(crate) struct Point {
 /// Useful indexes to speed up various operations on [`Vector`].
 ///
 /// Important: It is the user's responsibility to ensure the indexes remain valid after mutations to the data.
-pub struct VectorIndex {
+pub(crate) struct VectorIndex {
 	/// Points and segments form a graph. Store it here in a form amenable to graph algorithms.
 	///
 	/// Currently, segment data is not stored as it is not used, but it could easily be added.
@@ -237,7 +232,7 @@ pub struct VectorIndex {
 
 impl VectorIndex {
 	/// Construct a [`VectorIndex`] by building indexes from the given [`Vector`]. Takes `O(n)` time.
-	pub fn build_from(data: &Vector) -> Self {
+	fn build_from(data: &Vector) -> Self {
 		let point_to_offset = data.point_domain.ids().iter().copied().enumerate().map(|(a, b)| (b, a)).collect::<FxHashMap<_, _>>();
 
 		let mut point_to_node = FxHashMap::default();
@@ -270,7 +265,7 @@ impl VectorIndex {
 	/// # Panics
 	///
 	/// Will panic if no segment with the given ID is found.
-	pub fn segment_chord_length(&self, id: SegmentId) -> f64 {
+	fn segment_chord_length(&self, id: SegmentId) -> f64 {
 		let edge_idx = self.segment_to_edge[&id];
 		let (start, end) = self.point_graph.edge_endpoints(edge_idx).unwrap();
 		let start_position = self.point_graph.node_weight(start).unwrap().position;
@@ -285,7 +280,7 @@ impl VectorIndex {
 	/// # Panics
 	///
 	/// This function will panic if the ID is not present.
-	pub fn segment_ends(&self, id: SegmentId) -> [NodeIndex; 2] {
+	fn segment_ends(&self, id: SegmentId) -> [NodeIndex; 2] {
 		let (start, end) = self.point_graph.edge_endpoints(self.segment_to_edge[&id]).unwrap();
 		if start < end { [start, end] } else { [end, start] }
 	}
@@ -295,7 +290,7 @@ impl VectorIndex {
 	/// # Panics
 	///
 	/// Will panic if `id` isn't in the data.
-	pub fn point_position(&self, id: PointId, data: &Vector) -> DVec2 {
+	fn point_position(&self, id: PointId, data: &Vector) -> DVec2 {
 		let offset = self.point_to_offset[&id];
 		data.point_domain.positions()[offset]
 	}

@@ -12,15 +12,17 @@ use vector_types::Vector;
 pub fn map_groups_to_owned<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 	match graphic {
 		Graphic::Group(group) => Graphic::Group(group.copy_out()),
-		Graphic::Graphic(children) => {
+		Graphic::GraphicList(children) => {
 			let mut out = List::new();
 			for item in children.clone().into_iter() {
 				let (element, attributes) = item.into_parts();
 				out.push(Item::from_parts(map_groups_to_owned(&element), attributes));
 			}
 			map_attribute_groups_to_owned(&mut out);
-			Graphic::Graphic(out)
+			Graphic::GraphicList(out)
 		}
+		Graphic::Stroke(stroke) => Graphic::Stroke(stroke.clone()),
+		Graphic::StrokeList(strokes) => Graphic::StrokeList(strokes.clone()),
 		Graphic::Vector(vector) => Graphic::Vector(vector.clone()),
 		Graphic::RasterCPU(raster) => Graphic::RasterCPU(raster.clone()),
 		Graphic::RasterGPU(raster) => Graphic::RasterGPU(raster.clone()),
@@ -35,13 +37,13 @@ pub fn map_groups_to_owned<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 pub fn map_groups_to_resident<'a>(graphic: &Graphic<'a>, arena: &'a core_types::arena::Arena) -> Option<Graphic<'a>> {
 	match graphic {
 		Graphic::Group(group) => group.replay(arena).map(Graphic::Group),
-		Graphic::Graphic(children) => {
+		Graphic::GraphicList(children) => {
 			let mut children = children.clone();
 			for child in children.iter_element_values_mut() {
 				*child = map_groups_to_resident(child, arena)?;
 			}
 			map_attribute_groups_to_resident(&mut children, arena)?;
-			Some(Graphic::Graphic(children))
+			Some(Graphic::GraphicList(children))
 		}
 		other => Some(other.clone()),
 	}
@@ -79,15 +81,17 @@ unsafe fn deep_repark_graphic(value: &(dyn std::any::Any + Send + Sync), dst: *m
 pub fn map_groups_to_persistent<'p>(graphic: &Graphic<'_>, promotion: &core_types::record::Promotion<'p>) -> Option<Graphic<'p>> {
 	match graphic {
 		Graphic::Group(group) => group.to_persistent(promotion).map(Graphic::Group),
-		Graphic::Graphic(children) => {
+		Graphic::GraphicList(children) => {
 			let mut out = List::new();
 			for item in children.clone().into_iter() {
 				let (element, attributes) = item.into_parts();
 				out.push(Item::from_parts(map_groups_to_persistent(&element, promotion)?, attributes));
 			}
 			map_attribute_groups_to_persistent(&mut out, promotion)?;
-			Some(Graphic::Graphic(out))
+			Some(Graphic::GraphicList(out))
 		}
+		Graphic::Stroke(stroke) => Some(Graphic::Stroke(stroke.clone())),
+		Graphic::StrokeList(strokes) => Some(Graphic::StrokeList(strokes.clone())),
 		Graphic::Vector(vector) => Some(Graphic::Vector(vector.clone())),
 		Graphic::RasterCPU(raster) => Some(Graphic::RasterCPU(raster.clone())),
 		Graphic::RasterGPU(raster) => Some(Graphic::RasterGPU(raster.clone())),
@@ -195,7 +199,9 @@ fn graphic_retained_heap(graphic: &Graphic<'_>) -> usize {
 		Graphic::RasterCPU(raster) => raster.data.len() * size_of::<Color>(),
 		Graphic::Text(text) => text.len(),
 		Graphic::Gradient(gradient) => gradient.len() * size_of::<(f64, Color)>(),
-		Graphic::Graphic(children) => (0..children.len()).filter_map(|index| children.element(index)).map(graphic_retained_heap).sum(),
+		Graphic::GraphicList(children) => (0..children.len()).filter_map(|index| children.element(index)).map(graphic_retained_heap).sum(),
+		Graphic::Stroke(stroke) => stroke.position.len() * size_of::<glam::DVec2>(),
+		Graphic::StrokeList(strokes) => (0..strokes.len()).filter_map(|index| strokes.element(index)).map(|stroke| stroke.position.len() * size_of::<glam::DVec2>()).sum(),
 		Graphic::Group(_) | Graphic::RasterGPU(_) | Graphic::Color(_) => 0,
 	}
 }
@@ -206,7 +212,6 @@ fn vector_retained_heap(vector: &Vector) -> usize {
 	size_of_val(vector.point_domain.ids())
 		+ size_of_val(vector.point_domain.positions())
 		+ size_of_val(vector.segment_domain.ids())
-		+ size_of_val(vector.region_domain.ids())
 		+ size_of_val(vector.colinear_manipulators.as_slice())
 }
 
@@ -215,7 +220,7 @@ fn vector_retained_heap(vector: &Vector) -> usize {
 fn graphic_contains_groups(graphic: &Graphic) -> bool {
 	match graphic {
 		Graphic::Group(_) => true,
-		Graphic::Graphic(children) => list_contains_groups(children),
+		Graphic::GraphicList(children) => list_contains_groups(children),
 		_ => false,
 	}
 }

@@ -1,8 +1,9 @@
 use core_types::attribute::{Attr, EditorLayerPath, RemoveAttr, Transform as TransformAttr};
 use core_types::gpoll::{GraphError, Interrupt};
+use core_types::transform::BakeTransform;
 use core_types::uuid::NodeId;
 use core_types::{Ctx, ExtractIndex, InjectIndex};
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use vector_types::markers::EditorClickTarget;
 use vector_types::vector::VectorModification;
@@ -20,6 +21,10 @@ fn path_modify<'e>(
 	let mut element = element;
 	if ctx.index() == 0 {
 		modification.apply(&mut element);
+
+		// Users draw subpaths in arbitrary winding directions, so normalize them here rather than
+		// letting the drawn direction decide fill insideness downstream
+		element.normalize_winding_directions();
 	}
 
 	// Set the path to the encapsulating subgraph (drop our own trailing entry from `node_path`),
@@ -38,14 +43,14 @@ fn path_modify<'e>(
 	Ok((element, Attr(parked.as_slice()), RemoveAttr::new()))
 }
 
-/// Applies the vector path's local transformation to its geometry and resets the transform to the identity.
+/// Bakes the content's transform attribute into its underlying value, resetting the attribute to the identity.
 #[node_macro::node(category("Vector"))]
-fn apply_transform(_ctx: impl Ctx, (mut vector, transform): (Vector, Attr<TransformAttr>)) -> (Vector, Attr<TransformAttr>) {
+fn bake_transform<T: BakeTransform + Clone + Default + Send + Sync + 'static>(
+	_ctx: impl Ctx,
+	#[implementations(Vector, DAffine2, DVec2)] (mut content, transform): (T, Attr<TransformAttr>),
+) -> (T, Attr<TransformAttr>) {
 	let transform: DAffine2 = *transform;
-	for (_, point) in vector.point_domain.positions_mut() {
-		*point = transform.transform_point2(*point);
-	}
-	vector.segment_domain.transform(transform);
+	content.bake_transform(&transform);
 
-	(vector, Attr(DAffine2::IDENTITY))
+	(content, Attr(DAffine2::IDENTITY))
 }

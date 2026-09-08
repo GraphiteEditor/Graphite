@@ -13,7 +13,7 @@ use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::{GradientStops, Vector};
+use vector_types::{Gradient, Vector};
 
 /// One run's attribute tokens, minted once so the lane loops read at an offset.
 struct RunAttrs {
@@ -60,7 +60,7 @@ pub(in crate::graphic) fn group_is_opaque(group: &core_types::record::Group) -> 
 		&& (0..item.len()).all(|lane| {
 			RunAttrs::read_or(item, attrs.opacity, lane, 1.) >= 1.
 				&& RunAttrs::read_or(item, attrs.opacity_fill, lane, 1.) >= 1.
-				&& lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_opaque())
+				&& lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_guaranteed_fully_opaque())
 		})
 }
 
@@ -68,7 +68,7 @@ pub(in crate::graphic) fn group_is_fully_transparent(group: &core_types::record:
 	let item = &group.content;
 	let attrs = RunAttrs::of(item);
 	let lanes = item.typed_lanes::<Graphic>();
-	(0..item.len()).all(|lane| RunAttrs::read_or(item, attrs.opacity, lane, 1.) <= 0. || lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_fully_transparent()))
+	(0..item.len()).all(|lane| RunAttrs::read_or(item, attrs.opacity, lane, 1.) <= 0. || lanes.as_ref().is_some_and(|lanes| lanes.element_ref(lane).is_guaranteed_fully_transparent()))
 }
 
 pub(in crate::graphic) fn group_bounding_box(group: &core_types::record::Group, transform: DAffine2, include_stroke: bool, thumbnail: bool) -> RenderBoundingBox {
@@ -117,7 +117,7 @@ pub(in crate::graphic) fn group_bounding_box(group: &core_types::record::Group, 
 			.or_else(|| typed_run::<Raster<CPU>>(item, transform, include_stroke, thumbnail))
 			.or_else(|| typed_run::<Raster<GPU>>(item, transform, include_stroke, thumbnail))
 			.or_else(|| typed_run::<Color>(item, transform, include_stroke, thumbnail))
-			.or_else(|| typed_run::<GradientStops>(item, transform, include_stroke, thumbnail))
+			.or_else(|| typed_run::<Gradient>(item, transform, include_stroke, thumbnail))
 			.or_else(|| typed_run::<String>(item, transform, include_stroke, thumbnail))
 			.unwrap_or(RenderBoundingBox::Infinite)
 	}
@@ -377,7 +377,7 @@ fn walk_vector_rows_impl<'a>(
 				layer_path: parent_layer_path,
 				paint: row_paint,
 			}),
-			Graphic::Graphic(children) => walk_vector_rows_impl(
+			Graphic::GraphicList(children) => walk_vector_rows_impl(
 				GraphicLevel::Legacy(children),
 				scale.composed(&level, index),
 				level.try_attr::<EditorLayerPath>(index),
@@ -430,7 +430,7 @@ pub(in crate::graphic) fn push_lane_paint_into_interiors(list: &mut List<Graphic
 			let Some(paint) = stored.filter(|paint| is_paint_present(paint)).cloned() else {
 				continue;
 			};
-			let Some(Graphic::Graphic(children)) = list.element_mut(index) else { continue };
+			let Some(Graphic::GraphicList(children)) = list.element_mut(index) else { continue };
 			for child in 0..children.len() {
 				if matches!(children.element(child), Some(Graphic::Vector(_))) {
 					set_paint_attribute_at(children, child, key, paint.clone());
@@ -465,7 +465,7 @@ pub(in crate::graphic) fn group_render_complexity(group: &core_types::record::Gr
 		.or_else(|| typed_run::<Raster<CPU>>(item))
 		.or_else(|| typed_run::<Raster<GPU>>(item))
 		.or_else(|| typed_run::<Color>(item))
-		.or_else(|| typed_run::<GradientStops>(item))
+		.or_else(|| typed_run::<Gradient>(item))
 		.or_else(|| typed_run::<String>(item))
 		.unwrap_or(item.len())
 }
@@ -496,8 +496,8 @@ mod run_tests {
 		nested.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_scale(DVec2::splat(2.)));
 
 		let mut top = List::new();
-		top.push(Item::new_from_element(Graphic::Graphic(painted)));
-		top.push(Item::new_from_element(Graphic::Graphic(nested)));
+		top.push(Item::new_from_element(Graphic::GraphicList(painted)));
+		top.push(Item::new_from_element(Graphic::GraphicList(nested)));
 		top.push(Item::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: inner_item })));
 		top.push(Item::new_from_element(Graphic::Color(Color::BLACK)));
 		top.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(6., 0.)))));

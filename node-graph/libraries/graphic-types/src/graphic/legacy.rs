@@ -6,7 +6,7 @@ use crate::markers::{ATTR_FILL, ATTR_STROKE};
 use core_types::Color;
 use core_types::list::{AttributeValueDyn, Item, List};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::{GradientStops, Vector};
+use vector_types::{Gradient, Vector};
 
 /// One typed run as an owned list, elements cloned and every attribute copied
 /// through its erased read. Content keeps its native form; the legacy
@@ -52,15 +52,17 @@ pub(crate) fn run_to_legacy_list<T: Clone + Send + Sync + dyn_any::StaticTypeSiz
 pub fn map_groups_to_legacy<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 	match graphic {
 		Graphic::Group(group) => group_to_legacy_graphic(group),
-		Graphic::Graphic(children) => {
+		Graphic::GraphicList(children) => {
 			let mut out = List::new();
 			for item in children.clone().into_iter() {
 				let (element, attributes) = item.into_parts();
 				out.push(Item::from_parts(map_groups_to_legacy(&element), attributes));
 			}
 			map_paint_attrs_to_legacy(&mut out);
-			Graphic::Graphic(out)
+			Graphic::GraphicList(out)
 		}
+		Graphic::Stroke(stroke) => Graphic::Stroke(stroke.clone()),
+		Graphic::StrokeList(strokes) => Graphic::StrokeList(strokes.clone()),
 		Graphic::Vector(vector) => Graphic::Vector(vector.clone()),
 		Graphic::RasterCPU(raster) => Graphic::RasterCPU(raster.clone()),
 		Graphic::RasterGPU(raster) => Graphic::RasterGPU(raster.clone()),
@@ -81,13 +83,13 @@ pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic<'st
 			.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(|list| detable_items(list, Graphic::RasterCPU)))
 			.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(|list| detable_items(list, Graphic::RasterGPU)))
 			.or_else(|| run_to_legacy_list::<Color>(item).map(|list| detable_items(list, Graphic::Color)))
-			.or_else(|| run_to_legacy_list::<GradientStops>(item).map(|list| detable_items(list, Graphic::Gradient)))
+			.or_else(|| run_to_legacy_list::<Gradient>(item).map(|list| detable_items(list, Graphic::Gradient)))
 			.or_else(|| run_to_legacy_list::<String>(item).map(|list| detable_items(list, Graphic::Text)));
 		if let Some(typed) = typed {
-			return Graphic::Graphic(typed);
+			return Graphic::GraphicList(typed);
 		}
 	}
-	Graphic::Graphic(group_to_legacy_list(group))
+	Graphic::GraphicList(group_to_legacy_list(group))
 }
 
 /// The group as a legacy `List<Graphic>`: a `Graphic` run becomes the items,
@@ -105,7 +107,7 @@ pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic<'
 		.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(|list| detable_items(list, Graphic::RasterCPU)))
 		.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(|list| detable_items(list, Graphic::RasterGPU)))
 		.or_else(|| run_to_legacy_list::<Color>(item).map(|list| detable_items(list, Graphic::Color)))
-		.or_else(|| run_to_legacy_list::<GradientStops>(item).map(|list| detable_items(list, Graphic::Gradient)))
+		.or_else(|| run_to_legacy_list::<Gradient>(item).map(|list| detable_items(list, Graphic::Gradient)))
 		.or_else(|| run_to_legacy_list::<String>(item).map(|list| detable_items(list, Graphic::Text)))
 		.unwrap_or_default()
 }

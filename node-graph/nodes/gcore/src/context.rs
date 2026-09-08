@@ -1,9 +1,9 @@
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::{Color, ExtractVarArgs};
 use core_types::{Ctx, ExtractIndex, ExtractIndices, ExtractPosition};
 use glam::DVec2;
-use graphic_types::vector_types::GradientStops;
+use graphic_types::vector_types::Gradient;
 use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
 
@@ -40,7 +40,7 @@ fn read_color(ctx: impl Ctx + ExtractVarArgs) -> List<Color> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> List<GradientStops> {
+fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> List<Gradient> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -111,12 +111,49 @@ fn read_color_row_extent<C: Ctx + ExtractVarArgs>(_: &ReadColorRowNode, ctx: &C,
 
 /// Rank-model vararg source: the mapped row's items as lanes, elements only.
 #[node_macro::node(category("Test"), extent_raw(read_gradient_row_extent))]
-pub fn read_gradient_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<GradientStops>, Interrupt> {
+pub fn read_gradient_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<Gradient>, Interrupt> {
 	vararg_element(ctx)
 }
 
 fn read_gradient_row_extent<C: Ctx + ExtractVarArgs>(_: &ReadGradientRowNode, ctx: &C, level: u8) -> GPoll<Extent> {
-	vararg_lanes::<GradientStops>(ctx, level)
+	vararg_lanes::<Gradient>(ctx, level)
+}
+
+/// Widens a numeric vararg row into `f64`, keeping each item's attributes.
+fn widen_vararg<T: Clone + 'static>(var_arg: &dyn std::any::Any, widen: impl Fn(T) -> f64) -> Option<List<f64>> {
+	let list = var_arg.downcast_ref::<List<T>>()?.clone();
+	Some(
+		list.into_iter()
+			.map(|item| {
+				let (element, attributes) = item.into_parts();
+				Item::from_parts(widen(element), attributes)
+			})
+			.collect(),
+	)
+}
+
+/// Reads the current number from within a **Map** node's loop.
+#[node_macro::node(category("Context"))]
+fn read_number(ctx: impl Ctx + ExtractVarArgs) -> List<f64> {
+	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
+	let var_arg = var_arg as &dyn std::any::Any;
+
+	if let Some(list) = var_arg.downcast_ref::<List<f64>>() {
+		return list.clone();
+	}
+
+	// Numeric rows carry several possible element types, so probe each and widen to f64
+	if let Some(list) = widen_vararg(var_arg, |value: f32| value as f64) {
+		return list;
+	}
+	if let Some(list) = widen_vararg(var_arg, |value: u32| value as f64) {
+		return list;
+	}
+	if let Some(list) = widen_vararg(var_arg, |value: u64| value as f64) {
+		return list;
+	}
+
+	Default::default()
 }
 
 #[node_macro::node(category("Context"), path(core_types::vector))]

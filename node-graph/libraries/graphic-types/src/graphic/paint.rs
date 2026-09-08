@@ -41,13 +41,13 @@ where
 /// opaque, fill absent or opaque, stroke invisible or fully transparent.
 pub fn vector_can_reduce_to_clip_path<S: LaneSource<Element = Vector>>(source: &S) -> bool {
 	(0..source.lane_count()).all(|index| {
-		let Some(element) = source.element(index) else { return false };
 		let opacity: f64 = source.attr::<Opacity>(index);
 
-		let fill_opaque_or_absent = paint_graphics::<Fill, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
+		let fill_opaque_or_absent = paint_graphics::<Fill, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_guaranteed_fully_opaque()));
 
-		let stroke_invisible_or_transparent = element.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke())
-			|| paint_graphics::<Stroke, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
+		// Master deleted `Vector::stroke`, so the stroke width term has no source here; only the paint term is left, which reduces to a clip path less often but never wrongly.
+		let stroke_invisible_or_transparent =
+			paint_graphics::<Stroke, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_guaranteed_fully_transparent()));
 
 		opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
 	})
@@ -228,7 +228,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 			*item_transform = transform * *item_transform;
 		}
 		for graphic in graphics.iter_element_values_mut() {
-			if let Graphic::Graphic(list) = graphic {
+			if let Graphic::GraphicList(list) = graphic {
 				bake_graphic_paint_transform(list, transform);
 			}
 		}

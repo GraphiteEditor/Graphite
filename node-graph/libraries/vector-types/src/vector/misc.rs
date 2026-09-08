@@ -1,10 +1,11 @@
 use super::PointId;
-use super::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
-use crate::subpath::{BezierHandles, ManipulatorGroup};
+use super::algorithms::consts::MAX_COINCIDENT_POINT_DISTANCE;
 use crate::vector::{SegmentId, Vector};
+use core_types::list::{Item, List};
 use dyn_any::DynAny;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, QuadBez};
+use std::fmt::{Debug, Formatter};
 use std::ops::Sub;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -49,6 +50,57 @@ pub enum RowsOrColumns {
 	Columns,
 }
 
+/// A box's four corner values, such as a rectangle's corner radii, expanded on read from any number of stored
+/// values by the CSS `border-radius` shorthand rules.
+///
+/// Wraps a `List<f64>` so the Data panel can introspect its values, mirroring how `DashPattern` wraps its lengths,
+/// while remaining a single rank-0 value on the wire.
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+pub struct BoxCorners(pub List<f64>);
+
+impl BoxCorners {
+	/// Expands the stored values to the four corners, clockwise from the top-left, by the CSS `border-radius` shorthand rules.
+	/// - `[]` → `[0, 0, 0, 0]`
+	/// - `[a]` → `[a, a, a, a]`
+	/// - `[a, b]` → `[a, b, a, b]`
+	/// - `[a, b, c]` → `[a, b, c, b]`
+	/// - `[a, b, c, d, …]` → `[a, b, c, d]`
+	pub fn to_corner_values(&self) -> [f64; 4] {
+		let values: Vec<f64> = self.0.iter_element_values().copied().collect();
+		match values.as_slice() {
+			[] => [0., 0., 0., 0.],
+			&[a] => [a, a, a, a],
+			&[a, b] => [a, b, a, b],
+			&[a, b, c] => [a, b, c, b],
+			&[a, b, c, d, ..] => [a, b, c, d],
+		}
+	}
+}
+
+impl From<f64> for BoxCorners {
+	fn from(value: f64) -> Self {
+		Self(List::new_from_element(value))
+	}
+}
+
+impl From<Vec<f64>> for BoxCorners {
+	fn from(values: Vec<f64>) -> Self {
+		Self(values.into_iter().map(Item::new_from_element).collect())
+	}
+}
+
+impl From<&str> for BoxCorners {
+	fn from(text: &str) -> Self {
+		Self::from(core_types::misc::parse_f64_list(text))
+	}
+}
+
+impl From<String> for BoxCorners {
+	fn from(text: String) -> Self {
+		Self::from(text.as_str())
+	}
+}
+
 pub trait AsU64 {
 	fn as_u64(&self) -> u64;
 }
@@ -68,25 +120,6 @@ impl AsU64 for f64 {
 	}
 }
 
-pub trait AsI64 {
-	fn as_i64(&self) -> i64;
-}
-impl AsI64 for u32 {
-	fn as_i64(&self) -> i64 {
-		*self as i64
-	}
-}
-impl AsI64 for u64 {
-	fn as_i64(&self) -> i64 {
-		*self as i64
-	}
-}
-impl AsI64 for f64 {
-	fn as_i64(&self) -> i64 {
-		*self as i64
-	}
-}
-
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -103,9 +136,12 @@ pub enum GridType {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum ArcType {
+	/// Leaves the two ends of the arc unconnected.
 	#[default]
 	Open = 0,
+	/// Connects the two ends of the arc with a straight line.
 	Closed,
+	/// Connects the two ends of the arc to its center, forming a wedge.
 	PieSlice,
 }
 
@@ -191,38 +227,44 @@ pub fn handles_to_segment(start: DVec2, handles: BezierHandles, end: DVec2) -> P
 	}
 }
 
-pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup<PointId>], closed: bool) -> BezPath {
-	let mut bezpath = kurbo::BezPath::new();
-	let mut out_handle;
+/// Stitches anchors into a path, emitting a cubic when both facing handles exist, a quadratic when only one does, and a line otherwise.
+///
+/// Each item is an anchor position paired with its incoming and outgoing handle positions, in absolute coordinates.
+pub fn bezpath_from_anchors_and_handles(anchors: impl IntoIterator<Item = (DVec2, Option<DVec2>, Option<DVec2>)>, closed: bool) -> BezPath {
+	let mut bezpath = BezPath::new();
+	let mut anchors = anchors.into_iter();
 
-	let Some(first) = manipulator_groups.first() else { return bezpath };
-	bezpath.move_to(dvec2_to_point(first.anchor));
-	out_handle = first.out_handle;
+	let Some((first_anchor, first_in_handle, first_out_handle)) = anchors.next() else {
+		return bezpath;
+	};
+	bezpath.move_to(dvec2_to_point(first_anchor));
+	let mut out_handle = first_out_handle;
 
-	for manipulator in manipulator_groups.iter().skip(1) {
-		match (out_handle, manipulator.in_handle) {
-			(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(manipulator.anchor)),
-			(None, None) => bezpath.line_to(dvec2_to_point(manipulator.anchor)),
-			(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
-			(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
-		}
-		out_handle = manipulator.out_handle;
+	let connect_to = |bezpath: &mut BezPath, out_handle: Option<DVec2>, anchor: DVec2, in_handle: Option<DVec2>| match (out_handle, in_handle) {
+		(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(anchor)),
+		(None, None) => bezpath.line_to(dvec2_to_point(anchor)),
+		(None, Some(handle)) | (Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(anchor)),
+	};
+
+	for (anchor, in_handle, anchor_out_handle) in anchors {
+		connect_to(&mut bezpath, out_handle, anchor, in_handle);
+		out_handle = anchor_out_handle;
 	}
 
 	if closed {
-		match (out_handle, first.in_handle) {
-			(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(first.anchor)),
-			(None, None) => bezpath.line_to(dvec2_to_point(first.anchor)),
-			(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
-			(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
-		}
+		connect_to(&mut bezpath, out_handle, first_anchor, first_in_handle);
 		bezpath.close_path();
 	}
+
 	bezpath
 }
 
-pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup<PointId>>, bool) {
-	let mut manipulator_groups = Vec::<ManipulatorGroup<PointId>>::new();
+pub fn bezpath_from_manipulator_groups(manipulator_groups: &[ManipulatorGroup], closed: bool) -> BezPath {
+	bezpath_from_anchors_and_handles(manipulator_groups.iter().map(|group| (group.anchor, group.in_handle, group.out_handle)), closed)
+}
+
+pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup>, bool) {
+	let mut manipulator_groups = Vec::<ManipulatorGroup>::new();
 	let mut is_closed = false;
 
 	for element in bezpath.elements() {
@@ -257,7 +299,7 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 ///
 /// This is different from simply checking if the segment is [`PathSeg::Line`] or [`PathSeg::Quad`] or [`PathSeg::Cubic`]. Bezier curve can also be a line if the control points are colinear to the start and end points. Therefore if the handles exceed the start and end point, it will still be considered as a line.
 pub fn is_linear(segment: PathSeg) -> bool {
-	let is_colinear = |a: Point, b: Point, c: Point| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() < MAX_ABSOLUTE_DIFFERENCE };
+	let is_colinear = |a: Point, b: Point, c: Point| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() < MAX_COINCIDENT_POINT_DISTANCE };
 
 	match segment {
 		PathSeg::Line(_) => true,
@@ -267,7 +309,7 @@ pub fn is_linear(segment: PathSeg) -> bool {
 }
 
 /// Get an vec of all the points in a path segment.
-pub fn pathseg_points_vec(segment: PathSeg) -> Vec<Point> {
+fn pathseg_points_vec(segment: PathSeg) -> Vec<Point> {
 	match segment {
 		PathSeg::Line(line) => [line.p0, line.p1].to_vec(),
 		PathSeg::Quad(quad_bez) => [quad_bez.p0, quad_bez.p1, quad_bez.p2].to_vec(),
@@ -394,8 +436,8 @@ impl ManipulatorPointId {
 	pub fn get_position(&self, vector: &Vector) -> Option<DVec2> {
 		match self {
 			ManipulatorPointId::Anchor(id) => vector.point_domain.position_from_id(*id),
-			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
-			ManipulatorPointId::EndHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
+			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|segment| segment_to_handles(&segment).start()),
+			ManipulatorPointId::EndHandle(id) => vector.segment_from_id(*id).and_then(|segment| segment_to_handles(&segment).end()),
 		}
 	}
 
@@ -508,9 +550,9 @@ pub struct HandleId {
 impl std::fmt::Display for HandleId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self.ty {
-			// I haven't checked if "out" and "in" are reversed, or are accurate translations of the "primary" and "end" terms used in the `HandleType` enum, so this naming is an assumption.
-			HandleType::Primary => write!(f, "{} out", self.segment.inner()),
-			HandleType::End => write!(f, "{} in", self.segment.inner()),
+			// The primary handle sits at the segment's start anchor and the end handle at its end anchor
+			HandleType::Primary => write!(f, "Segment {} (start handle)", self.segment.inner()),
+			HandleType::End => write!(f, "Segment {} (end handle)", self.segment.inner()),
 		}
 	}
 }
@@ -598,3 +640,149 @@ graphene_hash::impl_via_hash!(
 	SpiralType,
 	InterpolationDistribution
 );
+
+/// Structure used to represent a single anchor with up to two optional associated handles along a path.
+#[derive(Copy, Clone, PartialEq, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ManipulatorGroup {
+	pub anchor: DVec2,
+	pub in_handle: Option<DVec2>,
+	pub out_handle: Option<DVec2>,
+	pub id: PointId,
+}
+
+impl Debug for ManipulatorGroup {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ManipulatorGroup")
+			.field("anchor", &self.anchor)
+			.field("in_handle", &self.in_handle)
+			.field("out_handle", &self.out_handle)
+			.finish()
+	}
+}
+
+impl ManipulatorGroup {
+	/// Construct a new manipulator group from an anchor, in handle and out handle
+	pub fn new(anchor: DVec2, in_handle: Option<DVec2>, out_handle: Option<DVec2>) -> Self {
+		let id = PointId::generate();
+		Self { anchor, in_handle, out_handle, id }
+	}
+
+	/// Apply a transformation to all of the [ManipulatorGroup] points
+	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
+		self.anchor = affine_transform.transform_point2(self.anchor);
+		self.in_handle = self.in_handle.map(|in_handle| affine_transform.transform_point2(in_handle));
+		self.out_handle = self.out_handle.map(|out_handle| affine_transform.transform_point2(out_handle));
+	}
+
+	/// Are all handles at finite positions
+	pub fn is_finite(&self) -> bool {
+		self.anchor.is_finite() && self.in_handle.is_none_or(|handle| handle.is_finite()) && self.out_handle.is_none_or(|handle| handle.is_finite())
+	}
+}
+
+/// Representation of the handle point(s) in a bezier segment.
+#[derive(Copy, Clone, PartialEq, Debug, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum BezierHandles {
+	Linear,
+	/// Handles for a quadratic curve.
+	Quadratic {
+		/// Point representing the location of the single handle.
+		handle: DVec2,
+	},
+	/// Handles for a cubic curve.
+	Cubic {
+		/// Point representing the location of the handle associated to the start point.
+		handle_start: DVec2,
+		/// Point representing the location of the handle associated to the end point.
+		handle_end: DVec2,
+	},
+}
+
+impl BezierHandles {
+	pub fn is_finite(&self) -> bool {
+		match self {
+			BezierHandles::Linear => true,
+			BezierHandles::Quadratic { handle } => handle.is_finite(),
+			BezierHandles::Cubic { handle_start, handle_end } => handle_start.is_finite() && handle_end.is_finite(),
+		}
+	}
+
+	/// Get the coordinates of the bezier segment's first handle point. This represents the only handle in a quadratic segment.
+	pub fn start(&self) -> Option<DVec2> {
+		match *self {
+			BezierHandles::Cubic { handle_start, .. } | BezierHandles::Quadratic { handle: handle_start } => Some(handle_start),
+			_ => None,
+		}
+	}
+
+	/// Get the coordinates of the second handle point. This will return `None` for a quadratic segment.
+	pub fn end(&self) -> Option<DVec2> {
+		match *self {
+			BezierHandles::Cubic { handle_end, .. } => Some(handle_end),
+			_ => None,
+		}
+	}
+
+	pub fn move_start(&mut self, delta: DVec2) {
+		if let BezierHandles::Cubic { handle_start, .. } | BezierHandles::Quadratic { handle: handle_start } = self {
+			*handle_start += delta
+		}
+	}
+
+	pub fn move_end(&mut self, delta: DVec2) {
+		if let BezierHandles::Cubic { handle_end, .. } = self {
+			*handle_end += delta
+		}
+	}
+
+	/// Returns a Bezier curve that results from applying the transformation function to each handle point in the Bezier.
+	#[must_use]
+	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Self {
+		match *self {
+			BezierHandles::Linear => Self::Linear,
+			BezierHandles::Quadratic { handle } => {
+				let handle = transformation_function(handle);
+				Self::Quadratic { handle }
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let handle_start = transformation_function(handle_start);
+				let handle_end = transformation_function(handle_end);
+				Self::Cubic { handle_start, handle_end }
+			}
+		}
+	}
+
+	#[must_use]
+	pub fn reversed(self) -> Self {
+		match self {
+			BezierHandles::Cubic { handle_start, handle_end } => Self::Cubic {
+				handle_start: handle_end,
+				handle_end: handle_start,
+			},
+			_ => self,
+		}
+	}
+}
+
+pub struct PathSegPoints {
+	pub p0: DVec2,
+	pub p1: Option<DVec2>,
+	pub p2: Option<DVec2>,
+	pub p3: DVec2,
+}
+
+impl PathSegPoints {
+	pub fn new(p0: DVec2, p1: Option<DVec2>, p2: Option<DVec2>, p3: DVec2) -> Self {
+		Self { p0, p1, p2, p3 }
+	}
+}
+
+pub fn pathseg_points(segment: PathSeg) -> PathSegPoints {
+	match segment {
+		PathSeg::Line(line) => PathSegPoints::new(point_to_dvec2(line.p0), None, None, point_to_dvec2(line.p1)),
+		PathSeg::Quad(quad) => PathSegPoints::new(point_to_dvec2(quad.p0), None, Some(point_to_dvec2(quad.p1)), point_to_dvec2(quad.p2)),
+		PathSeg::Cubic(cube) => PathSegPoints::new(point_to_dvec2(cube.p0), Some(point_to_dvec2(cube.p1)), Some(point_to_dvec2(cube.p2)), point_to_dvec2(cube.p3)),
+	}
+}

@@ -11,19 +11,22 @@ use crate::messages::tool::common_functionality::transformation_cage::SelectedEd
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DVec2};
-use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::list::List;
 use graphene_std::renderer::Quad;
-use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
-use kurbo::{CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, PathSeg, Point, QuadBez, Shape};
+use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, PathSeg, Point, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	closest_point(document, goal, tolerance, layers, |_| false)
+}
+
+/// Finds the endpoint of an open path closest to the goal (in viewport space) across the given layers, if one lies within the tolerance.
+/// Only anchors with a single connected segment qualify, so closed paths are never matched. Returns the endpoint's position in the layer's local space.
+pub fn closest_open_path_endpoint(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
+	closest_candidate_point(document, goal, tolerance, layers, |vector| vector.anchor_endpoints().collect())
 }
 
 /// Determine the closest point to the goal point under max_distance.
@@ -38,19 +41,32 @@ pub fn closest_point<T>(
 where
 	T: Fn(PointId) -> bool,
 {
+	closest_candidate_point(document, goal, max_distance, layers, |vector| vector.anchor_points().filter(|&id| !exclude(id)).collect())
+}
+
+/// Determines the closest of each visible layer's candidate points to the goal (in viewport space) under max_distance. Returns the point's position in the layer's local space.
+fn closest_candidate_point(
+	document: &DocumentMessageHandler,
+	goal: DVec2,
+	max_distance: f64,
+	layers: impl Iterator<Item = LayerNodeIdentifier>,
+	candidates: impl Fn(&Vector) -> Vec<PointId>,
+) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	let mut best = None;
 	let mut best_distance_squared = max_distance * max_distance;
+
 	for layer in layers {
-		let viewspace = document.metadata().transform_to_viewport(layer);
+		if !document.network_interface.is_layer_visible(layer) {
+			continue;
+		}
+
+		let viewspace = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
-		for id in vector.anchor_points() {
-			if exclude(id) {
-				continue;
-			}
+
+		for id in candidates(&vector) {
 			let Some(point) = vector.point_domain.position_from_id(id) else { continue };
 
 			let distance_squared = viewspace.transform_point2(point).distance_squared(goal);
-
 			if distance_squared < best_distance_squared {
 				best = Some((layer, id, point));
 				best_distance_squared = distance_squared;
@@ -196,51 +212,6 @@ pub fn is_visible_point(
 			}
 		}
 	}
-}
-
-pub fn is_intersecting(bezier: Bezier, quad: [DVec2; 2], transform: DAffine2) -> bool {
-	let to_layerspace = transform.inverse();
-	let quad = [to_layerspace.transform_point2(quad[0]), to_layerspace.transform_point2(quad[1])];
-	let start = Point::new(bezier.start.x, bezier.start.y);
-	let end = Point::new(bezier.end.x, bezier.end.y);
-	let segment = match bezier.handles {
-		BezierHandles::Cubic { handle_start, handle_end } => {
-			let p1 = Point::new(handle_start.x, handle_start.y);
-			let p2 = Point::new(handle_end.x, handle_end.y);
-			PathSeg::Cubic(CubicBez::new(start, p1, p2, end))
-		}
-		BezierHandles::Quadratic { handle } => {
-			let p1 = Point::new(handle.x, handle.y);
-			PathSeg::Quad(QuadBez::new(start, p1, end))
-		}
-		BezierHandles::Linear => PathSeg::Line(Line::new(start, end)),
-	};
-
-	// Create a list of all the sides
-	let sides = [
-		Line::new((quad[0].x, quad[0].y), (quad[1].x, quad[0].y)),
-		Line::new((quad[0].x, quad[0].y), (quad[0].x, quad[1].y)),
-		Line::new((quad[1].x, quad[1].y), (quad[1].x, quad[0].y)),
-		Line::new((quad[1].x, quad[1].y), (quad[0].x, quad[1].y)),
-	];
-
-	let mut is_intersecting = false;
-	for line in sides {
-		let intersections = segment.intersect_line(line);
-		let mut intersects = false;
-		for intersection in intersections {
-			if intersection.line_t <= 1. && intersection.line_t >= 0. && intersection.segment_t <= 1. && intersection.segment_t >= 0. {
-				// There is a valid intersection point
-				intersects = true;
-				break;
-			}
-		}
-		if intersects {
-			is_intersecting = true;
-			break;
-		}
-	}
-	is_intersecting
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -568,11 +539,11 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	}
 	for _ in selected_layers {}
 
-	// Must be a layer of type List<Vector>
+	// Must be a vector layer, at either rank
 	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
 
-	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-	if output_type.compiled_nested_type() != Some(&concrete!(List<Vector>)) {
+	let output_type = network_interface.output_type(&OutputConnector::primary_output(node_id), &[]);
+	if output_type.compiled_element_name().as_deref() != Some("Vector") {
 		return None;
 	}
 
