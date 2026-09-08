@@ -376,13 +376,14 @@ impl Arena {
 		self.forwarded.get_mut().unwrap().clear();
 		self.generation.store(PARKED_GENERATION, Ordering::Release);
 		for entry in entries.into_iter().rev() {
+			// Debited before the glue runs: a panicking destructor drops the
+			// remaining entries unglued, so a hint subtracted afterwards would
+			// strand on the counter for the arena's whole life.
+			let retained = self.retained_heap.get_mut();
+			*retained = retained.saturating_sub(entry.retained);
 			// SAFETY: registered at alloc time; insert-only means the region was
 			// never overwritten within this generation.
 			unsafe { (entry.drop_fn)(base.add(entry.offset)) }
-			// Decremented as each payload's heap is freed, so an unwinding reset
-			// leaves the counter matching what is still parked.
-			let retained = self.retained_heap.get_mut();
-			*retained = retained.saturating_sub(entry.retained);
 		}
 		*self.offset.get_mut() = 0;
 		*self.exhausted.get_mut() = false;
@@ -595,6 +596,24 @@ mod tests {
 		assert!(unsafe { transient.move_park::<Probe>(src, &second, 21) }.is_none(), "a sharer naming another destination is refused");
 		first.reset();
 		assert!(unsafe { transient.move_park::<Probe>(src, &first, 21) }.is_none(), "a destination that has flushed since is refused too");
+	}
+
+	#[test]
+	fn a_panicking_destructor_does_not_strand_the_retained_hint() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		struct Bomb;
+		impl Drop for Bomb {
+			fn drop(&mut self) {
+				panic!("payload destructor");
+			}
+		}
+		let mut arena = Arena::new(1024).unwrap();
+		arena.alloc_sized(Bomb, 64).unwrap();
+		assert_eq!(arena.retained_heap(), 64);
+
+		let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| arena.reset()));
+		assert!(unwound.is_err(), "the panic must propagate out of reset");
+		assert_eq!(arena.retained_heap(), 0, "the hint is debited before the glue that panics");
 	}
 
 	/// Held by every test that perturbs [`NEXT_GENERATION`], so a swapped-out counter
