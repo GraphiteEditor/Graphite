@@ -811,7 +811,7 @@ fn collect_element_metadata<'a>(
 		Graphic::RasterCPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::RasterGPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::Color(_) => {}
-		Graphic::Gradient(_) => {}
+		Graphic::Gradient(gradient) => collect_gradient_metadata(&Single(gradient), metadata, element_id),
 		Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
 		Graphic::Text(text) => collect_text_metadata(&Single(text), metadata, footprint, element_id),
 		Graphic::Group(group) => collect_group_metadata(group, reach, metadata, footprint, element_id),
@@ -853,7 +853,8 @@ fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReac
 		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_click_targets(&PaintOverlay::new(&Single(vector), reach.paint), click_targets),
 		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(vector), click_targets),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(click_targets),
-		Graphic::Color(_) | Graphic::Gradient(_) | Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
+		Graphic::Gradient(gradient) => add_gradient_upstream_click_targets(&Single(gradient), click_targets),
+		Graphic::Color(_) | Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), click_targets),
 		Graphic::Group(group) => add_group_upstream_click_targets(group, reach, click_targets),
 	}
@@ -865,7 +866,8 @@ fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintRe
 		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_outline_targets(&PaintOverlay::new(&Single(vector), reach.paint), outlines),
 		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(vector), outlines),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(outlines),
-		Graphic::Color(_) | Graphic::Gradient(_) | Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
+		Graphic::Gradient(gradient) => add_gradient_upstream_outline_targets(&Single(gradient), outlines),
+		Graphic::Color(_) | Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), outlines),
 		Graphic::Group(group) => add_group_upstream_outline_targets(group, reach, outlines),
 	}
@@ -932,7 +934,9 @@ fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata:
 		collect_raster_metadata(&run, metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Raster<GPU>>::new(item) {
 		collect_raster_metadata(&run, metadata, footprint, element_id)
-	} else if item.typed_lanes::<Color>().is_some() || item.typed_lanes::<Gradient>().is_some() {
+	} else if let Some(run) = RunView::<Gradient>::new(item) {
+		collect_gradient_metadata(&run, metadata, element_id)
+	} else if item.typed_lanes::<Color>().is_some() {
 	} else if let Some(run) = RunView::<String>::new(item) {
 		collect_text_metadata(&run, metadata, footprint, element_id)
 	}
@@ -949,6 +953,8 @@ fn add_group_upstream_click_targets<'a>(group: &'a Group, reach: PaintReach<'a>,
 		}
 	} else if item.typed_lanes::<Raster<CPU>>().is_some() || item.typed_lanes::<Raster<GPU>>().is_some() {
 		add_raster_upstream_click_targets(click_targets)
+	} else if let Some(run) = RunView::<Gradient>::new(item) {
+		add_gradient_upstream_click_targets(&run, click_targets)
 	} else if let Some(run) = RunView::<String>::new(item) {
 		add_text_upstream_click_targets(&run, click_targets)
 	}
@@ -965,6 +971,8 @@ fn add_group_upstream_outline_targets<'a>(group: &'a Group, reach: PaintReach<'a
 		}
 	} else if item.typed_lanes::<Raster<CPU>>().is_some() || item.typed_lanes::<Raster<GPU>>().is_some() {
 		add_raster_upstream_click_targets(outlines)
+	} else if let Some(run) = RunView::<Gradient>::new(item) {
+		add_gradient_upstream_outline_targets(&run, outlines)
 	} else if let Some(run) = RunView::<String>::new(item) {
 		add_text_upstream_click_targets(&run, outlines)
 	}
@@ -2608,6 +2616,102 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 	}
 }
 
+/// The unit control geometry an editor grabs a gradient layer by: the linear form's gradient line, the radial form's main ellipse.
+fn gradient_control_outline(gradient_form: GradientForm) -> BezPath {
+	match gradient_form {
+		GradientForm::Linear => BezPath::from_path_segments(std::iter::once(kurbo::PathSeg::Line(kurbo::Line::new(to_point(DVec2::ZERO), to_point(DVec2::X))))),
+		GradientForm::Radial => {
+			// Four-cubic kappa circle with anchors on the axes, so the tight bounding box is exactly the unit square
+			// <https://en.wikipedia.org/wiki/Composite_B%C3%A9zier_curve#Using_four_curves>
+			const KAPPA: f64 = 4. / 3. * (std::f64::consts::SQRT_2 - 1.);
+			let mut path = BezPath::new();
+			path.move_to((1., 0.));
+			path.curve_to((1., KAPPA), (KAPPA, 1.), (0., 1.));
+			path.curve_to((-KAPPA, 1.), (-1., KAPPA), (-1., 0.));
+			path.curve_to((-1., -KAPPA), (-KAPPA, -1.), (0., -1.));
+			path.curve_to((KAPPA, -1.), (1., -KAPPA), (1., 0.));
+			path.close_path();
+			path
+		}
+	}
+}
+
+/// Whether the control geometry's interior is a draggable click area: a radial's main ellipse acts as the layer's handle regardless of spread, while a linear's control line has no interior.
+fn gradient_control_interior_is_clickable(gradient_form: GradientForm) -> bool {
+	gradient_form == GradientForm::Radial
+}
+
+/// The metadata pass over a run of gradient lanes: each contributes its control geometry as targets under the
+/// run's `element_id`, baked relative to lane 0's transform (recorded as its `local_transforms` entry).
+fn collect_gradient_metadata<S: LaneSource<Element = Gradient>>(source: &S, metadata: &mut RenderMetadata, element_id: Option<NodeId>) {
+	let Some(element_id) = element_id else { return };
+
+	let mut lane_zero_inverse = None;
+	let mut outline_targets = Vec::new();
+	let mut click_targets = Vec::new();
+	for index in 0..source.lane_count() {
+		if source.element(index).is_none() {
+			continue;
+		}
+		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
+		let item_transform: DAffine2 = source.attr::<Transform>(index);
+
+		// Lane 0's transform is the reference all targets bake against
+		let lane_zero_inverse = *lane_zero_inverse.get_or_insert_with(|| if transform_is_invertible(item_transform) { item_transform.inverse() } else { DAffine2::IDENTITY });
+
+		let mut target = ClickTarget::new_with_path(gradient_control_outline(gradient_form), 0.);
+		target.apply_transform(lane_zero_inverse * item_transform);
+		let target = Arc::new(target);
+
+		if gradient_control_interior_is_clickable(gradient_form) {
+			click_targets.push(target.clone());
+		}
+		outline_targets.push(target);
+	}
+
+	if outline_targets.is_empty() {
+		return;
+	}
+
+	metadata.outlines.insert(element_id, outline_targets);
+	if !click_targets.is_empty() {
+		metadata.click_targets.insert(element_id, click_targets);
+	}
+}
+
+/// Collects each gradient lane's control geometry as a click target when its interior is draggable.
+fn add_gradient_upstream_click_targets<S: LaneSource<Element = Gradient>>(source: &S, click_targets: &mut Vec<ClickTarget>) {
+	for index in 0..source.lane_count() {
+		if source.element(index).is_none() {
+			continue;
+		}
+		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
+		if !gradient_control_interior_is_clickable(gradient_form) {
+			continue;
+		}
+
+		let transform: DAffine2 = source.attr::<Transform>(index);
+		let mut target = ClickTarget::new_with_path(gradient_control_outline(gradient_form), 0.);
+		target.apply_transform(transform);
+		click_targets.push(target);
+	}
+}
+
+/// Collects each gradient lane's control geometry as an outline target.
+fn add_gradient_upstream_outline_targets<S: LaneSource<Element = Gradient>>(source: &S, outlines: &mut Vec<ClickTarget>) {
+	for index in 0..source.lane_count() {
+		if source.element(index).is_none() {
+			continue;
+		}
+		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
+		let transform: DAffine2 = source.attr::<Transform>(index);
+
+		let mut target = ClickTarget::new_with_path(gradient_control_outline(gradient_form), 0.);
+		target.apply_transform(transform);
+		outlines.push(target);
+	}
+}
+
 impl Render for List<Gradient> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_gradient_svg(self, render, render_params)
@@ -2615,6 +2719,18 @@ impl Render for List<Gradient> {
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		render_gradient_vello(self, scene, parent_transform, render_params)
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, _footprint: Footprint, element_id: Option<NodeId>) {
+		collect_gradient_metadata(self, metadata, element_id)
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		add_gradient_upstream_click_targets(self, click_targets)
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		add_gradient_upstream_outline_targets(self, outlines)
 	}
 }
 
@@ -3083,6 +3199,18 @@ impl Render for RunView<'_, Gradient> {
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		render_gradient_vello(self, scene, parent_transform, render_params)
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, _footprint: Footprint, element_id: Option<NodeId>) {
+		collect_gradient_metadata(self, metadata, element_id)
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		add_gradient_upstream_click_targets(self, click_targets)
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		add_gradient_upstream_outline_targets(self, outlines)
 	}
 }
 
