@@ -1518,19 +1518,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_vector_data(layer_vector_data);
 			}
-			DocumentMessage::UpdateAppearanceAttributes { appearance_attributes } => {
-				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
-				let layer_appearance_attributes = appearance_attributes
-					.into_iter()
-					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
-					.filter_map(|(node_id, attrs)| {
-						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
-							(layer, attrs)
-						})
-					})
-					.collect();
-				self.network_interface.update_appearance_attributes(layer_appearance_attributes);
+			DocumentMessage::UpdateFillAttributes { fill_attributes } => {
+				let layer_fill_attributes = self.layer_keyed(fill_attributes);
+				self.network_interface.update_fill_attributes(layer_fill_attributes);
+			}
+			DocumentMessage::UpdateStrokeAttributes { stroke_attributes } => {
+				let layer_stroke_attributes = self.layer_keyed(stroke_attributes);
+				self.network_interface.update_stroke_attributes(layer_stroke_attributes);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -1806,6 +1800,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 }
 
 impl DocumentMessageHandler {
+	/// Rekeys a per-node attribute snapshot by layer, dropping nodes that are not layers.
+	fn layer_keyed<T>(&self, attributes: HashMap<NodeId, T>) -> HashMap<LayerNodeIdentifier, T> {
+		attributes
+			.into_iter()
+			.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+			.filter_map(|(node_id, attrs)| self.network_interface.is_layer(&node_id, &[]).then(|| (LayerNodeIdentifier::new(node_id, &self.network_interface), attrs)))
+			.collect()
+	}
+
 	/// Build a document handler from a `.gdd` working copy.
 	pub fn from_storage(interface: NodeNetworkInterface, storage: document_format::GddV1, name: String, path: Option<std::path::PathBuf>) -> Self {
 		let mut document = Self {

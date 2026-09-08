@@ -650,17 +650,6 @@ impl NodeNetworkInterface {
 		node.call_argument = call_argument;
 	}
 
-	pub fn set_context_features(&mut self, node_id: &NodeId, network_path: &[NodeId], context_features: ContextDependencies) {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_context_features");
-			return;
-		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_context_features");
-			return;
-		};
-		node.context_features = context_features;
-	}
 
 	/// Lightweight version of `set_input` for bulk import operations.
 	/// Directly sets the input without `is_acyclic` checks, `load_structure`, position conversions,
