@@ -2,7 +2,7 @@
 
 use super::access::write_element;
 use super::layout::{ElementWrite, FieldOffset, FieldWrite, Layout, element_write_hashed};
-use super::owned::deep_field_glue;
+use super::owned::{deep_field_glue, deepen_field_value, replay_field_value};
 use super::promote::{Promotion, promote_record};
 
 /// A group's element is compared and hashed by content, so it needs glue: the
@@ -12,6 +12,41 @@ fn assert_element_glue(layout: &Layout) {
 		layout.element.size == 0 || layout.element.content_hash.is_some(),
 		"a run's element adopts only with content glue; declare it with `element_write_hashed`"
 	);
+}
+
+/// Whether a lane of `layout` names payloads a byte copy would leave parked in
+/// the source arena.
+fn holds_parked(layout: &Layout) -> bool {
+	layout.element.parked || layout.fields.iter().any(|field| field.repark.is_some())
+}
+
+/// Re-parks one copied lane's payloads into `arena`, so a lane copied across
+/// arenas owns what it names instead of pointing back at the source's parks.
+/// The counterpart of [`promote_record`] for a copy whose target is a serving
+/// arena rather than the persistent region, so every reference clones.
+/// `None` reports arena exhaustion.
+///
+/// # Safety
+/// `dst` must image a live record of `layout` whose parked references still
+/// resolve, which is the source lane's own image before this rewrites it.
+unsafe fn readopt_record(layout: &Layout, dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
+	if layout.element.parked {
+		// SAFETY: the caller's contract; the clone owns all of its content.
+		let owned = unsafe { (layout.element.clone_out)(dst.cast_const()) };
+		// SAFETY: the clone is the element's own type, into its own slot.
+		unsafe { (layout.element.repark)(&*owned, dst, arena) }?;
+	}
+	for field in &layout.fields {
+		let Some(repark) = field.repark else { continue };
+		// SAFETY: a parked field slot holds one reference at its offset.
+		let slot = unsafe { dst.add(field.offset) };
+		// SAFETY: the slot images a parked field of this descriptor.
+		let value = deepen_field_value(unsafe { (field.read_erased)(slot.cast_const()) });
+		let resident = replay_field_value(&*value, arena)?;
+		// SAFETY: the replay produced this field's own value type.
+		unsafe { repark(resident.as_deref().unwrap_or(&*value), slot, arena) }?;
+	}
+	Some(())
 }
 
 /// Builds a resident run lane by lane: fresh frames in the arena at a layout
@@ -169,7 +204,8 @@ impl<'e> GroupItem<'e> {
 	/// Copies the batch's lanes into the arena and clones its layout.
 	/// Returns `None` when the arena is exhausted. Parked regions must carry
 	/// the content glue, so equality and hashing never fall back to pointer
-	/// bytes.
+	/// bytes. A copied lane's parked payloads re-park into `arena`, so the
+	/// adopted run names nothing the source arena's reset frees.
 	pub fn adopt(batch: crate::node::RecordBatch<'_>, arena: &'e crate::arena::Arena) -> Option<Self> {
 		let layout = batch.layout().clone();
 		assert_element_glue(&layout);
@@ -190,9 +226,15 @@ impl<'e> GroupItem<'e> {
 		}
 		let scratch = arena.alloc_scratch::<u64>((batch.len() * stride).div_ceil(8))?;
 		let frames = scratch.as_mut_ptr().cast::<u8>();
+		let parked = holds_parked(&layout);
 		for lane in 0..batch.len() {
 			// SAFETY: both sides hold `len` lanes at the shared layout's stride.
-			unsafe { std::ptr::copy_nonoverlapping(batch.get(lane).rec().ptr(), frames.add(lane * stride), stride) };
+			let dst = unsafe { frames.add(lane * stride) };
+			unsafe { std::ptr::copy_nonoverlapping(batch.get(lane).rec().ptr(), dst, stride) };
+			if parked {
+				// SAFETY: the copy images a live record of this layout.
+				unsafe { readopt_record(&layout, dst, arena) }?;
+			}
 		}
 		Some(Self {
 			layout,
@@ -335,8 +377,9 @@ impl<'e> GroupItem<'e> {
 	/// `arena`, sharing only where its lanes already live there.
 	pub fn replay<'a>(&self, arena: &'a crate::arena::Arena) -> Option<GroupItem<'a>> {
 		let ItemStorage::Owned(owned) = &self.storage else {
-			// A resident item re-serves at the target arena's own lifetime,
-			// so its lanes copy rather than relabeling the borrow.
+			// A resident item re-serves at the target arena's own lifetime, so
+			// its lanes copy and their parked payloads re-park there rather
+			// than relabeling the borrow.
 			return GroupItem::adopt(self.lanes(), arena);
 		};
 		let stride = self.layout.lane_stride();
@@ -750,6 +793,34 @@ mod tests {
 		for lane in 0..2usize {
 			assert_eq!(unsafe { lanes.get(lane).rec().element::<f64>() }, 10. + lane as f64, "lane {lane}");
 			assert_eq!(unsafe { lanes.get(lane).rec().read::<f64>(offset) }, 0.5 + lane as f64, "lane {lane}");
+		}
+	}
+
+	#[test]
+	fn a_cross_arena_adopt_re_parks_what_the_lanes_name() {
+		use crate::lane::LaneSource;
+
+		let mut source = crate::arena::Arena::new(1 << 16).unwrap();
+		let target = crate::arena::Arena::new(1 << 16).unwrap();
+
+		let adopted = {
+			let mut builder = RunBuilder::new(&source, element_write_hashed::<String>(), &[FieldWrite::of::<crate::attribute::Name>(0)], 2).unwrap();
+			for lane in 0..2 {
+				let lane = builder.push(format!("element {lane}")).unwrap();
+				let (name, _) = source.alloc(format!("field {lane}")).unwrap();
+				builder.attr::<crate::attribute::Name>(lane, name.as_str());
+			}
+			let item = builder.finish();
+			GroupItem::adopt(item.lanes(), &target).unwrap()
+		};
+		// The adopted run must own what it names: the source's flush frees every
+		// payload the lanes were built over.
+		source.reset();
+
+		let run = RunView::<String>::new(&adopted).expect("the run holds string elements");
+		for lane in 0..2 {
+			assert_eq!(run.element(lane).map(String::as_str), Some(format!("element {lane}").as_str()), "lane {lane}");
+			assert_eq!(run.attr::<crate::attribute::Name>(lane), format!("field {lane}"), "lane {lane}");
 		}
 	}
 
