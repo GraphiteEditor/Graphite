@@ -1433,6 +1433,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 	}
 
+	// Rebuild stale Rasterize subgraphs from before the async-source conversion gave the inner proto node a unit primary input (5 inputs, now 6).
+	if let DocumentNodeImplementation::Network(inner) = &node.implementation
+		&& inner
+			.nodes
+			.values()
+			.any(|n| n.inputs.len() == 5 && matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("rasterize")))
+		&& document.network_interface.reference(node_id, network_path) == Some(DefinitionIdentifier::Network("Rasterize".into()))
+		&& let Some(node_definition) = resolve_document_node_type(&DefinitionIdentifier::Network("Rasterize".into()))
+	{
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
+	}
+
 	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` as their call argument
 	if node.call_argument == graph_craft::concrete!(()) || node.call_argument == graph_craft::concrete!(graphene_std::transform::Footprint) {
 		document.network_interface.set_call_argument(node_id, network_path, graph_craft::concrete!(graphene_std::Context));
