@@ -369,32 +369,32 @@ pub fn image(_: impl Ctx, resource: Resource) -> Raster<CPU> {
 pub fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
-	#[default(true)] clip: Item<bool>,
-	seed: Item<u32>,
+	#[default(true)] clip: bool,
+	seed: u32,
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_scale")]
 	#[default(10.)]
-	scale: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_noise_type")] noise_type: Item<NoiseType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_type")] domain_warp_type: Item<DomainWarpType>,
+	scale: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_noise_type")] noise_type: NoiseType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_type")] domain_warp_type: DomainWarpType,
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_amplitude")]
 	#[default(100.)]
-	domain_warp_amplitude: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_type")] fractal_type: Item<FractalType>,
+	domain_warp_amplitude: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_type")] fractal_type: FractalType,
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_octaves")]
 	#[default(3)]
-	fractal_octaves: Item<u32>,
+	fractal_octaves: u32,
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_lacunarity")]
 	#[default(2.)]
-	fractal_lacunarity: Item<f64>,
+	fractal_lacunarity: f64,
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_gain")]
 	#[default(0.5)]
-	fractal_gain: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_weighted_strength")] fractal_weighted_strength: Item<f64>,
+	fractal_gain: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_weighted_strength")] fractal_weighted_strength: f64,
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_ping_pong_strength")]
 	#[default(2.)]
-	fractal_ping_pong_strength: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_distance_function")] cellular_distance_function: Item<CellularDistanceFunction>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_return_type")] cellular_return_type: Item<CellularReturnType>,
+	fractal_ping_pong_strength: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_distance_function")] cellular_distance_function: CellularDistanceFunction,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_return_type")] cellular_return_type: CellularReturnType,
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_jitter")]
 	#[default(1.)]
 	cellular_jitter: f64,

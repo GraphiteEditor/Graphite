@@ -1,5 +1,6 @@
 use core_types::attribute::Attr;
 use core_types::gpoll::{GraphError, Interrupt};
+use core_types::list::List;
 use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, ExtractIndex, InjectIndex, num_traits};
@@ -9,9 +10,12 @@ use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
-use std::ops::{Add, Div, Mul, Rem, Sub};
-use vector_types::GradientStops;
-use vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod as SpreadMethodAttr};
+use std::ops::{Add, Mul, Rem, Sub};
+use vector_types::markers::{
+	GradientCyclic as GradientCyclicAttr, GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientInterpolation as GradientInterpolationAttr,
+	GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
+};
+use vector_types::{Gradient, GradientSettings};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -71,12 +75,10 @@ fn math<T: num_traits::float::Float>(
 	};
 
 	let Value::Number(num) = value;
-	let result = match num {
+	match num {
 		Number::Real(val) => T::from(val).unwrap(),
 		Number::Complex(c) => T::from(c.re).unwrap(),
-	};
-
-	result
+	}
 }
 
 /// The addition operation (`+`) calculates the sum of two scalar numbers or vec2s.
@@ -229,10 +231,7 @@ fn modulo<A: Rem<B, Output: Add<B, Output: Rem<B, Output = A::Output>>>, B: Copy
 	#[default(true)]
 	always_positive: bool,
 ) -> <A as Rem<B>>::Output {
-	let (modulus, always_positive) = (modulus, always_positive);
-
-	let result = if always_positive { (numerator % modulus + modulus) % modulus } else { numerator % modulus };
-	result
+	if always_positive { (numerator % modulus + modulus) % modulus } else { numerator % modulus }
 }
 
 pub trait Exponent<Rhs = Self> {
@@ -441,10 +440,7 @@ fn sine<T: Componentwise>(
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: bool,
 ) -> T {
-	let radians = radians;
-
-	let result = theta.componentwise(|theta| if radians { theta.sin() } else { theta.to_radians().sin() });
-	result
+	theta.componentwise(|theta| if radians { theta.sin() } else { theta.to_radians().sin() })
 }
 
 /// The cosine trigonometric function (`cos`) calculates the ratio of the angle's adjacent side length to its hypotenuse length.
@@ -459,10 +455,7 @@ fn cosine<T: Componentwise>(
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: bool,
 ) -> T {
-	let radians = radians;
-
-	let result = theta.componentwise(|theta| if radians { theta.cos() } else { theta.to_radians().cos() });
-	result
+	theta.componentwise(|theta| if radians { theta.cos() } else { theta.to_radians().cos() })
 }
 
 /// The tangent trigonometric function (`tan`) calculates the ratio of the angle's opposite side length to its adjacent side length.
@@ -477,10 +470,7 @@ fn tangent<T: Componentwise>(
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: bool,
 ) -> T {
-	let radians = radians;
-
-	let result = theta.componentwise(|theta| if radians { theta.tan() } else { theta.to_radians().tan() });
-	result
+	theta.componentwise(|theta| if radians { theta.tan() } else { theta.to_radians().tan() })
 }
 
 /// The inverse sine trigonometric function (`asin`) calculates the angle whose sine is the input value.
@@ -494,8 +484,7 @@ fn sine_inverse<T: num_traits::float::Float>(
 	radians: bool,
 ) -> T {
 	let angle = value.clamp(T::from(-1.).unwrap(), T::from(1.).unwrap()).asin();
-	let result = if radians { angle } else { angle.to_degrees() };
-	result
+	if radians { angle } else { angle.to_degrees() }
 }
 
 /// The inverse cosine trigonometric function (`acos`) calculates the angle whose cosine is the input value.
@@ -509,8 +498,7 @@ fn cosine_inverse<T: num_traits::float::Float>(
 	radians: bool,
 ) -> T {
 	let angle = value.clamp(T::from(-1.).unwrap(), T::from(1.).unwrap()).acos();
-	let result = if radians { angle } else { angle.to_degrees() };
-	result
+	if radians { angle } else { angle.to_degrees() }
 }
 
 /// The inverse tangent trigonometric function (`atan` or `atan2`, depending on input type) calculates:
@@ -579,8 +567,6 @@ fn remap<U: num_traits::float::Float>(
 	/// Whether to constrain the result within the output range instead of extrapolating beyond its bounds.
 	clamped: bool,
 ) -> U {
-	let (input_min, input_max, output_min, output_max) = (input_min, input_max, output_min, output_max);
-
 	let input_range = input_max - input_min;
 
 	// Handle division by zero
@@ -593,7 +579,7 @@ fn remap<U: num_traits::float::Float>(
 
 	let result = output_min + normalized * output_range;
 
-	let result = if clamped {
+	if clamped {
 		// Handle both normal and inverted ranges, since we want to allow the user to use this node to also reverse a range.
 		if output_min <= output_max {
 			result.clamp(output_min, output_max)
@@ -602,9 +588,7 @@ fn remap<U: num_traits::float::Float>(
 		}
 	} else {
 		result
-	};
-
-	result
+	}
 }
 
 trait Lerp {
@@ -649,14 +633,13 @@ fn lerp<T: Lerp>(
 	let factor = if clamped { factor.clamp(0., 1.) } else { factor };
 
 	// Exact endpoint factors pass the endpoint through untouched, since the unused operand would otherwise contaminate the weighted sum (NaN or infinity times 0 is NaN)
-	let result = if factor == 0. {
+	if factor == 0. {
 		start
 	} else if factor == 1. {
 		end
 	} else {
 		start.lerp(end, factor)
-	};
-	result
+	}
 }
 
 /// The random function (`rand`) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
@@ -674,9 +657,8 @@ fn random(
 ) -> f64 {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 	let result = rng.random::<f64>();
-	let (min, max) = (min, max);
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
-	(result * (max - min) + min)
+	result * (max - min) + min
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
@@ -791,7 +773,7 @@ fn sign<T: Componentwise>(
 	#[implementations(f64, f32, DVec2)]
 	value: T,
 ) -> T {
-	let result = value.componentwise(|value| {
+	value.componentwise(|value| {
 		if value > 0. {
 			1.
 		} else if value < 0. {
@@ -799,8 +781,7 @@ fn sign<T: Componentwise>(
 		} else {
 			0.
 		}
-	});
-	result
+	})
 }
 
 pub trait MinMax<Rhs = Self> {
@@ -924,8 +905,6 @@ fn clamp<A: MinMax<B>, B: MinMax<Output = B> + Clone>(
 where
 	<A as MinMax<B>>::Output: MinMax<B, Output = <A as MinMax<B>>::Output>,
 {
-	let (min, max) = (min, max);
-
 	let (min, max) = (min.clone().minimum(max.clone()), min.maximum(max));
 	value.maximum(min).minimum(max)
 }
@@ -941,17 +920,13 @@ fn greatest_common_divisor<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32
 	#[implementations(u32, u64, i32)]
 	other_value: T,
 ) -> T {
-	let other_value = other_value;
-
-	let result = if value == T::zero() {
+	if value == T::zero() {
 		other_value
 	} else if other_value == T::zero() {
 		value
 	} else {
 		binary_gcd(value, other_value)
-	};
-
-	result
+	}
 }
 
 /// The least common multiple (LCM) calculates the smallest positive integer that is a multiple of both of the two input numbers.
@@ -1011,7 +986,7 @@ fn binary_gcd<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops:
 /// Adds together all the numbers in the input list, producing their total.
 #[node_macro::node(category("Math: Numeric"))]
 fn sum(_: impl Ctx, values: List<f64>) -> f64 {
-	(values.iter_element_values().sum())
+	values.iter_element_values().sum()
 }
 
 /// Averages all the numbers in the input list. An empty list gives 0.
@@ -1020,31 +995,31 @@ fn average(_: impl Ctx, values: List<f64>) -> f64 {
 	let count = values.len();
 	let average = if count == 0 { 0. } else { values.iter_element_values().sum::<f64>() / count as f64 };
 
-	(average)
+	average
 }
 
 /// Gives the smallest number in the input list. An empty list gives 0.
 #[node_macro::node(category("Math: Numeric"))]
 fn minimum(_: impl Ctx, values: List<f64>) -> f64 {
-	(values.iter_element_values().copied().reduce(f64::min).unwrap_or_default())
+	values.iter_element_values().copied().reduce(f64::min).unwrap_or_default()
 }
 
 /// Gives the largest number in the input list. An empty list gives 0.
 #[node_macro::node(category("Math: Numeric"))]
 fn maximum(_: impl Ctx, values: List<f64>) -> f64 {
-	(values.iter_element_values().copied().reduce(f64::max).unwrap_or_default())
+	values.iter_element_values().copied().reduce(f64::max).unwrap_or_default()
 }
 
 /// Outputs true if at least one value in the input list is true. An empty list gives false.
 #[node_macro::node(category("Math: Logic"))]
 fn any(_: impl Ctx, values: List<bool>) -> bool {
-	(values.iter_element_values().any(|&value| value))
+	values.iter_element_values().any(|&value| value)
 }
 
 /// Outputs true only if every value in the input list is true. An empty list gives true.
 #[node_macro::node(category("Math: Logic"))]
 fn all(_: impl Ctx, values: List<bool>) -> bool {
-	(values.iter_element_values().all(|&value| value))
+	values.iter_element_values().all(|&value| value)
 }
 
 /// The less-than operation (`<`) compares two values and returns true if the first value is less than the second, or false if it is not.
@@ -1061,10 +1036,7 @@ fn less_than<T: std::cmp::PartialOrd<T>>(
 	/// Uses the less-than-or-equal operation (`<=`) instead of the less-than operation (`<`).
 	or_equal: bool,
 ) -> bool {
-	let other_value = other_value;
-
-	let result = if or_equal { value <= other_value } else { value < other_value };
-	result
+	if or_equal { value <= other_value } else { value < other_value }
 }
 
 /// The greater-than operation (`>`) compares two values and returns true if the first value is greater than the second, or false if it is not.
@@ -1081,10 +1053,7 @@ fn greater_than<T: std::cmp::PartialOrd<T>>(
 	/// Uses the greater-than-or-equal operation (`>=`) instead of the greater-than operation (`>`).
 	or_equal: bool,
 ) -> bool {
-	let other_value = other_value;
-
-	let result = if or_equal { value >= other_value } else { value > other_value };
-	result
+	if or_equal { value >= other_value } else { value > other_value }
 }
 
 /// The equality operation (`==`, `XNOR`) compares two values and returns true if they are equal, or false if they are not.
@@ -1098,9 +1067,7 @@ fn equals<T: std::cmp::PartialEq<T>>(
 	#[implementations(f64, f32, u32, DVec2, bool, String)]
 	other_value: T,
 ) -> bool {
-	let value = value;
-
-	(other_value == value)
+	other_value == value
 }
 
 /// The inequality operation (`!=`, `XOR`) compares two values and returns true if they are not equal, or false if they are.
@@ -1114,9 +1081,7 @@ fn not_equals<T: std::cmp::PartialEq<T>>(
 	#[implementations(f64, f32, u32, DVec2, bool, String)]
 	other_value: T,
 ) -> bool {
-	let value = value;
-
-	(other_value != value)
+	other_value != value
 }
 
 /// The logical OR operation (`||`) returns true if either of the two inputs are true, or false if both are false.
@@ -1237,42 +1202,152 @@ fn hex_to_color(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, hex_code: Str
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
+fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Gradient) -> Gradient {
 	gradient
 }
 
-/// Sets the type (linear or radial) of each gradient in the input list.
-#[node_macro::node(category("Color"))]
-fn gradient_type(_: impl Ctx, gradient: GradientStops, gradient_type: vector_types::GradientType) -> (GradientStops, Attr<GradientTypeAttr>) {
-	(gradient, Attr(gradient_type))
+/// Sets the form (linear or radial) of each gradient in the input list.
+#[node_macro::node(category("Gradient"))]
+fn gradient_form(_: impl Ctx, gradient: Gradient, gradient_form: vector_types::GradientForm) -> (Gradient, Attr<GradientFormAttr>) {
+	(gradient, Attr(gradient_form))
 }
 
-/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
-#[node_macro::node(category("Color"))]
-fn spread_method(_: impl Ctx, gradient: GradientStops, spread_method: vector_types::GradientSpreadMethod) -> (GradientStops, Attr<SpreadMethodAttr>) {
-	(gradient, Attr(spread_method))
+/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, Repeat, or Clear.
+#[node_macro::node(category("Gradient"))]
+fn gradient_spread(_: impl Ctx, gradient: Gradient, gradient_spread: vector_types::GradientSpread) -> (Gradient, Attr<GradientSpreadAttr>) {
+	(gradient, Attr(gradient_spread))
 }
 
-/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+/// Sets the color space in which each gradient in the input list interpolates between its stops.
+#[node_macro::node(category("Gradient"))]
+fn gradient_space(_: impl Ctx, gradient: Gradient, space: vector_types::GradientSpace) -> (Gradient, Attr<GradientSpaceAttr>) {
+	(gradient, Attr(space))
+}
+
+/// Sets the path each gradient in the input list interpolates along, deciding whether it jumps, turns corners, or flows smoothly through its stops.
+#[node_macro::node(category("Gradient"))]
+fn gradient_interpolation(_: impl Ctx, gradient: Gradient, interpolation: vector_types::GradientInterpolation) -> (Gradient, Attr<GradientInterpolationAttr>) {
+	(gradient, Attr(interpolation))
+}
+
+/// Sets whether each gradient in the input list treats its stops as a cycle, interpolating from the last stop back around to the first.
+#[node_macro::node(category("Gradient"))]
+fn gradient_cyclic(_: impl Ctx, gradient: Gradient, cyclic: bool) -> (Gradient, Attr<GradientCyclicAttr>) {
+	(gradient, Attr(cyclic))
+}
+
+/// Sets which way around the hue wheel each gradient in the input list interpolates, for polar color spaces.
+#[node_macro::node(category("Gradient"))]
+fn gradient_hue_direction(_: impl Ctx, gradient: Gradient, hue_direction: vector_types::GradientHueDirection) -> (Gradient, Attr<GradientHueDirectionAttr>) {
+	(gradient, Attr(hue_direction))
+}
+
+/// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
+///
+/// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
+#[node_macro::node(category("Gradient"))]
+fn gradient_positions(_: impl Ctx, mut gradient: Gradient, positions: List<f64>) -> Gradient {
+	let positions: Vec<f64> = positions.iter_element_values().copied().collect();
+	gradient.set_positions(&positions);
+	gradient
+}
+
+/// Skews how rapidly the color flows across each interval between color stops, bunching up the transition toward one end instead of progressing uniformly. Each value places the halfway color within its corresponding interval, measured as a fraction of the distance (0 to 1) between the adjacent stops. A 0.5 midpoint keeps a uniform transition rate through the interval.
+///
+/// Non-cyclic gradients have no interval following the last stop, meaning the midpoint is ignored in that position.
+///
+/// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
+#[node_macro::node(category("Gradient"))]
+fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: List<f64>) -> Gradient {
+	let midpoints: Vec<f64> = midpoints.iter_element_values().copied().collect();
+	gradient.set_midpoints(&midpoints);
+	gradient
+}
+
+/// Reverses the order of each gradient's stops, moving the color at the start of the ramp to the end and vice versa.
+#[node_macro::node(category("Gradient"))]
+fn gradient_reverse(_: impl Ctx, (gradient, cyclic): (Gradient, Attr<GradientCyclicAttr>)) -> (Gradient, Attr<GradientCyclicAttr>) {
+	// Master reads the cyclic flag off the item; ours rides the gradient's own lane.
+	let cyclic = *cyclic;
+	(gradient.reversed(cyclic), Attr(cyclic))
+}
+
+/// Shifts every stop along each gradient's ramp, sliding the colors within the gradient without moving the gradient itself.
+///
+/// The fraction is measured against the whole ramp. A cyclic gradient spins, wrapping past the end back around to the start so 1 is a full turn that lands where it began. A gradient that isn't cyclic has no loop to spin around, so its stops slide off the end and keep going, leaving the visible ramp to blend between whichever colors still span it.
+#[node_macro::node(category("Gradient"))]
+fn gradient_shift(
+	_: impl Ctx,
+	(mut gradient, cyclic): (Gradient, Attr<GradientCyclicAttr>),
+	#[range]
+	#[soft(-1..1)]
+	fraction: f64,
+) -> (Gradient, Attr<GradientCyclicAttr>) {
+	// Master reads the cyclic flag off the item; ours rides the gradient's own lane.
+	let cyclic = *cyclic;
+	gradient.shift_positions(fraction, cyclic);
+	(gradient, Attr(cyclic))
+}
+
+/// Stretches or squeezes the spacing of each gradient's stops around a pivot, spreading the colors within the gradient without moving the gradient itself.
+///
+/// The factor multiplies every stop's distance from the pivot, so 2 spreads the ramp over twice its span while 0.5 packs it into half. A negative factor mirrors the stops across the pivot, reversing the order of the colors.
+///
+/// The pivot is the one point that stays put, measured against the whole ramp from 0 at the start to 1 at the end.
+#[node_macro::node(category("Gradient"))]
+fn gradient_stretch(
+	_: impl Ctx,
+	(mut gradient, cyclic): (Gradient, Attr<GradientCyclicAttr>),
+	#[default(1.)]
+	#[unit("x")]
+	factor: f64,
+	#[default(0.5)]
+	#[range]
+	#[soft(0..1)]
+	pivot: f64,
+) -> (Gradient, Attr<GradientCyclicAttr>) {
+	// Master reads the cyclic flag off the item; ours rides the gradient's own lane.
+	let cyclic = *cyclic;
+	gradient.stretch_positions(factor, pivot, cyclic);
+	(gradient, Attr(cyclic))
+}
+
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"))]
-fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), gradient: IList<GradientStops>, position: Fraction) -> Result<IList<Color>, Interrupt> {
+fn evaluate_gradient(
+	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_primary: (),
+	#[default(Color::BLACK, Color::WHITE)] gradient: IList<Gradient>,
+	#[range]
+	#[soft(0..1)]
+	position: f64,
+) -> Result<IList<Color>, Interrupt> {
 	// An unwired gradient serves an empty level: no color
 	if gradient.is_empty() || ctx.index() != 0 {
 		return Err(GraphError::past_end().into());
 	}
 
-	let position = position.clamp(0., 1.);
-	Ok(gradient.element_ref(0).evaluate(position))
+	// Master reads the whole-ramp settings off the item; ours ride the gradient's own lane.
+	let lane = gradient.lane(0);
+	let settings = GradientSettings {
+		spread: lane.attr::<GradientSpreadAttr>(),
+		cyclic: lane.attr::<GradientCyclicAttr>(),
+		space: lane.attr::<GradientSpaceAttr>(),
+		hue_direction: lane.attr::<GradientHueDirectionAttr>(),
+		interpolation: lane.attr::<GradientInterpolationAttr>(),
+	};
+
+	Ok(gradient.element_ref(0).evaluate(position, settings))
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
 #[node_macro::node(category("Value"))]
 fn footprint_value(_: impl Ctx, _primary: (), transform: DAffine2, #[default(100., 100.)] resolution: PixelSize) -> Footprint {
-	(Footprint {
-		transform: transform,
+	Footprint {
+		transform,
 		resolution: resolution.max(DVec2::ONE).as_uvec2(),
 		..Default::default()
-	})
+	}
 }
 
 /// Composes a vec2 from its X and Y components.
@@ -1289,7 +1364,7 @@ fn combine_vec2(
 	#[expose]
 	y: f64,
 ) -> DVec2 {
-	(DVec2::new(x, y))
+	DVec2::new(x, y)
 }
 
 /// The dot product operation (`·`) calculates the degree of similarity of a vec2 pair based on their angles and lengths.
@@ -1308,15 +1383,11 @@ fn dot_product(
 	/// Whether to normalize both input vec2s so the calculation ranges in `[-1, 1]` by considering only their degree of directional alignment.
 	normalize: bool,
 ) -> f64 {
-	let other_value = other_value;
-
-	let result = if normalize {
+	if normalize {
 		value.normalize_or_zero().dot(other_value.normalize_or_zero())
 	} else {
 		value.dot(other_value)
-	};
-
-	result
+	}
 }
 
 /// The cross product operation (`×`) calculates the signed area of the parallelogram formed by a vec2 pair.
@@ -1348,15 +1419,12 @@ fn angle_between(
 	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: bool,
 ) -> f64 {
-	let direction_to = direction_to;
-
 	if direction_from == DVec2::ZERO || direction_to == DVec2::ZERO {
 		return 0.;
 	}
 
 	let angle = direction_from.angle_to(direction_to);
-	let result = if radians { angle } else { angle.to_degrees() };
-	result
+	if radians { angle } else { angle.to_degrees() }
 }
 
 pub trait ToPosition {
@@ -1391,8 +1459,7 @@ fn angle_to<T: ToPosition, U: ToPosition>(
 	let to = position_to.to_position();
 	let delta = to - from;
 	let angle = delta.y.atan2(delta.x);
-	let result = if radians { angle } else { angle.to_degrees() };
-	result
+	if radians { angle } else { angle.to_degrees() }
 }
 
 /// The magnitude operator (`‖x‖`) calculates the length of a vec2, which is the distance from the base to the tip of the arrow it represents.
@@ -1433,9 +1500,9 @@ mod test {
 	}
 
 	#[test]
-	pub fn length_function() {
+	pub fn magnitude_function() {
 		let vector = DVec2::new(3., 4.);
-		assert_eq!(length(&(), vector), 5.);
+		assert_eq!(magnitude(&(), vector), 5.);
 	}
 
 	#[test]

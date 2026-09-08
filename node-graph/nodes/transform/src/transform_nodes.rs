@@ -56,7 +56,7 @@ fn transform_value<T: ApplyTransform + 'static>(
 	let transformed = ctx.modify_footprint(|footprint| footprint.apply_transform(&matrix));
 	let mut transform_target = content.eval(&transformed.ctx())?;
 
-	item.left_apply_transform(&matrix);
+	transform_target.left_apply_transform(&matrix);
 
 	Ok(transform_target)
 }
@@ -96,7 +96,7 @@ fn replace_transform<T>(_: impl Ctx + InjectFootprint, (element, _content_transf
 // TODO: Figure out how this node should behave once #2982 is implemented.
 /// Obtains the transform of the first lane of the input, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
-fn extract_transform<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient)] content: IList<T>) -> DAffine2 {
+fn extract_transform<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Artboard)] content: IList<T>) -> DAffine2 {
 	match content.len() {
 		0 => DAffine2::default(),
 		_ => content.lane(0).attr::<TransformAttr>(),
@@ -106,23 +106,19 @@ fn extract_transform<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, 
 /// Produces the inverse of the input transform, which is the transform that undoes the effect of the original transform.
 #[node_macro::node(category("Math: Transform"))]
 fn invert_transform(_: impl Ctx, transform: DAffine2) -> DAffine2 {
-	let (transform, attributes) = transform.into_parts();
-
-	let result = transform.inverse();
-
-	Item::from_parts(result, attributes)
+	transform.inverse()
 }
 
 /// Extracts the translation component from the input transform.
 #[node_macro::node(category("Math: Transform"))]
 fn decompose_translation(_: impl Ctx, transform: DAffine2) -> DVec2 {
-	Item::new_from_element(transform.into_element().translation)
+	transform.translation
 }
 
 /// Extracts the rotation component (in degrees) from the input transform.
 #[node_macro::node(category("Math: Transform"))]
 fn decompose_rotation(_: impl Ctx, transform: DAffine2) -> f64 {
-	Item::new_from_element(transform.into_element().decompose_rotation().to_degrees())
+	transform.decompose_rotation().to_degrees()
 }
 
 /// Extracts the scale component from the input transform.
@@ -130,19 +126,14 @@ fn decompose_rotation(_: impl Ctx, transform: DAffine2) -> f64 {
 /// **Pure** returns the isolated scale factors with rotation and skew stripped away (can be negative for flipped axes).
 #[node_macro::node(category("Math: Transform"))]
 fn decompose_scale(_: impl Ctx, transform: DAffine2, scale_type: ScaleType) -> DVec2 {
-	let transform = transform.into_element();
-	let scale_type = scale_type.into_element();
-
-	let result = match scale_type {
+	match scale_type {
 		ScaleType::Magnitude => transform.scale_magnitudes(),
 		ScaleType::Pure => transform.decompose_scale(),
-	};
-
-	Item::new_from_element(result)
+	}
 }
 
 /// Extracts the skew angle (in degrees) from the input transform.
 #[node_macro::node(category("Math: Transform"))]
 fn decompose_skew(_: impl Ctx, transform: DAffine2) -> f64 {
-	Item::new_from_element(transform.into_element().decompose_skew().atan().to_degrees())
+	transform.decompose_skew().atan().to_degrees()
 }
