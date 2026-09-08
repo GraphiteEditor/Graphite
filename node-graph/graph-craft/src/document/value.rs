@@ -274,7 +274,7 @@ macro_rules! tagged_value {
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(_) => item!($ty), )*
+					$( Self::$identifier(_) => concrete!($ty), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -511,18 +511,9 @@ macro_rules! tagged_value {
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
 					Type::Future(output) => TaggedValue::from_type(output),
-					// Element types with a dedicated variant use it directly (the variant's value is a rank-0 cell); the rest store the structural type
-					Type::Item(element) => TaggedValue::from_type(element).or_else(|| {
-						macro_rules! check {
-							($type_default:ty) => {
-								if **element == concrete!($type_default) { return Some(TaggedValue::TypeDefault(input.clone())); }
-							};
-						}
-						for_each_item_type_default!(check);
-						None
-					}),
-					// Structural lists match by element; `List<f64>` stays the dedicated `F64Array` variant
-					Type::List(element) => {
+					// One wire kind: a record input types by its element, so the element's own
+					// dedicated variant is used where there is one and the structural type otherwise.
+					Type::Record(element) => TaggedValue::from_type(element).or_else(|| {
 						if **element == concrete!(f64) {
 							return Some(TaggedValue::F64Array(Vec::new()));
 						}
@@ -534,9 +525,10 @@ macro_rules! tagged_value {
 								if **element == concrete!($type_default) { return Some(TaggedValue::TypeDefault(input.clone())); }
 							};
 						}
+						for_each_item_type_default!(check);
 						for_each_list_type_default!(check);
 						None
-					}
+					})
 				}
 			}
 
@@ -802,8 +794,7 @@ impl TaggedValue {
 			}
 			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
 			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
-			Type::Item(element) => TaggedValue::from_primitive_string(string, element),
-			Type::List(element) => TaggedValue::from_primitive_string(string, element),
+			Type::Record(element) => TaggedValue::from_primitive_string(string, element),
 		}
 	}
 
@@ -816,12 +807,12 @@ impl TaggedValue {
 
 	/// The stored form of a paint input's red-slash "no paint" choice: the `Item<Graphic>` type default, materializing as a `Graphic::None` paint.
 	pub fn no_paint() -> Self {
-		TaggedValue::TypeDefault(item!(Graphic))
+		TaggedValue::TypeDefault(concrete!(Graphic))
 	}
 
 	/// Whether this is the `Item<Graphic>` type default created by [`Self::no_paint`] (and by disconnecting a paint wire).
 	pub fn is_no_paint(&self) -> bool {
-		matches!(self, TaggedValue::TypeDefault(td) if *td == item!(Graphic))
+		matches!(self, TaggedValue::TypeDefault(td) if *td == concrete!(Graphic))
 	}
 }
 
@@ -1082,7 +1073,7 @@ mod paint_default_parsing {
 			"a `List<Graphic>` paint wire should resolve its color default"
 		);
 		assert_eq!(
-			TaggedValue::from_primitive_string("Color::BLACK", &item!(Graphic)),
+			TaggedValue::from_primitive_string("Color::BLACK", &concrete!(Graphic)),
 			black,
 			"an `Item<Graphic>` paint wire should resolve its color default"
 		);

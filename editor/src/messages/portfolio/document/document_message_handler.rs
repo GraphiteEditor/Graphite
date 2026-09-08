@@ -35,9 +35,9 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
+use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
-use graph_craft::list;
 use graphene_std::Cover;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
@@ -3803,7 +3803,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::TypeDefault(list!(graphene_std::Artboard)), -1, "", &[]);
+	network_interface.add_export(TaggedValue::TypeDefault(concrete!(graphene_std::list::List<graphene_std::Artboard>)), -1, "", &[]);
 	network_interface
 }
 
