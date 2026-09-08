@@ -1750,6 +1750,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 7;
 	}
 
+	// Master retired the stroke paint order input, encoding the order as coverage list position instead. Ours keeps the
+	// input and carries it LAST, so a master-era stroke node arrives one input short and is padded with the default order.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER) && inputs_count == 9 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.into_iter().enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 9), NodeInput::value(TaggedValue::PaintOrder(Default::default()), false), network_path);
+	}
+
 	// Fill split its `Option<DAffine2>` placement into a `_has_transform` bool immediately before the `_transform` matrix. The modern
 	// shape is also 7 inputs, so this era is identified by its `_spread_method` input at 5 or its optional transform at 6.
 	let is_pre_transform_split_fill = inputs_count == 7
