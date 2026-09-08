@@ -618,4 +618,36 @@ mod tests {
 		assert!(entries.contains("fn count_entries"), "a ranked record-io node still emits: {entries}");
 		assert_eq!(entries.matches("constructor :").count(), 2, "one row per ranked implementation");
 	}
+
+	/// An async source's materialized input crosses the future boundary as an
+	/// owned snapshot: the prologue materializes the level while the evaluation
+	/// is live, bridges it to the legacy list, and the kernel takes that.
+	#[test]
+	fn async_source_takes_a_materialized_input_as_an_owned_list() {
+		let generated = crate::parsing::new_node_fn(
+			quote!(category("")),
+			quote!(
+				async fn rasterize<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(
+					_: impl Ctx,
+					_: (),
+					#[implementations(Vector, Raster<CPU>, Graphic)] data: IList<T>,
+					footprint: Footprint,
+				) -> (Raster<CPU>, Attr<Transform>) {
+					todo!()
+				}
+			),
+		)
+		.expect("the async materialized shape generates")
+		.to_string();
+		assert!(generated.contains("data : :: core_types :: list :: List < T >"), "the kernel takes the owned legacy list: {generated}");
+		assert!(generated.contains("run_to_owned_list"), "the prologue snapshots the materialized level: {generated}");
+		assert!(
+			generated.contains("record :: materialize_batch"),
+			"the level still materializes in the prologue: {generated}"
+		);
+		for element in ["Vector", "Raster < CPU >", "Graphic"] {
+			let row = format!("record_source_type :: < {element} > ()");
+			assert!(generated.contains(&row), "the row carries the leveled element {element}: {generated}");
+		}
+	}
 }
