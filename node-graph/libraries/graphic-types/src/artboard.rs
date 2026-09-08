@@ -55,6 +55,7 @@ unsafe fn deep_clone_artboard(ptr: *const u8) -> Box<dyn std::any::Any + Send + 
 	for element in content.iter_element_values_mut() {
 		*element = crate::graphic::map_groups_to_owned(element);
 	}
+	crate::graphic::map_attribute_groups_to_owned(&mut content);
 	Box::new(Artboard(content))
 }
 
@@ -70,12 +71,13 @@ unsafe fn deep_repark_artboard(value: &(dyn std::any::Any + Send + Sync), dst: *
 	for element in content.iter_element_values_mut() {
 		*element = crate::graphic::map_groups_to_resident(element, arena)?;
 	}
+	crate::graphic::map_attribute_groups_to_resident(&mut content, arena)?;
 	unsafe { core_types::record::write_element(dst, Artboard(content), arena) }
 }
 
 /// The promote for `Artboard` elements: as for `Graphic`, content groups the
-/// persistent region already holds are shared rather than copied, and
-/// group-free content moves its header instead of copying its heap.
+/// persistent region already holds are shared rather than copied, and content
+/// no group is reachable from moves its header instead of copying its heap.
 ///
 /// # Safety
 /// `src` must point at a live parked `Artboard` element field, and `dst` at
@@ -84,7 +86,8 @@ unsafe fn promote_artboard(src: *const u8, dst: *mut u8, promotion: &core_types:
 	let artboard = unsafe { core_types::record::borrow_element::<Artboard>(core_types::record::Rec::new(src)) };
 	if !crate::graphic::list_contains_groups(&artboard.0) {
 		// SAFETY: a parked element slot holds one reference at offset 0, and
-		// group-free content owns all of itself.
+		// content no group is reachable from, elements and item attribute values
+		// alike, owns all of itself.
 		let header = unsafe { src.cast::<*const u8>().read() };
 		if let Some(moved) = unsafe { promotion.move_park::<Artboard>(header, 0) } {
 			// SAFETY: as above, into the promoted image's own element slot.
@@ -97,6 +100,7 @@ unsafe fn promote_artboard(src: *const u8, dst: *mut u8, promotion: &core_types:
 		let (element, attributes) = item.into_parts();
 		content.push(core_types::list::Item::from_parts(crate::graphic::map_groups_to_persistent(&element, promotion)?, attributes));
 	}
+	crate::graphic::map_attribute_groups_to_persistent(&mut content, promotion)?;
 	unsafe { core_types::record::write_element(dst, Artboard(content), promotion.persistent()) }
 }
 

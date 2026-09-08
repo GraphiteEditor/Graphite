@@ -18,6 +18,7 @@ pub fn map_groups_to_owned<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 				let (element, attributes) = item.into_parts();
 				out.push(Item::from_parts(map_groups_to_owned(&element), attributes));
 			}
+			map_attribute_groups_to_owned(&mut out);
 			Graphic::Graphic(out)
 		}
 		Graphic::Vector(vector) => Graphic::Vector(vector.clone()),
@@ -39,6 +40,7 @@ pub fn map_groups_to_resident<'a>(graphic: &Graphic<'a>, arena: &'a core_types::
 			for child in children.iter_element_values_mut() {
 				*child = map_groups_to_resident(child, arena)?;
 			}
+			map_attribute_groups_to_resident(&mut children, arena)?;
 			Some(Graphic::Graphic(children))
 		}
 		other => Some(other.clone()),
@@ -81,6 +83,7 @@ pub fn map_groups_to_persistent<'p>(graphic: &Graphic<'_>, promotion: &core_type
 				let (element, attributes) = item.into_parts();
 				out.push(Item::from_parts(map_groups_to_persistent(&element, promotion)?, attributes));
 			}
+			map_attribute_groups_to_persistent(&mut out, promotion)?;
 			Some(Graphic::Graphic(out))
 		}
 		Graphic::Vector(vector) => Some(Graphic::Vector(vector.clone())),
@@ -92,10 +95,71 @@ pub fn map_groups_to_persistent<'p>(graphic: &Graphic<'_>, promotion: &core_type
 	}
 }
 
+/// The list's attribute keys, owned so the columns can be walked mutably.
+fn attribute_keys(list: &List<Graphic>) -> Vec<String> {
+	list.attribute_keys().map(str::to_string).collect()
+}
+
+/// Every group held in the list's item attribute values, deep-copied to its
+/// owned form. Element values are the caller's own pass; a value list's own
+/// item attributes recurse here.
+pub(crate) fn map_attribute_groups_to_owned(list: &mut List<Graphic<'_>>) {
+	for key in attribute_keys(list) {
+		// A column of a type that cannot hold groups is skipped whole.
+		let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(&key) else { continue };
+		for value in values.flatten() {
+			for element in value.iter_element_values_mut() {
+				*element = map_groups_to_owned(element);
+			}
+			map_attribute_groups_to_owned(value);
+		}
+	}
+}
+
+/// Every owned group held in the list's item attribute values, re-parked into
+/// `arena`. `None` reports arena exhaustion.
+pub(crate) fn map_attribute_groups_to_resident(list: &mut List<Graphic<'_>>, arena: &core_types::arena::Arena) -> Option<()> {
+	for key in attribute_keys(list) {
+		// A column of a type that cannot hold groups is skipped whole.
+		let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(&key) else { continue };
+		for value in values.flatten() {
+			for element in value.iter_element_values_mut() {
+				let resident = map_groups_to_resident(element, arena)?;
+				// SAFETY: the attribute store is erased, and the replay serves as
+				// long as `arena`, which the store's reader outlives.
+				*element = unsafe { core_types::record::erase_static(resident) };
+			}
+			map_attribute_groups_to_resident(value, arena)?;
+		}
+	}
+	Some(())
+}
+
+/// Every group held in the list's item attribute values, promoted into the
+/// persistent region on the same Cow dispatch the elements take. `None` reports
+/// arena exhaustion.
+pub(crate) fn map_attribute_groups_to_persistent(list: &mut List<Graphic<'_>>, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
+	for key in attribute_keys(list) {
+		// A column of a type that cannot hold groups is skipped whole.
+		let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(&key) else { continue };
+		for value in values.flatten() {
+			for element in value.iter_element_values_mut() {
+				let promoted = map_groups_to_persistent(element, promotion)?;
+				// SAFETY: the attribute store is erased, and persistent content
+				// outlives the evaluation.
+				*element = unsafe { core_types::record::erase_static(promoted) };
+			}
+			map_attribute_groups_to_persistent(value, promotion)?;
+		}
+	}
+	Some(())
+}
+
 /// The promote for `Graphic` elements: the generic path would deep-copy every
 /// interior through an owned intermediate, while this shares the interiors the
-/// persistent region already holds. A group-free graphic references nothing the
-/// evaluation owns, so its header moves and its heap is never copied.
+/// persistent region already holds. A graphic no group is reachable from
+/// references nothing the evaluation owns, so its header moves and its heap is
+/// never copied.
 ///
 /// # Safety
 /// `src` must point at a live parked `Graphic` element field, and `dst` at the
@@ -104,7 +168,8 @@ unsafe fn promote_graphic(src: *const u8, dst: *mut u8, promotion: &core_types::
 	let graphic = unsafe { core_types::record::borrow_element::<Graphic>(core_types::record::Rec::new(src)) };
 	if !graphic_contains_groups(graphic) {
 		// SAFETY: a parked element slot holds one reference at offset 0, and a
-		// group-free graphic owns all of its content.
+		// graphic no group is reachable from, elements and item attribute values
+		// alike, owns all of its content.
 		let header = unsafe { src.cast::<*const u8>().read() };
 		if let Some(moved) = unsafe { promotion.move_park::<Graphic<'static>>(header, graphic_retained_heap(graphic)) } {
 			// SAFETY: as above, into the promoted image's own element slot.
@@ -140,6 +205,8 @@ fn vector_retained_heap(vector: &Vector) -> usize {
 		+ size_of_val(vector.colinear_manipulators.as_slice())
 }
 
+/// Whether any group is reachable from the graphic, so it does not own all of
+/// its content.
 fn graphic_contains_groups(graphic: &Graphic) -> bool {
 	match graphic {
 		Graphic::Group(_) => true,
@@ -148,8 +215,24 @@ fn graphic_contains_groups(graphic: &Graphic) -> bool {
 	}
 }
 
+/// Whether any group is reachable from the list, so it does not own all of its
+/// content. An item attribute value holds its groups exactly as an element
+/// does: a cloned group there keeps a resident interior borrowing the
+/// evaluation's arena, so the elements alone cannot decide ownership.
 pub(crate) fn list_contains_groups(list: &List<Graphic>) -> bool {
-	(0..list.len()).any(|index| list.element(index).is_some_and(graphic_contains_groups))
+	(0..list.len()).any(|index| list.element(index).is_some_and(graphic_contains_groups)) || attribute_values_contain_groups(list)
+}
+
+/// Whether any group hides in the list's item attribute values. Only the
+/// group-capable columns are scanned: those are the value types the deep field
+/// glue is registered for, today `Option<List<Graphic>>` alone. A list with no
+/// attribute columns costs nothing, and a column of any other type is decided
+/// by its one downcast rather than per value.
+fn attribute_values_contain_groups(list: &List<Graphic>) -> bool {
+	list.attribute_keys().any(|key| {
+		list.iter_attribute_values::<Option<List<Graphic>>>(key)
+			.is_some_and(|mut values| values.any(|value| value.as_ref().is_some_and(list_contains_groups)))
+	})
 }
 
 /// The heap a graphic list's elements own, group interiors excluded as
@@ -159,8 +242,9 @@ fn list_retained_heap(list: &List<Graphic>) -> usize {
 }
 
 /// The deep copy-out for graphic-list field values (the paint markers' owned
-/// form): content groups leave in their owned form. Declines (`None`) for
-/// group-free content, which already owns everything.
+/// form): content groups leave in their owned form, whether an element or an
+/// item attribute value holds them. Declines (`None`) for group-free content,
+/// which already owns everything.
 fn deep_clone_graphic_list(value: &dyn core_types::list::AnyAttributeValue) -> Option<Box<dyn core_types::list::AnyAttributeValue>> {
 	let list = value.as_any().downcast_ref::<Option<List<Graphic>>>().expect("a graphic list field deep-copies at its own type");
 	let list = list.as_ref().filter(|list| list_contains_groups(list))?;
@@ -168,12 +252,14 @@ fn deep_clone_graphic_list(value: &dyn core_types::list::AnyAttributeValue) -> O
 	for element in list.iter_element_values_mut() {
 		*element = map_groups_to_owned(element);
 	}
+	map_attribute_groups_to_owned(&mut list);
 	Some(Box::new(Some(list)))
 }
 
 /// The deep replay for graphic-list field values: owned content groups replay
-/// into the serving arena before the field re-parks. `Some(None)` declines
-/// for group-free content; `None` reports arena exhaustion.
+/// into the serving arena before the field re-parks, whether an element or an
+/// item attribute value holds them. `Some(None)` declines for group-free
+/// content; `None` reports arena exhaustion.
 fn deep_repark_graphic_list(value: &dyn core_types::list::AnyAttributeValue, arena: &core_types::arena::Arena) -> Option<Option<Box<dyn core_types::list::AnyAttributeValue>>> {
 	let list = value.as_any().downcast_ref::<Option<List<Graphic>>>().expect("a graphic list field replays at its own type");
 	let Some(list) = list.as_ref().filter(|list| list_contains_groups(list)) else {
@@ -183,6 +269,7 @@ fn deep_repark_graphic_list(value: &dyn core_types::list::AnyAttributeValue, are
 	for element in list.iter_element_values_mut() {
 		*element = map_groups_to_resident(element, arena)?;
 	}
+	map_attribute_groups_to_resident(&mut list, arena)?;
 	let list = unsafe { core_types::record::erase_static(list) };
 	Some(Some(Box::new(Some(list))))
 }
@@ -192,12 +279,13 @@ fn deep_repark_graphic_list(value: &dyn core_types::list::AnyAttributeValue, are
 /// while this maps the content transient-to-persistent in one pass.
 ///
 /// THE TWO-LEVEL SHARING LAW: the field's own header is not provenance-shared.
-/// It moves where the content is group-free, since the payload then owns all of
-/// its content and the transient arena confirms the reference is its own park,
-/// and otherwise it clones into a fresh persistent park. One level inside, a
-/// content group's interior is arena-resident and its provenance is decidable,
-/// so it takes [`map_groups_to_persistent`]'s Cow dispatch: an interior the
-/// persistent region already holds is shared pointer for pointer.
+/// It moves where no group is reachable from the list, elements and item
+/// attribute values alike, since the payload then owns all of its content and
+/// the transient arena confirms the reference is its own park, and otherwise it
+/// clones into a fresh persistent park. One level inside, a content group's
+/// interior is arena-resident and its provenance is decidable, so it takes
+/// [`map_groups_to_persistent`]'s Cow dispatch: an interior the persistent
+/// region already holds is shared pointer for pointer.
 ///
 /// # Safety
 /// `src` must point at a live parked graphic-list field, and `dst` at the field
@@ -211,9 +299,9 @@ unsafe fn promote_graphic_list(src: *const u8, dst: *mut u8, promotion: &core_ty
 	};
 	let retained = list_retained_heap(list);
 	if !list_contains_groups(list) {
-		// SAFETY: a group-free list owns all of its content, and the arena
-		// declines a reference that is not a park at the list's own address
-		// and size.
+		// SAFETY: a list no group is reachable from, elements and item attribute
+		// values alike, owns all of its content, and the arena declines a
+		// reference that is not a park at the list's own address and size.
 		if let Some(moved) = unsafe { promotion.move_park::<List<Graphic<'static>>>(std::ptr::from_ref(list).cast(), retained) } {
 			// SAFETY: the move published a live list in the persistent region.
 			unsafe { dst.cast::<Option<&List<Graphic<'static>>>>().write(Some(&*moved)) };
@@ -224,8 +312,10 @@ unsafe fn promote_graphic_list(src: *const u8, dst: *mut u8, promotion: &core_ty
 	for element in promoted.iter_element_values_mut() {
 		*element = map_groups_to_persistent(element, promotion)?;
 	}
-	// SAFETY: every borrow the clone carried was replaced by persistent content
-	// above, so the erased form outlives the evaluation.
+	map_attribute_groups_to_persistent(&mut promoted, promotion)?;
+	// SAFETY: every borrow the clone carried, in an element or an item attribute
+	// value, was replaced by persistent content above, so the erased form
+	// outlives the evaluation.
 	let promoted = unsafe { core_types::record::erase_static(promoted) };
 	let (parked, _) = promotion.persistent().alloc_sized(promoted, retained)?;
 	// SAFETY: the slot holds one optional reference.
@@ -263,7 +353,7 @@ mod run_tests {
 	use super::*;
 	use crate::graphic::test_support::{native_group_paint, unit_square_at};
 	use crate::graphic::{group_to_legacy_list, map_groups_to_legacy};
-	use crate::markers::Fill;
+	use crate::markers::{Fill, Stroke};
 	use core_types::attribute::Attribute;
 	use core_types::lane::LaneSource;
 	use core_types::record::{FieldWrite, RunBuilder, RunView, element_write_hashed};
@@ -465,5 +555,99 @@ mod run_tests {
 		transient.reset();
 		let served = promoted_paint(&span, &layout, 0, &persistent);
 		assert!(matches!(served.element(0), Some(Graphic::Vector(_))), "the moved paint survives the transient reset");
+	}
+
+	#[test]
+	fn a_paint_field_whose_attributes_hold_groups_never_moves() {
+		let inner_vector = unit_square_at(DVec2::ZERO);
+		let mut transient = core_types::arena::Arena::new(1 << 16).unwrap();
+		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
+
+		// Group-free elements, with the resident group hidden in an item attribute.
+		let native = native_group_paint(&inner_vector, &transient);
+		let expected = map_groups_to_legacy(native.element(0).unwrap());
+		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(4., 4.))));
+		// SAFETY: the erased native list serves only while `transient` is live; the
+		// promote under test replaces its borrows.
+		paint.set_attribute::<Option<List<Graphic>>>(Stroke::NAME, 0, Some(unsafe { core_types::record::erase_static(native) }));
+		let (paint, _) = transient.alloc_sized_keyed(paint, 0).unwrap();
+
+		let (layout, span, _frames) = promote_paint_field(Some(paint), 1, &transient, &persistent);
+		let served = promoted_paint(&span, &layout, 0, &persistent);
+		let moved = std::ptr::eq(std::ptr::from_ref(served).cast::<u8>(), std::ptr::from_ref(paint).cast::<u8>());
+		assert!(!moved, "an attribute-held group denies the move, so the promote parks a header of its own");
+
+		transient.reset();
+		let served = promoted_paint(&span, &layout, 0, &persistent);
+		let held = served.attribute::<Option<List<Graphic>>>(Stroke::NAME, 0).expect("the stroke attribute rides the promoted list");
+		let held = held.as_ref().expect("the stroke is present");
+		assert_eq!(map_groups_to_legacy(held.element(0).unwrap()), expected, "the attribute-held group serves from persistent storage after the reset");
+	}
+
+	#[test]
+	fn a_group_free_paint_field_moves_past_its_attribute_columns() {
+		let mut transient = core_types::arena::Arena::new(1 << 16).unwrap();
+		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
+
+		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO)));
+		// Columns of a type that cannot hold groups, and a group-capable column
+		// whose value holds none: neither denies the move.
+		paint.set_attribute::<f64>("opacity", 0, 0.5);
+		paint.set_attribute::<Color>("probe:color", 0, Color::BLACK);
+		paint.set_attribute::<Option<List<Graphic>>>(Stroke::NAME, 0, Some(List::new_from_element(Graphic::Color(Color::WHITE))));
+		let heap = {
+			let Some(Graphic::Vector(vector)) = paint.element(0) else { panic!("the paint carries a vector") };
+			vector.point_domain.positions().as_ptr()
+		};
+		let (paint, _) = transient.alloc_sized_keyed(paint, 0).unwrap();
+
+		let (layout, span, _frames) = promote_paint_field(Some(paint), 1, &transient, &persistent);
+		let served = promoted_paint(&span, &layout, 0, &persistent);
+		let Some(Graphic::Vector(vector)) = served.element(0) else { panic!("the promote keeps the vector") };
+		assert_eq!(vector.point_domain.positions().as_ptr(), heap, "the promote moved the header, so the served paint names the pre-promote heap");
+
+		transient.reset();
+		let served = promoted_paint(&span, &layout, 0, &persistent);
+		assert!(matches!(served.element(0), Some(Graphic::Vector(_))), "the moved paint survives the transient reset");
+	}
+
+	#[test]
+	fn an_owned_record_deep_copies_attribute_held_groups() {
+		let inner_vector = unit_square_at(DVec2::ZERO);
+		let source = core_types::arena::Arena::new(1 << 16).unwrap();
+		let native = native_group_paint(&inner_vector, &source);
+		let expected = map_groups_to_legacy(native.element(0).unwrap());
+
+		// The field's elements are group-free; the group rides an item attribute,
+		// which the shallow read alone would leave borrowing `source`.
+		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(2., 2.))));
+		// SAFETY: the erased native list serves only while `source` is live; the
+		// deep glue under test replaces its borrows at the copy-out seam.
+		paint.set_attribute::<Option<List<Graphic>>>(Stroke::NAME, 0, Some(unsafe { core_types::record::erase_static(native) }));
+
+		let vector = unit_square_at(DVec2::new(4., 4.));
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let lane = builder.push(vector.clone()).unwrap();
+		builder.attr::<Fill>(lane, Some(&paint));
+		let item = builder.finish();
+		let layout = item.layout().clone();
+		let offset = layout.offset_of(Fill::NAME, 0).unwrap();
+		// SAFETY: the item's lane is a live record of `layout`.
+		let owned = unsafe { core_types::record::OwnedRecord::copy_out(&layout, item.lanes().get(0).rec()) };
+		drop(item);
+		drop(paint);
+		drop(source);
+
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let frames = core_types::record::test_frames(layout.frame_bytes());
+		let mut slot = frames.claim(&layout);
+		owned.replay_into(&mut slot, &arena).expect("the arena holds the replay");
+		// SAFETY: the replay completes the record in the claimed frame.
+		let value = unsafe { slot.finish() };
+		// SAFETY: the replay wrote a record of `layout`.
+		let served = unsafe { layout.rec(&value).read::<Option<&List<Graphic>>>(offset) }.expect("the fill replays present");
+		let held = served.attribute::<Option<List<Graphic>>>(Stroke::NAME, 0).expect("the stroke attribute rides the replayed list");
+		let held = held.as_ref().expect("the stroke is present");
+		assert_eq!(map_groups_to_legacy(held.element(0).unwrap()), expected, "the attribute-held group replayed into the serving arena");
 	}
 }
