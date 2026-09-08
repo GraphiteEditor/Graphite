@@ -127,9 +127,19 @@ impl<N: ?Sized> SharedSource<N> {
 
 	/// Re-derives the cached pointer from the owned payload. An exclusive
 	/// re-borrow of the payload invalidates the pointer taken before it, so
-	/// every mutation through `own` ends here.
+	/// every mutation through `own` ends here, an unwinding one included.
 	pub fn rederive(&mut self) {
 		self.ptr = std::ptr::NonNull::from(&*self.own);
+	}
+}
+
+/// Re-derives on the way out of an exclusive re-borrow, so a mutation that
+/// panics cannot leave the cached pointer retired for a caller that catches.
+struct Rederive<'a, N: ?Sized>(&'a mut SharedSource<N>);
+
+impl<N: ?Sized> Drop for Rederive<'_, N> {
+	fn drop(&mut self) {
+		self.0.rederive();
 	}
 }
 
@@ -224,9 +234,11 @@ impl SourceHandle {
 			layout: |edge| Node::<ContextImpl>::layout(edge.downcast_ref::<SharedSource<N>>().expect("layout hook matches the stored edge type")),
 			set_layout: |edge, layout| {
 				let shared = edge.downcast_mut::<SharedSource<N>>().expect("set_layout hook matches the stored edge type");
-				let node = std::sync::Arc::get_mut(&mut shared.own).expect("layout is installed before the node is shared");
+				// The re-borrow below retires the cached pointer, so the rederive
+				// is a guard: a panicking `set_layout` must not leave it stale.
+				let guard = Rederive(shared);
+				let node = std::sync::Arc::get_mut(&mut guard.0.own).expect("layout is installed before the node is shared");
 				Node::<ContextImpl>::set_layout(node, layout);
-				shared.rederive();
 			},
 			ty,
 		}
