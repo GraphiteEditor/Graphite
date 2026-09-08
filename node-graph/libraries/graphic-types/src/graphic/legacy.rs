@@ -4,7 +4,7 @@ use super::walk::push_lane_paint_into_interiors;
 use super::{Graphic, detable_items};
 use crate::markers::{ATTR_FILL, ATTR_STROKE};
 use core_types::Color;
-use core_types::list::{AttributeValueDyn, Item, List};
+use core_types::list::{Item, List};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::{GradientStops, Vector};
 
@@ -12,19 +12,7 @@ use vector_types::{GradientStops, Vector};
 /// through its erased read. Content keeps its native form; the legacy
 /// conversions layer their mapping on top.
 pub fn run_to_list<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(item: &core_types::record::GroupItem) -> Option<List<T>> {
-	let lanes = item.typed_lanes::<T>()?;
-	let mut list = List::new();
-	for lane in 0..lanes.len() {
-		list.push(Item::new_from_element(lanes.element_ref(lane).clone()));
-	}
-	for field in &item.layout().fields {
-		for lane in 0..lanes.len() {
-			// SAFETY: the offset comes from the item's own layout.
-			let value = unsafe { (field.read_erased)(item.lanes().get(lane).rec().ptr().add(field.offset)) };
-			list.set_attribute_value_dyn(field.name, lane, AttributeValueDyn(value));
-		}
-	}
-	Some(list)
+	core_types::record::run_to_owned_list(item)
 }
 
 /// Converts the group content of the list's paint attribute values to legacy

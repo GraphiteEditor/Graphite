@@ -480,6 +480,25 @@ impl<'e> GroupItem<'e> {
 	}
 }
 
+/// One typed run as an owned legacy list, elements cloned and every attribute
+/// copied through its erased read. The owned result outlives the evaluation the
+/// run was materialized in, so an async source can carry it across its await.
+pub fn run_to_owned_list<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(item: &GroupItem) -> Option<crate::list::List<T>> {
+	let lanes = item.typed_lanes::<T>()?;
+	let mut list = crate::list::List::new();
+	for lane in 0..lanes.len() {
+		list.push(crate::list::Item::new_from_element(lanes.element_ref(lane).clone()));
+	}
+	for field in &item.layout().fields {
+		for lane in 0..lanes.len() {
+			// SAFETY: the offset comes from the item's own layout.
+			let value = unsafe { (field.read_erased)(item.lanes().get(lane).rec().ptr().add(field.offset)) };
+			list.set_attribute_value_dyn(field.name, lane, crate::list::AttributeValueDyn(value));
+		}
+	}
+	Some(list)
+}
+
 /// A run read at its element type. Record fields hold each marker's value
 /// verbatim, so lane reads are plain typed reads at a hoisted offset.
 pub struct RunView<'a, T> {
