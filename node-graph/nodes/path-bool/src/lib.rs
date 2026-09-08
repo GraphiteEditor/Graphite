@@ -421,7 +421,7 @@ fn flatten_vector_run_into<'a>(out: &mut List<Vector>, level: GraphicLevel<'a>, 
 				push_rows(out, text_rows(&one, composed));
 			}
 			// Brush strokes have no vector outline; a brush node renders them to rasters
-			Graphic::Stroke(_) => {}
+			Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
 		}
 	}
 }
