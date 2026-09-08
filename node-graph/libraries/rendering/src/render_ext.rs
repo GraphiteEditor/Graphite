@@ -1,4 +1,4 @@
-use crate::renderer::{RenderParams, format_transform_matrix, gradient_placement, transform_is_invertible};
+use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, gradient_settings_from_lane, spread_adjusted_samples, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::Color;
 use core_types::attribute::Transform;
@@ -7,12 +7,12 @@ use core_types::list::List;
 use core_types::uuid::generate_uuid;
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
-use graphic_types::vector_types::gradient::GradientType;
-use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
+use graphic_types::vector_types::gradient::GradientForm;
+use graphic_types::vector_types::markers::GradientForm as GradientFormAttr;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
-use vector_types::GradientStops;
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::Gradient;
+use vector_types::gradient::GradientSpread;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -83,7 +83,7 @@ impl RenderExt for List<Color> {
 	}
 }
 
-impl RenderExt for List<GradientStops> {
+impl RenderExt for List<Gradient> {
 	type Output = u64;
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
@@ -103,135 +103,130 @@ impl RenderExt for List<GradientStops> {
 
 /// Adds the gradient def through mutating `svg_defs`, returning the gradient
 /// ID, over any gradient lane source.
-pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientStops>>(source: &S, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> u64 {
+pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = Gradient>>(source: &S, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> u64 {
 	let mut stop = String::new();
 
-	{
-		let Some(stops) = source.element(0) else { return 0 };
-		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(0);
-		let local_gradient_transform: DAffine2 = source.attr::<Transform>(0);
-		let spread_method: GradientSpreadMethod = source.attr::<SpreadMethod>(0);
+	let Some(stops) = source.element(0) else { return 0 };
+	let gradient_form: GradientForm = source.attr::<GradientFormAttr>(0);
+	let local_gradient_transform: DAffine2 = source.attr::<Transform>(0);
+	let settings = gradient_settings_from_lane(source, 0);
 
-		for (position, color, original_midpoint) in stops.interpolated_samples() {
-			stop.push_str("<stop");
-			if position != 0. {
-				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
-			}
-			let _ = write!(stop, r##" stop-color="#{}""##, SRGBA8::from(color).to_rgb_hex());
-			if color.a() < 1. {
-				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
-			}
-			if let Some(midpoint) = original_midpoint {
-				let _ = write!(stop, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
-			}
-			stop.push_str(" />")
+	let (samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
+
+	for (position, color, original_midpoint) in samples {
+		stop.push_str("<stop");
+		if position != 0. {
+			let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
 		}
-
-		// Need to cancel out the element's transform as it is already applied to the path itself.
-		let element_transform_inverse = if transform_is_invertible(element_transform) {
-			element_transform.inverse()
-		} else {
-			DAffine2::IDENTITY
-		};
-
-		let document_transform = item_transform * local_gradient_transform;
-
-		let placement = gradient_placement(document_transform, gradient_type);
-		let gradient_transform = format_transform_matrix(element_transform_inverse * placement);
-		let gradient_transform = if gradient_transform.is_empty() {
-			String::new()
-		} else {
-			format!(r#" gradientTransform="{gradient_transform}""#)
-		};
-
-		let spread_method = if spread_method == GradientSpreadMethod::Pad {
-			String::new()
-		} else {
-			format!(r#" spreadMethod="{}""#, spread_method.svg_name())
-		};
-
-		let gradient_id = generate_uuid();
-
-		match gradient_type {
-			GradientType::Linear => {
-				let _ = write!(
-					svg_defs,
-					r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method}{gradient_transform}>{}</linearGradient>"#,
-					gradient_id, stop
-				);
-			}
-			GradientType::Radial => {
-				let _ = write!(
-					svg_defs,
-					r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method}{gradient_transform}>{}</radialGradient>"#,
-					gradient_id, stop
-				);
-			}
+		let _ = write!(stop, r##" stop-color="#{}""##, SRGBA8::from(color).to_rgb_hex());
+		if color.a() < 1. {
+			let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 		}
-
-		gradient_id
+		if let Some(midpoint) = original_midpoint {
+			let _ = write!(stop, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
+		}
+		stop.push_str(" />")
 	}
+
+	// A gradient with no stops paints as solid black, matching `Gradient::evaluate` (a stopless def would otherwise render as no paint per the SVG spec)
+	if stop.is_empty() {
+		stop.push_str(r##"<stop stop-color="#000000" />"##);
+	}
+
+	// Need to cancel out the element's transform as it is already applied to the path itself.
+	let element_transform_inverse = if transform_is_invertible(element_transform) {
+		element_transform.inverse()
+	} else {
+		DAffine2::IDENTITY
+	};
+
+	let document_transform = item_transform * local_gradient_transform;
+
+	let placement = gradient_placement(document_transform, gradient_form);
+	let gradient_transform = format_transform_matrix(element_transform_inverse * placement);
+	let gradient_transform = if gradient_transform.is_empty() {
+		String::new()
+	} else {
+		format!(r#" gradientTransform="{gradient_transform}""#)
+	};
+
+	// `Clear` rides pad, with the transparent guard stops from `spread_adjusted_samples` doing the clearing
+	let gradient_spread = if matches!(settings.spread, GradientSpread::Pad | GradientSpread::Clear) {
+		String::new()
+	} else {
+		format!(r#" spreadMethod="{}""#, settings.spread.svg_name())
+	};
+
+	let gradient_id = generate_uuid();
+
+	match gradient_form {
+		GradientForm::Linear => {
+			let _ = write!(
+				svg_defs,
+				r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread}{gradient_transform}>{}</linearGradient>"#,
+				gradient_id, stop
+			);
+		}
+		GradientForm::Radial => {
+			let _ = write!(
+				svg_defs,
+				r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread}{gradient_transform}>{}</radialGradient>"#,
+				gradient_id, stop
+			);
+		}
+	}
+
+	gradient_id
 }
 
-impl RenderExt for Stroke {
-	type Output = String;
-
-	/// Provide the shape-related SVG attributes for the stroke. The paint-related attributes for the stroke are generated from `List<Graphic>.render` with `PaintTarget::Stroke`.
-	fn render(
-		&self,
-		_svg_defs: &mut String,
-		_item_transform: DAffine2,
-		_element_transform: DAffine2,
-		_stroke_transform: DAffine2,
-		_bounds: DAffine2,
-		render_params: &RenderParams,
-		_target: PaintTarget,
-	) -> Self::Output {
-		// Don't render a stroke at all if it would be invisible
-		if !self.has_renderable_stroke() {
-			return String::new();
-		}
-
-		let default_weight = if self.align != StrokeAlign::Center && render_params.aligned_strokes { 1. / 2. } else { 1. };
-
-		// Set to None if the value is the SVG default
-		let weight = (self.weight != default_weight).then_some(self.weight);
-		let dash_array = (!self.dash_lengths.is_empty()).then_some(self.dash_lengths());
-		let dash_offset = (self.dash_offset != 0.).then_some(self.dash_offset);
-		let stroke_cap = (self.cap != StrokeCap::Butt).then_some(self.cap);
-		let stroke_join = (self.join != StrokeJoin::Miter).then_some(self.join);
-		let stroke_join_miter_limit = (self.join_miter_limit != 4.).then_some(self.join_miter_limit);
-		let stroke_align = (self.align != StrokeAlign::Center).then_some(self.align);
-		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || render_params.override_paint_order).then_some(PaintOrder::StrokeBelow);
-
-		// Render the needed stroke attributes
-		let mut attributes = String::new();
-		if let Some(mut weight) = weight {
-			if stroke_align.is_some() && render_params.aligned_strokes {
-				weight *= 2.;
-			}
-			let _ = write!(&mut attributes, r#" stroke-width="{weight}""#);
-		}
-		if let Some(dash_array) = dash_array {
-			let _ = write!(&mut attributes, r#" stroke-dasharray="{dash_array}""#);
-		}
-		if let Some(dash_offset) = dash_offset {
-			let _ = write!(&mut attributes, r#" stroke-dashoffset="{dash_offset}""#);
-		}
-		if let Some(stroke_cap) = stroke_cap {
-			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, stroke_cap.svg_name());
-		}
-		if let Some(stroke_join) = stroke_join {
-			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, stroke_join.svg_name());
-		}
-		if let Some(stroke_join_miter_limit) = stroke_join_miter_limit {
-			let _ = write!(&mut attributes, r#" stroke-miterlimit="{stroke_join_miter_limit}""#);
-		}
-		if paint_order.is_some() {
-			let _ = write!(&mut attributes, r#" style="paint-order: stroke;" "#);
-		}
-		attributes
+/// Provide the shape-related SVG attributes for the stroke. The paint-related attributes for the stroke are generated from `List<Graphic>.render` with `PaintTarget::Stroke`.
+///
+/// `paint_order` arrives separately because master deleted `Stroke::paint_order`; it rides the stroke paint list instead.
+pub fn render_stroke_shape(stroke: &Stroke, paint_order: PaintOrder, render_params: &RenderParams) -> String {
+	// Don't render a stroke at all if it would be invisible
+	if !stroke.has_renderable_stroke() {
+		return String::new();
 	}
+
+	let default_weight = if stroke.align != StrokeAlign::Center && render_params.aligned_strokes { 1. / 2. } else { 1. };
+
+	// Set to None if the value is the SVG default
+	let weight = (stroke.weight != default_weight).then_some(stroke.weight);
+	let dash_array = (!stroke.dash_lengths.is_empty()).then_some(stroke.dash_lengths());
+	let dash_offset = (stroke.dash_offset != 0.).then_some(stroke.dash_offset);
+	let stroke_cap = (stroke.cap != StrokeCap::Butt).then_some(stroke.cap);
+	let stroke_join = (stroke.join != StrokeJoin::Miter).then_some(stroke.join);
+	let stroke_join_miter_limit = (stroke.join_miter_limit != 4.).then_some(stroke.join_miter_limit);
+	let stroke_align = (stroke.align != StrokeAlign::Center).then_some(stroke.align);
+	let paint_order = (paint_order != PaintOrder::StrokeAbove || render_params.override_paint_order).then_some(PaintOrder::StrokeBelow);
+
+	// Render the needed stroke attributes
+	let mut attributes = String::new();
+	if let Some(mut weight) = weight {
+		if stroke_align.is_some() && render_params.aligned_strokes {
+			weight *= 2.;
+		}
+		let _ = write!(&mut attributes, r#" stroke-width="{weight}""#);
+	}
+	if let Some(dash_array) = dash_array {
+		let _ = write!(&mut attributes, r#" stroke-dasharray="{dash_array}""#);
+	}
+	if let Some(dash_offset) = dash_offset {
+		let _ = write!(&mut attributes, r#" stroke-dashoffset="{dash_offset}""#);
+	}
+	if let Some(stroke_cap) = stroke_cap {
+		let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, stroke_cap.svg_name());
+	}
+	if let Some(stroke_join) = stroke_join {
+		let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, stroke_join.svg_name());
+	}
+	if let Some(stroke_join_miter_limit) = stroke_join_miter_limit {
+		let _ = write!(&mut attributes, r#" stroke-miterlimit="{stroke_join_miter_limit}""#);
+	}
+	if paint_order.is_some() {
+		let _ = write!(&mut attributes, r#" style="paint-order: stroke;" "#);
+	}
+	attributes
 }
 
 impl RenderExt for List<Graphic<'_>> {
@@ -256,7 +251,9 @@ impl RenderExt for List<Graphic<'_>> {
 				let gradient_id = render_gradient_paint(&core_types::lane::LeafLane::new(self, 0, gradient), svg_defs, item_transform, element_transform);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
-			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) | Some(Graphic::Group(_)) => {
+			// Brush strokes have no vector outline, so they contribute no paint
+			Some(Graphic::Stroke(_)) | Some(Graphic::StrokeList(_)) => format!(r#" {paint_attr}="none""#),
+			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::GraphicList(_)) | Some(Graphic::Text(_)) | Some(Graphic::Group(_)) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };

@@ -12,7 +12,7 @@ use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::lane::LaneSource;
 use core_types::lane::{LeafLane, Single};
-use core_types::list::{Item, List};
+use core_types::list::{ATTR_ALIGN, ATTR_CAP, ATTR_DASH_OFFSET, ATTR_DASH_PATTERN, ATTR_JOIN, ATTR_JOIN_MITER_LIMIT, ATTR_WEIGHT, Item, List};
 use core_types::math::quad::Quad;
 use core_types::record::{Group, RunView};
 use core_types::render_complexity::RenderComplexity;
@@ -26,13 +26,16 @@ use graphene_resource::Resource;
 use graphic_types::graphic::{PaintColumns, PaintOverlay, PaintReach, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
-use graphic_types::vector_types::gradient::{GradientStops, GradientType};
-use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
-use graphic_types::vector_types::subpath::Subpath;
+use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientSettings};
+use graphic_types::vector_types::markers::{
+	GradientCyclic, GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientInterpolation as GradientInterpolationAttr, GradientSpace as GradientSpaceAttr,
+	GradientSpread as GradientSpreadAttr,
+};
+use graphic_types::vector_types::vector::algorithms::shapes::rectangle_bezpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::vector_types::vector::style::{DashPattern, PaintOrder, RenderMode, Stroke as StrokeStyle, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{ATTR_FILL, Artboard, Graphic, Vector};
-use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -44,7 +47,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use text_nodes::markers::{Font, TextAlign};
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::gradient::GradientSpread;
 use vector_types::markers::EditorClickTarget;
 use vello::*;
 
@@ -340,11 +343,9 @@ fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::C
 }
 
 fn draw_raster_outline(scene: &mut Scene, outline_transform: &DAffine2, render_params: &RenderParams) {
-	use graphic_types::vector_types::vector::PointId;
-
 	let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
 
-	let mut outline_path = Subpath::<PointId>::new_rectangle(DVec2::ZERO, DVec2::ONE).to_bezpath();
+	let mut outline_path = rectangle_bezpath(DVec2::ZERO, DVec2::ONE);
 	outline_path.apply_affine(Affine::new(outline_transform.to_cols_array()));
 
 	scene.stroke(&outline_stroke, Affine::IDENTITY, outline_color_peniko, None, &outline_path);
@@ -381,14 +382,49 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 	transform.matrix2.determinant().recip().is_finite()
 }
 
+/// Paint order has no census name upstream, since master expresses it as `Appearance` list order instead.
+const ATTR_PAINT_ORDER: &str = "paint_order";
+
+/// `Vector::stroke` is gone upstream. In our paint model a lane's stroke is the `ATTR_STROKE`
+/// `List<Graphic>`, so the stroke's GEOMETRY parameters ride that list's own attribute columns, on the
+/// same names master's `Coverage` uses. Mirrors `vector_nodes::stroke_params`, which writes them.
+fn stroke_params(paint: &List<Graphic>) -> StrokeStyle {
+	let defaults = StrokeStyle::default();
+	StrokeStyle {
+		weight: paint.attribute_cloned_or(ATTR_WEIGHT, 0, defaults.weight),
+		dash_lengths: paint.attribute::<DashPattern>(ATTR_DASH_PATTERN, 0).map(DashPattern::clamped_lengths).unwrap_or_default(),
+		dash_offset: paint.attribute_cloned_or(ATTR_DASH_OFFSET, 0, defaults.dash_offset),
+		cap: paint.attribute_cloned_or(ATTR_CAP, 0, defaults.cap),
+		join: paint.attribute_cloned_or(ATTR_JOIN, 0, defaults.join),
+		join_miter_limit: paint.attribute_cloned_or(ATTR_JOIN_MITER_LIMIT, 0, defaults.join_miter_limit),
+		align: paint.attribute_cloned_or(ATTR_ALIGN, 0, defaults.align),
+		transform: paint.attribute_cloned_or(ATTR_TRANSFORM, 0, defaults.transform),
+	}
+}
+
+/// The stroke geometry a lane's `ATTR_STROKE` paint list carries, absent when the lane has no stroke paint.
+fn lane_stroke<S: LaneSource<Element = Vector>>(source: &S, index: usize) -> Option<StrokeStyle> {
+	paint_graphics::<Stroke, _>(source, index).map(stroke_params)
+}
+
+/// Whether the stroke paints below the fill, off the same paint list that carries the stroke geometry.
+fn stroke_paint_order(paint: Option<&List<Graphic>>) -> PaintOrder {
+	paint.map(|paint| paint.attribute_cloned_or_default(ATTR_PAINT_ORDER, 0)).unwrap_or_default()
+}
+
+/// Whether every contour of the path is explicitly closed, which gates the stroke-alignment compositing trick.
+fn all_contours_closed(vector: &Vector) -> bool {
+	vector.stroke_bezpath_iter().all(|path| matches!(path.elements().last(), Some(PathEl::ClosePath)))
+}
+
 /// Maps a gradient's `transform` into the frame handed to the renderer: radial keeps the full matrix (so a
 /// non-uniform transform makes an ellipse), while linear is reduced to the equivalent non-sheared gradient line (the
 /// axis projected onto the band normal) so the iso-color bands keep following a sheared transform, which Vello can
 /// represent since it stores only two endpoints.
-pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientType) -> DAffine2 {
+pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientForm) -> DAffine2 {
 	match gradient_type {
-		GradientType::Radial => transform,
-		GradientType::Linear => {
+		GradientForm::Radial => transform,
+		GradientForm::Linear => {
 			let axis = transform.matrix2.x_axis;
 			let band_normal = transform.matrix2.y_axis.perp();
 			let line = if band_normal.length_squared() > 0. { axis.project_onto(band_normal) } else { axis };
@@ -400,32 +436,141 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 	}
 }
 
-fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
-	let stops = gradient_list.element(0)?;
+/// The whole-ramp settings a gradient lane carries beside its element, defaulting each absent one.
+pub(crate) fn gradient_settings_from_lane<S: LaneSource<Element = Gradient>>(source: &S, index: usize) -> GradientSettings {
+	GradientSettings {
+		spread: source.attr::<GradientSpreadAttr>(index),
+		cyclic: source.attr::<GradientCyclic>(index),
+		space: source.attr::<GradientSpaceAttr>(index),
+		hue_direction: source.attr::<GradientHueDirectionAttr>(index),
+		interpolation: source.attr::<GradientInterpolationAttr>(index),
+	}
+}
 
-	let gradient_type: GradientType = gradient_list.attr::<GradientTypeAttr>(0);
-	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
-	let spread_method: GradientSpreadMethod = gradient_list.attr::<SpreadMethod>(0);
+/// Texel count of the baked gradient ramp Vello samples stops through (`N_SAMPLES`/`GRADIENT_WIDTH` in vello_encoding).
+const VELLO_GRADIENT_RAMP_TEXELS: f64 = 512.;
 
+/// Renderable gradient samples of `(position, color, original midpoint)`, as produced by [`Gradient::interpolated_samples`].
+type GradientSamples = Vec<(f64, Color, Option<f64>)>;
+
+/// Where a renderer needs the transparent guard stops that emulate the `Clear` spread, which neither SVG nor Vello supports natively.
+#[derive(Copy, Clone, PartialEq)]
+pub(crate) enum ClearGuardPlacement {
+	/// Guards share the range ends' exact offsets, resolved against the visible colors by stop order alone.
+	SvgStopOrder,
+	/// Guards own the outermost ramp texel at each cleared end, since Vello's pad extension samples those texels for
+	/// everything beyond the ends and its ramp bake would tie-break a shared-offset guard away. The visible range
+	/// compresses inward by one texel per cleared end, costing about 0.4% of the ramp's color resolution.
+	VelloRampTexels,
+}
+
+/// The gradient's renderable samples plus the gradient-space span `(start, end)` the renderer's 0 to 1 offset range must cover, normally the unit interval with the samples unchanged.
+///
+/// The `Clear` spread brackets the samples with transparent guard stops placed per `guards`: the pad extension then
+/// paints transparency outward while hard stops cut the paint off exactly at the unit range's boundaries. A radial
+/// gradient's span still starts at zero, since its sampling distance never goes below the center.
+pub(crate) fn spread_adjusted_samples(gradient: &Gradient, settings: GradientSettings, gradient_form: GradientForm, guards: ClearGuardPlacement) -> (GradientSamples, (f64, f64)) {
+	let samples = gradient.interpolated_samples(settings);
+	if settings.spread != GradientSpread::Clear {
+		return (samples, (0., 1.));
+	}
+
+	// The remapped offsets where the visible range's ends land, with the guards owning whatever lies outside them
+	let texel = 1. / (VELLO_GRADIENT_RAMP_TEXELS - 1.);
+	let (start_offset, end_offset) = match (guards, gradient_form) {
+		(ClearGuardPlacement::SvgStopOrder, _) => (0., 1.),
+		(ClearGuardPlacement::VelloRampTexels, GradientForm::Linear) => (texel, 1. - texel),
+		(ClearGuardPlacement::VelloRampTexels, GradientForm::Radial) => (0., 1. - texel),
+	};
+	let remap = |position: f64| (1. - position) * start_offset + position * end_offset;
+
+	// The geometric span grows to compensate for the compression, keeping the visible range at the unit interval
+	let scale = 1. / (end_offset - start_offset);
+	let span = (-start_offset * scale, (1. - start_offset) * scale);
+
+	// A stopless gradient paints solid black, matching `Gradient::evaluate`
+	let first_color = samples.first().map_or(Color::BLACK, |&(_, color, _)| color);
+	let last_color = samples.last().map_or(Color::BLACK, |&(_, color, _)| color);
+	let needs_start_anchor = samples.first().is_none_or(|&(position, ..)| position > 0.);
+	let needs_end_anchor = samples.last().is_none_or(|&(position, ..)| position < 1.);
+
+	let mut adjusted = Vec::with_capacity(samples.len() + 4);
+
+	// Lead with the transparent guard (linear only, a radial's center is already the sampling minimum), then anchor the visible range's start color
+	if gradient_form == GradientForm::Linear {
+		adjusted.push((0., Color::TRANSPARENT, None));
+	}
+	if needs_start_anchor {
+		adjusted.push((remap(0.), first_color, None));
+	}
+
+	adjusted.extend(samples.into_iter().map(|(position, color, midpoint)| (remap(position), color, midpoint)));
+
+	// Anchor the visible range's end color, then cut to the trailing transparent guard
+	if needs_end_anchor {
+		adjusted.push((remap(1.), last_color, None));
+	}
+	adjusted.push((1., Color::TRANSPARENT, None));
+
+	(adjusted, span)
+}
+
+/// Converts a gradient's renderer samples to peniko color stops, duplicating an off-zero first stop at position 0 since Vello ignores the first stop's position and always treats it as 0.
+fn peniko_color_stops(samples: &[(f64, Color, Option<f64>)]) -> peniko::ColorStops {
 	let mut peniko_stops = peniko::ColorStops::new();
-	for (position, color, _) in stops.interpolated_samples() {
+
+	for &(position, color, _) in samples {
+		let color = peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color());
+
+		if peniko_stops.is_empty() && position > 0. {
+			peniko_stops.push(peniko::ColorStop { offset: 0., color });
+		}
+
+		peniko_stops.push(peniko::ColorStop { offset: position as f32, color });
+	}
+
+	// A gradient with no stops paints as solid black, matching `Gradient::evaluate`
+	if peniko_stops.is_empty() {
 		peniko_stops.push(peniko::ColorStop {
-			offset: position as f32,
-			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+			offset: 0.,
+			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(Color::BLACK).to_peniko_color()),
 		});
 	}
 
-	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
-	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type));
+	peniko_stops
+}
+
+/// The peniko extend mode for a spread; `Clear` rides pad, with the transparent guard stops from `spread_adjusted_samples` doing the clearing.
+fn peniko_extend(gradient_spread: GradientSpread) -> peniko::Extend {
+	match gradient_spread {
+		GradientSpread::Pad | GradientSpread::Clear => peniko::Extend::Pad,
+		GradientSpread::Reflect => peniko::Extend::Reflect,
+		GradientSpread::Repeat => peniko::Extend::Repeat,
+	}
+}
+
+fn create_peniko_gradient_brush<S: LaneSource<Element = Gradient>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
+	let stops = gradient_list.element(0)?;
+
+	let gradient_form: GradientForm = gradient_list.attr::<GradientFormAttr>(0);
+	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
+	let settings = gradient_settings_from_lane(gradient_list, 0);
+
+	let (samples, span) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
+	let peniko_stops = peniko_color_stops(&samples);
+
+	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse,
+	// with the span widening the geometry to hold the `Clear` guards outside the visible range
+	let (start, end, gradient_to_device) = (DVec2::X * span.0, DVec2::X * span.1, gradient_placement(multiplied_transform * gradient_transform, gradient_form));
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
-		kind: match gradient_type {
-			GradientType::Linear => peniko::LinearGradientPosition {
+		kind: match gradient_form {
+			GradientForm::Linear => peniko::LinearGradientPosition {
 				start: to_point(start),
 				end: to_point(end),
 			}
 			.into(),
-			GradientType::Radial => peniko::RadialGradientPosition {
+			GradientForm::Radial => peniko::RadialGradientPosition {
 				start_center: to_point(start),
 				start_radius: 0.,
 				end_center: to_point(start),
@@ -433,13 +578,10 @@ fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient
 			}
 			.into(),
 		},
-		extend: match spread_method {
-			GradientSpreadMethod::Pad => peniko::Extend::Pad,
-			GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
-			GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
-		},
+		extend: peniko_extend(settings.spread),
 		stops: peniko_stops,
-		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+		// Straight alpha, keeping parity with the SVG renderer's stop interpolation
+		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
 		..Default::default()
 	});
 
@@ -552,26 +694,29 @@ pub trait Render: BoundingBox + RenderComplexity {
 impl Render for Graphic<'_> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			Graphic::Graphic(list) => list.render_svg(render, render_params),
+			Graphic::GraphicList(list) => list.render_svg(render, render_params),
 			Graphic::Vector(vector) => render_vector_svg(&Single(vector), render, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_svg(&Single(raster), render, render_params),
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(color) => render_color_svg(&Single(color), render, render_params),
 			Graphic::Gradient(gradient) => render_gradient_svg(&Single(gradient), render, render_params),
 			Graphic::Text(text) => render_text_svg(&Single(text), render, render_params),
+			// Brush strokes have no vector outline, so they are inert in rendering
+			Graphic::Stroke(_) | Graphic::StrokeList(_) => (),
 			Graphic::Group(group) => render_group_svg(group, PaintReach::NONE, render, render_params),
 		}
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
-			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Vector(vector) => render_vector_vello(&Single(vector), scene, transform, context, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_vello(&Single(raster), scene, transform, render_params),
 			Graphic::RasterGPU(raster) => render_raster_gpu_vello(&Single(raster), scene, transform, context, render_params),
 			Graphic::Color(color) => render_color_vello(&Single(color), scene, render_params),
 			Graphic::Gradient(gradient) => render_gradient_vello(&Single(gradient), scene, transform, render_params),
 			Graphic::Text(text) => render_text_vello(&Single(text), scene, transform, render_params),
+			Graphic::Stroke(_) | Graphic::StrokeList(_) => (),
 			Graphic::Group(group) => render_group_vello(group, PaintReach::NONE, scene, transform, context, render_params),
 		}
 	}
@@ -590,14 +735,14 @@ impl Render for Graphic<'_> {
 
 	fn contains_artboard(&self) -> bool {
 		match self {
-			Graphic::Graphic(list) => list.contains_artboard(),
+			Graphic::GraphicList(list) => list.contains_artboard(),
 			_ => false,
 		}
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
-			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
+			Graphic::GraphicList(list) => list.new_ids_from_hash(reference),
 			Graphic::Vector(vector) => vector.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default()),
 			_ => (),
 		}
@@ -607,7 +752,7 @@ impl Render for Graphic<'_> {
 fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
 	match element {
 		Graphic::Vector(vector) if reach.applies() => render_vector_svg(&PaintOverlay::new(&Single(vector), reach.paint), render, render_params),
-		Graphic::Graphic(inner) => render_graphic_svg_with(inner, reach.nested(), render, render_params),
+		Graphic::GraphicList(inner) => render_graphic_svg_with(inner, reach.nested(), render, render_params),
 		Graphic::Group(group) => render_group_svg(group, reach, render, render_params),
 		_ => element.render_svg(render, render_params),
 	}
@@ -616,7 +761,7 @@ fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &
 fn render_element_vello<'a>(element: &'a Graphic, reach: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 	match element {
 		Graphic::Vector(vector) if reach.applies() => render_vector_vello(&PaintOverlay::new(&Single(vector), reach.paint), scene, transform, context, render_params),
-		Graphic::Graphic(inner) => render_graphic_vello_with(inner, reach.nested(), scene, transform, context, render_params),
+		Graphic::GraphicList(inner) => render_graphic_vello_with(inner, reach.nested(), scene, transform, context, render_params),
 		Graphic::Group(group) => render_group_vello(group, reach, scene, transform, context, render_params),
 		_ => element.render_to_vello(scene, transform, context, render_params),
 	}
@@ -647,7 +792,7 @@ fn collect_element_metadata<'a>(
 		metadata.upstream_footprints.insert(element_id, footprint);
 		match element {
 			Graphic::Group(group) => collect_group_row_metadata(group, metadata, element_id),
-			Graphic::Graphic(_) => {}
+			Graphic::GraphicList(_) => {}
 			// A leaf's layer identity and transform ride its containing lane.
 			Graphic::Vector(_) => {
 				metadata.first_element_source_id.insert(element_id, lane_source);
@@ -660,13 +805,14 @@ fn collect_element_metadata<'a>(
 	}
 
 	match element {
-		Graphic::Graphic(list) => collect_graphic_metadata_with(list, reach.nested(), metadata, footprint, element_id),
+		Graphic::GraphicList(list) => collect_graphic_metadata_with(list, reach.nested(), metadata, footprint, element_id),
 		Graphic::Vector(vector) if reach.applies() => collect_vector_metadata(&PaintOverlay::new(&Single(vector), reach.paint), metadata, footprint, element_id),
 		Graphic::Vector(vector) => collect_vector_metadata(&Single(vector), metadata, footprint, element_id),
 		Graphic::RasterCPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::RasterGPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::Color(_) => {}
 		Graphic::Gradient(_) => {}
+		Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
 		Graphic::Text(text) => collect_text_metadata(&Single(text), metadata, footprint, element_id),
 		Graphic::Group(group) => collect_group_metadata(group, reach, metadata, footprint, element_id),
 	}
@@ -694,7 +840,7 @@ fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, elem
 		.or_else(|| lane_zero_transform::<Raster<CPU>>(item))
 		.or_else(|| lane_zero_transform::<Raster<GPU>>(item))
 		.or_else(|| lane_zero_transform::<Color>(item))
-		.or_else(|| lane_zero_transform::<GradientStops>(item))
+		.or_else(|| lane_zero_transform::<Gradient>(item))
 		.or_else(|| lane_zero_transform::<String>(item));
 	if let Some(transform) = transform {
 		metadata.local_transforms.insert(element_id, transform);
@@ -703,11 +849,11 @@ fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, elem
 
 fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
 	match element {
-		Graphic::Graphic(list) => add_graphic_upstream_click_targets_with(list, reach.nested(), click_targets),
+		Graphic::GraphicList(list) => add_graphic_upstream_click_targets_with(list, reach.nested(), click_targets),
 		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_click_targets(&PaintOverlay::new(&Single(vector), reach.paint), click_targets),
 		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(vector), click_targets),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(click_targets),
-		Graphic::Color(_) | Graphic::Gradient(_) => {}
+		Graphic::Color(_) | Graphic::Gradient(_) | Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), click_targets),
 		Graphic::Group(group) => add_group_upstream_click_targets(group, reach, click_targets),
 	}
@@ -715,11 +861,11 @@ fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReac
 
 fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
 	match element {
-		Graphic::Graphic(list) => add_graphic_upstream_outline_targets_with(list, reach.nested(), outlines),
+		Graphic::GraphicList(list) => add_graphic_upstream_outline_targets_with(list, reach.nested(), outlines),
 		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_outline_targets(&PaintOverlay::new(&Single(vector), reach.paint), outlines),
 		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(vector), outlines),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(outlines),
-		Graphic::Color(_) | Graphic::Gradient(_) => {}
+		Graphic::Color(_) | Graphic::Gradient(_) | Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), outlines),
 		Graphic::Group(group) => add_group_upstream_outline_targets(group, reach, outlines),
 	}
@@ -741,7 +887,7 @@ fn render_group_svg<'a>(group: &'a Group, reach: PaintReach<'a>, render: &mut Sv
 	} else if item.typed_lanes::<Raster<GPU>>().is_some() {
 	} else if let Some(run) = RunView::<Color>::new(item) {
 		render_color_svg(&run, render, render_params)
-	} else if let Some(run) = RunView::<GradientStops>::new(item) {
+	} else if let Some(run) = RunView::<Gradient>::new(item) {
 		render_gradient_svg(&run, render, render_params)
 	} else if let Some(run) = RunView::<String>::new(item) {
 		render_text_svg(&run, render, render_params)
@@ -763,7 +909,7 @@ fn render_group_vello<'a>(group: &'a Group, reach: PaintReach<'a>, scene: &mut S
 		render_raster_gpu_vello(&run, scene, transform, context, render_params)
 	} else if let Some(run) = RunView::<Color>::new(item) {
 		render_color_vello(&run, scene, render_params)
-	} else if let Some(run) = RunView::<GradientStops>::new(item) {
+	} else if let Some(run) = RunView::<Gradient>::new(item) {
 		render_gradient_vello(&run, scene, transform, render_params)
 	} else if let Some(run) = RunView::<String>::new(item) {
 		render_text_vello(&run, scene, transform, render_params)
@@ -786,7 +932,7 @@ fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata:
 		collect_raster_metadata(&run, metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Raster<GPU>>::new(item) {
 		collect_raster_metadata(&run, metadata, footprint, element_id)
-	} else if item.typed_lanes::<Color>().is_some() || item.typed_lanes::<GradientStops>().is_some() {
+	} else if item.typed_lanes::<Color>().is_some() || item.typed_lanes::<Gradient>().is_some() {
 	} else if let Some(run) = RunView::<String>::new(item) {
 		collect_text_metadata(&run, metadata, footprint, element_id)
 	}
@@ -930,8 +1076,8 @@ fn collect_artboard_metadata<'a, S: LaneSource<Element = Artboard<'a>>>(source: 
 		let element_id = layer_path.last().copied();
 
 		if let Some(element_id) = element_id {
-			let subpath = Subpath::new_rectangle(DVec2::ZERO, dimensions);
-			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
+			let subpath = rectangle_bezpath(DVec2::ZERO, dimensions);
+			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_path(subpath, 0.).into()]);
 			metadata.upstream_footprints.insert(element_id, footprint);
 			metadata.local_transforms.insert(element_id, DAffine2::from_translation(location));
 			if clip {
@@ -950,8 +1096,8 @@ fn collect_artboard_metadata<'a, S: LaneSource<Element = Artboard<'a>>>(source: 
 fn add_artboard_upstream_click_targets<'a, S: LaneSource<Element = Artboard<'a>>>(source: &S, click_targets: &mut Vec<ClickTarget>) {
 	for index in 0..source.lane_count() {
 		let dimensions: DVec2 = source.attr::<Dimensions>(index);
-		let subpath_rectangle = Subpath::new_rectangle(DVec2::ZERO, dimensions);
-		click_targets.push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
+		let subpath_rectangle = rectangle_bezpath(DVec2::ZERO, dimensions);
+		click_targets.push(ClickTarget::new_with_path(subpath_rectangle, 0.));
 	}
 }
 
@@ -1280,8 +1426,15 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 
+		let fill_graphic_list = paint_graphics::<Fill, _>(source, index);
+		let fill_graphic = fill_graphic_list.and_then(|l| l.element(0));
+
+		let stroke_graphic_list = paint_graphics::<Stroke, _>(source, index);
+		let stroke_graphic = stroke_graphic_list.and_then(|l| l.element(0));
+		let stroke_geometry = stroke_graphic_list.map(stroke_params);
+
 		// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
-		let has_real_stroke = vector.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
+		let has_real_stroke = stroke_geometry.as_ref().filter(|stroke| stroke.weight() > 0.);
 		let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 		let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
 		let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
@@ -1289,7 +1442,9 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 		let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 		let layer_bounds = vector.bounding_box().unwrap_or_default();
 		let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
-		let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY).unwrap_or(layer_bounds);
+		let stroke_layer_bounds = vector
+			.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY, stroke_geometry.as_ref())
+			.unwrap_or(layer_bounds);
 
 		let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
 		let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
@@ -1301,26 +1456,20 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 			path.push_str(bezpath.to_svg().as_str());
 		}
 
-		let mask_type = if vector.stroke.as_ref().map(|x| x.align) == Some(StrokeAlign::Inside) {
+		let mask_type = if stroke_geometry.as_ref().map(|x| x.align) == Some(StrokeAlign::Inside) {
 			MaskType::Clip
 		} else {
 			MaskType::Mask
 		};
 
-		let fill_graphic_list = paint_graphics::<Fill, _>(source, index);
-		let fill_graphic = fill_graphic_list.and_then(|l| l.element(0));
-
-		let stroke_graphic_list = paint_graphics::<Stroke, _>(source, index);
-		let stroke_graphic = stroke_graphic_list.and_then(|l| l.element(0));
-
-		let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
+		let path_is_closed = all_contours_closed(vector);
 		let can_draw_aligned_stroke = path_is_closed
-			&& vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
-			&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
-		let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.covers_opaquely()) || mask_type == MaskType::Clip);
+			&& stroke_geometry.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
+			&& stroke_graphic.is_some_and(|graphic| !graphic.is_guaranteed_fully_transparent());
+		let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.is_guaranteed_to_cover_opaquely()) || mask_type == MaskType::Clip);
 
 		let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
-		let wants_stroke_below = vector.stroke.as_ref().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
+		let wants_stroke_below = stroke_paint_order(stroke_graphic_list) == PaintOrder::StrokeBelow;
 		let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
 		let use_face_fill = vector.use_face_fill();
 
@@ -1340,8 +1489,9 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 		let push_id = needs_separate_alignment_fill.then_some({
 			let id = format!("alignment-{}", generate_uuid());
 
-			let mut cloned_vector = vector.clone();
-			cloned_vector.stroke = None;
+			// The mask item carries only `ATTR_FILL`, so it draws no stroke; master deleted `Vector::stroke`,
+			// which used to have to be cleared on the clone
+			let cloned_vector = vector.clone();
 
 			// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 			// The wrapping SVG group (above) handles the user-set opacity.
@@ -1353,7 +1503,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 		});
 
 		if use_face_fill {
-			for mut face_path in vector.construct_faces().filter(|face| face.area() >= 0.) {
+			for mut face_path in vector.construct_faces().into_iter().filter(|face| face.area() >= 0.) {
 				face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 				let face_d = face_path.to_svg();
 
@@ -1381,7 +1531,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 			if let Some((ref id, mask_type, ref vector_item)) = push_id {
 				let mut svg = SvgRender::new();
 				vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
-				let stroke = vector.stroke.as_ref().unwrap();
+				let stroke = stroke_geometry.as_ref().unwrap();
 				// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
 				let (largest_scale, _) = singular_values(applied_stroke_transform);
 				let inflation = stroke.max_aabb_inflation(true) * largest_scale;
@@ -1408,12 +1558,11 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 			render_params.aligned_strokes = can_draw_aligned_stroke;
 			render_params.override_paint_order = override_paint_order;
 
-			let stroke_shape_attribute = vector
-				.stroke
+			let stroke_shape_attribute = stroke_geometry
 				.as_ref()
 				.map(|stroke| {
 					if stroke_graphic_list.is_some_and(is_paint_present) {
-						stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
+						crate::render_ext::render_stroke_shape(stroke, stroke_paint_order(stroke_graphic_list), &render_params)
 					} else {
 						String::new()
 					}
@@ -1421,7 +1570,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 				.unwrap_or_default();
 
 			// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
-			let stroke_visible = vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
+			let stroke_visible = stroke_geometry.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_guaranteed_fully_transparent());
 			let stroke_attribute = if stroke_visible {
 				stroke_graphic_list
 					.map(|list| {
@@ -1494,7 +1643,8 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 		let multiplied_transform = parent_transform * item_transform;
-		let has_real_stroke = element.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
+		let stroke_geometry = lane_stroke(source, index);
+		let has_real_stroke = stroke_geometry.as_ref().filter(|stroke| stroke.weight() > 0.);
 		let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 		let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 		let mut element_transform = set_stroke_transform
@@ -1531,9 +1681,9 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 		// Whether the renderer will engage the stroke-alignment compositing trick (non-Center align on a fully closed path).
 		// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
 		// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
-		let stroke = element.stroke.as_ref();
-		let stroke_fully_transparent = stroke_graphic_list.is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
-		let can_draw_aligned_stroke = !stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
+		let stroke = stroke_geometry.as_ref();
+		let stroke_fully_transparent = stroke_graphic_list.is_none_or(|l| l.element(0).is_none_or(|g| g.is_guaranteed_fully_transparent()));
+		let can_draw_aligned_stroke = !stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && all_contours_closed(element);
 
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 		if opacity < 1. || blend_mode_attr != BlendMode::default() {
@@ -1555,7 +1705,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 		}
 
 		let use_layer = can_draw_aligned_stroke;
-		let wants_stroke_below = stroke.is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
+		let wants_stroke_below = stroke_paint_order(stroke_graphic_list) == vector::style::PaintOrder::StrokeBelow;
 
 		let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
 			let Some(fill_graphic) = fill_graphic_list else { return };
@@ -1580,7 +1730,9 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 						let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 						scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 					}
-					Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) | Graphic::Group(_) => {
+					// Brush strokes have no vector outline, so they paint nothing
+					Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
+					Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) | Graphic::Group(_) => {
 						scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 						paint.render_to_vello(scene, multiplied_transform, context, render_params);
 						scene.pop_layer();
@@ -1593,7 +1745,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 		let use_face_fill = element.use_face_fill();
 		let do_fill = |scene: &mut Scene, context: &mut RenderContext| {
 			if use_face_fill {
-				for mut face_path in element.construct_faces().filter(|face| face.area() >= 0.) {
+				for mut face_path in element.construct_faces().into_iter().filter(|face| face.area() >= 0.) {
 					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 					let mut kurbo_path = kurbo::BezPath::new();
 					for element in face_path {
@@ -1661,7 +1813,9 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 
 						scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 					}
-					Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) | Graphic::Group(_) => {
+					// Brush strokes have no vector outline, so they paint nothing
+					Graphic::Stroke(_) | Graphic::StrokeList(_) => {}
+					Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) | Graphic::Group(_) => {
 						let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 						scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
@@ -1681,8 +1835,9 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 			}
 			_ => {
 				if use_layer {
-					let mut cloned_element = element.clone();
-					cloned_element.stroke = None;
+					// The mask item carries only `ATTR_FILL`, so it draws no stroke; master deleted `Vector::stroke`,
+					// which used to have to be cleared on the clone
+					let cloned_element = element.clone();
 
 					// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 					// The outer opacity/blend layer (above) handles the user-set opacity.
@@ -1735,7 +1890,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 						Stroke,
 					}
 
-					let order = match stroke.is_some_and(|stroke| !stroke.paint_order.is_default()) {
+					let order = match !stroke_paint_order(stroke_graphic_list).is_default() {
 						true => [Op::Stroke, Op::Fill],
 						false => [Op::Fill, Op::Stroke], // Default
 					};
@@ -1889,32 +2044,33 @@ impl Render for List<Vector> {
 	}
 }
 
-/// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
+/// Build one multi-contour `Path` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector<S: LaneSource<Element = Vector>>(targets: &mut Vec<ClickTarget>, source: &S, index: usize, geometry: &Vector, transform: DAffine2) {
 	let filled = has_paint::<Fill, _>(source, index);
 
-	let mut subpaths: Vec<Subpath<_>> = geometry.stroke_bezier_paths().collect();
-	let all_subpaths_closed = subpaths.iter().all(|subpath| subpath.closed());
+	let mut bezpaths: Vec<BezPath> = geometry.stroke_bezpath_iter().filter(|bezpath| !bezpath.elements().is_empty()).collect();
+	let contours_closed = bezpaths.iter().all(|bezpath| matches!(bezpath.elements().last(), Some(PathEl::ClosePath)));
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
-	let stroke_width = geometry.stroke.as_ref().map_or(0., |stroke| {
-		if stroke.align.is_not_centered() && all_subpaths_closed {
-			stroke.weight * 2.
-		} else {
-			stroke.weight
-		}
-	});
+	let stroke_width = lane_stroke(source, index).map_or(0., |stroke| if stroke.align.is_not_centered() && contours_closed { stroke.weight * 2. } else { stroke.weight });
 
 	if filled {
-		for subpath in &mut subpaths {
-			subpath.set_closed(true);
+		for bezpath in &mut bezpaths {
+			if !matches!(bezpath.elements().last(), Some(PathEl::ClosePath)) {
+				bezpath.close_path();
+			}
 		}
 	}
 
-	if !subpaths.is_empty() {
-		let mut click_target = ClickTarget::new_with_compound_path(subpaths, stroke_width);
+	if !bezpaths.is_empty() {
+		let mut combined_path = BezPath::new();
+		for bezpath in bezpaths {
+			combined_path.extend(bezpath);
+		}
+
+		let mut click_target = ClickTarget::new_with_path(combined_path, stroke_width);
 		click_target.apply_transform(transform);
 		targets.push(click_target);
 	}
@@ -2085,9 +2241,9 @@ fn render_raster_cpu_vello<S: LaneSource<Element = Raster<CPU>> + BoundingBox>(s
 
 fn collect_raster_metadata<S: LaneSource>(source: &S, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 	let Some(element_id) = element_id else { return };
-	let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
+	let subpath = rectangle_bezpath(DVec2::ZERO, DVec2::ONE);
 
-	metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
+	metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_path(subpath, 0.).into()]);
 	metadata.upstream_footprints.insert(element_id, footprint);
 	// TODO: Find a way to handle more than one item of the `List<Raster<...>>`
 	if source.lane_count() > 0 {
@@ -2102,8 +2258,8 @@ fn collect_raster_metadata<S: LaneSource>(source: &S, metadata: &mut RenderMetad
 }
 
 fn add_raster_upstream_click_targets(click_targets: &mut Vec<ClickTarget>) {
-	let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
-	click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
+	let subpath = rectangle_bezpath(DVec2::ZERO, DVec2::ONE);
+	click_targets.push(ClickTarget::new_with_path(subpath, 0.));
 }
 
 impl Render for List<Raster<CPU>> {
@@ -2282,7 +2438,7 @@ impl Render for List<Color> {
 	}
 }
 
-fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, render: &mut SvgRender, render_params: &RenderParams) {
+fn render_gradient_svg<S: LaneSource<Element = Gradient>>(source: &S, render: &mut SvgRender, render_params: &RenderParams) {
 	// For thumbnails the gradient fills a finite rect at the footprint's document space bounds, with a 1-unit margin to cover the `as u32` truncation of `Footprint::resolution`.
 	// The viewBox crops the overshoot. Canvas rendering keeps the polyline path since Chrome rejects rects larger than ~20 million.
 	let thumbnail_rect = if render_params.thumbnail {
@@ -2299,8 +2455,8 @@ fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, rende
 		let blend_mode: BlendMode = source.attr::<BlendModeAttr>(index);
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
-		let spread_method: GradientSpreadMethod = source.attr::<SpreadMethod>(index);
-		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(index);
+		let settings = gradient_settings_from_lane(source, index);
+		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
 		let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 		render.leaf_tag(tag, |attributes| {
 			if let Some((min, size)) = thumbnail_rect {
@@ -2317,7 +2473,8 @@ fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, rende
 			}
 
 			let mut stop_string = String::new();
-			for (position, color, original_midpoint) in gradient.interpolated_samples() {
+			let (samples, _) = spread_adjusted_samples(gradient, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
+			for (position, color, original_midpoint) in samples {
 				let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, SRGBA8::from(color).to_rgb_hex());
 				if color.a() < 1. {
 					let _ = write!(stop_string, r#" stop-opacity="{}""#, color.a());
@@ -2338,21 +2495,22 @@ fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, rende
 			};
 
 			let gradient_id = generate_uuid();
-			let spread_method_attribute = if spread_method == GradientSpreadMethod::Pad {
+			// `Clear` rides pad, with the transparent guard stops from `spread_adjusted_samples` doing the clearing
+			let spread_method_attribute = if matches!(settings.spread, GradientSpread::Pad | GradientSpread::Clear) {
 				String::new()
 			} else {
-				format!(r#" spreadMethod="{}""#, spread_method.svg_name())
+				format!(r#" spreadMethod="{}""#, settings.spread.svg_name())
 			};
 
 			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
-			match gradient_type {
-				GradientType::Linear => {
+			match gradient_form {
+				GradientForm::Linear => {
 					let _ = write!(
 						&mut attributes.0.svg_defs,
 						r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
 					);
 				}
-				GradientType::Radial => {
+				GradientForm::Radial => {
 					let _ = write!(
 						&mut attributes.0.svg_defs,
 						r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
@@ -2374,7 +2532,7 @@ fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, rende
 	}
 }
 
-fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, scene: &mut Scene, parent_transform: DAffine2, render_params: &RenderParams) {
+fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &mut Scene, parent_transform: DAffine2, render_params: &RenderParams) {
 	use vello::peniko;
 
 	if let RenderMode::Outline = render_params.render_mode {
@@ -2383,8 +2541,8 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 
 	for index in 0..source.lane_count() {
 		let Some(gradient) = source.element(index) else { continue };
-		let spread_method: GradientSpreadMethod = source.attr::<SpreadMethod>(index);
-		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(index);
+		let settings = gradient_settings_from_lane(source, index);
+		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
 		let transform: DAffine2 = source.attr::<Transform>(index);
 		let blend_mode_attr: BlendMode = source.attr::<BlendModeAttr>(index);
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
@@ -2394,33 +2552,25 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 		let blend_mode = blend_mode_attr.to_peniko();
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-		let mut stops: peniko::ColorStops = peniko::ColorStops::new();
-		for (position, color, _) in gradient.interpolated_samples() {
-			stops.push(peniko::ColorStop {
-				offset: position as f32,
-				color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
-			})
-		}
+		let (samples, span) = spread_adjusted_samples(gradient, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
+		let stops = peniko_color_stops(&samples);
+		let extend = peniko_extend(settings.spread);
 
-		let extend = match spread_method {
-			GradientSpreadMethod::Pad => peniko::Extend::Pad,
-			GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
-			GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
-		};
-
-		// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
-		// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.
-		let kind = match gradient_type {
-			GradientType::Linear => peniko::LinearGradientPosition {
-				start: to_point(DVec2::ZERO),
-				end: to_point(DVec2::X),
+		// The unit gradient line is the +X unit vector in local space, before the item's transform is applied, with the
+		// span widening it to hold the `Clear` guards outside the visible range.
+		// For radial, the circle at the origin scales out to the line's length once the brush transform applies.
+		let (start, end) = (DVec2::X * span.0, DVec2::X * span.1);
+		let kind = match gradient_form {
+			GradientForm::Linear => peniko::LinearGradientPosition {
+				start: to_point(start),
+				end: to_point(end),
 			}
 			.into(),
-			GradientType::Radial => peniko::RadialGradientPosition {
-				start_center: to_point(DVec2::ZERO),
+			GradientForm::Radial => peniko::RadialGradientPosition {
+				start_center: to_point(start),
 				start_radius: 0.,
-				end_center: to_point(DVec2::ZERO),
-				end_radius: 1.,
+				end_center: to_point(start),
+				end_radius: start.distance(end) as f32,
 			}
 			.into(),
 		};
@@ -2432,7 +2582,7 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 			interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
 			..Default::default()
 		});
-		let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_type).to_cols_array());
+		let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_form).to_cols_array());
 		let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 		let mut layer = false;
@@ -2458,7 +2608,7 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 	}
 }
 
-impl Render for List<GradientStops> {
+impl Render for List<Gradient> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_gradient_svg(self, render, render_params)
 	}
@@ -2610,7 +2760,7 @@ pub fn graphic_list_bounding_box<'e, S: LaneSource<Element = Graphic<'e>>>(sourc
 		let Some(graphic) = source.element(index) else { continue };
 		let bounds = match graphic {
 			Graphic::Text(text) => text_list_bounding_box(&Single(text), item_transform),
-			Graphic::Graphic(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
+			Graphic::GraphicList(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
 			other => other.thumbnail_bounding_box(item_transform, true),
 		};
 		match bounds {
@@ -2809,8 +2959,8 @@ fn collect_text_metadata<S: LaneSource<Element = String>>(source: &S, metadata: 
 		}
 
 		let Some((size, item_transform)) = text_item_size_and_transform(source, index) else { continue };
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, size);
-		let mut target = ClickTarget::new_with_subpath(subpath, 0.);
+		let subpath = rectangle_bezpath(DVec2::ZERO, size);
+		let mut target = ClickTarget::new_with_path(subpath, 0.);
 		target.apply_transform(item_zero_inverse * item_transform);
 		accumulated_click_targets.entry(element_id).or_default().push(Arc::new(target));
 	}
@@ -2825,8 +2975,8 @@ fn collect_text_metadata<S: LaneSource<Element = String>>(source: &S, metadata: 
 fn add_text_upstream_click_targets<S: LaneSource<Element = String>>(source: &S, click_targets: &mut Vec<ClickTarget>) {
 	for index in 0..source.lane_count() {
 		let Some((size, transform)) = text_item_size_and_transform(source, index) else { continue };
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, size);
-		let mut target = ClickTarget::new_with_subpath(subpath, 0.);
+		let subpath = rectangle_bezpath(DVec2::ZERO, size);
+		let mut target = ClickTarget::new_with_path(subpath, 0.);
 		target.apply_transform(transform);
 		click_targets.push(target);
 	}
@@ -2926,7 +3076,7 @@ impl Render for RunView<'_, Color> {
 	}
 }
 
-impl Render for RunView<'_, GradientStops> {
+impl Render for RunView<'_, Gradient> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_gradient_svg(self, render, render_params)
 	}
@@ -3034,10 +3184,9 @@ mod group_walk_tests {
 	use super::*;
 	use core_types::record::{FieldWrite, RunBuilder, element_write_hashed};
 	use graphic_types::markers::Fill;
-	use graphic_types::vector_types::vector::PointId;
 
 	fn unit_square_at(corner: DVec2) -> Vector {
-		Vector::from_subpath(Subpath::<PointId>::new_rectangle(corner, corner + DVec2::ONE))
+		Vector::from_bezpath(rectangle_bezpath(corner, corner + DVec2::ONE))
 	}
 
 	fn color_paint() -> List<Graphic<'static>> {
@@ -3083,7 +3232,7 @@ mod group_walk_tests {
 
 		let params = RenderParams::default();
 		let native = rendered_svg(|render| Graphic::Group(group.clone()).render_svg(render, &params));
-		let legacy = rendered_svg(|render| Graphic::Graphic(graphic_types::graphic::group_to_legacy_list(&group)).render_svg(render, &params));
+		let legacy = rendered_svg(|render| Graphic::GraphicList(graphic_types::graphic::group_to_legacy_list(&group)).render_svg(render, &params));
 
 		assert!(native.0.contains(r##"fill="#"##), "the lane's fill paint must reach the vector interior: {}", native.0);
 		assert_eq!(native, legacy);

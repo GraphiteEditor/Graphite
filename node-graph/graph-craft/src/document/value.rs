@@ -820,14 +820,14 @@ impl TaggedValue {
 ///
 /// Routes legacy variant names into modern variants, in typed Rust. Each legacy name is also matched against the historical `#[serde(alias = "...")]` spellings the deleted variant accepted, so old-shape inner payloads are caught:
 ///
-/// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(list!(Graphic))`
-/// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(list!(Artboard))`
+/// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(concrete!(List<Graphic>))`
+/// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(concrete!(List<Artboard>))`
 /// - `Raster` (or alias `ImageFrame`/`RasterData`/`Image`):
 ///     - non-empty (the legacy `image` proto's input 1, where the inner `Raster<CPU>` serializes as the embedded `Image<Color>`) → `TaggedValue::ImageData(<inner Image<Color>>)`
-///     - empty → `TaggedValue::TypeDefault(list!(Raster<CPU>))`
+///     - empty → `TaggedValue::TypeDefault(concrete!(List<Raster<CPU>>))`
 /// - `Vector` (or alias `VectorData`):
 ///     - non-empty → `TaggedValue::VectorModification(<built from first element>)` (the document_migration's Path pass disambiguates this between SVG-import legacy and a discardable modern baked value via the input's `exposed` flag)
-///     - empty → `TaggedValue::TypeDefault(list!(Vector))`
+///     - empty → `TaggedValue::TypeDefault(concrete!(List<Vector>))`
 /// - `FillChoice` → `TaggedValue::Color` (solid), `TaggedValue::GradientRamp` (gradient), or `TaggedValue::no_paint()` (none)
 /// - `Gradient` (or alias `GradientTable`/`GradientPositions`/`Gradient`) → `TaggedValue::LegacyGradient` (ancient full struct) or `TaggedValue::GradientRamp` (ramp and legacy stops shapes, unwrapped from the legacy table form)
 /// - `TypeDefault` with the old bare-`TypeDescriptor` payload → the same variant wrapping a `Type` (name-encoded `List` normalized to structural)
@@ -844,8 +844,8 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 		&& let Some((tag, content)) = map.iter().next()
 	{
 		match tag.as_str() {
-			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Graphic)))),
-			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Artboard)))),
+			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(concrete!(List<Graphic>)))),
+			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(concrete!(List<Artboard>)))),
 			"Raster" | "ImageFrame" | "RasterData" | "Image" => {
 				let first_element = content
 					.as_object()
@@ -856,7 +856,7 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					let image: Image<Color> = serde_json::from_value(image_value.clone()).map_err(serde::de::Error::custom)?;
 					return Ok(MemoHash::new(TaggedValue::ImageData(image)));
 				}
-				return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Raster<CPU>))));
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(concrete!(List<Raster<CPU>>))));
 			}
 			"Vector" | "VectorData" => {
 				let vector = graphic_types::migrations::migrate_to_optional_vector(content.clone()).map_err(serde::de::Error::custom)?;
@@ -864,7 +864,7 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					let modification = Box::new(VectorModification::create_from_vector(&vector));
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
-				return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Vector))));
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(concrete!(List<Vector>))));
 			}
 			// The `TypeDefault` payload used to be a bare `TypeDescriptor`; it now carries a `Type`
 			"TypeDefault" if content.as_object().is_some_and(|c| c.contains_key("name")) => {
@@ -1038,12 +1038,12 @@ mod typedefault_dispatch {
 		}
 		macro_rules! check_item {
 			($element:ty) => {
-				check!(Item<$element>, item!($element));
+				check!(Item<$element>, concrete!($element));
 			};
 		}
 		macro_rules! check_list {
 			($element:ty) => {
-				check!(List<$element>, list!($element));
+				check!(List<$element>, concrete!(List<$element>));
 			};
 		}
 		macro_rules! check_bare {
@@ -1068,7 +1068,7 @@ mod paint_default_parsing {
 	fn paint_wire_parses_color_default_through_its_element() {
 		let black = Some(TaggedValue::Color(Color::BLACK));
 		assert_eq!(
-			TaggedValue::from_primitive_string("Color::BLACK", &list!(Graphic)),
+			TaggedValue::from_primitive_string("Color::BLACK", &concrete!(List<Graphic>)),
 			black,
 			"a `List<Graphic>` paint wire should resolve its color default"
 		);
