@@ -1026,7 +1026,7 @@ mod typedefault_dispatch {
 	fn typedefault_dispatch_terminates() {
 		macro_rules! check {
 			($type_default:ty, $stored:expr) => {{
-				let ty: Type = $stored;
+				let ty: TypeDescriptor = $stored;
 				let expected_type_id = std::any::TypeId::of::<$type_default>();
 				let dyn_value = TaggedValue::TypeDefault(ty.clone()).to_dynany();
 				assert_eq!(
@@ -1045,22 +1045,17 @@ mod typedefault_dispatch {
 				);
 			}};
 		}
-		macro_rules! check_item {
-			($element:ty) => {
-				check!(Item<$element>, concrete!($element));
-			};
-		}
+		// One wire kind: a type default names its type, so the item and list lists both check their list form.
 		macro_rules! check_list {
 			($element:ty) => {
-				check!(List<$element>, concrete!(List<$element>));
+				check!(List<$element>, core_types::descriptor!(List<$element>));
 			};
 		}
 		macro_rules! check_bare {
 			($type_default:ty) => {
-				check!($type_default, concrete!($type_default));
+				check!($type_default, core_types::descriptor!($type_default));
 			};
 		}
-		for_each_item_type_default!(check_item);
 		for_each_list_type_default!(check_list);
 		for_each_bare_type_default!(check_bare);
 	}
@@ -1069,7 +1064,6 @@ mod typedefault_dispatch {
 #[cfg(test)]
 mod paint_default_parsing {
 	use super::*;
-	use core_types::{item, list};
 
 	/// A Fill/Stroke paint wire carries `Graphic` elements, so its `Color::BLACK` default must parse through the
 	/// element recursion into a `Color` for a fresh Fill node's paint to resolve.

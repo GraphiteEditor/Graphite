@@ -2921,7 +2921,8 @@ mod tests {
 	#[test]
 	fn removed_definition_swap_targets_resolve() {
 		assert!(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).is_some());
-		assert!(resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER).is_some());
+		#[cfg(feature = "gpu")]
+		assert!(resolve_proto_node_type(wgpu_executor::texture_conversion::upload_texture::IDENTIFIER).is_some());
 	}
 
 	// Migrating a Merge network's coercion nodes by alias would leave a reducer in the primary slot, so every alias must reset instead

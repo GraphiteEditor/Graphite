@@ -4354,8 +4354,9 @@ mod document_message_handler_tests {
 		let phantom_count = news
 			.iter()
 			.flat_map(|new| new.iter_element_values())
-			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None(_)))
+			// Our no-content graphic is an empty list rather than master's dedicated None variant
+			.filter(|graphic| graphic.is_empty())
 			.count();
-		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
+		assert_eq!(phantom_count, 0, "No stacked element should be a phantom empty graphic");
 	}
 }
