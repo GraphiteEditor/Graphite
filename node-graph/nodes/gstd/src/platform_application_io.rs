@@ -15,7 +15,7 @@ use core_types::runtime::SourceFuture;
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
-use core_types::{ATTR_TRANSFORM, WasmNotSend};
+use core_types::ATTR_TRANSFORM;
 use core_types::{Color, Ctx};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
@@ -204,17 +204,17 @@ fn create_canvas(_: impl Ctx) -> CanvasHandle {
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn rasterize<T: WasmNotSend + Clone>(
+async fn rasterize<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(
 	_: impl Ctx,
 	_: (),
 	#[implementations(
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Graphic>,
-		List<Color>,
-		List<GradientStops>,
+		Vector,
+		Raster<CPU>,
+		Graphic,
+		Color,
+		GradientStops,
 	)]
-	mut data: List<T>,
+	mut data: IList<T>,
 	footprint: Footprint,
 	mut canvas: CanvasHandle,
 ) -> (Raster<CPU>, Attr<Transform>, OwnedAttr<EditorMergedLayers>)
