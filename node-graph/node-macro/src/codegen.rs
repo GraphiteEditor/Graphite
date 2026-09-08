@@ -1717,7 +1717,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let fn_where = &parsed.where_clause;
 	let body = if level_delta > 0 { rewrite_emit(&parsed.body) } else { parsed.body.clone() };
 	let vis = &parsed.vis;
-	let kernel_fields: Vec<&&ParsedField> = regular_fields.iter().filter(|field| !injected_name(&field.pat_ident.ident)).collect();
+	// The input index rides along: an async kernel's param type depends on the
+	// field's value binding, which is indexed off the node's inputs.
+	let kernel_indexed: Vec<(usize, &&ParsedField)> = regular_fields.iter().enumerate().filter(|(_, field)| !injected_name(&field.pat_ident.ident)).collect();
+	let kernel_fields: Vec<&&ParsedField> = kernel_indexed.iter().map(|(_, field)| *field).collect();
 	// A bare `Attr<M>` in the return type cannot elide its lifetime, so the
 	// kernel gets a fresh one; reference-valued writes name their real
 	// lifetime explicitly and pass through untouched. An async source's value
@@ -1757,12 +1760,18 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				};
 				quote!(#pat: #ty)
 			});
-			let value_kernel_params = kernel_fields.iter().map(|field| {
+			let value_kernel_params = kernel_indexed.iter().map(|(index, field)| {
 				let pat = &field.pat_ident;
 				let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
 					unreachable!("async source fields are eager values");
 				};
-				quote!(#pat: #ty)
+				// A materialized level is a borrowed arena view, which cannot cross
+				// into a `'static` future; the prologue snapshots it to the owned
+				// legacy list and the kernel takes that instead.
+				match ir::materialized_levels(&node, *index) > 0 {
+					true => quote!(#pat: #core_types::list::List<#ty>),
+					false => quote!(#pat: #ty),
+				}
 			});
 			let params = snapshot_param.chain(data_kernel_params).chain(value_kernel_params);
 			quote! {
@@ -2137,12 +2146,32 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Tail::Record => record_tail.clone().expect("a record-io node has a record tail"),
 		Tail::Flip => flip_tail.clone().expect("a flip node has a flip tail"),
 		Tail::SpawnAsyncFn => {
-			let kernel_value_names: Vec<&Ident> = kernel_fields.iter().map(|field| &field.pat_ident.ident).collect();
+			// The level is still live here (the prologue materialized it into the
+			// evaluation's arena), so the owned copy is taken before the future
+			// is built, as the owned-attr crossing does.
+			let kernel_value_args: Vec<TokenStream2> = kernel_indexed
+				.iter()
+				.map(|(index, field)| {
+					let name = &field.pat_ident.ident;
+					let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
+						return quote!(#name.clone());
+					};
+					match ir::materialized_levels(&node, *index) > 0 {
+						true => quote! {
+							match #core_types::record::run_to_owned_list::<#ty>(&#name.as_group_item()) {
+								::core::option::Option::Some(__owned) => __owned,
+								::core::option::Option::None => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(
+									#core_types::gpoll::GraphError::new(::std::concat!("the materialized level of ", ::std::stringify!(#name), " holds another element type")),
+								)),
+							}
+						},
+						false => quote!(#name.clone()),
+					}
+				})
+				.collect();
 			let snapshot_binding = snapshot_ctx.then(|| quote!(let __snapshot = #core_types::context::CtxSnapshot::capture(__input);)).into_iter();
 			let snapshot_arg = snapshot_ctx.then(|| quote!(__snapshot)).into_iter();
-			let future_args = snapshot_arg
-				.chain(data_names.iter().map(|name| quote!(self.#name.clone())))
-				.chain(kernel_value_names.iter().map(|name| quote!(#name.clone())));
+			let future_args = snapshot_arg.chain(data_names.iter().map(|name| quote!(self.#name.clone()))).chain(kernel_value_args);
 			let completion = future_completion(&parsed.output_type);
 			let tail = spawn_tail(completion, inflight.clone());
 			let prelude = carried_prelude.iter();

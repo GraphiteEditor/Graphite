@@ -264,6 +264,14 @@ fn validate_async_source(parsed: &ParsedNodeFn) {
 					"`async fn` source nodes cannot take `impl Node` inputs: the spawned future outlives any borrow of the graph, so it cannot evaluate other nodes; use the sync-prologue form (return `SourceFuture`) to evaluate lazy inputs before spawning"
 				);
 			}
+			// One level snapshots to one owned legacy list; a deeper input has no
+			// owned form to cross the future boundary with.
+			if matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) if *list_levels > 1) {
+				emit_error!(
+					field.pat_ident.span(),
+					"`async fn` source nodes take a materialized input as an owned snapshot of one level, so nested `IList` is unsupported; flatten to a single `IList` or use the sync-prologue form (return `SourceFuture`)"
+				);
+			}
 		}
 	}
 }
