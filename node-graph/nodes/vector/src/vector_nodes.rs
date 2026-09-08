@@ -417,10 +417,12 @@ fn fill<'e, P: Clone + Send + Sync + dyn_any::StaticTypeSized + core_types::ops:
 /// boundary moves it onto the interior vector lists the legacy paint readers
 /// inspect. Registered under the fill's identifier.
 #[node_macro::node(category(""))]
-fn fill_graphic_leveled<'e>(
+fn fill_graphic_leveled<'e, P: Clone + Send + Sync + dyn_any::StaticTypeSized + core_types::ops::ListConvert<Graphic<'static>>>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	(element, _content_fill): (Graphic<'static>, Attr<Fill>),
-	#[default(Color::BLACK)] paint: IList<Graphic<'static>>,
+	#[default(Color::BLACK)]
+	#[implementations(Graphic<'static>, Color, Gradient)]
+	paint: IList<P>,
 	_backup_color: IList<Color>,
 	_backup_gradient: IList<Gradient>,
 	_gradient_form: GradientForm,
@@ -491,10 +493,12 @@ fn stroke<'e, P: Clone + Send + Sync + dyn_any::StaticTypeSized + core_types::op
 /// the paint marker parks on the lane for the render boundary to place.
 /// Registered under the stroke's identifier.
 #[node_macro::node(category(""))]
-fn stroke_graphic_leveled<'e>(
+fn stroke_graphic_leveled<'e, P: Clone + Send + Sync + dyn_any::StaticTypeSized + core_types::ops::ListConvert<Graphic<'static>>>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	(element, content_transform): (Graphic<'static>, Attr<TransformAttr>),
-	#[default(Color::BLACK)] paint: IList<Graphic<'static>>,
+	#[default(Color::BLACK)]
+	#[implementations(Graphic<'static>, Color, Gradient)]
+	paint: IList<P>,
 	#[unit(" px")]
 	#[default(2.)]
 	weight: f64,
