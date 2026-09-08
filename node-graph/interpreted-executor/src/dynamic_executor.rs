@@ -43,7 +43,7 @@ fn assert_deep_element_glue() {
 		("graphic", core_types::record::has_deep_element_glue(std::any::TypeId::of::<graphic_types::Graphic<'static>>())),
 		("artboard", core_types::record::has_deep_element_glue(std::any::TypeId::of::<graphic_types::Artboard<'static>>())),
 	] {
-		assert!(registered, "deep element glue for `{name}` is not registered; the host must run `__node_registry_deep_element_{name}` before evaluating");
+		assert!(registered, "deep element glue for `{name}` is missing; run `__node_registry_deep_element_{name}` first");
 	}
 }
 

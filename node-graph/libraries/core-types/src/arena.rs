@@ -606,7 +606,7 @@ mod tests {
 
 		assert!(unsafe { transient.move_park::<Probe>(src, &second, 21) }.is_none(), "a sharer naming another destination is refused");
 		first.reset();
-		assert!(unsafe { transient.move_park::<Probe>(src, &first, 21) }.is_none(), "a destination that has flushed since is refused too");
+		assert!(unsafe { transient.move_park::<Probe>(src, &first, 21) }.is_none(), "a flushed destination is refused too");
 	}
 
 	#[test]
