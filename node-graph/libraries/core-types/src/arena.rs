@@ -27,11 +27,12 @@ pub struct Arena {
 	/// a park costs one pointer in the arena and owns its content outside it.
 	retained_heap: AtomicUsize,
 	/// Where [`Arena::move_park`] sent each moved park, as its offset here to
-	/// the header's address in the receiving arena and the moved type's key, so
-	/// a payload two records share is moved once and a mistyped sharer is
-	/// refused. Cleared by [`Arena::reset`], so a forwarding holds for one
-	/// generation.
-	forwarded: Mutex<HashMap<usize, (usize, TypeId)>>,
+	/// the header's address in the receiving arena, the moved type's key and
+	/// that arena's generation, so a payload two records share is moved once
+	/// while a mistyped sharer, a sharer naming another destination, and a
+	/// sharer whose destination has since flushed are all refused. Cleared by
+	/// [`Arena::reset`], so a forwarding holds for one generation.
+	forwarded: Mutex<HashMap<usize, (usize, TypeId, u64)>>,
 }
 
 impl std::fmt::Debug for Arena {
@@ -264,6 +265,12 @@ impl Arena {
 	/// fan-out sharer's second move reaches the one header and the obligation
 	/// is never duplicated.
 	///
+	/// A forwarding is to one destination generation, since the returned
+	/// pointer is only the caller's to publish where it lands in the `dst` it
+	/// named: a second move to another arena, or to one that has flushed since,
+	/// is refused rather than answered with a foreign or freed header. The
+	/// refusal reads as a decline, so the caller takes its clone path.
+	///
 	/// `dst` is credited `retained`, which is what a clone of the payload would
 	/// have credited it, and this arena is debited what its own park recorded,
 	/// so neither counter reads worse than it did before the move.
@@ -290,8 +297,11 @@ impl Arena {
 		(offset < self.buf.len()).then_some(())?;
 		let type_of = TypeId::of::<T::Static>();
 		let mut forwarded = self.forwarded.lock().unwrap();
-		if let Some(&(moved, moved_type)) = forwarded.get(&offset) {
+		if let Some(&(moved, moved_type, moved_generation)) = forwarded.get(&offset) {
 			(moved_type == type_of).then_some(())?;
+			// Generations are globally unique, so the match is `dst` itself and
+			// its current epoch; anything else declines.
+			(moved_generation == dst.generation()).then_some(())?;
 			return Some(moved as *const T::Static);
 		}
 		let mut entries = self.drops.lock().unwrap();
@@ -316,7 +326,7 @@ impl Arena {
 		});
 		dst.retained_heap.fetch_add(retained, Ordering::Relaxed);
 		let _ = self.retained_heap.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| Some(current.saturating_sub(parked)));
-		forwarded.insert(offset, (target as usize, type_of));
+		forwarded.insert(offset, (target as usize, type_of, dst.generation()));
 		Some(target.cast_const())
 	}
 
@@ -565,6 +575,26 @@ mod tests {
 		let unreserved = ptr.wrapping_add(64);
 		assert!(arena.contains(unreserved), "the fixture stays inside the backbone");
 		assert!(arena.handle_at(unreserved).is_none(), "a byte past the watermark mints nothing");
+	}
+
+	#[test]
+	fn a_forwarding_answers_only_the_destination_it_recorded() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		struct Probe(#[allow(dead_code)] String);
+		unsafe impl dyn_any::StaticType for Probe {
+			type Static = Probe;
+		}
+		let transient = Arena::new(1024).unwrap();
+		let mut first = Arena::new(1024).unwrap();
+		let second = Arena::new(1024).unwrap();
+
+		let (parked, _) = transient.alloc_sized_keyed(Probe(String::from("shared by two records")), 21).unwrap();
+		let src = std::ptr::from_ref(parked).cast::<u8>();
+		unsafe { transient.move_park::<Probe>(src, &first, 21) }.unwrap();
+
+		assert!(unsafe { transient.move_park::<Probe>(src, &second, 21) }.is_none(), "a sharer naming another destination is refused");
+		first.reset();
+		assert!(unsafe { transient.move_park::<Probe>(src, &first, 21) }.is_none(), "a destination that has flushed since is refused too");
 	}
 
 	/// Held by every test that perturbs [`NEXT_GENERATION`], so a swapped-out counter
