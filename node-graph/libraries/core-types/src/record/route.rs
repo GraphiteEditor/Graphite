@@ -51,6 +51,8 @@ impl SourcePlan {
 	/// buffer of the plan's union layout that does not overlap `src`. The
 	/// returned view borrows `dst`, so `'d` must not outlive it.
 	pub unsafe fn translate<'d>(&self, src: Rec<'_>, dst: *mut u8) -> Rec<'d> {
+		// SAFETY: the caller's contract; the plan's moves and fills name only
+		// offsets of the layouts it was built from.
 		unsafe {
 			apply_plan(src, dst, &self.moves);
 			for (offset, bytes) in &self.fills {

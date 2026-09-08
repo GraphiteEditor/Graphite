@@ -99,6 +99,7 @@ pub(in crate::record) unsafe fn promote_record(layout: &Layout, dst: *mut u8, pr
 					None => {
 						// SAFETY: as above, and the clone owns its content.
 						let owned = unsafe { (layout.element.clone_out)(dst.cast_const()) };
+						// SAFETY: the clone is this element's own type, back into its slot.
 						unsafe { (layout.element.repark)(&*owned, dst, promotion.persistent) }?;
 					}
 				},
@@ -243,6 +244,7 @@ impl MaterializedSpan {
 			// SAFETY: the caller's contract on the lane, into the lane's own
 			// region of the freshly reserved slab.
 			let dst = unsafe { base.add(lane * stride) };
+			// SAFETY: as above; `layout.size` bytes of a lane fit its own stride.
 			unsafe { std::ptr::copy_nonoverlapping(batch.get(lane).rec().ptr(), dst, layout.size) };
 			// SAFETY: the copy images a record of this layout.
 			unsafe { promote_record(layout, dst, promotion) }?;

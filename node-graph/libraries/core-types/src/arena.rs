@@ -54,6 +54,9 @@ struct DropEntry {
 
 /// The glue a tombstoned entry carries: its payload was moved to another arena,
 /// which now owns the obligation.
+///
+/// # Safety
+/// None: the payload is neither read nor dropped, so any pointer is accepted.
 unsafe fn inert(_: *mut u8) {}
 
 /// The entry parking `offset`, `None` where the arena holds no obligation for
@@ -237,11 +240,15 @@ impl Arena {
 		// Built before the write so an unencodable offset drops `value` here
 		// rather than stranding it in the arena without drop glue.
 		let weak = ArenaWeak::new(self.generation(), offset)?;
+		// SAFETY: `reserve` returned `offset`, so it is within the backbone.
 		let ptr = unsafe { self.base().add(offset) }.cast::<T>();
 		// SAFETY: freshly reserved, aligned, in-bounds, unaliased.
 		unsafe { ptr.write(value) };
 		if std::mem::needs_drop::<T>() {
+			/// # Safety
+			/// `p` must address the live `T` this entry was registered for.
 			unsafe fn glue<T>(p: *mut u8) {
+				// SAFETY: the caller's contract.
 				unsafe { p.cast::<T>().drop_in_place() }
 			}
 			self.drops.lock().unwrap().push(DropEntry { offset, type_of, drop_fn: glue::<T>, retained });
@@ -315,7 +322,10 @@ impl Arena {
 		let parked = std::mem::replace(&mut entries[entry].retained, 0);
 		entries[entry].drop_fn = inert;
 		drop(entries);
+		/// # Safety
+		/// `p` must address the live `T` this entry was registered for.
 		unsafe fn glue<T>(p: *mut u8) {
+			// SAFETY: the caller's contract.
 			unsafe { p.cast::<T>().drop_in_place() }
 		}
 		dst.drops.lock().unwrap().push(DropEntry {
@@ -345,6 +355,7 @@ impl Arena {
 	pub fn alloc_scratch<T: Send + Sync>(&self, len: usize) -> Option<&mut [MaybeUninit<T>]> {
 		let size = size_of::<T>().checked_mul(len)?;
 		let offset = self.reserve(size, align_of::<T>())?;
+		// SAFETY: `reserve` returned `offset`, so it is within the backbone.
 		let ptr = unsafe { self.base().add(offset) }.cast::<MaybeUninit<T>>();
 		// SAFETY: exclusive region; lifetime tied to `&self`, and `reset` takes
 		// `&mut self`, so the slice cannot outlive the generation.

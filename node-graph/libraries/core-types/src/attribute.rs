@@ -199,12 +199,15 @@ where
 	crate::record::FieldWrite::of::<A>(level)
 }
 
+/// # Safety
+/// `dst` must address a live field of `A`'s value type.
 unsafe fn write_stored<A: Attribute>(stored: &dyn AnyAttributeValue, dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
 	if A::from_stored(stored.as_any()).is_none() {
 		// A wrong-typed stored value reads as absent, so the field keeps its default.
 		return Some(());
 	}
 	match A::REPARK {
+		// SAFETY: the caller's contract; the glue is this marker's own.
 		Some(repark) => unsafe { repark(stored, dst, arena) },
 		None => {
 			let value = A::from_stored(stored.as_any()).expect("checked above");

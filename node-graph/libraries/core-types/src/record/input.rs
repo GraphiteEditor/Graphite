@@ -214,6 +214,7 @@ impl<'a, 'e, N> RecordInput<'a, 'e, N> {
 /// `rec` must be a record of the layout the offsets were resolved against
 /// and `El` its element type; both are proven at wiring.
 unsafe fn element_only<El: Clone>(rec: Rec<'_>, _reads: &[Option<usize>]) -> El {
+	// SAFETY: the caller's contract.
 	unsafe { read_element::<El>(rec) }
 }
 
@@ -516,6 +517,8 @@ impl<El: Clone + 'static, N> RecordExtract<El, N> {
 		// The element copies out by value, so the input's claim dies with
 		// the scope.
 		let scope = frames.scope();
+		// SAFETY: the served value is a record of `self.layout`, whose element is
+		// `El` by the wiring that built this extract.
 		serve_input(&self.edge, input, &scope).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
 	}
 }

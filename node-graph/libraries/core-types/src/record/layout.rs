@@ -28,11 +28,17 @@ impl FieldWrite {
 	where
 		A::Value<'static>: graphene_hash::CacheHash + PartialEq + 'static,
 	{
+		/// # Safety
+		/// `ptr` must address a live `V`.
 		unsafe fn content_hash<V: graphene_hash::CacheHash>(ptr: *const u8, state: &mut dyn core::hash::Hasher) {
 			let mut state = state;
+			// SAFETY: the caller's contract.
 			unsafe { &*ptr.cast::<V>() }.cache_hash(&mut state);
 		}
+		/// # Safety
+		/// `a` and `b` must both address a live `V`.
 		unsafe fn content_eq<V: PartialEq>(a: *const u8, b: *const u8) -> bool {
+			// SAFETY: the caller's contract.
 			unsafe { *a.cast::<V>() == *b.cast::<V>() }
 		}
 		Self {
@@ -132,12 +138,18 @@ impl Eq for ElementWrite {}
 
 impl Default for ElementWrite {
 	fn default() -> Self {
+		/// # Safety
+		/// None: the empty element has no bytes, so nothing is read.
 		unsafe fn clone_out(_ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
 			Box::new(())
 		}
+		/// # Safety
+		/// None: nothing is written, the empty element having no slot.
 		unsafe fn repark(_value: &(dyn std::any::Any + Send + Sync), _dst: *mut u8, _arena: &crate::arena::Arena) -> Option<()> {
 			Some(())
 		}
+		/// # Safety
+		/// None: the move always declines, so `parked` is never read.
 		unsafe fn park_move(_parked: *const u8, _promotion: &Promotion<'_>) -> Option<*const u8> {
 			None
 		}
@@ -508,11 +520,14 @@ pub fn element_write<T: Clone + Send + Sync + dyn_any::StaticTypeSized>() -> Ele
 where
 	T::Static: Clone + Send + Sync,
 {
+	/// # Safety
+	/// `ptr` must address a live element of `T` in the form [`element_parked`] picks.
 	unsafe fn clone_out<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync>
 	where
 		T::Static: Clone + Send + Sync,
 	{
 		if let Some(deep) = deep_element_glue(std::any::TypeId::of::<T::Static>()) {
+			// SAFETY: the caller's contract; the glue is registered for this element type.
 			return unsafe { (deep.clone_out)(ptr) };
 		}
 		// SAFETY: a lifetime-carrying element type registers deep glue, so this
@@ -522,11 +537,15 @@ where
 		// which is where a missed wasm registration export is caught.
 		Box::new(unsafe { erase_static(read_element::<T>(Rec::new(ptr))) })
 	}
+	/// # Safety
+	/// `dst` must be fresh element storage of a record whose element is `T`, and
+	/// `value` must be the clone-out this glue produced for that element type.
 	unsafe fn repark<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(value: &(dyn std::any::Any + Send + Sync), dst: *mut u8, arena: &crate::arena::Arena) -> Option<()>
 	where
 		T::Static: Clone + Send + Sync,
 	{
 		if let Some(deep) = deep_element_glue(std::any::TypeId::of::<T::Static>()) {
+			// SAFETY: the caller's contract; the glue is registered for this element type.
 			return unsafe { (deep.repark)(value, dst, arena) };
 		}
 		let retained = retained_measure(std::any::TypeId::of::<T::Static>()).map_or(0, |measure| measure(value));
@@ -571,11 +590,17 @@ pub fn element_write_hashed<T: Clone + Send + Sync + graphene_hash::CacheHash + 
 where
 	T::Static: Clone + Send + Sync,
 {
+	/// # Safety
+	/// `ptr` must address a live element of `T` in the form [`element_parked`] picks.
 	unsafe fn content_hash<T: graphene_hash::CacheHash>(ptr: *const u8, state: &mut dyn core::hash::Hasher) {
 		let mut state = state;
+		// SAFETY: the caller's contract.
 		unsafe { borrow_element::<T>(Rec::new(ptr)) }.cache_hash(&mut state);
 	}
+	/// # Safety
+	/// `a` and `b` must each address a live element of `T` in that same form.
 	unsafe fn content_eq<T: PartialEq>(a: *const u8, b: *const u8) -> bool {
+		// SAFETY: the caller's contract.
 		unsafe { borrow_element::<T>(Rec::new(a)) == borrow_element::<T>(Rec::new(b)) }
 	}
 	ElementWrite {

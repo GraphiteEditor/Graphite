@@ -375,6 +375,7 @@ impl CacheHash for AttributeDyn {
 	}
 }
 
+// SAFETY: the type carries no lifetime, so it is its own static form.
 unsafe impl StaticType for AttributeDyn {
 	type Static = Self;
 }
@@ -418,6 +419,7 @@ impl CacheHash for AttributeValueDyn {
 	}
 }
 
+// SAFETY: as for AttributeDyn.
 unsafe impl StaticType for AttributeValueDyn {
 	type Static = Self;
 }
@@ -501,6 +503,7 @@ impl CacheHash for ListDyn {
 	}
 }
 
+// SAFETY: as for AttributeDyn.
 unsafe impl StaticType for ListDyn {
 	type Static = Self;
 }
@@ -1190,6 +1193,8 @@ impl<T> ApplyTransform for List<T> {
 	}
 }
 
+// SAFETY: the list carries its lifetime only through T, so substituting T's
+// static form substitutes the list's and keeps the layout identical.
 unsafe impl<T: StaticTypeSized> StaticType for List<T> {
 	type Static = List<T::Static>;
 }

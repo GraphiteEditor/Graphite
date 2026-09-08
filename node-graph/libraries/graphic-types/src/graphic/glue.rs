@@ -54,6 +54,7 @@ pub fn map_groups_to_resident<'a>(graphic: &Graphic<'a>, arena: &'a core_types::
 /// # Safety
 /// `ptr` must point at a live parked `Graphic` element field.
 unsafe fn deep_clone_graphic(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
+	// SAFETY: the caller's contract.
 	let graphic = unsafe { core_types::record::borrow_element::<Graphic>(core_types::record::Rec::new(ptr)) };
 	Box::new(map_groups_to_owned(graphic))
 }
@@ -68,6 +69,7 @@ unsafe fn deep_repark_graphic(value: &(dyn std::any::Any + Send + Sync), dst: *m
 	let graphic = value.downcast_ref::<Graphic>().expect("an element replays at its own type");
 	let resident = map_groups_to_resident(graphic, arena)?;
 	let retained = graphic_retained_heap(&resident);
+	// SAFETY: the caller's contract; the resident form is a `Graphic` for `dst`.
 	unsafe { core_types::record::write_element_sized(dst, resident, arena, retained) }
 }
 
@@ -165,12 +167,14 @@ pub(crate) fn map_attribute_groups_to_persistent(list: &mut List<Graphic<'_>>, p
 /// `src` must point at a live parked `Graphic` element field, and `dst` at the
 /// element field the promoted reference is written to.
 unsafe fn promote_graphic(src: *const u8, dst: *mut u8, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
+	// SAFETY: the caller's contract on `src`.
 	let graphic = unsafe { core_types::record::borrow_element::<Graphic>(core_types::record::Rec::new(src)) };
 	if !graphic_contains_groups(graphic) {
 		// SAFETY: a parked element slot holds one reference at offset 0, and a
 		// graphic no group is reachable from, elements and item attribute values
 		// alike, owns all of its content.
 		let header = unsafe { src.cast::<*const u8>().read() };
+		// SAFETY: as above; the group-free check establishes the own-all-content half.
 		if let Some(moved) = unsafe { promotion.move_park::<Graphic<'static>>(header, graphic_retained_heap(graphic)) } {
 			// SAFETY: as above, into the promoted image's own element slot.
 			unsafe { dst.cast::<*const Graphic<'static>>().write(moved) };
@@ -179,6 +183,7 @@ unsafe fn promote_graphic(src: *const u8, dst: *mut u8, promotion: &core_types::
 	}
 	let promoted = map_groups_to_persistent(graphic, promotion)?;
 	let retained = graphic_retained_heap(&promoted);
+	// SAFETY: the caller's contract on `dst`; the promoted form is a `Graphic`.
 	unsafe { core_types::record::write_element_sized(dst, promoted, promotion.persistent(), retained) }
 }
 
@@ -270,6 +275,8 @@ fn deep_repark_graphic_list(value: &dyn core_types::list::AnyAttributeValue, are
 		*element = map_groups_to_resident(element, arena)?;
 	}
 	map_attribute_groups_to_resident(&mut list, arena)?;
+	// SAFETY: every group the clone carried, in an element or an item attribute
+	// value, now names `arena`, whose borrow the replayed field is read at.
 	let list = unsafe { core_types::record::erase_static(list) };
 	Some(Some(Box::new(Some(list))))
 }

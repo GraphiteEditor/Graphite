@@ -50,6 +50,7 @@ impl<'e> Artboard<'e> {
 /// # Safety
 /// `ptr` must point at a live parked `Artboard` element field.
 unsafe fn deep_clone_artboard(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
+	// SAFETY: the caller's contract.
 	let artboard = unsafe { core_types::record::borrow_element::<Artboard>(core_types::record::Rec::new(ptr)) };
 	let mut content = artboard.0.clone();
 	for element in content.iter_element_values_mut() {
@@ -72,6 +73,7 @@ unsafe fn deep_repark_artboard(value: &(dyn std::any::Any + Send + Sync), dst: *
 		*element = crate::graphic::map_groups_to_resident(element, arena)?;
 	}
 	crate::graphic::map_attribute_groups_to_resident(&mut content, arena)?;
+	// SAFETY: the caller's contract on `dst`; the replayed content is an `Artboard`.
 	unsafe { core_types::record::write_element(dst, Artboard(content), arena) }
 }
 
@@ -83,12 +85,14 @@ unsafe fn deep_repark_artboard(value: &(dyn std::any::Any + Send + Sync), dst: *
 /// `src` must point at a live parked `Artboard` element field, and `dst` at
 /// the element field the promoted reference is written to.
 unsafe fn promote_artboard(src: *const u8, dst: *mut u8, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
+	// SAFETY: the caller's contract on `src`.
 	let artboard = unsafe { core_types::record::borrow_element::<Artboard>(core_types::record::Rec::new(src)) };
 	if !crate::graphic::list_contains_groups(&artboard.0) {
 		// SAFETY: a parked element slot holds one reference at offset 0, and
 		// content no group is reachable from, elements and item attribute values
 		// alike, owns all of itself.
 		let header = unsafe { src.cast::<*const u8>().read() };
+		// SAFETY: as above; the group-free check establishes the own-all-content half.
 		if let Some(moved) = unsafe { promotion.move_park::<Artboard>(header, 0) } {
 			// SAFETY: as above, into the promoted image's own element slot.
 			unsafe { dst.cast::<*const Artboard>().write(moved) };
@@ -101,6 +105,7 @@ unsafe fn promote_artboard(src: *const u8, dst: *mut u8, promotion: &core_types:
 		content.push(core_types::list::Item::from_parts(crate::graphic::map_groups_to_persistent(&element, promotion)?, attributes));
 	}
 	crate::graphic::map_attribute_groups_to_persistent(&mut content, promotion)?;
+	// SAFETY: the caller's contract on `dst`; the promoted content is an `Artboard`.
 	unsafe { core_types::record::write_element(dst, Artboard(content), promotion.persistent()) }
 }
 

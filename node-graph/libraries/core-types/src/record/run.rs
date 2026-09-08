@@ -96,6 +96,8 @@ impl<'e> RunBuilder<'e> {
 		// `lane` is below `len`; the element slot and each field's region are
 		// disjoint parts of this lane.
 		let base = unsafe { self.frames.add(lane * stride) };
+		// SAFETY: the element slot is fresh, and the assert above matched `T` to
+		// the layout's element type.
 		unsafe { write_element(base, element, self.arena) }?;
 		for field in &self.layout.fields {
 			// SAFETY: as above; the field region is within the lane.
@@ -240,6 +242,7 @@ impl<'e> GroupItem<'e> {
 		for lane in 0..batch.len() {
 			// SAFETY: both sides hold `len` lanes at the shared layout's stride.
 			let dst = unsafe { frames.add(lane * stride) };
+			// SAFETY: as above; the scratch was reserved for exactly these lanes.
 			unsafe { std::ptr::copy_nonoverlapping(batch.get(lane).rec().ptr(), dst, stride) };
 			if parked {
 				// SAFETY: the copy images a live record of this layout.
@@ -355,6 +358,7 @@ impl<'e> GroupItem<'e> {
 			.layout
 			.element
 			.parked
+			// SAFETY: as above; a parked element sits at each lane's offset 0.
 			.then(|| (0..self.len).map(|lane| unsafe { (self.layout.element.clone_out)(frames.add(lane * stride)) }).collect());
 		let fields = self
 			.layout
@@ -363,6 +367,7 @@ impl<'e> GroupItem<'e> {
 			.enumerate()
 			.filter(|(_, field)| field.repark.is_some())
 			.map(|(index, field)| {
+				// SAFETY: as above; each lane reads this descriptor's own offset.
 				let mut values: Vec<_> = (0..self.len).map(|lane| unsafe { (field.read_erased)(frames.add(lane * stride + field.offset)) }).collect();
 				if let Some(glue) = values.first().and_then(|value| deep_field_glue(value.as_any().type_id())) {
 					for value in &mut values {
@@ -400,6 +405,7 @@ impl<'e> GroupItem<'e> {
 		unsafe { std::ptr::copy_nonoverlapping(owned.bytes.as_ptr(), frames, owned.bytes.len()) };
 		if let Some(elements) = &owned.elements {
 			for (lane, element) in elements.iter().enumerate() {
+				// SAFETY: as above; the clone is this element's own type, into its lane's slot.
 				unsafe { (self.layout.element.repark)(&**element, frames.add(lane * stride), arena) }?;
 			}
 		}
@@ -408,6 +414,8 @@ impl<'e> GroupItem<'e> {
 			let repark = field.repark.expect("copied fields carry re-park glue");
 			let glue = values.first().and_then(|value| deep_field_glue(value.as_any().type_id()));
 			for (lane, value) in values.iter().enumerate() {
+				// SAFETY: the copy took these values through this field's own glue,
+				// so each writes its own type into its lane's region of the field.
 				match glue {
 					Some(glue) => match (glue.replay)(&**value, arena)? {
 						Some(resident) => unsafe { repark(&*resident, frames.add(lane * stride + field.offset), arena) }?,
@@ -600,14 +608,20 @@ impl<'e> Group<'e> {
 /// touches. The element always carries glue (`assert_element_glue`) and
 /// `FieldWrite::of` always installs field glue, so a padded value's own
 /// padding never reaches the byte fallback either.
+///
+/// # Safety
+/// `a` and `b` must both be live records of `layout`.
 unsafe fn record_content_eq(layout: &Layout, a: *const u8, b: *const u8) -> bool {
+	// SAFETY: the caller's contract; each call reads a written span of the layout.
 	let bytes_eq = |offset: usize, size: usize| unsafe { std::slice::from_raw_parts(a.add(offset), size) == std::slice::from_raw_parts(b.add(offset), size) };
 	let element = match layout.element.content_eq {
+		// SAFETY: the caller's contract; the glue is the element's own.
 		Some(eq) => unsafe { eq(a, b) },
 		None => bytes_eq(0, layout.element.size),
 	};
 	element
 		&& layout.fields.iter().all(|field| match field.content_eq {
+			// SAFETY: as above, at this descriptor's own offset.
 			Some(eq) => unsafe { eq(a.add(field.offset), b.add(field.offset)) },
 			None => bytes_eq(field.offset, field.size),
 		})
@@ -615,14 +629,21 @@ unsafe fn record_content_eq(layout: &Layout, a: *const u8, b: *const u8) -> bool
 
 /// Hashes one record region of `layout` by content, with the byte fallback
 /// of [`record_content_eq`].
+///
+/// # Safety
+/// `ptr` must be a live record of `layout`.
 unsafe fn record_content_hash(layout: &Layout, ptr: *const u8, state: &mut dyn core::hash::Hasher) {
 	match layout.element.content_hash {
+		// SAFETY: the caller's contract; the glue is the element's own.
 		Some(hash) => unsafe { hash(ptr, state) },
+		// SAFETY: as above; the element's own bytes are written.
 		None => state.write(unsafe { std::slice::from_raw_parts(ptr, layout.element.size) }),
 	}
 	for field in &layout.fields {
 		match field.content_hash {
+			// SAFETY: as above, at this descriptor's own offset.
 			Some(hash) => unsafe { hash(ptr.add(field.offset), state) },
+			// SAFETY: as above; the field's own bytes are written.
 			None => state.write(unsafe { std::slice::from_raw_parts(ptr.add(field.offset), field.size) }),
 		}
 	}

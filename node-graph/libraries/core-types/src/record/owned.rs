@@ -113,17 +113,21 @@ impl OwnedRecord {
 		// The element-to-field seam is never written, so the copy stays untyped:
 		// a `&[u8]` over the frame would read those bytes.
 		let mut staged = Vec::<u8>::with_capacity(layout.size);
+		// SAFETY: the caller's contract sizes the record at `layout.size`, which
+		// is the capacity just reserved, so the copy fills exactly the staging.
 		let bytes = unsafe {
 			std::ptr::copy_nonoverlapping(rec.ptr(), staged.as_mut_ptr(), layout.size);
 			staged.set_len(layout.size);
 			staged.into_boxed_slice()
 		};
+		// SAFETY: the caller's contract; a parked element sits at offset 0.
 		let element = layout.element.parked.then(|| unsafe { (layout.element.clone_out)(rec.ptr()) });
 		let fields = layout
 			.fields
 			.iter()
 			.enumerate()
 			.filter(|(_, field)| field.repark.is_some())
+			// SAFETY: the caller's contract; each field reads its own descriptor's offset.
 			.map(|(index, field)| (index, field.type_id, deepen_field_value(unsafe { (field.read_erased)(rec.ptr().add(field.offset)) })))
 			.collect();
 		OwnedRecord { bytes, element, fields }
@@ -146,15 +150,21 @@ impl OwnedRecord {
 		self.write_into(layout, slot.dst(), arena)
 	}
 
+	/// `dst` is a claimed frame of `layout`, and `replay_into`'s asserts have
+	/// established that `layout` is the one the copy was taken at.
 	fn write_into(&self, layout: &Layout, dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
+		// SAFETY: the copy is `layout.size` bytes and the claim is a frame of it.
 		unsafe { std::ptr::copy_nonoverlapping(self.bytes.as_ptr(), dst, self.bytes.len()) };
 		if let Some(element) = &self.element {
+			// SAFETY: the element was cloned out of this layout's own slot at offset 0.
 			unsafe { (layout.element.repark)(&**element, dst, arena) }?;
 		}
 		for (index, _, value) in &self.fields {
 			let field = &layout.fields[*index];
 			let repark = field.repark.expect("copied fields carry re-park glue");
 			let resident = replay_field_value(&**value, arena)?;
+			// SAFETY: the asserts matched this index's field type, so the glue and
+			// the value agree; the write lands in that field's own region.
 			unsafe { repark(resident.as_deref().unwrap_or(&**value), dst.add(field.offset), arena) }?;
 		}
 		Some(())
