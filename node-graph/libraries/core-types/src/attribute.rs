@@ -20,8 +20,24 @@ use std::sync::{LazyLock, Mutex};
 
 /// Declares an attribute name: one marker per name, fixing the value type and
 /// the name-specific default. Declare markers through the [`attribute!`]
-/// macro, which also registers them into the [`ATTRIBUTE_REGISTRY`].
-pub trait Attribute: 'static {
+/// macro, which also registers them into the [`ATTRIBUTE_REGISTRY`] and emits
+/// an impl meeting the obligations below.
+///
+/// # Safety
+///
+/// [`REPARK`](Self::REPARK) must be `Some` for every marker whose
+/// [`Value<'e>`](Self::Value) can carry a borrow shorter than `'static`. The
+/// plain-value arm of the census writer retypes the value [`from_stored`] hands
+/// it from the stored form's lifetime to the field's, which is only a relabel
+/// where the value borrows nothing; a re-parking marker instead writes a
+/// reference into the arena it is given.
+///
+/// [`from_stored`](Self::from_stored) must accept exactly the erased form
+/// [`read_erased`](Self::read_erased) produces, and [`read_erased`] must read
+/// its `ptr` as this marker's own `Value`. The two are each other's inverse
+/// across every persistence seam, so a marker that reads one type and stores
+/// another writes a value of the wrong type into the field.
+pub unsafe trait Attribute: 'static {
 	/// The name as it appears in documents and diagnostics.
 	const NAME: &'static str;
 	/// The value type every read and write of this name shares. The lifetime
@@ -267,7 +283,10 @@ macro_rules! attribute {
 		$(#[$meta])*
 		$vis struct $marker;
 
-		impl $crate::attribute::Attribute for $marker {
+		// SAFETY: the reference-valued arms emit `REPARK`, the plain arm's value
+		// type cannot name `'e`, and `read_erased` and `from_stored` are emitted
+		// as each other's inverse.
+		unsafe impl $crate::attribute::Attribute for $marker {
 			const NAME: &'static str = $name;
 			type Value<'e> = ::core::option::Option<&'e $value>;
 
@@ -306,7 +325,10 @@ macro_rules! attribute {
 		$(#[$meta])*
 		$vis struct $marker;
 
-		impl $crate::attribute::Attribute for $marker {
+		// SAFETY: the reference-valued arms emit `REPARK`, the plain arm's value
+		// type cannot name `'e`, and `read_erased` and `from_stored` are emitted
+		// as each other's inverse.
+		unsafe impl $crate::attribute::Attribute for $marker {
 			const NAME: &'static str = $name;
 			type Value<'e> = &'e $value;
 			$(
@@ -341,7 +363,10 @@ macro_rules! attribute {
 		$(#[$meta])*
 		$vis struct $marker;
 
-		impl $crate::attribute::Attribute for $marker {
+		// SAFETY: the reference-valued arms emit `REPARK`, the plain arm's value
+		// type cannot name `'e`, and `read_erased` and `from_stored` are emitted
+		// as each other's inverse.
+		unsafe impl $crate::attribute::Attribute for $marker {
 			const NAME: &'static str = $name;
 			type Value<'e> = $value;
 			$(
@@ -497,7 +522,8 @@ mod tests {
 	#[should_panic(expected = "two value types")]
 	fn a_second_marker_at_a_different_type_panics() {
 		struct Conflict;
-		impl Attribute for Conflict {
+		// SAFETY: `bool` borrows nothing, so the plain-value arm is the right one.
+		unsafe impl Attribute for Conflict {
 			const NAME: &'static str = "opacity";
 			type Value<'e> = bool;
 
