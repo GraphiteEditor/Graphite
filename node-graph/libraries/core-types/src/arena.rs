@@ -344,9 +344,13 @@ impl Arena {
 	/// The generation-checked handle for a region this arena holds, `None` for
 	/// a pointer from anywhere else. The handle keeps the region's provenance,
 	/// so a cache stores one where it would otherwise launder an address.
+	///
+	/// The offset must sit below the bump watermark, not merely inside the
+	/// backbone: [`ArenaWeak::upgrade`] hands out a `&T` at it, so only bytes a
+	/// reservation already handed out may be minted into a handle.
 	pub fn handle_at(&self, ptr: *const u8) -> Option<ArenaWeak<u8>> {
 		let offset = (ptr as usize).checked_sub(self.base() as usize)?;
-		(offset < self.buf.len()).then_some(())?;
+		(offset < self.offset.load(Ordering::Acquire)).then_some(())?;
 		ArenaWeak::new(self.generation(), offset)
 	}
 
@@ -548,6 +552,19 @@ mod tests {
 		let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| arena.reset()));
 		assert!(unwound.is_err(), "the panic must propagate out of reset");
 		assert!(cell.load(&arena).is_none(), "a half-dropped generation must resolve no handle");
+	}
+
+	#[test]
+	fn handles_mint_only_over_reserved_bytes() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		let arena = Arena::new(1024).unwrap();
+		let (value, _) = arena.alloc(41u32).unwrap();
+		let ptr = std::ptr::from_ref(value).cast::<u8>();
+		assert!(arena.handle_at(ptr).is_some(), "a byte the bump handed out mints a handle");
+
+		let unreserved = ptr.wrapping_add(64);
+		assert!(arena.contains(unreserved), "the fixture stays inside the backbone");
+		assert!(arena.handle_at(unreserved).is_none(), "a byte past the watermark mints nothing");
 	}
 
 	/// Held by every test that perturbs [`NEXT_GENERATION`], so a swapped-out counter
