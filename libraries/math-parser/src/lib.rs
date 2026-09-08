@@ -4,6 +4,7 @@ pub mod context;
 pub mod executer;
 pub mod lexer;
 pub mod parser;
+pub mod quaternion;
 pub mod reducer;
 pub mod value;
 
@@ -21,6 +22,7 @@ pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use quaternion::Quaternion;
 	use value::{Complex, Number, Rung};
 
 	const EPSILON: f64 = 1e-10_f64;
@@ -142,18 +144,20 @@ mod tests {
 			"0/0",
 			"inf - inf",
 			"0 * inf",
+			"0 * inf i",
+			"inf j * 0",
+			"inf i - inf i",
 			"inf / inf",
 			"sin(inf)",
 			"gcd(inf, 6)",
 			"gcd(2.5, 5)",
 			"lcm(4, 1.5)",
+			"snap(5, 0)",
 			"mod(5, 0)",
+			"mod(5i, 0)",
 			"choose(2.5, 1.5)",
 			"pick(3, 0.5)",
 			"choose(3, -1)",
-			"min(i)",
-			"max(1, i)",
-			"clamp(i, 0, 1)",
 			"(-1)!",
 			"(-2)!",
 			"(-inf)!",
@@ -180,7 +184,7 @@ mod tests {
 			("(-1.5+300i)!", Complex::new(-9.760049091627542e-208, 1.5632983579858933e-207)),
 		] {
 			let Value::Number(actual) = evaluate(input).unwrap().unwrap();
-			let actual = actual.as_complex();
+			let actual = actual.as_complex().unwrap();
 			assert!((actual - expected).norm() / expected.norm() < 1e-12, "`{input}`: expected {expected}, got {actual}");
 		}
 	}
@@ -204,7 +208,7 @@ mod tests {
 			("choose(1.5 + 2i, 5000)", Complex::new(-2.541871408941716e-8, -8.84744846043224e-9), 1e-10),
 		] {
 			let Value::Number(actual) = evaluate(input).unwrap().unwrap();
-			let actual = actual.as_complex();
+			let actual = actual.as_complex().unwrap();
 			assert!((actual - expected).norm() / expected.norm() < tolerance, "`{input}`: expected {expected}, got {actual}");
 		}
 	}
@@ -283,6 +287,7 @@ mod tests {
 			("variancepop(1e308, 1e308)", 0.),
 			("stdevpop(1e308, -1e308)", 1e308),
 			("harmmean(1e-308, 1e-308)", 1e-308),
+			("rms(1e-320)", 1e-320),
 			("lerp(-1e308, 1e308, 0.5)", 0.),
 			("lerp(-1e308, 1e308, 1)", 1e308),
 			("remap(0, -1e308, 1e308, 0, 1)", 0.5),
@@ -294,6 +299,31 @@ mod tests {
 		// Three large operands whose least common multiple exceeds integer storage must not wrap around
 		let input = "lcm(9007199254740992, 9007199254740991, 9007199254740990)";
 		assert!(!matches!(evaluate(input), Ok(Ok(value)) if value.as_real().is_some_and(f64::is_finite)), "`{input}`");
+
+		// Each part averages over its own scale, so a small part beside huge ones keeps its precision
+		let Value::Number(mean) = evaluate("mean(1e308, 1e308, j)").unwrap().unwrap();
+		assert_eq!(mean.to_quaternion().y, 1. / 3.);
+	}
+
+	#[test]
+	fn magnitudes_avoid_intermediate_overflow_and_underflow() {
+		// Squaring these parts would overflow or underflow, but their magnitudes fit
+		for (input, expected) in [("|3e200 + 4e200j|", 5e200), ("|3e-200 + 4e-200j|", 5e-200), ("|1e-320 j|", 1e-320)] {
+			let magnitude = evaluate(input).unwrap().unwrap().as_real().unwrap();
+			assert!((magnitude / expected - 1.).abs() < 1e-15, "`{input}` gave {magnitude}");
+		}
+	}
+
+	#[test]
+	fn real_operands_act_on_each_part_as_on_a_real() {
+		// A real divisor, modulus, or step treats each part exactly as it would a lone real
+		for (input, expected) in [
+			("10k / 3", "(10 / 3) k"),
+			("mod(7.3 + j, 0.1)", "mod(7.3, 0.1) + mod(1, 0.1) j"),
+			("snap(2.6 - 1.4k, 0.3)", "snap(2.6, 0.3) + snap(-1.4, 0.3) k"),
+		] {
+			assert_eq!(evaluate(input).unwrap().unwrap(), evaluate(expected).unwrap().unwrap(), "`{input}`");
+		}
 	}
 
 	#[test]
@@ -408,15 +438,15 @@ mod tests {
 			Err(err) => panic!("failed to evaluate `{input}` because of error {err}"),
 		};
 
-		// Storage is never observable, so the comparison reads both values by their parts, with infinities matched exactly
+		// Storage is never observable, so the comparison reads both values by their four parts, with infinities matched exactly
 		let (Value::Number(actual), Value::Number(expected)) = (actual_value, expected_value);
-		let (actual, expected) = (actual.as_complex(), expected.as_complex());
-		for (part, actual, expected) in [("real", actual.re, expected.re), ("imaginary", actual.im, expected.im)] {
+		let (actual, expected) = (actual.to_quaternion().parts(), expected.to_quaternion().parts());
+		for ((actual, expected), basis) in actual.into_iter().zip(expected).zip(["1", "i", "j", "k"]) {
 			if actual.is_infinite() || expected.is_infinite() {
-				assert!(actual == expected, "`{input}` → {part} part: expected {expected:?}, got {actual:?}");
+				assert!(actual == expected, "`{input}` → `{basis}` part: expected {expected:?}, got {actual:?}");
 			} else {
 				let difference = (actual - expected).abs();
-				assert!(difference < EPSILON, "`{input}` → {part} part: expected {expected}, got {actual}, Δ={difference}");
+				assert!(difference < EPSILON, "`{input}` → `{basis}` part: expected {expected}, got {actual}, Δ={difference}");
 			}
 		}
 	}
@@ -444,6 +474,10 @@ mod tests {
 		modulo_neg_multiple: "mod(-4, 2)" => 0.,
 		modulo_integer_wrap: "mod(-7, 3)" => 2.,
 		modulo_angle_wrap: "mod(-pi/2, tau)" => 1.5 * std::f64::consts::PI,
+		modulo_complex: "mod(5.5i, 2)" => Complex::new(0., 1.5),
+		modulo_complex_both_parts: "mod(3 + 5.5i, 2)" => Complex::new(1., 1.5),
+		modulo_complex_modulus: "mod(7, 2i)" => -1.,
+		modulo_quaternion: "mod(j + 3k, 2)" => Quaternion::new(0., 0., 1., 1.),
 		exp_pos_pos: "3.2 ^ 2" => 256. / 25.,
 		exp_pos_neg: "3.2 ^ -2" => 25. / 256.,
 		exp_neg_neg: "-3.2 ^ -2" => -25. / 256.,
@@ -613,6 +647,14 @@ mod tests {
 		mapping_fract: "fract(3.25)" => 0.25,
 		mapping_sign_pos: "sign(5)" => 1.,
 		mapping_sign_neg: "sign(-5)" => -1.,
+		mapping_snap: "snap(7, 5)" => 5.,
+		mapping_snap_half_away_from_zero: "snap(7.5, 5)" => 10.,
+		mapping_snap_negative: "snap(-7.5, 5)" => -10.,
+		mapping_snap_negative_step: "snap(7, -5)" => 5.,
+		mapping_snap_integer_half_away_from_zero: "snap(-7, 2)" => -8.,
+		mapping_snap_fractional_step: "snap(0.37, 0.1)" => 0.4,
+		mapping_snap_complex: "snap(1.4 + 2.6i, 1)" => Complex::new(1., 3.),
+		mapping_snap_complex_step: "snap(2.2 + 0.1i, 1 + i)" => 2.,
 
 		// Geometry / mapping extras
 		geometry_hypot: "hypot(3, 4)" => 5.,
@@ -666,6 +708,8 @@ mod tests {
 		statistics_harmmean_infinite_operand: "harmmean(inf, 1)" => 2.,
 		statistics_harmmean_all_infinite: "harmmean(-inf, -inf)" => f64::NEG_INFINITY,
 		statistics_harmmean_huge: "harmmean(1e308, 1e308)" => 1e308,
+		statistics_variance_quaternion: "variance(j, -j)" => 2.,
+		statistics_rms_quaternion: "rms(3j, 4k)" => 12.5_f64.sqrt(),
 		logical_xor_odd_parity: "xor(1, 1, 1)" => 1.,
 		logical_xor_even_parity: "xor(1, 0, 1)" => 0.,
 		mapping_remap: "remap(5, 0, 10, 0, 100)" => 50.,
@@ -692,6 +736,7 @@ mod tests {
 		combinatorics_pick_fractional_top: "pick(2.5, 2)" => 3.75,
 		combinatorics_pick_negative_top: "pick(-5, 3)" => -210.,
 		combinatorics_pick_complex_top: "pick(i, 2)" => Complex::new(-1., -1.),
+		combinatorics_choose_quaternion_top: "choose(j, 2)" => Quaternion::new(-0.5, 0., -0.5, 0.),
 		// A result beyond f64 stops at infinity instead of stepping through quadrillions of terms
 		combinatorics_choose_overflows: "choose(9007199254740992, 4503599627370496)" => f64::INFINITY,
 		combinatorics_pick_overflows: "pick(9007199254740992, 9007199254740992)" => f64::INFINITY,
@@ -769,6 +814,31 @@ mod tests {
 		division_scaled_max: "(1e308 + 1e308i) / (1e308 + 1e308i)" => 1.,
 		division_scaled_max_dividend: "(1e308 + 1e308i) / (1 + i)" => 1e308,
 		division_scaled_max_dividend_signs: "(1e308 - 1e308i) / (1 + i)" => Complex::new(0., -1e308),
+		division_by_zero_quaternion: "|j / 0|" => f64::INFINITY,
+		division_scaled_quaternion: "(1e-200 j) / (1e-200 j)" => 1.,
+		division_by_subnormal_quaternion: "1 / (1e-320 j)" => Quaternion::new(0., 0., f64::NEG_INFINITY, 0.),
+		division_by_infinite_quaternion: "1 / (j / 0)" => 0.,
+
+		// A zero part is an absent axis, so an infinite vector scales, turns, and divides without the NaN of `∞ · 0`
+		infinite_imaginary: "inf i" => Complex::new(0., f64::INFINITY),
+		infinite_imaginary_typeset: "-∞j" => Quaternion::new(0., 0., f64::NEG_INFINITY, 0.),
+		infinite_imaginary_turned: "inf i * i" => f64::NEG_INFINITY,
+		infinite_quaternion_turned: "inf j * k" => Complex::new(0., f64::INFINITY),
+		infinite_imaginary_squared: "(inf i)^2" => f64::NEG_INFINITY,
+		infinite_imaginary_quotient: "inf i / i" => f64::INFINITY,
+		infinite_quaternion_quotient: "inf j / j" => f64::INFINITY,
+		infinite_power_direction: "(1e200 i)^3" => Complex::new(0., f64::NEG_INFINITY),
+
+		// Functions of one variable find the direction of a tiny or infinite vector part without overflow or NaN
+		subnormal_quaternion_logarithm: "ln(1e-320 j)" => Quaternion::new(1e-320_f64.ln(), 0., std::f64::consts::FRAC_PI_2, 0.),
+		infinite_quaternion_logarithm: "ln(inf j)" => Quaternion::new(f64::INFINITY, 0., std::f64::consts::FRAC_PI_2, 0.),
+		infinite_quaternion_root: "sqrt(inf j)" => Quaternion::new(f64::INFINITY, 0., f64::INFINITY, 0.),
+
+		// Overflowing terms that cancel rerun at a smaller scale, keeping only the product's true infinities
+		overflowing_complex_product: "(1e200 + 1e200i) * (1e200 + 1e200i)" => Complex::new(0., f64::INFINITY),
+		overflowing_complex_square: "(1e200 + 1e200i)^2" => Complex::new(0., f64::INFINITY),
+		overflowing_quaternion_square: "(1e200 + 1e200j)^2" => Quaternion::new(0., 0., f64::INFINITY, 0.),
+		overflowing_product_keeps_moderate_parts: "(1e200 + 1e200 i + 1e-150 k) * (1e200 - 1e200 i + 1e-150 k)" => Quaternion::new(f64::INFINITY, 0., -2. * (1e200 * 1e-150), 2. * (1e200 * 1e-150)),
 
 		// A whole exponent on a complex base multiplies out exactly
 		power_imaginary_square: "i^2" => -1.,
@@ -780,6 +850,10 @@ mod tests {
 		power_complex_negative_tiny: "(1e-200i)^-1" => Complex::new(0., -1e200),
 		power_complex_negative_underflow: "|(1e-200i)^-2|" => f64::INFINITY,
 		power_complex_overflow: "|(1.5 + 2i)^1000|" => f64::INFINITY,
+		power_quaternion_square: "j^2" => -1.,
+		power_quaternion_mixed_square: "(i + j)^2" => -2.,
+		power_quaternion_fourth: "k^4" => 1.,
+		power_quaternion_negative: "j^-1" => Quaternion::new(0., 0., -1., 0.),
 
 		// Domain climbs: a real input whose answer is complex resolves into the `1, i` plane
 		climb_sqrt: "sqrt(-4)" => Complex::new(0., 2.),
@@ -938,6 +1012,45 @@ mod tests {
 		// Change of base widens into the complex plane, including through the base-suffixed spellings
 		log_complex_change_of_base: "log(i, 2)" => Complex::new(0., std::f64::consts::FRAC_PI_2 / std::f64::consts::LN_2),
 		log_complex_suffixed_base: "log3(i)" => Complex::new(0., std::f64::consts::FRAC_PI_2 / 3f64.ln()),
+
+		// Quaternions: `*` is the Hamilton product on every rung, with `ijk = -1` and the bases anticommuting
+		quaternion_basis_squares: "j*j + k*k" => -2.,
+		quaternion_basis_product: "i*j*k" => -1.,
+		quaternion_anticommutation: "i*j - j*i" => Quaternion::new(0., 0., 0., 2.),
+		quaternion_square: "(1 + 2i + 3j + 4k)^2" => Quaternion::new(-28., 4., 6., 8.),
+		quaternion_division_identity: "(3i + 4j) / (3i + 4j)" => 1.,
+		quaternion_vector_square: "(2j) * (2j) + 4" => 0.,
+		quaternion_magnitude: "|1 + 2i + 2j + 4k|" => 5.,
+		quaternion_conjugate: "conj(1 + 2i + 3j + 4k)" => Quaternion::new(1., -2., -3., -4.),
+
+		// Functions of one variable act in the value's own complex plane, spanned by `1` and its normalized vector part
+		quaternion_sqrt_in_plane: "sqrt(2j)" => Quaternion::new(1., 0., 1., 0.),
+		quaternion_exp_in_plane: "exp(pi k)" => -1.,
+		quaternion_log_in_plane: "log(k, e)" => Quaternion::new(0., 0., 0., std::f64::consts::FRAC_PI_2),
+		quaternion_factorial_in_plane: "j!" => Quaternion::new(0.498015668118356, 0., -0.1549498283018107, 0.),
+
+		// Mapping, extremum, and interpolation functions act part by part, and magnitudes feed `hypot`
+		quaternion_floor_componentwise: "floor(1.5i + 2.5j)" => Quaternion::new(0., 1., 2., 0.),
+		quaternion_snap_componentwise: "snap(0.4 + 1.6j - 2.8k, 2)" => Quaternion::new(0., 0., 2., -2.),
+		quaternion_min_componentwise: "min(1 + 5j, 3 + 2j)" => Quaternion::new(1., 0., 2., 0.),
+		quaternion_clamp_componentwise: "clamp(5i - 5j, -i - j, i + j)" => Quaternion::new(0., 1., -1., 0.),
+		quaternion_lerp: "lerp(2i, 4j, 0.5)" => Quaternion::new(0., 1., 2., 0.),
+		quaternion_mean_pointwise: "mean(2i, 4j)" => Quaternion::new(0., 1., 2., 0.),
+		quaternion_abs_per_part: "abs(-1 - 2i + 3j - 4k)" => Quaternion::new(1., 2., 3., 4.),
+		quaternion_hypot_magnitudes: "hypot(3i + 4j, 12)" => 13.,
+
+		// A real is a quaternion with zero vector parts, so as a bound it holds a vector's parts to zero
+		quaternion_max_with_zero: "max(2i - 3j, 0)" => Complex::new(0., 2.),
+		quaternion_max_with_real: "max(0.5i + 2j, 1)" => Quaternion::new(1., 0.5, 2., 0.),
+		quaternion_clamp_by_reals: "clamp(3i, 1, 2)" => 1.,
+	}
+
+	#[test]
+	fn vectors_have_no_order() {
+		// Ordering is real-only, and logic needs truth values
+		for input in ["i < j", "!j", "(1 + j) && 1", "median(j, k)"] {
+			assert!(evaluate(input).unwrap().is_err(), "expected `{input}` to be an evaluation error");
+		}
 	}
 
 	#[test]
@@ -1004,6 +1117,19 @@ mod tests {
 		// A truth value is exactly 0 or 1
 		assert_eq!(evaluate("2 > 1").unwrap().unwrap().as_bool(), Some(true));
 		assert_eq!(evaluate("0.5").unwrap().unwrap().as_bool(), None);
+
+		// A host's value reads by its content, whatever storage built it
+		assert_eq!(Value::from(Quaternion::ONE).as_bool(), Some(true));
+		assert_eq!(Value::from(Complex::new(2., 0.)).as_i64(), Some(2));
+	}
+
+	#[test]
+	fn huge_quaternion_inverse() {
+		// The norm overflows, but the inverse's parts are representable
+		let inverse = Quaternion::splat(1e308).inverse();
+		for (part, expected) in inverse.parts().into_iter().zip([1., -1., -1., -1.]) {
+			assert!((part * 1e308 * 4. - expected).abs() < EPSILON, "expected {expected}, got {}", part * 1e308 * 4.);
+		}
 	}
 
 	#[test]
@@ -1027,6 +1153,10 @@ mod tests {
 		assert_eq!(evaluate_i64("min(2^53 + 1, 2^53 + 2)"), Some((1_i64 << 53) + 1));
 		assert_eq!(evaluate_i64("clamp(2^53 + 1, 0, 2^60)"), Some((1_i64 << 53) + 1));
 		assert_eq!(evaluate_i64("floor(2^53 + 1)"), Some((1_i64 << 53) + 1));
+		assert_eq!(evaluate_i64("snap(2^53 + 1, 1)"), Some((1_i64 << 53) + 1));
+		assert_eq!(evaluate_i64("snap(2^60 + 3, 2)"), Some((1_i64 << 60) + 4));
+		assert_eq!(evaluate_i64("lerp(2^53 + 1, 2^53 + 3, 1)"), Some((1_i64 << 53) + 3));
+		assert_eq!(evaluate_i64("mean(2^53 + 1, 2^53 + 3)"), Some((1_i64 << 53) + 2));
 		assert_eq!(evaluate_i64("9007199254740993 + 1.0"), Some((1_i64 << 53) + 2));
 
 		// Integer storage reaches its own lower bound, whose magnitude no literal can spell
@@ -1080,6 +1210,17 @@ mod tests {
 		assert_eq!(rung("i * i"), Rung::Integer);
 		assert_eq!(rung("0.5"), Rung::Number);
 		assert_eq!(rung("inf"), Rung::Number);
-		assert_eq!(rung("sqrt(-4)"), Rung::Particle1);
+		assert_eq!(rung("1 + 2i"), Rung::Particle1);
+
+		// The vector rungs are the weightless refinements, each named by its highest nonzero axis, so a domain climb
+		// with no real part lands on one
+		assert_eq!(rung("sqrt(-4)"), Rung::Vector1);
+		assert_eq!(rung("3i"), Rung::Vector1);
+		assert_eq!(rung("3i + 4j"), Rung::Vector2);
+		assert_eq!(rung("i * j"), Rung::Vector3);
+		assert_eq!(rung("1 + 3i + 4j"), Rung::Particle2);
+		assert_eq!(rung("1 + k"), Rung::Particle3);
+		assert_eq!(rung("j * j"), Rung::Integer);
+		assert_eq!(rung("j^2"), Rung::Integer);
 	}
 }

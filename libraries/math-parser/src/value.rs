@@ -1,4 +1,5 @@
 use crate::ast::{BinaryOp, UnaryOp};
+use crate::quaternion::Quaternion;
 use std::cmp::Ordering;
 use std::f64::consts::PI;
 use std::ops::Mul;
@@ -94,7 +95,13 @@ impl From<i64> for Value {
 
 impl From<Complex> for Value {
 	fn from(complex: Complex) -> Self {
-		Self::Number(Number::Complex(complex))
+		Self::Number(Number::Complex(complex).canonical())
+	}
+}
+
+impl From<Quaternion> for Value {
+	fn from(quaternion: Quaternion) -> Self {
+		Self::Number(Number::Quaternion(quaternion).canonical())
 	}
 }
 
@@ -106,7 +113,8 @@ impl core::fmt::Display for Value {
 	}
 }
 
-/// A rung of the number ladder: each is the set of values whose remaining parts are zero, so every rung is a subset of the next.
+/// A rung of the number ladder, Bool ⊂ Integer ⊂ Number ⊂ Particle1 ⊂ Particle2 ⊂ Particle3: each is the set of values
+/// whose remaining parts are zero, and the vector rungs are the weightless refinements of the particle rungs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rung {
 	/// Exactly 0 or 1.
@@ -115,8 +123,18 @@ pub enum Rung {
 	Integer,
 	/// A real number, which Graphite labels Number.
 	Number,
-	/// A complex number, with a real part and an `i` part.
+	/// A weightless `i` part alone: a displacement along `x`.
+	Vector1,
+	/// A real part and an `i` part: the complex numbers.
 	Particle1,
+	/// Weightless `i` and `j` parts: a displacement in the `xy` plane.
+	Vector2,
+	/// A real part with `i` and `j` parts.
+	Particle2,
+	/// Weightless `i`, `j`, and `k` parts: a displacement in `xyz` space.
+	Vector3,
+	/// All four parts: the quaternions.
+	Particle3,
 }
 
 /// A number's storage form, an optimization that is never observable: behavior is decided by the number's mathematical
@@ -127,6 +145,7 @@ pub enum Number {
 	Integer(i64),
 	Real(f64),
 	Complex(Complex),
+	Quaternion(Quaternion),
 }
 
 impl PartialEq for Number {
@@ -135,9 +154,13 @@ impl PartialEq for Number {
 			(Number::Integer(lhs), Number::Integer(rhs)) => lhs == rhs,
 			(Number::Real(lhs), Number::Real(rhs)) => lhs == rhs,
 			(Number::Integer(integer), Number::Real(real)) | (Number::Real(real), Number::Integer(integer)) => compare_integer_real(*integer, *real) == Some(Ordering::Equal),
-			(Number::Complex(lhs), Number::Complex(rhs)) => lhs == rhs,
-			// A complex number without an imaginary part equals a real number the way its real part does
-			(Number::Complex(complex), real) | (real, Number::Complex(complex)) => complex.im == 0. && Number::Real(complex.re) == *real,
+			// A number with a vector part equals a real number only when that part is zero, and then the way its real part does
+			(vector @ (Number::Complex(_) | Number::Quaternion(_)), real @ (Number::Integer(_) | Number::Real(_)))
+			| (real @ (Number::Integer(_) | Number::Real(_)), vector @ (Number::Complex(_) | Number::Quaternion(_))) => {
+				let quaternion = vector.to_quaternion();
+				quaternion.is_real() && Number::Real(quaternion.w) == *real
+			}
+			_ => self.to_quaternion() == other.to_quaternion(),
 		}
 	}
 }
@@ -148,6 +171,7 @@ impl std::fmt::Display for Number {
 			Number::Integer(integer) => integer.fmt(f),
 			Number::Real(real) => real.fmt(f),
 			Number::Complex(complex) => complex.fmt(f),
+			Number::Quaternion(quaternion) => quaternion.fmt(f),
 		}
 	}
 }
@@ -173,22 +197,33 @@ impl Number {
 		}
 	}
 
-	/// Reads the number as a real, or `None` if it has an imaginary part.
+	/// Reads the number as a real, or `None` if it has a vector part.
 	pub fn as_real(self) -> Option<f64> {
 		match self {
 			Number::Integer(integer) => Some(integer as f64),
 			Number::Real(real) => Some(real),
-			// Canonical form stores a zero imaginary part as a real, so a canonical complex number is never real
-			Number::Complex(_) => None,
+			// Canonical form stores a number whose other parts are zero as a real, so a canonical complex number or quaternion is never real
+			Number::Complex(_) | Number::Quaternion(_) => None,
 		}
 	}
 
-	/// Widens the number into the complex plane, since every real number is a complex number without an imaginary part.
-	pub fn as_complex(self) -> Complex {
+	/// Reads the number as a complex number, or `None` if it has a `j` or `k` part.
+	pub fn as_complex(self) -> Option<Complex> {
 		match self {
-			Number::Integer(integer) => Complex::new(integer as f64, 0.),
-			Number::Real(real) => Complex::new(real, 0.),
-			Number::Complex(complex) => complex,
+			Number::Complex(complex) => Some(complex),
+			Number::Quaternion(quaternion) if quaternion.y == 0. && quaternion.z == 0. => Some(Complex::new(quaternion.w, quaternion.x)),
+			Number::Quaternion(_) => None,
+			real => Some(Complex::new(real.as_real()?, 0.)),
+		}
+	}
+
+	/// Widens the number to its full quaternion form, since every value is a quaternion whose remaining parts are zero.
+	pub fn to_quaternion(self) -> Quaternion {
+		match self {
+			Number::Integer(integer) => Quaternion::new(integer as f64, 0., 0., 0.),
+			Number::Real(real) => Quaternion::new(real, 0., 0., 0.),
+			Number::Complex(complex) => Quaternion::from_complex(complex),
+			Number::Quaternion(quaternion) => quaternion,
 		}
 	}
 
@@ -204,17 +239,28 @@ impl Number {
 	/// The lowest rung of the number ladder that holds the number losslessly.
 	pub fn rung(self) -> Rung {
 		match self {
-			Number::Integer(0 | 1) | Number::Real(0. | 1.) => Rung::Bool,
-			Number::Integer(_) => Rung::Integer,
-			Number::Real(real) if real.fract() == 0. => Rung::Integer,
-			Number::Real(_) => Rung::Number,
-			Number::Complex(complex) if complex.im == 0. => Number::Real(complex.re).rung(),
-			Number::Complex(_) => Rung::Particle1,
+			Number::Integer(0 | 1) => return Rung::Bool,
+			Number::Integer(_) => return Rung::Integer,
+			_ => {}
+		}
+
+		let Quaternion { w, x, y, z } = self.to_quaternion();
+		let highest_axis = [x, y, z].iter().rposition(|part| *part != 0.).map_or(0, |index| index + 1);
+		match (w == 0., highest_axis) {
+			(_, 0) if w == 0. || w == 1. => Rung::Bool,
+			(_, 0) if w.fract() == 0. => Rung::Integer,
+			(_, 0) => Rung::Number,
+			(true, 1) => Rung::Vector1,
+			(false, 1) => Rung::Particle1,
+			(true, 2) => Rung::Vector2,
+			(false, 2) => Rung::Particle2,
+			(true, _) => Rung::Vector3,
+			(false, _) => Rung::Particle3,
 		}
 	}
 
-	/// The number's canonical form: a zero imaginary part is dropped, since `n + 0i` is exactly `n`, a signed zero is plain
-	/// zero, and a whole real takes integer storage, so no zero-valued part or storage form can ever change a result.
+	/// The number's canonical form: zero-valued higher parts are dropped, since `n + 0i` is exactly `n`, a signed zero is
+	/// plain zero, and a whole real takes integer storage, so no zero-valued part or storage form can ever change a result.
 	#[inline(always)]
 	pub fn canonical(self) -> Number {
 		let unsigned_zero = |x: f64| if x == 0. { 0. } else { x };
@@ -224,6 +270,9 @@ impl Number {
 			Number::Real(real) => Number::real_or_integer(real),
 			Number::Complex(complex) if complex.im == 0. => Number::real_or_integer(complex.re),
 			Number::Complex(complex) => Number::Complex(Complex::new(unsigned_zero(complex.re), unsigned_zero(complex.im))),
+			Number::Quaternion(Quaternion { w, x: 0., y: 0., z: 0. }) => Number::real_or_integer(w),
+			Number::Quaternion(Quaternion { w, x, y: 0., z: 0. }) => Number::Complex(Complex::new(unsigned_zero(w), unsigned_zero(x))),
+			Number::Quaternion(quaternion) => Number::Quaternion(quaternion.map(unsigned_zero)),
 		}
 	}
 
@@ -233,6 +282,35 @@ impl Number {
 			Number::Integer(_) => false,
 			Number::Real(real) => real.is_nan(),
 			Number::Complex(complex) => complex.re.is_nan() || complex.im.is_nan(),
+			Number::Quaternion(quaternion) => quaternion.parts().iter().any(|part| part.is_nan()),
+		}
+	}
+
+	/// The Euclidean magnitude over every part: the absolute value on the reals.
+	pub fn magnitude(self) -> f64 {
+		match self {
+			Number::Integer(integer) => integer.unsigned_abs() as f64,
+			Number::Real(real) => real.abs(),
+			Number::Complex(complex) => complex.norm(),
+			Number::Quaternion(quaternion) => quaternion.norm(),
+		}
+	}
+
+	/// Applies a function to every part.
+	pub(crate) fn map_parts(self, function: impl Fn(f64) -> f64) -> Number {
+		match self {
+			Number::Integer(integer) => Number::Real(function(integer as f64)),
+			Number::Real(real) => Number::Real(function(real)),
+			Number::Complex(complex) => Number::Complex(Complex::new(function(complex.re), function(complex.im))),
+			Number::Quaternion(quaternion) => Number::Quaternion(quaternion.map(function)),
+		}
+	}
+
+	/// Rounds every part with `function`, passing an integer through since it is already whole.
+	pub(crate) fn round_parts(self, function: impl Fn(f64) -> f64) -> Number {
+		match self {
+			Number::Integer(_) => self,
+			_ => self.map_parts(function),
 		}
 	}
 
@@ -248,14 +326,16 @@ impl Number {
 			_ => {}
 		}
 
-		// Two integers compute exactly, falling back to the reals only when the result overflows integer storage
+		// Two integers compute exactly, falling back to the reals only when the result overflows integer storage, and any
+		// other pair computes in the widest storage either operand needs
 		let (lhs, rhs) = match (self, other) {
 			(Number::Real(lhs), Number::Real(rhs)) => (lhs, rhs),
 			(Number::Integer(lhs), Number::Integer(rhs)) => match integer_binary_op(lhs, op, rhs) {
 				Some(result) => return Some(result),
 				None => (lhs as f64, rhs as f64),
 			},
-			(Number::Complex(_), _) | (_, Number::Complex(_)) => return complex_binary_op(self.as_complex(), op, other.as_complex()),
+			(Number::Quaternion(_), _) | (_, Number::Quaternion(_)) => return quaternion_binary_op(self.to_quaternion(), op, other.to_quaternion()),
+			(Number::Complex(_), _) | (_, Number::Complex(_)) => return complex_binary_op(self.as_complex()?, op, other.as_complex()?),
 			// An integer beside a real widens for arithmetic, but orders exactly since widening rounds past 2^53
 			_ => {
 				if let Some(accepted) = comparison(op) {
@@ -268,7 +348,7 @@ impl Number {
 		real_binary_op(lhs, op, rhs)
 	}
 
-	/// Orders two real numbers by value, exactly across integer and real storage, or `None` when either is complex or NaN, since ordering is real-only.
+	/// Orders two real numbers by value, exactly across integer and real storage, or `None` when either has a vector part or is NaN, since ordering is real-only.
 	#[inline]
 	pub(crate) fn real_ordering(self, other: Number) -> Option<Ordering> {
 		match (self, other) {
@@ -287,12 +367,12 @@ impl Number {
 				Number::Integer(integer) => integer.checked_neg().map_or(Number::Real(-(integer as f64)), Number::Integer),
 				Number::Real(real) => Number::Real(-real),
 				Number::Complex(complex) => Number::Complex(-complex),
+				Number::Quaternion(quaternion) => Number::Quaternion(-quaternion),
 			}),
 			UnaryOp::Not => self.as_bool().map(|boolean| Number::from_bool(!boolean)),
 			UnaryOp::Magnitude => Some(match self {
 				Number::Integer(integer) => i64::try_from(integer.unsigned_abs()).map_or(Number::Real(integer.unsigned_abs() as f64), Number::Integer),
-				Number::Real(real) => Number::Real(real.abs()),
-				Number::Complex(complex) => Number::Real(complex.norm()),
+				_ => Number::Real(self.magnitude()),
 			}),
 			UnaryOp::Fac => {
 				// Exact while the product fits integer storage, which 21! overflows
@@ -302,6 +382,7 @@ impl Number {
 					Number::Integer(whole) => real_factorial(whole as f64).map(Number::Real),
 					Number::Real(real) => real_factorial(real).map(Number::Real),
 					Number::Complex(complex) => Some(Number::Complex(complex_gamma(complex + 1.))),
+					Number::Quaternion(quaternion) => Some(Number::Quaternion(quaternion.in_plane(|z| complex_gamma(z + 1.)))),
 				}
 			}
 		}
@@ -393,10 +474,12 @@ fn complex_binary_op(lhs: Complex, op: BinaryOp, rhs: Complex) -> Option<Number>
 	let result = match op {
 		BinaryOp::Add => lhs + rhs,
 		BinaryOp::Sub => lhs - rhs,
-		BinaryOp::Mul => lhs * rhs,
-		BinaryOp::Div if rhs == Complex::from(0.) => complex_over_zero(lhs, rhs.re),
+		BinaryOp::Mul => complex_product(lhs, rhs),
+		BinaryOp::Div if rhs.im == 0. => Complex::new(part_over_real(lhs.re, rhs.re), part_over_real(lhs.im, rhs.re)),
+		// An imaginary divisor divides the parts like a real one, a quarter turn apart: `(a + bi) / di` is `b / d - (a / d) i`
+		BinaryOp::Div if rhs.re == 0. => Complex::new(part_over_real(lhs.im, rhs.im), -part_over_real(lhs.re, rhs.im)),
 		BinaryOp::Div => complex_divide(lhs, rhs),
-		BinaryOp::Pow if rhs.im == 0. => return complex_real_power(lhs, rhs.re),
+		BinaryOp::Pow if rhs.im == 0. => return real_power(lhs, rhs.re, Complex::from(1.), complex_product, Number::Complex, || lhs.powf(rhs.re)),
 		BinaryOp::Pow => lhs.powc(rhs),
 		BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => return None,
 		BinaryOp::And | BinaryOp::Or | BinaryOp::Eq | BinaryOp::Neq => unreachable!("handled before dispatch"),
@@ -404,10 +487,61 @@ fn complex_binary_op(lhs: Complex, op: BinaryOp, rhs: Complex) -> Option<Number>
 	Some(Number::Complex(result))
 }
 
-/// Division by a real zero, sending each nonzero part to the infinity of its own sign as an overflow would, so `i / 0` is `∞i`.
-fn complex_over_zero(dividend: Complex, zero: f64) -> Complex {
-	let part_over_zero = |part: f64| if part == 0. { 0. } else { part / zero };
-	Complex::new(part_over_zero(dividend.re), part_over_zero(dividend.im))
+/// Multiplies two parts of a product, where a zero part is an absent axis contributing nothing even beside an infinite one, so `inf i`
+/// is `∞i` rather than the NaN of `∞ · 0`, unless an operand is the zero value, whose product with an infinity stays indeterminate.
+#[inline(always)]
+pub(crate) fn part_product(a: f64, b: f64, zero_operand: bool) -> f64 {
+	if (a == 0. || b == 0.) && !zero_operand { 0. } else { a * b }
+}
+
+/// Reruns a product whose overflowing terms cancelled into NaN on operands divided by powers of two near their largest parts, keeping the
+/// rerun only for the NaN parts since its scaling can underflow the rest. A NaN that remains is indeterminate, like `0 * ∞`.
+pub(crate) fn rescaled_product<const N: usize>(a: [f64; N], b: [f64; N], product: impl Fn([f64; N], [f64; N]) -> [f64; N]) -> [f64; N] {
+	let mut result = product(a, b);
+	if !result.iter().any(|part| part.is_nan()) {
+		return result;
+	}
+
+	let (a_scale, b_scale) = (power_of_two_scale(a.into_iter()), power_of_two_scale(b.into_iter()));
+	let rescaled = product(a.map(|part| part / a_scale), b.map(|part| part / b_scale));
+	for (part, rescaled) in result.iter_mut().zip(rescaled) {
+		if part.is_nan() {
+			*part = part_product(part_product(rescaled, a_scale, false), b_scale, false);
+		}
+	}
+	result
+}
+
+/// The complex product, with its parts multiplied by [`part_product`].
+fn complex_product(a: Complex, b: Complex) -> Complex {
+	let [re, im] = rescaled_product([a.re, a.im], [b.re, b.im], |[a_re, a_im], [b_re, b_im]| {
+		let zero_operand = (a_re == 0. && a_im == 0.) || (b_re == 0. && b_im == 0.);
+		let term = |x: f64, y: f64| part_product(x, y, zero_operand);
+		[term(a_re, b_re) - term(a_im, b_im), term(a_re, b_im) + term(a_im, b_re)]
+	});
+	Complex::new(re, im)
+}
+
+/// One part of a division by a real, keeping a zero part zero so `i / 0` is `∞i` rather than the NaN of `0 / 0` in its real part.
+fn part_over_real(part: f64, divisor: f64) -> f64 {
+	if part == 0. { 0. } else { part / divisor }
+}
+
+/// A power of two near the largest magnitude, dividing by which is exact and brings every value within ±2, so sums and squares
+/// of the scaled values neither overflow nor underflow. It's 1 when the largest magnitude is zero or infinite.
+pub(crate) fn power_of_two_scale(reals: impl Iterator<Item = f64>) -> f64 {
+	let largest = reals.fold(0_f64, |largest, real| largest.max(real.abs()));
+	if largest == 0. || largest.is_infinite() {
+		return 1.;
+	}
+
+	// A subnormal has no exponent bits to keep, so the smallest normal power stands in, lifting it into the normal range
+	if !largest.is_normal() {
+		return f64::MIN_POSITIVE;
+	}
+
+	// Keeping only the exponent bits zeroes the mantissa, leaving the power of two
+	f64::from_bits(largest.to_bits() & (0x7FF << 52))
 }
 
 /// Complex division by Smith's algorithm, scaling by the divisor's larger part so neither `|divisor|²` nor the quotient
@@ -430,41 +564,41 @@ pub(crate) fn complex_divide(dividend: Complex, divisor: Complex) -> Complex {
 	}
 }
 
-/// A complex base under a real exponent: a whole exponent multiplies out exactly by squaring, so `i^2` is `-1` where the polar
-/// form leaves a `sin(π)` residue, and any other exponent takes the polar form.
-fn complex_real_power(base: Complex, exponent: f64) -> Option<Number> {
+/// A base under a real exponent: a whole exponent multiplies out exactly by squaring, so `i^2` is `-1` where the polar form
+/// leaves a `sin(π)` residue, and any other exponent takes `fractional_power`.
+fn real_power<T: Copy>(base: T, exponent: f64, one: T, multiply: impl Fn(T, T) -> T, wrap: fn(T) -> Number, fractional_power: impl FnOnce() -> T) -> Option<Number> {
 	if exponent.fract() != 0. || exponent.abs() >= u128::MAX as f64 {
-		return Some(Number::Complex(base.powf(exponent)));
+		return Some(wrap(fractional_power()));
 	}
 
 	let power = match exponent.abs() as u128 {
-		0 => Complex::from(1.),
-		count => whole_power(base, count),
+		0 => one,
+		count => whole_power(base, count, multiply),
 	};
-	// An overflowed product has NaN cross terms, so the polar form takes over with the overflow's direction
-	if Number::Complex(power).is_nan() {
-		return Some(Number::Complex(base.powf(exponent)));
+	// An overflowed product has NaN cross terms, so `fractional_power` takes over with the overflow's direction
+	if wrap(power).is_nan() {
+		return Some(wrap(fractional_power()));
 	}
 
 	if exponent < 0. {
-		return Number::Real(1.).binary_op(BinaryOp::Div, Number::Complex(power).canonical());
+		return Number::Real(1.).binary_op(BinaryOp::Div, wrap(power).canonical());
 	}
-	Some(Number::Complex(power))
+	Some(wrap(power))
 }
 
 /// `base^n` for a whole `n` of at least 1 by repeated squaring, in O(log n) multiplications.
-fn whole_power<T: Copy + Mul<Output = T>>(mut base: T, mut exponent: u128) -> T {
+fn whole_power<T: Copy>(mut base: T, mut exponent: u128, multiply: impl Fn(T, T) -> T) -> T {
 	while exponent & 1 == 0 {
-		base = base * base;
+		base = multiply(base, base);
 		exponent >>= 1;
 	}
 
 	let mut result = base;
 	while exponent > 1 {
 		exponent >>= 1;
-		base = base * base;
+		base = multiply(base, base);
 		if exponent & 1 == 1 {
-			result = result * base;
+			result = multiply(result, base);
 		}
 	}
 	result
@@ -542,4 +676,23 @@ fn complex_log_sin(w: Complex) -> Complex {
 	let siw = Complex::new(0., s) * w;
 
 	-siw + (((2. * siw).exp() - 1.) / Complex::new(0., 2. * s)).ln()
+}
+
+/// Quaternion arithmetic, with `*` the Hamilton product; ordering is real-only, so it has no answer here.
+// Out of line as the rare case, keeping `binary_op` compact for the real and integer arithmetic that dominates
+#[cold]
+#[inline(never)]
+fn quaternion_binary_op(lhs: Quaternion, op: BinaryOp, rhs: Quaternion) -> Option<Number> {
+	let result = match op {
+		BinaryOp::Add => lhs + rhs,
+		BinaryOp::Sub => lhs - rhs,
+		BinaryOp::Mul => lhs * rhs,
+		BinaryOp::Div if rhs.is_real() => lhs.map(|part| part_over_real(part, rhs.w)),
+		BinaryOp::Div => lhs / rhs,
+		BinaryOp::Pow if rhs.is_real() => return real_power(lhs, rhs.w, Quaternion::ONE, Quaternion::mul, Number::Quaternion, || lhs.pow(rhs)),
+		BinaryOp::Pow => lhs.pow(rhs),
+		BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => return None,
+		BinaryOp::And | BinaryOp::Or | BinaryOp::Eq | BinaryOp::Neq => unreachable!("handled before dispatch"),
+	};
+	Some(Number::Quaternion(result))
 }
