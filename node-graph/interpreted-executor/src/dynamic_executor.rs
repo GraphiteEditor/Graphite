@@ -33,6 +33,20 @@ fn over_budget(used: usize, budget: usize) -> bool {
 	used >= budget / 8 * 7
 }
 
+/// The deep element glue is filled by runtime registration: ctors at load
+/// natively, host-invoked exports on wasm. A lifetime-carrying element whose
+/// glue never registered takes the shallow clone-out path, which brands its
+/// arena borrows `'static` for a memo to hold across a reset, so a missed
+/// registration is caught here rather than at the first capture.
+fn assert_deep_element_glue() {
+	for (name, registered) in [
+		("graphic", core_types::record::has_deep_element_glue(std::any::TypeId::of::<graphic_types::Graphic<'static>>())),
+		("artboard", core_types::record::has_deep_element_glue(std::any::TypeId::of::<graphic_types::Artboard<'static>>())),
+	] {
+		assert!(registered, "deep element glue for `{name}` is not registered; the host must run `__node_registry_deep_element_{name}` before evaluating");
+	}
+}
+
 fn new_arena(capacity: usize) -> Arena {
 	Arena::new(capacity).unwrap_or_else(|| {
 		log::error!("arena generations exhausted; continuing without frame caching");
@@ -66,6 +80,7 @@ fn noop_runtime() -> Arc<DynGraphRuntime> {
 
 impl Default for DynamicExecutor {
 	fn default() -> Self {
+		assert_deep_element_glue();
 		Self {
 			output: Default::default(),
 			tree: Default::default(),
@@ -96,6 +111,7 @@ pub struct ResolvedDocumentNodeTypesDelta {
 
 impl DynamicExecutor {
 	pub fn new(mut proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
+		assert_deep_element_glue();
 		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 		typing_context.update(&mut proto_network)?;
 		let output = proto_network.output;

@@ -28,7 +28,7 @@ pub use layout::{
 	ElToken, ElementSpec, ElementWrite, ElementWritePick, ElementWritePickHashed, ElementWritePickPlain, FieldDesc, FieldOffset, FieldWrite, InputReads, Layout, LayoutMeta, RecordLayout, copy_plan,
 	element_dims, element_parked, element_write, element_write_hashed, empty_layout,
 };
-pub use owned::{OwnedRecord, deepen_field_value, register_deep_element_clone, register_deep_field_value, replay_field_value};
+pub use owned::{OwnedRecord, deepen_field_value, has_deep_element_glue, register_deep_element_clone, register_deep_field_value, replay_field_value};
 pub use promote::{Promotion, assert_promoted, register_element_promote, register_field_promote, register_retained_heap};
 pub use route::{RecordSource, SourcePlan};
 pub use run::{Group, GroupItem, RunBuilder, RunColumn, RunView};

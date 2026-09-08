@@ -32,6 +32,13 @@ pub(in crate::record) fn deep_element_glue(type_id: std::any::TypeId) -> Option<
 	DEEP_ELEMENT_CLONES.lock().unwrap().get(&type_id).copied()
 }
 
+/// Whether elements of a type registered deep glue. The shallow clone path is
+/// only sound for types that did not need to, so a host that drives the
+/// registration itself checks the types it owes before it evaluates anything.
+pub fn has_deep_element_glue(type_id: std::any::TypeId) -> bool {
+	DEEP_ELEMENT_CLONES.lock().unwrap().contains_key(&type_id)
+}
+
 /// Deep-copy overrides for field values whose content borrows the
 /// evaluation's arena (a graphic list holding native groups), keyed by the
 /// field's owned value form. Consulted at the persistence seams only:

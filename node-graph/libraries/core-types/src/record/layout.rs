@@ -515,8 +515,11 @@ where
 		if let Some(deep) = deep_element_glue(std::any::TypeId::of::<T::Static>()) {
 			return unsafe { (deep.clone_out)(ptr) };
 		}
-		// SAFETY: a lifetime-carrying element type registers deep glue, so
-		// this shallow path only erases borrow-free values.
+		// SAFETY: a lifetime-carrying element type registers deep glue, so this
+		// shallow path only erases borrow-free values. The registration is a
+		// whole-program convention rather than something this call can check:
+		// the executor asserts the in-tree types registered before it evaluates,
+		// which is where a missed wasm registration export is caught.
 		Box::new(unsafe { erase_static(read_element::<T>(Rec::new(ptr))) })
 	}
 	unsafe fn repark<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(value: &(dyn std::any::Any + Send + Sync), dst: *mut u8, arena: &crate::arena::Arena) -> Option<()>
