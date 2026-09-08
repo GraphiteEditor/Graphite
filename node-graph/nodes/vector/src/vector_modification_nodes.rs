@@ -45,10 +45,8 @@ fn path_modify<'e>(
 
 /// Bakes the content's transform attribute into its underlying value, resetting the attribute to the identity.
 #[node_macro::node(category("Vector"))]
-fn bake_transform<T: BakeTransform + Clone + Default + Send + Sync + 'static>(
-	_ctx: impl Ctx,
-	#[implementations(Vector, DAffine2, DVec2)] (mut content, transform): (T, Attr<TransformAttr>),
-) -> (T, Attr<TransformAttr>) {
+// Monomorphic on Vector: our macro cannot yet read a record element through an open generic, so master's DAffine2 and DVec2 rows have no node here.
+fn bake_transform(_ctx: impl Ctx, (mut content, transform): (Vector, Attr<TransformAttr>)) -> (Vector, Attr<TransformAttr>) {
 	let transform: DAffine2 = *transform;
 	content.bake_transform(&transform);
 

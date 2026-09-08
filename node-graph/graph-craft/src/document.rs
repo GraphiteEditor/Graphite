@@ -139,7 +139,6 @@ impl DocumentNode {
 	/// Normalizes this node's stored types (call argument, `Import` input types, `TypeDefault` value payloads, and any nested network) to their structural form.
 	/// Applied once at ingestion (document migration and clipboard paste) so no name-encoded ranked type enters a live document.
 	pub fn normalize_stored_types(&mut self) {
-		self.call_argument = self.call_argument.clone().normalize_rank();
 		for input in &mut self.inputs {
 			normalize_input_stored_type(input);
 		}
@@ -268,8 +267,8 @@ impl NodeInput {
 
 	/// Constructs a `NodeInput::Value` whose tagged value is `TaggedValue::TypeDefault(ty)`, recording only the
 	/// type so the runtime materializes its default rather than baking a placeholder value into the saved document.
-	pub fn type_default(ty: Type, exposed: bool) -> Self {
-		Self::value(TaggedValue::TypeDefault(ty.normalize_rank()), exposed)
+	pub fn type_default(td: core_types::TypeDescriptor, exposed: bool) -> Self {
+		Self::value(TaggedValue::TypeDefault(td), exposed)
 	}
 
 	pub const fn import(import_type: Type, import_index: usize) -> Self {
@@ -758,10 +757,10 @@ impl ScopeChain<'_> {
 /// Normalizes the ranked types an input can store: an `Import`'s type or a value's `TypeDefault` payload.
 fn normalize_input_stored_type(input: &mut NodeInput) {
 	match input {
-		NodeInput::Import { import_type, .. } => *import_type = import_type.clone().normalize_rank(),
+		NodeInput::Import { .. } => {}
 		NodeInput::Value { tagged_value, .. } => {
 			if let TaggedValue::TypeDefault(ty) = &**tagged_value {
-				let normalized = ty.clone().normalize_rank();
+				let normalized = ty.clone();
 				if normalized != *ty {
 					*tagged_value = TaggedValue::TypeDefault(normalized).into();
 				}
@@ -1061,7 +1060,7 @@ impl NodeNetwork {
 			let (tagged_value, exposed) = match previous_export {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
-					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(path.to_vec()).into(), false),
+					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(core_types::list::NodeIdPath::from(path.to_vec())).into(), false),
 					DocumentNodeMetadata::SourceId => {
 						let source_id = Self::source_id_for_path(path);
 						if let Some(context_features) = context_features.as_deref_mut() {

@@ -2,11 +2,11 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::Any as DAny;
-use brush_nodes::brush_stroke::Stroke;
+use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::context::Context;
 use core_types::gpoll::GPoll;
-use core_types::list::List;
+use core_types::list::{Item, List, NodeIdPath};
 use core_types::registry::SourceHandle;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
@@ -84,7 +84,7 @@ macro_rules! tagged_value {
 			/// Stores a type, from which its `Default::default()` value can be obtained, rather than storing an actual type's value.
 			/// Example: `TaggedValue::TypeDefault(concrete!(String))` stores the type `String` but no specific string value.
 			/// (Old documents stored a bare `TypeDescriptor` payload, routed to this shape by `deserialize_tagged_value_with_legacy_migration`.)
-			TypeDefault(Type),
+			TypeDefault(TypeDescriptor),
 			/// Stored compactly as a `Vec<f64>`, materializes as `List<f64>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this document upgrade code
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
@@ -174,7 +174,7 @@ macro_rules! tagged_value {
 								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Box::new(<$type_default>::default()); }
 							};
 						}
-						Self::from_type_or_none(&td).to_dynany()
+						Self::from_type_or_none(&Type::Concrete(td.clone())).to_dynany()
 					}
 					Self::F64Array(values) => {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
@@ -219,7 +219,7 @@ macro_rules! tagged_value {
 								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Arc::new(<$type_default>::default()); }
 							};
 						}
-						Self::from_type_or_none(&td).to_any()
+						Self::from_type_or_none(&Type::Concrete(td.clone())).to_any()
 					}
 					Self::F64Array(values) => {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
@@ -245,13 +245,13 @@ macro_rules! tagged_value {
 					Self::DocumentNode(node) => Arc::new(node),
 					Self::ContextModification(modification) => Arc::new(modification),
 					Self::EditorApi(x) => Arc::new(x),
-					Self::ResourceHash(x) => Arc::new(Item::new_from_element(x)),
+					Self::ResourceHash(x) => Arc::new(x),
 				}
 			}
 
 			/// Creates the wire [`Type`] of the value inside the tagged value, with ranked types in their structural form.
 			pub fn ty(&self) -> Type {
-				let ty = match self {
+				match self {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
@@ -271,6 +271,9 @@ macro_rules! tagged_value {
 					Self::Color(_) => concrete!(Color),
 					Self::GradientRamp(_) => concrete!(Gradient),
 					Self::Strokes(_) => concrete!(Stroke),
+					Self::DashPattern(_) => concrete!(DashPattern),
+					Self::BoxCorners(_) => concrete!(BoxCorners),
+					Self::BrushCache(_) => concrete!(BrushCache),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -279,7 +282,7 @@ macro_rules! tagged_value {
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::RenderOutput(_) => concrete!(RenderOutput),
-					Self::NodeIdPath(_) => concrete!(Vec<NodeId>),
+					Self::NodeIdPath(_) => concrete!(core_types::list::NodeIdPath),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
 					Self::ContextModification(_) => concrete!(ContextModification),
 					Self::EditorApi(_) => concrete!(Arc<PlatformEditorApi>),
@@ -320,9 +323,12 @@ macro_rules! tagged_value {
 					Self::Color(_) => leveled::<Color>(),
 					Self::GradientRamp(_) => leveled::<Gradient>(),
 					Self::Strokes(_) => leveled::<Stroke>(),
+					Self::DashPattern(_) => scalar::<DashPattern>(),
+					Self::BoxCorners(_) => scalar::<BoxCorners>(),
+					Self::BrushCache(_) => scalar::<BrushCache>(),
 					$( Self::$identifier(_) => scalar::<$ty>(), )*
 					Self::RenderOutput(_) => scalar::<RenderOutput>(),
-					Self::NodeIdPath(_) => scalar::<Vec<NodeId>>(),
+					Self::NodeIdPath(_) => scalar::<core_types::list::NodeIdPath>(),
 					Self::DocumentNode(_) => scalar::<DocumentNode>(),
 					Self::ContextModification(_) => scalar::<ContextModification>(),
 					Self::EditorApi(_) => scalar::<Arc<PlatformEditorApi>>(),
@@ -363,6 +369,9 @@ macro_rules! tagged_value {
 					Self::Color(color) => Ok(record_value_source(color)),
 					Self::GradientRamp(stops) => Ok(leveled_record_value_source(vec![stops])),
 					Self::Strokes(strokes) => Ok(leveled_record_value_source(strokes)),
+					Self::DashPattern(lengths) => Ok(record_value_source(DashPattern(lengths.into_iter().map(core_types::list::Item::new_from_element).collect()))),
+					Self::BoxCorners(values) => Ok(record_value_source(BoxCorners(values.into_iter().map(core_types::list::Item::new_from_element).collect()))),
+					Self::BrushCache(cache) => Ok(record_value_source(cache)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -487,15 +496,15 @@ macro_rules! tagged_value {
 						if name == core_types::normalize_type_name(std::any::type_name::<()>()) { return Some(TaggedValue::None) }
 						// List-wrapped types need a single-item default with the element's default, not an empty list
 						if name == core_types::normalize_type_name(std::any::type_name::<List<Color>>()) { return Some(TaggedValue::Color(Color::default())) }
-						if name == core_types::normalize_type_name(std::any::type_name::<List<Gradient>>()) { return Some(TaggedValue::Gradient(Gradient::default())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Gradient>>()) { return Some(TaggedValue::GradientRamp(GradientRamp::default())) }
 						$( if name == core_types::normalize_type_name(std::any::type_name::<$ty>()) { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == core_types::normalize_type_name(std::any::type_name::<List<f64>>()) { return Some(TaggedValue::F64Array(Vec::new())) }
-						if name == core_types::normalize_type_name(std::any::type_name::<List<Stroke>>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<Stroke>>()) { return Some(TaggedValue::Strokes(Vec::new())) }
 						// Leveled inputs type by their element; each element name maps to the
 						// same tagged default as its legacy list form.
 						if name == core_types::normalize_type_name(std::any::type_name::<Color>()) { return Some(TaggedValue::Color(Color::default())) }
-						if name == core_types::normalize_type_name(std::any::type_name::<Gradient>()) { return Some(TaggedValue::Gradient(Gradient::default())) }
-						if name == core_types::normalize_type_name(std::any::type_name::<Stroke>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Gradient>()) { return Some(TaggedValue::GradientRamp(GradientRamp::default())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Stroke>()) { return Some(TaggedValue::Strokes(Vec::new())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Graphic>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Graphic>))) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Artboard>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Artboard>))) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Raster<CPU>>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Raster<CPU>>))) }
@@ -503,10 +512,10 @@ macro_rules! tagged_value {
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
 						macro_rules! check {
 							($type_default:ty) => {
-								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Some(TaggedValue::TypeDefault(concrete_type.clone())); }
+								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!($type_default))); }
 							};
 						}
-						for_each_bare_type_default!(check_bare);
+						for_each_bare_type_default!(check);
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
@@ -522,7 +531,7 @@ macro_rules! tagged_value {
 						}
 						macro_rules! check {
 							($type_default:ty) => {
-								if **element == concrete!($type_default) { return Some(TaggedValue::TypeDefault(input.clone())); }
+								if **element == concrete!($type_default) { return Some(TaggedValue::TypeDefault(core_types::descriptor!($type_default))); }
 							};
 						}
 						for_each_item_type_default!(check);
@@ -807,12 +816,12 @@ impl TaggedValue {
 
 	/// The stored form of a paint input's red-slash "no paint" choice: the `Item<Graphic>` type default, materializing as a `Graphic::None` paint.
 	pub fn no_paint() -> Self {
-		TaggedValue::TypeDefault(concrete!(Graphic))
+		TaggedValue::TypeDefault(core_types::descriptor!(Graphic))
 	}
 
 	/// Whether this is the `Item<Graphic>` type default created by [`Self::no_paint`] (and by disconnecting a paint wire).
 	pub fn is_no_paint(&self) -> bool {
-		matches!(self, TaggedValue::TypeDefault(td) if *td == concrete!(Graphic))
+		matches!(self, TaggedValue::TypeDefault(td) if *td == core_types::descriptor!(Graphic))
 	}
 }
 
@@ -820,14 +829,14 @@ impl TaggedValue {
 ///
 /// Routes legacy variant names into modern variants, in typed Rust. Each legacy name is also matched against the historical `#[serde(alias = "...")]` spellings the deleted variant accepted, so old-shape inner payloads are caught:
 ///
-/// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(concrete!(List<Graphic>))`
-/// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(concrete!(List<Artboard>))`
+/// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(core_types::descriptor!(List<Graphic>))`
+/// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(core_types::descriptor!(List<Artboard>))`
 /// - `Raster` (or alias `ImageFrame`/`RasterData`/`Image`):
 ///     - non-empty (the legacy `image` proto's input 1, where the inner `Raster<CPU>` serializes as the embedded `Image<Color>`) → `TaggedValue::ImageData(<inner Image<Color>>)`
-///     - empty → `TaggedValue::TypeDefault(concrete!(List<Raster<CPU>>))`
+///     - empty → `TaggedValue::TypeDefault(core_types::descriptor!(List<Raster<CPU>>))`
 /// - `Vector` (or alias `VectorData`):
 ///     - non-empty → `TaggedValue::VectorModification(<built from first element>)` (the document_migration's Path pass disambiguates this between SVG-import legacy and a discardable modern baked value via the input's `exposed` flag)
-///     - empty → `TaggedValue::TypeDefault(concrete!(List<Vector>))`
+///     - empty → `TaggedValue::TypeDefault(core_types::descriptor!(List<Vector>))`
 /// - `FillChoice` → `TaggedValue::Color` (solid), `TaggedValue::GradientRamp` (gradient), or `TaggedValue::no_paint()` (none)
 /// - `Gradient` (or alias `GradientTable`/`GradientPositions`/`Gradient`) → `TaggedValue::LegacyGradient` (ancient full struct) or `TaggedValue::GradientRamp` (ramp and legacy stops shapes, unwrapped from the legacy table form)
 /// - `TypeDefault` with the old bare-`TypeDescriptor` payload → the same variant wrapping a `Type` (name-encoded `List` normalized to structural)
@@ -844,8 +853,8 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 		&& let Some((tag, content)) = map.iter().next()
 	{
 		match tag.as_str() {
-			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(concrete!(List<Graphic>)))),
-			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(concrete!(List<Artboard>)))),
+			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(core_types::descriptor!(List<Graphic>)))),
+			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(core_types::descriptor!(List<Artboard>)))),
 			"Raster" | "ImageFrame" | "RasterData" | "Image" => {
 				let first_element = content
 					.as_object()
@@ -856,7 +865,7 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					let image: Image<Color> = serde_json::from_value(image_value.clone()).map_err(serde::de::Error::custom)?;
 					return Ok(MemoHash::new(TaggedValue::ImageData(image)));
 				}
-				return Ok(MemoHash::new(TaggedValue::TypeDefault(concrete!(List<Raster<CPU>>))));
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(core_types::descriptor!(List<Raster<CPU>>))));
 			}
 			"Vector" | "VectorData" => {
 				let vector = graphic_types::migrations::migrate_to_optional_vector(content.clone()).map_err(serde::de::Error::custom)?;
@@ -864,12 +873,12 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					let modification = Box::new(VectorModification::create_from_vector(&vector));
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
-				return Ok(MemoHash::new(TaggedValue::TypeDefault(concrete!(List<Vector>))));
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(core_types::descriptor!(List<Vector>))));
 			}
-			// The `TypeDefault` payload used to be a bare `TypeDescriptor`; it now carries a `Type`
+			// The `TypeDefault` payload is a bare `TypeDescriptor`: our one wire kind needs no structural rank in it
 			"TypeDefault" if content.as_object().is_some_and(|c| c.contains_key("name")) => {
 				let descriptor: TypeDescriptor = serde_json::from_value(content.clone()).map_err(serde::de::Error::custom)?;
-				return Ok(MemoHash::new(TaggedValue::TypeDefault(Type::Concrete(descriptor).normalize_rank())));
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor)));
 			}
 			// The `Color` tag used to carry `Option<Color>`, where a `null` payload (or an empty legacy color table) was the red-slash "no paint" choice
 			"Color" | "ColorTable" | "OptionalColor" | "ColorNotInTable"
@@ -1227,7 +1236,7 @@ mod leveled_edges {
 			TaggedValue::F64Array(vec![1.]),
 			TaggedValue::Bool(true),
 			TaggedValue::TypeDefault(descriptor!(List<Vector>)),
-			TaggedValue::Gradient(Default::default()),
+			TaggedValue::GradientRamp(Default::default()),
 		] {
 			let layout = value.value_layout().unwrap();
 			let edge = value.to_edge().unwrap();

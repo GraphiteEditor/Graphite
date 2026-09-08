@@ -83,9 +83,13 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 			let mentioned = candidate_params.iter().zip(&kept).any(|(param, kept)| {
 				*kept
 					&& match param {
-						GenericParam::Type(type_param) => type_param.bounds.iter().any(|bound| {
-							let bound: Type = syn::parse_quote!(dyn #bound);
-							type_contains_ident(&bound, &ident)
+						// Only trait bounds can mention another parameter; a lifetime bound would build an invalid `dyn 'a`.
+						GenericParam::Type(type_param) => type_param.bounds.iter().any(|bound| match bound {
+							syn::TypeParamBound::Trait(trait_bound) => {
+								let bound: Type = syn::parse_quote!(dyn #trait_bound);
+								type_contains_ident(&bound, &ident)
+							}
+							_ => false,
 						}),
 						_ => false,
 					}

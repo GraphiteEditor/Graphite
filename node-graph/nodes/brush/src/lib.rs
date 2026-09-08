@@ -17,11 +17,10 @@ fn brush_strokes(
 	_: impl Ctx,
 	strokes: List<Stroke>,
 	color: List<Color>,
-	#[default(DEFAULT_DIAMETER)] diameter: Item<f64>,
-	#[default(DEFAULT_HARDNESS)] hardness: Item<Percentage>,
-	#[default(DEFAULT_FLOW)] flow: Item<Percentage>,
-) -> List<Graphic> {
-	let (diameter, hardness, flow) = (diameter.into_element(), hardness.into_element(), flow.into_element());
+	#[default(DEFAULT_DIAMETER)] diameter: f64,
+	#[default(DEFAULT_HARDNESS)] hardness: Percentage,
+	#[default(DEFAULT_FLOW)] flow: Percentage,
+) -> List<Graphic<'static>> {
 	List::new_from_item(
 		Item::new_from_element(Graphic::from(strokes))
 			.with_attribute(ATTR_COLOR, color.element(0).copied().unwrap_or_default())

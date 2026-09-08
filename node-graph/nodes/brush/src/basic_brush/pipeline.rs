@@ -9,7 +9,7 @@ use core_types::Color;
 use core_types::transform::Footprint;
 use glam::{DAffine2, UVec2};
 use raster_types::Texture;
-use wgpu_executor::{AsyncWgpuPipeline, Buffer, WgpuExecutor};
+use wgpu_executor::{Buffer, WgpuExecutor, WgpuPipeline};
 
 pub(super) const DENSITY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
 pub(super) const COMPOSITE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -71,7 +71,7 @@ pub struct BasicBrushPipelineArgs<'a> {
 	pub(super) cache: &'a BrushCache,
 }
 
-impl AsyncWgpuPipeline for BasicBrushPipeline {
+impl WgpuPipeline for BasicBrushPipeline {
 	type Args<'a> = BasicBrushPipelineArgs<'a>;
 	type Out = Option<(Texture, DAffine2)>;
 
@@ -85,7 +85,7 @@ impl AsyncWgpuPipeline for BasicBrushPipeline {
 		}
 	}
 
-	async fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
+	fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
 		let frame = super::render::Frame::new(args.strokes)?;
 		let region = Region::new(&args.footprint)?;
 		let state = args.cache.take(&args.footprint).unwrap_or_default();

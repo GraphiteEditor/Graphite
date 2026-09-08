@@ -55,9 +55,21 @@ fn carried_lane_attrs<'e>(arena: &'e core_types::arena::Arena, lane: core_types:
 	Ok((Attr(lane.attr::<TransformAttr>()), Attr(layer_path.as_slice())))
 }
 
+/// A gradient row's settings, which ride the lane rather than the bare element.
+fn gradient_settings_from_lane(source: &core_types::node::List<'_, Gradient>, index: usize) -> GradientSettings {
+	let lane = source.lane(index);
+	GradientSettings {
+		spread: lane.attr::<vector_types::markers::GradientSpread>(),
+		cyclic: lane.attr::<vector_types::markers::GradientCyclic>(),
+		space: lane.attr::<vector_types::markers::GradientSpace>(),
+		hue_direction: lane.attr::<vector_types::markers::GradientHueDirection>(),
+		interpolation: lane.attr::<vector_types::markers::GradientInterpolation>(),
+	}
+}
+
 /// The gradient color for one assign-colors position, replaying the
 /// randomized draws up to it.
-fn assign_color_at(gradient: &Gradient, position: usize, length: usize, randomize: bool, seed: SeedValue, repeat_every: u32) -> Color {
+fn assign_color_at(gradient: &Gradient, settings: GradientSettings, position: usize, length: usize, randomize: bool, seed: SeedValue, repeat_every: u32) -> Color {
 	let factor = match randomize {
 		true => {
 			let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
@@ -74,10 +86,7 @@ fn assign_color_at(gradient: &Gradient, position: usize, length: usize, randomiz
 		},
 	};
 	// The factor spans 0..=1, so the spread stays Pad rather than wrapping the last element onto the first stop
-	let settings = GradientSettings {
-		spread: Default::default(),
-		..GradientSettings::from(gradient)
-	};
+	let settings = GradientSettings { spread: Default::default(), ..settings };
 	gradient.evaluate(factor, settings)
 }
 
@@ -157,16 +166,17 @@ fn assign_colors<'e>(
 		return Ok((element, transform, Attr(existing_fill), Attr(existing_stroke), layer_path));
 	}
 	let gradient_element = gradient.element_ref(0);
+	let gradient_settings = gradient_settings_from_lane(&gradient, 0);
 	let reversed;
 	let gradient_element = match reverse {
 		true => {
-			reversed = gradient_element.reversed(GradientSettings::from(gradient_element).cyclic);
+			reversed = gradient_element.reversed(gradient_settings.cyclic);
 			&reversed
 		}
 		false => gradient_element,
 	};
 
-	let color = assign_color_at(gradient_element, lane, content.len(), randomize, seed, repeat_every);
+	let color = assign_color_at(gradient_element, gradient_settings, lane, content.len(), randomize, seed, repeat_every);
 	let paint = List::new_from_element(color).into_graphic_list();
 	let parked = park_paint(ctx.arena(), paint)?;
 
@@ -226,10 +236,11 @@ fn assign_colors_graphic<'e>(
 		return Ok((original.clone(), transform, layer_path));
 	}
 	let gradient_element = gradient.element_ref(0);
+	let gradient_settings = gradient_settings_from_lane(&gradient, 0);
 	let reversed;
 	let gradient_element = match reverse {
 		true => {
-			reversed = gradient_element.reversed(GradientSettings::from(gradient_element).cyclic);
+			reversed = gradient_element.reversed(gradient_settings.cyclic);
 			&reversed
 		}
 		false => gradient_element,
@@ -272,7 +283,7 @@ fn assign_colors_graphic<'e>(
 		Some(mut rows) => {
 			for row in 0..rows.len() {
 				let has_stroke = lane_has_stroke || has_paint::<StrokeAttr, _>(&rows, row);
-				let color = assign_color_at(gradient_element, position + row, length, randomize, seed, repeat_every);
+				let color = assign_color_at(gradient_element, gradient_settings, position + row, length, randomize, seed, repeat_every);
 				let paint = List::new_from_element(color).into_graphic_list();
 				if fill {
 					set_paint_attribute_at(&mut rows, row, ATTR_FILL, paint.clone());
@@ -2858,13 +2869,13 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 			(Some(Graphic::Color(color_a)), Some(Graphic::Color(color_b))) => Some(List::new_from_element(Graphic::from(color_a.lerp(color_b, time as f32)))),
 			(Some(Graphic::Color(color_a)), Some(Graphic::Gradient(stops_b))) => {
 				let mut solid_to_gradient = stops_b.clone();
-				solid_to_gradient.color.iter_mut().for_each(|color| *color = *color_a);
+				solid_to_gradient.0.iter_element_values_mut().for_each(|color| *color = *color_a);
 				let stops = solid_to_gradient.lerp(stops_b, time);
 				Some(gradient_paint(b, stops, None))
 			}
 			(Some(Graphic::Gradient(stops_a)), Some(Graphic::Color(color_b))) => {
 				let mut gradient_to_solid = stops_a.clone();
-				gradient_to_solid.color.iter_mut().for_each(|color| *color = *color_b);
+				gradient_to_solid.0.iter_element_values_mut().for_each(|color| *color = *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
 				Some(gradient_paint(a, stops, None))
 			}

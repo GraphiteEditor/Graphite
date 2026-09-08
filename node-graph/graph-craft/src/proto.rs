@@ -901,10 +901,6 @@ impl TypingContext {
 		self.promotions.get(&node_id)
 	}
 
-	/// Looks up the sole constructor registered under an adapter identifier, such as an Item -> List promotion adapter.
-	pub fn adapter_constructor(&self, identifier: &ProtoNodeIdentifier) -> Option<NodeConstructor> {
-		self.lookup.get(identifier).and_then(|implementations| implementations.values().next().copied())
-	}
 
 	/// Returns the node constructor for a given node id.
 	pub fn constructor(&self, node_id: NodeId) -> Option<NodeConstructor> {

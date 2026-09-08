@@ -12,16 +12,16 @@ use core_types::{ATTR_TRANSFORM, Ctx, ExtractFootprint};
 use graphic_types::Graphic;
 use pipeline::{BasicBrushPipeline, BasicBrushPipelineArgs};
 use raster_types::{GPU, Raster};
-use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
+use core_types::ProtoNodeIdentifier;
+use wgpu_executor::{WgpuExecutorHandle, WgpuPipelineCache};
 
 #[node_macro::node(category("Raster: Brush"))]
-pub async fn basic_brush<'a: 'n>(
+pub fn basic_brush(
 	ctx: impl Ctx + ExtractFootprint,
-	strokes: List<Graphic>,
-	#[widget(ParsedWidgetOverride::Hidden)] cache: Item<BrushCache>,
-	#[scope(basic_brush_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+	strokes: List<Graphic<'static>>,
+	#[widget(ParsedWidgetOverride::Hidden)] cache: BrushCache,
+	#[scope(basic_brush_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
 ) -> List<Raster<GPU>> {
-	let (cache, pipeline) = (cache.into_element(), pipeline.into_element());
 	let mut stack = vec![strokes.into_iter()];
 	let mut strokes = Vec::new();
 	while let Some(top) = stack.last_mut() {
@@ -56,7 +56,7 @@ pub async fn basic_brush<'a: 'n>(
 		strokes: &strokes,
 		cache: &cache,
 	};
-	let Some((texture, transform)) = pipeline.run::<BasicBrushPipeline>(&args).await else {
+	let Some((texture, transform)) = pipeline.run::<BasicBrushPipeline>(&args) else {
 		return List::new();
 	};
 	let raster = Raster::<GPU>::new_gpu(texture);
@@ -64,11 +64,11 @@ pub async fn basic_brush<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-async fn basic_brush_pipeline<'a: 'n>(
+fn basic_brush_pipeline(
 	_ctx: impl Ctx,
-	#[scope(ProtoNodeIdentifier::new("graphene_std::platform_application_io::WgpuExecutorNode"))] executor: Item<&'a WgpuExecutor>,
+	#[scope(ProtoNodeIdentifier::new("graphene_std::platform_application_io::WgpuExecutorNode"))] executor: WgpuExecutorHandle,
 	#[data] pipeline: WgpuPipelineCache,
-) -> Item<WgpuPipelineCache> {
-	executor.into_element().pipeline_init::<BasicBrushPipeline>(pipeline);
-	Item::new_from_element(pipeline.clone())
+) -> WgpuPipelineCache {
+	executor.pipeline_init::<BasicBrushPipeline>(pipeline);
+	pipeline.clone()
 }

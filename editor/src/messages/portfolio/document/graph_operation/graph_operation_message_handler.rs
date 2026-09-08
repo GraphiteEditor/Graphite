@@ -252,7 +252,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						}
 
 						// Set the bottom input of the artboard back to artboard
-						let bottom_input = NodeInput::type_default(concrete!(graphene_std::list::List<Artboard>), true);
+						let bottom_input = NodeInput::type_default(graph_craft::descriptor!(graphene_std::list::List<Artboard>), true);
 						network_interface.set_input(&InputConnector::primary_input(artboard_layer.to_node()), bottom_input, &[]);
 					} else {
 						// We have some non layers (e.g. just a rectangle node). We disconnect the bottom input and connect it to the left input.
@@ -260,7 +260,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						network_interface.set_input(&InputConnector::layer_secondary_input(artboard_layer.to_node()), primary_input, &[]);
 
 						// Set the bottom input of the artboard back to artboard
-						let bottom_input = NodeInput::type_default(concrete!(graphene_std::list::List<Artboard>), true);
+						let bottom_input = NodeInput::type_default(graph_craft::descriptor!(graphene_std::list::List<Artboard>), true);
 						network_interface.set_input(&InputConnector::primary_input(artboard_layer.to_node()), bottom_input, &[]);
 					}
 				}

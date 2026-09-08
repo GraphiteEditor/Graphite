@@ -1,7 +1,7 @@
 use crate::list::{Attribute, AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use crate::math::float_noise::round_away_float_noise;
 use crate::transform::Footprint;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, IVec2};
 use graphene_hash::CacheHash;
 
 /// The [`Convert`] trait allows for conversion between Rust primitive numeric types.
@@ -31,7 +31,7 @@ macro_rules! impl_convert_to_string {
 		)*
 	};
 }
-impl_convert_to_string!(f32, u32, u64, i32, i64, bool, DVec2, DAffine2);
+impl_convert_to_string!(f32, u32, u64, i32, i64, bool, DVec2, DAffine2, String, IVec2, i8, u8, u16, i16, u128, i128, usize, isize);
 
 // Denoised so 0.1 + 0.2 reaches the string as "0.3" rather than "0.30000000000000004"
 impl Convert<String, ()> for f64 {

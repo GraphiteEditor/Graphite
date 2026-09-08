@@ -360,7 +360,7 @@ pub fn render_output_cache(
 		render_params.for_mask,
 		render_params.thumbnail,
 		render_params.aligned_strokes,
-		render_params.stroke_below,
+		render_params.override_paint_order,
 		ctx.try_animation_time().unwrap_or(0.),
 		ctx.try_real_time().unwrap_or(0.),
 		ctx.try_pointer_position(),

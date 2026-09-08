@@ -496,7 +496,7 @@ pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(
 /// Type-asserts a value to be graphical content, converting each item of other content types into its matching form.
 /// Use the 'Into Group' node instead to collect the content into a single group.
 #[node_macro::node(category("General"))]
-pub fn as_graphic<'e>(_: impl Ctx, value: Graphic<'e>) -> Graphic<'e> {
+pub fn as_graphic(_: impl Ctx, value: Graphic<'static>) -> Graphic<'static> {
 	value
 }
 
@@ -530,7 +530,7 @@ pub fn to_graphic_element<'e, T: graphic_types::graphic::IntoGraphicElement>(
 /// The typed-level conversion: the whole level nests as one graphic lane, as
 /// the pre-flip `Into<Graphic>` list collapse did. Registered under the to
 /// graphic identifier.
-#[node_macro::node(category(""), extent(wrap_graphic_extent))]
+#[node_macro::node(category(""), extent(into_group_extent))]
 pub fn to_graphic_typed<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
 	#[implementations(Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] content: IList<T>,
