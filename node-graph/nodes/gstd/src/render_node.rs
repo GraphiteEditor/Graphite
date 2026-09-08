@@ -25,7 +25,7 @@ pub struct RenderIntermediate {
 fn intermediate_of<R: Render>(data: &R, render_params: &RenderParams) -> RenderIntermediate {
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
-	data.collect_metadata(&mut metadata, footprint, None, None);
+	data.collect_metadata(&mut metadata, footprint, None);
 	match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => {
 			let mut scene = vello::Scene::new();
