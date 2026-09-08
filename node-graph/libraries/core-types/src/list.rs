@@ -122,7 +122,7 @@ pub const ATTR_MAX_HEIGHT: &str = "max_height";
 pub const ATTR_LETTER_TILT: &str = "letter_tilt";
 /// Text item's `TextAlign` horizontal alignment of lines within the block.
 pub const ATTR_TEXT_ALIGN: &str = "text_align";
-/// Item's texture. (`Option<raster_types::raster_types::gpu::Texture>`)
+/// Item's texture. (`Option<Item<raster_types::raster_types::gpu::Texture>>`)
 pub const ATTR_TEXTURE: &str = "texture";
 
 // =====================

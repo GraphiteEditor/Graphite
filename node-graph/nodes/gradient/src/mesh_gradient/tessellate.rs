@@ -5,7 +5,8 @@ use std::{
 	collections::{HashMap, VecDeque},
 };
 
-use glam::{DAffine2, DVec2};
+use core_types::transform::Transform;
+use glam::{DAffine2, DVec2, UVec2};
 use vector_types::{
 	GradientInterpolation, GradientSpace, MeshGradient,
 	gradient::MeshGradientEvaluator,
@@ -46,6 +47,7 @@ pub(super) struct MeshVertex {
 
 pub(super) struct MeshGradientTessellator {
 	evaluator: MeshGradientEvaluator,
+	mesh_to_texture: DAffine2,
 	mesh_to_output: DAffine2,
 }
 
@@ -66,10 +68,20 @@ impl MeshGradientTessellator {
 		mesh_gradient: &MeshGradient,
 		color_space: GradientSpace,
 		interpolation_method: GradientInterpolation,
+		mesh_to_texture: DAffine2,
 		mesh_to_output: DAffine2,
 	) -> Result<Self, MeshGradientTessellatorError> {
 		let evaluator = mesh_gradient.evaluator(color_space, interpolation_method)?;
-		Ok(Self { evaluator, mesh_to_output })
+		Ok(Self {
+			evaluator,
+			mesh_to_texture,
+			mesh_to_output,
+		})
+	}
+
+	fn should_cull(&self, control_net: &BicubicBezierNet<DVec2>) -> bool {
+		let [bbox_min, bbox_max] = control_net.control_net_bounds(self.mesh_to_texture);
+		!(bbox_min.x <= 1. && 0. <= bbox_max.x && bbox_min.y <= 1. && 0. <= bbox_max.y)
 	}
 
 	pub(super) fn tessellate(&self) -> Result<(Vec<MeshVertex>, Vec<u32>), MeshGradientTessellatorError> {
@@ -122,7 +134,7 @@ impl MeshGradientTessellator {
 					vertices.push(MeshVertex {
 						patch_index,
 						uv: vertex.uv.as_vec2().to_array(),
-						position: vertex.position.as_vec2().to_array(),
+						position: self.mesh_to_texture.transform_point2(vertex.position).as_vec2().to_array(),
 					});
 				});
 				let local_vertex_indices = (1..vertex_count).collect::<Vec<_>>();
@@ -135,7 +147,7 @@ impl MeshGradientTessellator {
 				vertices.extend(subpatch.position_bezier_net.corners_clockwise().iter().zip(corner_uvs_clockwise.iter()).map(|(pos, uv)| MeshVertex {
 					patch_index: subpatch.patch_index as u32,
 					uv: uv.as_vec2().to_array(),
-					position: pos.as_vec2().to_array(),
+					position: self.mesh_to_texture.transform_point2(*pos).as_vec2().to_array(),
 				}));
 				indices.extend(RECT_TO_TRIANGLE_INDICES.iter().map(|&corner_index| corner_index + base_vertex_index));
 			}
@@ -153,13 +165,17 @@ impl MeshGradientTessellator {
 
 		self.mark_t_junctions(&mut state);
 
-		Ok(state.into_leaf_subpatches())
+		Ok(state.subpatches.into_values().filter(|subpatch| !subpatch.is_subdivided).collect())
 	}
 
 	fn initialize_adaptive_subdivision(&self) -> Result<AdaptiveSubdivisionState, MeshGradientTessellatorError> {
 		let mut state = AdaptiveSubdivisionState::default();
 
 		for patch in self.evaluator.patch_evaluators() {
+			if self.should_cull(&patch.position_bezier_net()) {
+				continue;
+			};
+
 			let root = Subpatch {
 				patch_index: patch.index(),
 				position_bezier_net: patch.position_bezier_net(),
@@ -189,6 +205,7 @@ impl MeshGradientTessellator {
 
 		let (patch_index, subdivided_uv_bounds, subdivided_nets) = {
 			let Some(target) = state.subpatches.get_mut(&key) else { return };
+
 			if target.is_subdivided {
 				return;
 			};
@@ -201,6 +218,10 @@ impl MeshGradientTessellator {
 
 		for quadrant in ALL_QUADRANTS {
 			let i = quadrant as usize;
+			if self.should_cull(&subdivided_nets[i]) {
+				continue;
+			};
+
 			let child_morton_code = morton_code.child(quadrant);
 			let Ok(child_deviation) = self.subpatch_tessellation_error_bound_px(&subdivided_nets[i]) else {
 				continue;
@@ -414,10 +435,6 @@ struct AdaptiveSubdivisionState {
 impl AdaptiveSubdivisionState {
 	fn next_refinement_key(&mut self) -> Option<SubpatchKey> {
 		self.balance_queue.pop_front().or_else(|| self.deviation_queue.pop_front().map(|(_, key)| key))
-	}
-
-	fn into_leaf_subpatches(self) -> Vec<Subpatch> {
-		self.subpatches.into_values().filter(|subpatch| !subpatch.is_subdivided).collect()
 	}
 }
 

@@ -1,6 +1,7 @@
 use std::array;
 use std::ops::{Add, Deref, Mul, Sub};
 
+use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item};
 use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
@@ -183,6 +184,7 @@ impl MeshGradient {
 		(0..patch_rows).flat_map(move |row| (0..patch_columns).map(move |column| self.patch(row, column)))
 	}
 
+	// FIXME: probably better to split to color evaluator and shape evaluator
 	// TODO: Research the way to handle polar color spaces for mesh gradient
 	/// Returns a new `MeshGradientEvaluator` whose Hermite color field is expressed in `space`.
 	pub fn evaluator(&self, space: GradientSpace, interpolation: GradientInterpolation) -> Result<MeshGradientEvaluator, MeshGradientEvaluatorError> {
@@ -811,6 +813,19 @@ impl<T: Copy + Lerp> BicubicBezierNet<T> {
 	}
 }
 
+impl BicubicBezierNet<DVec2> {
+	pub fn control_net_bounds(&self, transform: DAffine2) -> [DVec2; 2] {
+		let mut bbox_min = DVec2::MAX;
+		let mut bbox_max = DVec2::MIN;
+		for &point_local in self.iter().flatten() {
+			let point = transform.transform_point2(point_local);
+			bbox_min = bbox_min.min(point);
+			bbox_max = bbox_max.max(point);
+		}
+		[bbox_min, bbox_max]
+	}
+}
+
 /// A cached mesh patch for subdivision into subpatches in rendering phase.
 #[derive(Clone)]
 pub struct MeshPatchEvaluator {
@@ -1188,12 +1203,23 @@ impl RenderComplexity for MeshGradient {
 }
 
 impl core_types::bounds::BoundingBox for MeshGradient {
-	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
-		core_types::bounds::BoundingBox::bounding_box(&self.mesh_geometry, transform, include_stroke)
+	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
+		let mut mesh_min = DVec2::MAX;
+		let mut mesh_max = DVec2::MIN;
+		let Ok(mesh_evaluator) = self.evaluator(GradientSpace::RgbGamma, GradientInterpolation::Linear) else {
+			return RenderBoundingBox::None;
+		};
+		for patch_evaluator in mesh_evaluator.patch_evaluators() {
+			let [patch_min, patch_max] = patch_evaluator.position_bezier_net().control_net_bounds(transform);
+			mesh_min = mesh_min.min(patch_min);
+			mesh_max = mesh_max.max(patch_max);
+		}
+
+		RenderBoundingBox::Rectangle([mesh_min, mesh_max])
 	}
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
-		core_types::bounds::BoundingBox::thumbnail_bounding_box(&self.mesh_geometry, transform, include_stroke)
+		core_types::bounds::BoundingBox::bounding_box(self, transform, include_stroke)
 	}
 }
 

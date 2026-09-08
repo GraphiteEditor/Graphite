@@ -3093,12 +3093,13 @@ fn render_mesh_gradient_item_svg(item: ItemRef<'_, MeshGradient>, render: &mut S
 
 /// Draws one item of mesh gradient content into the Vello scene.
 fn render_mesh_gradient_item_to_vello(item: ItemRef<'_, MeshGradient>, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let texture: Option<Texture> = item.attribute_cloned_or_default(ATTR_TEXTURE);
-	let Some(texture) = texture else { return };
+	let texture_item: Option<Item<Texture>> = item.attribute_cloned_or_default(ATTR_TEXTURE);
+	let Some(texture_item) = texture_item else { return };
+	let texture_transform: DAffine2 = texture_item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let texture = texture_item.into_element();
 
 	let raster_item_ref = ItemRef::Item(&Item::from(Raster::<GPU>::new_gpu(texture)));
-	render_raster_gpu_item_to_vello(raster_item_ref, scene, parent_transform * transform, context, render_params);
+	render_raster_gpu_item_to_vello(raster_item_ref, scene, parent_transform * texture_transform, context, render_params);
 }
 
 fn collect_mesh_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, MeshGradient>>, metadata: &mut RenderMetadata, element_id: Option<NodeId>) {

@@ -169,7 +169,7 @@ impl Renderer {
 			label: Some("mesh_gradient_renderer_encoder"),
 		});
 
-		if args.output_size == UVec2::ZERO {
+		if args.output_size.x == 0 || args.output_size.y == 0 {
 			return None;
 		}
 
@@ -255,7 +255,7 @@ impl Renderer {
 					depth_slice: None,
 					resolve_target: None,
 					ops: wgpu::Operations {
-						load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.01, g: 0.01, b: 0.01, a: 1. }),
+						load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
 						store: wgpu::StoreOp::Store,
 					},
 				})],
