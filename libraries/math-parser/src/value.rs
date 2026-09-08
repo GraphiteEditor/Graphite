@@ -67,6 +67,43 @@ impl Value {
 		number.rung()
 	}
 
+	/// The value's full quaternion form, which every value has.
+	pub fn as_particle3(&self) -> Particle3 {
+		let Self::Number(number) = self;
+		let Quaternion { w, x, y, z } = number.to_quaternion();
+		Weighted { w, vector: Vector3([x, y, z]) }
+	}
+
+	/// Reads the value as a weight with a displacement in the `xy` plane, or `None` if it has a `k` part.
+	pub fn as_particle2(&self) -> Option<Particle2> {
+		let Weighted { w, vector: Vector3([x, y, z]) } = self.as_particle3();
+		(z == 0.).then_some(Weighted { w, vector: Vector2([x, y]) })
+	}
+
+	/// Reads the value as a complex number, a weight with a displacement along `x`, or `None` if it has a `j` or `k` part.
+	pub fn as_particle1(&self) -> Option<Particle1> {
+		let Weighted { w, vector: Vector2([x, y]) } = self.as_particle2()?;
+		(y == 0.).then_some(Weighted { w, vector: Vector1(x) })
+	}
+
+	/// Reads the value as a weightless displacement in `xyz` space, or `None` if it has a weight.
+	pub fn as_vector3(&self) -> Option<Vector3> {
+		let Weighted { w, vector } = self.as_particle3();
+		(w == 0.).then_some(vector)
+	}
+
+	/// Reads the value as a weightless displacement in the `xy` plane, or `None` if it has a weight or a `k` part.
+	pub fn as_vector2(&self) -> Option<Vector2> {
+		let Weighted { w, vector } = self.as_particle2()?;
+		(w == 0.).then_some(vector)
+	}
+
+	/// Reads the value as a weightless displacement along `x`, or `None` if it has a weight or a `j` or `k` part.
+	pub fn as_vector1(&self) -> Option<Vector1> {
+		let Weighted { w, vector } = self.as_particle1()?;
+		(w == 0.).then_some(vector)
+	}
+
 	integer_accessors! {
 		as_u8: u8,
 		as_u16: u16,
@@ -104,6 +141,69 @@ impl From<Quaternion> for Value {
 		Self::Number(Number::Quaternion(quaternion).canonical())
 	}
 }
+
+impl From<Vector1> for Value {
+	fn from(Vector1(x): Vector1) -> Self {
+		Self::from(Quaternion::new(0., x, 0., 0.))
+	}
+}
+
+impl From<Vector2> for Value {
+	fn from(Vector2([x, y]): Vector2) -> Self {
+		Self::from(Quaternion::new(0., x, y, 0.))
+	}
+}
+
+impl From<Vector3> for Value {
+	fn from(Vector3([x, y, z]): Vector3) -> Self {
+		Self::from(Quaternion::new(0., x, y, z))
+	}
+}
+
+impl From<Particle1> for Value {
+	fn from(Weighted { w, vector: Vector1(x) }: Particle1) -> Self {
+		Self::from(Quaternion::new(w, x, 0., 0.))
+	}
+}
+
+impl From<Particle2> for Value {
+	fn from(Weighted { w, vector: Vector2([x, y]) }: Particle2) -> Self {
+		Self::from(Quaternion::new(w, x, y, 0.))
+	}
+}
+
+impl From<Particle3> for Value {
+	fn from(Weighted { w, vector: Vector3([x, y, z]) }: Particle3) -> Self {
+		Self::from(Quaternion::new(w, x, y, z))
+	}
+}
+
+/// A weightless displacement along `x`: the `i` part alone.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Vector1(pub f64);
+
+/// A weightless displacement in the `xy` plane: the `i` and `j` parts.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Vector2(pub [f64; 2]);
+
+/// A weightless displacement in `xyz` space: the `i`, `j`, and `k` parts.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Vector3(pub [f64; 3]);
+
+/// A displacement with a weight, the ladder's particle rungs, of which the plain vectors are the weightless refinements.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Weighted<V> {
+	/// The real part, not a homogeneous coordinate.
+	pub w: f64,
+	pub vector: V,
+}
+
+/// The complex numbers: a weight with a displacement along `x`.
+pub type Particle1 = Weighted<Vector1>;
+/// A weight with a displacement in the `xy` plane.
+pub type Particle2 = Weighted<Vector2>;
+/// The quaternions: a weight with a displacement in `xyz` space.
+pub type Particle3 = Weighted<Vector3>;
 
 impl core::fmt::Display for Value {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -23,7 +23,7 @@ pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError
 mod tests {
 	use super::*;
 	use quaternion::Quaternion;
-	use value::{Complex, Number, Rung};
+	use value::{Complex, Number, Rung, Vector1, Vector2, Vector3, Weighted};
 
 	const EPSILON: f64 = 1e-10_f64;
 
@@ -1145,6 +1145,48 @@ mod tests {
 		for input in ["# + 1", "#foo", "$", "$foo", "~foo * 2", "@foo", "2 ~ 3"] {
 			assert!(ast::Node::try_parse_from_str(input).is_err(), "expected `{input}` to be a parse error");
 		}
+	}
+
+	#[test]
+	fn vector_queries_require_the_other_parts_to_be_zero() {
+		let value = |source: &str| evaluate(source).unwrap().unwrap();
+
+		// A query succeeds exactly when the parts outside its rung are zero, so a real is a particle but not a vector
+		assert_eq!(value("3i + 4j").as_vector2(), Some(Vector2([3., 4.])));
+		assert_eq!(value("3i + 4j").as_vector1(), None);
+		assert_eq!(value("3i + 4j").as_vector3(), Some(Vector3([3., 4., 0.])));
+		assert_eq!(value("3i + 4j").as_particle2(), Some(Weighted { w: 0., vector: Vector2([3., 4.]) }));
+		assert_eq!(value("1 + 2i").as_particle1(), Some(Weighted { w: 1., vector: Vector1(2.) }));
+		assert_eq!(value("1 + 2i").as_vector1(), None);
+		assert_eq!(value("2").as_vector1(), None);
+		assert_eq!(value("2").as_particle1(), Some(Weighted { w: 2., vector: Vector1(0.) }));
+		assert_eq!(value("i * j").as_vector3(), Some(Vector3([0., 0., 1.])));
+		assert_eq!(value("i * j").as_vector2(), None);
+		assert_eq!(value("1 + i + j + k").as_particle3(), Weighted { w: 1., vector: Vector3([1., 1., 1.]) });
+
+		// Zero sits on every rung
+		assert_eq!(value("0").as_vector2(), Some(Vector2([0., 0.])));
+	}
+
+	#[test]
+	fn vectors_bind_from_the_host() {
+		struct VectorBindings;
+		impl context::ValueProvider for VectorBindings {
+			fn get_value(&self, name: &str) -> Option<Value> {
+				match name {
+					"v" => Some(Value::from(Vector2([3., 4.]))),
+					"p" => Some(Value::from(Weighted { w: 2., vector: Vector1(1.) })),
+					_ => None,
+				}
+			}
+		}
+		let eval = |source: &str| ast::Node::try_parse_from_str(source).unwrap().eval(&EvalContext::new(VectorBindings, context::NothingMap)).unwrap();
+
+		// A bound vector takes part in the algebra like any literal, and the result queries back at its rung
+		assert_eq!(eval("|v|").as_real(), Some(5.));
+		assert_eq!(eval("2v").as_vector2(), Some(Vector2([6., 8.])));
+		assert_eq!(eval("v * conj(v)").as_real(), Some(25.));
+		assert_eq!(eval("p * p").as_particle1(), Some(Weighted { w: 3., vector: Vector1(4.) }));
 	}
 
 	#[test]
