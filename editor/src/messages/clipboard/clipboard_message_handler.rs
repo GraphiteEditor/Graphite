@@ -87,8 +87,8 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					let graphite_json = format!("{CLIPBOARD_PREFIX}{graphite}");
 					responses.add(PortfolioMessage::RequestSvgTextCopy { graphite_json });
 				}
-				ClipboardContent::Text(text) => {
-					responses.add(FrontendMessage::TriggerClipboardWrite { content: text });
+				ClipboardContent::Text(graphite_json) => {
+					responses.add(FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string: None, graphite_json });
 				}
 			},
 
@@ -523,7 +523,6 @@ mod test {
 			.await
 			.into_iter()
 			.find_map(|message| match message {
-				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
 				FrontendMessage::TriggerClipboardSvgAndJsonWrite { graphite_json, .. } => Some(graphite_json),
 				_ => None,
 			})

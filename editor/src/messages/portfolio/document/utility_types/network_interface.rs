@@ -126,7 +126,6 @@ mod network_interface_tests {
 		let clipboard = frontend_messages
 			.into_iter()
 			.find_map(|msg| match msg {
-				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
 				FrontendMessage::TriggerClipboardSvgAndJsonWrite { graphite_json, .. } => Some(graphite_json),
 				_ => None,
 			})
