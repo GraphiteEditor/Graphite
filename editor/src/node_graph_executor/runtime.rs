@@ -348,29 +348,7 @@ impl NodeRuntime {
 					return texture;
 				}
 				GraphRuntimeRequest::CopySvgTextClipboard(text_string_clipboard, selected_node_ids) => {
-					let mut combined_graphics = List::<Graphic>::new();
-
-					for monitor_node_path in &self.monitor_nodes {
-						// Skip inspect monitor node if active
-						if self.inspect_state.as_ref().is_some_and(|state| monitor_node_path.last().copied() == Some(state.monitor_node)) {
-							continue;
-						}
-
-						let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
-							continue;
-						};
-
-						if selected_node_ids.contains(&parent_network_node_id) {
-							// Introspect using the full monitor node path
-							if let Ok(introspected_data) = self.executor.introspect(monitor_node_path) {
-								if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
-									combined_graphics.extend(io.output.clone());
-								} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Graphic>>>() {
-									combined_graphics.push(io.output.clone());
-								}
-							}
-						}
-					}
+					let combined_graphics = self.collect_graphics(&selected_node_ids);
 
 					if combined_graphics.is_empty() {
 						self.sender.send_svg_text_clipboard(String::new(), text_string_clipboard);
@@ -378,25 +356,16 @@ impl NodeRuntime {
 					}
 
 					let bounds = graphene_std::renderer::graphic_list_bounding_box(&combined_graphics, DAffine2::IDENTITY);
-					let raw_bounds = match bounds {
+					let final_bounds = match bounds {
 						RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
 						_ => [DVec2::ZERO, DVec2::ONE],
 					};
 
-					let footprint = Footprint {
-						transform: DAffine2::from_translation(DVec2::new(raw_bounds[0].x, raw_bounds[0].y)),
-						resolution: UVec2::new((raw_bounds[1].x - raw_bounds[0].x).abs().ceil() as u32, (raw_bounds[1].y - raw_bounds[0].y).abs().ceil() as u32).max(UVec2::ONE),
-						quality: RenderQuality::Full,
-					};
-
-					let render_params = RenderParams {
-						footprint,
-						thumbnail: false,
-						..Default::default()
-					};
+					let footprint = Footprint::from_bounds(final_bounds, RenderQuality::Full);
+					let render_params = RenderParams { footprint, ..Default::default() };
 					let mut render = SvgRender::new();
 					combined_graphics.render_svg(&mut render, &render_params);
-					render.format_svg(raw_bounds[0], raw_bounds[1]);
+					render.format_svg(final_bounds[0], final_bounds[1]);
 
 					self.sender.send_svg_text_clipboard(render.svg.to_svg_string(), text_string_clipboard);
 				}
@@ -452,11 +421,7 @@ impl NodeRuntime {
 
 		for monitor_node_path in &self.monitor_nodes {
 			// Skip the inspect monitor node
-			if self
-				.inspect_state
-				.as_ref()
-				.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node))
-			{
+			if self.is_insepect_monitor_node(monitor_node_path) {
 				continue;
 			}
 
@@ -558,11 +523,7 @@ impl NodeRuntime {
 		};
 		let bounds = expand_to_thumbnail_aspect(raw_bounds);
 		let new_thumbnail_svg = {
-			let footprint = Footprint {
-				transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
-				resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
-				quality: RenderQuality::Full,
-			};
+			let footprint = Footprint::from_bounds(bounds, RenderQuality::Full);
 
 			// Render the thumbnail from a `Graphic` into an SVG string
 			let render_params = RenderParams {
@@ -588,6 +549,36 @@ impl NodeRuntime {
 			});
 			*old_thumbnail_svg = new_thumbnail_svg;
 		}
+	}
+
+	fn collect_graphics(&self, selected_node_ids: &Vec<NodeId>) -> List<Graphic> {
+		let mut combined_graphics = List::<Graphic>::new();
+		for monitor_node_path in &self.monitor_nodes {
+			// Skip inspect monitor node if active
+			if self.is_insepect_monitor_node(monitor_node_path) {
+				continue;
+			}
+
+			let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
+				continue;
+			};
+
+			if selected_node_ids.contains(&parent_network_node_id) {
+				// Introspect using the full monitor node path
+				if let Ok(introspected_data) = self.executor.introspect(monitor_node_path)
+					&& let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>()
+				{
+					combined_graphics.extend(io.output.clone());
+				} else {
+					warn!("No graphic type is matched while extracting svg");
+				}
+			}
+		}
+		combined_graphics
+	}
+
+	fn is_insepect_monitor_node(&self, monitor_node_path: &Vec<NodeId>) -> bool {
+		self.inspect_state.as_ref().is_some_and(|state| monitor_node_path.last().copied() == Some(state.monitor_node))
 	}
 }
 
