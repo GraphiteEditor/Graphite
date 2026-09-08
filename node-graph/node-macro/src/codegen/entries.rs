@@ -6,13 +6,25 @@ use syn::spanned::Spanned;
 use syn::{GenericParam, Ident, Type};
 
 pub(crate) fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic_idents: &[Ident], regular_fields: &[&ParsedField]) -> TokenStream2 {
+	// A data-field generic is monomorphized by hand, so those nodes carry their own rows.
 	if !data_field_generic_idents.is_empty() {
 		return quote!();
 	}
-	match crate::codegen::ir::node_kind(&crate::codegen::ir::build(parsed)) {
+	let entries = match crate::codegen::ir::node_kind(&crate::codegen::ir::build(parsed)) {
 		crate::codegen::ir::NodeKind::Flip => flip_entries_tokens(parsed, struct_name, regular_fields),
 		_ => single_row_entries(parsed, struct_name, regular_fields),
+	};
+	// Validation already rejects a generic input without implementations, so an
+	// empty row set here is an emitter gap, not an unregistered shape.
+	if entries.is_empty() && !parsed.attributes.skip_impl {
+		emit_error!(
+			parsed.fn_name.span(),
+			"no registry rows were generated for `{}`, so a document cannot resolve it",
+			parsed.fn_name;
+			help = "give every generic input an #[implementations(...)] list, or mark the node skip_impl if it registers its rows by hand"
+		);
 	}
+	entries
 }
 
 /// The registry rows of a flipped plain node: every input is a record input,
@@ -261,27 +273,34 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 	// (erased routing generics included) is row-invariant. The carried list
 	// mirrors the struct's carried generic parameters in declaration order.
 	let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
-	let ranked_generic_idents: Vec<Ident> = parsed
+	let ranked = |index: usize| matches!(&regular_fields[index].ty, ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) if *list_levels > 0);
+	// A record-io node's plain secondary reaches the constructor concrete, so its generic monomorphizes the row like a ranked element does.
+	let record_secondary =
+		|index: usize| matches!(ir::node_kind(&node), ir::NodeKind::RecordIo) && index > 0 && !node.inputs[index].subject && matches!(&regular_fields[index].ty, ParsedFieldType::Regular(_));
+	let names_generic = |index: usize, generic: &Ident| match &regular_fields[index].ty {
+		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => crate::codegen::type_contains_ident(ty, generic),
+		_ => false,
+	};
+	let solves_generic = |index: usize, generic: &Ident| match &regular_fields[index].ty {
+		ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) => !implementations.is_empty() && generic_extractable(ty, generic),
+		_ => false,
+	};
+	let carried_generic_idents: Vec<Ident> = parsed
 		.fn_generics
 		.iter()
 		.filter_map(|param| match param {
 			GenericParam::Type(type_param) if Some(&type_param.ident) != ctx_ident.as_ref() => Some(type_param.ident.clone()),
 			_ => None,
 		})
-		.filter(|ident| {
-			regular_fields.iter().any(|field| match &field.ty {
-				ParsedFieldType::Regular(RegularParsedField { ty, list_levels, .. }) => *list_levels > 0 && crate::codegen::type_contains_ident(ty, ident),
-				_ => false,
-			})
-		})
+		.filter(|ident| (0..regular_fields.len()).any(|index| (ranked(index) || record_secondary(index)) && names_generic(index, ident)))
 		.collect();
-	let ranked_source = |generic: &Ident| {
-		regular_fields.iter().position(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, list_levels, implementations, .. }) => *list_levels > 0 && !implementations.is_empty() && generic_extractable(ty, generic),
-			_ => false,
-		})
+	// Ranked sources come first, so a generic a ranked input already carries keeps sourcing its rows from that input.
+	let carried_source = |generic: &Ident| {
+		(0..regular_fields.len())
+			.find(|&index| ranked(index) && solves_generic(index, generic))
+			.or_else(|| (0..regular_fields.len()).find(|&index| record_secondary(index) && solves_generic(index, generic)))
 	};
-	let carried: Option<Vec<(Ident, usize)>> = ranked_generic_idents.iter().map(|ident| ranked_source(ident).map(|index| (ident.clone(), index))).collect();
+	let carried: Option<Vec<(Ident, usize)>> = carried_generic_idents.iter().map(|ident| carried_source(ident).map(|index| (ident.clone(), index))).collect();
 	let Some(carried) = carried else {
 		return quote!();
 	};
@@ -299,7 +318,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 					let row_ty = ir::strip_ilist(&impls[row.min(impls.len() - 1)]).0;
 					let field_ty = match &regular_fields[*index].ty {
 						ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
-						_ => unreachable!("ranked sources are regular fields"),
+						_ => unreachable!("carried sources are regular fields"),
 					};
 					generic_assignment(&field_ty, &row_ty, generic).map(|ty| (generic.clone(), ty))
 				})
@@ -509,4 +528,94 @@ pub(crate) fn implementation_rows(parsed: &ParsedNodeFn, regular_fields: &[&Pars
 
 	let row_count = candidates.iter().map(|types| types.len()).max().unwrap_or(1).max(1);
 	Some((0..row_count).map(|row| candidates.iter().map(|types| types[row.min(types.len() - 1)].clone()).collect()).collect())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::parsing::parse_node_fn;
+
+	/// The macro's own pipeline up to the entries emitter, so a test node's rows
+	/// match what `#[node]` would generate.
+	fn entries_of(attr: TokenStream2, item: TokenStream2) -> String {
+		let mut parsed = parse_node_fn(attr, item).unwrap();
+		parsed.replace_impl_trait_in_input();
+		if parsed.injects_async_source_fields() {
+			parsed.inject_async_source_fields(&quote!(gcore));
+		}
+		let regular_fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
+		let data_field_generic_idents: Vec<Ident> = parsed
+			.fn_generics
+			.iter()
+			.filter_map(|param| match param {
+				GenericParam::Type(type_param) => Some(type_param.ident.clone()),
+				_ => None,
+			})
+			.filter(|ident| {
+				parsed
+					.fields
+					.iter()
+					.any(|field| field.is_data_field && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if crate::codegen::type_contains_ident(ty, ident)))
+			})
+			.collect();
+		entries_tokens(&parsed, &format_ident!("TestNode"), &data_field_generic_idents, &regular_fields).to_string()
+	}
+
+	/// A record-io async source whose only generic sits on a plain secondary:
+	/// the shape the rasterize node has. One row per implementation, or the
+	/// node never reaches the registry.
+	#[test]
+	fn record_io_source_rows_an_implementations_generic_secondary() {
+		let entries = entries_of(
+			quote!(category("")),
+			quote!(
+				async fn rasterize<T: Send + Clone>(
+					_: impl Ctx,
+					_: (),
+					#[implementations(List<Vector>, List<Raster<CPU>>, List<Graphic>, List<Color>, List<GradientStops>)] data: List<T>,
+					footprint: Footprint,
+					canvas: CanvasHandle,
+				) -> (Raster<CPU>, Attr<Transform>, OwnedAttr<EditorMergedLayers>) {
+					todo!()
+				}
+			),
+		);
+		assert!(entries.contains("fn rasterize_entries"), "a registrable record-io source must emit its entries fn");
+		for element in ["Vector", "Raster < CPU >", "Graphic", "Color", "GradientStops"] {
+			let row = format!("record_source_type :: < List < {element} > > ()");
+			assert!(entries.contains(&row), "the implementations row {element} is missing: {entries}");
+		}
+		assert_eq!(entries.matches("constructor :").count(), 5, "one row per implementation");
+		assert!(!entries.contains("< T >"), "every row instantiates the carried generic");
+	}
+
+	/// The same shape without implementations stays unregistered: nothing names
+	/// the rows, so a silent empty emission is the intended answer.
+	#[test]
+	fn record_io_source_without_implementations_stays_unregistered() {
+		let entries = entries_of(
+			quote!(category(""), skip_impl),
+			quote!(
+				async fn rasterize_open<T: Send + Clone>(_: impl Ctx, _: (), data: List<T>) -> (Raster<CPU>, Attr<Transform>) {
+					todo!()
+				}
+			),
+		);
+		assert!(entries.is_empty(), "an unsourced generic secondary registers nothing: {entries}");
+	}
+
+	/// A ranked element generic keeps sourcing its rows from the ranked input.
+	#[test]
+	fn ranked_generic_still_rows_from_its_ranked_input() {
+		let entries = entries_of(
+			quote!(category("")),
+			quote!(
+				fn count<T: Send + Clone>(_: impl Ctx, _: (), #[implementations(IList<f64>, IList<u32>)] items: IList<T>) -> (u32, Attr<Opacity>) {
+					todo!()
+				}
+			),
+		);
+		assert!(entries.contains("fn count_entries"), "a ranked record-io node still emits: {entries}");
+		assert_eq!(entries.matches("constructor :").count(), 2, "one row per ranked implementation");
+	}
 }
