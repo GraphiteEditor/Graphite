@@ -1060,7 +1060,7 @@ impl NodeNetwork {
 			let (tagged_value, exposed) = match previous_export {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
-					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(core_types::list::NodeIdPath::from(path.to_vec())).into(), false),
+					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(path.to_vec()).into(), false),
 					DocumentNodeMetadata::SourceId => {
 						let source_id = Self::source_id_for_path(path);
 						if let Some(context_features) = context_features.as_deref_mut() {

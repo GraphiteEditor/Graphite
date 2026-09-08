@@ -280,7 +280,8 @@ impl PartialEq for TypeDescriptor {
 /// Graph runtime type information used for type inference.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "PascalCase"))]
 pub enum Type {
 	/// A wrapper for some type variable used within the inference system. Resolved at inference time and replaced with a concrete type.
 	Generic(Cow<'static, str>),
@@ -292,6 +293,41 @@ pub enum Type {
 	Future(Box<Type>),
 	/// A packed record input over the element type; the layout stays node-resident metadata.
 	Record(Box<Type>),
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Type {
+	/// Documents written against the structural rank model store `Item` and `List` wire types.
+	/// Our one wire kind has neither, so an `Item` reduces to the element it wraps and a `List`
+	/// becomes the concrete `List<..>` type it names.
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		#[derive(serde::Deserialize)]
+		enum Stored {
+			Generic(Cow<'static, str>),
+			Concrete(TypeDescriptor),
+			Fn(Box<Type>, Box<Type>),
+			Future(Box<Type>),
+			Record(Box<Type>),
+			Item(Box<Type>),
+			List(Box<Type>),
+		}
+
+		Ok(match Stored::deserialize(deserializer)? {
+			Stored::Generic(name) => Type::Generic(name),
+			Stored::Concrete(descriptor) => Type::Concrete(descriptor),
+			Stored::Fn(input, output) => Type::Fn(input, output),
+			Stored::Future(inner) => Type::Future(inner),
+			Stored::Record(inner) => Type::Record(inner),
+			Stored::Item(element) => *element,
+			Stored::List(element) => Type::Concrete(TypeDescriptor {
+				id: None,
+				name: Cow::Owned(format!("core_types::list::List<{}>", element.identifier_name())),
+				alias: None,
+				size: 0,
+				align: 0,
+			}),
+		})
+	}
 }
 
 impl Default for Type {

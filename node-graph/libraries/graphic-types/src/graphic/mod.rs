@@ -516,6 +516,46 @@ impl<'e> ListConvert<Graphic<'e>> for Raster<GPU> {
 		Graphic::RasterGPU(self)
 	}
 }
+// A leveled paint input types by its element, so the same embedding is needed one rank down.
+macro_rules! convert_leaf_to_graphic {
+	($($element:ty),* $(,)?) => {
+		$(
+			impl<'e> core_types::ops::Convert<Graphic<'e>, ()> for $element {
+				fn convert(self, _: core_types::transform::Footprint, _: ()) -> Graphic<'e> {
+					core_types::ops::ListConvert::convert_item(self)
+				}
+			}
+		)*
+	};
+}
+convert_leaf_to_graphic!(Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Stroke);
+
+// The paint wires accept any leaf element, the role master's `From<X> for Graphic` embedding adapters play.
+impl<'e> ListConvert<Graphic<'e>> for Graphic<'e> {
+	fn convert_item(self) -> Graphic<'e> {
+		self
+	}
+}
+impl<'e> ListConvert<Graphic<'e>> for Color {
+	fn convert_item(self) -> Graphic<'e> {
+		Graphic::Color(self)
+	}
+}
+impl<'e> ListConvert<Graphic<'e>> for Gradient {
+	fn convert_item(self) -> Graphic<'e> {
+		Graphic::Gradient(self)
+	}
+}
+impl<'e> ListConvert<Graphic<'e>> for String {
+	fn convert_item(self) -> Graphic<'e> {
+		Graphic::Text(self)
+	}
+}
+impl<'e> ListConvert<Graphic<'e>> for Stroke {
+	fn convert_item(self) -> Graphic<'e> {
+		Graphic::Stroke(self)
+	}
+}
 
 impl RenderComplexity for Graphic<'_> {
 	fn render_complexity(&self) -> usize {

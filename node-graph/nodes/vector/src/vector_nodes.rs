@@ -375,29 +375,40 @@ fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>,
 
 /// The materialized paint level as the canonical owned paint list, content
 /// kept in its native form.
-fn paint_table(paint: core_types::node::List<'_, Graphic<'_>>) -> List<Graphic<'static>> {
+/// A paint level as its legacy list, embedding each leaf element into `Graphic` and keeping its lane attributes.
+/// This is the role master's `From<X> for Graphic` embedding adapters play for its monomorphic paint input.
+fn paint_table<P>(paint: core_types::node::List<'_, P>) -> List<Graphic<'static>>
+where
+	P: Clone + Send + Sync + dyn_any::StaticTypeSized + core_types::ops::ListConvert<Graphic<'static>>,
+{
 	let item = paint.as_group_item();
-	graphic_types::graphic::run_to_list::<Graphic>(&item).expect("a paint level holds graphic lanes")
+	let typed = graphic_types::graphic::run_to_list::<P>(&item).expect("a paint level holds its declared lanes");
+	let mut out = List::new();
+	for row in typed.into_iter() {
+		let (element, attributes) = row.into_parts();
+		out.push(Item::from_parts(core_types::ops::ListConvert::convert_item(element), attributes));
+	}
+	out
 }
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-fn fill<'e>(
+fn fill<'e, P: Clone + Send + Sync + dyn_any::StaticTypeSized + core_types::ops::ListConvert<Graphic<'static>>>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	/// The content with vector paths to apply the fill style to.
 	(element, _content_fill): (Vector, Attr<Fill>),
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
-	paint: IList<Graphic<'static>>,
+	#[implementations(Graphic<'static>, Color, Gradient)]
+	paint: IList<P>,
 	_backup_color: IList<Color>,
 	_backup_gradient: IList<Gradient>,
 	_gradient_form: GradientForm,
-	_gradient_spread: GradientSpread,
 	_has_transform: bool,
 	_transform: DAffine2,
 ) -> Result<(Vector, Attr<'e, Fill>), Interrupt> {
 	let mut paint = paint_table(paint);
-	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_form, _gradient_spread, _has_transform.then_some(_transform));
+	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_form, GradientSpread::default(), _has_transform.then_some(_transform));
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
@@ -413,7 +424,6 @@ fn fill_graphic_leveled<'e>(
 	_backup_color: IList<Color>,
 	_backup_gradient: IList<Gradient>,
 	_gradient_form: GradientForm,
-	_gradient_spread: GradientSpread,
 	_has_transform: bool,
 	_transform: DAffine2,
 ) -> Result<(Graphic<'static>, Attr<'e, Fill>), Interrupt> {
@@ -422,20 +432,21 @@ fn fill_graphic_leveled<'e>(
 		_ => None,
 	};
 	let mut paint = paint_table(paint);
-	default_gradient_paint(&mut paint, bounds, _gradient_form, _gradient_spread, _has_transform.then_some(_transform));
+	default_gradient_paint(&mut paint, bounds, _gradient_form, GradientSpread::default(), _has_transform.then_some(_transform));
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-fn stroke<'e>(
+fn stroke<'e, P: Clone + Send + Sync + dyn_any::StaticTypeSized + core_types::ops::ListConvert<Graphic<'static>>>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	/// The content with vector paths to apply the stroke style to.
 	(element, content_transform): (Vector, Attr<TransformAttr>),
 	/// The stroke paint.
 	#[default(Color::BLACK)]
-	paint: IList<Graphic<'static>>,
+	#[implementations(Graphic<'static>, Color, Gradient)]
+	paint: IList<P>,
 	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]

@@ -6,7 +6,7 @@ use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::context::Context;
 use core_types::gpoll::GPoll;
-use core_types::list::{Item, List, NodeIdPath};
+use core_types::list::{Item, List};
 use core_types::registry::SourceHandle;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
@@ -108,9 +108,9 @@ macro_rules! tagged_value {
 			// =======================
 			#[serde(skip)]
 			RenderOutput(RenderOutput),
-			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`. Materializes an `Item<NodeIdPath>` at runtime via `to_dynany`/`to_any` during graph flattening, matching the ranked connectors it feeds.
+			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`, in the `Vec<NodeId>` form our node catalog consumes.
 			#[serde(skip)]
-			NodeIdPath(NodeIdPath),
+			NodeIdPath(Vec<NodeId>),
 			/// The `DocumentNode` value carried by an `Extract` proto node, populated at flatten time by `resolve_extract_nodes`. The on-disk placeholder uses `TypeDefault(concrete!(DocumentNode))`.
 			#[serde(skip)]
 			DocumentNode(DocumentNode),
@@ -174,6 +174,14 @@ macro_rules! tagged_value {
 								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Box::new(<$type_default>::default()); }
 							};
 						}
+						macro_rules! check_list {
+							($element:ty) => {
+								if name == core_types::normalize_type_name(std::any::type_name::<List<$element>>()) { return Box::new(List::<$element>::default()); }
+							};
+						}
+						for_each_list_type_default!(check_list);
+						for_each_item_type_default!(check);
+						for_each_bare_type_default!(check);
 						Self::from_type_or_none(&Type::Concrete(td.clone())).to_dynany()
 					}
 					Self::F64Array(values) => {
@@ -219,6 +227,14 @@ macro_rules! tagged_value {
 								if name == core_types::normalize_type_name(std::any::type_name::<$type_default>()) { return Arc::new(<$type_default>::default()); }
 							};
 						}
+						macro_rules! check_list {
+							($element:ty) => {
+								if name == core_types::normalize_type_name(std::any::type_name::<List<$element>>()) { return Arc::new(List::<$element>::default()); }
+							};
+						}
+						for_each_list_type_default!(check_list);
+						for_each_item_type_default!(check);
+						for_each_bare_type_default!(check);
 						Self::from_type_or_none(&Type::Concrete(td.clone())).to_any()
 					}
 					Self::F64Array(values) => {
@@ -282,7 +298,7 @@ macro_rules! tagged_value {
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::RenderOutput(_) => concrete!(RenderOutput),
-					Self::NodeIdPath(_) => concrete!(core_types::list::NodeIdPath),
+					Self::NodeIdPath(_) => concrete!(Vec<NodeId>),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
 					Self::ContextModification(_) => concrete!(ContextModification),
 					Self::EditorApi(_) => concrete!(Arc<PlatformEditorApi>),
@@ -328,7 +344,7 @@ macro_rules! tagged_value {
 					Self::BrushCache(_) => scalar::<BrushCache>(),
 					$( Self::$identifier(_) => scalar::<$ty>(), )*
 					Self::RenderOutput(_) => scalar::<RenderOutput>(),
-					Self::NodeIdPath(_) => scalar::<core_types::list::NodeIdPath>(),
+					Self::NodeIdPath(_) => scalar::<Vec<NodeId>>(),
 					Self::DocumentNode(_) => scalar::<DocumentNode>(),
 					Self::ContextModification(_) => scalar::<ContextModification>(),
 					Self::EditorApi(_) => scalar::<Arc<PlatformEditorApi>>(),
@@ -366,8 +382,8 @@ macro_rules! tagged_value {
 						Self::from_type_or_none(&Type::Concrete(td)).to_edge()
 					}
 					Self::F64Array(values) => Ok(leveled_record_value_source(values)),
-					Self::Color(color) => Ok(record_value_source(color)),
-					Self::GradientRamp(stops) => Ok(leveled_record_value_source(vec![stops])),
+					Self::Color(color) => Ok(leveled_record_value_source(vec![color])),
+					Self::GradientRamp(ramp) => Ok(leveled_record_value_source(vec![Gradient::from(ramp)])),
 					Self::Strokes(strokes) => Ok(leveled_record_value_source(strokes)),
 					Self::DashPattern(lengths) => Ok(record_value_source(DashPattern(lengths.into_iter().map(core_types::list::Item::new_from_element).collect()))),
 					Self::BoxCorners(values) => Ok(record_value_source(BoxCorners(values.into_iter().map(core_types::list::Item::new_from_element).collect()))),
@@ -489,7 +505,6 @@ macro_rules! tagged_value {
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => None,
-					Type::Record(inner) => Self::from_type(inner),
 					Type::Concrete(concrete_type) => {
 						let name = concrete_type.name.as_ref();
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
@@ -500,6 +515,13 @@ macro_rules! tagged_value {
 						$( if name == core_types::normalize_type_name(std::any::type_name::<$ty>()) { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == core_types::normalize_type_name(std::any::type_name::<List<f64>>()) { return Some(TaggedValue::F64Array(Vec::new())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<List<Stroke>>()) { return Some(TaggedValue::Strokes(Vec::new())) }
+						// The manual variants are not in the generated `$ty` list, so their defaults are named here
+						if name == core_types::normalize_type_name(std::any::type_name::<BoxCorners>()) { return Some(TaggedValue::BoxCorners(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<DashPattern>()) { return Some(TaggedValue::DashPattern(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<BoxCorners>>()) { return Some(TaggedValue::BoxCorners(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<List<DashPattern>>()) { return Some(TaggedValue::DashPattern(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<BrushCache>()) { return Some(TaggedValue::BrushCache(Default::default())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<GradientRamp>()) { return Some(TaggedValue::GradientRamp(GradientRamp::default())) }
 						// Leveled inputs type by their element; each element name maps to the
 						// same tagged default as its legacy list form.
 						if name == core_types::normalize_type_name(std::any::type_name::<Color>()) { return Some(TaggedValue::Color(Color::default())) }
@@ -516,6 +538,12 @@ macro_rules! tagged_value {
 							};
 						}
 						for_each_bare_type_default!(check);
+						macro_rules! check_list {
+							($element:ty) => {
+								if name == core_types::normalize_type_name(std::any::type_name::<List<$element>>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<$element>))); }
+							};
+						}
+						for_each_list_type_default!(check_list);
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
@@ -793,6 +821,10 @@ impl TaggedValue {
 					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
 					// The Fill/Stroke paint wires carry `Graphic` or `Gradient` elements, so a paint default parses through the element recursion as a color or gradient literal
 					() if ty == TypeId::of::<Graphic>() => to_color(string).map(TaggedValue::Color)?,
+					// A rank-1 paint wire names its list type, so it parses the same literal as its element does
+					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(TaggedValue::Color)?,
+					() if ty == TypeId::of::<List<Color>>() => to_color(string).map(TaggedValue::Color)?,
+					() if ty == TypeId::of::<List<Gradient>>() => to_gradient(string).map(|gradient| TaggedValue::GradientRamp(gradient.into()))?,
 					() if ty == TypeId::of::<Gradient>() => to_gradient(string).map(|gradient| TaggedValue::GradientRamp(gradient.into()))?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(core_types::misc::parse_f64_list(string)),
@@ -803,7 +835,6 @@ impl TaggedValue {
 			}
 			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
 			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
-			Type::Record(element) => TaggedValue::from_primitive_string(string, element),
 		}
 	}
 
@@ -874,6 +905,35 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(core_types::descriptor!(List<Vector>))));
+			}
+			// Documents written against the structural rank model store the payload as a `Type`
+			// (`{"List": {"Concrete": {..}}}`). Our one wire kind reduces that to the element it names,
+			// keeping the `List<..>` spelling for a rank-1 wire so the existing name lookups still match.
+			"TypeDefault" if content.as_object().is_some_and(|c| c.contains_key("Concrete") || c.contains_key("Item") || c.contains_key("List")) => {
+				fn structural_type_name(value: &serde_json::Value) -> Option<String> {
+					let object = value.as_object()?;
+					if let Some(concrete) = object.get("Concrete") {
+						return Some(concrete.as_object()?.get("name")?.as_str()?.to_string());
+					}
+					if let Some(item) = object.get("Item") {
+						return structural_type_name(item);
+					}
+					if let Some(list) = object.get("List") {
+						return Some(format!("core_types::list::List<{}>", structural_type_name(list)?));
+					}
+					object.get("Generic")?.as_str().map(str::to_string)
+				}
+				let Some(name) = structural_type_name(&content) else {
+					return Err(serde::de::Error::custom("a structural TypeDefault payload named no type"));
+				};
+				let descriptor = TypeDescriptor {
+					id: None,
+					name: std::borrow::Cow::Owned(name),
+					alias: None,
+					size: 0,
+					align: 0,
+				};
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor)));
 			}
 			// The `TypeDefault` payload is a bare `TypeDescriptor`: our one wire kind needs no structural rank in it
 			"TypeDefault" if content.as_object().is_some_and(|c| c.contains_key("name")) => {

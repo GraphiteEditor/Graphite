@@ -12,7 +12,9 @@ use graphene_std::registry::{ConstructionError, SourceHandle, NodeIOTypes, Regis
 use graphene_std::runtime::RuntimeHandle;
 
 use graphene_std::vector::Vector;
-use graphene_std::{Context, Graphic, ProtoNodeIdentifier, concrete};
+use graphene_std::gradient::Gradient;
+use graphene_std::brush::Stroke;
+use graphene_std::{Color, Context, Graphic, ProtoNodeIdentifier, concrete};
 use node_registry_macros::{convert_node, into_node};
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
@@ -28,6 +30,16 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		#[cfg(feature = "gpu")]
 		into_node!(from: List<Raster<GPU>>, to: List<Raster<GPU>>),
 		convert_node!(from: List<Vector>, to: List<Graphic>),
+		convert_node!(from: List<Color>, to: List<Graphic>),
+		convert_node!(from: List<Gradient>, to: List<Graphic>),
+		convert_node!(from: List<String>, to: List<Graphic>),
+		convert_node!(from: List<Stroke>, to: List<Graphic>),
+		convert_node!(from: Vector, to: Graphic),
+		convert_node!(from: Color, to: Graphic),
+		convert_node!(from: Gradient, to: Graphic),
+		convert_node!(from: String, to: Graphic),
+		convert_node!(from: Stroke, to: Graphic),
+		convert_node!(from: Raster<CPU>, to: Graphic),
 		convert_node!(from: List<Raster<CPU>>, to: List<Graphic>),
 		#[cfg(feature = "gpu")]
 		convert_node!(from: List<Raster<GPU>>, to: List<Graphic>),
