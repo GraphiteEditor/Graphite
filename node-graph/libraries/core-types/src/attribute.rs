@@ -151,6 +151,13 @@ pub struct AttributeInfo {
 	/// Writes a legacy stored value into a field of this marker, parking
 	/// droppable payloads. A wrong-typed stored value leaves the field
 	/// untouched; `None` reports arena exhaustion.
+	///
+	/// `dst` must address a live field of *this row's* value type: the glue
+	/// writes its own `Value`'s worth of bytes there, so a caller resolving the
+	/// field by [`name`](Self::name) checks [`size`](Self::size) and
+	/// [`value_type`](Self::value_type) against the field first. The fields
+	/// here are public and the struct is `Copy`, so a row is a claim about a
+	/// marker rather than a proof about a field.
 	pub write_stored: unsafe fn(&dyn AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>,
 }
 

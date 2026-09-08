@@ -133,13 +133,23 @@ impl<'e> RunBuilder<'e> {
 
 	/// Writes a legacy stored value on an already pushed lane through the
 	/// census glue, parking droppable payloads. A marker outside the layout's
-	/// fields is dropped; a wrong-typed stored value leaves the field's
+	/// fields is dropped, as is one whose row and field agree on the name but
+	/// not on the value type; a wrong-typed stored value leaves the field's
 	/// default. `None` reports arena exhaustion.
 	pub fn attr_stored(&mut self, lane: usize, info: &crate::attribute::AttributeInfo, value: &dyn crate::list::AnyAttributeValue) -> Option<()> {
 		assert!(lane < self.pushed, "attributes write onto pushed lanes");
-		let Some(offset) = self.layout.offset_of(info.name, 0) else { return Some(()) };
-		// SAFETY: the offset comes from the builder's own layout, and the
-		// census writer verifies the stored type before touching the field.
+		let Some(field) = self.layout.fields.iter().find(|field| field.name == info.name && field.level == 0) else {
+			return Some(());
+		};
+		let (offset, size, type_id) = (field.offset, field.size, field.type_id);
+		// The row reaches the field by name alone, so the writer's own value type
+		// is checked against the field before its glue writes there, as `push`
+		// checks the default writer's.
+		if info.size != size || info.value_type != type_id {
+			return Some(());
+		}
+		// SAFETY: the offset comes from the builder's own layout, and the field
+		// was just checked to hold the writer's own value type at its size.
 		unsafe { (info.write_stored)(value, self.frames.add(lane * self.layout.lane_stride() + offset), self.arena) }
 	}
 
@@ -936,6 +946,26 @@ mod tests {
 		assert_eq!(run.element(0).map(String::as_str), Some("element"));
 		assert_eq!(run.attr::<crate::attribute::Name>(0), "label");
 		assert_eq!(run.attr::<crate::attribute::EditorLayerPath>(0), &[crate::uuid::NodeId(3)]);
+	}
+
+	#[test]
+	fn a_census_row_pointed_at_another_field_writes_nothing() {
+		use crate::attribute::{Attribute, Opacity, Transform};
+		use crate::lane::LaneSource;
+
+		let arena = crate::arena::Arena::new(1 << 16).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<f64>(), &[FieldWrite::of::<Opacity>(0)], 1).unwrap();
+		let lane = builder.push(0f64).unwrap();
+
+		// The transform writer renamed onto the 8-byte opacity field: a
+		// 48-byte write past the lane if the name were the only check.
+		let mut forged = crate::attribute::info(Transform::NAME).unwrap();
+		forged.name = Opacity::NAME;
+		builder.attr_stored(lane, &forged, &glam::DAffine2::from_translation((5., 6.).into())).unwrap();
+
+		let item = builder.finish();
+		let run = RunView::<f64>::new(&item).expect("the run holds f64 elements");
+		assert_eq!(run.attr::<Opacity>(0), 1., "the mistyped row leaves the census default");
 	}
 
 	#[test]
