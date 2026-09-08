@@ -462,13 +462,13 @@ fn stroke<'e, P: Clone + Send + Sync + dyn_any::StaticTypeSized + core_types::op
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
 	#[default(4.)]
 	miter_limit: f64,
-	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
-	paint_order: PaintOrder,
 	/// The stroke dash pattern. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
 	dash_pattern: DashPattern,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
+	/// Whether the stroke paints above or below the fill. Ours keeps this as an input; master encodes it as coverage order.
+	paint_order: PaintOrder,
 ) -> Result<(Vector, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
 	let mut stroke = Stroke {
 		weight,
@@ -506,9 +506,10 @@ fn stroke_graphic_leveled<'e, P: Clone + Send + Sync + dyn_any::StaticTypeSized 
 	cap: StrokeCap,
 	join: StrokeJoin,
 	#[default(4.)] miter_limit: f64,
-	paint_order: PaintOrder,
 	dash_pattern: DashPattern,
 	#[unit(" px")] dash_offset: f64,
+	/// Whether the stroke paints above or below the fill. Ours keeps this as an input; master encodes it as coverage order.
+	paint_order: PaintOrder,
 ) -> Result<(Graphic<'static>, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
 	let mut stroke = Stroke {
 		weight,
