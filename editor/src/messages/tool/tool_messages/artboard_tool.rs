@@ -145,6 +145,16 @@ impl ArtboardToolData {
 		}
 	}
 
+	fn start_resizing_force_select_edges(&mut self, _selected_edges: (bool, bool, bool, bool), _document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
+		if let Some(bounds) = &mut self.bounding_box_manager {
+			let (top, bottom, left, right) = _selected_edges;
+			let selected_edges = SelectedEdges::new(top, bottom, left, right, bounds.bounds);
+			bounds.selected_edges = Some(selected_edges);
+		}
+
+		self.start_resizing(_selected_edges, _document, _input);
+	}
+
 	fn hovered_artboard(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> Option<LayerNodeIdentifier> {
 		document.click_xray(input, viewport).find(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
@@ -306,7 +316,8 @@ impl Fsm for ArtboardToolFsmState {
 
 					ArtboardToolFsmState::Dragging
 				} else if input.keyboard.key(scale) && tool_data.selected_artboard.is_some() {
-					//tool_data.start_resizing(selected_edges, document, input);
+					let bottom_left_selected_edges = (false, true, false, true);
+					tool_data.start_resizing_force_select_edges(bottom_left_selected_edges, document, input);
 					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::ResizingBounds
 				} else {
