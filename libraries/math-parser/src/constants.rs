@@ -1,6 +1,6 @@
 use crate::ast::BinaryOp;
 use crate::quaternion::Quaternion;
-use crate::value::{Complex, Number, Value, complex_divide, complex_log_gamma, power_of_two_scale};
+use crate::value::{Complex, Number, Value, complex_divide, complex_log_gamma, part_product, power_of_two_scale};
 use num_complex::ComplexFloat;
 use std::array;
 use std::cmp::Ordering;
@@ -136,6 +136,46 @@ fn zipping(values: &[Value], function: fn(f64, f64) -> f64) -> Option<Value> {
 		.map(|Value::Number(number)| number.to_quaternion())
 		.reduce(|accumulated, quaternion| accumulated.zip(quaternion, function))
 		.map(Value::from)
+}
+
+/// Reads exactly `N` arguments in their full quaternion form, or `None` when the count differs.
+fn quaternions<const N: usize>(values: &[Value]) -> Option<[Quaternion; N]> {
+	if values.len() != N {
+		return None;
+	}
+
+	let mut quaternions = [Quaternion::default(); N];
+	for (quaternion, Value::Number(number)) in quaternions.iter_mut().zip(values) {
+		*quaternion = number.to_quaternion();
+	}
+	Some(quaternions)
+}
+
+/// Splits an optional trailing axis argument off a call's `fixed` leading arguments, defaulting it to `k`, the canvas normal.
+fn with_axis(values: &[Value], fixed: usize) -> Option<(&[Value], Quaternion)> {
+	match values.len().checked_sub(fixed)? {
+		0 => Some((values, Quaternion::K)),
+		1 => {
+			let Value::Number(axis) = values[fixed];
+			Some((&values[..fixed], axis.to_quaternion()))
+		}
+		_ => None,
+	}
+}
+
+/// The rotor `cos(θ/2) + sin(θ/2) axis` about the axis's vector part, or `None` for an axis with no direction.
+fn rotor(angle: f64, axis: Quaternion) -> Option<Quaternion> {
+	let axis = Quaternion::new(0., axis.x, axis.y, axis.z).normalized()?;
+	let (sin, cos) = (angle / 2.).sin_cos();
+	Some(Quaternion::new(cos, 0., 0., 0.) + axis.map(|part| part * sin))
+}
+
+/// The projection of `a` onto `b` over all four parts, or `None` for a zero `b`.
+fn projection(a: Quaternion, b: Quaternion) -> Option<Quaternion> {
+	// Onto the unit direction, whose dot product with `a` cannot overflow, and whose zero parts stay zero beside an infinite one
+	let direction = b.normalized()?;
+	let length = a.dot(direction);
+	Some(direction.map(|part| part_product(part, length, false)))
 }
 
 /// The mean of `count` numbers given as their `N` parts, each part averaged on its own over its [`power_of_two_scale`] so its sum cannot overflow.
@@ -646,6 +686,91 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		"remap" => fixed_arity(|values| {
 			let [value, in_a, in_b, out_a, out_b] = reals(values)?;
 			Some(Value::from_f64(lerp(out_a, out_b, inverse_lerp(value, in_a, in_b))))
+		}),
+
+		// Spherical interpolation between unit quaternions, `a (a⁻¹ b)^t`, along the shorter arc since `q` and `-q` are one rotation
+		"slerp" => fixed_arity(|values| {
+			let [Value::Number(a), Value::Number(b), Value::Number(t)] = values else { return None };
+			let t = t.as_real()?;
+			let (a, b) = (a.to_quaternion(), b.to_quaternion());
+			let b = if a.dot(b) < 0. { -b } else { b };
+
+			// `a⁻¹ b` as the conjugate of `b* / a*`, so it shares division's scaling of a tiny or huge `a`
+			let ratio = (b.conj() / a.conj()).conj();
+			Some(Value::from(a * ratio.pow(Quaternion::new(t, 0., 0., 0.))))
+		}),
+
+		// Vector functions, over the vector part or over all four parts as each is defined
+		"dot" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			Some(Value::from_f64(a.dot(b)))
+		}),
+
+		"cross" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			Some(Value::from(a.cross(b)))
+		}),
+
+		"normalize" => fixed_arity(|values| {
+			let [v] = quaternions(values)?;
+			v.normalized().map(Value::from)
+		}),
+
+		"distance" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			Some(Value::from_f64((a - b).norm()))
+		}),
+
+		// The angle from `a` to `b`, over all four parts, signed by the turn's direction seen from `+k` so that `rotate(a, angle(a, b))` is parallel to `b`
+		"angle" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			let (a, b) = (a.normalized()?, b.normalized()?);
+
+			// Kahan's form over the unit directions, which stays accurate at every angle
+			let unsigned = 2. * (a - b).norm().atan2((a + b).norm());
+			Some(Value::from_f64(if a.cross(b).z < 0. { -unsigned } else { unsigned }))
+		}),
+
+		// Rotates by an angle about an axis, `k` unless given, through the rotor sandwich `q v conj(q)`, which leaves the weight alone
+		"rotate" => fixed_arity(|values| {
+			let (values, axis) = with_axis(values, 2)?;
+			let [Value::Number(v), Value::Number(angle)] = values else { return None };
+			let rotor = rotor(angle.as_real()?, axis)?;
+			Some(Value::from(rotor * v.to_quaternion() * rotor.conj()))
+		}),
+
+		"rotor" => fixed_arity(|values| {
+			let (values, axis) = with_axis(values, 1)?;
+			let [angle] = reals(values)?;
+			rotor(angle, axis).map(Value::from)
+		}),
+
+		// A rotor's unit axis, which a rotor with no vector part does not have
+		"axis" => fixed_arity(|values| {
+			let [q] = quaternions(values)?;
+			Quaternion::new(0., q.x, q.y, q.z).normalized().map(Value::from)
+		}),
+
+		"project" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			projection(a, b).map(Value::from)
+		}),
+
+		"reject" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			projection(a, b).map(|projected| Value::from(a - projected))
+		}),
+
+		// Reflects `v` across the hyperplane normal to `n`
+		"reflect" => fixed_arity(|values| {
+			let [v, n] = quaternions(values)?;
+			projection(v, n).map(|projected| Value::from(v - projected.map(|part| part * 2.)))
+		}),
+
+		// The counterclockwise perpendicular in the `xy` plane, `cross(k, v)`
+		"perp" => fixed_arity(|values| {
+			let [v] = quaternions(values)?;
+			Some(Value::from(Quaternion::K.cross(v)))
 		}),
 
 		// Integer functions, exact throughout integer storage

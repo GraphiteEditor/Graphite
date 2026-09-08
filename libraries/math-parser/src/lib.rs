@@ -1043,6 +1043,63 @@ mod tests {
 		quaternion_max_with_zero: "max(2i - 3j, 0)" => Complex::new(0., 2.),
 		quaternion_max_with_real: "max(0.5i + 2j, 1)" => Quaternion::new(1., 0.5, 2., 0.),
 		quaternion_clamp_by_reals: "clamp(3i, 1, 2)" => 1.,
+
+		// Vector functions: the dot product spans all four parts, the cross product only the vector parts
+		vector_dot: "dot(3i + 4j, i)" => 3.,
+		vector_dot_with_weight: "dot(1 + 2i, 3 + 4i)" => 11.,
+		vector_cross: "cross(i, j)" => Quaternion::K,
+		vector_cross_ignores_weight: "cross(5 + i, 7 + j)" => Quaternion::K,
+		vector_normalize: "normalize(3i + 4j)" => Quaternion::new(0., 0.6, 0.8, 0.),
+		vector_distance: "distance(i, j)" => 2f64.sqrt(),
+		vector_project: "project(3i + 4j, i)" => Quaternion::new(0., 3., 0., 0.),
+		vector_reject: "reject(3i + 4j, i)" => Quaternion::new(0., 0., 4., 0.),
+		vector_reflect: "reflect(i + j, j)" => Quaternion::new(0., 1., -1., 0.),
+		vector_perp: "perp(3i + 4j)" => Quaternion::new(0., -4., 3., 0.),
+
+		// Angles are signed by the turn seen from `+k`, an inclination is positive, and a rotor's angle is `2 angle(1, q)`
+		vector_angle_counterclockwise: "angle(i, j)" => std::f64::consts::FRAC_PI_2,
+		vector_angle_clockwise: "angle(j, i)" => -std::f64::consts::FRAC_PI_2,
+		vector_angle_opposite: "angle(i, -i)" => std::f64::consts::PI,
+		vector_angle_inclination: "angle(k, i)" => std::f64::consts::FRAC_PI_2,
+		vector_angle_of_rotor: "2 angle(1, rotor(1))" => 1.,
+
+		// Rotation is the rotor sandwich about `k` unless an axis is given, and never touches the weight
+		vector_rotate: "rotate(i, pi/2)" => Quaternion::J,
+		vector_rotate_about_axis: "rotate(i, pi/2, j)" => Quaternion::new(0., 0., 0., -1.),
+		vector_rotate_keeps_weight: "rotate(5 + i, pi)" => Quaternion::new(5., -1., 0., 0.),
+		vector_rotor: "rotor(pi)" => Quaternion::K,
+		vector_axis: "axis(rotor(1, 2j))" => Quaternion::J,
+		vector_slerp: "slerp(1, k, 0.5)" => Quaternion::new(std::f64::consts::FRAC_1_SQRT_2, 0., 0., std::f64::consts::FRAC_1_SQRT_2),
+
+		// Tiny, huge, and infinite values keep their directions
+		vector_normalize_huge: "normalize(1e308 + 1e308i + 1e308j + 1e308k)" => Quaternion::splat(0.5),
+		vector_normalize_infinite: "normalize(inf j)" => Quaternion::J,
+		vector_angle_tiny: "angle(1e-200 i, 1e-200 j)" => std::f64::consts::FRAC_PI_2,
+		vector_angle_huge: "angle(1e200 i, 1e200 i + 1e200 j)" => std::f64::consts::FRAC_PI_4,
+		vector_project_tiny: "project(1e-200 j, 1e-200 j) / 1e-200" => Quaternion::J,
+		vector_project_huge: "project(1e200 j, 1e200 j) / 1e200" => Quaternion::J,
+		vector_reject_huge: "reject(1e200 i + 1e200 j, 1e200 j) / 1e200" => Quaternion::I,
+		vector_slerp_tiny: "slerp(1e-310 i, 1e-310 j, 0.5) / 1e-310" => Quaternion::new(0., std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2, 0.),
+		vector_slerp_huge: "slerp(1e308 + 1e308i + 1e308j + 1e308k, 1e308 - 1e308i + 1e308j + 1e308k, 0.5) / 1e308" => Quaternion::new(2. / 3_f64.sqrt(), 0., 2. / 3_f64.sqrt(), 2. / 3_f64.sqrt()),
+
+		// An infinite vector's zero parts are absent axes here too, and overflowing terms that cancel do so
+		vector_dot_infinite_perpendicular: "dot(inf i, j)" => 0.,
+		vector_dot_infinite_parallel: "dot(inf i, i)" => f64::INFINITY,
+		vector_dot_overflow_cancels: "dot(1e200 i + 1e200 j, 1e200 i - 1e200 j)" => 0.,
+		vector_cross_infinite: "cross(inf i, j)" => Quaternion::new(0., 0., 0., f64::INFINITY),
+		vector_cross_huge_with_itself: "cross(1e200 i + 1e200 j, 1e200 i + 1e200 j)" => 0.,
+		vector_cross_beside_huge_weights: "cross(1.7e308 + 5i + 1e200 j + 1e200 k, 1.7e308 + i + 1e200 j + 1e200 k) / 1e200" => Quaternion::new(0., 0., -4., 4.),
+		vector_project_infinite: "project(inf i, i)" => Complex::new(0., f64::INFINITY),
+		vector_project_onto_infinite: "project(i, inf i)" => Complex::new(0., 1.),
+		vector_reject_infinite: "reject(inf i, j)" => Complex::new(0., f64::INFINITY),
+	}
+
+	#[test]
+	fn vector_functions_without_a_direction_are_errors() {
+		// A zero vector has no direction to normalize, measure an angle from, rotate about, or project onto
+		for input in ["normalize(0)", "angle(0, i)", "axis(1)", "rotate(i, 1, 0)", "rotor(1, 0)", "project(i, 0)", "reflect(i, 0)"] {
+			assert!(evaluate(input).unwrap().is_err(), "expected `{input}` to be an evaluation error");
+		}
 	}
 
 	#[test]

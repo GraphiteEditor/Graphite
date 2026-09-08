@@ -67,6 +67,16 @@ impl Quaternion {
 		(self * other.conj()).w
 	}
 
+	/// The cross product of the vector parts, with zero weight, equal to `(a*b - b*a) / 2` and handling zero parts and overflow like the product.
+	pub fn cross(self, other: Self) -> Self {
+		Self::from_parts(rescaled_product(self.parts(), other.parts(), |a, b| {
+			let (a, b) = (Self::from_parts(a), Self::from_parts(b));
+			let zero_operand = a == Self::splat(0.) || b == Self::splat(0.);
+			let term = |x: f64, y: f64| part_product(x, y, zero_operand);
+			[0., term(a.y, b.z) - term(a.z, b.y), term(a.z, b.x) - term(a.x, b.z), term(a.x, b.y) - term(a.y, b.x)]
+		}))
+	}
+
 	pub fn norm_squared(self) -> f64 {
 		self.dot(self)
 	}
