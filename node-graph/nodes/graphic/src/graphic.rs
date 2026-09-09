@@ -379,8 +379,8 @@ pub fn stamp_layer_path<'e, T>(ctx: impl Ctx + ExtractArena<'e>, element: T, pat
 pub fn write_attribute<'e, T, V: WireValue>(
 	ctx: impl Ctx + ExtractArena<'e>,
 	content: T,
-	/// The attribute name, which the compiler folds and the kernel never reads.
-	_name: Named<Name0>,
+	/// The attribute name, folded into the layout when the graph compiles.
+	name: Named<Name0>,
 	#[implementations(f64, u32, u64, bool, DVec2, DAffine2, Color, Vec<NodeId>, String)] value: V,
 ) -> Result<(T, Attr<'e, Named<Name0, V::Row>>), Interrupt> {
 	let parked = value.park(ctx.arena()).ok_or(GraphError {

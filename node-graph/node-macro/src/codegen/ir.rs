@@ -860,6 +860,40 @@ mod tests {
 	}
 
 	#[test]
+	fn a_name_input_is_omitted_from_the_kernel_but_kept_on_the_wire() {
+		let mut parsed = crate::parsing::parse_node_fn(
+			quote!(category("")),
+			quote!(
+				fn tag<'e, V: WireValue>(ctx: impl Ctx + ExtractArena<'e>, content: f64, name: Named<Name0>, value: V) -> (f64, Attr<'e, Named<Name0, V::Row>>) {
+					(content, Attr(value))
+				}
+			),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+		let node = build(&parsed);
+
+		// The name keeps its wired position, so a document's input order is
+		// untouched, while the kernel neither declares nor is passed it.
+		assert_eq!(node.inputs.len(), 3, "the wire keeps content, name and value");
+		assert!(node.inputs[1].name_source.is_some(), "the name sits at its declared position");
+		let named: Vec<usize> = node.inputs.iter().enumerate().filter(|(_, input)| input.name_source.is_some()).map(|(index, _)| index).collect();
+		assert_eq!(named, vec![1], "exactly one input names a placeholder");
+
+		// A name input's wire type is plain text, which is what the fold reads.
+		let ParsedFieldType::Regular(RegularParsedField { ty, name_source, .. }) = &parsed.fields[1].ty else {
+			panic!("the name is a regular input");
+		};
+		assert!(name_source.is_some(), "the parameter declares a placeholder");
+		assert_eq!(quote!(#ty).to_string(), "String", "the name crosses as constant text");
+
+		// The placeholder is a concrete token, so it adds no generic for the
+		// struct to carry and none to go unconstrained.
+		let generics: Vec<String> = node.generics.iter().map(|generic| generic.ident.to_string()).collect();
+		assert_eq!(generics, vec!["V".to_string()], "only the value generic rides the node");
+	}
+
+	#[test]
 	fn bridge_record_remove() {
 		assert_bridge(
 			quote!(category("")),
