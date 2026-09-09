@@ -287,6 +287,7 @@ mod tests {
 		let resolved = record::RecordLayout {
 			named_writes: Vec::new(),
 			named_reads: Vec::new(),
+			named_read_defaults: Vec::new(),
 			lane_invariant: u32::MAX,
 			..meta.resolve(inputs)
 		};
@@ -298,6 +299,7 @@ mod tests {
 		let bundle = record::RecordLayout {
 			named_writes: Vec::new(),
 			named_reads: Vec::new(),
+			named_read_defaults: Vec::new(),
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
 			layout: layout.clone(),

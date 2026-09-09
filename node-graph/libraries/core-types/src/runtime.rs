@@ -280,6 +280,7 @@ mod tests {
 			lane_invariant: u32::MAX,
 			named_writes: Vec::new(),
 			named_reads: Vec::new(),
+			named_read_defaults: Vec::new(),
 		});
 		RecordExtract::new(graph, &layout)
 	}

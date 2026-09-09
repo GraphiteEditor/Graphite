@@ -21,7 +21,7 @@ mod serve;
 mod test_support;
 mod testkit;
 
-pub use access::{Rec, RecordValue, apply_plan, borrow_element, erase_static, read_at, read_element, token_only, write_element, write_element_sized, write_field};
+pub use access::{Rec, RecordValue, apply_plan, borrow_element, erase_static, read_at, read_at_defaulting, read_element, token_only, write_element, write_element_sized, write_field};
 pub use frames::{FrameArena, FrameScope, Frames};
 pub use input::{DerivedLazyInput, DerivedRecordInput, ElementInput, ElementLazyInput, LevelStatus, RecordExtract, RecordInput, RecordLazyInput, fill_frames, materialize_batch, materialize_level};
 pub use layout::{

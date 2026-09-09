@@ -392,6 +392,7 @@ impl ProtoNetwork {
 						lane_invariant,
 						named_writes: Vec::new(),
 						named_reads: Vec::new(),
+						named_read_defaults: Vec::new(),
 						layout,
 					}),
 					ConstructionArgs::Nodes(inputs) => node.resolved.layout_meta.as_ref().and_then(|meta| {
