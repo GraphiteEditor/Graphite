@@ -5311,7 +5311,7 @@ impl NodeNetworkInterface {
 			})
 			.collect::<Vec<(NodeId, i32)>>();
 
-		node_ids_with_position.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+		node_ids_with_position.sort_unstable_by_key(|entry| entry.1);
 		Some(node_ids_with_position.into_iter().map(|(node_id, _)| node_id).collect::<Vec<_>>())
 	}
 

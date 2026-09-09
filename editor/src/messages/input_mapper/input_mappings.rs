@@ -465,7 +465,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 	];
 	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
 
-	let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|a, b| b.modifiers.count_ones().cmp(&a.modifiers.count_ones()));
+	let sort = |list: &mut KeyMappingEntries| list.0.sort_by_key(|entry| std::cmp::Reverse(entry.modifiers.count_ones()));
 	// Sort the sublists of `key_up`, `key_down`, `key_up_no_repeat`, and `key_down_no_repeat`
 	for list in [&mut key_up, &mut key_down, &mut key_up_no_repeat, &mut key_down_no_repeat] {
 		for sublist in list {
