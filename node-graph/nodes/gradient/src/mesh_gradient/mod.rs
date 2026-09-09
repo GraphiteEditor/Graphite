@@ -1,22 +1,20 @@
 mod pipeline;
 mod tessellate;
 
-use std::array;
-
 use core_types::{
-	ATTR_TRANSFORM, Ctx, ExtractFootprint, ExtractPaintRenderParams,
+	ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_TRANSFORM, Ctx, ExtractFootprint, ExtractPaintRenderParams,
 	bounds::{BoundingBox, RenderBoundingBox},
 	list::{ATTR_TEXTURE, Item},
 	math::bbox::AxisAlignedBbox,
 	transform::Footprint,
 };
 use glam::{DAffine2, DVec2, UVec2};
-use vector_types::{GradientInterpolation, GradientSpace, MeshGradient, mesh_gradient::MeshPatchInterpolation};
+use vector_types::{GradientInterpolation, GradientSpace, MeshGradient, gradient::MeshGradientEvaluator};
 use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
 
 use crate::mesh_gradient::{
 	pipeline::{MeshGradientPipeline, MeshGradientPipelineArgs},
-	tessellate::{InterpolationSetting, MeshGradientTessellator, PatchData},
+	tessellate::{MeshGradientTessellator, Metadata},
 };
 
 const MAX_RESOLUTION: u32 = 8192;
@@ -34,10 +32,13 @@ pub async fn mesh_gradient_value<'a: 'n>(
 ) -> Item<MeshGradient> {
 	// FIXME: debug
 	let debug = *debug.element();
+	let pipeline = pipeline.into_element();
 
 	let mut mesh_gradient_item = mesh_gradient;
 	let mesh_gradient = mesh_gradient_item.element();
-	let pipeline = pipeline.into_element();
+
+	let interpolation_space: GradientSpace = mesh_gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_SPACE);
+	let interpolation_method: GradientInterpolation = mesh_gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION);
 
 	let mesh_to_target = ctx.paint_render_params().fallback_paint_to_target.unwrap_or_default();
 	let mesh_to_output = ctx.footprint().transform * mesh_to_target;
@@ -74,32 +75,23 @@ pub async fn mesh_gradient_value<'a: 'n>(
 	let Some(evaluator) = mesh_gradient.evaluator(GradientSpace::RgbGamma, GradientInterpolation::Smooth).ok() else {
 		return Item::default();
 	};
-	let patches = evaluator
-		.patch_evaluators()
-		.map(|patch| {
-			let colors = patch.colors().map(|color| color.to_array());
-			let [color_u_derivatives, color_v_derivatives] = match &patch.interpolation_method() {
-				MeshPatchInterpolation::Stepped => todo!(),
-				MeshPatchInterpolation::Linear => todo!(),
-				MeshPatchInterpolation::Smooth {
-					color_derivatives,
-					color_bezier_net: _, // FIXME: mottainai!
-				} => [array::from_fn(|i| color_derivatives[i].u.to_array()), array::from_fn(|i| color_derivatives[i].v.to_array())],
-			};
-			PatchData {
-				colors,
-				color_u_derivatives,
-				color_v_derivatives,
-			}
-		})
-		.collect::<Vec<_>>();
+	let color_data = pack_color_data(&evaluator, interpolation_method);
+
+	let Some(interpolation_space) = try_interpolation_space_to_u32(interpolation_space) else {
+		return Item::default();
+	};
+	let interpolation_method = interpolation_method_to_u32(interpolation_method);
 
 	let args = MeshGradientPipelineArgs {
 		output_size: texture_size,
 		vertices: &vertices,
 		indices: &indices,
-		patches: &patches,
-		interpolation_setting: &InterpolationSetting { space: 0, method: 2 },
+		color_data: color_data.as_slice(),
+		metadata: &Metadata {
+			patch_count: evaluator.patches().count() as u32,
+			interpolation_space,
+			interpolation_method,
+		},
 		debug,
 	};
 
@@ -146,4 +138,30 @@ fn calc_texture_to_output(mesh_gradient: &MeshGradient, mesh_to_output: DAffine2
 	let texture_size = (crop_size * texture_scale).ceil().max(DVec2::ONE).min(DVec2::splat(MAX_RESOLUTION as f64)).as_uvec2();
 
 	Some((texture_to_output, texture_size))
+}
+
+pub(crate) fn try_interpolation_space_to_u32(space: GradientSpace) -> Option<u32> {
+	match space {
+		GradientSpace::RgbGamma => Some(0),
+		GradientSpace::RgbLinear => Some(1),
+		GradientSpace::OkLab => Some(2),
+		GradientSpace::Lab => Some(3),
+		_ => None,
+	}
+}
+
+pub(crate) fn interpolation_method_to_u32(method: GradientInterpolation) -> u32 {
+	match method {
+		GradientInterpolation::Stepped => 0,
+		GradientInterpolation::Linear => 1,
+		GradientInterpolation::Smooth => 2,
+	}
+}
+
+pub(crate) fn pack_color_data(evaluator: &MeshGradientEvaluator, interpolation_method: GradientInterpolation) -> Vec<[f32; 4]> {
+	match interpolation_method {
+		GradientInterpolation::Stepped => evaluator.patches().map(|patch| patch.colors()[0].to_array()).collect::<Vec<_>>(),
+		GradientInterpolation::Linear => evaluator.patches().flat_map(|patch| patch.colors().map(|color| color.to_array())).collect::<Vec<_>>(),
+		GradientInterpolation::Smooth => evaluator.patches().flat_map(|patch| patch.color_bezier_net().to_array()).collect::<Vec<_>>(),
+	}
 }

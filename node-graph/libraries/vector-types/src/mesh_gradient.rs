@@ -845,6 +845,19 @@ impl BicubicBezierNet<DVec2> {
 	}
 }
 
+impl BicubicBezierNet<Vec4> {
+	/// Convert to row-major array. Colors are also converted to array.
+	pub fn to_array(&self) -> [[f32; 4]; 16] {
+		let mut array = [[0.; 4]; 16];
+		for row in 0..=3 {
+			for col in 0..=3 {
+				array[row * 4 + col] = self[row][col].to_array();
+			}
+		}
+		array
+	}
+}
+
 // =====================
 // MeshGradientEvaluator
 // =====================

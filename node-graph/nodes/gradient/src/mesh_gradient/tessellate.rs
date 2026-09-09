@@ -5,8 +5,7 @@ use std::{
 	collections::{HashMap, VecDeque},
 };
 
-use core_types::transform::Transform;
-use glam::{DAffine2, DVec2, UVec2};
+use glam::{DAffine2, DVec2};
 use vector_types::{
 	GradientInterpolation, GradientSpace, MeshGradient,
 	gradient::MeshGradientEvaluator,
@@ -22,19 +21,13 @@ const MAX_SUBDIVISION_DEPTH: u32 = 31;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub(super) struct InterpolationSetting {
-	/// Color space to interpolate in: 0 => gamma sRGB, 1 => linear sRGB, 2 => OKLab, 3 => Lab
-	pub space: u32,
-	/// Interpolation method: 0 => Stepped, 1 => Linear, 2 => Smooth
-	pub method: u32,
-}
-
-#[repr(C, align(16))]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub(super) struct PatchData {
-	pub colors: [[f32; 4]; 4],
-	pub color_u_derivatives: [[f32; 4]; 4],
-	pub color_v_derivatives: [[f32; 4]; 4],
+pub(super) struct Metadata {
+	/// Total number of patches.
+	pub patch_count: u32,
+	/// 0 => gamma sRGB, 1 => linear sRGB, 2 => OKLab, 3 => Lab
+	pub interpolation_space: u32,
+	/// 0 => Stepped, 1 => Linear, 2 => Smooth
+	pub interpolation_method: u32,
 }
 
 #[repr(C)]
@@ -171,7 +164,7 @@ impl MeshGradientTessellator {
 	fn initialize_adaptive_subdivision(&self) -> Result<AdaptiveSubdivisionState, MeshGradientTessellatorError> {
 		let mut state = AdaptiveSubdivisionState::default();
 
-		for patch in self.evaluator.patch_evaluators() {
+		for patch in self.evaluator.patches() {
 			if self.should_cull(&patch.position_bezier_net()) {
 				continue;
 			};

@@ -2,7 +2,7 @@ use glam::UVec2;
 use raster_types::Texture;
 use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor};
 
-use crate::mesh_gradient::tessellate::{InterpolationSetting, MeshVertex, PatchData};
+use crate::mesh_gradient::tessellate::{MeshVertex, Metadata};
 
 pub struct MeshGradientPipeline {
 	renderer: Renderer,
@@ -12,8 +12,8 @@ pub struct MeshGradientPipelineArgs<'a> {
 	pub vertices: &'a [MeshVertex],
 	pub indices: &'a [u32],
 	pub output_size: UVec2,
-	pub patches: &'a [PatchData],
-	pub interpolation_setting: &'a InterpolationSetting,
+	pub color_data: &'a [[f32; 4]],
+	pub metadata: &'a Metadata,
 	pub debug: bool,
 }
 
@@ -34,19 +34,19 @@ impl AsyncWgpuPipeline for MeshGradientPipeline {
 struct Renderer {
 	render_pipeline: wgpu::RenderPipeline,
 	debug_outline_pipeline: wgpu::RenderPipeline, // FIXME: only for debug
-	patch_data_layout: wgpu::BindGroupLayout,
+	color_data_layout: wgpu::BindGroupLayout,
 }
 
 impl Renderer {
 	fn new(device: &wgpu::Device) -> Self {
 		let shader = device.create_shader_module(wgpu::include_wgsl!("render.wgsl"));
 
-		let patch_data_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-			label: Some("mesh_gradient_patch_data_layout"),
+		let data_buffer_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+			label: Some("mesh_gradient_data_buffer_layout"),
 			entries: &[
 				wgpu::BindGroupLayoutEntry {
 					binding: 0,
-					visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Buffer {
 						ty: wgpu::BufferBindingType::Storage { read_only: true },
 						has_dynamic_offset: false,
@@ -56,7 +56,7 @@ impl Renderer {
 				},
 				wgpu::BindGroupLayoutEntry {
 					binding: 1,
-					visibility: wgpu::ShaderStages::FRAGMENT,
+					visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
 					ty: wgpu::BindingType::Buffer {
 						ty: wgpu::BufferBindingType::Uniform,
 						has_dynamic_offset: false,
@@ -69,7 +69,7 @@ impl Renderer {
 
 		let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("mesh_gradient_renderer_pipeline_layout"),
-			bind_group_layouts: &[Some(&patch_data_layout)],
+			bind_group_layouts: &[Some(&data_buffer_layout)],
 			immediate_size: 0,
 		});
 
@@ -160,7 +160,7 @@ impl Renderer {
 		Self {
 			render_pipeline,
 			debug_outline_pipeline,
-			patch_data_layout,
+			color_data_layout: data_buffer_layout,
 		}
 	}
 
@@ -188,15 +188,15 @@ impl Renderer {
 			usage: wgpu::BufferUsages::INDEX,
 		});
 
-		let patch_data_buffer = executor.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-			label: Some("mesh_gradient_patch_data_buffer"),
-			contents: bytemuck::cast_slice(args.patches),
+		let color_data_buffer = executor.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: Some("mesh_gradient_color_data_buffer"),
+			contents: bytemuck::cast_slice(args.color_data),
 			usage: wgpu::BufferUsages::STORAGE,
 		});
 
-		let interpolation_setting_buffer = executor.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-			label: Some("mesh_gradient_interpolation_setting_buffer"),
-			contents: bytemuck::cast_slice(&[*args.interpolation_setting]),
+		let metadata_buffer = executor.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: Some("mesh_gradient_metadata_buffer"),
+			contents: bytemuck::cast_slice(&[*args.metadata]),
 			usage: wgpu::BufferUsages::UNIFORM,
 		});
 
@@ -216,17 +216,17 @@ impl Renderer {
 		});
 		let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-		let patch_data_bind_group = executor.context().device.create_bind_group(&wgpu::BindGroupDescriptor {
-			label: Some("mesh_gradient_patch_data_bind_group"),
-			layout: &self.patch_data_layout,
+		let color_data_bind_group = executor.context().device.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("mesh_gradient_color_data_bind_group"),
+			layout: &self.color_data_layout,
 			entries: &[
 				wgpu::BindGroupEntry {
 					binding: 0,
-					resource: patch_data_buffer.as_entire_binding(),
+					resource: color_data_buffer.as_entire_binding(),
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: interpolation_setting_buffer.as_entire_binding(),
+					resource: metadata_buffer.as_entire_binding(),
 				},
 			],
 		});
@@ -273,7 +273,7 @@ impl Renderer {
 			});
 
 			render_pass.set_pipeline(&self.render_pipeline);
-			render_pass.set_bind_group(0, &patch_data_bind_group, &[]);
+			render_pass.set_bind_group(0, &color_data_bind_group, &[]);
 			render_pass.set_vertex_buffer(0, (*vertex_buffer).slice(..));
 			render_pass.set_index_buffer((*index_buffer).slice(..), wgpu::IndexFormat::Uint32);
 			render_pass.draw_indexed(0..args.indices.len() as u32, 0, 0..1);
