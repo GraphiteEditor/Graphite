@@ -2760,9 +2760,6 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		ParameterWidgetsInfo::new(node_id, MiterLimitInput::INDEX, true, context),
 		NumberInput::default().min(0.).disabled(miter_limit_disabled),
 	);
-	let paint_order = enum_choice::<PaintOrder>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, PaintOrderInput::INDEX, true, context))
-		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
 	let dash_lengths = array_of_number_widget(ParameterWidgetsInfo::new(node_id, DashLengthsInput::INDEX, true, context), TextInput::default().centered(true));
 	let number_input = disabled_number_input;
@@ -2775,7 +2772,6 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		cap,
 		join,
 		LayoutGroup::row(miter_limit),
-		paint_order,
 		LayoutGroup::row(dash_lengths),
 		LayoutGroup::row(dash_offset),
 	]

@@ -10,7 +10,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
+use graphene_std::vector::style::{GradientSpreadMethod, GradientType, PaintOrder, Stroke};
 use graphene_std::vector::{GradientStops, PointId, VectorModificationType};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
@@ -62,6 +62,10 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		color: Option<Color>,
 		stroke: Stroke,
+	},
+	StrokePaintOrderSet {
+		layer: LayerNodeIdentifier,
+		paint_order: PaintOrder,
 	},
 	TransformChange {
 		layer: LayerNodeIdentifier,

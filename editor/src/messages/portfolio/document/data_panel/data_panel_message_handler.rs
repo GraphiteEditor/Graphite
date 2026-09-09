@@ -430,10 +430,6 @@ impl TableItemLayout for Vector {
 						TextLabel::new("Stroke Transform").narrow(true).widget_instance(),
 						TextLabel::new(format_transform_matrix(stroke.transform)).narrow(true).widget_instance(),
 					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Paint Order").narrow(true).widget_instance(),
-						TextLabel::new(stroke.paint_order.to_string()).narrow(true).widget_instance(),
-					]);
 				}
 
 				let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");

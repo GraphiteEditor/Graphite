@@ -182,12 +182,18 @@ impl DrawingToolState {
 			cap: self.stroke_cap.unwrap_or_default(),
 			join: self.stroke_join.unwrap_or_default(),
 			join_miter_limit: self.miter_limit.unwrap_or(4.),
-			paint_order: self.paint_order.unwrap_or_default(),
 			dash_lengths: self.effective_dash_lengths(),
 			dash_offset: self.dash_offset.unwrap_or(0.),
 			transform: glam::DAffine2::IDENTITY,
 		};
 		responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
+		// The paint order is the chain order of the Fill and Stroke nodes, so a below choice reorders the new pair
+		if self.paint_order.unwrap_or_default() == graphene_std::vector::style::PaintOrder::StrokeBelow {
+			responses.add(GraphOperationMessage::StrokePaintOrderSet {
+				layer,
+				paint_order: graphene_std::vector::style::PaintOrder::StrokeBelow,
+			});
+		}
 	}
 }
 

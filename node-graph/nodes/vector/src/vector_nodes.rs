@@ -38,7 +38,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{GradientStops, HasTransform, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{GradientStops, HasTransform, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use vector_types::{GradientSpreadMethod, GradientType};
@@ -323,15 +323,6 @@ fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic<'stat
 	Ok(parked)
 }
 
-/// Parks a row's carried appearance, absent rows staying absent.
-fn park_row_appearance<'e>(arena: &'e core_types::arena::Arena, attributes: &ItemAttributeValues) -> Result<Option<&'e Appearance>, Interrupt> {
-	attributes
-		.get::<Appearance>(graphic_types::ATTR_APPEARANCE)
-		.cloned()
-		.map(|appearance| park_appearance(arena, appearance))
-		.transpose()
-}
-
 /// Keyed, as [`park_paint`] is, so a group-free appearance's promote moves this header.
 fn park_appearance<'e>(arena: &'e core_types::arena::Arena, appearance: Appearance) -> Result<&'e Appearance, Interrupt> {
 	let (parked, _) = arena.alloc_sized_keyed(appearance, 0).ok_or(GraphError {
@@ -464,8 +455,6 @@ fn stroke<'e>(
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
 	#[default(4.)]
 	miter_limit: f64,
-	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
-	paint_order: PaintOrder,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
 	dash_lengths: IList<f64>,
 	/// The phase offset distance from the starting point of the dash pattern.
@@ -482,7 +471,6 @@ fn stroke<'e>(
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
-		paint_order,
 	};
 
 	// The coverage records the stroke's authoring space, so the item transform is composed in, translation
@@ -496,12 +484,9 @@ fn stroke<'e>(
 	element.stroke = Some(stroke);
 
 	let paint = paint_table(paint);
-	// The coverage order carries the paint order: a below stroke lands before the fill in the list
-	let placement = match paint_order {
-		PaintOrder::StrokeAbove => CoverPlacement::Above,
-		PaintOrder::StrokeBelow => CoverPlacement::Below,
-	};
-	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint, placement);
+	// The paint order is the coverage row order: appending above follows the painter's algorithm, and a
+	// below stroke is expressed by the chain running the stroke node before the fill
+	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint, CoverPlacement::Above);
 	let parked = park_paint(ctx.arena(), paint)?;
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
 	Ok((element, Attr(*content_transform), Attr(Some(parked)), Attr(Some(parked_appearance))))
@@ -539,7 +524,6 @@ fn stroke_graphic_leveled<'e>(
 	cap: StrokeCap,
 	join: StrokeJoin,
 	#[default(4.)] miter_limit: f64,
-	paint_order: PaintOrder,
 	dash_lengths: IList<f64>,
 	#[unit(" px")] dash_offset: f64,
 ) -> Result<(Graphic<'static>, Attr<TransformAttr>, Attr<'e, StrokeAttr>, Attr<'e, AppearanceMarker>), Interrupt> {
@@ -553,7 +537,6 @@ fn stroke_graphic_leveled<'e>(
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
-		paint_order,
 	};
 
 	// The coverage records the stroke's authoring space at the lane, composing the lane transform as in `stroke` above.
@@ -568,12 +551,9 @@ fn stroke_graphic_leveled<'e>(
 	});
 
 	let paint = paint_table(paint);
-	// The coverage order carries the paint order: a below stroke lands before the fill in the list
-	let placement = match paint_order {
-		PaintOrder::StrokeAbove => CoverPlacement::Above,
-		PaintOrder::StrokeBelow => CoverPlacement::Below,
-	};
-	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint, placement);
+	// The paint order is the coverage row order: appending above follows the painter's algorithm, and a
+	// below stroke is expressed by the chain running the stroke node before the fill
+	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint, CoverPlacement::Above);
 	let parked = park_paint(ctx.arena(), paint)?;
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
 	Ok((element, Attr(*content_transform), Attr(Some(parked)), Attr(Some(parked_appearance))))
@@ -1485,7 +1465,11 @@ fn solidify_rows(flattened: List<Vector>) -> List<Vector> {
 			let dash_offset = stroke.dash_offset;
 			let dash_pattern = stroke.dash_lengths;
 			let miter_limit = stroke.join_miter_limit;
-			let paint_order = stroke.paint_order;
+			// The paint order rides the row's coverage order
+			let stroke_below = attributes
+				.get::<Appearance>(graphic_types::ATTR_APPEARANCE)
+				.map(Appearance::fill_and_stroke)
+				.is_some_and(|resolved| resolved.stroke_below);
 
 			let stroke_style = kurbo::Stroke::new(stroke.weight)
 				.with_caps(cap)
@@ -1541,10 +1525,10 @@ fn solidify_rows(flattened: List<Vector>) -> List<Vector> {
 
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
 
-			// Ordering based on the paint order. The first item in the `List` is rendered below the second.
-			match paint_order {
-				PaintOrder::StrokeAbove => fill_row.into_iter().chain(std::iter::once(stroke_row)).collect::<Vec<_>>(),
-				PaintOrder::StrokeBelow => std::iter::once(stroke_row).chain(fill_row).collect::<Vec<_>>(),
+			// Ordering based on the coverage order. The first item in the `List` is rendered below the second.
+			match stroke_below {
+				false => fill_row.into_iter().chain(std::iter::once(stroke_row)).collect::<Vec<_>>(),
+				true => std::iter::once(stroke_row).chain(fill_row).collect::<Vec<_>>(),
 			}
 		})
 		.collect();

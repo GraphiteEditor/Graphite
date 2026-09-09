@@ -31,7 +31,7 @@ use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{ATTR_FILL, Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
@@ -302,7 +302,7 @@ pub struct RenderParams {
 	/// Are we generating a mask for alignment? Used to prevent unnecessary transforms in masks
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
-	pub override_paint_order: bool,
+	pub stroke_below: bool,
 	/// Are we rendering for a pattern content
 	pub inside_pattern: bool,
 	pub artboard_background: Option<Color>,
@@ -1340,11 +1340,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, inherited_appe
 
 		// The lane's paint: its own declared appearance, or the nearest ancestor's through the cascade
 		let appearance = Appearance::cascade(source.attr::<AppearanceMarker>(index), inherited_appearance);
-		let mut resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
-		// The paint order rides the coverage list's row order
-		if let Some(stroke) = &mut resolved.stroke {
-			stroke.paint_order = if resolved.stroke_below { PaintOrder::StrokeBelow } else { PaintOrder::StrokeAbove };
-		}
+		let resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 		let element_stroke = resolved.stroke.as_ref();
 
 		// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
@@ -1387,7 +1383,8 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, inherited_appe
 		let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.covers_opaquely()) || mask_type == MaskType::Clip);
 
 		let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
-		let wants_stroke_below = element_stroke.map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
+		// The paint order rides the coverage list's row order
+		let wants_stroke_below = resolved.stroke_below;
 		let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
 		let use_face_fill = vector.use_face_fill();
 
@@ -1474,7 +1471,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, inherited_appe
 
 			let mut render_params = render_params.clone();
 			render_params.aligned_strokes = can_draw_aligned_stroke;
-			render_params.override_paint_order = override_paint_order;
+			render_params.stroke_below = override_paint_order || wants_stroke_below;
 
 			let stroke_shape_attribute = element_stroke
 				.map(|stroke| {
@@ -1559,8 +1556,6 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(
 	render_params: &RenderParams,
 ) {
 	for index in 0..source.lane_count() {
-		use graphic_types::vector_types::vector;
-
 		let Some(element) = source.element(index) else { continue };
 		let item_transform: DAffine2 = source.attr::<Transform>(index);
 		let blend_mode_attr: BlendMode = source.attr::<BlendModeAttr>(index);
@@ -1570,15 +1565,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(
 
 		// The lane's paint: its own declared appearance, or the nearest ancestor's through the cascade
 		let appearance = Appearance::cascade(source.attr::<AppearanceMarker>(index), inherited_appearance);
-		let mut resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
-		// The paint order rides the coverage list's row order
-		if let Some(stroke) = &mut resolved.stroke {
-			stroke.paint_order = if resolved.stroke_below {
-				vector::style::PaintOrder::StrokeBelow
-			} else {
-				vector::style::PaintOrder::StrokeAbove
-			};
-		}
+		let resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 
 		let has_real_stroke = resolved.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
 		let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
@@ -1641,7 +1628,8 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(
 		}
 
 		let use_layer = can_draw_aligned_stroke;
-		let wants_stroke_below = stroke.is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
+		// The paint order rides the coverage list's row order
+		let wants_stroke_below = resolved.stroke_below;
 
 		let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
 			let Some(fill_graphic) = fill_graphic_list else { return };
@@ -1827,7 +1815,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(
 						Stroke,
 					}
 
-					let order = match stroke.is_some_and(|stroke| !stroke.paint_order.is_default()) {
+					let order = match stroke.is_some() && wants_stroke_below {
 						true => [Op::Stroke, Op::Fill],
 						false => [Op::Fill, Op::Stroke], // Default
 					};

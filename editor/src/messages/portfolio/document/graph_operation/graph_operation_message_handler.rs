@@ -13,7 +13,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::list::List;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -94,6 +94,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::StrokeSet { layer, color, stroke } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.stroke_set(color, stroke);
+				}
+			}
+			GraphOperationMessage::StrokePaintOrderSet { layer, paint_order } => {
+				if let Some(stroke_node_id) = crate::messages::tool::common_functionality::graph_modification_utils::get_stroke_id(layer, network_interface) {
+					if super::utility_types::set_stroke_paint_order(network_interface, &[], stroke_node_id, paint_order) {
+						responses.add(PropertiesPanelMessage::Refresh);
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
 				}
 			}
 			GraphOperationMessage::TransformChange {
@@ -792,7 +800,6 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 				},
 				join_miter_limit: stroke.miterlimit().get() as f64,
 				align: StrokeAlign::Center,
-				paint_order: PaintOrder::StrokeAbove,
 				transform,
 			},
 		)

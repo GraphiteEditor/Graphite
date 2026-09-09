@@ -565,9 +565,22 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		Some(TaggedValue::F64(value)) => *value,
 		_ => 4.,
 	};
-	let paint_order = match read(graphene_std::vector::stroke::PaintOrderInput::INDEX) {
-		Some(TaggedValue::PaintOrder(value)) => *value,
-		_ => PaintOrder::default(),
+	// The paint order is the chain order of the Fill and Stroke nodes: the downstream one of an adjacent pair paints on top
+	let paint_order = {
+		let stroke_node_id = get_stroke_id(layer, network_interface);
+		let primary_source = |node_id: Option<NodeId>| {
+			node_id.and_then(|node_id| match network_interface.input_from_connector(&InputConnector::node(node_id, 0), &[]) {
+				Some(NodeInput::Node { node_id, output_index: 0, .. }) => Some(*node_id),
+				_ => None,
+			})
+		};
+		if primary_source(stroke_node_id).is_some_and(|source| Some(source) == get_fill_id(layer, network_interface)) {
+			PaintOrder::StrokeAbove
+		} else if primary_source(get_fill_id(layer, network_interface)).is_some_and(|source| Some(source) == stroke_node_id) {
+			PaintOrder::StrokeBelow
+		} else {
+			PaintOrder::default()
+		}
 	};
 	let dash_lengths = match read(graphene_std::vector::stroke::DashLengthsInput::INDEX) {
 		Some(TaggedValue::F64Array(value)) => value.clone(),
