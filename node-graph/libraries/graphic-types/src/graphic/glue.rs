@@ -1,6 +1,7 @@
 //! The record-crossing glue: group interiors carried between the owned, resident, and persistent regions.
 
 use super::Graphic;
+use crate::appearance::Appearance;
 use core_types::Color;
 use core_types::list::{Item, List};
 use raster_types::{CPU, Raster};
@@ -330,12 +331,90 @@ unsafe fn promote_graphic_list(src: *const u8, dst: *mut u8, promotion: &core_ty
 	Some(())
 }
 
+/// The coverage list's attribute keys, owned so the columns can be walked mutably.
+fn appearance_attribute_keys(appearance: &Appearance) -> Vec<String> {
+	appearance.0.attribute_keys().map(str::to_string).collect()
+}
+
+/// Whether any group hides in an appearance. Groups can only arrive through the
+/// `Graphic`-typed columns of the coverage list, today the paint column alone;
+/// a coverage item's own attributes hold plain stroke parameters.
+fn appearance_contains_groups(appearance: &Appearance) -> bool {
+	appearance
+		.0
+		.attribute_keys()
+		.any(|key| appearance.0.iter_attribute_values::<Graphic>(key).is_some_and(|mut values| values.any(graphic_contains_groups)))
+}
+
+/// The heap an appearance's paints own, group interiors excluded as
+/// [`graphic_retained_heap`] excludes them.
+fn appearance_retained_heap(appearance: &Appearance) -> usize {
+	appearance
+		.0
+		.attribute_keys()
+		.map(|key| appearance.0.iter_attribute_values::<Graphic>(key).map_or(0, |values| values.map(graphic_retained_heap).sum()))
+		.sum()
+}
+
+/// Every group held in an appearance's paint columns, deep-copied to its owned form.
+fn map_appearance_groups_to_owned(appearance: &mut Appearance) {
+	for key in appearance_attribute_keys(appearance) {
+		// A column of a type that cannot hold groups is skipped whole.
+		let Some(values) = appearance.0.iter_attribute_values_mut::<Graphic>(&key) else { continue };
+		for value in values {
+			*value = map_groups_to_owned(value);
+		}
+	}
+}
+
+/// Every owned group held in an appearance's paint columns, re-parked into
+/// `arena`. `None` reports arena exhaustion.
+fn map_appearance_groups_to_resident(appearance: &mut Appearance, arena: &core_types::arena::Arena) -> Option<()> {
+	for key in appearance_attribute_keys(appearance) {
+		// A column of a type that cannot hold groups is skipped whole.
+		let Some(values) = appearance.0.iter_attribute_values_mut::<Graphic>(&key) else { continue };
+		for value in values {
+			let resident = map_groups_to_resident(value, arena)?;
+			// SAFETY: the attribute store is erased, and the replay serves as
+			// long as `arena`, which the store's reader outlives.
+			*value = unsafe { core_types::record::erase_static(resident) };
+		}
+	}
+	Some(())
+}
+
+/// The deep copy-out for appearance field values (the appearance marker's owned
+/// form): content groups leave any paint column in their owned form. Declines
+/// (`None`) for group-free content, which already owns everything.
+fn deep_clone_appearance(value: &dyn core_types::list::AnyAttributeValue) -> Option<Box<dyn core_types::list::AnyAttributeValue>> {
+	let appearance = value.as_any().downcast_ref::<Option<Appearance>>().expect("an appearance field deep-copies at its own type");
+	let appearance = appearance.as_ref().filter(|appearance| appearance_contains_groups(appearance))?;
+	let mut appearance = appearance.clone();
+	map_appearance_groups_to_owned(&mut appearance);
+	Some(Box::new(Some(appearance)))
+}
+
+/// The deep replay for appearance field values: owned content groups replay
+/// into the serving arena before the field re-parks. `Some(None)` declines for
+/// group-free content; `None` reports arena exhaustion.
+fn deep_repark_appearance(value: &dyn core_types::list::AnyAttributeValue, arena: &core_types::arena::Arena) -> Option<Option<Box<dyn core_types::list::AnyAttributeValue>>> {
+	let appearance = value.as_any().downcast_ref::<Option<Appearance>>().expect("an appearance field replays at its own type");
+	let Some(appearance) = appearance.as_ref().filter(|appearance| appearance_contains_groups(appearance)) else {
+		return Some(None);
+	};
+	let mut appearance = appearance.clone();
+	map_appearance_groups_to_resident(&mut appearance, arena)?;
+	Some(Some(Box::new(Some(appearance))))
+}
+
 const _: () = {
 	fn register_all() {
 		core_types::record::register_deep_element_clone::<Graphic>(deep_clone_graphic, deep_repark_graphic);
 		core_types::record::register_deep_field_value::<Option<List<Graphic>>>(deep_clone_graphic_list, deep_repark_graphic_list);
 		core_types::record::register_field_promote::<Option<&'static List<Graphic<'static>>>>(promote_graphic_list);
 		core_types::record::register_element_promote::<Graphic>(promote_graphic);
+		core_types::record::register_deep_field_value::<Option<Appearance>>(deep_clone_appearance, deep_repark_appearance);
+		core_types::record::register_retained_heap::<Appearance>(|value| value.downcast_ref::<Appearance>().map_or(0, appearance_retained_heap));
 		core_types::record::register_retained_heap::<Graphic>(|value| value.downcast_ref::<Graphic>().map_or(0, graphic_retained_heap));
 		core_types::record::register_retained_heap::<Vector>(|value| value.downcast_ref::<Vector>().map_or(0, vector_retained_heap));
 		core_types::record::register_retained_heap::<Raster<CPU>>(|value| value.downcast_ref::<Raster<CPU>>().map_or(0, |raster| raster.data.len() * size_of::<Color>()));

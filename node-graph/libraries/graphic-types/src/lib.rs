@@ -1,3 +1,4 @@
+pub mod appearance;
 pub mod artboard;
 pub mod boundary;
 pub mod graphic;
@@ -9,9 +10,10 @@ pub use raster_types;
 pub use vector_types;
 
 // Re-export commonly used types at the crate root
+pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
 pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
-pub use markers::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_STROKE};
+pub use markers::{ATTR_APPEARANCE, ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_PAINT, ATTR_STROKE};
 
 pub mod migrations {
 	use crate::Vector;

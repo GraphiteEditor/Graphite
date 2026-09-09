@@ -20,11 +20,19 @@ core_types::attribute! {
 	/// Rasterize, etc.), so the editor can still surface click targets for the original child
 	/// layers after their content has been collapsed.
 	pub EditorMergedLayers("editor:merged_layers"): Option<&List<Graphic<'static>>>;
+	/// The item's ordered list of paint passes. An absent or empty value is the undeclared
+	/// state that inherits the nearest ancestor's appearance through the cascade.
+	pub Appearance("appearance"): Option<&crate::appearance::Appearance>;
+	/// One coverage row's paint, a bare graphic riding the coverage list as a column.
+	/// Absent when the coverage paints nothing.
+	pub Paint("paint"): Option<&Graphic<'static>>;
 }
 
 pub const ATTR_FILL: &str = Fill::NAME;
 pub const ATTR_STROKE: &str = Stroke::NAME;
 pub const ATTR_EDITOR_MERGED_LAYERS: &str = EditorMergedLayers::NAME;
+pub const ATTR_APPEARANCE: &str = Appearance::NAME;
+pub const ATTR_PAINT: &str = Paint::NAME;
 
 #[cfg(test)]
 mod tests {
@@ -37,6 +45,8 @@ mod tests {
 		for name in ["fill", "stroke", "editor:merged_layers"] {
 			assert_eq!(info(name).unwrap().value_type, TypeId::of::<Option<&'static List<Graphic>>>());
 		}
+		assert_eq!(info("appearance").unwrap().value_type, TypeId::of::<Option<&'static crate::appearance::Appearance>>());
+		assert_eq!(info("paint").unwrap().value_type, TypeId::of::<Option<&'static Graphic>>());
 	}
 
 	#[test]
