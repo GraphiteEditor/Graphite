@@ -17,7 +17,7 @@ use core_types::transform::Transform;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::appearance::{Appearance, CoverPlacement, Coverage};
+use graphic_types::appearance::{Appearance, Cover, CoverPlacement, Coverage};
 use graphic_types::graphic::{bake_paint_transforms, has_paint, is_paint_present, set_paint_attribute_at};
 use graphic_types::markers::{Appearance as AppearanceMarker, EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -101,7 +101,17 @@ fn assign_colors<'e>(
 	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
 	repeat_every: u32,
-) -> Result<IList<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, StrokeAttr>, Attr<'e, EditorLayerPath>)>, Interrupt> {
+) -> Result<
+	IList<(
+		Vector,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
+		Attr<'e, EditorLayerPath>,
+	)>,
+	Interrupt,
+> {
 	let lane = ctx.index() as usize;
 	if lane >= content.len() {
 		return Err(GraphError::past_end().into());
@@ -110,11 +120,14 @@ fn assign_colors<'e>(
 	let park_existing = |paint: Option<&List<Graphic<'static>>>| -> Result<Option<&'e List<Graphic>>, Interrupt> { paint.map(|paint| park_paint(ctx.arena(), paint.clone())).transpose() };
 	let existing_fill = park_existing(content.lane(lane).attr::<Fill>())?;
 	let existing_stroke = park_existing(content.lane(lane).attr::<StrokeAttr>())?;
+	let existing_appearance = content.lane(lane).attr::<AppearanceMarker>().cloned();
+	let park_appearance_attr = |appearance: Option<Appearance>| -> Result<Option<&'e Appearance>, Interrupt> { appearance.map(|appearance| park_appearance(ctx.arena(), appearance)).transpose() };
 	let carried = carried_lane_attrs(ctx.arena(), *content.lane(lane))?;
 	let (transform, layer_path) = carried;
 
 	if gradient.is_empty() {
-		return Ok((element, transform, Attr(existing_fill), Attr(existing_stroke), layer_path));
+		let parked_appearance = park_appearance_attr(existing_appearance)?;
+		return Ok((element, transform, Attr(existing_fill), Attr(existing_stroke), Attr(parked_appearance), layer_path));
 	}
 	let gradient_element = gradient.element_ref(0);
 	let reversed;
@@ -138,7 +151,19 @@ fn assign_colors<'e>(
 		true => Some(parked),
 		false => existing_stroke,
 	};
-	Ok((element, transform, Attr(fill_attr), Attr(stroke_attr), layer_path))
+
+	// The same recolor lands on the appearance's coverage paints
+	let mut appearance = existing_appearance.unwrap_or_default();
+	let paint_cell = Graphic::Graphic(parked.clone());
+	if fill && !appearance.set_paint_of(Cover::Fill, paint_cell.clone()) {
+		appearance.replace_or_insert(Coverage::new_fill(), paint_cell.clone(), CoverPlacement::Above);
+	}
+	if stroke && element.stroke.is_some() && !appearance.set_paint_of(Cover::Stroke, paint_cell.clone()) {
+		appearance.replace_or_insert(Coverage::new_stroke(&element.stroke.clone().unwrap_or_default()), paint_cell, CoverPlacement::Above);
+	}
+	let parked_appearance = park_appearance_attr(Some(appearance))?;
+
+	Ok((element, transform, Attr(fill_attr), Attr(stroke_attr), Attr(parked_appearance), layer_path))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -229,15 +254,26 @@ fn assign_colors_graphic<'e>(
 	let element = match rows {
 		Some(mut rows) => {
 			for row in 0..rows.len() {
-				let has_stroke = rows.element(row).is_some_and(|vector| vector.stroke.is_some());
+				let row_stroke = rows.element(row).and_then(|vector| vector.stroke.clone());
 				let color = assign_color_at(gradient_element, position + row, length, randomize, seed, repeat_every);
 				let paint = List::new_from_element(color).into_graphic_list();
 				if fill {
 					set_paint_attribute_at(&mut rows, row, ATTR_FILL, paint.clone());
 				}
-				if stroke && has_stroke {
+				if stroke && row_stroke.is_some() {
 					set_paint_attribute_at(&mut rows, row, ATTR_STROKE, paint.clone());
 				}
+
+				// The same recolor lands on the row's appearance coverage paints
+				let mut appearance = rows.attribute_cloned_or_default::<Appearance>(graphic_types::ATTR_APPEARANCE, row);
+				let paint_cell = Graphic::Graphic(paint.clone());
+				if fill && !appearance.set_paint_of(Cover::Fill, paint_cell.clone()) {
+					appearance.replace_or_insert(Coverage::new_fill(), paint_cell.clone(), CoverPlacement::Above);
+				}
+				if stroke && row_stroke.is_some() && !appearance.set_paint_of(Cover::Stroke, paint_cell.clone()) {
+					appearance.replace_or_insert(Coverage::new_stroke(&row_stroke.unwrap_or_default()), paint_cell, CoverPlacement::Above);
+				}
+				rows.set_attribute(graphic_types::ATTR_APPEARANCE, row, appearance);
 			}
 			let content = core_types::record::GroupItem::from_list(rows, ctx.arena()).ok_or_else(|| Interrupt::from(GraphError::new("the arena is exhausted")))?;
 			Graphic::Group(core_types::record::Group { row: None, content })
@@ -287,6 +323,15 @@ fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic<'stat
 	Ok(parked)
 }
 
+/// Parks a row's carried appearance, absent rows staying absent.
+fn park_row_appearance<'e>(arena: &'e core_types::arena::Arena, attributes: &ItemAttributeValues) -> Result<Option<&'e Appearance>, Interrupt> {
+	attributes
+		.get::<Appearance>(graphic_types::ATTR_APPEARANCE)
+		.cloned()
+		.map(|appearance| park_appearance(arena, appearance))
+		.transpose()
+}
+
 /// Keyed, as [`park_paint`] is, so a group-free appearance's promote moves this header.
 fn park_appearance<'e>(arena: &'e core_types::arena::Arena, appearance: Appearance) -> Result<&'e Appearance, Interrupt> {
 	let (parked, _) = arena.alloc_sized_keyed(appearance, 0).ok_or(GraphError {
@@ -297,11 +342,12 @@ fn park_appearance<'e>(arena: &'e core_types::arena::Arena, appearance: Appearan
 }
 
 /// Appends one coverage to the content's appearance following the painter's algorithm:
-/// the most downstream paint node in the chain paints on top. The coverage's paint is the
-/// canonical paint list carried as one graphic cell, the input lane's own envelope dropped.
-fn stamped_appearance(content_appearance: Option<&Appearance>, coverage: Coverage, paint: &List<Graphic<'static>>) -> Appearance {
+/// the most downstream paint node in the chain paints on top unless it asks for the
+/// below placement. The coverage's paint is the canonical paint list carried as one
+/// graphic cell, the input lane's own envelope dropped.
+fn stamped_appearance(content_appearance: Option<&Appearance>, coverage: Coverage, paint: &List<Graphic<'static>>, placement: CoverPlacement) -> Appearance {
 	let mut appearance = content_appearance.cloned().unwrap_or_default();
-	appearance.replace_or_insert(coverage, Graphic::Graphic(paint.clone()), CoverPlacement::Above);
+	appearance.replace_or_insert(coverage, Graphic::Graphic(paint.clone()), placement);
 	appearance
 }
 
@@ -363,7 +409,7 @@ fn fill<'e>(
 ) -> Result<(Vector, Attr<'e, Fill>, Attr<'e, AppearanceMarker>), Interrupt> {
 	let mut paint = paint_table(fill);
 	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _spread_method, _has_transform.0.then_some(_transform));
-	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint);
+	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint, CoverPlacement::Above);
 	let parked = park_paint(ctx.arena(), paint)?;
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
 	Ok((element, Attr(Some(parked)), Attr(Some(parked_appearance))))
@@ -390,7 +436,7 @@ fn fill_graphic_leveled<'e>(
 	};
 	let mut paint = paint_table(fill);
 	default_gradient_paint(&mut paint, bounds, _gradient_type, _spread_method, _has_transform.0.then_some(_transform));
-	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint);
+	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint, CoverPlacement::Above);
 	let parked = park_paint(ctx.arena(), paint)?;
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
 	Ok((element, Attr(Some(parked)), Attr(Some(parked_appearance))))
@@ -439,11 +485,10 @@ fn stroke<'e>(
 		paint_order,
 	};
 
-	// The coverage records the stroke's authoring space, so the item transform is composed in. Its translation
-	// cancels out in every consumer, so it is cleared to let an otherwise-identity capture elide.
+	// The coverage records the stroke's authoring space, so the item transform is composed in, translation
+	// included so the render consumers see the exact legacy stroke space.
 	let mut coverage_stroke = stroke.clone();
 	coverage_stroke.transform *= *content_transform;
-	coverage_stroke.transform.translation = DVec2::ZERO;
 
 	stroke.transform *= *content_transform;
 
@@ -451,7 +496,12 @@ fn stroke<'e>(
 	element.stroke = Some(stroke);
 
 	let paint = paint_table(paint);
-	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint);
+	// The coverage order carries the paint order: a below stroke lands before the fill in the list
+	let placement = match paint_order {
+		PaintOrder::StrokeAbove => CoverPlacement::Above,
+		PaintOrder::StrokeBelow => CoverPlacement::Below,
+	};
+	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint, placement);
 	let parked = park_paint(ctx.arena(), paint)?;
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
 	Ok((element, Attr(*content_transform), Attr(Some(parked)), Attr(Some(parked_appearance))))
@@ -506,11 +556,9 @@ fn stroke_graphic_leveled<'e>(
 		paint_order,
 	};
 
-	// The coverage records the stroke's authoring space at the lane, composing the lane transform with cleared
-	// translation, for the same reason as in `stroke` above.
+	// The coverage records the stroke's authoring space at the lane, composing the lane transform as in `stroke` above.
 	let mut coverage_stroke = stroke.clone();
 	coverage_stroke.transform *= *content_transform;
-	coverage_stroke.transform.translation = DVec2::ZERO;
 
 	let mut element = element;
 	for_each_interior_vector_mut(&mut element, |vector, transform| {
@@ -520,7 +568,12 @@ fn stroke_graphic_leveled<'e>(
 	});
 
 	let paint = paint_table(paint);
-	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint);
+	// The coverage order carries the paint order: a below stroke lands before the fill in the list
+	let placement = match paint_order {
+		PaintOrder::StrokeAbove => CoverPlacement::Above,
+		PaintOrder::StrokeBelow => CoverPlacement::Below,
+	};
+	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint, placement);
 	let parked = park_paint(ctx.arena(), paint)?;
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
 	Ok((element, Attr(*content_transform), Attr(Some(parked)), Attr(Some(parked_appearance))))
@@ -1467,6 +1520,9 @@ fn solidify_rows(flattened: List<Vector>) -> List<Vector> {
 				let mut fill_attributes = attributes.clone();
 				// No stroke remains on the fill row
 				fill_attributes.remove::<Option<List<Graphic>>>(ATTR_STROKE);
+				if let Some(appearance) = fill_attributes.get_mut::<Appearance>(graphic_types::ATTR_APPEARANCE) {
+					appearance.retain_cover(Cover::Fill);
+				}
 				Item::from_parts(vector, fill_attributes)
 			});
 
@@ -1474,6 +1530,14 @@ fn solidify_rows(flattened: List<Vector>) -> List<Vector> {
 			// Drop the original fill and use the stroke paint to fill the outlined stroke
 			stroke_attributes.remove::<Option<List<Graphic>>>(ATTR_FILL);
 			stroke_attributes.rename(ATTR_STROKE, ATTR_FILL);
+			if let Some(appearance) = stroke_attributes.get_mut::<Appearance>(graphic_types::ATTR_APPEARANCE) {
+				// The outlined stroke is filled with the stroke coverage's paint
+				let stroke_paint = appearance.first_paint_of(Cover::Stroke).cloned();
+				*appearance = Appearance::default();
+				if let Some(paint) = stroke_paint {
+					appearance.replace_or_insert(Coverage::new_fill(), paint, CoverPlacement::Above);
+				}
+			}
 
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
 
@@ -1503,6 +1567,7 @@ fn solidify_native_lane<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -1563,6 +1628,7 @@ fn emit_legacy_lane<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -1593,6 +1659,11 @@ fn emit_legacy_lane<'e>(
 		.and_then(|paint| paint.as_ref())
 		.map(|paint| park_paint(arena, paint.clone()))
 		.transpose()?;
+	let appearance = output
+		.attribute::<Appearance>(graphic_types::ATTR_APPEARANCE, lane)
+		.cloned()
+		.map(|appearance| park_appearance(arena, appearance))
+		.transpose()?;
 	let layer_path: Vec<NodeId> = output.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, lane).cloned().unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	let merged_layers = output
@@ -1606,6 +1677,7 @@ fn emit_legacy_lane<'e>(
 		Attr(output.attribute_cloned_or_default(ATTR_TRANSFORM, lane)),
 		Attr(fill),
 		Attr(stroke),
+		Attr(appearance),
 		Attr(output.attribute_cloned_or_default(ATTR_BLEND_MODE, lane)),
 		Attr(output.attribute_cloned_or(ATTR_OPACITY, lane, 1.)),
 		Attr(output.attribute_cloned_or(ATTR_OPACITY_FILL, lane, 1.)),
@@ -1653,6 +1725,7 @@ fn solidify_stroke<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -1693,6 +1766,7 @@ fn solidify_stroke_vector<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -1765,6 +1839,7 @@ fn separate_subpaths<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -1821,6 +1896,7 @@ fn map_points<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -1862,6 +1938,7 @@ fn flatten_path_core<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, EditorLayerPath>,
 		Attr<'e, EditorMergedLayers>,
 	),
@@ -1927,7 +2004,31 @@ fn flatten_path_core<'e>(
 	// editor click-target preservation, as the boolean operation does.
 	let merged_layers = arena.alloc_sized_keyed(snapshot, 0).ok_or_else(exhausted)?.0;
 
-	Ok((output, Attr(DAffine2::IDENTITY), Attr(fill), Attr(stroke), Attr(layer_path.as_slice()), Attr(Some(merged_layers))))
+	// The carried paints land on the appearance too, the stroke coverage recording the carried stroke's parameters
+	let appearance = {
+		let mut appearance = Appearance::default();
+		if let Some(fill_paint) = fill {
+			appearance.replace_or_insert(Coverage::new_fill(), Graphic::Graphic(fill_paint.clone()), CoverPlacement::Above);
+		}
+		if let Some(stroke_paint) = stroke {
+			let coverage = Coverage::new_stroke(&output.stroke.clone().unwrap_or_default());
+			appearance.replace_or_insert(coverage, Graphic::Graphic(stroke_paint.clone()), CoverPlacement::Above);
+		}
+		match appearance.declared().is_some() {
+			true => Some(park_appearance(arena, appearance)?),
+			false => None,
+		}
+	};
+
+	Ok((
+		output,
+		Attr(DAffine2::IDENTITY),
+		Attr(fill),
+		Attr(stroke),
+		Attr(appearance),
+		Attr(layer_path.as_slice()),
+		Attr(Some(merged_layers)),
+	))
 }
 
 // TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
@@ -1941,6 +2042,7 @@ pub fn flatten_path<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, EditorLayerPath>,
 		Attr<'e, EditorMergedLayers>,
 	),
@@ -1964,6 +2066,7 @@ pub fn flatten_path_vector<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, EditorLayerPath>,
 		Attr<'e, EditorMergedLayers>,
 	),
@@ -2289,6 +2392,7 @@ fn cut_path<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -3273,11 +3377,19 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		.with_attribute(ATTR_EDITOR_LAYER_PATH, layer_path)
 		.with_attribute(ATTR_EDITOR_MERGED_LAYERS, Some(graphic_list_content));
 
+	// The lerped paints land on the appearance too, the stroke coverage recording the lerped stroke's parameters
+	let mut appearance = Appearance::default();
 	if let Some(fill) = fill_paint {
-		item.set_attribute(ATTR_FILL, Some(fill));
+		item.set_attribute(ATTR_FILL, Some(fill.clone()));
+		appearance.replace_or_insert(Coverage::new_fill(), Graphic::Graphic(fill), CoverPlacement::Above);
 	}
 	if let Some(stroke) = stroke_paint {
-		item.set_attribute(ATTR_STROKE, Some(stroke));
+		item.set_attribute(ATTR_STROKE, Some(stroke.clone()));
+		let coverage = Coverage::new_stroke(&item.element().stroke.clone().unwrap_or_default());
+		appearance.replace_or_insert(coverage, Graphic::Graphic(stroke), CoverPlacement::Above);
+	}
+	if appearance.declared().is_some() {
+		item.set_attribute(graphic_types::ATTR_APPEARANCE, appearance);
 	}
 
 	List::new_from_item(item)
@@ -3300,6 +3412,7 @@ fn morph_lane<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -3340,6 +3453,7 @@ fn morph<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -3372,6 +3486,7 @@ fn morph_vector<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,

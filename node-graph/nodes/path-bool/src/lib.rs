@@ -3,8 +3,9 @@ use core_types::list::{Item, List};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
 use glam::{DAffine2, DVec2};
+use graphic_types::appearance::{Appearance, CoverPlacement, Coverage};
 use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_transforms, is_paint_present, set_paint_attribute, set_paint_attribute_at};
-use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
+use graphic_types::markers::{Appearance as AppearanceMarker, EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
@@ -35,6 +36,7 @@ fn boolean_core<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, Stroke>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -78,6 +80,10 @@ fn boolean_core<'e>(
 	use core_types::lane::LaneSource;
 	let fill = park_paint(result_vector_list.attr::<Fill>(0).filter(|paint| is_paint_present(paint)).cloned())?;
 	let stroke = park_paint(result_vector_list.attr::<Stroke>(0).filter(|paint| is_paint_present(paint)).cloned())?;
+	let appearance = match result_vector_list.attr::<AppearanceMarker>(0).cloned() {
+		Some(appearance) => Some(&*arena.alloc_sized_keyed(appearance, 0).ok_or_else(exhausted)?.0),
+		None => None,
+	};
 	let layer_path: Vec<NodeId> = result_vector_list.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, 0).cloned().unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	// Snapshot the input layers so the renderer can recurse into them for
@@ -89,6 +95,7 @@ fn boolean_core<'e>(
 		Attr(result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0)),
 		Attr(fill),
 		Attr(stroke),
+		Attr(appearance),
 		Attr(result_vector_list.attribute_cloned_or_default(ATTR_BLEND_MODE, 0)),
 		Attr(result_vector_list.attribute_cloned_or(ATTR_OPACITY, 0, 1.)),
 		Attr(result_vector_list.attribute_cloned_or(ATTR_OPACITY_FILL, 0, 1.)),
@@ -117,6 +124,7 @@ fn boolean_operation<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, Stroke>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -144,6 +152,7 @@ fn boolean_operation_vector<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, Stroke>,
+		Attr<'e, AppearanceMarker>,
 		Attr<'e, BlendModeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
@@ -301,15 +310,22 @@ fn raster_stand_in_rows<S: core_types::lane::LaneSource>(image: &S, parent_trans
 				.with_attribute(ATTR_CLIPPING_MASK, clip)
 				.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
 			set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+			item.set_attribute(graphic_types::ATTR_APPEARANCE, fill_appearance(List::new_from_element(Graphic::Color(Color::BLACK))));
 			item
 		})
 		.collect()
+}
+
+/// The single-fill appearance a built row paints with, beside its legacy fill marker.
+fn fill_appearance(paint: List<Graphic<'static>>) -> Appearance {
+	Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(paint))
 }
 
 /// A color row: an empty vector carrying the color as its fill paint over the
 /// lane's attributes.
 fn color_paint_row(color: Color, mut attributes: core_types::list::ItemAttributeValues) -> Item<Vector> {
 	set_paint_attribute(&mut attributes, ATTR_FILL, List::new_from_element(color));
+	attributes.insert(graphic_types::ATTR_APPEARANCE, fill_appearance(List::new_from_element(Graphic::Color(color))));
 
 	let mut element = Vector::default();
 	element.set_stroke_transform(DAffine2::IDENTITY);
@@ -330,7 +346,8 @@ fn gradient_paint_row(stops: GradientStops, mut attributes: core_types::list::It
 	if let Some(spread_method) = attributes.remove::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
 		gradient_paint.set_attribute(ATTR_SPREAD_METHOD, 0, spread_method);
 	}
-	attributes.insert(ATTR_FILL, Some(gradient_paint));
+	attributes.insert(ATTR_FILL, Some(gradient_paint.clone()));
+	attributes.insert(graphic_types::ATTR_APPEARANCE, fill_appearance(gradient_paint));
 
 	let mut element = Vector::default();
 	element.set_stroke_transform(DAffine2::IDENTITY);
@@ -368,6 +385,7 @@ fn push_leaf_vector_row(out: &mut List<Vector>, level: GraphicLevel<'_>, index: 
 			}
 		}
 	}
+	stamp_inherited_appearance(out, out_index, reach.appearance);
 	let current: DAffine2 = out.attribute_cloned_or_default(ATTR_TRANSFORM, out_index);
 	out.set_attribute(ATTR_TRANSFORM, out_index, ancestors * current);
 }
@@ -384,8 +402,18 @@ fn push_vector_rows(out: &mut List<Vector>, rows: &List<Vector>, composed: DAffi
 				}
 			}
 		}
+		stamp_inherited_appearance(out, index, reach.appearance);
 		let current: DAffine2 = out.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		out.set_attribute(ATTR_TRANSFORM, index, composed * current);
+	}
+}
+
+/// The cascade's resolved appearance lands on a row whose own is undeclared, since a declared row wins wholesale.
+fn stamp_inherited_appearance(out: &mut List<Vector>, index: usize, inherited: Option<&Appearance>) {
+	if let Some(appearance) = inherited
+		&& out.attribute::<Appearance>(graphic_types::ATTR_APPEARANCE, index).and_then(Appearance::declared).is_none()
+	{
+		out.set_attribute(graphic_types::ATTR_APPEARANCE, index, appearance.clone());
 	}
 }
 

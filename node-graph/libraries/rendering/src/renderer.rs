@@ -23,8 +23,9 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{PaintColumns, PaintOverlay, PaintReach, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
-use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
+use graphic_types::appearance::{Appearance, Coverage};
+use graphic_types::graphic::{PaintColumns, PaintReach, is_paint_present, paint_cell_rows, set_paint_attribute, vector_can_reduce_to_clip_path};
+use graphic_types::markers::{Appearance as AppearanceMarker, EditorMergedLayers};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
@@ -205,6 +206,11 @@ impl Default for SvgRender {
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
 	pub resource_overrides: Vec<(peniko::ImageBrush, Texture)>,
+}
+
+/// The single black-fill appearance a mask clone paints with, at full alpha so the mask fully covers the interior.
+fn black_fill_appearance() -> Appearance {
+	Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(List::new_from_element(Graphic::Color(Color::BLACK))))
 }
 
 /// The alpha multiplier a paint row's opacity attributes apply when it serves as a paint.
@@ -624,7 +630,7 @@ impl Render for Graphic<'_> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			Graphic::Graphic(list) => list.render_svg(render, render_params),
-			Graphic::Vector(vector) => render_vector_svg(&Single(vector), render, render_params),
+			Graphic::Vector(vector) => render_vector_svg(&Single(vector), None, render, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_svg(&Single(raster), render, render_params),
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(color) => render_color_svg(&Single(color), render, render_params),
@@ -637,7 +643,7 @@ impl Render for Graphic<'_> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
 			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Vector(vector) => render_vector_vello(&Single(vector), scene, transform, context, render_params),
+			Graphic::Vector(vector) => render_vector_vello(&Single(vector), None, scene, transform, context, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_vello(&Single(raster), scene, transform, render_params),
 			Graphic::RasterGPU(raster) => render_raster_gpu_vello(&Single(raster), scene, transform, context, render_params),
 			Graphic::Color(color) => render_color_vello(&Single(color), scene, render_params),
@@ -677,7 +683,7 @@ impl Render for Graphic<'_> {
 
 fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
 	match element {
-		Graphic::Vector(vector) if reach.applies() => render_vector_svg(&PaintOverlay::new(&Single(vector), reach.paint), render, render_params),
+		Graphic::Vector(vector) => render_vector_svg(&Single(vector), reach.appearance, render, render_params),
 		Graphic::Graphic(inner) => render_graphic_svg_with(inner, reach.nested(), render, render_params),
 		Graphic::Group(group) => render_group_svg(group, reach, render, render_params),
 		_ => element.render_svg(render, render_params),
@@ -686,7 +692,7 @@ fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &
 
 fn render_element_vello<'a>(element: &'a Graphic, reach: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 	match element {
-		Graphic::Vector(vector) if reach.applies() => render_vector_vello(&PaintOverlay::new(&Single(vector), reach.paint), scene, transform, context, render_params),
+		Graphic::Vector(vector) => render_vector_vello(&Single(vector), reach.appearance, scene, transform, context, render_params),
 		Graphic::Graphic(inner) => render_graphic_vello_with(inner, reach.nested(), scene, transform, context, render_params),
 		Graphic::Group(group) => render_group_vello(group, reach, scene, transform, context, render_params),
 		_ => element.render_to_vello(scene, transform, context, render_params),
@@ -695,13 +701,12 @@ fn render_element_vello<'a>(element: &'a Graphic, reach: PaintReach<'a>, scene: 
 
 fn element_can_reduce_to_clip_path<'a>(element: &'a Graphic, reach: PaintReach<'a>) -> bool {
 	match element {
-		Graphic::Vector(vector) if reach.applies() => vector_can_reduce_to_clip_path(&PaintOverlay::new(&Single(vector), reach.paint)),
+		Graphic::Vector(vector) => vector_can_reduce_to_clip_path(&Single(vector), reach.appearance),
 		Graphic::Group(group) => match RunView::<Vector>::new(&group.content) {
-			Some(run) if reach.applies() => vector_can_reduce_to_clip_path(&PaintOverlay::new(&run, reach.paint)),
-			Some(run) => vector_can_reduce_to_clip_path(&run),
+			Some(run) => vector_can_reduce_to_clip_path(&run, reach.appearance),
 			None => false,
 		},
-		_ => element.can_reduce_to_clip_path(),
+		_ => element.can_reduce_to_clip_path(reach.appearance),
 	}
 }
 
@@ -732,8 +737,7 @@ fn collect_element_metadata<'a>(
 
 	match element {
 		Graphic::Graphic(list) => collect_graphic_metadata_with(list, reach.nested(), metadata, footprint, element_id),
-		Graphic::Vector(vector) if reach.applies() => collect_vector_metadata(&PaintOverlay::new(&Single(vector), reach.paint), metadata, footprint, element_id),
-		Graphic::Vector(vector) => collect_vector_metadata(&Single(vector), metadata, footprint, element_id),
+		Graphic::Vector(vector) => collect_vector_metadata(&Single(vector), reach.appearance, metadata, footprint, element_id),
 		Graphic::RasterCPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::RasterGPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::Color(_) => {}
@@ -775,8 +779,7 @@ fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, elem
 fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
 	match element {
 		Graphic::Graphic(list) => add_graphic_upstream_click_targets_with(list, reach.nested(), click_targets),
-		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_click_targets(&PaintOverlay::new(&Single(vector), reach.paint), click_targets),
-		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(vector), click_targets),
+		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(vector), reach.appearance, click_targets),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(click_targets),
 		Graphic::Color(_) | Graphic::Gradient(_) => {}
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), click_targets),
@@ -787,8 +790,7 @@ fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReac
 fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
 	match element {
 		Graphic::Graphic(list) => add_graphic_upstream_outline_targets_with(list, reach.nested(), outlines),
-		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_outline_targets(&PaintOverlay::new(&Single(vector), reach.paint), outlines),
-		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(vector), outlines),
+		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(vector), reach.appearance, outlines),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(outlines),
 		Graphic::Color(_) | Graphic::Gradient(_) => {}
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), outlines),
@@ -803,10 +805,7 @@ fn render_group_svg<'a>(group: &'a Group, reach: PaintReach<'a>, render: &mut Sv
 	if let Some(run) = RunView::<Graphic>::new(item) {
 		render_graphic_svg_with(&run, reach.into_group_graphics(), render, render_params)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
-		match reach.applies() {
-			true => render_vector_svg(&PaintOverlay::new(&run, reach.paint), render, render_params),
-			false => render_vector_svg(&run, render, render_params),
-		}
+		render_vector_svg(&run, reach.appearance, render, render_params)
 	} else if let Some(run) = RunView::<Raster<CPU>>::new(item) {
 		render_raster_cpu_svg(&run, render, render_params)
 	} else if item.typed_lanes::<Raster<GPU>>().is_some() {
@@ -824,10 +823,7 @@ fn render_group_vello<'a>(group: &'a Group, reach: PaintReach<'a>, scene: &mut S
 	if let Some(run) = RunView::<Graphic>::new(item) {
 		render_graphic_vello_with(&run, reach.into_group_graphics(), scene, transform, context, render_params)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
-		match reach.applies() {
-			true => render_vector_vello(&PaintOverlay::new(&run, reach.paint), scene, transform, context, render_params),
-			false => render_vector_vello(&run, scene, transform, context, render_params),
-		}
+		render_vector_vello(&run, reach.appearance, scene, transform, context, render_params)
 	} else if let Some(run) = RunView::<Raster<CPU>>::new(item) {
 		render_raster_cpu_vello(&run, scene, transform, render_params)
 	} else if let Some(run) = RunView::<Raster<GPU>>::new(item) {
@@ -849,10 +845,7 @@ fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata:
 	if let Some(run) = RunView::<Graphic>::new(item) {
 		collect_graphic_metadata_with(&run, reach.into_group_graphics(), metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
-		match reach.applies() {
-			true => collect_vector_metadata(&PaintOverlay::new(&run, reach.paint), metadata, footprint, element_id),
-			false => collect_vector_metadata(&run, metadata, footprint, element_id),
-		}
+		collect_vector_metadata(&run, reach.appearance, metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Raster<CPU>>::new(item) {
 		collect_raster_metadata(&run, metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Raster<GPU>>::new(item) {
@@ -868,10 +861,7 @@ fn add_group_upstream_click_targets<'a>(group: &'a Group, reach: PaintReach<'a>,
 	if let Some(run) = RunView::<Graphic>::new(item) {
 		add_graphic_upstream_click_targets_with(&run, reach.into_group_graphics(), click_targets)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
-		match reach.applies() {
-			true => add_vector_upstream_click_targets(&PaintOverlay::new(&run, reach.paint), click_targets),
-			false => add_vector_upstream_click_targets(&run, click_targets),
-		}
+		add_vector_upstream_click_targets(&run, reach.appearance, click_targets)
 	} else if item.typed_lanes::<Raster<CPU>>().is_some() || item.typed_lanes::<Raster<GPU>>().is_some() {
 		add_raster_upstream_click_targets(click_targets)
 	} else if let Some(run) = RunView::<String>::new(item) {
@@ -884,10 +874,7 @@ fn add_group_upstream_outline_targets<'a>(group: &'a Group, reach: PaintReach<'a
 	if let Some(run) = RunView::<Graphic>::new(item) {
 		add_graphic_upstream_outline_targets_with(&run, reach.into_group_graphics(), outlines)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
-		match reach.applies() {
-			true => add_vector_upstream_outline_targets(&PaintOverlay::new(&run, reach.paint), outlines),
-			false => add_vector_upstream_outline_targets(&run, outlines),
-		}
+		add_vector_upstream_outline_targets(&run, reach.appearance, outlines)
 	} else if item.typed_lanes::<Raster<CPU>>().is_some() || item.typed_lanes::<Raster<GPU>>().is_some() {
 		add_raster_upstream_click_targets(outlines)
 	} else if let Some(run) = RunView::<String>::new(item) {
@@ -1343,7 +1330,7 @@ impl Render for List<Graphic<'_>> {
 	}
 }
 
-fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut SvgRender, render_params: &RenderParams) {
+fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, inherited_appearance: Option<&Appearance>, render: &mut SvgRender, render_params: &RenderParams) {
 	for index in 0..source.lane_count() {
 		let Some(vector) = source.element(index) else { continue };
 		let item_transform: DAffine2 = source.attr::<Transform>(index);
@@ -1351,8 +1338,17 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 
+		// The lane's paint: its own declared appearance, or the nearest ancestor's through the cascade
+		let appearance = Appearance::cascade(source.attr::<AppearanceMarker>(index), inherited_appearance);
+		let mut resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+		// The paint order rides the coverage list's row order
+		if let Some(stroke) = &mut resolved.stroke {
+			stroke.paint_order = if resolved.stroke_below { PaintOrder::StrokeBelow } else { PaintOrder::StrokeAbove };
+		}
+		let element_stroke = resolved.stroke.as_ref();
+
 		// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
-		let has_real_stroke = vector.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
+		let has_real_stroke = element_stroke.filter(|stroke| stroke.weight() > 0.);
 		let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 		let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
 		let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
@@ -1372,26 +1368,26 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 			path.push_str(bezpath.to_svg().as_str());
 		}
 
-		let mask_type = if vector.stroke.as_ref().map(|x| x.align) == Some(StrokeAlign::Inside) {
+		let mask_type = if element_stroke.map(|x| x.align) == Some(StrokeAlign::Inside) {
 			MaskType::Clip
 		} else {
 			MaskType::Mask
 		};
 
-		let fill_graphic_list = paint_graphics::<Fill, _>(source, index);
+		let fill_graphic_list = resolved.fill_paint.and_then(paint_cell_rows);
 		let fill_graphic = fill_graphic_list.and_then(|l| l.element(0));
 
-		let stroke_graphic_list = paint_graphics::<Stroke, _>(source, index);
+		let stroke_graphic_list = resolved.stroke_paint.and_then(paint_cell_rows);
 		let stroke_graphic = stroke_graphic_list.and_then(|l| l.element(0));
 
 		let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
 		let can_draw_aligned_stroke = path_is_closed
-			&& vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
+			&& element_stroke.is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 			&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
 		let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.covers_opaquely()) || mask_type == MaskType::Clip);
 
 		let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
-		let wants_stroke_below = vector.stroke.as_ref().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
+		let wants_stroke_below = element_stroke.map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
 		let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
 		let use_face_fill = vector.use_face_fill();
 
@@ -1418,6 +1414,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 			// The wrapping SVG group (above) handles the user-set opacity.
 			let mut mask_item = Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform);
 			set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+			mask_item.set_attribute(graphic_types::ATTR_APPEARANCE, black_fill_appearance());
 			let vector_item = List::new_from_item(mask_item);
 
 			(id, mask_type, vector_item)
@@ -1452,7 +1449,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 			if let Some((ref id, mask_type, ref vector_item)) = push_id {
 				let mut svg = SvgRender::new();
 				vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
-				let stroke = vector.stroke.as_ref().unwrap();
+				let stroke = element_stroke.unwrap();
 				// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
 				let (largest_scale, _) = singular_values(applied_stroke_transform);
 				let inflation = stroke.max_aabb_inflation(true) * largest_scale;
@@ -1479,9 +1476,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 			render_params.aligned_strokes = can_draw_aligned_stroke;
 			render_params.override_paint_order = override_paint_order;
 
-			let stroke_shape_attribute = vector
-				.stroke
-				.as_ref()
+			let stroke_shape_attribute = element_stroke
 				.map(|stroke| {
 					if stroke_graphic_list.is_some_and(is_paint_present) {
 						stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
@@ -1492,7 +1487,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 				.unwrap_or_default();
 
 			// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
-			let stroke_visible = vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
+			let stroke_visible = element_stroke.is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
 			let stroke_attribute = if stroke_visible {
 				stroke_graphic_list
 					.map(|list| {
@@ -1555,7 +1550,14 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, render: &mut S
 	}
 }
 
-fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+fn render_vector_vello<S: LaneSource<Element = Vector>>(
+	source: &S,
+	inherited_appearance: Option<&Appearance>,
+	scene: &mut Scene,
+	parent_transform: DAffine2,
+	context: &mut RenderContext,
+	render_params: &RenderParams,
+) {
 	for index in 0..source.lane_count() {
 		use graphic_types::vector_types::vector;
 
@@ -1565,7 +1567,20 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 		let multiplied_transform = parent_transform * item_transform;
-		let has_real_stroke = element.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
+
+		// The lane's paint: its own declared appearance, or the nearest ancestor's through the cascade
+		let appearance = Appearance::cascade(source.attr::<AppearanceMarker>(index), inherited_appearance);
+		let mut resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+		// The paint order rides the coverage list's row order
+		if let Some(stroke) = &mut resolved.stroke {
+			stroke.paint_order = if resolved.stroke_below {
+				vector::style::PaintOrder::StrokeBelow
+			} else {
+				vector::style::PaintOrder::StrokeAbove
+			};
+		}
+
+		let has_real_stroke = resolved.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
 		let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 		let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 		let mut element_transform = set_stroke_transform
@@ -1589,8 +1604,8 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 			}
 		}
 
-		let fill_graphic_list = paint_graphics::<Fill, _>(source, index);
-		let stroke_graphic_list = paint_graphics::<Stroke, _>(source, index);
+		let fill_graphic_list = resolved.fill_paint.and_then(paint_cell_rows);
+		let stroke_graphic_list = resolved.stroke_paint.and_then(paint_cell_rows);
 
 		// If we're using opacity or a blend mode, we need to push a layer
 		let blend_mode = match render_params.render_mode {
@@ -1602,7 +1617,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 		// Whether the renderer will engage the stroke-alignment compositing trick (non-Center align on a fully closed path).
 		// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
 		// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
-		let stroke = element.stroke.as_ref();
+		let stroke = resolved.stroke.as_ref();
 		let stroke_fully_transparent = stroke_graphic_list.is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
 		let can_draw_aligned_stroke = !stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
@@ -1764,6 +1779,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 					// The outer opacity/blend layer (above) handles the user-set opacity.
 					let mut mask_item = Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform);
 					set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+					mask_item.set_attribute(graphic_types::ATTR_APPEARANCE, black_fill_appearance());
 					let vector_list = List::new_from_item(mask_item);
 
 					let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
@@ -1833,7 +1849,13 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 	}
 }
 
-fn collect_vector_metadata<S: LaneSource<Element = Vector>>(source: &S, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
+fn collect_vector_metadata<S: LaneSource<Element = Vector>>(
+	source: &S,
+	inherited_appearance: Option<&Appearance>,
+	metadata: &mut RenderMetadata,
+	footprint: Footprint,
+	caller_element_id: Option<NodeId>,
+) {
 	// Aggregate all items' targets per element_id so multi-item lists (e.g. 'Text' node with "Separate Glyphs" active) produce hit areas for every glyph.
 	// Targets are baked relative to item 0's transform since `Graphic::collect_metadata` records that as `local_transforms[element_id]`.
 	let item_zero_transform: DAffine2 = if source.lane_count() > 0 { source.attr::<Transform>(0) } else { DAffine2::IDENTITY };
@@ -1852,6 +1874,10 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(source: &S, metadata
 		let layer_path: &[NodeId] = source.attr::<EditorLayerPath>(index);
 		let layer = layer_path.last().copied();
 
+		// The lane's paint: its own declared appearance, or the nearest ancestor's through the cascade
+		let appearance = Appearance::cascade(source.attr::<AppearanceMarker>(index), inherited_appearance);
+		let resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+
 		if let Some(element_id) = caller_element_id.or(layer) {
 			// When recovering element_id from the item's editor:layer_path tag (because the caller
 			// passed None), also store the transform metadata that Graphic::collect_metadata
@@ -1867,12 +1893,12 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(source: &S, metadata
 			let item_relative_transform = item_zero_inverse * transform;
 
 			let mut click_targets_unwrapped = Vec::new();
-			extend_targets_from_vector(&mut click_targets_unwrapped, source, index, click_target_vector, item_relative_transform);
+			extend_targets_from_vector(&mut click_targets_unwrapped, &resolved, click_target_vector, item_relative_transform);
 			accumulated_click_targets.entry(element_id).or_default().extend(click_targets_unwrapped.into_iter().map(Arc::new));
 
 			// Outlines always use source geometry so the visual outline reflects actual letterforms
 			let mut outlines_unwrapped = Vec::new();
-			extend_targets_from_vector(&mut outlines_unwrapped, source, index, element, item_relative_transform);
+			extend_targets_from_vector(&mut outlines_unwrapped, &resolved, element, item_relative_transform);
 			accumulated_outlines.entry(element_id).or_default().extend(outlines_unwrapped.into_iter().map(Arc::new));
 
 			// Source geometry (not the click-target override) so editing tools work on letterforms.
@@ -1882,10 +1908,10 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(source: &S, metadata
 			if let std::collections::hash_map::Entry::Vacant(e) = metadata.vector_data.entry(element_id) {
 				e.insert(Arc::new(element.clone()));
 
-				if let Some(fill_graphic) = source.attr::<Fill>(index).filter(|list| is_paint_present(list)) {
+				if let Some(fill_graphic) = resolved.fill_paint.and_then(paint_cell_rows) {
 					metadata.fill_attributes.insert(element_id, Arc::new(fill_graphic.clone()));
 				}
-				if let Some(stroke_graphic) = source.attr::<Stroke>(index).filter(|list| is_paint_present(list)) {
+				if let Some(stroke_graphic) = resolved.stroke_paint.and_then(paint_cell_rows) {
 					metadata.stroke_attributes.insert(element_id, Arc::new(stroke_graphic.clone()));
 				}
 			}
@@ -1915,7 +1941,7 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(source: &S, metadata
 	}
 }
 
-fn add_vector_upstream_click_targets<S: LaneSource<Element = Vector>>(source: &S, click_targets: &mut Vec<ClickTarget>) {
+fn add_vector_upstream_click_targets<S: LaneSource<Element = Vector>>(source: &S, inherited_appearance: Option<&Appearance>, click_targets: &mut Vec<ClickTarget>) {
 	for index in 0..source.lane_count() {
 		let Some(element) = source.element(index) else { continue };
 		let transform: DAffine2 = source.attr::<Transform>(index);
@@ -1923,39 +1949,45 @@ fn add_vector_upstream_click_targets<S: LaneSource<Element = Vector>>(source: &S
 		// Use click-target override geometry if the item provides one (e.g. 'Text' node's per-glyph bounding boxes)
 		let vector = source.attr::<EditorClickTarget>(index).unwrap_or(element);
 
-		extend_targets_from_vector(click_targets, source, index, vector, transform);
+		let appearance = Appearance::cascade(source.attr::<AppearanceMarker>(index), inherited_appearance);
+		let resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+
+		extend_targets_from_vector(click_targets, &resolved, vector, transform);
 	}
 }
 
-fn add_vector_upstream_outline_targets<S: LaneSource<Element = Vector>>(source: &S, outlines: &mut Vec<ClickTarget>) {
+fn add_vector_upstream_outline_targets<S: LaneSource<Element = Vector>>(source: &S, inherited_appearance: Option<&Appearance>, outlines: &mut Vec<ClickTarget>) {
 	// Source geometry only, ignoring `editor:click_target`, so outlines reflect actual letterforms
 	for index in 0..source.lane_count() {
 		let Some(element) = source.element(index) else { continue };
 		let transform: DAffine2 = source.attr::<Transform>(index);
 
-		extend_targets_from_vector(outlines, source, index, element, transform);
+		let appearance = Appearance::cascade(source.attr::<AppearanceMarker>(index), inherited_appearance);
+		let resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+
+		extend_targets_from_vector(outlines, &resolved, element, transform);
 	}
 }
 
 impl Render for List<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		render_vector_svg(self, render, render_params)
+		render_vector_svg(self, None, render, render_params)
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		render_vector_vello(self, scene, parent_transform, context, render_params)
+		render_vector_vello(self, None, scene, parent_transform, context, render_params)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
-		collect_vector_metadata(self, metadata, footprint, caller_element_id)
+		collect_vector_metadata(self, None, metadata, footprint, caller_element_id)
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		add_vector_upstream_click_targets(self, click_targets)
+		add_vector_upstream_click_targets(self, None, click_targets)
 	}
 
 	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
-		add_vector_upstream_outline_targets(self, outlines)
+		add_vector_upstream_outline_targets(self, None, outlines)
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
@@ -1967,15 +1999,15 @@ impl Render for List<Vector> {
 
 /// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
-fn extend_targets_from_vector<S: LaneSource<Element = Vector>>(targets: &mut Vec<ClickTarget>, source: &S, index: usize, geometry: &Vector, transform: DAffine2) {
-	let filled = has_paint::<Fill, _>(source, index);
+fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, resolved: &graphic_types::appearance::FillAndStroke<'_>, geometry: &Vector, transform: DAffine2) {
+	let filled = resolved.fill_paint.and_then(paint_cell_rows).is_some();
 
 	let mut subpaths: Vec<Subpath<_>> = geometry.stroke_bezier_paths().collect();
 	let all_subpaths_closed = subpaths.iter().all(|subpath| subpath.closed());
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
-	let stroke_width = geometry.stroke.as_ref().map_or(0., |stroke| {
+	let stroke_width = resolved.stroke.as_ref().map_or(0., |stroke| {
 		if stroke.align.is_not_centered() && all_subpaths_closed {
 			stroke.weight * 2.
 		} else {
@@ -2954,23 +2986,23 @@ impl Render for RunView<'_, Graphic<'_>> {
 
 impl Render for RunView<'_, Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		render_vector_svg(self, render, render_params)
+		render_vector_svg(self, None, render, render_params)
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		render_vector_vello(self, scene, parent_transform, context, render_params)
+		render_vector_vello(self, None, scene, parent_transform, context, render_params)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
-		collect_vector_metadata(self, metadata, footprint, caller_element_id)
+		collect_vector_metadata(self, None, metadata, footprint, caller_element_id)
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		add_vector_upstream_click_targets(self, click_targets)
+		add_vector_upstream_click_targets(self, None, click_targets)
 	}
 
 	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
-		add_vector_upstream_outline_targets(self, outlines)
+		add_vector_upstream_outline_targets(self, None, outlines)
 	}
 }
 
@@ -3120,6 +3152,11 @@ mod group_walk_tests {
 		List::new_from_element(Graphic::Color(Color::from_rgbaf32(0.8, 0.2, 0.33, 1.).unwrap()))
 	}
 
+	/// The appearance the fill node stamps beside the legacy fill marker, so test content mirrors node output.
+	fn fill_appearance(paint: &List<Graphic<'static>>) -> Appearance {
+		Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(paint.clone()))
+	}
+
 	fn rendered_svg(render: impl FnOnce(&mut SvgRender)) -> (String, String) {
 		let mut svg_render = SvgRender::new();
 		render(&mut svg_render);
@@ -3132,9 +3169,11 @@ mod group_walk_tests {
 		let paint = color_paint();
 		let vectors = [unit_square_at(DVec2::ZERO), unit_square_at(DVec2::new(3., 1.))];
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
-		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 2).unwrap();
+		let appearance = fill_appearance(&paint);
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0), FieldWrite::of::<AppearanceMarker>(0)], 2).unwrap();
 		let lane = builder.push(vectors[0].clone()).unwrap();
 		builder.attr::<Fill>(lane, Some(&paint));
+		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
 		builder.push(vectors[1].clone()).unwrap();
 		let item = builder.finish();
 		let group = Group { row: None, content: item };
@@ -3151,9 +3190,11 @@ mod group_walk_tests {
 		let paint = color_paint();
 		let inner = Graphic::Vector(unit_square_at(DVec2::ZERO));
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
-		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Graphic>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let appearance = fill_appearance(&paint);
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Graphic>(), &[FieldWrite::of::<Fill>(0), FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
 		let lane = builder.push(inner.clone()).unwrap();
 		builder.attr::<Fill>(lane, Some(&paint));
+		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
 		let item = builder.finish();
 		let group = Group { row: None, content: item };
 
@@ -3170,9 +3211,11 @@ mod group_walk_tests {
 		let paint = color_paint();
 		let vectors = [unit_square_at(DVec2::ZERO)];
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
-		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let appearance = fill_appearance(&paint);
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0), FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
 		let lane = builder.push(vectors[0].clone()).unwrap();
 		builder.attr::<Fill>(lane, Some(&paint));
+		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
 		let item = builder.finish();
 		let group = Group { row: None, content: item };
 
@@ -3195,9 +3238,11 @@ mod group_walk_tests {
 		let paint = color_paint();
 		let vectors = [unit_square_at(DVec2::ZERO), unit_square_at(DVec2::new(2., 2.))];
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
-		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 2).unwrap();
+		let appearance = fill_appearance(&paint);
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0), FieldWrite::of::<AppearanceMarker>(0)], 2).unwrap();
 		let lane = builder.push(vectors[0].clone()).unwrap();
 		builder.attr::<Fill>(lane, Some(&paint));
+		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
 		builder.push(vectors[1].clone()).unwrap();
 		let item = builder.finish();
 		let group = Group { row: None, content: item };

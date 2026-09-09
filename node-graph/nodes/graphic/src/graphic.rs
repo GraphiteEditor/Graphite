@@ -183,6 +183,7 @@ fn mirror_lane<'e, T: Clone + Default + Send + Sync + 'static>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, graphic_types::markers::Fill>,
 		Attr<'e, graphic_types::markers::Stroke>,
+		Attr<'e, graphic_types::markers::Appearance>,
 		Attr<'e, core_types::attribute::BlendMode>,
 		Attr<'e, core_types::attribute::Opacity>,
 		Attr<'e, core_types::attribute::OpacityFill>,
@@ -227,6 +228,10 @@ where
 	}
 	let fill = park_paint(legacy.attribute::<Option<List<Graphic>>>(graphic_types::ATTR_FILL, source).cloned().flatten())?;
 	let stroke = park_paint(legacy.attribute::<Option<List<Graphic>>>(graphic_types::ATTR_STROKE, source).cloned().flatten())?;
+	let appearance = match legacy.attribute::<graphic_types::Appearance>(graphic_types::ATTR_APPEARANCE, source).cloned() {
+		Some(appearance) => Some(&*arena.alloc_sized_keyed(appearance, 0).ok_or_else(exhausted)?.0),
+		None => None,
+	};
 	let layer_path: Vec<NodeId> = legacy.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, source).cloned().unwrap_or_default();
 	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 
@@ -235,6 +240,7 @@ where
 		Attr(transform),
 		Attr(fill),
 		Attr(stroke),
+		Attr(appearance),
 		Attr(legacy.attribute_cloned_or_default(core_types::ATTR_BLEND_MODE, source)),
 		Attr(legacy.attribute_cloned_or(core_types::ATTR_OPACITY, source, 1.)),
 		Attr(legacy.attribute_cloned_or(core_types::ATTR_OPACITY_FILL, source, 1.)),
@@ -268,6 +274,7 @@ fn mirror<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, graphic_types::markers::Fill>,
 		Attr<'e, graphic_types::markers::Stroke>,
+		Attr<'e, graphic_types::markers::Appearance>,
 		Attr<'e, core_types::attribute::BlendMode>,
 		Attr<'e, core_types::attribute::Opacity>,
 		Attr<'e, core_types::attribute::OpacityFill>,
@@ -318,6 +325,7 @@ fn mirror_vector<'e>(
 		Attr<'e, TransformAttr>,
 		Attr<'e, graphic_types::markers::Fill>,
 		Attr<'e, graphic_types::markers::Stroke>,
+		Attr<'e, graphic_types::markers::Appearance>,
 		Attr<'e, core_types::attribute::BlendMode>,
 		Attr<'e, core_types::attribute::Opacity>,
 		Attr<'e, core_types::attribute::OpacityFill>,

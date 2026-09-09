@@ -40,15 +40,26 @@ where
 
 /// Whether every lane of a vector source draws as a plain clip path: fully
 /// opaque, fill absent or opaque, stroke invisible or fully transparent.
-pub fn vector_can_reduce_to_clip_path<S: LaneSource<Element = Vector>>(source: &S) -> bool {
+pub fn vector_can_reduce_to_clip_path<S: LaneSource<Element = Vector>>(source: &S, inherited_appearance: Option<&Appearance>) -> bool {
 	(0..source.lane_count()).all(|index| {
-		let Some(element) = source.element(index) else { return false };
+		if source.element(index).is_none() {
+			return false;
+		}
 		let opacity: f64 = source.attr::<Opacity>(index);
 
-		let fill_opaque_or_absent = paint_graphics::<Fill, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
+		let appearance = Appearance::cascade(source.attr::<AppearanceMarker>(index), inherited_appearance);
+		let resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 
-		let stroke_invisible_or_transparent = element.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke())
-			|| paint_graphics::<Stroke, _>(source, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
+		let fill_opaque_or_absent = resolved
+			.fill_paint
+			.and_then(paint_cell_rows)
+			.is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
+
+		let stroke_invisible_or_transparent = resolved.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke())
+			|| resolved
+				.stroke_paint
+				.and_then(paint_cell_rows)
+				.is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
 
 		opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
 	})
@@ -168,76 +179,13 @@ impl<'a> PaintReach<'a> {
 	}
 }
 
-/// A source with a lane's paint forced over its fill and stroke columns,
-/// reaching the interiors the legacy conversion's paint push reached.
-pub struct PaintOverlay<'a, S> {
-	inner: &'a S,
-	paint: LanePaint<'a>,
-}
-
-impl<'a, S> PaintOverlay<'a, S> {
-	pub fn new(inner: &'a S, paint: LanePaint<'a>) -> Self {
-		Self { inner, paint }
-	}
-}
-
-pub struct PaintOverlayColumn<'a, S: LaneSource + 'a, A: Attribute> {
-	inner: S::Column<'a, A>,
-	forced: Option<A::Value<'a>>,
-}
-
-impl<'a, S: LaneSource, A: Attribute> LaneColumn<'a, A> for PaintOverlayColumn<'a, S, A> {
-	fn try_get(&self, lane: usize) -> Option<A::Value<'a>> {
-		match self.forced {
-			Some(forced) => Some(forced),
-			None => self.inner.try_get(lane),
-		}
-	}
-}
-
-/// The forced value for the marker `A`: the lane paint where `A` is this
-/// crate's fill or stroke marker, absent otherwise.
-fn forced_paint<'a, A: Attribute>(paint: LanePaint<'a>) -> Option<A::Value<'a>> {
-	let slot = match A::NAME {
-		name if name == Fill::NAME => paint.fill,
-		name if name == Stroke::NAME => paint.stroke,
+/// The paint a coverage row's cell holds, in the canonical `List<Graphic>` form the paint
+/// renderers consume: this crate's writers carry the list as one graphic cell, and a bare
+/// cell of any other form is treated as paint that draws nothing.
+pub fn paint_cell_rows<'a>(cell: &'a Graphic<'static>) -> Option<&'a List<Graphic<'static>>> {
+	match cell {
+		Graphic::Graphic(list) => Some(list).filter(|list| is_paint_present(list)),
 		_ => None,
-	}?;
-	assert_eq!(
-		std::any::TypeId::of::<A::Value<'static>>(),
-		std::any::TypeId::of::<Option<&'static List<Graphic<'static>>>>(),
-		"attribute `{}` is declared at another value type than this crate's paint form",
-		A::NAME
-	);
-	assert_eq!(
-		size_of::<A::Value<'a>>(),
-		size_of::<Option<&'a List<Graphic<'a>>>>(),
-		"the paint value form must span the marker's value"
-	);
-	// SAFETY: the census admits one value type per attribute name, so a `fill` or `stroke` marker carries this crate's `Option<&List<Graphic>>` at the asserted size.
-	Some(unsafe { std::mem::transmute_copy::<Option<&'a List<Graphic>>, A::Value<'a>>(&Some(slot)) })
-}
-
-impl<'a, S: LaneSource> LaneSource for PaintOverlay<'a, S> {
-	type Element = S::Element;
-	type Column<'b, A: Attribute>
-		= PaintOverlayColumn<'b, S, A>
-	where
-		Self: 'b;
-
-	fn lane_count(&self) -> usize {
-		self.inner.lane_count()
-	}
-
-	fn element(&self, lane: usize) -> Option<&S::Element> {
-		self.inner.element(lane)
-	}
-
-	fn column<A: Attribute>(&self) -> PaintOverlayColumn<'_, S, A> {
-		PaintOverlayColumn {
-			inner: self.inner.column::<A>(),
-			forced: forced_paint::<A>(self.paint),
-		}
 	}
 }
 
