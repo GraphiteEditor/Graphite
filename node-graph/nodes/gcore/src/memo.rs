@@ -262,7 +262,7 @@ mod tests {
 	use core_types::context::{ContextImpl, EvalScope};
 	use core_types::node::Node;
 	use core_types::record::LiftedSource;
-	use core_types::registry::{SourceHandle, ErasedRecordNode};
+	use core_types::registry::{ErasedRecordNode, SourceHandle};
 	use std::sync::atomic::{AtomicU32, Ordering};
 
 	fn lifted<T: Clone + Send + Sync + core_types::StaticTypeSized>(value: T) -> LiftedSource<T, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<T>>

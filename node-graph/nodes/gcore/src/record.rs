@@ -662,6 +662,7 @@ mod tests {
 		// The fixtures wire constants into every eager input, which the compiler
 		// pass records as lane-invariant.
 		let resolved = core_types::record::RecordLayout {
+			named_writes: Vec::new(),
 			lane_invariant: u32::MAX,
 			..meta.resolve(inputs)
 		};
@@ -671,6 +672,7 @@ mod tests {
 
 	fn install_flip<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
 		let bundle = core_types::record::RecordLayout {
+			named_writes: Vec::new(),
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
 			layout: layout.clone(),
@@ -764,6 +766,8 @@ mod tests {
 		let frames = frames_for(&[&base, &count_layout]);
 
 		let meta = core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -800,6 +804,8 @@ mod tests {
 		let frames = frames_for(&[&base, &count_layout]);
 
 		let meta = core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -844,6 +850,8 @@ mod tests {
 		let frames = frames_for(&[&base, &count_layout, &reverse_layout]);
 
 		let meta = core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -894,6 +902,8 @@ mod tests {
 			&[Some(&base)],
 		);
 		let meta = core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -992,6 +1002,8 @@ mod tests {
 			field: Some((Length::NAME, 7.)),
 		};
 		let meta = core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0, 1],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1060,6 +1072,8 @@ mod tests {
 			field: Some((Opacity::NAME, 0.25)),
 		};
 		let meta = || core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0, 1],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1134,6 +1148,8 @@ mod tests {
 			field: Some((Length::NAME, 7.)),
 		};
 		let meta = core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0, 1],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1178,6 +1194,8 @@ mod tests {
 
 		let content_layout = leveled_f64_layout(&[]);
 		let meta = || core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1187,6 +1205,8 @@ mod tests {
 			folded: None,
 		};
 		let extend_meta = || core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0, 1],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1262,6 +1282,8 @@ mod tests {
 		let layout = leveled_f64_layout(&[]);
 		let frames = frames_for(&[&layout]);
 		let meta = || core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1315,6 +1337,8 @@ mod tests {
 			};
 			let (index_edge, index_layout) = lifted_value(index);
 			let meta = core_types::record::LayoutMeta {
+				named_writes: Vec::new(),
+				folded_names: Vec::new(),
 				sources: vec![0],
 				reads: vec![],
 				element: core_types::record::ElementSpec::Carried,
@@ -1531,6 +1555,7 @@ mod tests {
 		let evals = std::cell::Cell::new(0u32);
 		let mut node = MirrorNode::new(RecordSource::new(content, &layout, &layout), counting_value(true, &evals));
 		let resolved = core_types::record::RecordLayout {
+			named_writes: Vec::new(),
 			lane_invariant: 0,
 			..mirror_layout_meta().resolve(&[Some(&layout)])
 		};
@@ -1609,6 +1634,8 @@ mod tests {
 			&[Some(&base)],
 		);
 		let meta = core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1662,6 +1689,8 @@ mod tests {
 			&[Some(&base)],
 		);
 		let meta = core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1772,6 +1801,8 @@ mod tests {
 		let (count_edge, count_layout) = lifted_value(2u32);
 		let (reverse_edge, reverse_layout) = lifted_value(false);
 		let meta = core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1898,6 +1929,8 @@ mod tests {
 		let frames = frames_for(&[&base, &count_layout, &out]);
 
 		let meta = core_types::record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -2443,13 +2476,7 @@ mod tests {
 		let frames = frames_for(&[&source_layout]);
 
 		let node = install(
-			FadeAsyncNode::new(
-				f64_record_source(&source_layout, 3., vec![("length", 9.)]),
-				ValueSource::new(0.5),
-				runtime,
-				source_id,
-				&source_layout,
-			),
+			FadeAsyncNode::new(f64_record_source(&source_layout, 3., vec![("length", 9.)]), ValueSource::new(0.5), runtime, source_id, &source_layout),
 			fade_async_layout_meta(),
 			&[Some(&source_layout)],
 		);
@@ -2482,11 +2509,7 @@ mod tests {
 		let layout = measure_async_layout();
 		let frames = frames_for(&[&layout]);
 
-		let node = install(
-			MeasureAsyncNode::new(ValueSource::new(()), ValueSource::new(-4.), runtime, source_id),
-			measure_async_layout_meta(),
-			&[],
-		);
+		let node = install(MeasureAsyncNode::new(ValueSource::new(()), ValueSource::new(-4.), runtime, source_id), measure_async_layout_meta(), &[]);
 		assert_eq!(Node::<ContextImpl>::layout(&node), &layout);
 
 		let GPoll::Final(served) = core_types::record::capture(&node, &ctx, &frames) else {

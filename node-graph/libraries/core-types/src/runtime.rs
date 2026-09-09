@@ -278,6 +278,7 @@ mod tests {
 			plan: Vec::new(),
 			layout: layout.clone(),
 			lane_invariant: u32::MAX,
+			named_writes: Vec::new(),
 		});
 		RecordExtract::new(graph, &layout)
 	}

@@ -272,6 +272,7 @@ mod tests {
 				plan: Vec::new(),
 				layout: layout.clone(),
 				lane_invariant: u32::MAX,
+				named_writes: Vec::new(),
 			},
 		);
 		let GPoll::Final(result) = core_types::record::serve_input(&graph, &ctx, &frames) else {

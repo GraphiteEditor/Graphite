@@ -285,6 +285,7 @@ mod tests {
 		// The fixtures wire constants into every eager input, which the compiler
 		// pass records as lane-invariant.
 		let resolved = record::RecordLayout {
+			named_writes: Vec::new(),
 			lane_invariant: u32::MAX,
 			..meta.resolve(inputs)
 		};
@@ -294,6 +295,7 @@ mod tests {
 
 	fn install_flip<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
 		let bundle = record::RecordLayout {
+			named_writes: Vec::new(),
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
 			layout: layout.clone(),
@@ -420,6 +422,8 @@ mod tests {
 
 	fn routing_meta(source: u8, level_delta: i8) -> record::LayoutMeta {
 		record::LayoutMeta {
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			sources: vec![source],
 			reads: vec![],
 			element: record::ElementSpec::Carried,

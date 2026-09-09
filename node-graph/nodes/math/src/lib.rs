@@ -1053,6 +1053,7 @@ mod graphene_test {
 
 	fn installed<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
 		node.set_layout(core_types::record::RecordLayout {
+			named_writes: Vec::new(),
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
 			layout: layout.clone(),
@@ -1114,6 +1115,7 @@ mod graphene_test {
 		let mut wired = construct(&entries[0], vec![record_value_source(true), record_value_source(false)]).unwrap();
 		let layout = out_layout::<bool>();
 		wired.set_layout(core_types::record::RecordLayout {
+			named_writes: Vec::new(),
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
 			layout: layout.clone(),
@@ -1160,6 +1162,7 @@ mod graphene_test {
 		let mut wired = construct(&entries[0], vec![record_value_source(1.5f64), record_value_source(2.5f64)]).unwrap();
 		let layout = out_layout::<f64>();
 		wired.set_layout(core_types::record::RecordLayout {
+			named_writes: Vec::new(),
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
 			layout: layout.clone(),
