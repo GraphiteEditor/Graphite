@@ -7,7 +7,7 @@ use graphene_std::raster::GPU;
 #[cfg(feature = "gpu")]
 use graphene_std::SourceId;
 use graphene_std::raster::{CPU, Raster};
-use graphene_std::registry::{ConstructionError, SourceHandle, NodeIOTypes, RegistryEntry};
+use graphene_std::registry::{ConstructionError, NodeIOTypes, RegistryEntry, SourceHandle};
 #[cfg(feature = "gpu")]
 use graphene_std::runtime::RuntimeHandle;
 
@@ -241,7 +241,9 @@ mod node_registry_macros {
 						let handle = inputs.next().unwrap();
 						let layout = handle.layout().clone();
 						let node = graphene_std::ops::IntoNode::<$to, _, $from>::new(handle.downcast_record::<$from>()?, &layout);
-						Ok(SourceHandle::new_record::<$to>(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>))
+						Ok(SourceHandle::new_record::<$to>(
+							std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>
+						))
 					},
 				},
 			)

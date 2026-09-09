@@ -371,6 +371,12 @@ pub struct RecordLayout {
 	/// leaves it empty; `set_layout` resolves its offsets through these
 	/// instead of through a marker's `NAME`.
 	pub named_writes: Vec<&'static str>,
+	/// The offsets the fold resolved for this node's name-from-input reads, in
+	/// placeholder order. `None` is an absent attribute, which the read serves
+	/// as the name's forced default. Resolved in the compiler, where the folded
+	/// name and the read input's finished layout sit together, so `set_layout`
+	/// only copies the numbers into the read slots.
+	pub named_reads: Vec<Option<usize>>,
 }
 
 /// A write whose name comes from the graph rather than from a marker: the
@@ -393,6 +399,34 @@ impl NamedWrite {
 		V::Value<'static>: graphene_hash::CacheHash + PartialEq + 'static,
 	{
 		Self {
+			name_input,
+			template: FieldWrite::of::<crate::attribute::Named<X, V>>(level),
+		}
+	}
+}
+
+/// A read whose name comes from the graph rather than from a marker. The
+/// compiler resolves it to an offset in the read input's own layout, where
+/// the folded name and that finished layout already sit together.
+#[derive(Clone, Copy, Debug)]
+pub struct NamedRead {
+	/// The proto input the attribute is read from.
+	pub input: u8,
+	/// The proto input holding the name's constant text.
+	pub name_input: u8,
+	/// The read's field form, every facet but the name minted from the
+	/// concrete value type, as for a write.
+	pub template: FieldWrite,
+}
+
+impl NamedRead {
+	/// The template for a name-generic marker's read at `level`.
+	pub fn of<X: 'static, V: crate::attribute::AttrValue>(input: u8, name_input: u8, level: u8) -> Self
+	where
+		V::Value<'static>: graphene_hash::CacheHash + PartialEq + 'static,
+	{
+		Self {
+			input,
 			name_input,
 			template: FieldWrite::of::<crate::attribute::Named<X, V>>(level),
 		}
@@ -426,6 +460,11 @@ pub struct LayoutMeta {
 	/// The names the fold gave [`named_writes`](Self::named_writes), in
 	/// placeholder order. Empty until the fold runs.
 	pub folded_names: Vec<&'static str>,
+	/// The attributes the node reads under a name taken from the graph.
+	pub named_reads: Vec<NamedRead>,
+	/// The names the fold gave [`named_reads`](Self::named_reads), in
+	/// placeholder order. Empty until the fold runs.
+	pub folded_read_names: Vec<&'static str>,
 	/// The attributes removed from the base layout, as `(name, level)`.
 	pub removes: Vec<(&'static str, u8)>,
 	/// The depth change the node applies: `0` for elementwise and flip nodes,
@@ -464,6 +503,8 @@ impl LayoutMeta {
 			writes: Vec::new(),
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			removes: Vec::new(),
 			level_delta: 0,
 			folded: None,
@@ -508,12 +549,22 @@ impl LayoutMeta {
 			// A reducer collapses its carrier's levels, so it writes a fresh record rather than copying fields down.
 			_ => Vec::new(),
 		};
+		// A named read resolves against the input it reads, whose layout is
+		// finished by the time this node folds. An absent attribute stays
+		// `None`, which the read serves as the name's forced default.
+		let named_reads = self
+			.named_reads
+			.iter()
+			.zip(&self.folded_read_names)
+			.map(|(read, name)| inputs.get(read.input as usize).copied().flatten().and_then(|layout| layout.offset_of(name, read.template.level)))
+			.collect();
 		RecordLayout {
 			layout,
 			frame_bytes,
 			plan,
 			lane_invariant: 0,
 			named_writes: self.folded_names.clone(),
+			named_reads,
 		}
 	}
 
@@ -530,6 +581,13 @@ impl LayoutMeta {
 		};
 		self.writes.push(write);
 		self.folded_names.push(name);
+	}
+
+	/// Records the name of the name-from-input read at `index`. The offset
+	/// itself waits for [`resolve`](Self::resolve), which is where the read
+	/// input's finished layout arrives.
+	pub fn fold_read_name(&mut self, name: &'static str) {
+		self.folded_read_names.push(name);
 	}
 }
 

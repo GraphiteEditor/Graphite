@@ -282,6 +282,7 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 		});
 	let writes = field_writes(&node.output.shape.attrs, core_types);
 	let named_writes = named_field_writes(node, core_types, assignments);
+	let named_reads = named_field_reads(node, core_types, assignments);
 	let removes = node.output.removes.iter().map(|attr| {
 		let marker = &attr.marker;
 		let level = attr.level;
@@ -300,6 +301,8 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 			writes: ::std::vec![#(#writes),*],
 			named_writes: ::std::vec![#(#named_writes),*],
 			folded_names: ::std::vec![],
+			named_reads: ::std::vec![#(#named_reads),*],
+			folded_read_names: ::std::vec![],
 			removes: ::std::vec![#(#removes),*],
 			level_delta: #level_delta,
 			folded: #folded,
@@ -396,6 +399,28 @@ fn named_field_writes(node: &Node, core_types: &TokenStream2, assignments: &[(Id
 		.collect()
 }
 
+/// Emits one `NamedRead` per name-generic read, pairing the template minted
+/// from the concrete value type with the input read and the input its
+/// placeholder's name sits at.
+fn named_field_reads(node: &Node, core_types: &TokenStream2, assignments: &[(Ident, Type)]) -> Vec<TokenStream2> {
+	node.inputs
+		.iter()
+		.enumerate()
+		.flat_map(|(input, source)| source.shape.attrs.iter().map(move |attr| (input, attr)))
+		.filter_map(|(input, attr)| {
+			let (placeholder, value) = crate::parsing::named_marker(&attr.marker)?;
+			let value = qualify_projection(node, &crate::codegen::classify::substitute_ident_types(&value, assignments), assignments);
+			if node.generics.iter().any(|generic| mentions_ident(&value, &generic.ident)) {
+				return None;
+			}
+			let name = name_input(node, &placeholder)? as u8;
+			let input = input as u8;
+			let level = attr.level;
+			Some(quote!(#core_types::record::NamedRead::of::<#placeholder, #value>(#input, #name, #level)))
+		})
+		.collect()
+}
+
 /// Rewrites `V::Assoc` into `<Row as Bound>::Assoc` once the row assigns `V`.
 /// A value type reached through an associated type needs the generic's own
 /// bound to name the projection, which only the signature carries.
@@ -444,9 +469,7 @@ fn mentions_ident(ty: &Type, ident: &Ident) -> bool {
 /// The input position carrying `placeholder`'s name, which is the parameter
 /// declared at that placeholder.
 pub(crate) fn name_input(node: &Node, placeholder: &Type) -> Option<usize> {
-	node.inputs
-		.iter()
-		.position(|input| input.name_source.as_ref().is_some_and(|declared| declared == placeholder))
+	node.inputs.iter().position(|input| input.name_source.as_ref().is_some_and(|declared| declared == placeholder))
 }
 
 fn level_delta(node: &Node) -> i8 {
@@ -852,11 +875,7 @@ mod tests {
 		let assignments = vec![(syn::parse_quote!(V), syn::parse_quote!(f64))];
 		let emitted = named_field_writes(&node, &quote!(gcore), &assignments);
 		assert_eq!(emitted.len(), 1, "the row carries the named write, got {emitted:?}");
-		assert!(
-			emitted[0].to_string().contains("WireValue"),
-			"the projection is qualified by the generic's bound, got {}",
-			emitted[0]
-		);
+		assert!(emitted[0].to_string().contains("WireValue"), "the projection is qualified by the generic's bound, got {}", emitted[0]);
 	}
 
 	#[test]

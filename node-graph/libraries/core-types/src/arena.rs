@@ -251,7 +251,12 @@ impl Arena {
 				// SAFETY: the caller's contract.
 				unsafe { p.cast::<T>().drop_in_place() }
 			}
-			self.drops.lock().unwrap().push(DropEntry { offset, type_of, drop_fn: glue::<T>, retained });
+			self.drops.lock().unwrap().push(DropEntry {
+				offset,
+				type_of,
+				drop_fn: glue::<T>,
+				retained,
+			});
 			self.retained_heap.fetch_add(retained, Ordering::Relaxed);
 		}
 		// SAFETY: initialized above; insert-only, so no `&mut` to it can exist.
@@ -772,7 +777,10 @@ mod tests {
 
 		let (parked, _) = transient.alloc_sized_keyed(Owner(String::from("a keyed park")), 0).unwrap();
 		let src = std::ptr::from_ref(parked).cast::<u8>();
-		assert!(unsafe { transient.move_park::<Twin>(src, &persistent, 0) }.is_none(), "a park of another type of the same size is refused");
+		assert!(
+			unsafe { transient.move_park::<Twin>(src, &persistent, 0) }.is_none(),
+			"a park of another type of the same size is refused"
+		);
 		unsafe { transient.move_park::<Owner>(src, &persistent, 0) }.unwrap();
 		assert!(unsafe { transient.move_park::<Twin>(src, &persistent, 0) }.is_none(), "the forwarding refuses the same mistype");
 

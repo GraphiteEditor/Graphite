@@ -663,6 +663,7 @@ mod tests {
 		// pass records as lane-invariant.
 		let resolved = core_types::record::RecordLayout {
 			named_writes: Vec::new(),
+			named_reads: Vec::new(),
 			lane_invariant: u32::MAX,
 			..meta.resolve(inputs)
 		};
@@ -673,6 +674,7 @@ mod tests {
 	fn install_flip<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
 		let bundle = core_types::record::RecordLayout {
 			named_writes: Vec::new(),
+			named_reads: Vec::new(),
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
 			layout: layout.clone(),
@@ -768,6 +770,8 @@ mod tests {
 		let meta = core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -806,6 +810,8 @@ mod tests {
 		let meta = core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -852,6 +858,8 @@ mod tests {
 		let meta = core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -904,6 +912,8 @@ mod tests {
 		let meta = core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1004,6 +1014,8 @@ mod tests {
 		let meta = core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0, 1],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1074,6 +1086,8 @@ mod tests {
 		let meta = || core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0, 1],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1150,6 +1164,8 @@ mod tests {
 		let meta = core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0, 1],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1196,6 +1212,8 @@ mod tests {
 		let meta = || core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1207,6 +1225,8 @@ mod tests {
 		let extend_meta = || core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0, 1],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1284,6 +1304,8 @@ mod tests {
 		let meta = || core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1339,6 +1361,8 @@ mod tests {
 			let meta = core_types::record::LayoutMeta {
 				named_writes: Vec::new(),
 				folded_names: Vec::new(),
+				named_reads: Vec::new(),
+				folded_read_names: Vec::new(),
 				sources: vec![0],
 				reads: vec![],
 				element: core_types::record::ElementSpec::Carried,
@@ -1556,6 +1580,7 @@ mod tests {
 		let mut node = MirrorNode::new(RecordSource::new(content, &layout, &layout), counting_value(true, &evals));
 		let resolved = core_types::record::RecordLayout {
 			named_writes: Vec::new(),
+			named_reads: Vec::new(),
 			lane_invariant: 0,
 			..mirror_layout_meta().resolve(&[Some(&layout)])
 		};
@@ -1636,6 +1661,8 @@ mod tests {
 		let meta = core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1691,6 +1718,8 @@ mod tests {
 		let meta = core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1803,6 +1832,8 @@ mod tests {
 		let meta = core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,
@@ -1931,6 +1962,8 @@ mod tests {
 		let meta = core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![0],
 			reads: vec![],
 			element: core_types::record::ElementSpec::Carried,

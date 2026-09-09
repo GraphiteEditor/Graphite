@@ -136,7 +136,6 @@ impl<'a> RecordBatchMut<'a> {
 		// SAFETY: the constructor's contract; the exclusive borrow is consumed.
 		unsafe { RecordBatch::new(self.scratch.as_ptr().cast(), self.len, self.layout) }
 	}
-
 }
 
 /// One lane's record: its pointer paired with the batch's layout.

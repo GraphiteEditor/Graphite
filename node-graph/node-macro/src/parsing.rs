@@ -1682,7 +1682,7 @@ mod tests {
 					description: String::new(),
 					widget_override: ParsedWidgetOverride::None,
 					ty: ParsedFieldType::Regular(RegularParsedField {
-					name_source: None,
+						name_source: None,
 						lend: None,
 						list_levels: 0,
 						ty: parse_quote!(DVec2),

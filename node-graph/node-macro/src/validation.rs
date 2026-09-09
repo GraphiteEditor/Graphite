@@ -127,7 +127,10 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		_ => None,
 	};
 	if async_source && token.is_some() {
-		emit_error!(carrier.pat_ident.span(), "an async source's element crosses the future boundary as a value; a passthrough generic element has none");
+		emit_error!(
+			carrier.pat_ident.span(),
+			"an async source's element crosses the future boundary as a value; a passthrough generic element has none"
+		);
 	}
 	let element = writes.as_ref().map(|writes| &writes.element).unwrap_or(&value);
 	match &token {
@@ -164,7 +167,10 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		let mut seen_writes: Vec<String> = Vec::new();
 		for write in &writes.markers {
 			if write.owned && !async_source {
-				emit_error!(parsed.output_type.span(), "an owned attribute crossing belongs to an async source; a synchronous write parks its value in the kernel");
+				emit_error!(
+					parsed.output_type.span(),
+					"an owned attribute crossing belongs to an async source; a synchronous write parks its value in the kernel"
+				);
 			}
 			let written = write.marker.to_token_stream().to_string();
 			if seen_writes.contains(&written) {

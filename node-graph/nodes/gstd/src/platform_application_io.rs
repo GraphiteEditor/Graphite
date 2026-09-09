@@ -10,12 +10,14 @@ use core_types::gpoll::GPoll;
 use core_types::list::List;
 
 #[cfg(target_family = "wasm")]
+use core_types::ATTR_TRANSFORM;
+#[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
 use core_types::runtime::SourceFuture;
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
-use core_types::{ATTR_TRANSFORM, WasmNotSend};
+use core_types::WasmNotSend;
 use core_types::{Color, Ctx};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;

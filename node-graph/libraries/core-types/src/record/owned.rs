@@ -57,10 +57,7 @@ static DEEP_FIELD_VALUES: std::sync::LazyLock<std::sync::Mutex<std::collections:
 
 /// Registers the deep copy-out and replay pair for field values of `T`.
 /// Called at startup from the crate that owns the type.
-pub fn register_deep_field_value<T: 'static>(
-	copy_out: fn(&dyn crate::list::AnyAttributeValue) -> Option<Box<dyn crate::list::AnyAttributeValue>>,
-	replay: crate::list::FieldReplayFn,
-) {
+pub fn register_deep_field_value<T: 'static>(copy_out: fn(&dyn crate::list::AnyAttributeValue) -> Option<Box<dyn crate::list::AnyAttributeValue>>, replay: crate::list::FieldReplayFn) {
 	DEEP_FIELD_VALUES.lock().unwrap().insert(std::any::TypeId::of::<T>(), DeepFieldGlue { copy_out, replay });
 }
 
