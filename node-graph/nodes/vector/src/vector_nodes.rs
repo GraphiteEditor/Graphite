@@ -17,8 +17,9 @@ use core_types::transform::Transform;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DMat2, DVec2};
+use graphic_types::appearance::{Appearance, CoverPlacement, Coverage};
 use graphic_types::graphic::{bake_paint_transforms, has_paint, is_paint_present, set_paint_attribute_at};
-use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
+use graphic_types::markers::{Appearance as AppearanceMarker, EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_STROKE, Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
@@ -286,6 +287,24 @@ fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic<'stat
 	Ok(parked)
 }
 
+/// Keyed, as [`park_paint`] is, so a group-free appearance's promote moves this header.
+fn park_appearance<'e>(arena: &'e core_types::arena::Arena, appearance: Appearance) -> Result<&'e Appearance, Interrupt> {
+	let (parked, _) = arena.alloc_sized_keyed(appearance, 0).ok_or(GraphError {
+		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+		trace: Vec::new(),
+	})?;
+	Ok(parked)
+}
+
+/// Appends one coverage to the content's appearance following the painter's algorithm:
+/// the most downstream paint node in the chain paints on top. The coverage's paint is the
+/// canonical paint list carried as one graphic cell, the input lane's own envelope dropped.
+fn stamped_appearance(content_appearance: Option<&Appearance>, coverage: Coverage, paint: &List<Graphic<'static>>) -> Appearance {
+	let mut appearance = content_appearance.cloned().unwrap_or_default();
+	appearance.replace_or_insert(coverage, Graphic::Graphic(paint.clone()), CoverPlacement::Above);
+	appearance
+}
+
 /// The gradient defaulting the legacy fill performed, applied to the nested
 /// stops list the paint table wraps.
 fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: Option<DAffine2>) {
@@ -331,7 +350,7 @@ fn paint_table(paint: core_types::node::List<'_, Graphic<'_>>) -> List<Graphic<'
 fn fill<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	/// The content with vector paths to apply the fill style to.
-	(element, _content_fill): (Vector, Attr<Fill>),
+	(element, content_appearance): (Vector, Attr<AppearanceMarker>),
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	fill: IList<Graphic<'static>>,
@@ -340,11 +359,13 @@ fn fill<'e>(
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
-) -> Result<(Vector, Attr<'e, Fill>), Interrupt> {
+) -> Result<(Vector, Attr<'e, Fill>, Attr<'e, AppearanceMarker>), Interrupt> {
 	let mut paint = paint_table(fill);
 	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _spread_method, _transform);
+	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint);
 	let parked = park_paint(ctx.arena(), paint)?;
-	Ok((element, Attr(Some(parked))))
+	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
+	Ok((element, Attr(Some(parked)), Attr(Some(parked_appearance))))
 }
 
 /// The fill over graphic lanes: the marker parks on the lane and the render
@@ -353,22 +374,24 @@ fn fill<'e>(
 #[node_macro::node(category(""))]
 fn fill_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
-	(element, _content_fill): (Graphic<'static>, Attr<Fill>),
+	(element, content_appearance): (Graphic<'static>, Attr<AppearanceMarker>),
 	#[default(Color::BLACK)] fill: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
 	_backup_gradient: IList<GradientStops>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
-) -> Result<(Graphic<'static>, Attr<'e, Fill>), Interrupt> {
+) -> Result<(Graphic<'static>, Attr<'e, Fill>, Attr<'e, AppearanceMarker>), Interrupt> {
 	let bounds = match BoundingBox::bounding_box(&element, DAffine2::IDENTITY, false) {
 		RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		_ => None,
 	};
 	let mut paint = paint_table(fill);
 	default_gradient_paint(&mut paint, bounds, _gradient_type, _spread_method, _transform);
+	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint);
 	let parked = park_paint(ctx.arena(), paint)?;
-	Ok((element, Attr(Some(parked))))
+	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
+	Ok((element, Attr(Some(parked)), Attr(Some(parked_appearance))))
 }
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
@@ -376,7 +399,7 @@ fn fill_graphic_leveled<'e>(
 fn stroke<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	/// The content with vector paths to apply the stroke style to.
-	(element, content_transform): (Vector, Attr<TransformAttr>),
+	(element, content_transform, content_appearance): (Vector, Attr<TransformAttr>, Attr<AppearanceMarker>),
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	paint: IList<Graphic<'static>>,
@@ -400,8 +423,8 @@ fn stroke<'e>(
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
-) -> Result<(Vector, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
-	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
+) -> Result<(Vector, Attr<TransformAttr>, Attr<'e, StrokeAttr>, Attr<'e, AppearanceMarker>), Interrupt> {
+	let dash_lengths: Vec<f64> = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
 	let mut stroke = Stroke {
 		weight,
 		dash_lengths,
@@ -413,14 +436,23 @@ fn stroke<'e>(
 		transform: DAffine2::IDENTITY,
 		paint_order,
 	};
+
+	// The coverage records the stroke's authoring space, so the item transform is composed in. Its translation
+	// cancels out in every consumer, so it is cleared to let an otherwise-identity capture elide.
+	let mut coverage_stroke = stroke.clone();
+	coverage_stroke.transform *= *content_transform;
+	coverage_stroke.transform.translation = DVec2::ZERO;
+
 	stroke.transform *= *content_transform;
 
 	let mut element = element;
 	element.stroke = Some(stroke);
 
 	let paint = paint_table(paint);
+	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint);
 	let parked = park_paint(ctx.arena(), paint)?;
-	Ok((element, Attr(*content_transform), Attr(Some(parked))))
+	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
+	Ok((element, Attr(*content_transform), Attr(Some(parked)), Attr(Some(parked_appearance))))
 }
 
 /// The vector items of a graphic lane's interior, one wrap level deep, the
@@ -446,7 +478,7 @@ fn for_each_interior_vector_mut(element: &mut Graphic, mut f: impl FnMut(&mut Ve
 #[node_macro::node(category(""))]
 fn stroke_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
-	(element, content_transform): (Graphic<'static>, Attr<TransformAttr>),
+	(element, content_transform, content_appearance): (Graphic<'static>, Attr<TransformAttr>, Attr<AppearanceMarker>),
 	#[default(Color::BLACK)] paint: IList<Graphic<'static>>,
 	#[unit(" px")]
 	#[default(2.)]
@@ -458,8 +490,8 @@ fn stroke_graphic_leveled<'e>(
 	paint_order: PaintOrder,
 	dash_lengths: IList<f64>,
 	#[unit(" px")] dash_offset: f64,
-) -> Result<(Graphic<'static>, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
-	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
+) -> Result<(Graphic<'static>, Attr<TransformAttr>, Attr<'e, StrokeAttr>, Attr<'e, AppearanceMarker>), Interrupt> {
+	let dash_lengths: Vec<f64> = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
 	let stroke = Stroke {
 		weight,
 		dash_lengths,
@@ -472,6 +504,12 @@ fn stroke_graphic_leveled<'e>(
 		paint_order,
 	};
 
+	// The coverage records the stroke's authoring space at the lane, composing the lane transform with cleared
+	// translation, for the same reason as in `stroke` above.
+	let mut coverage_stroke = stroke.clone();
+	coverage_stroke.transform *= *content_transform;
+	coverage_stroke.transform.translation = DVec2::ZERO;
+
 	let mut element = element;
 	for_each_interior_vector_mut(&mut element, |vector, transform| {
 		let mut stroke = stroke.clone();
@@ -480,8 +518,10 @@ fn stroke_graphic_leveled<'e>(
 	});
 
 	let paint = paint_table(paint);
+	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint);
 	let parked = park_paint(ctx.arena(), paint)?;
-	Ok((element, Attr(*content_transform), Attr(Some(parked))))
+	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
+	Ok((element, Attr(*content_transform), Attr(Some(parked)), Attr(Some(parked_appearance))))
 }
 
 pub use _fill_graphic_leveled_mod::fill_graphic_leveled_entries;
