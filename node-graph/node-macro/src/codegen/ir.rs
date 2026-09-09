@@ -67,6 +67,7 @@ fn inputs(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &[Ident]) ->
 				shape: item_shape(&element, depth, &field.attribute_reads, generics),
 				subject: subject(index, field, carrier_subject, routing.as_ref()),
 				lend: matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. })),
+				name_source: crate::parsing::named_source(&element),
 			}
 		})
 		.collect()
@@ -274,6 +275,7 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 			quote!(#core_types::record::InputReads { input: #index, reads: ::std::vec![#(#descs),*] })
 		});
 	let writes = field_writes(&node.output.shape.attrs, core_types);
+	let named_writes = named_field_writes(node, core_types);
 	let removes = node.output.removes.iter().map(|attr| {
 		let marker = &attr.marker;
 		let level = attr.level;
@@ -290,6 +292,8 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 			reads: ::std::vec![#(#reads),*],
 			element: #element_spec,
 			writes: ::std::vec![#(#writes),*],
+			named_writes: ::std::vec![#(#named_writes),*],
+			folded_names: ::std::vec![],
 			removes: ::std::vec![#(#removes),*],
 			level_delta: #level_delta,
 			folded: #folded,
@@ -354,12 +358,37 @@ pub(crate) fn folded_subject(node: &Node) -> Option<(u8, u8)> {
 fn field_writes(attrs: &[LevelAttr], core_types: &TokenStream2) -> Vec<TokenStream2> {
 	attrs
 		.iter()
+		.filter(|attr| crate::parsing::named_marker(&attr.marker).is_none())
 		.map(|attr| {
 			let marker = &attr.marker;
 			let level = attr.level;
 			quote!(#core_types::record::FieldWrite::of::<#marker>(#level))
 		})
 		.collect()
+}
+
+/// Emits one `NamedWrite` per name-generic write, pairing the template minted
+/// from the concrete value type with the input its placeholder's name sits at.
+fn named_field_writes(node: &Node, core_types: &TokenStream2) -> Vec<TokenStream2> {
+	node.output
+		.shape
+		.attrs
+		.iter()
+		.filter_map(|attr| {
+			let (placeholder, value) = crate::parsing::named_marker(&attr.marker)?;
+			let input = name_input(node, &placeholder)? as u8;
+			let level = attr.level;
+			Some(quote!(#core_types::record::NamedWrite::of::<#placeholder, #value>(#input, #level)))
+		})
+		.collect()
+}
+
+/// The input position carrying `placeholder`'s name, which is the parameter
+/// declared at that placeholder.
+pub(crate) fn name_input(node: &Node, placeholder: &Type) -> Option<usize> {
+	node.inputs
+		.iter()
+		.position(|input| input.name_source.as_ref().is_some_and(|declared| declared == placeholder))
 }
 
 fn level_delta(node: &Node) -> i8 {
@@ -527,6 +556,10 @@ pub(crate) struct Input {
 	pub(crate) subject: bool,
 	/// Written `&T`; the kernel borrows the evaluated element.
 	pub(crate) lend: bool,
+	/// The placeholder this input names, written `Named<X>`. Such an input
+	/// carries constant text the compiler folds into a layout name, so it is
+	/// never evaluated per lane.
+	pub(crate) name_source: Option<Type>,
 }
 
 /// `Lazy` = `impl Node<..>`, the kernel drives it.
