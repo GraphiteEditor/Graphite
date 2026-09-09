@@ -14,6 +14,7 @@ use raster_types::{CPU, GPU, Raster};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use std::cmp::Ordering;
+use vector_types::gradient::{GradientForm as GradientFormValue, GradientSpread as GradientSpreadValue};
 use vector_types::{Gradient, ReferencePoint};
 
 /// Resolves a signed index over `total` lanes: negatives count from the end,
@@ -390,22 +391,52 @@ pub fn write_attribute<'e, T, V: WireValue>(
 	Ok((content, Attr(parked)))
 }
 
-/// Reads the `f64` attribute `name` names off each lane. An absent attribute
-/// reads as the name's own default, so the value is always a number; the name
-/// is constant text the compiler folds into an offset when the graph compiles.
-///
-/// A name written at another value type is a graph error rather than a
-/// conversion, so reading a number is never a coercion of one.
-#[node_macro::node(category("Attributes: Read"))]
-pub fn read_number_attribute<'e, T>(
-	_: impl Ctx,
-	/// The content whose lanes carry the attribute; its element is never read.
-	(content, value): (T, Attr<'e, Named<Name0, f64>>),
-	/// The attribute name, folded into an offset when the graph compiles.
-	name: Named<Name0>,
-) -> f64 {
-	let _ = content;
-	*value
+// The attribute reads: one node per value type, since a name means one type
+// and there is no coercion between them. Each takes any record wire, never
+// looks at its element, and serves the name's own default where the attribute
+// is absent, so the value always carries the declared type.
+//
+// The name is constant text the compiler folds into an offset when the graph
+// compiles; a name written at another value type is a graph error rather than
+// a conversion.
+macro_rules! attribute_reads {
+	($($(#[$meta:meta])* $node:ident: $row:ty => $value:ty;)*) => {
+		$(
+			$(#[$meta])*
+			#[node_macro::node(category("Attributes: Read"))]
+			pub fn $node<'e, T>(
+				_: impl Ctx,
+				/// The content whose lanes carry the attribute; its element is never read.
+				(content, value): (T, Attr<'e, Named<Name0, $row>>),
+				/// The attribute name, folded into an offset when the graph compiles.
+				name: Named<Name0>,
+			) -> $value {
+				let _ = content;
+				*value
+			}
+		)*
+	};
+}
+
+attribute_reads! {
+	/// Reads a named `f64` attribute, such as `opacity` or `font_size`.
+	read_number_attribute: f64 => f64;
+	/// Reads a named `u64` attribute, such as a regex match's `start` or `end`.
+	read_integer_attribute: u64 => u64;
+	/// Reads a named `bool` attribute, such as `clipping_mask` or `clip`.
+	read_bool_attribute: bool => bool;
+	/// Reads a named `DVec2` attribute, such as an artboard's `location` or `dimensions`.
+	read_coordinate_attribute: DVec2 => DVec2;
+	/// Reads a named `DAffine2` attribute, such as `transform`.
+	read_transform_attribute: DAffine2 => DAffine2;
+	/// Reads a named `Color` attribute, such as an artboard's `background`.
+	read_color_attribute: Color => Color;
+	/// Reads a named `BlendMode` attribute, such as `blend_mode`.
+	read_blend_mode_attribute: core_types::blending::BlendMode => core_types::blending::BlendMode;
+	/// Reads a named gradient-shape attribute, such as `gradient_form`.
+	read_gradient_form_attribute: GradientFormValue => GradientFormValue;
+	/// Reads a named gradient-spread attribute, such as `gradient_spread`.
+	read_gradient_spread_attribute: GradientSpreadValue => GradientSpreadValue;
 }
 
 /// Joins two levels of the same type, the base's lanes followed by the new's.

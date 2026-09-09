@@ -46,6 +46,13 @@ core_types::attribute! {
 	pub EditorClickTarget("editor:click_target"): Option<&crate::Vector>;
 }
 
+// The value types a name-generic attribute can name here, so a compile-time
+// named write or read reaches this crate's enums like any other plain value.
+core_types::named_value! {
+	for crate::gradient::GradientSpread;
+	for crate::gradient::GradientForm;
+}
+
 pub const ATTR_GRADIENT_SPREAD: &str = GradientSpread::NAME;
 pub const ATTR_GRADIENT_FORM: &str = GradientForm::NAME;
 pub const ATTR_GRADIENT_SPACE: &str = GradientSpace::NAME;
