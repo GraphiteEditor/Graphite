@@ -69,6 +69,8 @@ impl SpiralTurns {
 		self.handle_state == SpiralTurnsState::Dragging
 	}
 
+	// Records one snapshot of the spiral's parameters; grouping them would only move the same fields into a struct
+	#[allow(clippy::too_many_arguments)]
 	pub fn store_initial_parameters(
 		&mut self,
 		layer: LayerNodeIdentifier,

@@ -88,11 +88,8 @@ impl ShapeType {
 	}
 
 	pub fn tooltip_description(&self) -> String {
-		(match self {
-			// TODO: Add descriptions to all the shape tools
-			_ => "",
-		})
-		.into()
+		// TODO: Add descriptions to all the shape tools
+		String::new()
 	}
 
 	pub fn icon_name(&self) -> String {
