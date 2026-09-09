@@ -2146,7 +2146,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(GradientStops::new([
+				value: Box::new(TaggedValue::Gradient(GradientStops::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2157,7 +2157,7 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				])),
+				]))),
 			})
 			.await;
 
@@ -2183,7 +2183,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(GradientStops::new([
+				value: Box::new(TaggedValue::Gradient(GradientStops::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2194,7 +2194,7 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				])),
+				]))),
 			})
 			.await;
 
@@ -2826,7 +2826,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_value_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(GradientStops::new([
+				value: Box::new(TaggedValue::Gradient(GradientStops::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2837,7 +2837,7 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				])),
+				]))),
 			})
 			.await;
 

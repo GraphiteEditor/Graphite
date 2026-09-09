@@ -258,6 +258,9 @@ pub struct ParsedField {
 	pub(crate) attribute_reads: Vec<AttributeRead>,
 }
 
+// Both variants are large parsed-syntax payloads (888/672 bytes), so boxing one still leaves the other large while forcing a
+// deref on every pattern match across codegen; this is built once per node at compile time, never on a hot path
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum ParsedFieldType {
 	Regular(RegularParsedField),

@@ -44,7 +44,12 @@ pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 
 fn optionally_update_value<T>(value: impl Fn(&T) -> Option<TaggedValue> + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
 	move |input_value: &T| match value(input_value) {
-		Some(value) => NodeGraphMessage::SetInputValue { node_id, input_index, value }.into(),
+		Some(value) => NodeGraphMessage::SetInputValue {
+			node_id,
+			input_index,
+			value: Box::new(value),
+		}
+		.into(),
 		None => Message::NoOp,
 	}
 }
@@ -867,7 +872,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 				NodeGraphMessage::SetInputValue {
 					node_id,
 					input_index: graphene_std::text::text::FontInput::INDEX,
-					value: TaggedValue::Resource(resource_id),
+					value: Box::new(TaggedValue::Resource(resource_id)),
 				}
 				.into(),
 			]),
@@ -1437,7 +1442,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index,
-						value: TaggedValue::F32(percent.clamp(0., 100.) as f32),
+						value: Box::new(TaggedValue::F32(percent.clamp(0., 100.) as f32)),
 					}
 					.into()
 				}
@@ -1594,7 +1599,7 @@ fn spectrum_slider_row(
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index,
-						value: TaggedValue::F32(position_to_value(new_position).clamp(value_min, value_max) as f32),
+						value: Box::new(TaggedValue::F32(position_to_value(new_position).clamp(value_min, value_max) as f32)),
 					}
 					.into()
 				})
@@ -2148,13 +2153,13 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 						NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: UseJoinerInput::INDEX,
-							value: TaggedValue::Bool(true),
+							value: Box::new(TaggedValue::Bool(true)),
 						}
 						.into(),
 						NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: JoinerInput::INDEX,
-							value: TaggedValue::String(value.clone()),
+							value: Box::new(TaggedValue::String(value.clone())),
 						}
 						.into(),
 					]),
@@ -2214,13 +2219,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: IndividualCornerRadiiInput::INDEX,
-						value: TaggedValue::Bool(false),
+						value: Box::new(TaggedValue::Bool(false)),
 					}
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: CornerRadiusInput::INDEX,
-						value: TaggedValue::F64(uniform_val),
+						value: Box::new(TaggedValue::F64(uniform_val)),
 					}
 					.into(),
 				]),
@@ -2234,13 +2239,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: IndividualCornerRadiiInput::INDEX,
-						value: TaggedValue::Bool(true),
+						value: Box::new(TaggedValue::Bool(true)),
 					}
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: CornerRadiusInput::INDEX,
-						value: TaggedValue::F64Array(individual_val_for_switch.clone()),
+						value: Box::new(TaggedValue::F64Array(individual_val_for_switch.clone())),
 					}
 					.into(),
 				]),
@@ -2549,13 +2554,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::INDEX,
-				value: TaggedValue::Color(color),
+				value: Box::new(TaggedValue::Color(color)),
 			}
 			.into(),
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: BackupColorInput::INDEX,
-				value: TaggedValue::Color(color),
+				value: Box::new(TaggedValue::Color(color)),
 			}
 			.into(),
 		]),
@@ -2566,13 +2571,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::INDEX,
-				value: TaggedValue::Gradient(gradient.clone()),
+				value: Box::new(TaggedValue::Gradient(gradient.clone())),
 			}
 			.into(),
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: BackupGradientInput::INDEX,
-				value: TaggedValue::Gradient(gradient),
+				value: Box::new(TaggedValue::Gradient(gradient)),
 			}
 			.into(),
 		]),
