@@ -984,8 +984,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// more: the name is spent resolving the layout when the graph compiles, so
 	// it reaches neither the kernel's parameters nor its call. The wire input
 	// stays, since the fold reads the constant off it.
-	let kernel_omits =
-		|field: &ParsedField| injected_name(&field.pat_ident.ident) || matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { name_source: Some(_), .. }));
+	let kernel_omits = |field: &ParsedField| injected_name(&field.pat_ident.ident) || matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { name_source: Some(_), .. }));
 	let where_predicates: Vec<TokenStream2> = parsed.where_clause.iter().flat_map(|clause| clause.predicates.iter()).map(|predicate| quote!(#predicate)).collect();
 
 	let NodeFields {
@@ -1731,7 +1730,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// kernel gets a fresh one; reference-valued writes name their real
 	// lifetime explicitly and pass through untouched. An async source's value
 	// outlives the evaluation, so its writes are `'static` instead.
-	let attr_injected = record_io.then(|| inject_attr_lifetimes(&parsed.output_type, if async_source { "'static" } else { "'__attr" })).flatten();
+	let attr_injected = record_io
+		.then(|| inject_attr_lifetimes(&parsed.output_type, if async_source { "'static" } else { "'__attr" }))
+		.flatten();
 	let attr_lifetime = (attr_injected.is_some() && !async_source).then(|| quote!('__attr,));
 	let lane_injected = gather_carrier
 		.then(|| crate::codegen::classify::inject_lane_lifetime(attr_injected.as_ref().unwrap_or(&parsed.output_type)))
@@ -2545,9 +2546,24 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				}
 			})
 			.collect();
+		// A name-generic read's offset was resolved against the input it reads,
+		// which only the compiler sees, so installing it is a copy.
+		let mut folded_read = 0usize;
+		let read_installs: Vec<TokenStream2> = flat_reads
+			.iter()
+			.enumerate()
+			.filter(|(_, (_, read))| crate::parsing::named_marker(&read.marker).is_some())
+			.map(|(slot, _)| {
+				let slot = format_ident!("__read_{slot}");
+				let position = folded_read;
+				folded_read += 1;
+				quote!(self.#slot = __resolved.named_reads[#position];)
+			})
+			.collect();
 		let plan = (!skips_carrier || gather_carrier).then(|| quote!(self.__plan = __resolved.plan;));
 		Some(quote! {
 			#(#write_installs)*
+			#(#read_installs)*
 			self.__frame_bytes = __resolved.frame_bytes;
 			self.__lane_invariant = __resolved.lane_invariant;
 			#plan
@@ -2671,6 +2687,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let read_inits = flat_reads.iter().enumerate().map(|(slot, (owner, read))| {
 			let marker = &read.marker;
 			let slot = format_ident!("__read_{slot}");
+			// A name-generic read has no marker name to look up here; the
+			// compiler resolved its offset against the input's own layout, so
+			// `set_layout` installs the number.
+			if crate::parsing::named_marker(marker).is_some() {
+				return quote!(let #slot = ::core::option::Option::None;);
+			}
 			let source = match !skips_carrier && *owner == 0 {
 				true => quote!(__carrier_layout),
 				false => format_ident!("__in_{owner}").to_token_stream(),

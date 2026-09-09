@@ -193,9 +193,7 @@ impl DynamicExecutor {
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let result = self.tree.introspect(node_path)?;
 		if result.downcast_ref::<core_types::context::CtxSnapshot>().is_some() {
-			return self
-				.introspect_with(node_path, graphic_types::boundary::batch_to_legacy)
-				.map(Arc::from);
+			return self.introspect_with(node_path, graphic_types::boundary::batch_to_legacy).map(Arc::from);
 		}
 		Ok(result)
 	}
@@ -789,6 +787,71 @@ mod test {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { layout.rec(&value).read::<&[NodeId]>(offset) }, path.as_slice());
+	}
+
+	/// Reads `read_name` off a record that a write of `write_name` produced.
+	fn read_attribute_network(write_name: &str, read_name: &str, value: TaggedValue) -> ProtoNetwork {
+		ProtoNetwork {
+			stack_need: 0,
+			inputs: vec![],
+			output: NodeId(5),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
+				(NodeId(1), string_value(write_name)),
+				(NodeId(2), ProtoNode::value(ConstructionArgs::Value(value.into()), vec![])),
+				(NodeId(3), proto_node("graphic_nodes::graphic::WriteAttributeNode", vec![NodeId(0), NodeId(1), NodeId(2)])),
+				(NodeId(4), string_value(read_name)),
+				(NodeId(5), proto_node("graphic_nodes::graphic::ReadAttributeNode", vec![NodeId(3), NodeId(4)])),
+			],
+		}
+	}
+
+	fn read_back(network: ProtoNetwork) -> f64 {
+		let executor = build_executor(network);
+		let arena = Arena::new(1 << 12).unwrap();
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+		let handle = executor.tree().get(NodeId(5)).unwrap();
+		let layout = handle.layout().clone();
+		let edge = handle.duplicate().downcast_record::<f64>().unwrap();
+		let frames = core_types::record::test_frames(executor.tree().stack_need());
+		let GPoll::Final(value) = core_types::record::serve_input(&edge, &ctx, &frames) else {
+			panic!("expected a final record");
+		};
+		unsafe { core_types::record::read_element::<f64>(layout.rec(&value)) }
+	}
+
+	#[test]
+	fn a_named_read_serves_the_written_value() {
+		assert_eq!(read_back(read_attribute_network("novel:count", "novel:count", TaggedValue::F64(2.5))), 2.5);
+	}
+
+	#[test]
+	fn an_absent_named_read_serves_the_forced_default() {
+		// Nothing upstream writes `novel:absent`, so the read collapses to the
+		// value type's default rather than reporting absence.
+		assert_eq!(read_back(read_attribute_network("novel:count", "novel:absent", TaggedValue::F64(2.5))), 0.);
+	}
+
+	#[test]
+	fn a_census_named_read_round_trips_its_written_value() {
+		// A declared name folds onto its census field, so the read resolves
+		// against the same offset the write installed.
+		assert_eq!(read_back(read_attribute_network("opacity", "opacity", TaggedValue::F64(0.5))), 0.5);
+	}
+
+	#[test]
+	fn a_named_read_disagreeing_with_its_write_is_refused() {
+		// The name is written at a path upstream and read at `f64` here, which
+		// is the one-name-one-type rule spanning a write and a read.
+		let mut network = read_attribute_network("novel:count", "novel:count", TaggedValue::NodeIdPath(vec![NodeId(1)]));
+		network.resolve_types(&node_registry::NODE_REGISTRY).unwrap();
+		let errors = network.compute_layouts().expect_err("a name at two value types must be refused");
+		assert!(
+			errors.iter().any(|error| format!("{:?}", error.error).contains("one name carries one value type")),
+			"the refusal names the one-name-one-type rule, got {errors:?}"
+		);
 	}
 
 	#[test]

@@ -380,6 +380,7 @@ impl ProtoNetwork {
 
 	pub fn compute_layouts(&mut self) -> Result<(), GraphErrors> {
 		self.fold_attribute_names()?;
+		let mut errors = GraphErrors::new();
 		for index in 0..self.nodes.len() {
 			let lane_invariant = self.nodes[index].1.lane_invariant_inputs;
 			let layout = {
@@ -390,6 +391,7 @@ impl ProtoNetwork {
 						plan: Vec::new(),
 						lane_invariant,
 						named_writes: Vec::new(),
+						named_reads: Vec::new(),
 						layout,
 					}),
 					ConstructionArgs::Nodes(inputs) => node.resolved.layout_meta.as_ref().and_then(|meta| {
@@ -397,6 +399,10 @@ impl ProtoNetwork {
 							.iter()
 							.map(|input| self.nodes[input.0 as usize].1.resolved.layout.as_ref().map(|resolved| &resolved.layout))
 							.collect();
+						// A read meets the name's value type where the name was
+						// written, so a disagreement upstream is caught here
+						// rather than read as the wrong type at run time.
+						errors.extend(read_type_conflicts(node, meta, &input_layouts));
 						meta.sources.iter().all(|&source| input_layouts[source as usize].is_some()).then(|| core_types::record::RecordLayout {
 							lane_invariant,
 							..meta.resolve(&input_layouts)
@@ -414,7 +420,7 @@ impl ProtoNetwork {
 			self.nodes[index].1.resolved.layout = layout;
 		}
 		self.stack_need = self.fold_stack_peak();
-		Ok(())
+		errors.is_empty().then_some(()).ok_or(errors)
 	}
 
 	/// Resolves every name-from-input write against the constant its name
@@ -426,55 +432,64 @@ impl ProtoNetwork {
 		let mut errors = GraphErrors::new();
 		for index in 0..self.nodes.len() {
 			let Some(meta) = &self.nodes[index].1.resolved.layout_meta else { continue };
-			if meta.named_writes.is_empty() {
+			if meta.named_writes.is_empty() && meta.named_reads.is_empty() {
 				continue;
 			}
 			let ConstructionArgs::Nodes(inputs) = &self.nodes[index].1.construction_args else {
 				continue;
 			};
-			let names: Vec<Result<&'static str, GraphErrorType>> = meta
+			// Writes first, then reads: both draw their names the same way, and
+			// the one-name-one-type check runs over them together.
+			let sources: Vec<(u8, std::any::TypeId)> = meta
 				.named_writes
 				.iter()
-				.map(|named| match inputs.get(named.name_input as usize).map(|input| &self.nodes[input.0 as usize].1.construction_args) {
-					Some(ConstructionArgs::Value(value)) => match &**value {
-						value::TaggedValue::String(name) => Ok(core_types::attribute::intern_name(name)),
-						other => Err(GraphErrorType::AttributeName(format!(
-							"an attribute name must be text, but input {} is {}",
-							named.name_input + 1,
-							other.ty()
+				.map(|named| (named.name_input, named.template.type_id))
+				.chain(meta.named_reads.iter().map(|named| (named.name_input, named.template.type_id)))
+				.collect();
+			let names: Vec<Result<&'static str, GraphErrorType>> = sources
+				.iter()
+				.map(
+					|&(name_input, _)| match inputs.get(name_input as usize).map(|input| &self.nodes[input.0 as usize].1.construction_args) {
+						Some(ConstructionArgs::Value(value)) => match &**value {
+							value::TaggedValue::String(name) => Ok(core_types::attribute::intern_name(name)),
+							other => Err(GraphErrorType::AttributeName(format!("an attribute name must be text, but input {} is {}", name_input + 1, other.ty()))),
+						},
+						_ => Err(GraphErrorType::AttributeName(format!(
+							"input {} must be a constant, since attribute names resolve when the graph compiles rather than when it runs",
+							name_input + 1
 						))),
 					},
-					_ => Err(GraphErrorType::AttributeName(format!(
-						"input {} must be a constant, since attribute names resolve when the graph compiles rather than when it runs",
-						named.name_input + 1
-					))),
-				})
+				)
 				.collect();
 			let node = &self.nodes[index].1;
 			let mut folded: Vec<(&'static str, std::any::TypeId)> = Vec::new();
 			let mut failed = false;
-			for (position, name) in names.iter().enumerate() {
+			for (name, &(_, type_id)) in names.iter().zip(&sources) {
 				match name {
 					Err(error) => {
 						errors.push(GraphError::new(node, error.clone()));
 						failed = true;
 					}
 					Ok(name) => {
-						let template = node.resolved.layout_meta.as_ref().expect("checked above").named_writes[position].template;
-						if let Some(conflict) = one_name_one_type(name, template.type_id, &folded) {
+						if let Some(conflict) = one_name_one_type(name, type_id, &folded) {
 							errors.push(GraphError::new(node, conflict));
 							failed = true;
 						}
-						folded.push((name, template.type_id));
+						folded.push((name, type_id));
 					}
 				}
 			}
 			if failed {
 				continue;
 			}
+			let writes = self.nodes[index].1.resolved.layout_meta.as_ref().expect("checked above").named_writes.len();
 			let meta = self.nodes[index].1.resolved.layout_meta.as_mut().expect("checked above");
 			for (position, name) in names.into_iter().enumerate() {
-				meta.fold_name(position, name.expect("every name resolved"));
+				let name = name.expect("every name resolved");
+				match position < writes {
+					true => meta.fold_name(position, name),
+					false => meta.fold_read_name(name),
+				}
 			}
 		}
 		errors.is_empty().then_some(()).ok_or(errors)
@@ -803,6 +818,26 @@ impl ProtoNetwork {
 		Ok(())
 	}
 }
+/// Reports each name-from-input read whose value type disagrees with the field
+/// the name already names on the input it reads. An absent field is no
+/// conflict: the read serves the name's forced default.
+fn read_type_conflicts(node: &ProtoNode, meta: &core_types::record::LayoutMeta, inputs: &[Option<&core_types::record::Layout>]) -> GraphErrors {
+	meta.named_reads
+		.iter()
+		.zip(&meta.folded_read_names)
+		.filter_map(|(read, name)| {
+			let layout = inputs.get(read.input as usize).copied().flatten()?;
+			let field = layout.fields.iter().find(|field| field.name == *name && field.level == read.template.level)?;
+			(field.type_id != read.template.type_id).then(|| {
+				GraphError::new(
+					node,
+					GraphErrorType::AttributeName(format!("attribute `{name}` is read at one value type but written at another, and one name carries one value type")),
+				)
+			})
+		})
+		.collect()
+}
+
 /// Reports a folded name that disagrees with a type the same name already
 /// carries, over the census and the names this node folded together. One name
 /// means one value type everywhere, so the layouts a graph folds can never

@@ -387,6 +387,22 @@ pub fn write_attribute<'e, T, V: WireValue>(
 	Ok((content, Attr(parked)))
 }
 
+/// Reads the attribute `name` names off each lane. An absent attribute reads as
+/// the name's own default, so the value carries the declared type either way;
+/// the name is constant text the compiler folds into an offset when the graph
+/// compiles.
+#[node_macro::node(category("Attributes: Read"))]
+pub fn read_attribute<'e>(
+	_: impl Ctx,
+	/// The content whose lanes carry the attribute.
+	(content, value): (f64, Attr<'e, Named<Name0, f64>>),
+	/// The attribute name, folded into an offset when the graph compiles.
+	name: Named<Name0>,
+) -> f64 {
+	let _ = content;
+	*value
+}
+
 /// Joins two levels of the same type, the base's lanes followed by the new's.
 #[node_macro::node(category("General"), extent(extend_extent))]
 pub fn extend<T>(

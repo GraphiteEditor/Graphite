@@ -286,6 +286,7 @@ mod tests {
 		// pass records as lane-invariant.
 		let resolved = record::RecordLayout {
 			named_writes: Vec::new(),
+			named_reads: Vec::new(),
 			lane_invariant: u32::MAX,
 			..meta.resolve(inputs)
 		};
@@ -296,6 +297,7 @@ mod tests {
 	fn install_flip<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
 		let bundle = record::RecordLayout {
 			named_writes: Vec::new(),
+			named_reads: Vec::new(),
 			frame_bytes: layout.frame_bytes(),
 			plan: Vec::new(),
 			layout: layout.clone(),
@@ -424,6 +426,8 @@ mod tests {
 		record::LayoutMeta {
 			named_writes: Vec::new(),
 			folded_names: Vec::new(),
+			named_reads: Vec::new(),
+			folded_read_names: Vec::new(),
 			sources: vec![source],
 			reads: vec![],
 			element: record::ElementSpec::Carried,

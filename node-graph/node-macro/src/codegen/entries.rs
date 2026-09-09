@@ -659,10 +659,7 @@ mod tests {
 		.to_string();
 		assert!(generated.contains("data : :: core_types :: list :: List < T >"), "the kernel takes the owned legacy list: {generated}");
 		assert!(generated.contains("run_to_owned_list"), "the prologue snapshots the materialized level: {generated}");
-		assert!(
-			generated.contains("record :: materialize_batch"),
-			"the level still materializes in the prologue: {generated}"
-		);
+		assert!(generated.contains("record :: materialize_batch"), "the level still materializes in the prologue: {generated}");
 		for element in ["Vector", "Raster < CPU >", "Graphic"] {
 			let row = format!("record_source_type :: < {element} > ()");
 			assert!(generated.contains(&row), "the row carries the leveled element {element}: {generated}");

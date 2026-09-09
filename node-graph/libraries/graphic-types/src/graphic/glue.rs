@@ -500,12 +500,7 @@ mod run_tests {
 	}
 
 	/// The promoted paint of one lane, at the layout the promote published.
-	fn promoted_paint<'p>(
-		span: &core_types::record::MaterializedSpan,
-		layout: &core_types::record::Layout,
-		lane: usize,
-		persistent: &'p core_types::arena::Arena,
-	) -> &'p List<Graphic<'p>> {
+	fn promoted_paint<'p>(span: &core_types::record::MaterializedSpan, layout: &core_types::record::Layout, lane: usize, persistent: &'p core_types::arena::Arena) -> &'p List<Graphic<'p>> {
 		let offset = layout.offset_of(Fill::NAME, 0).unwrap();
 		let batch = span.batch(persistent, layout).expect("the span resolves in its own region");
 		// SAFETY: the promote wrote a record of `layout` into every lane.
@@ -522,7 +517,9 @@ mod run_tests {
 		// list the evaluation parked.
 		let published = native_group_paint(&inner_vector, &persistent);
 		let interior = {
-			let Some(Graphic::Group(group)) = published.element(0) else { panic!("the paint carries a native group") };
+			let Some(Graphic::Group(group)) = published.element(0) else {
+				panic!("the paint carries a native group")
+			};
 			group.content.lanes().get(0).rec().ptr()
 		};
 		// SAFETY: the list serves only while `persistent` is live, and the
@@ -533,7 +530,9 @@ mod run_tests {
 		let (layout, span, _frames) = promote_paint_field(Some(paint), 1, &transient, &persistent);
 		let served = promoted_paint(&span, &layout, 0, &persistent);
 
-		let Some(Graphic::Group(group)) = served.element(0) else { panic!("the promote keeps the group form") };
+		let Some(Graphic::Group(group)) = served.element(0) else {
+			panic!("the promote keeps the group form")
+		};
 		assert_eq!(group.content.lanes().get(0).rec().ptr(), interior, "a persistent interior is shared pointer for pointer");
 		assert!(
 			persistent.occupancy() - occupied <= layout.frame_bytes() + size_of::<List<Graphic>>() + align_of::<List<Graphic>>(),
@@ -555,8 +554,14 @@ mod run_tests {
 
 		let (layout, span, _frames) = promote_paint_field(Some(paint), 2, &transient, &persistent);
 		let served = promoted_paint(&span, &layout, 0, &persistent);
-		let Some(Graphic::Vector(vector)) = served.element(0) else { panic!("the promote keeps the vector") };
-		assert_eq!(vector.point_domain.positions().as_ptr(), heap, "the promote moved the header, so the served paint names the pre-promote heap");
+		let Some(Graphic::Vector(vector)) = served.element(0) else {
+			panic!("the promote keeps the vector")
+		};
+		assert_eq!(
+			vector.point_domain.positions().as_ptr(),
+			heap,
+			"the promote moved the header, so the served paint names the pre-promote heap"
+		);
 		assert!(std::ptr::eq(served, promoted_paint(&span, &layout, 1, &persistent)), "a paint two lanes share moves once");
 
 		transient.reset();
@@ -588,7 +593,11 @@ mod run_tests {
 		let served = promoted_paint(&span, &layout, 0, &persistent);
 		let held = served.attribute::<Option<List<Graphic>>>(Stroke::NAME, 0).expect("the stroke attribute rides the promoted list");
 		let held = held.as_ref().expect("the stroke is present");
-		assert_eq!(map_groups_to_legacy(held.element(0).unwrap()), expected, "the attribute-held group serves from persistent storage after the reset");
+		assert_eq!(
+			map_groups_to_legacy(held.element(0).unwrap()),
+			expected,
+			"the attribute-held group serves from persistent storage after the reset"
+		);
 	}
 
 	#[test]
@@ -610,8 +619,14 @@ mod run_tests {
 
 		let (layout, span, _frames) = promote_paint_field(Some(paint), 1, &transient, &persistent);
 		let served = promoted_paint(&span, &layout, 0, &persistent);
-		let Some(Graphic::Vector(vector)) = served.element(0) else { panic!("the promote keeps the vector") };
-		assert_eq!(vector.point_domain.positions().as_ptr(), heap, "the promote moved the header, so the served paint names the pre-promote heap");
+		let Some(Graphic::Vector(vector)) = served.element(0) else {
+			panic!("the promote keeps the vector")
+		};
+		assert_eq!(
+			vector.point_domain.positions().as_ptr(),
+			heap,
+			"the promote moved the header, so the served paint names the pre-promote heap"
+		);
 
 		transient.reset();
 		let served = promoted_paint(&span, &layout, 0, &persistent);
