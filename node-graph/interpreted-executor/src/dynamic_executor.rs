@@ -737,6 +737,101 @@ mod test {
 		ProtoNode::value(ConstructionArgs::Value(TaggedValue::String(value.to_string()).into()), vec![])
 	}
 
+	/// A record source, a constant name, and a value wired into the write node.
+	fn write_attribute_network(name: &str, value: TaggedValue) -> ProtoNetwork {
+		ProtoNetwork {
+			stack_need: 0,
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
+				(NodeId(1), string_value(name)),
+				(NodeId(2), ProtoNode::value(ConstructionArgs::Value(value.into()), vec![])),
+				(NodeId(3), proto_node("graphic_nodes::graphic::WriteAttributeNode", vec![NodeId(0), NodeId(1), NodeId(2)])),
+			],
+		}
+	}
+
+	#[test]
+	fn a_constant_name_folds_into_the_written_layout() {
+		let executor = build_executor(write_attribute_network("novel:count", TaggedValue::F64(2.5)));
+		let arena = Arena::new(1 << 12).unwrap();
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+		let handle = executor.tree().get(NodeId(3)).unwrap();
+		let layout = handle.layout().clone();
+		let offset = layout.offset_of("novel:count", 0).expect("the folded name names a field of the output layout");
+		let edge = handle.duplicate().downcast_record::<f64>().unwrap();
+		let frames = core_types::record::test_frames(executor.tree().stack_need());
+		let GPoll::Final(value) = core_types::record::serve_input(&edge, &ctx, &frames) else {
+			panic!("expected a final record");
+		};
+		let rec = layout.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 7., "the element passes through the write");
+		assert_eq!(unsafe { rec.read::<f64>(offset) }, 2.5, "the value lands under the folded name");
+	}
+
+	#[test]
+	fn a_census_name_writes_at_its_declared_value_type() {
+		let path = vec![NodeId(7), NodeId(8)];
+		let executor = build_executor(write_attribute_network("editor:layer_path", TaggedValue::NodeIdPath(path.clone())));
+		let arena = Arena::new(1 << 12).unwrap();
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+		let handle = executor.tree().get(NodeId(3)).unwrap();
+		let layout = handle.layout().clone();
+		let offset = layout.offset_of("editor:layer_path", 0).expect("a census name folds onto its census field");
+		let edge = handle.duplicate().downcast_record::<f64>().unwrap();
+		let frames = core_types::record::test_frames(executor.tree().stack_need());
+		let GPoll::Final(value) = core_types::record::serve_input(&edge, &ctx, &frames) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(unsafe { layout.rec(&value).read::<&[NodeId]>(offset) }, path.as_slice());
+	}
+
+	#[test]
+	fn a_runtime_attribute_name_is_refused_when_the_graph_compiles() {
+		// The outer node's name comes off another node rather than sitting on
+		// the wire as text. It still types as a string, so only the fold can
+		// reject it, which is the case the design rules out entirely.
+		let mut network = ProtoNetwork {
+			stack_need: 0,
+			inputs: vec![],
+			output: NodeId(6),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
+				(NodeId(1), string_value("novel:count")),
+				(NodeId(2), string_value("inner:name")),
+				(NodeId(3), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(1.).into()), vec![])),
+				// Carries a string element, so its output types as a name.
+				(NodeId(4), proto_node("graphic_nodes::graphic::WriteAttributeNode", vec![NodeId(1), NodeId(2), NodeId(3)])),
+				(NodeId(5), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(2.5).into()), vec![])),
+				(NodeId(6), proto_node("graphic_nodes::graphic::WriteAttributeNode", vec![NodeId(0), NodeId(4), NodeId(5)])),
+			],
+		};
+		network.resolve_types(&node_registry::NODE_REGISTRY).unwrap();
+		let errors = network.compute_layouts().expect_err("a non-constant name must be refused");
+		assert!(
+			errors.iter().any(|error| format!("{:?}", error.error).contains("must be a constant")),
+			"the refusal names the constant requirement, got {errors:?}"
+		);
+	}
+
+	#[test]
+	fn one_name_carries_one_value_type() {
+		// `opacity` is declared `f64` in the census, so writing a path there is
+		// a graph error rather than a second field of the same name.
+		let mut network = write_attribute_network("opacity", TaggedValue::NodeIdPath(vec![NodeId(1)]));
+		network.resolve_types(&node_registry::NODE_REGISTRY).unwrap();
+		let errors = network.compute_layouts().expect_err("a name at two value types must be refused");
+		assert!(
+			errors.iter().any(|error| format!("{:?}", error.error).contains("one name carries one value type")),
+			"the refusal names the one-name-one-type rule, got {errors:?}"
+		);
+	}
+
 	#[test]
 	fn the_clone_node_clones_the_element_out_of_its_record_wire() {
 		let network = ProtoNetwork {

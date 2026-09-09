@@ -232,6 +232,7 @@ impl PerPixelAdjustCodegen<'_> {
 			widget_override: Default::default(),
 			ty: ParsedFieldType::Regular(RegularParsedField {
 				ty: parse_quote!(#wgpu_executor::WgpuExecutorHandle),
+				name_source: None,
 				list_levels: 0,
 				lend: None,
 				exposed: true,

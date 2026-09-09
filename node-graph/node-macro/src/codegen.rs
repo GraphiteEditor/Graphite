@@ -2019,6 +2019,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let value_args = regular_fields.iter().skip(if skips_carrier { 0 } else { 1 }).map(|field| {
 			let name = &field.pat_ident.ident;
 			match &field.ty {
+				// A name input's text is spent when the graph compiles, so the
+				// kernel takes the bare placeholder, not the wired string.
+				ParsedFieldType::Regular(RegularParsedField { name_source: Some(_), .. }) => quote!(::core::default::Default::default()),
 				// A lend param binds an owned input; the kernel borrows the
 				// evaluated value.
 				ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => quote!(&#name),
@@ -2503,12 +2506,28 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			self.__layout = __resolved.layout;
 		})
 	} else if record_io {
-		let write_installs = write_markers.iter().enumerate().map(|(index, marker)| {
-			let slot = format_ident!("__write_{index}");
-			quote! {
-				self.#slot = __resolved.layout.offset_of(<#marker as #core_types::attribute::Attribute>::NAME, 0).expect("a written attribute is always part of the wired layout");
-			}
-		});
+		// A name-generic write has no marker name to look up: the compiler
+		// folded its name out of the graph, so the offset resolves through the
+		// name the resolved layout carries.
+		let mut folded = 0usize;
+		let write_installs: Vec<TokenStream2> = write_markers
+			.iter()
+			.enumerate()
+			.map(|(index, marker)| {
+				let slot = format_ident!("__write_{index}");
+				let name = match crate::parsing::named_marker(marker).is_some() {
+					true => {
+						let position = folded;
+						folded += 1;
+						quote!(__resolved.named_writes[#position])
+					}
+					false => quote!(<#marker as #core_types::attribute::Attribute>::NAME),
+				};
+				quote! {
+					self.#slot = __resolved.layout.offset_of(#name, 0).expect("a written attribute is always part of the wired layout");
+				}
+			})
+			.collect();
 		let plan = (!skips_carrier || gather_carrier).then(|| quote!(self.__plan = __resolved.plan;));
 		Some(quote! {
 			#(#write_installs)*
@@ -2551,7 +2570,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 			None => quote!(#core_types::record::ElementSpec::Carried),
 		};
-		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, core_types);
+		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, core_types, &[]);
 		// A flipped shader node's struct and impl are std-gated; its layout meta must be too.
 		let cfg = crate::shader_nodes::modify_cfg(&parsed.attributes);
 		quote! {
@@ -2567,8 +2586,11 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let record_wiring = record_io.then(|| {
 		let layout_fn = format_ident!("{}_layout", fn_name);
+		// A name-generic write is absent here: this free layout fn derives a
+		// layout without a graph, and only the graph carries the name.
 		let write_descs: Vec<TokenStream2> = write_markers
 			.iter()
+			.filter(|marker| crate::parsing::named_marker(marker).is_none())
 			.map(|marker| quote!(#core_types::record::FieldWrite::of::<#marker>(0)))
 			.collect();
 		let remove_pairs: Vec<TokenStream2> = removes
@@ -2605,7 +2627,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 			None => quote!(#core_types::record::ElementSpec::Carried),
 		};
-		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, core_types);
+		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, core_types, &[]);
 		let layout_meta_def = quote! {
 			#vis fn #layout_meta_fn() -> #core_types::record::LayoutMeta {
 				#layout_meta

@@ -369,6 +369,10 @@ impl Parse for NumberRange {
 #[derive(Clone, Debug)]
 pub struct RegularParsedField {
 	pub ty: Type,
+	/// The placeholder this parameter names, written `Named<X>`. Its `ty` is
+	/// rewritten to `String`, since the wire carries the name as constant text
+	/// while the kernel takes only the placeholder.
+	pub name_source: Option<Type>,
 	/// `IList` nesting stripped from `ty` at parse; `ty` holds the element row.
 	pub list_levels: u8,
 	/// The original reference tokens when the parameter was written `&T`; `ty` holds the peeled inner type.
@@ -1267,9 +1271,18 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			}
 		}
 
+		// A `Named<X>` parameter declares where `X`'s name is wired: the input
+		// carries constant text, the kernel takes only the placeholder.
+		let name_source = named_source(&ty);
+		let ty = match name_source {
+			Some(_) => parse_quote!(String),
+			None => ty,
+		};
+
 		Ok(ParsedField {
 			pat_ident,
 			ty: ParsedFieldType::Regular(RegularParsedField {
+				name_source,
 				exposed,
 				number_soft_min,
 				number_soft_max,
@@ -1392,6 +1405,7 @@ impl ParsedNodeFn {
 			widget_override: ParsedWidgetOverride::Hidden,
 			ty: ParsedFieldType::Regular(RegularParsedField {
 				ty,
+				name_source: None,
 				list_levels: 0,
 				lend: None,
 				exposed: false,
@@ -1569,6 +1583,7 @@ mod tests {
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
+					name_source: None,
 					lend: None,
 					list_levels: 0,
 					ty: parse_quote!(f64),
@@ -1667,6 +1682,7 @@ mod tests {
 					description: String::new(),
 					widget_override: ParsedWidgetOverride::None,
 					ty: ParsedFieldType::Regular(RegularParsedField {
+					name_source: None,
 						lend: None,
 						list_levels: 0,
 						ty: parse_quote!(DVec2),
@@ -1746,6 +1762,7 @@ mod tests {
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
+					name_source: None,
 					lend: None,
 					list_levels: 0,
 					ty: parse_quote!(f64),
@@ -1823,6 +1840,7 @@ mod tests {
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
+					name_source: None,
 					lend: None,
 					list_levels: 0,
 					ty: parse_quote!(f64),
@@ -1912,6 +1930,7 @@ mod tests {
 				description: String::from("b"),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
+					name_source: None,
 					lend: None,
 					list_levels: 0,
 					ty: parse_quote!(f64),
@@ -2004,6 +2023,7 @@ mod tests {
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
+					name_source: None,
 					lend: None,
 					list_levels: 0,
 					ty: parse_quote!(String),

@@ -67,7 +67,10 @@ fn inputs(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &[Ident]) ->
 				shape: item_shape(&element, depth, &field.attribute_reads, generics),
 				subject: subject(index, field, carrier_subject, routing.as_ref()),
 				lend: matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. })),
-				name_source: crate::parsing::named_source(&element),
+				name_source: match &field.ty {
+					ParsedFieldType::Regular(RegularParsedField { name_source, .. }) => name_source.clone(),
+					ParsedFieldType::Node(_) => None,
+				},
 			}
 		})
 		.collect()
@@ -262,7 +265,10 @@ fn ilist_inner(ty: &Type) -> Option<Type> {
 
 /// Emits the `LayoutMeta` literal from the IR. `element_spec` is supplied by the
 /// caller since it is the one row-dependent facet; the rest folds from the node.
-pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_types: &TokenStream2) -> TokenStream2 {
+/// `assignments` binds the row's concrete types to the signature's generics,
+/// which a name-generic write needs: its value type is written as a projection
+/// through the wired generic, so only the row resolves it.
+pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_types: &TokenStream2, assignments: &[(Ident, Type)]) -> TokenStream2 {
 	let sources = layout_sources(node).into_iter().map(|index| index as u8);
 	let reads = node
 		.inputs
@@ -275,7 +281,7 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 			quote!(#core_types::record::InputReads { input: #index, reads: ::std::vec![#(#descs),*] })
 		});
 	let writes = field_writes(&node.output.shape.attrs, core_types);
-	let named_writes = named_field_writes(node, core_types);
+	let named_writes = named_field_writes(node, core_types, assignments);
 	let removes = node.output.removes.iter().map(|attr| {
 		let marker = &attr.marker;
 		let level = attr.level;
@@ -369,18 +375,70 @@ fn field_writes(attrs: &[LevelAttr], core_types: &TokenStream2) -> Vec<TokenStre
 
 /// Emits one `NamedWrite` per name-generic write, pairing the template minted
 /// from the concrete value type with the input its placeholder's name sits at.
-fn named_field_writes(node: &Node, core_types: &TokenStream2) -> Vec<TokenStream2> {
+fn named_field_writes(node: &Node, core_types: &TokenStream2, assignments: &[(Ident, Type)]) -> Vec<TokenStream2> {
 	node.output
 		.shape
 		.attrs
 		.iter()
 		.filter_map(|attr| {
 			let (placeholder, value) = crate::parsing::named_marker(&attr.marker)?;
+			let value = qualify_projection(node, &crate::codegen::classify::substitute_ident_types(&value, assignments), assignments);
+			// Only a row resolves a value type written through a generic, so
+			// the row-free meta omits the write rather than naming a type that
+			// is not in scope there.
+			if node.generics.iter().any(|generic| mentions_ident(&value, &generic.ident)) {
+				return None;
+			}
 			let input = name_input(node, &placeholder)? as u8;
 			let level = attr.level;
 			Some(quote!(#core_types::record::NamedWrite::of::<#placeholder, #value>(#input, #level)))
 		})
 		.collect()
+}
+
+/// Rewrites `V::Assoc` into `<Row as Bound>::Assoc` once the row assigns `V`.
+/// A value type reached through an associated type needs the generic's own
+/// bound to name the projection, which only the signature carries.
+fn qualify_projection(node: &Node, ty: &Type, assignments: &[(Ident, Type)]) -> Type {
+	let Type::Path(path) = ty else { return ty.clone() };
+	if path.qself.is_some() || path.path.segments.len() < 2 {
+		return ty.clone();
+	}
+	let base = &path.path.segments[0].ident;
+	let Some(generic) = node.generics.iter().find(|generic| &generic.ident == base) else {
+		return ty.clone();
+	};
+	let Some((_, row)) = assignments.iter().find(|(ident, _)| ident == base) else {
+		return ty.clone();
+	};
+	let mut bounds = generic.bounds.iter().filter_map(|bound| match bound {
+		TypeParamBound::Trait(bound) => Some(&bound.path),
+		_ => None,
+	});
+	let (Some(bound), None) = (bounds.next(), bounds.next()) else {
+		return ty.clone();
+	};
+	let rest = path.path.segments.iter().skip(1);
+	syn::parse_quote!(<#row as #bound>::#(#rest)::*)
+}
+
+/// Whether `ty` names `ident` anywhere, so a type written through a generic
+/// can be told from one already concrete.
+fn mentions_ident(ty: &Type, ident: &Ident) -> bool {
+	struct Search<'a> {
+		ident: &'a Ident,
+		found: bool,
+	}
+
+	impl syn::visit::Visit<'_> for Search<'_> {
+		fn visit_ident(&mut self, found: &Ident) {
+			self.found |= found == self.ident;
+		}
+	}
+
+	let mut search = Search { ident, found: false };
+	syn::visit::Visit::visit_type(&mut search, ty);
+	search.found
 }
 
 /// The input position carrying `placeholder`'s name, which is the parameter
@@ -769,6 +827,35 @@ mod tests {
 					(val, Attr(1.))
 				}
 			),
+		);
+	}
+
+	#[test]
+	fn a_named_write_takes_its_name_from_the_declared_input() {
+		let mut parsed = crate::parsing::parse_node_fn(
+			quote!(category("")),
+			quote!(
+				fn tag<'e, V: WireValue>(ctx: impl Ctx + ExtractArena<'e>, content: f64, name: Named<Name0>, value: V) -> (f64, Attr<'e, Named<Name0, V::Row>>) {
+					(content, Attr(value))
+				}
+			),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+		let node = build(&parsed);
+		let attrs = &node.output.shape.attrs;
+		assert_eq!(attrs.len(), 1, "the write is recorded on the output");
+		let (placeholder, _) = crate::parsing::named_marker(&attrs[0].marker).expect("the marker is name-generic");
+		assert_eq!(name_input(&node, &placeholder), Some(1), "the name comes from the `Named<Name0>` parameter");
+
+		// The row resolves the value type written through the wired generic.
+		let assignments = vec![(syn::parse_quote!(V), syn::parse_quote!(f64))];
+		let emitted = named_field_writes(&node, &quote!(gcore), &assignments);
+		assert_eq!(emitted.len(), 1, "the row carries the named write, got {emitted:?}");
+		assert!(
+			emitted[0].to_string().contains("WireValue"),
+			"the projection is qualified by the generic's bound, got {}",
+			emitted[0]
 		);
 	}
 
