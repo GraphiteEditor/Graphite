@@ -4105,10 +4105,11 @@ mod document_message_handler_tests {
 		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
 			let document = editor.active_document();
 			for layer in document.metadata().all_layers() {
-				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
-					if (bbox[0].x - min_x).abs() < 1. && (bbox[0].y - min_y).abs() < 1. {
-						return Some(layer);
-					}
+				if let Some(bbox) = document.metadata().bounding_box_viewport(layer)
+					&& (bbox[0].x - min_x).abs() < 1.
+					&& (bbox[0].y - min_y).abs() < 1.
+				{
+					return Some(layer);
 				}
 			}
 			None
