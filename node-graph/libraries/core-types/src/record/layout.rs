@@ -366,6 +366,37 @@ pub struct RecordLayout {
 	/// over input positions. Empty is the safe default: an uninstalled layout
 	/// rebinds every input per lane.
 	pub lane_invariant: u32,
+	/// The names the fold gave this node's name-from-input writes, in the
+	/// order the signature declares its placeholders. A marker-only node
+	/// leaves it empty; `set_layout` resolves its offsets through these
+	/// instead of through a marker's `NAME`.
+	pub named_writes: Vec<&'static str>,
+}
+
+/// A write whose name comes from the graph rather than from a marker: the
+/// input carrying the name, and the field descriptor with every facet but the
+/// name already minted from the concrete value type.
+#[derive(Clone, Copy, Debug)]
+pub struct NamedWrite {
+	/// The proto input position holding the name's constant text.
+	pub name_input: u8,
+	/// The write this becomes once the fold supplies the name.
+	pub template: FieldWrite,
+}
+
+impl NamedWrite {
+	/// The template for a name-generic marker's write at `level`. Every facet
+	/// but the name is the concrete value type's, exactly as for a census
+	/// marker; [`FieldWrite::name`] holds the placeholder until the fold runs.
+	pub fn of<X: 'static, V: crate::attribute::AttrValue>(name_input: u8, level: u8) -> Self
+	where
+		V::Value<'static>: graphene_hash::CacheHash + PartialEq + 'static,
+	{
+		Self {
+			name_input,
+			template: FieldWrite::of::<crate::attribute::Named<X, V>>(level),
+		}
+	}
 }
 
 /// Declarative record-io metadata for a node type, emitted by the macro into
@@ -387,6 +418,14 @@ pub struct LayoutMeta {
 	pub element: ElementSpec,
 	/// The attributes the node writes at its acting level.
 	pub writes: Vec<FieldWrite>,
+	/// The attributes the node writes under a name taken from the graph. The
+	/// compiler fold turns each into a [`writes`](Self::writes) entry and
+	/// empties this, so a folded meta is indistinguishable from a marker
+	/// node's; one still carrying an entry has not been folded.
+	pub named_writes: Vec<NamedWrite>,
+	/// The names the fold gave [`named_writes`](Self::named_writes), in
+	/// placeholder order. Empty until the fold runs.
+	pub folded_names: Vec<&'static str>,
 	/// The attributes removed from the base layout, as `(name, level)`.
 	pub removes: Vec<(&'static str, u8)>,
 	/// The depth change the node applies: `0` for elementwise and flip nodes,
@@ -423,6 +462,8 @@ impl LayoutMeta {
 			reads: Vec::new(),
 			element: ElementSpec::Concrete(element),
 			writes: Vec::new(),
+			named_writes: Vec::new(),
+			folded_names: Vec::new(),
 			removes: Vec::new(),
 			level_delta: 0,
 			folded: None,
@@ -472,7 +513,23 @@ impl LayoutMeta {
 			frame_bytes,
 			plan,
 			lane_invariant: 0,
+			named_writes: self.folded_names.clone(),
 		}
+	}
+
+	/// Folds `name` into the name-from-input write at `index`, taking the
+	/// census row's descriptor where the name is declared so a known name
+	/// keeps its census default, and the template's otherwise. The write
+	/// joins [`writes`](Self::writes) in placeholder order.
+	pub fn fold_name(&mut self, index: usize, name: &'static str) {
+		let named = self.named_writes[index];
+		let census = attribute::info(name).map(|row| (row.field_write_at)(named.template.level));
+		let write = match census {
+			Some(write) if write.type_id == named.template.type_id => write,
+			_ => FieldWrite { name, ..named.template },
+		};
+		self.writes.push(write);
+		self.folded_names.push(name);
 	}
 }
 

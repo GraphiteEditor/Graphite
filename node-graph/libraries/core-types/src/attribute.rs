@@ -155,6 +155,198 @@ impl<A: Attribute> Default for RemoveAttr<A> {
 	}
 }
 
+/// The value-type half of an attribute: everything [`Attribute`] declares
+/// except the name and its name-specific default. A name-generic write pairs
+/// one of these with a name taken from the graph, so the value type stays
+/// concrete in the signature while the name varies per instance.
+///
+/// # Safety
+///
+/// The obligations are [`Attribute`]'s, at this trait's value type:
+/// [`REPARK`](Self::REPARK) must be `Some` for every row whose
+/// [`Value<'e>`](Self::Value) can carry a borrow shorter than `'static`, and
+/// [`from_stored`](Self::from_stored) and [`read_erased`](Self::read_erased)
+/// must be each other's inverse.
+pub unsafe trait AttrValue: 'static {
+	/// The value type every write of this row shares, as [`Attribute::Value`].
+	type Value<'e>: Copy + Default + std::fmt::Debug + Send + Sync + 'e;
+
+	/// Borrows the value out of legacy list storage, as [`Attribute::from_stored`].
+	fn from_stored<'a>(stored: &'a dyn std::any::Any) -> Option<Self::Value<'a>>;
+
+	/// # Safety
+	/// `ptr` must point at a live field of this row's value type.
+	unsafe fn read_erased(ptr: *const u8) -> Box<dyn AnyAttributeValue>;
+
+	/// Re-parks an owned clone into fresh field storage, as [`Attribute::REPARK`].
+	const REPARK: Option<crate::list::ReparkFn> = None;
+}
+
+/// The [`Attribute::NAME`] a [`Named`] marker carries before the compiler
+/// fills it. A layout never holds it: the fold replaces it with the
+/// instance's constant, and a node whose name input is not constant is
+/// refused at that same point.
+pub const NAMED_PLACEHOLDER: &str = "";
+
+/// A name-generic attribute write. `X` is a placeholder that distinguishes
+/// name-generic attributes within one signature, so a node writing two of
+/// them takes two names; `V` fixes the value type. The name is absent by
+/// construction: it comes from the instance's constant text input, folded
+/// into the layout at graph compile time, so a computed name cannot exist.
+pub struct Named<X, V>(PhantomData<fn() -> (X, V)>);
+
+// SAFETY: every obligation is discharged by `V`, which carries the same
+// contract at the same value type; only the name differs, and the compiler
+// fold replaces the placeholder before a layout sees it.
+unsafe impl<X: 'static, V: AttrValue> Attribute for Named<X, V> {
+	const NAME: &'static str = NAMED_PLACEHOLDER;
+	type Value<'e> = V::Value<'e>;
+
+	fn from_stored<'a>(stored: &'a dyn std::any::Any) -> Option<Self::Value<'a>> {
+		V::from_stored(stored)
+	}
+
+	unsafe fn read_erased(ptr: *const u8) -> Box<dyn AnyAttributeValue> {
+		// SAFETY: the caller's contract, at `V`'s own value type.
+		unsafe { V::read_erased(ptr) }
+	}
+
+	const REPARK: Option<crate::list::ReparkFn> = V::REPARK;
+}
+
+/// Interns a folded attribute name for the `&'static str` a layout field
+/// holds. Census names never reach here; a document's novel names are finite
+/// and repeat across instances, so the leak is one allocation per name.
+pub fn intern_name(name: &str) -> &'static str {
+	static NAMES: LazyLock<Mutex<std::collections::HashSet<&'static str>>> = LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+	let mut names = NAMES.lock().unwrap();
+	if let Some(interned) = names.get(name) {
+		return interned;
+	}
+	let interned: &'static str = Box::leak(name.to_owned().into_boxed_str());
+	names.insert(interned);
+	interned
+}
+
+/// Declares [`AttrValue`] rows, the value types a name-generic attribute can
+/// be written at. `for T` implements the row on an existing plain value type;
+/// `Row: &T` and `Row: Option<&T>` declare a token naming a reference value,
+/// whose payload the writing kernel parks in the arena.
+///
+/// ```
+/// core_types::named_value! {
+///     /// Plain rows, implemented on the value type itself.
+///     for f64;
+///     /// A reference row, whose token names the borrowed value.
+///     pub Text: &str;
+/// }
+/// ```
+#[macro_export]
+macro_rules! named_value {
+	() => {};
+	($(#[$meta:meta])* for $value:ty; $($rest:tt)*) => {
+		// SAFETY: a plain value type cannot name `'e`, so no re-park is owed,
+		// and the two glue fns below are each other's inverse at `$value`.
+		unsafe impl $crate::attribute::AttrValue for $value {
+			type Value<'e> = $value;
+
+			fn from_stored<'a>(stored: &'a dyn ::std::any::Any) -> ::core::option::Option<Self::Value<'a>> {
+				stored.downcast_ref::<$value>().copied()
+			}
+
+			unsafe fn read_erased(ptr: *const u8) -> ::std::boxed::Box<dyn $crate::list::AnyAttributeValue> {
+				::std::boxed::Box::new(unsafe { ptr.cast::<$value>().read() })
+			}
+		}
+
+		$crate::named_value!($($rest)*);
+	};
+	($(#[$meta:meta])* $vis:vis $row:ident: Option<&$value:ty>; $($rest:tt)*) => {
+		$(#[$meta])*
+		$vis struct $row;
+
+		// SAFETY: the reference arm emits `REPARK`, and the two glue fns below
+		// are each other's inverse at `Option<&$value>`.
+		unsafe impl $crate::attribute::AttrValue for $row {
+			type Value<'e> = ::core::option::Option<&'e $value>;
+
+			fn from_stored<'a>(stored: &'a dyn ::std::any::Any) -> ::core::option::Option<Self::Value<'a>> {
+				stored
+					.downcast_ref::<::core::option::Option<<$value as ::std::borrow::ToOwned>::Owned>>()
+					.map(|owned| owned.as_ref().map(::std::borrow::Borrow::borrow))
+			}
+
+			unsafe fn read_erased(ptr: *const u8) -> ::std::boxed::Box<dyn $crate::list::AnyAttributeValue> {
+				::std::boxed::Box::new(unsafe { ptr.cast::<::core::option::Option<&$value>>().read() }.map(|value| <$value as ::std::borrow::ToOwned>::to_owned(value)))
+			}
+
+			const REPARK: ::core::option::Option<$crate::list::ReparkFn> = {
+				unsafe fn repark(value: &dyn $crate::list::AnyAttributeValue, dst: *mut u8, arena: &$crate::arena::Arena) -> ::core::option::Option<()> {
+					let owned: &::core::option::Option<<$value as ::std::borrow::ToOwned>::Owned> =
+						value.as_any().downcast_ref().expect("an optional reference row replays its owned clone");
+					let parked = match owned {
+						::core::option::Option::Some(owned) => {
+							let (parked, _) = arena.alloc(<$value as ::std::borrow::ToOwned>::to_owned(::std::borrow::Borrow::borrow(owned)))?;
+							::core::option::Option::Some(::std::borrow::Borrow::borrow(parked))
+						}
+						::core::option::Option::None => ::core::option::Option::None,
+					};
+					unsafe { dst.cast::<::core::option::Option<&$value>>().write(parked) };
+					::core::option::Option::Some(())
+				}
+				::core::option::Option::Some(repark)
+			};
+		}
+
+		$crate::named_value!($($rest)*);
+	};
+	($(#[$meta:meta])* $vis:vis $row:ident: &$value:ty; $($rest:tt)*) => {
+		$(#[$meta])*
+		$vis struct $row;
+
+		// SAFETY: the reference arm emits `REPARK`, and the two glue fns below
+		// are each other's inverse at `&$value`.
+		unsafe impl $crate::attribute::AttrValue for $row {
+			type Value<'e> = &'e $value;
+
+			fn from_stored<'a>(stored: &'a dyn ::std::any::Any) -> ::core::option::Option<Self::Value<'a>> {
+				stored.downcast_ref::<<$value as ::std::borrow::ToOwned>::Owned>().map(::std::borrow::Borrow::borrow)
+			}
+
+			unsafe fn read_erased(ptr: *const u8) -> ::std::boxed::Box<dyn $crate::list::AnyAttributeValue> {
+				::std::boxed::Box::new(unsafe { ptr.cast::<&$value>().read() }.to_owned())
+			}
+
+			const REPARK: ::core::option::Option<$crate::list::ReparkFn> = {
+				unsafe fn repark(value: &dyn $crate::list::AnyAttributeValue, dst: *mut u8, arena: &$crate::arena::Arena) -> ::core::option::Option<()> {
+					let owned: &<$value as ::std::borrow::ToOwned>::Owned = value.as_any().downcast_ref().expect("a reference row replays its owned clone");
+					let (parked, _) = arena.alloc(<$value as ::std::borrow::ToOwned>::to_owned(::std::borrow::Borrow::borrow(owned)))?;
+					unsafe { dst.cast::<&$value>().write(::std::borrow::Borrow::borrow(parked)) };
+					::core::option::Option::Some(())
+				}
+				::core::option::Option::Some(repark)
+			};
+		}
+
+		$crate::named_value!($($rest)*);
+	};
+}
+
+named_value! {
+	for f64;
+	for u32;
+	for u64;
+	for bool;
+	for DVec2;
+	for DAffine2;
+	for crate::Color;
+	for crate::blending::BlendMode;
+	/// A document node path, the value type of `editor:layer_path`.
+	pub NodeIdPath: &[crate::uuid::NodeId];
+	/// Free text, parked in the arena by the writing kernel.
+	pub Text: &str;
+}
+
 /// A census row: what is known about one declared attribute name.
 #[derive(Clone, Copy, Debug)]
 pub struct AttributeInfo {
