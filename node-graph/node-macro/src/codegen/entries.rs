@@ -265,27 +265,34 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 	// (erased routing generics included) is row-invariant. The carried list
 	// mirrors the struct's carried generic parameters in declaration order.
 	let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
-	let ranked_generic_idents: Vec<Ident> = parsed
+	let ranked = |index: usize| matches!(&regular_fields[index].ty, ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) if *list_levels > 0);
+	// A record-io node's plain secondary reaches the constructor concrete, so its generic monomorphizes the row like a ranked element does.
+	let record_secondary =
+		|index: usize| matches!(ir::node_kind(&node), ir::NodeKind::RecordIo) && index > 0 && !node.inputs[index].subject && matches!(&regular_fields[index].ty, ParsedFieldType::Regular(_));
+	let names_generic = |index: usize, generic: &Ident| match &regular_fields[index].ty {
+		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => crate::codegen::type_contains_ident(ty, generic),
+		_ => false,
+	};
+	let solves_generic = |index: usize, generic: &Ident| match &regular_fields[index].ty {
+		ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) => !implementations.is_empty() && generic_extractable(ty, generic),
+		_ => false,
+	};
+	let carried_generic_idents: Vec<Ident> = parsed
 		.fn_generics
 		.iter()
 		.filter_map(|param| match param {
 			GenericParam::Type(type_param) if Some(&type_param.ident) != ctx_ident.as_ref() => Some(type_param.ident.clone()),
 			_ => None,
 		})
-		.filter(|ident| {
-			regular_fields.iter().any(|field| match &field.ty {
-				ParsedFieldType::Regular(RegularParsedField { ty, list_levels, .. }) => *list_levels > 0 && crate::codegen::type_contains_ident(ty, ident),
-				_ => false,
-			})
-		})
+		.filter(|ident| (0..regular_fields.len()).any(|index| (ranked(index) || record_secondary(index)) && names_generic(index, ident)))
 		.collect();
-	let ranked_source = |generic: &Ident| {
-		regular_fields.iter().position(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, list_levels, implementations, .. }) => *list_levels > 0 && !implementations.is_empty() && generic_extractable(ty, generic),
-			_ => false,
-		})
+	// Ranked sources come first, so a generic a ranked input already carries keeps sourcing its rows from that input.
+	let carried_source = |generic: &Ident| {
+		(0..regular_fields.len())
+			.find(|&index| ranked(index) && solves_generic(index, generic))
+			.or_else(|| (0..regular_fields.len()).find(|&index| record_secondary(index) && solves_generic(index, generic)))
 	};
-	let carried: Option<Vec<(Ident, usize)>> = ranked_generic_idents.iter().map(|ident| ranked_source(ident).map(|index| (ident.clone(), index))).collect();
+	let carried: Option<Vec<(Ident, usize)>> = carried_generic_idents.iter().map(|ident| carried_source(ident).map(|index| (ident.clone(), index))).collect();
 	let Some(carried) = carried else {
 		return quote!();
 	};
