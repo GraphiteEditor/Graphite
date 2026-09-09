@@ -950,6 +950,8 @@ fn selective_color<T: Adjust<Color> + Clone + Send + Sync + no_std_types::contex
 			(SelectiveColorChoice::Blacks, (k_c, k_m, k_y, k_k)),
 		];
 		let mut sum = Vec3::ZERO;
+		// Indexed rather than iterated because this compiles to SPIR-V, whose backend rejects the arbitrary pointer offset an array iterator produces
+		#[allow(clippy::needless_range_loop)]
 		for i in 0..array.len() {
 			let (color_parameter_group, (c, m, y, k)) = array[i];
 

@@ -63,6 +63,8 @@ impl CubicSplines {
 				assert!(augmented_matrix[row][row].abs() > f32::EPSILON);
 
 				let scale_factor = augmented_matrix[row_below_current][row] / augmented_matrix[row][row];
+				// `col` indexes two distinct rows at once, one of them mutably, so an iterator would need a split borrow
+				#[allow(clippy::needless_range_loop)]
 				for col in row..5 {
 					augmented_matrix[row_below_current][col] -= augmented_matrix[row][col] * scale_factor
 				}
