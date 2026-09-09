@@ -52,14 +52,11 @@ pub async fn mesh_gradient_value<'a: 'n>(
 	// Need to offset the paint target's transform to prevent duplicated application
 	let texture_transform = ctx.footprint().transform.inverse() * texture_to_output;
 
-	let tessellator_result = MeshGradientTessellator::try_new(mesh_gradient, GradientSpace::RgbGamma, GradientInterpolation::Smooth, mesh_to_texture, mesh_to_output);
-	let tessellator = match tessellator_result {
-		Ok(tessellator) => tessellator,
-		Err(error) => {
-			log::error!("Failed to create mesh gradient tessellator: {error:?}");
-			return Item::default();
-		}
+	let Some(evaluator) = mesh_gradient.evaluator(interpolation_space, interpolation_method).ok() else {
+		return Item::default();
 	};
+	let tessellator = MeshGradientTessellator::new(&evaluator, mesh_to_texture, mesh_to_output);
+
 	let (vertices, indices) = match tessellator.tessellate() {
 		Ok(result) => result,
 		Err(error) => {
@@ -72,9 +69,6 @@ pub async fn mesh_gradient_value<'a: 'n>(
 		return Item::default();
 	}
 
-	let Some(evaluator) = mesh_gradient.evaluator(GradientSpace::RgbGamma, GradientInterpolation::Smooth).ok() else {
-		return Item::default();
-	};
 	let color_data = pack_color_data(&evaluator, interpolation_method);
 
 	let Some(interpolation_space) = try_interpolation_space_to_u32(interpolation_space) else {

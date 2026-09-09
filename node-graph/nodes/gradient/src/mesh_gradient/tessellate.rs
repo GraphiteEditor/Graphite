@@ -7,12 +7,9 @@ use std::{
 
 use glam::{DAffine2, DVec2};
 use vector_types::{
-	GradientInterpolation, GradientSpace, MeshGradient,
 	gradient::MeshGradientEvaluator,
-	mesh_gradient::{BicubicBezierNet, MeshGradientEvaluatorError, evaluate_cubic_bezier_bernstein},
+	mesh_gradient::{BicubicBezierNet, evaluate_cubic_bezier_bernstein},
 };
-
-use crate::mesh_gradient::tessellate::MeshGradientTessellatorError::Evaluator;
 
 /// Maximum allowed geometry approximation error in viewport pixels.
 const MESH_POSITION_DEVIATION_TOLERANCE: PositionDeviationBound = PositionDeviationBound(2.);
@@ -38,38 +35,24 @@ pub(super) struct MeshVertex {
 	pub position: [f32; 2],
 }
 
-pub(super) struct MeshGradientTessellator {
-	evaluator: MeshGradientEvaluator,
+pub(super) struct MeshGradientTessellator<'a> {
+	evaluator: &'a MeshGradientEvaluator,
 	mesh_to_texture: DAffine2,
 	mesh_to_output: DAffine2,
 }
 
 #[derive(Debug)]
 pub(super) enum MeshGradientTessellatorError {
-	Evaluator(MeshGradientEvaluatorError),
 	Subpatches,
 }
 
-impl From<MeshGradientEvaluatorError> for MeshGradientTessellatorError {
-	fn from(evaluator_error: MeshGradientEvaluatorError) -> Self {
-		Evaluator(evaluator_error)
-	}
-}
-
-impl MeshGradientTessellator {
-	pub(super) fn try_new(
-		mesh_gradient: &MeshGradient,
-		color_space: GradientSpace,
-		interpolation_method: GradientInterpolation,
-		mesh_to_texture: DAffine2,
-		mesh_to_output: DAffine2,
-	) -> Result<Self, MeshGradientTessellatorError> {
-		let evaluator = mesh_gradient.evaluator(color_space, interpolation_method)?;
-		Ok(Self {
+impl<'a> MeshGradientTessellator<'a> {
+	pub(super) fn new(evaluator: &'a MeshGradientEvaluator, mesh_to_texture: DAffine2, mesh_to_output: DAffine2) -> Self {
+		Self {
 			evaluator,
 			mesh_to_texture,
 			mesh_to_output,
-		})
+		}
 	}
 
 	fn should_cull(&self, control_net: &BicubicBezierNet<DVec2>) -> bool {

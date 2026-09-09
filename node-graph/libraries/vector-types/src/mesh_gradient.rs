@@ -887,7 +887,9 @@ struct PatchData {
 
 #[derive(Clone)]
 struct CornerData {
+	/// Position in the mesh space; [(0,0), (1,1)]
 	position: DVec2,
+	/// Color values in the selected color space.
 	color: Vec4,
 }
 
