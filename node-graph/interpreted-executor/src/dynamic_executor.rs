@@ -791,12 +791,17 @@ mod test {
 
 	/// Reads `read_name` off a record that a write of `write_name` produced.
 	fn read_attribute_network(write_name: &str, read_name: &str, value: TaggedValue) -> ProtoNetwork {
+		read_attribute_network_over(TaggedValue::F64(7.), write_name, read_name, value)
+	}
+
+	/// The same graph over any content element, which the read never looks at.
+	fn read_attribute_network_over(content: TaggedValue, write_name: &str, read_name: &str, value: TaggedValue) -> ProtoNetwork {
 		ProtoNetwork {
 			stack_need: 0,
 			inputs: vec![],
 			output: NodeId(5),
 			nodes: vec![
-				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(content.into()), vec![])),
 				(NodeId(1), string_value(write_name)),
 				(NodeId(2), ProtoNode::value(ConstructionArgs::Value(value.into()), vec![])),
 				(NodeId(3), proto_node("graphic_nodes::graphic::WriteAttributeNode", vec![NodeId(0), NodeId(1), NodeId(2)])),
@@ -832,6 +837,21 @@ mod test {
 		// Nothing upstream writes `novel:absent`, so the read collapses to the
 		// value type's default rather than reporting absence.
 		assert_eq!(read_back(read_attribute_network("novel:count", "novel:absent", TaggedValue::F64(2.5))), 0.);
+	}
+
+	#[test]
+	fn one_read_node_serves_every_content_element() {
+		// The read never looks at the element, so one registry row covers any
+		// upstream record wire rather than a row per element type.
+		assert_eq!(read_back(read_attribute_network_over(TaggedValue::F64(7.), "novel:count", "novel:count", TaggedValue::F64(2.5))), 2.5);
+		assert_eq!(
+			read_back(read_attribute_network_over(TaggedValue::Bool(true), "novel:count", "novel:count", TaggedValue::F64(2.5))),
+			2.5
+		);
+		assert_eq!(
+			read_back(read_attribute_network_over(TaggedValue::DVec2(glam::DVec2::ONE), "novel:count", "novel:count", TaggedValue::F64(2.5))),
+			2.5
+		);
 	}
 
 	#[test]
