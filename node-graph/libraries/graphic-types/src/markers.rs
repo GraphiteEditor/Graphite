@@ -20,13 +20,87 @@ core_types::attribute! {
 	/// Rasterize, etc.), so the editor can still surface click targets for the original child
 	/// layers after their content has been collapsed.
 	pub EditorMergedLayers("editor:merged_layers"): Option<&List<Graphic<'static>>>;
-	/// The item's ordered list of paint passes. An absent or empty value is the undeclared
-	/// state that inherits the nearest ancestor's appearance through the cascade.
-	pub Appearance("appearance"): Option<&crate::appearance::Appearance>;
-	/// One coverage row's paint, a bare graphic riding the coverage list as a column.
-	/// Absent when the coverage paints nothing.
-	pub Paint("paint"): Option<&Graphic<'static>>;
 }
+
+/// The item's ordered list of paint passes. An absent or empty value is the undeclared
+/// state that inherits the nearest ancestor's appearance through the cascade, so both
+/// read as `None`. The stored form is the bare [`crate::appearance::Appearance`], the
+/// shape the appearance writers use, which the `attribute!` macro's optional-reference
+/// arm cannot express.
+pub struct Appearance;
+
+// SAFETY: `read_erased` produces the bare owned appearance `from_stored` reads, `REPARK`
+// re-parks that same form, and the empty appearance collapses to the `None` default at
+// every read seam.
+unsafe impl Attribute for Appearance {
+	const NAME: &'static str = "appearance";
+	type Value<'e> = Option<&'e crate::appearance::Appearance>;
+
+	fn from_stored<'a>(stored: &'a dyn std::any::Any) -> Option<Self::Value<'a>> {
+		stored.downcast_ref::<crate::appearance::Appearance>().map(crate::appearance::Appearance::declared)
+	}
+
+	unsafe fn read_erased(ptr: *const u8) -> Box<dyn core_types::list::AnyAttributeValue> {
+		Box::new(unsafe { ptr.cast::<Option<&crate::appearance::Appearance>>().read() }.cloned().unwrap_or_default())
+	}
+
+	const REPARK: Option<core_types::list::ReparkFn> = {
+		unsafe fn repark(value: &dyn core_types::list::AnyAttributeValue, dst: *mut u8, arena: &core_types::arena::Arena) -> Option<()> {
+			let owned: &crate::appearance::Appearance = value.as_any().downcast_ref().expect("an appearance attribute replays its bare owned clone");
+			let parked = match owned.is_empty() {
+				true => None,
+				false => {
+					let (parked, _) = arena.alloc(owned.clone())?;
+					Some(&*parked)
+				}
+			};
+			// SAFETY: the slot is a live field of this marker's value type.
+			unsafe { dst.cast::<Option<&crate::appearance::Appearance>>().write(parked) };
+			Some(())
+		}
+		Some(repark)
+	};
+}
+
+core_types::attribute!(@register Appearance);
+
+/// One coverage row's paint, a bare graphic riding the coverage list as a column. Absent
+/// or empty paint draws nothing, so both read as `None`; the stored form is the bare
+/// [`Graphic`], the shape [`crate::appearance`]'s row writers use.
+pub struct Paint;
+
+// SAFETY: as for `Appearance`, at the bare `Graphic` stored form.
+unsafe impl Attribute for Paint {
+	const NAME: &'static str = "paint";
+	type Value<'e> = Option<&'e Graphic<'static>>;
+
+	fn from_stored<'a>(stored: &'a dyn std::any::Any) -> Option<Self::Value<'a>> {
+		stored.downcast_ref::<Graphic<'static>>().map(|paint| (!paint.is_empty()).then_some(paint))
+	}
+
+	unsafe fn read_erased(ptr: *const u8) -> Box<dyn core_types::list::AnyAttributeValue> {
+		Box::new(unsafe { ptr.cast::<Option<&Graphic<'static>>>().read() }.cloned().unwrap_or_default())
+	}
+
+	const REPARK: Option<core_types::list::ReparkFn> = {
+		unsafe fn repark(value: &dyn core_types::list::AnyAttributeValue, dst: *mut u8, arena: &core_types::arena::Arena) -> Option<()> {
+			let owned: &Graphic<'static> = value.as_any().downcast_ref().expect("a paint attribute replays its bare owned clone");
+			let parked = match owned.is_empty() {
+				true => None,
+				false => {
+					let (parked, _) = arena.alloc(owned.clone())?;
+					Some(&*parked)
+				}
+			};
+			// SAFETY: the slot is a live field of this marker's value type.
+			unsafe { dst.cast::<Option<&Graphic<'static>>>().write(parked) };
+			Some(())
+		}
+		Some(repark)
+	};
+}
+
+core_types::attribute!(@register Paint);
 
 pub const ATTR_FILL: &str = Fill::NAME;
 pub const ATTR_STROKE: &str = Stroke::NAME;

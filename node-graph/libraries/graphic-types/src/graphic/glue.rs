@@ -383,28 +383,28 @@ fn map_appearance_groups_to_resident(appearance: &mut Appearance, arena: &core_t
 	Some(())
 }
 
-/// The deep copy-out for appearance field values (the appearance marker's owned
-/// form): content groups leave any paint column in their owned form. Declines
-/// (`None`) for group-free content, which already owns everything.
+/// The deep copy-out for appearance field values (the appearance marker's bare
+/// owned form): content groups leave any paint column in their owned form.
+/// Declines (`None`) for group-free content, which already owns everything.
 fn deep_clone_appearance(value: &dyn core_types::list::AnyAttributeValue) -> Option<Box<dyn core_types::list::AnyAttributeValue>> {
-	let appearance = value.as_any().downcast_ref::<Option<Appearance>>().expect("an appearance field deep-copies at its own type");
-	let appearance = appearance.as_ref().filter(|appearance| appearance_contains_groups(appearance))?;
+	let appearance = value.as_any().downcast_ref::<Appearance>().expect("an appearance field deep-copies at its own type");
+	appearance_contains_groups(appearance).then_some(())?;
 	let mut appearance = appearance.clone();
 	map_appearance_groups_to_owned(&mut appearance);
-	Some(Box::new(Some(appearance)))
+	Some(Box::new(appearance))
 }
 
 /// The deep replay for appearance field values: owned content groups replay
 /// into the serving arena before the field re-parks. `Some(None)` declines for
 /// group-free content; `None` reports arena exhaustion.
 fn deep_repark_appearance(value: &dyn core_types::list::AnyAttributeValue, arena: &core_types::arena::Arena) -> Option<Option<Box<dyn core_types::list::AnyAttributeValue>>> {
-	let appearance = value.as_any().downcast_ref::<Option<Appearance>>().expect("an appearance field replays at its own type");
-	let Some(appearance) = appearance.as_ref().filter(|appearance| appearance_contains_groups(appearance)) else {
+	let appearance = value.as_any().downcast_ref::<Appearance>().expect("an appearance field replays at its own type");
+	if !appearance_contains_groups(appearance) {
 		return Some(None);
-	};
+	}
 	let mut appearance = appearance.clone();
 	map_appearance_groups_to_resident(&mut appearance, arena)?;
-	Some(Some(Box::new(Some(appearance))))
+	Some(Some(Box::new(appearance)))
 }
 
 /// Every group held in an appearance's paint columns, promoted into the
@@ -465,7 +465,7 @@ const _: () = {
 		core_types::record::register_deep_field_value::<Option<List<Graphic>>>(deep_clone_graphic_list, deep_repark_graphic_list);
 		core_types::record::register_field_promote::<Option<&'static List<Graphic<'static>>>>(promote_graphic_list);
 		core_types::record::register_element_promote::<Graphic>(promote_graphic);
-		core_types::record::register_deep_field_value::<Option<Appearance>>(deep_clone_appearance, deep_repark_appearance);
+		core_types::record::register_deep_field_value::<Appearance>(deep_clone_appearance, deep_repark_appearance);
 		core_types::record::register_field_promote::<Option<&'static Appearance>>(promote_appearance);
 		core_types::record::register_retained_heap::<Appearance>(|value| value.downcast_ref::<Appearance>().map_or(0, appearance_retained_heap));
 		core_types::record::register_retained_heap::<Graphic>(|value| value.downcast_ref::<Graphic>().map_or(0, graphic_retained_heap));

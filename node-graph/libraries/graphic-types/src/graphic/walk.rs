@@ -2,7 +2,8 @@
 
 use super::Graphic;
 use super::paint::{LanePaint, PaintColumns, PaintReach, is_paint_present, paint_graphics, set_paint_attribute_at};
-use crate::markers::{ATTR_FILL, ATTR_STROKE, Fill};
+use crate::appearance::Appearance;
+use crate::markers::{ATTR_APPEARANCE, ATTR_FILL, ATTR_STROKE, Fill};
 use core_types::attribute::{Attribute, ClippingMask, EditorLayerPath, Opacity, OpacityFill, Transform};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::lane::LaneSource;
@@ -252,6 +253,7 @@ pub struct VectorRow<'w> {
 	scale: FlattenScale,
 	layer_path: Option<&'w [NodeId]>,
 	paint: LanePaint<'w>,
+	appearance: Option<&'w Appearance>,
 }
 
 enum RowSourceRef<'w> {
@@ -316,10 +318,23 @@ impl VectorRow<'_> {
 		if let Some(layer_path) = self.layer_path {
 			out.set_attribute(ATTR_EDITOR_LAYER_PATH, index, layer_path.to_vec());
 		}
+		// The cascade's resolved appearance lands on a row whose own is undeclared, since a declared row wins wholesale
+		if let Some(appearance) = self.appearance
+			&& out.attribute::<Appearance>(ATTR_APPEARANCE, index).and_then(Appearance::declared).is_none()
+		{
+			out.set_attribute(ATTR_APPEARANCE, index, appearance.clone());
+		}
 	}
 }
 
-fn walk_rows_of_run(item: &core_types::record::GroupItem, scale: FlattenScale, layer_path: Option<&[NodeId]>, paint: LanePaint<'_>, visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep) -> RowStep {
+fn walk_rows_of_run(
+	item: &core_types::record::GroupItem,
+	scale: FlattenScale,
+	layer_path: Option<&[NodeId]>,
+	paint: LanePaint<'_>,
+	appearance: Option<&Appearance>,
+	visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep,
+) -> RowStep {
 	let Some(run) = core_types::record::RunView::<Vector>::new(item) else {
 		return RowStep::Continue;
 	};
@@ -329,6 +344,7 @@ fn walk_rows_of_run(item: &core_types::record::GroupItem, scale: FlattenScale, l
 			scale,
 			layer_path,
 			paint,
+			appearance,
 		}) {
 			return RowStep::Stop;
 		}
@@ -359,7 +375,7 @@ fn walk_vector_rows_impl<'a>(
 				true => inherited.paint,
 				false => LanePaint::NONE,
 			};
-			return walk_rows_of_run(item, scale, parent_layer_path, paint, visit);
+			return walk_rows_of_run(item, scale, parent_layer_path, paint, inherited.appearance, visit);
 		}
 	}
 	let columns = PaintColumns::new(&level);
@@ -376,6 +392,7 @@ fn walk_vector_rows_impl<'a>(
 				scale,
 				layer_path: parent_layer_path,
 				paint: row_paint,
+				appearance: reach.appearance,
 			}),
 			Graphic::Graphic(children) => walk_vector_rows_impl(
 				GraphicLevel::Legacy(children),
@@ -387,7 +404,7 @@ fn walk_vector_rows_impl<'a>(
 			Graphic::Group(group) => {
 				let item = &group.content;
 				if item.typed_lanes::<Vector>().is_some() {
-					walk_rows_of_run(item, scale.composed(&level, index), level.try_attr::<EditorLayerPath>(index), row_paint, visit)
+					walk_rows_of_run(item, scale.composed(&level, index), level.try_attr::<EditorLayerPath>(index), row_paint, reach.appearance, visit)
 				} else if item.typed_lanes::<Graphic>().is_some() {
 					walk_vector_rows_impl(
 						GraphicLevel::Run(item),
@@ -567,6 +584,35 @@ mod run_tests {
 			assert_eq!(bounds, legacy.bounding_box(outer, include_stroke));
 			assert!(matches!(bounds, RenderBoundingBox::Rectangle(_)));
 			assert_eq!(run.thumbnail_bounding_box(outer, include_stroke), legacy.thumbnail_bounding_box(outer, include_stroke));
+		}
+	}
+
+	#[test]
+	fn the_walk_cascades_appearance_like_the_legacy_flatten() {
+		use crate::appearance::Coverage;
+
+		let single = |color: Color| Appearance::new_single(Coverage::new_fill(), Graphic::Color(color));
+
+		let mut inner = List::new();
+		inner.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO))));
+		inner.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ONE))));
+		inner.set_attribute(ATTR_APPEARANCE, 0, single(Color::BLACK));
+
+		let mut top = List::new_from_element(Graphic::Graphic(inner));
+		top.set_attribute(ATTR_APPEARANCE, 0, single(Color::WHITE));
+
+		let walked = flatten_vector_rows(GraphicLevel::Legacy(&top));
+		let legacy: List<Vector> = top.clone().into_flattened_list();
+
+		let color_of = |list: &List<Vector>, index: usize| {
+			let appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, index)?;
+			let Graphic::Color(color) = appearance.paint_at(0)? else { return None };
+			Some(*color)
+		};
+
+		for list in [&walked, &legacy] {
+			assert_eq!(color_of(list, 0), Some(Color::BLACK), "a declared row keeps its own appearance");
+			assert_eq!(color_of(list, 1), Some(Color::WHITE), "an undeclared row inherits the level's appearance");
 		}
 	}
 }

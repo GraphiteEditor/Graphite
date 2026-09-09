@@ -1,7 +1,8 @@
 //! The paint column level: fill and stroke read as lane columns and threaded down to the elements they reach.
 
 use super::{Graphic, IntoGraphicList};
-use crate::markers::{ATTR_FILL, ATTR_STROKE, Fill, Stroke};
+use crate::appearance::Appearance;
+use crate::markers::{ATTR_FILL, ATTR_STROKE, Appearance as AppearanceMarker, Fill, Stroke};
 use core_types::ATTR_TRANSFORM;
 use core_types::attribute::{Attribute, Opacity};
 use core_types::lane::{LaneColumn, LaneSource};
@@ -69,10 +70,11 @@ impl<'a> LanePaint<'a> {
 	}
 }
 
-/// A source's fill and stroke columns, resolved once for per-lane reads.
+/// A source's fill, stroke, and appearance columns, resolved once for per-lane reads.
 pub struct PaintColumns<'a, S: LaneSource + 'a> {
 	fill: S::Column<'a, Fill>,
 	stroke: S::Column<'a, Stroke>,
+	appearance: S::Column<'a, AppearanceMarker>,
 }
 
 impl<'a, S: LaneSource> PaintColumns<'a, S> {
@@ -80,6 +82,7 @@ impl<'a, S: LaneSource> PaintColumns<'a, S> {
 		Self {
 			fill: source.column::<Fill>(),
 			stroke: source.column::<Stroke>(),
+			appearance: source.column::<AppearanceMarker>(),
 		}
 	}
 
@@ -91,27 +94,50 @@ impl<'a, S: LaneSource> PaintColumns<'a, S> {
 			stroke: present(self.stroke.try_get(lane)),
 		}
 	}
+
+	/// The lane's own declared appearance; an absent or empty cell is undeclared.
+	pub fn read_appearance(&self, lane: usize) -> Option<&'a Appearance> {
+		self.appearance.try_get(lane).flatten().and_then(Appearance::declared)
+	}
 }
 
 /// How far a lane's paint reaches into the element beneath it, mirroring the
 /// legacy conversion's paint push: vector interiors directly and vector
 /// children of a nested graphic list, one level deep.
+///
+/// The appearance cascade rides beside the paint push with its own rule: a
+/// lane's own declared appearance wins wholesale, an undeclared lane inherits
+/// the nearest ancestor's, at any depth. Only a fresh entry (a pattern's own
+/// render, or any standalone render root) starts without an inherited one.
 #[derive(Clone, Copy)]
 pub struct PaintReach<'a> {
 	pub paint: LanePaint<'a>,
+	/// The cascade's resolved appearance: the nearest declared one at or above this lane.
+	pub appearance: Option<&'a Appearance>,
 	hops: u8,
 }
 
 impl<'a> PaintReach<'a> {
-	pub const NONE: Self = Self { paint: LanePaint::NONE, hops: 0 };
+	pub const NONE: Self = Self {
+		paint: LanePaint::NONE,
+		appearance: None,
+		hops: 0,
+	};
 
 	/// The lane's effective reach: an inherited paint stays authoritative
 	/// (lane paint below a push's origin is inert in the legacy model), an
-	/// absent one reads the lane's own paint.
+	/// absent one reads the lane's own paint. The appearance arbitrates the
+	/// opposite way: the lane's own declared appearance wins over the
+	/// inherited one.
 	pub fn for_lane<S: LaneSource>(self, columns: &PaintColumns<'a, S>, index: usize) -> Self {
+		let appearance = Appearance::cascade(columns.read_appearance(index), self.appearance);
 		match self.paint.is_present() {
-			true => self,
-			false => Self { paint: columns.read(index), hops: 2 },
+			true => Self { appearance, ..self },
+			false => Self {
+				paint: columns.read(index),
+				appearance,
+				hops: 2,
+			},
 		}
 	}
 
@@ -119,20 +145,25 @@ impl<'a> PaintReach<'a> {
 		self.hops > 0 && self.paint.is_present()
 	}
 
-	/// The reach one graphic nesting level further down.
+	/// The reach one graphic nesting level further down. The appearance
+	/// cascade is not hop-limited, so it passes through unchanged.
 	pub fn nested(self) -> Self {
 		Self {
-			paint: self.paint,
 			hops: self.hops.saturating_sub(1),
+			..self
 		}
 	}
 
 	/// The reach entering a group's own graphic run: a spent or absent reach
-	/// resets so the group's own lane paint applies at its own boundary.
+	/// resets so the group's own lane paint applies at its own boundary,
+	/// while the appearance cascades through the boundary.
 	pub fn into_group_graphics(self) -> Self {
 		match self.applies() {
 			true => self.nested(),
-			false => Self::NONE,
+			false => Self {
+				appearance: self.appearance,
+				..Self::NONE
+			},
 		}
 	}
 }
@@ -268,5 +299,48 @@ mod run_tests {
 
 		let legacy = run_to_legacy_list::<Vector>(&item).expect("the run lowers to a legacy vector list");
 		assert_eq!(paint_graphics::<Fill, _>(&legacy, 0), paint_graphics::<Fill, _>(&run, 0));
+	}
+
+	#[test]
+	fn reach_cascades_the_appearance_with_own_wins_arbitration() {
+		use crate::appearance::Coverage;
+		use crate::markers::ATTR_APPEARANCE;
+
+		let own = Appearance::new_single(Coverage::new_fill(), Graphic::Color(Color::BLACK));
+		let inherited = Appearance::new_single(Coverage::new_fill(), Graphic::Color(Color::WHITE));
+
+		// Lane 0 declares its own appearance, lane 1 is padded with the empty (undeclared) one
+		let mut list: List<Graphic<'static>> = List::new_from_element(Graphic::Vector(Vector::default()));
+		list.push(core_types::list::Item::new_from_element(Graphic::Vector(Vector::default())));
+		list.set_attribute(ATTR_APPEARANCE, 0, own.clone());
+
+		let columns = PaintColumns::new(&list);
+		let ancestor = PaintReach {
+			appearance: Some(&inherited),
+			..PaintReach::NONE
+		};
+
+		assert_eq!(ancestor.for_lane(&columns, 0).appearance, Some(&own), "a declared lane wins over the inherited appearance");
+		assert_eq!(ancestor.for_lane(&columns, 1).appearance, Some(&inherited), "a padded lane inherits");
+		assert_eq!(PaintReach::NONE.for_lane(&columns, 1).appearance, None, "no ancestor leaves an undeclared lane bare");
+	}
+
+	#[test]
+	fn reach_carries_the_appearance_through_nesting_and_group_boundaries() {
+		use crate::appearance::Coverage;
+
+		let inherited = Appearance::new_single(Coverage::new_fill(), Graphic::Color(Color::WHITE));
+		let reach = PaintReach {
+			appearance: Some(&inherited),
+			..PaintReach::NONE
+		};
+
+		assert_eq!(reach.nested().appearance, Some(&inherited), "nesting does not hop-limit the cascade");
+		assert_eq!(
+			reach.into_group_graphics().appearance,
+			Some(&inherited),
+			"the cascade crosses a group boundary the paint push resets at"
+		);
+		assert_eq!(PaintReach::NONE.into_group_graphics().appearance, None);
 	}
 }
