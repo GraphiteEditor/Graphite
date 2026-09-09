@@ -378,7 +378,8 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
-	pub fn compute_layouts(&mut self) {
+	pub fn compute_layouts(&mut self) -> Result<(), GraphErrors> {
+		self.fold_attribute_names()?;
 		for index in 0..self.nodes.len() {
 			let lane_invariant = self.nodes[index].1.lane_invariant_inputs;
 			let layout = {
@@ -388,6 +389,7 @@ impl ProtoNetwork {
 						frame_bytes: layout.frame_bytes(),
 						plan: Vec::new(),
 						lane_invariant,
+						named_writes: Vec::new(),
 						layout,
 					}),
 					ConstructionArgs::Nodes(inputs) => node.resolved.layout_meta.as_ref().and_then(|meta| {
@@ -412,6 +414,70 @@ impl ProtoNetwork {
 			self.nodes[index].1.resolved.layout = layout;
 		}
 		self.stack_need = self.fold_stack_peak();
+		Ok(())
+	}
+
+	/// Resolves every name-from-input write against the constant its name
+	/// input carries, leaving each node's meta indistinguishable from a marker
+	/// node's. A name input that is not a constant is refused here, which is
+	/// the whole of the no-runtime-names rule: past this point a name is a
+	/// `&'static str` in a layout, so there is nowhere for one to be computed.
+	fn fold_attribute_names(&mut self) -> Result<(), GraphErrors> {
+		let mut errors = GraphErrors::new();
+		for index in 0..self.nodes.len() {
+			let Some(meta) = &self.nodes[index].1.resolved.layout_meta else { continue };
+			if meta.named_writes.is_empty() {
+				continue;
+			}
+			let ConstructionArgs::Nodes(inputs) = &self.nodes[index].1.construction_args else {
+				continue;
+			};
+			let names: Vec<Result<&'static str, GraphErrorType>> = meta
+				.named_writes
+				.iter()
+				.map(|named| match inputs.get(named.name_input as usize).map(|input| &self.nodes[input.0 as usize].1.construction_args) {
+					Some(ConstructionArgs::Value(value)) => match &**value {
+						value::TaggedValue::String(name) => Ok(core_types::attribute::intern_name(name)),
+						other => Err(GraphErrorType::AttributeName(format!(
+							"an attribute name must be text, but input {} is {}",
+							named.name_input + 1,
+							other.ty()
+						))),
+					},
+					_ => Err(GraphErrorType::AttributeName(format!(
+						"input {} must be a constant, since attribute names resolve when the graph compiles rather than when it runs",
+						named.name_input + 1
+					))),
+				})
+				.collect();
+			let node = &self.nodes[index].1;
+			let mut folded: Vec<(&'static str, std::any::TypeId)> = Vec::new();
+			let mut failed = false;
+			for (position, name) in names.iter().enumerate() {
+				match name {
+					Err(error) => {
+						errors.push(GraphError::new(node, error.clone()));
+						failed = true;
+					}
+					Ok(name) => {
+						let template = node.resolved.layout_meta.as_ref().expect("checked above").named_writes[position].template;
+						if let Some(conflict) = one_name_one_type(name, template.type_id, &folded) {
+							errors.push(GraphError::new(node, conflict));
+							failed = true;
+						}
+						folded.push((name, template.type_id));
+					}
+				}
+			}
+			if failed {
+				continue;
+			}
+			let meta = self.nodes[index].1.resolved.layout_meta.as_mut().expect("checked above");
+			for (position, name) in names.into_iter().enumerate() {
+				meta.fold_name(position, name.expect("every name resolved"));
+			}
+		}
+		errors.is_empty().then_some(()).ok_or(errors)
 	}
 
 	/// Peak record-stack bytes for evaluating [`output`](Self::output)'s cone. A node holds its
@@ -737,9 +803,27 @@ impl ProtoNetwork {
 		Ok(())
 	}
 }
+/// Reports a folded name that disagrees with a type the same name already
+/// carries, over the census and the names this node folded together. One name
+/// means one value type everywhere, so the layouts a graph folds can never
+/// declare a field twice at two widths.
+fn one_name_one_type(name: &str, value_type: std::any::TypeId, folded: &[(&'static str, std::any::TypeId)]) -> Option<GraphErrorType> {
+	let census = core_types::attribute::info(name);
+	let declared = census
+		.filter(|row| row.value_type != value_type)
+		.map(|row| row.value_type_name.to_string())
+		.or_else(|| folded.iter().find(|(other, ty)| *other == name && *ty != value_type).map(|_| "another type on this node".to_string()))?;
+	Some(GraphErrorType::AttributeName(format!(
+		"attribute `{name}` is already declared at {declared}, and one name carries one value type"
+	)))
+}
+
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
+	/// A name-from-input attribute write whose name could not be resolved: it
+	/// is not a constant, or it disagrees with the name's declared value type.
+	AttributeName(String),
 	UnexpectedGenerics {
 		index: usize,
 		inputs: Vec<Type>,
@@ -764,6 +848,7 @@ impl Debug for GraphErrorType {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
+			GraphErrorType::AttributeName(error) => write!(f, "{error}"),
 			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),

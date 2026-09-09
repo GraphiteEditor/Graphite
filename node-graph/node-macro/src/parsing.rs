@@ -110,6 +110,42 @@ pub(crate) fn remove_attr_marker(ty: &Type) -> Option<Type> {
 	marker_of(ty, "RemoveAttr")
 }
 
+/// Splits a `Named<X, V>` marker into its placeholder and value type. A write
+/// of one takes its name from the input the placeholder is declared at rather
+/// than from the marker, so the name folds at graph compile time.
+pub(crate) fn named_marker(ty: &Type) -> Option<(Type, Type)> {
+	let mut args = named_arguments(ty)?.into_iter();
+	let (placeholder, value) = (args.next()?, args.next()?);
+	args.next().is_none().then_some((placeholder, value))
+}
+
+/// The placeholder a `Named<X>` parameter declares. Such a parameter is the
+/// name source for every `Attr<Named<X, _>>` the signature writes, and crosses
+/// the wire as constant text.
+pub(crate) fn named_source(ty: &Type) -> Option<Type> {
+	let mut args = named_arguments(ty)?.into_iter();
+	let placeholder = args.next()?;
+	args.next().is_none().then_some(placeholder)
+}
+
+fn named_arguments(ty: &Type) -> Option<Vec<Type>> {
+	let Type::Path(path) = ty else { return None };
+	let segment = path.path.segments.last()?;
+	if segment.ident != "Named" {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
+	Some(
+		args.args
+			.iter()
+			.filter_map(|argument| match argument {
+				GenericArgument::Type(ty) => Some(ty.clone()),
+				_ => None,
+			})
+			.collect(),
+	)
+}
+
 fn marker_of(ty: &Type, wrapper: &str) -> Option<Type> {
 	let Type::Path(path) = ty else { return None };
 	let segment = path.path.segments.last()?;

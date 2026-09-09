@@ -721,7 +721,7 @@ mod test {
 
 	fn build_executor(mut network: ProtoNetwork) -> DynamicExecutor {
 		network.resolve_types(&node_registry::NODE_REGISTRY).unwrap();
-		network.compute_layouts();
+		network.compute_layouts().unwrap();
 		DynamicExecutor::new(network).unwrap()
 	}
 

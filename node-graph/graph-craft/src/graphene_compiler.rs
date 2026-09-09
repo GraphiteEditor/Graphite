@@ -20,7 +20,7 @@ impl Compiler {
 		proto_networks.map(move |mut proto_network| {
 			proto_network.insert_context_nullification_nodes()?;
 			let _ = proto_network.resolve_types(registry);
-			proto_network.compute_layouts();
+			proto_network.compute_layouts().map_err(|errors| errors.iter().map(|error| format!("{:?}", error.error)).collect::<Vec<_>>().join("\n"))?;
 			proto_network.generate_stable_node_ids();
 			Ok(proto_network)
 		})
