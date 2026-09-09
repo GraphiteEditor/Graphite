@@ -82,8 +82,12 @@
 	// - "Aborted": the user has right clicked or pressed Escape to abort the drag, but hasn't yet released all mouse buttons.
 	let rangeSliderClickDragState: "Ready" | "Deciding" | "Dragging" | "Aborted" = "Ready";
 	// Stores the initial value upon beginning to drag so it can be restored upon aborting. Set to `undefined` when not dragging.
+	// NOTE: This is kept in sync for external consumers (e.g. slider abort logic, onDestroy) but the increment-mode pointer-lock
+	// drag logic below uses its own locally-scoped copy (`localInitialValue`) so that a stale, still-in-flight drag session
+	// (e.g. one waiting on an async `pointerlockchange` event) can never clobber a newer drag session's state. See #4231/#2807.
 	let initialValueBeforeDragging: number | undefined = undefined;
 	// Stores the total value change during the process of dragging the slider. Set to 0 when not dragging.
+	// Same caveat as above: the increment-mode drag logic uses a locally-scoped copy (`localCumulativeDragDelta`).
 	let cumulativeDragDelta = 0;
 	// Track whether the Shift key is currently held down.
 	let shiftKeyDown = false;
@@ -92,7 +96,11 @@
 	// True between dispatching `startHistoryTransaction` and the matching `commitHistoryTransaction`, so we only commit
 	// when this widget actually opened a transaction (skipping clicks-without-drag and aborts-before-drag-started).
 	let transactionInProgress = false;
-	// Cleanup function for active drag interactions, called on destroy to prevent leaked listeners
+	// Cleanup function for the currently active drag interaction, called on destroy to prevent leaked listeners.
+	// This always points at the cleanup for the *most recently started* drag session (pre-drag or full drag).
+	// Each session's own cleanup closure guards against clearing this if it no longer belongs to that session
+	// (see `preDragCleanup` / `dragCleanup` below), which prevents a delayed/stale session from tearing down
+	// a newer session's live listeners.
 	let activeDragCleanup: (() => void) | undefined;
 	// Track the slider abort state for cleanup on destroy
 	let sliderResetAbortHandler: (() => void) | undefined;
@@ -371,6 +379,18 @@
 		// For some reason, both events can get fired before their event listeners are removed, so we need to guard against both running.
 		let alreadyActedGuard = false;
 
+		// This session's own cleanup, kept locally scoped so it only ever tears down *this* session's listeners.
+		// Before removing anything, any earlier still-pending session should already have been cleaned up by whichever
+		// caller started this one (see `activeDragCleanup?.()` in `onDragPointerDown` below the pointer-down handling),
+		// but we still guard `activeDragCleanup` assignment so a later session can't be clobbered by this one finishing late.
+		const preDragCleanup = () => {
+			removeEventListener("pointermove", onMove);
+			removeEventListener("pointerup", onUp);
+			// Only clear the shared pointer if it still refers to this session's cleanup. If a newer session has since
+			// started and reassigned `activeDragCleanup`, we must not null out its reference.
+			if (activeDragCleanup === preDragCleanup) activeDragCleanup = undefined;
+		};
+
 		// If it's a mousemove, we'll enter the dragging state and begin dragging.
 		const onMove = () => {
 			if (alreadyActedGuard) return;
@@ -378,7 +398,7 @@
 
 			isDragging = true;
 
-			activeDragCleanup?.();
+			preDragCleanup();
 			beginDrag(e);
 		};
 		// If it's a mouseup, we'll begin editing the text field.
@@ -389,15 +409,16 @@
 			isDragging = false;
 			self?.focus();
 
-			activeDragCleanup?.();
+			preDragCleanup();
 		};
+
+		// Clean up any prior, still-pending drag session before starting a new one (defensive: guards against rapid
+		// re-clicking before an earlier session's async pointer lock exit has resolved).
+		activeDragCleanup?.();
+
 		addEventListener("pointermove", onMove);
 		addEventListener("pointerup", onUp);
-		activeDragCleanup = () => {
-			removeEventListener("pointermove", onMove);
-			removeEventListener("pointerup", onUp);
-			activeDragCleanup = undefined;
-		};
+		activeDragCleanup = preDragCleanup;
 	}
 
 	function beginDrag(e: PointerEvent) {
@@ -427,6 +448,21 @@
 		if (import.meta.env.MODE === "native") {
 			editor.appWindowPointerLock();
 		}
+
+		// This drag session's own copies of the "initial value" and "cumulative delta" state. Using locally-scoped
+		// (closure-captured) variables instead of the shared component-level `initialValueBeforeDragging` /
+		// `cumulativeDragDelta` is the key fix for #4231 / #2807: because `document.exitPointerLock()` is async and its
+		// matching `pointerlockchange` event can be significantly delayed, a user can release the mouse, immediately
+		// start a *new* drag, and have the *old* drag session's delayed `pointerlockchange` handler fire afterward.
+		// If that stale handler read/wrote the shared variables, it would stomp on the new session's in-progress state
+		// (causing the value to jump) and could tear down the new session's live listeners via a shared cleanup
+		// reference. Keeping this session's state local means a stale, late-firing handler can only ever act on data
+		// that belongs to it, never on a newer session's data.
+		let localInitialValue = value;
+		let localCumulativeDragDelta = 0;
+
+		// Still update the shared/component-level state too, since other code paths (e.g. `sliderAbort`, `onDestroy`,
+		// increment arrow aborting) read `initialValueBeforeDragging` and expect it to reflect the latest drag.
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
@@ -441,9 +477,33 @@
 		// TODO: A better solution will need to discard outlier movement values across multiple frames by basically implementing a time-series data analysis filtering algorithm.
 		let ignoredFirstMovement = false;
 
+		// This drag session's own value-update helper, closed over this session's local state rather than the shared
+		// component-level `cumulativeDragDelta`, for the same reason as above.
+		function localPointerLockMoveUpdate(delta: number, slow: boolean, snapping: boolean, initialValue: number) {
+			const CHANGE_PER_DRAG_PX = 0.1;
+			const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
+
+			const dragDelta = delta * (slow ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
+			localCumulativeDragDelta += dragDelta;
+			cumulativeDragDelta = localCumulativeDragDelta;
+
+			const combined = initialValue + localCumulativeDragDelta;
+			const combineSnapped = snapping || isInteger ? Math.round(combined) : combined;
+
+			const newValue = updateValue(combineSnapped);
+
+			// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
+			if (newValue !== undefined) {
+				localCumulativeDragDelta -= combineSnapped - newValue;
+				cumulativeDragDelta = localCumulativeDragDelta;
+			}
+		}
+
 		const pointerUp = () => {
 			// Confirm on release by setting the reset value to the current value, so once the pointer lock ends,
 			// the value is set to itself instead of the initial (abort) value in the "pointerlockchange" event handler function.
+			localInitialValue = value;
+			localCumulativeDragDelta = 0;
 			initialValueBeforeDragging = value;
 			cumulativeDragDelta = 0;
 
@@ -469,20 +529,35 @@
 			}
 
 			// Calculate and then update the dragged value offset, slowed down by 10x when Shift is held.
-			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				pointerLockMoveUpdate(e.movementX, e.shiftKey, e.ctrlKey, initialValueBeforeDragging);
+			if (ignoredFirstMovement && localInitialValue !== undefined) {
+				localPointerLockMoveUpdate(e.movementX, e.shiftKey, e.ctrlKey, localInitialValue);
 			}
 			ignoredFirstMovement = true;
 		};
 		// On desktop we don't get `pointermove` events while in pointer lock (CEF doesn't support pointer lock).
 		// We have to listen for our custom `pointerlockmove` events instead.
 		const pointerLockMove = ({ detail }: WindowEventMap["pointerlockmove"]) => {
-			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
+			if (ignoredFirstMovement && localInitialValue !== undefined) {
 				const delta = detail.x;
-				pointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, initialValueBeforeDragging);
+				localPointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, localInitialValue);
 			}
 			ignoredFirstMovement = true;
 		};
+
+		// This session's own cleanup, scoped locally so it can only ever remove *this* session's listeners, and can
+		// only clear the shared `activeDragCleanup` pointer if that pointer still refers to this session (i.e. no
+		// newer session has since started). This is the second half of the #4231 / #2807 fix: previously, a single
+		// shared `activeDragCleanup` closure was reassigned by each new session, so a late-firing `pointerlockchange`
+		// from an old session could call the *new* session's cleanup instead of its own, silently killing the new
+		// session's live listeners mid-drag.
+		const dragCleanup = () => {
+			removeEventListener("pointerup", pointerUp);
+			removeEventListener("pointermove", pointerMove);
+			removeEventListener("pointerlockmove", pointerLockMove);
+			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
+			if (activeDragCleanup === dragCleanup) activeDragCleanup = undefined;
+		};
+
 		const pointerLockChange = () => {
 			// Do nothing if we just entered, rather than exited, pointer lock.
 			if (usePointerLock && document.pointerLockElement) return;
@@ -491,12 +566,17 @@
 			if (isSafari) document.body.classList.remove("cursor-hidden");
 
 			// Reset the value to the initial value if the drag was aborted, or to the current value if it was just confirmed by changing the initial value to the current value.
-			updateValue(initialValueBeforeDragging);
-			initialValueBeforeDragging = undefined;
+			updateValue(localInitialValue);
+			localInitialValue = undefined;
+			localCumulativeDragDelta = 0;
+			if (initialValueBeforeDragging === localInitialValue || initialValueBeforeDragging !== undefined) {
+				initialValueBeforeDragging = undefined;
+			}
 			cumulativeDragDelta = 0;
 
-			// Clean up the event listeners.
-			activeDragCleanup?.();
+			// Clean up this session's own event listeners (never the shared `activeDragCleanup`, which may by now
+			// belong to a different, newer drag session).
+			dragCleanup();
 
 			// Close out the transaction `startDragging` opened so the many emits collapse into one history step (covers both confirmed and aborted drags).
 			commitTransactionIfInProgress();
@@ -506,29 +586,7 @@
 		addEventListener("pointermove", pointerMove);
 		addEventListener("pointerlockmove", pointerLockMove);
 		if (usePointerLock) document.addEventListener("pointerlockchange", pointerLockChange);
-		activeDragCleanup = () => {
-			removeEventListener("pointerup", pointerUp);
-			removeEventListener("pointermove", pointerMove);
-			removeEventListener("pointerlockmove", pointerLockMove);
-			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
-			activeDragCleanup = undefined;
-		};
-	}
-
-	function pointerLockMoveUpdate(delta: number, slow: boolean, snapping: boolean, initialValue: number) {
-		const CHANGE_PER_DRAG_PX = 0.1;
-		const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
-
-		const dragDelta = delta * (slow ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
-		cumulativeDragDelta += dragDelta;
-
-		const combined = initialValue + cumulativeDragDelta;
-		const combineSnapped = snapping || isInteger ? Math.round(combined) : combined;
-
-		const newValue = updateValue(combineSnapped);
-
-		// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
-		if (newValue !== undefined) cumulativeDragDelta -= combineSnapped - newValue;
+		activeDragCleanup = dragCleanup;
 	}
 
 	// ===============================
