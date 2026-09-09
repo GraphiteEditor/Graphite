@@ -390,12 +390,14 @@ pub fn write_attribute<'e, T, V: WireValue>(
 	Ok((content, Attr(parked)))
 }
 
-/// Reads the attribute `name` names off each lane. An absent attribute reads as
-/// the name's own default, so the value carries the declared type either way;
-/// the name is constant text the compiler folds into an offset when the graph
-/// compiles.
+/// Reads the `f64` attribute `name` names off each lane. An absent attribute
+/// reads as the name's own default, so the value is always a number; the name
+/// is constant text the compiler folds into an offset when the graph compiles.
+///
+/// A name written at another value type is a graph error rather than a
+/// conversion, so reading a number is never a coercion of one.
 #[node_macro::node(category("Attributes: Read"))]
-pub fn read_attribute<'e>(
+pub fn read_number_attribute<'e>(
 	_: impl Ctx,
 	/// The content whose lanes carry the attribute.
 	(content, value): (f64, Attr<'e, Named<Name0, f64>>),

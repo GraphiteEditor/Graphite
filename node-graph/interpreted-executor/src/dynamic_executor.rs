@@ -801,7 +801,7 @@ mod test {
 				(NodeId(2), ProtoNode::value(ConstructionArgs::Value(value.into()), vec![])),
 				(NodeId(3), proto_node("graphic_nodes::graphic::WriteAttributeNode", vec![NodeId(0), NodeId(1), NodeId(2)])),
 				(NodeId(4), string_value(read_name)),
-				(NodeId(5), proto_node("graphic_nodes::graphic::ReadAttributeNode", vec![NodeId(3), NodeId(4)])),
+				(NodeId(5), proto_node("graphic_nodes::graphic::ReadNumberAttributeNode", vec![NodeId(3), NodeId(4)])),
 			],
 		}
 	}
