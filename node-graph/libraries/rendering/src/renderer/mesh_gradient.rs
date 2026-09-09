@@ -2,13 +2,11 @@ use std::collections::VecDeque;
 use std::fmt::Write;
 use std::ops::{Add, Mul, Sub};
 
-use crate::renderer::{gradient_placement, singular_values, transform_is_invertible};
-use crate::to_peniko::ToPenikoColor;
 use crate::{SvgRender, format_transform_matrix};
 use base64::Engine;
 use core_types::uuid::generate_uuid;
 use core_types::{Color, color::SRGBA8};
-use glam::{DAffine2, DMat2, DVec2, Vec2, Vec4};
+use glam::{DAffine2, DVec2, Vec4};
 use image::ImageEncoder;
 use kurbo::{Affine, BezPath, Shape};
 use vector_types::GradientInterpolation;
@@ -17,28 +15,15 @@ use vector_types::{
 	gradient::GradientSpace,
 	mesh_gradient::{MeshGradientEvaluator, MeshPatchEvaluator},
 };
-use vello::{Scene, peniko};
 
-/// Maximum allowed geometry approximation error in viewport pixels.
-pub(super) const MESH_POSITION_ERROR_TOLERANCE: f64 = 1.5;
-/// Maximum allowed color approximation error per channel.
-pub(super) const MESH_COLOR_ERROR_TOLERANCE: f32 = 2. / 255.;
-/// Maximum subpatches one mesh may divide into, bounding what a color field the tolerance cannot reach can allocate.
-/// A mesh with more patches than this still emits one subpatch each, since a patch cannot render without its own region.
-pub(super) const MESH_MAXIMUM_SUBPATCHES: usize = 4096;
-/// Smallest uv stride a region may refine to.
-const MINIMUM_SUBPATCH_STRIDE: f64 = 1. / 4096.;
 /// Patch padding for hiding anti-aliasing gaps, as a fraction of the patch's local height.
 pub(super) const PATCH_INFLATION_FRACTION: f64 = 0.005;
-
 /// Width and height of each generated displacement map.
 const DISPLACEMENT_MAP_SIZE: usize = 128;
 /// Fraction of the displacement map reserved as margin on each side to absorb floating-point error.
 const DISPLACEMENT_MAP_MARGIN_PERCENTAGE: f64 = 0.03;
 /// Exterior texels evaluated around the patch to cover displacement-map filtering.
 const DISPLACEMENT_MAP_OUTSIDE_BUFFER_TEXELS: usize = 3;
-/// Maximum local inflation applied to a subpatch clip.
-const MESH_MAXIMUM_CLIP_INFLATION: f64 = 0.5;
 
 // ===================
 // Color approximation
@@ -181,11 +166,13 @@ impl SvgMeshVLayers {
 	}
 
 	/// Returns the u-direction color curve painted by the indexed layer.
-	pub(super) fn evaluate_layer_u_color(&self, patch_evaluator: &MeshPatchEvaluator, index: usize, u: f32) -> Vec4 {
+	pub(super) fn evaluate_layer_u_color(&self, patch_evaluator: MeshPatchEvaluator, color_bezier_row: usize, u: f32) -> Vec4 {
 		match self {
 			Self::Stepped => Vec4::from_array(patch_evaluator.evaluate_color(0., 0.)),
-			Self::BicubicBernstein => patch_evaluator.evaluate_bicubic_bezier_row(index, u).expect("Bicubic Bernstein layers should have the control points"),
-			Self::LinearRows(knots) => Vec4::from_array(patch_evaluator.evaluate_color(u, knots[index])),
+			Self::BicubicBernstein => patch_evaluator
+				.evaluate_color_bezier_row(color_bezier_row, u)
+				.expect("Bicubic Bernstein layers should have the control points"),
+			Self::LinearRows(knots) => Vec4::from_array(patch_evaluator.evaluate_color(u, knots[color_bezier_row])),
 		}
 	}
 }
@@ -197,7 +184,7 @@ fn linear_row_interval_error(evaluator: &MeshGradientEvaluator, start: f32, end:
 	const V_SAMPLES: usize = 8;
 
 	let mut worst_error = 0_f32;
-	for patch in evaluator.patch_evaluators() {
+	for patch in evaluator.patches() {
 		for u_step in 0..=U_SAMPLES {
 			let u = u_step as f32 / U_SAMPLES as f32;
 			let start_color = Vec4::from_array(patch.evaluate_color(u, start));
@@ -214,9 +201,312 @@ fn linear_row_interval_error(evaluator: &MeshGradientEvaluator, start: f32, end:
 	worst_error
 }
 
-// =====================
-// SVG displacement maps
-// =====================
+// ============
+// SVG renderer
+// ============
+
+pub(super) struct SvgMeshPatchRenderer<'mesh, 'field> {
+	mesh_evaluator: &'mesh MeshGradientEvaluator,
+	v_layers: SvgMeshVLayers,
+	alpha_mask_gradient_ids: Vec<String>,
+	parent_transform: DAffine2,
+	mesh_transform: DAffine2,
+	mesh_transparency_field: Option<&'field mut String>,
+}
+
+impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
+	pub(super) fn new(
+		render: &mut SvgRender,
+		mesh_evaluator: &'mesh MeshGradientEvaluator,
+		parent_transform: DAffine2,
+		mesh_transform: DAffine2,
+		mesh_transparency_field: Option<&'field mut String>,
+	) -> Self {
+		// The layer stack is what carries the color space: gamma sRGB uses the bicubic Bernstein stack,
+		// while a nonlinear space stacks approximated rows so the compositor's linear blend still lands on the true surface.
+		let v_layers = SvgMeshVLayers::new(mesh_evaluator);
+
+		// The v-direction mask to simulate 2D interpolation
+		let alpha_mask_gradient_ids = Self::render_alpha_mask_gradient(render, &v_layers);
+
+		Self {
+			mesh_evaluator,
+			v_layers,
+			alpha_mask_gradient_ids,
+			parent_transform,
+			mesh_transform,
+			mesh_transparency_field,
+		}
+	}
+
+	/// Define N-1 alpha functions from the v-direction layer weights and write them as approximated linear gradients, then return the ids.
+	/// They compensate for attenuation accumulated through source-over compositing,
+	/// making the final weights of the N color layers equal the layer scheme's weights.
+	/// The v-direction masks encode only those weights with no patch specific color data, so they can be shared by all patches.
+	fn render_alpha_mask_gradient(render: &mut SvgRender, v_layers: &SvgMeshVLayers) -> Vec<String> {
+		let alpha_mask_gradient_group_id = generate_uuid();
+		(0..v_layers.layer_count() - 1)
+			.map(|i| {
+				let id = format!("mg-ag{i}-{alpha_mask_gradient_group_id}");
+				match v_layers.source_over_ramp(i) {
+					// Linear interpolation mask to blend i-th and (i+1)-th u direction gradients
+					Some([start, end]) => write!(
+						&mut render.svg_defs,
+						r##"<linearGradient id="{id}" x1="0.5" y1="{start}" x2="0.5" y2="{end}" gradientUnits="userSpaceOnUse">{}</linearGradient>"##,
+						clamped_ramp_gradient_stops_string(),
+					),
+					// 4 Bernstein base functions for the v direction
+					None => write!(
+						&mut render.svg_defs,
+						r##"<linearGradient id="{id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse">{}</linearGradient>"##,
+						alpha_curve_to_gradient_stops_string(&|t| v_layers.source_over_alpha(i, t)),
+					),
+				}
+				.unwrap();
+
+				id
+			})
+			.collect::<Vec<_>>()
+	}
+
+	fn render_alpha_mask(&self, render: &mut SvgRender, patch_unique_id: u64, map_region: [f64; 4]) -> Vec<String> {
+		let [map_x, map_y, map_width, map_height] = map_region;
+		self.alpha_mask_gradient_ids
+			.iter()
+			.enumerate()
+			.map(|(i, gradient_id)| {
+				let mask_id = format!("mg-am{i}-{patch_unique_id}");
+				write!(
+					&mut render.svg_defs,
+					r##"<mask
+					id="{mask_id}"
+					x="{map_x}"
+					y="{map_y}"
+					width="{map_width}"
+					height="{map_height}"
+					maskUnits="userSpaceOnUse"
+					maskContentUnits="userSpaceOnUse"
+					mask-type="alpha">
+						<rect
+						x="{map_x}"
+						y="{map_y}"
+						width="{map_width}"
+						height="{map_height}"
+						fill="url(#{gradient_id})"/>
+					</mask>"##,
+				)
+				.unwrap();
+				mask_id
+			})
+			.collect::<Vec<_>>()
+	}
+
+	pub(super) fn render_patch(&mut self, render: &mut SvgRender, patch: &MeshPatch) {
+		let unique_id = generate_uuid();
+		let Some(patch_evaluator) = self.mesh_evaluator.patch(patch.index) else { return };
+
+		// Construct a closed path of the patch boundary for calculating the bounding box and create a clipping mask
+		let mut patch_boundary_path = patch.boundary_path();
+		let bounds = patch_boundary_path.bounding_box();
+		let bounds_min = DVec2::new(bounds.x0, bounds.y0);
+		let bounds_max = DVec2::new(bounds.x1, bounds.y1);
+		let bounds_size = bounds_max - bounds_min;
+		if !bounds_size.is_finite() || bounds_size.x <= f64::EPSILON || bounds_size.y <= f64::EPSILON {
+			return;
+		}
+		// Encode the deformation in a local patch-bounding-box space so patch translation and scaling do not consume PNG channel precision.
+		// That space has to reach the output through a uniform scale, since Firefox as of version 154 has a bug
+		// that converts `feDisplacementMap`'s `scale` into one isotropic filter-space length instead of one length per axis,
+		// so a local space that reaches the output non-uniformly displaces both axes by the wrong amount there.
+		let mesh_to_output = (self.parent_transform * self.mesh_transform).matrix2;
+		let output_scales = DVec2::new(mesh_to_output.x_axis.length(), mesh_to_output.y_axis.length());
+		if !output_scales.is_finite() || output_scales.min_element() <= f64::EPSILON {
+			return;
+		}
+		let local_axes = DVec2::new(bounds_size.y * output_scales.y / output_scales.x, bounds_size.y);
+		let patch_extent = bounds_size / local_axes;
+		let local_to_patch_bbox = DAffine2::from_cols(DVec2::new(local_axes.x, 0.), DVec2::new(0., local_axes.y), bounds_min);
+
+		let DisplacementMapSamples { displacements, region } = coons_bbox_to_source_displacements(patch_evaluator, &local_to_patch_bbox, patch_extent, &patch_boundary_path);
+		let [map_x, map_y, map_width, map_height] = region;
+		// feDisplacementMap decodes each channel as scale * (channel - 0.5).
+		// Twice the largest absolute component is therefore the smallest scale that covers every displacement and maximizes quantization precision.
+		let max_displacement = displacements.iter().map(|displacement| displacement.abs().max_element()).fold(0_f64, f64::max);
+		// Keep the scale nonzero when all displacements are zero.
+		let scale = (max_displacement * 2.).max(f64::EPSILON);
+
+		let Some(displacement_map_png) = displacements_to_map_png(&displacements, scale) else { return };
+		let preamble = "data:image/png;base64,";
+		let mut displacement_map_data_url = String::with_capacity(preamble.len() + displacement_map_png.len() * 4 / 3 + 4);
+		displacement_map_data_url.push_str(preamble);
+		base64::engine::general_purpose::STANDARD.encode_string(displacement_map_png, &mut displacement_map_data_url);
+
+		let v_alpha_mask_ids = self.render_alpha_mask(render, unique_id, region);
+
+		let extent_x = patch_extent.x;
+		let u_color_curves_gradient_ids = (0..self.v_layers.layer_count())
+			.map(|i| {
+				let u_color_curve = |u| self.v_layers.evaluate_layer_u_color(patch_evaluator, i, u);
+				let stops = u_color_curve_to_gradient_stops_string(&u_color_curve);
+				let id = format!("mg-cg{i}-{unique_id}");
+
+				write!(
+					&mut render.svg_defs,
+					r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="{extent_x}" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+				)
+				.unwrap();
+
+				id
+			})
+			.collect::<Vec<_>>();
+
+		write!(
+			&mut render.svg_defs,
+			r##"<filter
+			id="fd{unique_id}"
+			x="{map_x}"
+			y="{map_y}"
+			width="{map_width}"
+			height="{map_height}"
+			filterUnits="userSpaceOnUse"
+			primitiveUnits="userSpaceOnUse"
+			color-interpolation-filters="sRGB">
+				<feImage
+				href="{displacement_map_data_url}"
+				x="{map_x}"
+				y="{map_y}"
+				width="{map_width}"
+				height="{map_height}"
+				preserveAspectRatio="none"
+				result="gmmap{unique_id}"/>
+				<feDisplacementMap
+					x="{map_x}"
+					y="{map_y}"
+					width="{map_width}"
+					height="{map_height}"
+					in="SourceGraphic"
+					in2="gmmap{unique_id}"
+				scale="{scale}"
+				xChannelSelector="R"
+				yChannelSelector="G"/>
+		</filter>"##
+		)
+		.unwrap();
+
+		// Add a centered stroke to expand the patch along its boundary normal and hide antialiasing gaps between patches.
+		let patch_clip_stroke_width = 2. * PATCH_INFLATION_FRACTION;
+		patch_boundary_path.apply_affine(Affine::new(local_to_patch_bbox.inverse().to_cols_array()));
+		let patch_boundary_d = patch_boundary_path.to_svg();
+
+		write!(
+			&mut render.svg_defs,
+			r##"<mask
+			id="mc{unique_id}"
+			x="{map_x}"
+			y="{map_y}"
+			width="{map_width}"
+			height="{map_height}"
+			maskUnits="userSpaceOnUse"
+			maskContentUnits="userSpaceOnUse"
+			mask-type="alpha">
+				<path d="{patch_boundary_d}" fill="#fff" stroke="#fff" stroke-width="{patch_clip_stroke_width}" stroke-linejoin="round"/>
+			</mask>"##
+		)
+		.unwrap();
+
+		let patch_transform_str = format_transform_matrix(self.mesh_transform * local_to_patch_bbox);
+		render.parent_tag(
+			"g",
+			|attributes| {
+				attributes.push("transform", patch_transform_str.clone());
+			},
+			|render| {
+				render.parent_tag(
+					"g",
+					|attributes| {
+						attributes.push("mask", format!("url(#mc{unique_id})"));
+					},
+					|render| {
+						render.parent_tag(
+							"g",
+							|attributes| {
+								attributes.push("style", "isolation:isolate");
+								attributes.push("filter", format!("url(#fd{unique_id})"));
+							},
+							|render| {
+								u_color_curves_gradient_ids.iter().enumerate().rev().for_each(|(i, gradient_id)| {
+									render.leaf_tag("rect", |attributes| {
+										attributes.push("x", map_x.to_string());
+										attributes.push("y", map_y.to_string());
+										attributes.push("width", map_width.to_string());
+										attributes.push("height", map_height.to_string());
+										attributes.push("fill", format!("url(#{gradient_id})"));
+										if let Some(mask_id) = v_alpha_mask_ids.get(i) {
+											attributes.push("mask", format!("url(#{mask_id})"));
+										}
+									});
+								});
+							},
+						);
+					},
+				);
+			},
+		);
+
+		self.collect_transparency_field(render, patch, unique_id, patch_transform_str, patch_extent, &v_alpha_mask_ids);
+	}
+
+	fn collect_transparency_field(&mut self, render: &mut SvgRender, patch: &MeshPatch, patch_unique_id: u64, patch_transform: String, patch_extent: DVec2, v_alpha_mask_ids: &[String]) -> Option<()> {
+		let mesh_transparency_field = self.mesh_transparency_field.as_deref_mut()?;
+		let patch_evaluator = self.mesh_evaluator.patch(patch.index)?;
+		let (map_min, map_size) = displacement_map_region(patch_extent);
+		let (map_x, map_y, map_width, map_height) = (map_min.x, map_min.y, map_size.x, map_size.y);
+		let extent_x = patch_extent.x;
+
+		// Keep transparency as an opaque grayscale field until every patch has been assembled into one mesh-wide luminance mask.
+		let u_transparency_curves_gradient_ids: Vec<String> = (0..self.v_layers.layer_count())
+			.map(|i| {
+				// Only takes alpha value
+				let u_alpha_curve = |t| self.v_layers.evaluate_layer_u_color(patch_evaluator, i, t).w;
+				let stops = u_alpha_curve_to_gradient_stops_string(&u_alpha_curve);
+				let id = format!("mg-cag{i}-{patch_unique_id}");
+
+				write!(
+					&mut render.svg_defs,
+					r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="{extent_x}" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+				)
+				.unwrap();
+
+				id
+			})
+			.collect();
+
+		let mut patch_transparency_field = String::new();
+		for (i, gradient_id) in u_transparency_curves_gradient_ids.iter().enumerate().rev() {
+			let mask = match v_alpha_mask_ids.get(i) {
+				Some(mask_id) => format!(r##" mask="url(#{mask_id})""##),
+				None => String::new(),
+			};
+			write!(
+				patch_transparency_field,
+				r##"<rect x="{map_x}" y="{map_y}" width="{map_width}" height="{map_height}" fill="url(#{gradient_id})"{mask}/>"##,
+			)
+			.unwrap();
+		}
+
+		write!(
+			mesh_transparency_field,
+			r##"<g transform="{patch_transform}" mask="url(#mc{patch_unique_id})"><g style="isolation:isolate" filter="url(#fd{patch_unique_id})">{patch_transparency_field}</g></g>"##,
+		)
+		.unwrap();
+
+		Some(())
+	}
+}
+
+// ==============================
+// SVG displacement map generator
+// ==============================
 
 pub(super) struct DisplacementMapSamples {
 	/// Displacement-map region in local patch coordinates, including its margin. [x, y, width, height]
@@ -234,7 +524,7 @@ fn displacement_map_region(patch_extent: DVec2) -> (DVec2, DVec2) {
 /// Returns target-to-source displacement samples mapping local patch-bounding-box positions to source UVs.
 /// `patch_extent` is the patch bounding box measured in the local space, so both the sampled region and the source UVs
 /// span it rather than a unit square.
-pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: &MeshPatchEvaluator, local_to_patch_bbox: &DAffine2, patch_extent: DVec2, boundary: &BezPath) -> DisplacementMapSamples {
+pub(super) fn coons_bbox_to_source_displacements(patch_evaluator: MeshPatchEvaluator, local_to_patch_bbox: &DAffine2, patch_extent: DVec2, boundary: &BezPath) -> DisplacementMapSamples {
 	let size = DISPLACEMENT_MAP_SIZE;
 	let (map_min, map_size) = displacement_map_region(patch_extent);
 	let target_positions = |index: usize| {
@@ -510,702 +800,6 @@ pub(super) fn u_alpha_curve_to_gradient_stops_string(func: &impl Fn(f32) -> f32)
 		.collect::<String>()
 }
 
-// ==============================
-// Vello subdivision and geometry
-// ==============================
-
-pub(super) struct MeshSubpatch {
-	corner_positions: [DVec2; 4],
-	pub(super) patch_index: usize,
-	uv_bounds: [DVec2; 2],
-}
-
-/// One region of a patch's uv square, kept alongside the error of approximating it with a single parallelogram.
-struct PendingRegion {
-	patch_index: usize,
-	uv_start: DVec2,
-	stride: f64,
-	corner_positions: [DVec2; 4],
-	/// Error as a multiple of the tolerances, so position and color rank on one scale. At most 1 is within tolerance.
-	error: f64,
-}
-
-/// How far an error overruns its tolerance. A zero tolerance admits only a zero error.
-fn tolerance_overrun(error: f64, tolerance: f64) -> f64 {
-	if tolerance > 0. {
-		error / tolerance
-	} else if error > 0. {
-		f64::INFINITY
-	} else {
-		0.
-	}
-}
-
-/// Measures how far the rendered approximation of one region goes from the patch it covers.
-/// `None` when the patch evaluates to a non-finite value there, which no amount of subdivision repairs.
-fn measure_region(
-	patch: &MeshPatchEvaluator,
-	patch_index: usize,
-	uv_start: DVec2,
-	stride: f64,
-	mesh_transform: DAffine2,
-	parent_transform: DAffine2,
-	position_error_tolerance: f64,
-	color_error_tolerance: f32,
-) -> Option<PendingRegion> {
-	const SAMPLES: [f64; 5] = [0., 0.25, 0.5, 0.75, 1.];
-
-	let corner_positions = [DVec2::ZERO, DVec2::new(stride, 0.), DVec2::new(0., stride), DVec2::splat(stride)]
-		.map(|offset| uv_start + offset)
-		.map(|uv| mesh_transform.transform_point2(patch.evaluate_position(uv.x, uv.y)));
-	let [top_left_pos, top_right_pos, bottom_left_pos, _bottom_right_pos] = corner_positions;
-
-	let color_weight_func = subpatch_color_weight(patch, uv_start.as_vec2(), (uv_start + DVec2::splat(stride)).as_vec2());
-
-	let mut error = 0_f64;
-	for &local_v in &SAMPLES {
-		for &local_u in &SAMPLES {
-			let u = uv_start.x + local_u * stride;
-			let v = uv_start.y + local_v * stride;
-			let expected_pos = mesh_transform.transform_point2(patch.evaluate_position(u, v));
-			let expected_color = Vec4::from_array(patch.evaluate_color(u as f32, v as f32));
-			// Approximate the position with the rendered parallelogram, then the color and alpha with the two
-			// passes that actually paint them: the color pass blends the edge rows by the projected weight,
-			// while the alpha pass ramps between them linearly.
-			let approximated_pos = top_left_pos + (top_right_pos - top_left_pos) * local_u + (bottom_left_pos - top_left_pos) * local_v;
-			let top_color = Vec4::from_array(patch.evaluate_color(u as f32, uv_start.y as f32));
-			let bottom_color = Vec4::from_array(patch.evaluate_color(u as f32, (uv_start.y + stride) as f32));
-			let approximated_color = bottom_color.lerp(top_color, color_weight_func(v as f32));
-			let approximated_alpha = top_color.w + (bottom_color.w - top_color.w) * local_v as f32;
-
-			let position_error = parent_transform.transform_vector2(expected_pos - approximated_pos).length();
-			let color_error = (expected_color.truncate() - approximated_color.truncate())
-				.abs()
-				.max_element()
-				.max((expected_color.w - approximated_alpha).abs());
-			if !position_error.is_finite() || !color_error.is_finite() {
-				return None;
-			}
-
-			error = error
-				.max(tolerance_overrun(position_error, position_error_tolerance))
-				.max(tolerance_overrun(color_error as f64, color_error_tolerance as f64));
-		}
-	}
-
-	Some(PendingRegion {
-		patch_index,
-		uv_start,
-		stride,
-		corner_positions,
-		error,
-	})
-}
-
-/// Subdivides the patches until every region's parallelogram approximation is within the position and color tolerances, or the subpatch budget runs out.
-pub(super) fn subdivide_patches_adaptive(
-	evaluator: &MeshGradientEvaluator,
-	mesh_transform: DAffine2,
-	parent_transform: DAffine2,
-	position_error_tolerance: f64,
-	color_error_tolerance: f32,
-) -> Option<Vec<MeshSubpatch>> {
-	if !position_error_tolerance.is_finite() || position_error_tolerance < 0. || !color_error_tolerance.is_finite() || color_error_tolerance < 0. {
-		return None;
-	}
-
-	let patches = evaluator.patch_evaluators().collect::<Vec<_>>();
-	let measure = |patch_index: usize, uv_start, stride| {
-		measure_region(
-			patches[patch_index],
-			patch_index,
-			uv_start,
-			stride,
-			mesh_transform,
-			parent_transform,
-			position_error_tolerance,
-			color_error_tolerance,
-		)
-	};
-
-	let mut regions = (0..patches.len()).map(|patch_index| measure(patch_index, DVec2::ZERO, 1.)).collect::<Option<Vec<_>>>()?;
-
-	// Every patch owes at least its own root region, so the cap bounds the refinement on top of that rather than the total
-	let budget = MESH_MAXIMUM_SUBPATCHES.max(regions.len());
-	while regions.len() + 3 <= budget {
-		let worst = regions
-			.iter()
-			.enumerate()
-			.filter(|(_, region)| region.error > 1. && region.stride > MINIMUM_SUBPATCH_STRIDE)
-			.max_by(|(_, first), (_, second)| first.error.total_cmp(&second.error))
-			.map(|(index, _)| index);
-		let Some(worst) = worst else { break };
-
-		let region = regions.swap_remove(worst);
-		let half_stride = region.stride / 2.;
-		for offset in [DVec2::ZERO, DVec2::new(half_stride, 0.), DVec2::new(0., half_stride), DVec2::splat(half_stride)] {
-			regions.push(measure(region.patch_index, region.uv_start + offset, half_stride)?);
-		}
-	}
-
-	Some(
-		regions
-			.into_iter()
-			.map(|region| MeshSubpatch {
-				corner_positions: region.corner_positions,
-				patch_index: region.patch_index,
-				uv_bounds: [region.uv_start, region.uv_start + DVec2::splat(region.stride)],
-			})
-			.collect(),
-	)
-}
-
-/// Returns the affine approximation of a subpatch, rejecting folded or degenerate geometry.
-pub(super) fn mesh_subpatch_transform(subpatch: &MeshSubpatch) -> Option<DAffine2> {
-	let [top_left, top_right, bottom_left, _] = subpatch.corner_positions;
-	let transform = DAffine2::from_cols(top_right - top_left, bottom_left - top_left, top_left);
-	let determinant = transform.matrix2.determinant();
-	(determinant.is_finite() && determinant != 0.).then_some(transform)
-}
-
-/// Returns the local clip and paint inflation needed to hide gaps around a transformed subpatch.
-fn mesh_subpatch_inflation(subpatch_to_scene: DAffine2, viewport_zoom: f64) -> (f64, f64) {
-	let (_, smallest_scale) = singular_values(subpatch_to_scene);
-	let smallest_viewport_scale = smallest_scale * viewport_zoom;
-	let clip_inflation = if smallest_viewport_scale.is_finite() && smallest_viewport_scale > f64::EPSILON {
-		(1. / smallest_viewport_scale).min(MESH_MAXIMUM_CLIP_INFLATION)
-	} else {
-		0.
-	};
-
-	(clip_inflation, clip_inflation * 2.)
-}
-
-// ========================
-// Vello brush construction
-// ========================
-
-/// Builds a Vello linear gradient brush from sRGBA8 color stops.
-fn vello_linear_gradient(start: DVec2, end: DVec2, stop_values: impl IntoIterator<Item = (f32, SRGBA8)>) -> peniko::Brush {
-	let mut stops = peniko::ColorStops::new();
-	for (offset, color) in stop_values {
-		stops.push(peniko::ColorStop {
-			offset,
-			color: peniko::color::DynamicColor::from_alpha_color(color.to_peniko_color()),
-		});
-	}
-
-	peniko::Brush::Gradient(peniko::Gradient {
-		kind: peniko::LinearGradientPosition {
-			start: kurbo::Point::new(start.x, start.y),
-			end: kurbo::Point::new(end.x, end.y),
-		}
-		.into(),
-		stops,
-		extend: peniko::Extend::Pad,
-		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
-		..Default::default()
-	})
-}
-
-/// Returns brush transforms that preserve horizontal and vertical gradient bands when the subpatch is sheared.
-fn vello_subpatch_brush_transforms(subpatch_to_device: DAffine2) -> Option<(kurbo::Affine, kurbo::Affine)> {
-	if !transform_is_invertible(subpatch_to_device) {
-		return None;
-	}
-
-	let device_to_subpatch = subpatch_to_device.inverse();
-	let horizontal_gradient_to_device = gradient_placement(subpatch_to_device, vector_types::gradient::GradientForm::Linear);
-
-	let vertical_axis = subpatch_to_device.matrix2.y_axis;
-	let vertical_band_normal = subpatch_to_device.matrix2.x_axis.perp();
-	let vertical_line = if vertical_band_normal.length_squared() > 0. {
-		vertical_axis.project_onto(vertical_band_normal)
-	} else {
-		vertical_axis
-	};
-	let vertical_gradient_to_device = DAffine2 {
-		matrix2: DMat2::from_cols(vertical_line.perp(), vertical_line),
-		translation: subpatch_to_device.translation,
-	};
-
-	Some((
-		kurbo::Affine::new((device_to_subpatch * horizontal_gradient_to_device).to_cols_array()),
-		kurbo::Affine::new((device_to_subpatch * vertical_gradient_to_device).to_cols_array()),
-	))
-}
-
-struct VelloSubpatchBrushes {
-	top_color: peniko::Brush,
-	bottom_color: peniko::Brush,
-	color_weight: peniko::Brush,
-}
-
-/// Builds a vertical Vello alpha mask that approximates a scalar function.
-fn vello_vertical_mask(func: &impl Fn(f32) -> f32, start: f32, end: f32) -> peniko::Brush {
-	let remap_offset = |value: f32| (value - start) / (end - start);
-	let error = |a: f32, b: f32| (a - b).abs();
-	let stops = linear_approximation_points(func, &error, start, end, 0).into_iter().map(|(v, alpha)| {
-		(
-			remap_offset(v),
-			SRGBA8 {
-				red: 255,
-				green: 255,
-				blue: 255,
-				alpha: (alpha.clamp(0., 1.) * 255.).round() as u8,
-			},
-		)
-	});
-	vello_linear_gradient(DVec2::new(0.5, 0.), DVec2::new(0.5, 1.), stops)
-}
-
-/// Returns the weight the color pass blends a region's two edge rows with, as a function of v.
-///
-/// It projects the color curve at the region's horizontal midpoint onto the line between its edge colors, so however
-/// unevenly a color space paces its path along v, the blend follows that pacing and only has to cover the deviation
-/// off that line. The subdivision's error model reads the same weight as the brush that paints the region, so the
-/// refinement never pays for a coarser approximation than it actually draws.
-fn subpatch_color_weight(patch_evaluator: &MeshPatchEvaluator, uv_min: Vec2, uv_max: Vec2) -> impl Fn(f32) -> f32 + use<'_> {
-	let center_u = (uv_min.x + uv_max.x) / 2.;
-	let top_center_color = Vec4::from_array(patch_evaluator.evaluate_color(center_u, uv_min.y)).truncate();
-	let bottom_center_color = Vec4::from_array(patch_evaluator.evaluate_color(center_u, uv_max.y)).truncate();
-	let color_axis = top_center_color - bottom_center_color;
-	let color_axis_length_squared = color_axis.length_squared();
-
-	move |v| {
-		if color_axis_length_squared > f32::EPSILON {
-			let color = Vec4::from_array(patch_evaluator.evaluate_color(center_u, v)).truncate();
-			((color - bottom_center_color).dot(color_axis) / color_axis_length_squared).clamp(0., 1.)
-		} else {
-			(uv_max.y - v) / (uv_max.y - uv_min.y)
-		}
-	}
-}
-
-/// Builds the opaque RGB approximation for one subpatch.
-fn vello_subpatch_color_brushes(patch_evaluator: &MeshPatchEvaluator, subpatch: &MeshSubpatch) -> VelloSubpatchBrushes {
-	let [uv_min, uv_max] = subpatch.uv_bounds.map(|uv| uv.as_vec2());
-	let remap_offset = |value: f32, start: f32, end: f32| (value - start) / (end - start);
-
-	// Preserve each cubic horizontal RGB edge with adaptive gradient stops. Alpha is applied after the RGB field is complete.
-	let [top_color, bottom_color] = [uv_min.y, uv_max.y].map(|v| {
-		let curve = |u| Vec4::from_array(patch_evaluator.evaluate_color(u, v));
-		let error = |a: Vec4, b: Vec4| (a - b).abs().max_element();
-		let stops = linear_approximation_points(&curve, &error, uv_min.x, uv_max.x, 0).into_iter().map(|(u, mut color)| {
-			color.w = 1.;
-			(remap_offset(u, uv_min.x, uv_max.x), gamma_color_to_srgba8(color.to_array()))
-		});
-		vello_linear_gradient(DVec2::ZERO, DVec2::X, stops)
-	});
-
-	let color_weight_func = subpatch_color_weight(patch_evaluator, uv_min, uv_max);
-	let color_weight = vello_vertical_mask(&color_weight_func, uv_min.y, uv_max.y);
-
-	VelloSubpatchBrushes {
-		top_color,
-		bottom_color,
-		color_weight,
-	}
-}
-
-/// Builds an opaque grayscale approximation of a subpatch's alpha field.
-fn vello_subpatch_alpha_brushes(patch_evaluator: &MeshPatchEvaluator, subpatch: &MeshSubpatch) -> VelloSubpatchBrushes {
-	let [uv_min, uv_max] = subpatch.uv_bounds.map(|uv| uv.as_vec2());
-	let remap_offset = |value: f32| (value - uv_min.x) / (uv_max.x - uv_min.x);
-	let opaque_grayscale = |alpha: f32| {
-		let alpha = alpha.clamp(0., 1.);
-		gamma_color_to_srgba8([alpha, alpha, alpha, 1.])
-	};
-
-	// This matches the color approximation used to decide adaptive subdivision: preserve the
-	// horizontal edge curves, then interpolate them linearly in the local v direction.
-	let [top_color, bottom_color] = [uv_min.y, uv_max.y].map(|v| {
-		let curve = |u| patch_evaluator.evaluate_color(u, v)[3];
-		let error = |a: f32, b: f32| (a - b).abs();
-		let stops = linear_approximation_points(&curve, &error, uv_min.x, uv_max.x, 0)
-			.into_iter()
-			.map(|(u, alpha)| (remap_offset(u), opaque_grayscale(alpha)));
-		vello_linear_gradient(DVec2::ZERO, DVec2::X, stops)
-	});
-	let color_weight = vello_vertical_mask(&|v| 1. - v, 0., 1.);
-
-	VelloSubpatchBrushes {
-		top_color,
-		bottom_color,
-		color_weight,
-	}
-}
-
-// =================
-// Vello compositing
-// =================
-
-/// Paints `brush` through `mask` into an isolated source-over layer.
-fn render_vello_masked_brush(
-	scene: &mut Scene,
-	subpatch_to_scene: kurbo::Affine,
-	paint_rect: &kurbo::Rect,
-	brush: &peniko::Brush,
-	brush_transform: kurbo::Affine,
-	mask: &peniko::Brush,
-	mask_transform: kurbo::Affine,
-) {
-	scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., subpatch_to_scene, paint_rect);
-	scene.fill(peniko::Fill::NonZero, subpatch_to_scene, mask, Some(mask_transform), paint_rect);
-	scene.push_layer(
-		peniko::Fill::NonZero,
-		peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
-		1.,
-		subpatch_to_scene,
-		paint_rect,
-	);
-	scene.fill(peniko::Fill::NonZero, subpatch_to_scene, brush, Some(brush_transform), paint_rect);
-	scene.pop_layer();
-	scene.pop_layer();
-}
-
-/// Renders the weighted top and bottom brushes into an inflated subpatch.
-fn render_vello_subpatch_brushes(scene: &mut Scene, subpatch: &MeshSubpatch, parent_transform: DAffine2, viewport_zoom: f64, brushes: VelloSubpatchBrushes) {
-	let Some(subpatch_to_parent) = mesh_subpatch_transform(subpatch) else { return };
-
-	let subpatch_to_device = parent_transform * subpatch_to_parent;
-	let Some((horizontal_brush_transform, vertical_brush_transform)) = vello_subpatch_brush_transforms(subpatch_to_device) else {
-		return;
-	};
-	let subpatch_to_scene = kurbo::Affine::new(subpatch_to_device.to_cols_array());
-	let (clip_inflation, paint_inflation) = mesh_subpatch_inflation(subpatch_to_device, viewport_zoom);
-	let clip_rect = kurbo::Rect::new(-clip_inflation, -clip_inflation, 1. + clip_inflation, 1. + clip_inflation);
-	let paint_rect = kurbo::Rect::new(-paint_inflation, -paint_inflation, 1. + paint_inflation, 1. + paint_inflation);
-
-	scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., subpatch_to_scene, &clip_rect);
-	scene.fill(peniko::Fill::NonZero, subpatch_to_scene, &brushes.bottom_color, Some(horizontal_brush_transform), &paint_rect);
-	render_vello_masked_brush(
-		scene,
-		subpatch_to_scene,
-		&paint_rect,
-		&brushes.top_color,
-		horizontal_brush_transform,
-		&brushes.color_weight,
-		vertical_brush_transform,
-	);
-	scene.pop_layer();
-}
-
-/// Renders the opaque RGB field of one adaptively subdivided patch.
-pub(super) fn render_vello_subpatch_color(scene: &mut Scene, patch_evaluator: &MeshPatchEvaluator, subpatch: &MeshSubpatch, parent_transform: DAffine2, viewport_zoom: f64) {
-	let brushes = vello_subpatch_color_brushes(patch_evaluator, subpatch);
-	render_vello_subpatch_brushes(scene, subpatch, parent_transform, viewport_zoom, brushes);
-}
-
-/// Adds one inflated, opaque grayscale subpatch to the mesh-wide luminance mask.
-pub(super) fn render_vello_subpatch_alpha(scene: &mut Scene, patch_evaluator: &MeshPatchEvaluator, subpatch: &MeshSubpatch, parent_transform: DAffine2, viewport_zoom: f64) {
-	let brushes = vello_subpatch_alpha_brushes(patch_evaluator, subpatch);
-	render_vello_subpatch_brushes(scene, subpatch, parent_transform, viewport_zoom, brushes);
-}
-
-// ============
-// SVG renderer
-// ============
-
-pub(super) struct SvgMeshPatchRenderer<'mesh, 'field> {
-	mesh_evaluator: &'mesh MeshGradientEvaluator,
-	v_layers: SvgMeshVLayers,
-	alpha_mask_gradient_ids: Vec<String>,
-	parent_transform: DAffine2,
-	mesh_transform: DAffine2,
-	mesh_transparency_field: Option<&'field mut String>,
-}
-
-impl<'mesh, 'field> SvgMeshPatchRenderer<'mesh, 'field> {
-	pub(super) fn new(
-		render: &mut SvgRender,
-		mesh_evaluator: &'mesh MeshGradientEvaluator,
-		parent_transform: DAffine2,
-		mesh_transform: DAffine2,
-		mesh_transparency_field: Option<&'field mut String>,
-	) -> Self {
-		// The layer stack is what carries the color space: gamma sRGB uses the bicubic Bernstein stack,
-		// while a nonlinear space stacks approximated rows so the compositor's linear blend still lands on the true surface.
-		let v_layers = SvgMeshVLayers::new(mesh_evaluator);
-
-		// The v-direction mask to simulate 2D interpolation
-		let alpha_mask_gradient_ids = Self::render_alpha_mask_gradient(render, &v_layers);
-
-		Self {
-			mesh_evaluator,
-			v_layers,
-			alpha_mask_gradient_ids,
-			parent_transform,
-			mesh_transform,
-			mesh_transparency_field,
-		}
-	}
-
-	/// Define N-1 alpha functions from the v-direction layer weights and write them as approximated linear gradients, then return the ids.
-	/// They compensate for attenuation accumulated through source-over compositing,
-	/// making the final weights of the N color layers equal the layer scheme's weights.
-	/// The v-direction masks encode only those weights with no patch specific color data, so they can be shared by all patches.
-	fn render_alpha_mask_gradient(render: &mut SvgRender, v_layers: &SvgMeshVLayers) -> Vec<String> {
-		let alpha_mask_gradient_group_id = generate_uuid();
-		(0..v_layers.layer_count() - 1)
-			.map(|i| {
-				let id = format!("mg-ag{i}-{alpha_mask_gradient_group_id}");
-				match v_layers.source_over_ramp(i) {
-					// Linear interpolation mask to blend i-th and (i+1)-th u direction gradients
-					Some([start, end]) => write!(
-						&mut render.svg_defs,
-						r##"<linearGradient id="{id}" x1="0.5" y1="{start}" x2="0.5" y2="{end}" gradientUnits="userSpaceOnUse">{}</linearGradient>"##,
-						clamped_ramp_gradient_stops_string(),
-					),
-					// 4 Bernstein base functions for the v direction
-					None => write!(
-						&mut render.svg_defs,
-						r##"<linearGradient id="{id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse">{}</linearGradient>"##,
-						alpha_curve_to_gradient_stops_string(&|t| v_layers.source_over_alpha(i, t)),
-					),
-				}
-				.unwrap();
-
-				id
-			})
-			.collect::<Vec<_>>()
-	}
-
-	fn render_alpha_mask(&self, render: &mut SvgRender, patch_unique_id: u64, map_region: [f64; 4]) -> Vec<String> {
-		let [map_x, map_y, map_width, map_height] = map_region;
-		self.alpha_mask_gradient_ids
-			.iter()
-			.enumerate()
-			.map(|(i, gradient_id)| {
-				let mask_id = format!("mg-am{i}-{patch_unique_id}");
-				write!(
-					&mut render.svg_defs,
-					r##"<mask
-					id="{mask_id}"
-					x="{map_x}"
-					y="{map_y}"
-					width="{map_width}"
-					height="{map_height}"
-					maskUnits="userSpaceOnUse"
-					maskContentUnits="userSpaceOnUse"
-					mask-type="alpha">
-						<rect
-						x="{map_x}"
-						y="{map_y}"
-						width="{map_width}"
-						height="{map_height}"
-						fill="url(#{gradient_id})"/>
-					</mask>"##,
-				)
-				.unwrap();
-				mask_id
-			})
-			.collect::<Vec<_>>()
-	}
-
-	pub(super) fn render_patch(&mut self, render: &mut SvgRender, patch: &MeshPatch) {
-		let unique_id = generate_uuid();
-		let Some(patch_evaluator) = self.mesh_evaluator.patch_evaluator(patch.index) else { return };
-
-		// Construct a closed path of the patch boundary for calculating the bounding box and create a clipping mask
-		let mut patch_boundary_path = patch.boundary_path();
-		let bounds = patch_boundary_path.bounding_box();
-		let bounds_min = DVec2::new(bounds.x0, bounds.y0);
-		let bounds_max = DVec2::new(bounds.x1, bounds.y1);
-		let bounds_size = bounds_max - bounds_min;
-		if !bounds_size.is_finite() || bounds_size.x <= f64::EPSILON || bounds_size.y <= f64::EPSILON {
-			return;
-		}
-		// Encode the deformation in a local patch-bounding-box space so patch translation and scaling do not consume PNG channel precision.
-		// That space has to reach the output through a uniform scale, since Firefox as of version 154 has a bug
-		// that converts `feDisplacementMap`'s `scale` into one isotropic filter-space length instead of one length per axis,
-		// so a local space that reaches the output non-uniformly displaces both axes by the wrong amount there.
-		let mesh_to_output = (self.parent_transform * self.mesh_transform).matrix2;
-		let output_scales = DVec2::new(mesh_to_output.x_axis.length(), mesh_to_output.y_axis.length());
-		if !output_scales.is_finite() || output_scales.min_element() <= f64::EPSILON {
-			return;
-		}
-		let local_axes = DVec2::new(bounds_size.y * output_scales.y / output_scales.x, bounds_size.y);
-		let patch_extent = bounds_size / local_axes;
-		let local_to_patch_bbox = DAffine2::from_cols(DVec2::new(local_axes.x, 0.), DVec2::new(0., local_axes.y), bounds_min);
-
-		let DisplacementMapSamples { displacements, region } = coons_bbox_to_source_displacements(patch_evaluator, &local_to_patch_bbox, patch_extent, &patch_boundary_path);
-		let [map_x, map_y, map_width, map_height] = region;
-		// feDisplacementMap decodes each channel as scale * (channel - 0.5).
-		// Twice the largest absolute component is therefore the smallest scale that covers every displacement and maximizes quantization precision.
-		let max_displacement = displacements.iter().map(|displacement| displacement.abs().max_element()).fold(0_f64, f64::max);
-		// Keep the scale nonzero when all displacements are zero.
-		let scale = (max_displacement * 2.).max(f64::EPSILON);
-
-		let Some(displacement_map_png) = displacements_to_map_png(&displacements, scale) else { return };
-		let preamble = "data:image/png;base64,";
-		let mut displacement_map_data_url = String::with_capacity(preamble.len() + displacement_map_png.len() * 4 / 3 + 4);
-		displacement_map_data_url.push_str(preamble);
-		base64::engine::general_purpose::STANDARD.encode_string(displacement_map_png, &mut displacement_map_data_url);
-
-		let v_alpha_mask_ids = self.render_alpha_mask(render, unique_id, region);
-
-		let extent_x = patch_extent.x;
-		let u_color_curves_gradient_ids = (0..self.v_layers.layer_count())
-			.map(|i| {
-				let u_color_curve = |u| self.v_layers.evaluate_layer_u_color(patch_evaluator, i, u);
-				let stops = u_color_curve_to_gradient_stops_string(&u_color_curve);
-				let id = format!("mg-cg{i}-{unique_id}");
-
-				write!(
-					&mut render.svg_defs,
-					r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="{extent_x}" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
-				)
-				.unwrap();
-
-				id
-			})
-			.collect::<Vec<_>>();
-
-		write!(
-			&mut render.svg_defs,
-			r##"<filter
-			id="fd{unique_id}"
-			x="{map_x}"
-			y="{map_y}"
-			width="{map_width}"
-			height="{map_height}"
-			filterUnits="userSpaceOnUse"
-			primitiveUnits="userSpaceOnUse"
-			color-interpolation-filters="sRGB">
-				<feImage
-				href="{displacement_map_data_url}"
-				x="{map_x}"
-				y="{map_y}"
-				width="{map_width}"
-				height="{map_height}"
-				preserveAspectRatio="none"
-				result="gmmap{unique_id}"/>
-				<feDisplacementMap
-					x="{map_x}"
-					y="{map_y}"
-					width="{map_width}"
-					height="{map_height}"
-					in="SourceGraphic"
-					in2="gmmap{unique_id}"
-				scale="{scale}"
-				xChannelSelector="R"
-				yChannelSelector="G"/>
-		</filter>"##
-		)
-		.unwrap();
-
-		// Add a centered stroke to expand the patch along its boundary normal and hide antialiasing gaps between patches.
-		let patch_clip_stroke_width = 2. * PATCH_INFLATION_FRACTION;
-		patch_boundary_path.apply_affine(Affine::new(local_to_patch_bbox.inverse().to_cols_array()));
-		let patch_boundary_d = patch_boundary_path.to_svg();
-
-		write!(
-			&mut render.svg_defs,
-			r##"<mask
-			id="mc{unique_id}"
-			x="{map_x}"
-			y="{map_y}"
-			width="{map_width}"
-			height="{map_height}"
-			maskUnits="userSpaceOnUse"
-			maskContentUnits="userSpaceOnUse"
-			mask-type="alpha">
-				<path d="{patch_boundary_d}" fill="#fff" stroke="#fff" stroke-width="{patch_clip_stroke_width}" stroke-linejoin="round"/>
-			</mask>"##
-		)
-		.unwrap();
-
-		let patch_transform_str = format_transform_matrix(self.mesh_transform * local_to_patch_bbox);
-		render.parent_tag(
-			"g",
-			|attributes| {
-				attributes.push("transform", patch_transform_str.clone());
-			},
-			|render| {
-				render.parent_tag(
-					"g",
-					|attributes| {
-						attributes.push("mask", format!("url(#mc{unique_id})"));
-					},
-					|render| {
-						render.parent_tag(
-							"g",
-							|attributes| {
-								attributes.push("style", "isolation:isolate");
-								attributes.push("filter", format!("url(#fd{unique_id})"));
-							},
-							|render| {
-								u_color_curves_gradient_ids.iter().enumerate().rev().for_each(|(i, gradient_id)| {
-									render.leaf_tag("rect", |attributes| {
-										attributes.push("x", map_x.to_string());
-										attributes.push("y", map_y.to_string());
-										attributes.push("width", map_width.to_string());
-										attributes.push("height", map_height.to_string());
-										attributes.push("fill", format!("url(#{gradient_id})"));
-										if let Some(mask_id) = v_alpha_mask_ids.get(i) {
-											attributes.push("mask", format!("url(#{mask_id})"));
-										}
-									});
-								});
-							},
-						);
-					},
-				);
-			},
-		);
-
-		self.collect_transparency_field(render, patch, unique_id, patch_transform_str, patch_extent, &v_alpha_mask_ids);
-	}
-
-	fn collect_transparency_field(&mut self, render: &mut SvgRender, patch: &MeshPatch, patch_unique_id: u64, patch_transform: String, patch_extent: DVec2, v_alpha_mask_ids: &[String]) -> Option<()> {
-		let mesh_transparency_field = self.mesh_transparency_field.as_deref_mut()?;
-		let patch_evaluator = self.mesh_evaluator.patch_evaluator(patch.index)?;
-		let (map_min, map_size) = displacement_map_region(patch_extent);
-		let (map_x, map_y, map_width, map_height) = (map_min.x, map_min.y, map_size.x, map_size.y);
-		let extent_x = patch_extent.x;
-
-		// Keep transparency as an opaque grayscale field until every patch has been assembled into one mesh-wide luminance mask.
-		let u_transparency_curves_gradient_ids: Vec<String> = (0..self.v_layers.layer_count())
-			.map(|i| {
-				// Only takes alpha value
-				let u_alpha_curve = |t| self.v_layers.evaluate_layer_u_color(patch_evaluator, i, t).w;
-				let stops = u_alpha_curve_to_gradient_stops_string(&u_alpha_curve);
-				let id = format!("mg-cag{i}-{patch_unique_id}");
-
-				write!(
-					&mut render.svg_defs,
-					r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="{extent_x}" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
-				)
-				.unwrap();
-
-				id
-			})
-			.collect();
-
-		let mut patch_transparency_field = String::new();
-		for (i, gradient_id) in u_transparency_curves_gradient_ids.iter().enumerate().rev() {
-			let mask = match v_alpha_mask_ids.get(i) {
-				Some(mask_id) => format!(r##" mask="url(#{mask_id})""##),
-				None => String::new(),
-			};
-			write!(
-				patch_transparency_field,
-				r##"<rect x="{map_x}" y="{map_y}" width="{map_width}" height="{map_height}" fill="url(#{gradient_id})"{mask}/>"##,
-			)
-			.unwrap();
-		}
-
-		write!(
-			mesh_transparency_field,
-			r##"<g transform="{patch_transform}" mask="url(#mc{patch_unique_id})"><g style="isolation:isolate" filter="url(#fd{patch_unique_id})">{patch_transparency_field}</g></g>"##,
-		)
-		.unwrap();
-
-		Some(())
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1227,7 +821,7 @@ mod tests {
 		let layers = SvgMeshVLayers::new(&evaluator);
 
 		let mut worst_error = 0_f32;
-		for patch in evaluator.patch_evaluators() {
+		for patch in evaluator.patches() {
 			for u_step in 0..=256 {
 				let u = u_step as f32 / 256.;
 				for v_step in 0..=256 {
