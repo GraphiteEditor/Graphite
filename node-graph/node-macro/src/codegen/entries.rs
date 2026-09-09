@@ -310,7 +310,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 					let row_ty = ir::strip_ilist(&impls[row.min(impls.len() - 1)]).0;
 					let field_ty = match &regular_fields[*index].ty {
 						ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
-						_ => unreachable!("ranked sources are regular fields"),
+						_ => unreachable!("carried sources are regular fields"),
 					};
 					generic_assignment(&field_ty, &row_ty, generic).map(|ty| (generic.clone(), ty))
 				})
