@@ -980,6 +980,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let output_type = &parsed.output_type;
 	let raw_lazy = matches!(*model, Dialect::Poll);
 	let injected_name = |ident: &Ident| async_source && (ident == "_runtime" || ident == "_source");
+	// A name input declares where a placeholder's name is wired and nothing
+	// more: the name is spent resolving the layout when the graph compiles, so
+	// it reaches neither the kernel's parameters nor its call. The wire input
+	// stays, since the fold reads the constant off it.
+	let kernel_omits =
+		|field: &ParsedField| injected_name(&field.pat_ident.ident) || matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { name_source: Some(_), .. }));
 	let where_predicates: Vec<TokenStream2> = parsed.where_clause.iter().flat_map(|clause| clause.predicates.iter()).map(|predicate| quote!(#predicate)).collect();
 
 	let NodeFields {
@@ -1088,7 +1094,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		});
 		quote!((#value_param #(, #read_pats)*): (#value_ty #(, #read_tys)*))
 	};
-	let kernel_params = regular_fields.iter().enumerate().filter(|(_, field)| !injected_name(&field.pat_ident.ident)).map(|(index, field)| {
+	let kernel_params = regular_fields.iter().enumerate().filter(|(_, field)| !kernel_omits(field)).map(|(index, field)| {
 		let pat = &field.pat_ident;
 		match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if ir::materialized_levels(&node, index) > 0 => {
@@ -1517,7 +1523,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(!tokens.is_empty()).then_some(tokens)
 	};
 
-	let call_args = regular_fields.iter().enumerate().filter(|(_, field)| !injected_name(&field.pat_ident.ident)).map(|(index, field)| {
+	let call_args = regular_fields.iter().enumerate().filter(|(_, field)| !kernel_omits(field)).map(|(index, field)| {
 		let name = &field.pat_ident.ident;
 		match &field.ty {
 			// A lend param binds an owned input; the kernel borrows the
@@ -1719,7 +1725,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let vis = &parsed.vis;
 	// The input index rides along: an async kernel's param type depends on the
 	// field's value binding, which is indexed off the node's inputs.
-	let kernel_indexed: Vec<(usize, &&ParsedField)> = regular_fields.iter().enumerate().filter(|(_, field)| !injected_name(&field.pat_ident.ident)).collect();
+	let kernel_indexed: Vec<(usize, &&ParsedField)> = regular_fields.iter().enumerate().filter(|(_, field)| !kernel_omits(field)).collect();
 	let kernel_fields: Vec<&&ParsedField> = kernel_indexed.iter().map(|(_, field)| *field).collect();
 	// A bare `Attr<M>` in the return type cannot elide its lifetime, so the
 	// kernel gets a fresh one; reference-valued writes name their real
@@ -2010,12 +2016,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			Some(tuple_arg(regular_fields[0], quote!(#core_types::record::ElToken)))
 		}
 		.into_iter();
-		let value_args = regular_fields.iter().skip(if skips_carrier { 0 } else { 1 }).map(|field| {
+		let value_args = regular_fields.iter().skip(if skips_carrier { 0 } else { 1 }).filter(|field| !kernel_omits(field)).map(|field| {
 			let name = &field.pat_ident.ident;
 			match &field.ty {
-				// A name input's text is spent when the graph compiles, so the
-				// kernel takes the bare placeholder, not the wired string.
-				ParsedFieldType::Regular(RegularParsedField { name_source: Some(_), .. }) => quote!(::core::default::Default::default()),
 				// A lend param binds an owned input; the kernel borrows the
 				// evaluated value.
 				ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => quote!(&#name),
