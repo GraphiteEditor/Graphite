@@ -257,7 +257,7 @@ macro_rules! wire_value {
 		impl $crate::attribute::WireValue for $value {
 			type Row = $value;
 
-			fn park<'e>(self, _: &'e $crate::arena::Arena) -> ::core::option::Option<$value> {
+			fn park(self, _: &$crate::arena::Arena) -> ::core::option::Option<$value> {
 				::core::option::Option::Some(self)
 			}
 		}

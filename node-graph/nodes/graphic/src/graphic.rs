@@ -401,10 +401,10 @@ macro_rules! attribute_reads {
 		$(
 			$(#[$meta])*
 			#[node_macro::node(category("Attributes: Read"))]
-			pub fn $node<'e, T>(
+			pub fn $node<T>(
 				_: impl Ctx,
 				/// The content whose lanes carry the attribute; its element is never read.
-				(content, value): (T, Attr<'e, Named<Name0, $row>>),
+				(content, value): (T, Attr<Named<Name0, $row>>),
 				/// The attribute name, folded into an offset when the graph compiles.
 				name: Named<Name0>,
 			) -> $value {
