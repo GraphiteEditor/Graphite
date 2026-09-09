@@ -114,6 +114,29 @@ pub unsafe fn read_at<'e, A: attribute::Attribute>(rec: Rec<'_>, offset: Option<
 	})
 }
 
+/// [`read_at`] for a name-generic read, whose marker carries the value type
+/// but not the name and so cannot know the name's own default. `absent` is
+/// that default's bytes, which the compiler takes from the census once the
+/// name is folded; without one the value type's default applies, which is
+/// exactly the rule for a name the census does not declare.
+///
+/// # Safety
+/// As [`read_at`]. `absent`, where present, must hold the object
+/// representation of `A::Value`, which the compiler takes from the census row
+/// for the folded name after checking that row's value type against `A`'s. A
+/// reference-valued default addresses `'static` data, so the value it yields
+/// outlives any evaluation.
+pub unsafe fn read_at_defaulting<'e, A: attribute::Attribute>(rec: Rec<'_>, offset: Option<usize>, absent: Option<&[u8]>) -> attribute::Attr<'e, A> {
+	attribute::Attr(match (offset, absent) {
+		// SAFETY: the caller's contract.
+		(Some(offset), _) => unsafe { rec.read::<A::Value<'e>>(offset) },
+		// SAFETY: the caller's contract; the bytes are unaligned storage, so
+		// the value is read out rather than referenced in place.
+		(None, Some(bytes)) => unsafe { bytes.as_ptr().cast::<A::Value<'e>>().read_unaligned() },
+		(None, None) => A::default(),
+	})
+}
+
 /// The read-less [`DerivedLazyInput`] glue: the token alone.
 ///
 /// # Safety

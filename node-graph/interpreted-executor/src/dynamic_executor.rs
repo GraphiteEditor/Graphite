@@ -842,6 +842,13 @@ mod test {
 	}
 
 	#[test]
+	fn an_absent_census_named_read_serves_the_census_default() {
+		// `opacity` is declared `f64` defaulting to 1, so its absence reads as
+		// the census default rather than the value type's.
+		assert_eq!(read_back(read_attribute_network("novel:count", "opacity", TaggedValue::F64(2.5))), 1.);
+	}
+
+	#[test]
 	fn a_named_read_disagreeing_with_its_write_is_refused() {
 		// The name is written at a path upstream and read at `f64` here, which
 		// is the one-name-one-type rule spanning a write and a read.

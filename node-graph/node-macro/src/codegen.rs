@@ -240,6 +240,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let slot = format_ident!("__read_{index}");
 			quote!(pub(super) #slot: Option<usize>)
 		}));
+		// A name-generic read carries the folded name's own default beside its
+		// offset, since its marker names the value type but not the name.
+		state.extend(
+			field_reads(&struct_regular_fields)
+				.iter()
+				.enumerate()
+				.filter(|(_, (_, read))| crate::parsing::named_marker(&read.marker).is_some())
+				.map(|(index, _)| {
+					let slot = format_ident!("__read_default_{index}");
+					quote!(pub(super) #slot: Option<::std::boxed::Box<[u8]>>)
+				}),
+		);
 		state.extend((0..node.output.shape.attrs.len()).map(|index| {
 			let slot = format_ident!("__write_{index}");
 			quote!(pub(super) #slot: usize)
@@ -1259,7 +1271,15 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let read_binding = |slot: usize, read: &AttributeRead, rec: TokenStream2| {
 		let pat = &read.pat_ident;
 		let marker = &read.marker;
+		let default_slot = format_ident!("__read_default_{slot}");
 		let slot = format_ident!("__read_{slot}");
+		// A name-generic marker carries the value type but not the name, so it
+		// cannot know the name's own default; the compiler supplies it.
+		if crate::parsing::named_marker(marker).is_some() {
+			return quote! {
+				let #pat = unsafe { #core_types::record::read_at_defaulting::<#marker>(#rec, self.#slot, self.#default_slot.as_deref()) };
+			};
+		}
 		quote! {
 			let #pat = unsafe { #core_types::record::read_at::<#marker>(#rec, self.#slot) };
 		}
@@ -2540,10 +2560,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.enumerate()
 			.filter(|(_, (_, read))| crate::parsing::named_marker(&read.marker).is_some())
 			.map(|(slot, _)| {
+				let default_slot = format_ident!("__read_default_{slot}");
 				let slot = format_ident!("__read_{slot}");
 				let position = folded_read;
 				folded_read += 1;
-				quote!(self.#slot = __resolved.named_reads[#position];)
+				quote! {
+					self.#slot = __resolved.named_reads[#position];
+					self.#default_slot = __resolved.named_read_defaults[#position].clone();
+				}
 			})
 			.collect();
 		let plan = (!skips_carrier || gather_carrier).then(|| quote!(self.__plan = __resolved.plan;));
@@ -2697,6 +2721,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		});
 		let plan_default = (!skips_carrier || gather_carrier).then(|| quote!(__plan: ::std::vec::Vec::new(),)).into_iter();
 		let read_names = (0..flat_reads.len()).map(|index| format_ident!("__read_{index}")).map(|slot| quote!(#slot,));
+		// The folded name's default arrives with the layout, so the constructor
+		// leaves the slot empty and `set_layout` fills it.
+		let read_default_inits = flat_reads
+			.iter()
+			.enumerate()
+			.filter(|(_, (_, read))| crate::parsing::named_marker(&read.marker).is_some())
+			.map(|(index, _)| {
+				let slot = format_ident!("__read_default_{index}");
+				quote!(#slot: ::core::option::Option::None,)
+			});
 		let write_defaults = (0..write_markers.len()).map(|index| format_ident!("__write_{index}")).map(|slot| quote!(#slot: 0,));
 		let mat_cache_defaults = materialized_indices(&regular_fields, &node).into_iter().map(|index| {
 			let slot = format_ident!("__mat_cache_{index}");
@@ -2743,6 +2777,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						__frame_bytes: 0,
 						__lane_invariant: 0,
 						#(#read_names)*
+						#(#read_default_inits)*
 						#(#write_defaults)*
 						#(#mat_cache_defaults)*
 						#(#slot_default)*

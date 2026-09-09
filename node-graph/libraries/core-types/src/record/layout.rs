@@ -377,6 +377,11 @@ pub struct RecordLayout {
 	/// name and the read input's finished layout sit together, so `set_layout`
 	/// only copies the numbers into the read slots.
 	pub named_reads: Vec<Option<usize>>,
+	/// The census default's bytes for each absent name-from-input read whose
+	/// name the census declares, in the same order. A name the census does not
+	/// declare has `None` and reads as its value type's default, which is that
+	/// case's own rule; a read that resolved to an offset needs no default.
+	pub named_read_defaults: Vec<Option<Box<[u8]>>>,
 }
 
 /// A write whose name comes from the graph rather than from a marker: the
@@ -552,11 +557,30 @@ impl LayoutMeta {
 		// A named read resolves against the input it reads, whose layout is
 		// finished by the time this node folds. An absent attribute stays
 		// `None`, which the read serves as the name's forced default.
-		let named_reads = self
+		let named_reads: Vec<Option<usize>> = self
 			.named_reads
 			.iter()
 			.zip(&self.folded_read_names)
 			.map(|(read, name)| inputs.get(read.input as usize).copied().flatten().and_then(|layout| layout.offset_of(name, read.template.level)))
+			.collect();
+		// An absent read serves the name's own default, which for a declared
+		// name is the census's rather than the value type's. The census stages
+		// it the same way it fills any absent field: as the declared default's
+		// bytes. One name carries one value type, checked when the name folds,
+		// so the size agreement below is a guard rather than a branch.
+		let named_read_defaults = self
+			.named_reads
+			.iter()
+			.zip(&self.folded_read_names)
+			.zip(&named_reads)
+			.map(|((read, name), offset)| {
+				let row = offset.is_none().then(|| attribute::info(name))??;
+				(row.value_type == read.template.type_id && row.size == read.template.size).then(|| {
+					let mut bytes = vec![0u8; row.size];
+					(row.write_default_bytes)(&mut bytes);
+					bytes.into_boxed_slice()
+				})
+			})
 			.collect();
 		RecordLayout {
 			layout,
@@ -565,6 +589,7 @@ impl LayoutMeta {
 			lane_invariant: 0,
 			named_writes: self.folded_names.clone(),
 			named_reads,
+			named_read_defaults,
 		}
 	}
 
