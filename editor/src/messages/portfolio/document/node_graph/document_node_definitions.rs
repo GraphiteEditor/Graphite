@@ -356,7 +356,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						},
 						// 1: Count Elements (number of subpaths)
 						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::count_elements::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(vector::list_length::IDENTIFIER),
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 2)),
 							..Default::default()

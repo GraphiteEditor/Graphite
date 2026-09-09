@@ -776,7 +776,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::ClosePathNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::count_elements::IDENTIFIER,
+		node: graphene_std::vector::list_length::IDENTIFIER,
 		aliases: &["graphene_core::vector::CountElementsNode"],
 	},
 	NodeReplacement {
@@ -2484,7 +2484,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		};
 
 		// Create List Length node: counts content `List` items → N
-		let Some(list_length_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::count_elements::IDENTIFIER)) else {
+		let Some(list_length_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::list_length::IDENTIFIER)) else {
 			log::error!("Could not get list_length node from definition when upgrading morph");
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 			return None;
