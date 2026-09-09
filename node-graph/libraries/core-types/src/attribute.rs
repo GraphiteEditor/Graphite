@@ -193,7 +193,27 @@ pub const NAMED_PLACEHOLDER: &str = "";
 /// them takes two names; `V` fixes the value type. The name is absent by
 /// construction: it comes from the instance's constant text input, folded
 /// into the layout at graph compile time, so a computed name cannot exist.
-pub struct Named<X, V>(PhantomData<fn() -> (X, V)>);
+///
+/// Written `Named<X>` in parameter position, it declares where `X`'s name is
+/// wired: the macro gives that input constant text, and the kernel receives
+/// only the placeholder, since a folded name is a layout fact rather than a
+/// value the kernel needs.
+pub struct Named<X, V = Text>(PhantomData<fn() -> (X, V)>);
+
+impl<X, V> Default for Named<X, V> {
+	fn default() -> Self {
+		Named(PhantomData)
+	}
+}
+
+/// The placeholders a signature distinguishes its name-generic attributes by.
+/// A node writing one name uses [`Name0`]; a second name on the same node
+/// takes [`Name1`], and so on, which is all the placeholder has to do.
+pub struct Name0;
+/// The second name-generic attribute in one signature. See [`Name0`].
+pub struct Name1;
+/// The third name-generic attribute in one signature. See [`Name0`].
+pub struct Name2;
 
 // SAFETY: every obligation is discharged by `V`, which carries the same
 // contract at the same value type; only the name differs, and the compiler
@@ -212,6 +232,63 @@ unsafe impl<X: 'static, V: AttrValue> Attribute for Named<X, V> {
 	}
 
 	const REPARK: Option<crate::list::ReparkFn> = V::REPARK;
+}
+
+/// The value a name-generic write takes off the wire, and the row it lands
+/// in. A plain row is its own wire form; a reference row's wire form is the
+/// owned payload the kernel parks in the arena, so the field can carry a
+/// borrow of it for the evaluation.
+pub trait WireValue: 'static {
+	/// The row this value is written at, fixing the field's value type.
+	type Row: AttrValue;
+
+	/// Moves the value into `arena` where the row borrows it, or hands it back
+	/// unchanged where the row stores it plainly. `None` reports exhaustion.
+	fn park<'e>(self, arena: &'e crate::arena::Arena) -> Option<<Self::Row as AttrValue>::Value<'e>>;
+}
+
+/// Declares [`WireValue`] rows. `for T` is a plain value, carried and stored
+/// as itself; `Wire => Row` parks `Wire`'s payload in the arena and stores the
+/// borrow `Row` names.
+#[macro_export]
+macro_rules! wire_value {
+	() => {};
+	(for $value:ty; $($rest:tt)*) => {
+		impl $crate::attribute::WireValue for $value {
+			type Row = $value;
+
+			fn park<'e>(self, _: &'e $crate::arena::Arena) -> ::core::option::Option<$value> {
+				::core::option::Option::Some(self)
+			}
+		}
+
+		$crate::wire_value!($($rest)*);
+	};
+	($wire:ty => $row:ty; $($rest:tt)*) => {
+		impl $crate::attribute::WireValue for $wire {
+			type Row = $row;
+
+			fn park<'e>(self, arena: &'e $crate::arena::Arena) -> ::core::option::Option<<$row as $crate::attribute::AttrValue>::Value<'e>> {
+				let (parked, _) = arena.alloc(self)?;
+				::core::option::Option::Some(::std::borrow::Borrow::borrow(parked))
+			}
+		}
+
+		$crate::wire_value!($($rest)*);
+	};
+}
+
+wire_value! {
+	for f64;
+	for u32;
+	for u64;
+	for bool;
+	for DVec2;
+	for DAffine2;
+	for crate::Color;
+	for crate::blending::BlendMode;
+	::std::vec::Vec<crate::uuid::NodeId> => NodeIdPath;
+	::std::string::String => Text;
 }
 
 /// Interns a folded attribute name for the `&'static str` a layout field

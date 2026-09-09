@@ -1,4 +1,4 @@
-use core_types::attribute::{Attr, EditorLayerPath, Transform as TransformAttr};
+use core_types::attribute::{Attr, EditorLayerPath, Name0, Named, Transform as TransformAttr, WireValue};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt, Level};
@@ -366,6 +366,25 @@ pub fn stamp_layer_path<'e, T>(ctx: impl Ctx + ExtractArena<'e>, element: T, pat
 		trace: Vec::new(),
 	})?;
 	Ok((element, Attr(parked.as_slice())))
+}
+
+/// Writes `value` onto each lane under the attribute `name` names. The name is
+/// constant text the compiler folds into the layout when the graph compiles, so
+/// the write costs exactly what a marker node's does; a name that is not
+/// constant is refused there rather than resolved here.
+#[node_macro::node(category("Attributes: Write"))]
+pub fn write_attribute<'e, T, V: WireValue>(
+	ctx: impl Ctx + ExtractArena<'e>,
+	content: T,
+	/// The attribute name, which the compiler folds and the kernel never reads.
+	_name: Named<Name0>,
+	#[implementations(f64, u32, u64, bool, DVec2, DAffine2, Color, Vec<NodeId>, String)] value: V,
+) -> Result<(T, Attr<'e, Named<Name0, V::Row>>), Interrupt> {
+	let parked = value.park(ctx.arena()).ok_or(GraphError {
+		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+		trace: Vec::new(),
+	})?;
+	Ok((content, Attr(parked)))
 }
 
 /// Joins two levels of the same type, the base's lanes followed by the new's.

@@ -1024,12 +1024,6 @@ fn replace_optional_f64_null(input: &str) -> String {
 	result
 }
 
-/// Serialized proto identifiers of the pre-flip Merge and Artboard layer internals.
-/// A document containing any of them predates the leveled-records flip and rebuilds its
-/// layer definitions through the same reset mechanism as the `SourceNodeIdNode` entry in
-/// `document_migration_reset_node_definition`.
-pub const FLIP_RESET_NODE_MARKERS: &[&str] = &["graphic_nodes::graphic::WriteAttributeNode"];
-
 pub fn document_migration_reset_node_definition(document_serialized_content: &str) -> bool {
 	// Upgrade a document being opened to use fresh copies of all nodes
 	if document_serialized_content.contains("node_output_index") {
@@ -1048,12 +1042,6 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 		|| document_serialized_content.contains("graphene_core::graphic::graphic::SourceNodeIdNode")
 		|| document_serialized_content.contains("graphene_core::graphic::SourceNodeIdNode")
 	{
-		return true;
-	}
-
-	// The leveled-records flip replaced the layer internals; documents from before it rebuild
-	// their layer definitions.
-	if FLIP_RESET_NODE_MARKERS.iter().any(|marker| document_serialized_content.contains(marker)) {
 		return true;
 	}
 
@@ -2616,10 +2604,12 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn the_flip_reset_markers_keep_the_historical_merge_internals_spelling() {
-		// The node itself is removed; the marker matches its spelling in
-		// documents saved before the flip, which must stay stable.
-		assert_eq!(FLIP_RESET_NODE_MARKERS, &["graphic_nodes::graphic::WriteAttributeNode"]);
+	fn a_written_attribute_no_longer_resets_the_layer_definitions() {
+		// The node resolves natively again, so a document carrying it keeps
+		// its own layer internals instead of rebuilding them.
+		assert!(!document_migration_reset_node_definition(
+			r#"{"implementation":{"ProtoNode":{"name":"graphic_nodes::graphic::WriteAttributeNode"}}}"#
+		));
 	}
 
 	#[test]

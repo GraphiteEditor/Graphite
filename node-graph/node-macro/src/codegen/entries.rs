@@ -157,7 +157,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 			quote!(&#layout,)
 		});
 		let element_spec = quote!(gcore::record::ElementSpec::Concrete({ use gcore::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&gcore::record::ElementWritePick::<#row_output>(::core::marker::PhantomData)).element_write() }));
-		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, &core_types);
+		let layout_meta = crate::codegen::ir::layout_meta_tokens(&node, element_spec, &core_types, &assignments);
 		Some(quote! {
 			gcore::registry::RegistryEntry {
 				layout_meta: Some(#layout_meta),
@@ -397,7 +397,7 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 				.collect();
 
 			let carried_meta = || {
-				let meta = ir::layout_meta_tokens(&node, quote!(gcore::record::ElementSpec::Carried), &core_types);
+				let meta = ir::layout_meta_tokens(&node, quote!(gcore::record::ElementSpec::Carried), &core_types, &[]);
 				quote!(Some(#meta))
 			};
 
@@ -432,7 +432,25 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 				ir::NodeKind::RecordIo => {
 					let carrier_arg = (node.inputs.first().is_some_and(|input| input.subject) && ir::materialized_levels(&node, 0) == 0).then(|| quote!(&__layout_0,));
 					let layout_meta_fn = format_ident!("{}_layout_meta", fn_name);
-					(quote!(), quote!(#carrier_arg #(#value_layout_args)*), quote!(Some(self::#layout_meta_fn())))
+					// A name-generic write names its value type through a wired
+					// generic, which only the row resolves, so such a node's
+					// meta is emitted per row instead of shared across them.
+					let named = node.output.shape.attrs.iter().any(|attr| crate::parsing::named_marker(&attr.marker).is_some());
+					let meta = match named {
+						false => quote!(Some(self::#layout_meta_fn())),
+						true => {
+							let element_spec = match &node.output.shape.element {
+								ir::Element::Concrete(element) => {
+									let ty = substitute_ident_types(element, assignments);
+									quote!(gcore::record::ElementSpec::Concrete({ use gcore::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&gcore::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() }))
+								}
+								_ => quote!(gcore::record::ElementSpec::Carried),
+							};
+							let meta = ir::layout_meta_tokens(&node, element_spec, &core_types, assignments);
+							quote!(Some(#meta))
+						}
+					};
+					(quote!(), quote!(#carrier_arg #(#value_layout_args)*), meta)
 				}
 				ir::NodeKind::Routing => {
 					let source_layouts = base_indices.iter().map(|index| format_ident!("__layout_{index}"));
