@@ -201,6 +201,15 @@ fn daffine2_identity() -> DAffine2 {
 	DAffine2::IDENTITY
 }
 
+/// Whether a fill's gradient placement transform is explicitly set, as opposed to derived
+/// from the content's bounding box at evaluation. A newtype so the node input's name is
+/// fixed in the document format ahead of the transform toggle's own arrival.
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct HasTransform(pub bool);
+
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]

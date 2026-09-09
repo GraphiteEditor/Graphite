@@ -580,6 +580,7 @@ tagged_value! {
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
+	HasTransform(vector::style::HasTransform),
 	GradientType(vector::style::GradientType),
 	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),

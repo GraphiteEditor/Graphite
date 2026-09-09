@@ -13,6 +13,7 @@ use graphene_std::list::List;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
+use graphene_std::vector::style::HasTransform;
 use graphene_std::vector::{Vector, graphic_types};
 use graphene_std::{ATTR_TRANSFORM, Graphic, NodeInputDecleration};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
@@ -625,10 +626,14 @@ impl NodeGraphExecutor {
 				if fill_transform_unbaked(document, &network_path, fill_node_id) {
 					let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
 					let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();
-					let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
+					let transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
+					let has_transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput::INDEX);
 					document
 						.network_interface
-						.set_input(&input, NodeInput::value(TaggedValue::OptionalDAffine2(Some(gradient_transform)), false), &network_path);
+						.set_input(&transform_input, NodeInput::value(TaggedValue::DAffine2(gradient_transform), false), &network_path);
+					document
+						.network_interface
+						.set_input(&has_transform_input, NodeInput::value(TaggedValue::HasTransform(HasTransform(true)), false), &network_path);
 				}
 
 				// The transform is settled, so its entry no longer needs to persist for a retry on the next open
@@ -832,16 +837,16 @@ impl NodeGraphExecutor {
 }
 
 // TODO: Eventually remove this document upgrade code
-/// Whether the fill node's transform input is still the unset `OptionalDAffine2(None)` placeholder that the migration leaves
-/// behind, meaning its gradient placement has not yet been baked (or set by the user), so a measured bake may safely be written.
+/// Whether the fill node's gradient placement is still the unset `HasTransform(false)` placeholder that the migration leaves
+/// behind, meaning it has not yet been baked (or set by the user), so a measured bake may safely be written.
 fn fill_transform_unbaked(document: &DocumentMessageHandler, network_path: &[NodeId], fill_node_id: NodeId) -> bool {
 	let Some(network) = document.network_interface.document_network().nested_network(network_path) else {
 		return false;
 	};
 	let Some(node) = network.nodes.get(&fill_node_id) else { return false };
 	matches!(
-		node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()),
-		Some(TaggedValue::OptionalDAffine2(None))
+		node.inputs.get(graphene_std::vector::fill::HasTransformInput::INDEX).and_then(|input| input.as_value()),
+		Some(TaggedValue::HasTransform(HasTransform(false)))
 	)
 }
 

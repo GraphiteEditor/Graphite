@@ -33,7 +33,7 @@ use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
 use graphene_std::vector::style::{
-	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, HasTransform, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
@@ -2677,7 +2677,23 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				} else {
 					"Swap the start and end points of the gradient line."
 				})
-				.on_update(update_value(move |_| TaggedValue::OptionalDAffine2(Some(new_transform)), node_id, TransformInput::INDEX))
+				.on_update(move |_: &IconButton| Message::Batched {
+					// The reversed placement is explicit even when the original was derived, so the toggle is set alongside it
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: TransformInput::INDEX,
+							value: Box::new(TaggedValue::DAffine2(new_transform)),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: HasTransformInput::INDEX,
+							value: Box::new(TaggedValue::HasTransform(HasTransform(true))),
+						}
+						.into(),
+					]),
+				})
 				.widget_instance();
 			spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			spread_methods_row.push(reverse_direction_button);

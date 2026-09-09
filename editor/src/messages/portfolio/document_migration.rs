@@ -15,7 +15,7 @@ use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
-use graphene_std::vector::style::{PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{HasTransform, PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -1613,7 +1613,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the legacy 4-input Fill node (content, fill: Fill, _backup_color, _backup_gradient: Gradient) to the
-	// value-model 7-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_type, _spread_method, _transform).
+	// value-model 8-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_type, _spread_method, _has_transform, _transform).
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 4 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -1648,16 +1648,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 						network_path,
 					);
 
-					let transform = if gradient.absolute {
-						Some(gradient.transform * gradient.to_transform())
+					// An unbaked placement keeps the template's `HasTransform(false)` default, the probe the deferred bake looks for
+					if gradient.absolute {
+						let transform = gradient.transform * gradient.to_transform();
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::HasTransform(HasTransform(true)), false), network_path);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
 					} else {
 						// Baking a legacy bounding-box-relative gradient is deferred until the measurement pre-pass can supply the paint target's bounds
 						document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, gradient.clone()));
-						None
-					};
-					document
-						.network_interface
-						.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::OptionalDAffine2(transform), false), network_path);
+					}
 				}
 			}
 			// Wired/exposed fill keeps the connection.
@@ -1692,19 +1695,54 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					network_path,
 				);
 
-				let transform = if g.absolute {
-					Some(g.transform * g.to_transform())
+				// As above: only an absolute placement writes the toggle pair, a deferred bake keeps the default
+				if g.absolute {
+					let transform = g.transform * g.to_transform();
+					document
+						.network_interface
+						.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::HasTransform(HasTransform(true)), false), network_path);
+					document
+						.network_interface
+						.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
 				} else {
 					document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, g.clone()));
-					None
-				};
-				document
-					.network_interface
-					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::OptionalDAffine2(transform), false), network_path);
+				}
 			}
 		}
 
-		inputs_count = 7;
+		inputs_count = 8;
+	}
+
+	// Upgrade Fill's optional placement transform into the has-transform toggle pair, fixing the input's name and count
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 7 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for index in 0..6 {
+			document.network_interface.set_input(&InputConnector::node(*node_id, index), old_inputs[index].clone(), network_path);
+		}
+		match old_inputs[6].as_value() {
+			Some(TaggedValue::OptionalDAffine2(Some(transform))) => {
+				let transform = *transform;
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::HasTransform(HasTransform(true)), false), network_path);
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
+			}
+			// The unset placeholder becomes the toggle's default false, deriving placement from the bounds
+			Some(TaggedValue::OptionalDAffine2(None)) => {}
+			// A wired transform source keeps its connection, marked explicit
+			_ => {
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::HasTransform(HasTransform(true)), false), network_path);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 7), old_inputs[6].clone(), network_path);
+			}
+		}
+
+		inputs_count = 8;
 	}
 
 	// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)

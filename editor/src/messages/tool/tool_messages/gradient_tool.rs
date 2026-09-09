@@ -2014,7 +2014,7 @@ mod test_gradient {
 	use graph_craft::document::value::TaggedValue;
 	use graphene_std::NodeInputDecleration;
 	use graphene_std::color::SRGBA8;
-	use graphene_std::vector::style::{GradientSpreadMethod, build_transform_with_y_preservation};
+	use graphene_std::vector::style::{GradientSpreadMethod, HasTransform, build_transform_with_y_preservation};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
 
 	use super::gradient_space_transform;
@@ -2067,8 +2067,12 @@ mod test_gradient {
 					_ => GradientSpreadMethod::default(),
 				};
 
+				let has_transform = matches!(
+					fill_node.inputs.get(fill::HasTransformInput::INDEX).and_then(|input| input.as_value()),
+					Some(&TaggedValue::HasTransform(HasTransform(true)))
+				);
 				let local_transform = match fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
-					Some(&TaggedValue::OptionalDAffine2(Some(value))) => value,
+					Some(&TaggedValue::DAffine2(value)) if has_transform => value,
 					_ => DAffine2::IDENTITY,
 				};
 

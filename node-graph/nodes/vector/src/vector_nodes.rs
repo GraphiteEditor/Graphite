@@ -38,7 +38,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{GradientStops, HasTransform, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use vector_types::{GradientSpreadMethod, GradientType};
@@ -358,10 +358,11 @@ fn fill<'e>(
 	_backup_gradient: IList<GradientStops>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
-	_transform: Option<DAffine2>,
+	_has_transform: HasTransform,
+	_transform: DAffine2,
 ) -> Result<(Vector, Attr<'e, Fill>, Attr<'e, AppearanceMarker>), Interrupt> {
 	let mut paint = paint_table(fill);
-	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _spread_method, _transform);
+	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _spread_method, _has_transform.0.then_some(_transform));
 	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint);
 	let parked = park_paint(ctx.arena(), paint)?;
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
@@ -380,14 +381,15 @@ fn fill_graphic_leveled<'e>(
 	_backup_gradient: IList<GradientStops>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
-	_transform: Option<DAffine2>,
+	_has_transform: HasTransform,
+	_transform: DAffine2,
 ) -> Result<(Graphic<'static>, Attr<'e, Fill>, Attr<'e, AppearanceMarker>), Interrupt> {
 	let bounds = match BoundingBox::bounding_box(&element, DAffine2::IDENTITY, false) {
 		RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		_ => None,
 	};
 	let mut paint = paint_table(fill);
-	default_gradient_paint(&mut paint, bounds, _gradient_type, _spread_method, _transform);
+	default_gradient_paint(&mut paint, bounds, _gradient_type, _spread_method, _has_transform.0.then_some(_transform));
 	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint);
 	let parked = park_paint(ctx.arena(), paint)?;
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;

@@ -15,7 +15,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
+use graphene_std::vector::style::{GradientSpreadMethod, GradientType, HasTransform, Stroke};
 use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
@@ -490,7 +490,12 @@ impl<'a> ModifyInputsContext<'a> {
 		if transform_is_value {
 			self.set_input_with_refresh(
 				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
-				NodeInput::value(TaggedValue::OptionalDAffine2(Some(transform)), false),
+				NodeInput::value(TaggedValue::DAffine2(transform), false),
+				true,
+			);
+			self.set_input_with_refresh(
+				InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput::INDEX),
+				NodeInput::value(TaggedValue::HasTransform(HasTransform(true)), false),
 				true,
 			);
 		}

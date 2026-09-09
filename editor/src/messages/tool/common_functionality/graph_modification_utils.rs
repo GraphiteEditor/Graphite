@@ -14,7 +14,7 @@ use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
+use graphene_std::vector::style::{FillChoice, HasTransform, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{GradientSpreadMethod, GradientStops, GradientType, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
@@ -648,9 +648,14 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		Some(&TaggedValue::GradientSpreadMethod(value)) => value,
 		_ => GradientSpreadMethod::default(),
 	};
+	let has_transform = matches!(
+		fill_node.inputs.get(fill::HasTransformInput::INDEX).and_then(|input| input.as_value()),
+		Some(&TaggedValue::HasTransform(HasTransform(true)))
+	);
 	let transform_input = fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value());
 	let transform = match transform_input {
-		Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(bounding_box())),
+		Some(&TaggedValue::DAffine2(value)) if has_transform => value,
+		Some(_) => initial_gradient_transform_for_bounding_box(bounding_box()),
 		_ => DAffine2::IDENTITY,
 	};
 
@@ -798,10 +803,10 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					Some(TaggedValue::GradientSpreadMethod(value)) => *value,
 					_ => GradientSpreadMethod::default(),
 				};
+				let has_transform = matches!(read(graphene_std::vector::fill::HasTransformInput::INDEX), Some(&TaggedValue::HasTransform(HasTransform(true))));
 				let transform = match read(graphene_std::vector::fill::TransformInput::INDEX) {
-					Some(TaggedValue::OptionalDAffine2(value)) => {
-						value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)))
-					}
+					Some(&TaggedValue::DAffine2(value)) if has_transform => value,
+					Some(_) => initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)),
 					_ => DAffine2::IDENTITY,
 				};
 
