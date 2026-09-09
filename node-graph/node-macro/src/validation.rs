@@ -135,7 +135,14 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	let element = writes.as_ref().map(|writes| &writes.element).unwrap_or(&value);
 	match &token {
 		Some(token) => {
-			if !matches!(crate::codegen::bare_ident(element), Some(ident) if ident == token) {
+			// An opaque reading input never looks at its element, so it writes
+			// a fresh one rather than carrying the input's through.
+			let opaque_reading = crate::codegen::classify::opaque_reading_carrier(parsed).is_some();
+			if opaque_reading {
+				if crate::codegen::contains_open_generic(parsed, element) {
+					emit_error!(parsed.output_type.span(), "an opaque reading input writes a concrete element, since `{}` is never read", token);
+				}
+			} else if !matches!(crate::codegen::bare_ident(element), Some(ident) if ident == token) {
 				emit_error!(parsed.output_type.span(), "a generic element passes through unchanged: return `{}` in the first tuple position", token);
 			}
 		}
@@ -422,13 +429,16 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 		(crate::codegen::ir::NodeKind::RecordIo, crate::codegen::ir::Element::Generic(ident)) => Some(ident.clone()),
 		_ => None,
 	};
+	// An opaque reading carrier's element is never looked at, so it needs no
+	// rows: the node registers one generic row and accepts any record wire.
+	let opaque_reading = crate::codegen::classify::opaque_reading_carrier(parsed);
 	let opaque_record_generic = |ty: &Type| {
 		let (stripped, _) = crate::codegen::ir::strip_ilist(ty);
 		let ident = match &stripped {
 			Type::Path(path) => path.path.get_ident(),
 			_ => None,
 		};
-		ident.is_some() && (ident == routing.as_ref().map(|routing| &routing.generic) || ident == record_token.as_ref())
+		ident.is_some() && (ident == routing.as_ref().map(|routing| &routing.generic) || ident == record_token.as_ref() || ident == opaque_reading.as_ref())
 	};
 
 	if !has_skip_impl && !parsed.fn_generics.is_empty() {

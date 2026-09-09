@@ -266,6 +266,36 @@ pub(crate) fn contains_open_generic(parsed: &ParsedNodeFn, ty: &Type) -> bool {
 		.any(|param| matches!(param, GenericParam::Type(type_param) if Some(&type_param.ident) != ctx_ident.as_ref() && type_contains_ident(ty, &type_param.ident)))
 }
 
+/// The element generic of a primary input that is read but never looked at:
+/// declared as an unbounded passthrough, carrying attribute reads, and absent
+/// from everywhere else in the signature. Such a node maps its declared
+/// attributes onto a fresh element, so it accepts any upstream record wire and
+/// registers one generic row rather than a row per element type.
+///
+/// Inferred rather than marked: a generic with nowhere to go and nothing to be
+/// is opaque by construction, and the signature already says so.
+pub(crate) fn opaque_reading_carrier(parsed: &ParsedNodeFn) -> Option<Ident> {
+	let carrier = parsed.fields.first()?;
+	if carrier.is_data_field || carrier.attribute_reads.is_empty() {
+		return None;
+	}
+	let ParsedFieldType::Regular(RegularParsedField { ty, lend: None, implementations, .. }) = &carrier.ty else {
+		return None;
+	};
+	if !implementations.is_empty() {
+		return None;
+	}
+	let token = unbounded_generic(parsed, ty)?;
+	// A token that reaches the output or another input is a passthrough
+	// element, which the node does carry; only one going nowhere is opaque.
+	let escapes = type_contains_ident(&parsed.output_type, &token)
+		|| parsed.fields.iter().skip(1).any(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => type_contains_ident(ty, &token),
+			ParsedFieldType::Node(NodeParsedField { input_type, output_type, .. }) => type_contains_ident(input_type, &token) || type_contains_ident(output_type, &token),
+		});
+	(!escapes).then_some(token)
+}
+
 pub(crate) fn unbounded_generic(parsed: &ParsedNodeFn, ty: &Type) -> Option<Ident> {
 	let ident = bare_ident(ty)?.clone();
 	let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
@@ -362,6 +392,13 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 		None => (value, Vec::new(), Vec::new()),
 	};
 	match &token {
+		// An opaque reading carrier never looks at its element, so it writes a
+		// fresh one instead of passing the token through.
+		Some(_) if opaque_reading_carrier(parsed).is_some() => {
+			if contains_open_generic(parsed, &element) {
+				return None;
+			}
+		}
 		Some(token) => {
 			if !matches!(bare_ident(&element), Some(ident) if ident == token) {
 				return None;

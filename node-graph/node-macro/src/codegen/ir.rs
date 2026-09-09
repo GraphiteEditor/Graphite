@@ -913,6 +913,68 @@ mod tests {
 	}
 
 	#[test]
+	fn a_reading_input_whose_element_goes_nowhere_is_opaque() {
+		let mut parsed = crate::parsing::parse_node_fn(
+			quote!(category("")),
+			quote!(
+				fn peek<'e, T>(_: impl Ctx, (content, opacity): (T, Attr<'e, Opacity>)) -> f64 {
+					let _ = content;
+					*opacity
+				}
+			),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+		let token = crate::codegen::classify::opaque_reading_carrier(&parsed).expect("the element generic is opaque");
+		assert_eq!(token.to_string(), "T");
+
+		// The node still reads, so it keeps the record-io tail, and the element
+		// rides it as the byte-carried token: one row covers every element type.
+		let node = build(&parsed);
+		assert!(matches!(node_kind(&node), NodeKind::RecordIo), "an opaque reading input still reads attributes");
+		assert!(
+			matches!(crate::codegen::record_shape(&parsed), Some(shape) if matches!(shape.carrier, crate::codegen::RecordCarrier::Token)),
+			"the element is carried as a token rather than read"
+		);
+		assert_eq!(node.inputs[0].shape.attrs.len(), 1, "the declared read survives the blessing");
+	}
+
+	#[test]
+	fn an_element_generic_the_node_uses_is_not_opaque() {
+		// Returned rather than dropped, so the element is carried, not opaque:
+		// the usual passthrough rule still governs it.
+		let mut carried = crate::parsing::parse_node_fn(
+			quote!(category("")),
+			quote!(
+				fn keep<'e, T>(_: impl Ctx, (content, opacity): (T, Attr<'e, Opacity>)) -> (T, Attr<'e, Opacity>) {
+					(content, opacity)
+				}
+			),
+		)
+		.unwrap();
+		carried.replace_impl_trait_in_input();
+		assert!(crate::codegen::classify::opaque_reading_carrier(&carried).is_none(), "an element the output carries is not opaque");
+
+		// No reads at all, so the generic is an ordinary element and still owes
+		// an implementations list.
+		let mut plain = crate::parsing::parse_node_fn(
+			quote!(category("")),
+			quote!(
+				fn plain<T>(_: impl Ctx, content: T) -> f64 {
+					let _ = content;
+					0.
+				}
+			),
+		)
+		.unwrap();
+		plain.replace_impl_trait_in_input();
+		assert!(
+			crate::codegen::classify::opaque_reading_carrier(&plain).is_none(),
+			"a generic element without reads still needs implementations"
+		);
+	}
+
+	#[test]
 	fn bridge_record_remove() {
 		assert_bridge(
 			quote!(category("")),

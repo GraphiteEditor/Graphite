@@ -823,7 +823,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// its generic stays a struct parameter.
 	let record_token = match (kind, &node.output.shape.element) {
 		(crate::codegen::ir::NodeKind::RecordIo, crate::codegen::ir::Element::Generic(ident)) if !gather_carrier => Some(ident.clone()),
-		_ => None,
+		// An opaque reading input's element is byte-carried the same way, even
+		// though the output replaces it rather than carrying it through.
+		_ => crate::codegen::classify::opaque_reading_carrier(parsed),
 	};
 	// The record-io write set, resolved from the output item and carrier input.
 	let write_markers: Vec<&Type> = node.output.shape.attrs.iter().map(|attr| &attr.marker).collect();
