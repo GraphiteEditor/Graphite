@@ -1,7 +1,7 @@
-use crate::renderer::{RenderParams, format_transform_matrix, gradient_placement, transform_is_invertible};
+use crate::renderer::{RenderParams, composite_paint_colors, format_transform_matrix, gradient_placement, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::Color;
-use core_types::attribute::Transform;
+use core_types::attribute::{Opacity, OpacityFill, Transform};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
@@ -52,13 +52,13 @@ pub trait RenderExt {
 	) -> Self::Output;
 }
 
-/// The color paint attribute over any color lane source.
-pub fn render_color_paint<S: core_types::lane::LaneSource<Element = Color>>(source: &S, target: PaintTarget) -> String {
-	let Some(color) = source.element(0) else {
+/// The color paint attribute for a composited paint color.
+pub fn render_color_paint(color: Option<Color>, target: PaintTarget) -> String {
+	let Some(color) = color else {
 		return format!(r#" {}="none""#, target.paint_attr());
 	};
 
-	let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
+	let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(color).to_rgb_hex());
 	if color.a() < 1. {
 		let _ = write!(result, r#" {}="{}""#, target.opacity_attr(), (color.a() * 1000.).round() / 1000.);
 	}
@@ -76,10 +76,10 @@ impl RenderExt for List<Color> {
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
-		_render_params: &RenderParams,
+		render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
-		render_color_paint(self, target)
+		render_color_paint(composite_paint_colors(self, |color| Some(*color), render_params.for_mask), target)
 	}
 }
 
@@ -94,16 +94,22 @@ impl RenderExt for List<GradientStops> {
 		element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
-		_render_params: &RenderParams,
+		render_params: &RenderParams,
 		_target: PaintTarget,
 	) -> Self::Output {
-		render_gradient_paint(self, svg_defs, item_transform, element_transform)
+		render_gradient_paint(self, svg_defs, item_transform, element_transform, render_params.for_mask)
 	}
 }
 
 /// Adds the gradient def through mutating `svg_defs`, returning the gradient
 /// ID, over any gradient lane source.
-pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientStops>>(source: &S, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> u64 {
+pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientStops>>(
+	source: &S,
+	svg_defs: &mut String,
+	item_transform: DAffine2,
+	element_transform: DAffine2,
+	for_mask: bool,
+) -> u64 {
 	let mut stop = String::new();
 
 	{
@@ -112,7 +118,12 @@ pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientS
 		let local_gradient_transform: DAffine2 = source.attr::<Transform>(0);
 		let spread_method: GradientSpreadMethod = source.attr::<SpreadMethod>(0);
 
+		// The paint's own opacity fades each emitted stop, a masker dropping the fill half as for a color paint
+		let opacity_fill: f64 = if for_mask { 1. } else { source.attr::<OpacityFill>(0) };
+		let paint_opacity = (source.attr::<Opacity>(0) * opacity_fill) as f32;
+
 		for (position, color, original_midpoint) in stops.interpolated_samples() {
+			let color = if paint_opacity < 1. { color.with_alpha(color.a() * paint_opacity) } else { color };
 			stop.push_str("<stop");
 			if position != 0. {
 				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
@@ -251,9 +262,13 @@ impl RenderExt for List<Graphic<'_>> {
 		let paint_attr = target.paint_attr();
 
 		match fill_graphic {
-			Some(Graphic::Color(color)) => render_color_paint(&core_types::lane::LeafLane::new(self, 0, color), target),
+			Some(Graphic::Color(_)) => {
+				// The whole color stack collapses to the one composited color the fast path emits
+				let composited = composite_paint_colors(self, |graphic| if let Graphic::Color(color) = graphic { Some(*color) } else { None }, render_params.for_mask);
+				render_color_paint(composited, target)
+			}
 			Some(Graphic::Gradient(gradient)) => {
-				let gradient_id = render_gradient_paint(&core_types::lane::LeafLane::new(self, 0, gradient), svg_defs, item_transform, element_transform);
+				let gradient_id = render_gradient_paint(&core_types::lane::LeafLane::new(self, 0, gradient), svg_defs, item_transform, element_transform, render_params.for_mask);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
 			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) | Some(Graphic::Group(_)) => {

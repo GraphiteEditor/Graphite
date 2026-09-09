@@ -749,6 +749,11 @@ impl Color {
 		}
 	}
 
+	/// Per-channel "Overlay" blend: hard light with its operands swapped.
+	pub fn blend_overlay(c_b: f32, c_s: f32) -> f32 {
+		Self::blend_hardlight(c_s, c_b)
+	}
+
 	/// Per-channel "Hard Light" blend.
 	pub fn blend_hardlight(c_b: f32, c_s: f32) -> f32 {
 		if c_s <= 0.5 {

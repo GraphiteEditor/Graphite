@@ -207,6 +207,72 @@ pub struct RenderContext {
 	pub resource_overrides: Vec<(peniko::ImageBrush, Texture)>,
 }
 
+/// The alpha multiplier a paint row's opacity attributes apply when it serves as a paint.
+/// Fill opacity fades a paint just as opacity does, but a masker drops it so it cannot reach the content clipped to it.
+pub(crate) fn paint_row_opacity<T>(list: &List<T>, index: usize, for_mask: bool) -> f32 {
+	let opacity_fill = if for_mask {
+		1.
+	} else {
+		list.attribute_cloned_or::<f64>(core_types::ATTR_OPACITY_FILL, index, 1.)
+	};
+
+	(list.attribute_cloned_or::<f64>(core_types::ATTR_OPACITY, index, 1.) * opacity_fill) as f32
+}
+
+/// Composites one paint color over the stack beneath it, mixing by the blend mode and then source-over in straight alpha.
+fn composite_paint_over(over: Color, under: Color, blend_mode: BlendMode) -> Color {
+	let (over_alpha, under_alpha) = (over.a(), under.a());
+
+	// These modes only move the backdrop's alpha, leaving its color alone
+	match blend_mode {
+		BlendMode::Erase => return under.with_alpha((under_alpha - over_alpha).clamp(0., 1.)),
+		BlendMode::Restore => return under.with_alpha((under_alpha + over_alpha).clamp(0., 1.)),
+		BlendMode::MultiplyAlpha => return under.with_alpha(under_alpha * over_alpha),
+		_ => {}
+	}
+
+	let result_alpha = over_alpha + under_alpha * (1. - over_alpha);
+	if result_alpha <= 0. {
+		return Color::TRANSPARENT;
+	}
+
+	// The blend formulas read their backdrop premultiplied
+	let premultiplied_under = Color::from_rgbaf32_unchecked(under.r() * under_alpha, under.g() * under_alpha, under.b() * under_alpha, under_alpha);
+	let mixed = core_types::blending::apply_blend_mode(over, premultiplied_under, blend_mode);
+
+	// The mode only mixes where the backdrop has coverage, so its alpha interpolates each source channel from the raw color to the mixed color
+	let source_channel = |over_channel: f32, mixed_channel: f32| over_channel * (1. - under_alpha) + mixed_channel * under_alpha;
+
+	let channel =
+		|mixed_channel: f32, over_channel: f32, under_channel: f32| (source_channel(over_channel, mixed_channel) * over_alpha + under_channel * under_alpha * (1. - over_alpha)) / result_alpha;
+
+	Color::from_rgbaf32_unchecked(
+		channel(mixed.r(), over.r(), under.r()),
+		channel(mixed.g(), over.g(), under.g()),
+		channel(mixed.b(), over.b(), under.b()),
+		result_alpha,
+	)
+}
+
+/// Flattens a color paint into the single color the fast path emits, stacking the rows in paint order.
+/// `element_color` reads a row's color, `None` skipping rows of another element type.
+pub(crate) fn composite_paint_colors<T>(list: &List<T>, element_color: impl Fn(&T) -> Option<Color>, for_mask: bool) -> Option<Color> {
+	let mut composited = None;
+
+	for index in 0..list.len() {
+		let Some(color) = list.element(index).and_then(&element_color) else { continue };
+		let faded = color.with_alpha(color.a() * paint_row_opacity(list, index, for_mask));
+
+		composited = Some(match composited {
+			// The lowest paint has nothing beneath it, so its blend mode has nothing to act on
+			None => faded,
+			Some(under) => composite_paint_over(faded, under, list.attribute_cloned_or::<BlendMode>(core_types::ATTR_BLEND_MODE, index, BlendMode::default())),
+		});
+	}
+
+	composited
+}
+
 #[derive(Default, Clone, Copy, Hash, graphene_hash::CacheHash)]
 pub enum RenderOutputType {
 	#[default]
@@ -400,15 +466,20 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 	}
 }
 
-fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
+fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient_list: &S, multiplied_transform: &DAffine2, for_mask: bool) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_type: GradientType = gradient_list.attr::<GradientTypeAttr>(0);
 	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
 	let spread_method: GradientSpreadMethod = gradient_list.attr::<SpreadMethod>(0);
 
+	// The paint's own opacity fades each ramp stop, a masker dropping the fill half as for a color paint
+	let opacity_fill: f64 = if for_mask { 1. } else { gradient_list.attr::<OpacityFill>(0) };
+	let paint_opacity = (gradient_list.attr::<Opacity>(0) * opacity_fill) as f32;
+
 	let mut peniko_stops = peniko::ColorStops::new();
 	for (position, color, _) in stops.interpolated_samples() {
+		let color = if paint_opacity < 1. { color.with_alpha(color.a() * paint_opacity) } else { color };
 		peniko_stops.push(peniko::ColorStop {
 			offset: position as f32,
 			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
@@ -1564,11 +1635,13 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 				let Some(paint) = fill_graphic.element(paint_index) else { continue };
 				match paint {
 					Graphic::Color(color) => {
-						let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
+						// The row's own opacity fades the pass, matching the composited SVG fast path
+						let color = color.with_alpha(color.a() * paint_row_opacity(fill_graphic, paint_index, render_params.for_mask));
+						let fill = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
 						scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 					}
 					Graphic::Gradient(gradient) => {
-						let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(&LeafLane::new(fill_graphic, paint_index, gradient), &multiplied_transform) else {
+						let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(&LeafLane::new(fill_graphic, paint_index, gradient), &multiplied_transform, render_params.for_mask) else {
 							continue;
 						};
 
@@ -1644,12 +1717,15 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 
 				match stroke_graphic {
 					Graphic::Color(color) => {
-						let brush = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
+						// The row's own opacity fades the pass, matching the composited SVG fast path
+						let color = color.with_alpha(color.a() * paint_row_opacity(stroke_graphic_list, paint_index, render_params.for_mask));
+						let brush = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
 
 						scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
 					}
 					Graphic::Gradient(gradient) => {
-						let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(&LeafLane::new(stroke_graphic_list, paint_index, gradient), &multiplied_transform) else {
+						let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(&LeafLane::new(stroke_graphic_list, paint_index, gradient), &multiplied_transform, render_params.for_mask)
+						else {
 							continue;
 						};
 						let inverse_element_transform = if transform_is_invertible(element_transform) {
@@ -3137,5 +3213,58 @@ mod group_walk_tests {
 		let mut native_outlines = Vec::new();
 		Graphic::Group(group).add_upstream_outline_targets(&mut native_outlines);
 		assert_eq!(native_outlines, legacy);
+	}
+
+	#[test]
+	fn stacked_paint_colors_composite_in_straight_alpha() {
+		// A half-transparent red over an opaque blue lands halfway between the two
+		let mut list = List::new();
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(0., 0., 1., 1.)));
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(1., 0., 0., 0.5)));
+
+		let composited = composite_paint_colors(&list, |color| Some(*color), false).expect("a non-empty paint list composites to a color");
+
+		assert!((composited.r() - 0.5).abs() < 1e-5, "red was {}", composited.r());
+		assert!((composited.g() - 0.).abs() < 1e-5, "green was {}", composited.g());
+		assert!((composited.b() - 0.5).abs() < 1e-5, "blue was {}", composited.b());
+		assert!((composited.a() - 1.).abs() < 1e-5, "alpha was {}", composited.a());
+	}
+
+	#[test]
+	fn stacked_paint_blending_interpolates_by_backdrop_coverage() {
+		// Multiply over half-covering black only half-multiplies the red
+		let mut list = List::new();
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(0., 0., 0., 0.5)));
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(1., 0., 0., 1.)).with_attribute(core_types::ATTR_BLEND_MODE, BlendMode::Multiply));
+
+		let composited = composite_paint_colors(&list, |color| Some(*color), false).expect("a non-empty paint list composites to a color");
+
+		assert!((composited.r() - 0.5).abs() < 1e-5, "red was {}", composited.r());
+		assert!((composited.a() - 1.).abs() < 1e-5, "alpha was {}", composited.a());
+
+		// Multiply over no backdrop at all leaves the source color untouched
+		let mut list = List::new();
+		list.push(Item::new_from_element(Color::TRANSPARENT));
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(1., 0., 0., 1.)).with_attribute(core_types::ATTR_BLEND_MODE, BlendMode::Multiply));
+
+		let composited = composite_paint_colors(&list, |color| Some(*color), false).expect("a non-empty paint list composites to a color");
+
+		assert!((composited.r() - 1.).abs() < 1e-5, "red was {}", composited.r());
+		assert!((composited.a() - 1.).abs() < 1e-5, "alpha was {}", composited.a());
+	}
+
+	#[test]
+	fn a_paint_rows_own_opacity_fades_its_color() {
+		let mut list = List::new();
+		list.push(Item::new_from_element(Color::from_rgbaf32_unchecked(1., 0., 0., 1.)));
+		list.set_attribute(core_types::ATTR_OPACITY, 0, 0.5_f64);
+		list.set_attribute(core_types::ATTR_OPACITY_FILL, 0, 0.5_f64);
+
+		let composited = composite_paint_colors(&list, |color| Some(*color), false).expect("a non-empty paint list composites to a color");
+		assert!((composited.a() - 0.25).abs() < 1e-5, "both opacities fade the paint, alpha was {}", composited.a());
+
+		// A masker drops the fill opacity so it cannot reach the content clipped to it
+		let masked = composite_paint_colors(&list, |color| Some(*color), true).expect("a non-empty paint list composites to a color");
+		assert!((masked.a() - 0.5).abs() < 1e-5, "the mask keeps only the plain opacity, alpha was {}", masked.a());
 	}
 }
