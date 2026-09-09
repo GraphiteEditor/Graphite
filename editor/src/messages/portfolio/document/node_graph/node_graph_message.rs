@@ -157,7 +157,8 @@ pub enum NodeGraphMessage {
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,
-		value: TaggedValue,
+		// Boxed to keep the whole editor message tree small; `TaggedValue` alone is 568 bytes
+		value: Box<TaggedValue>,
 	},
 	SetInput {
 		input_connector: InputConnector,

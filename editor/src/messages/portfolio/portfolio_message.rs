@@ -52,7 +52,7 @@ pub enum PortfolioMessage {
 		reopened: bool,
 		#[serde(skip, default)]
 		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
-		gdd: Option<document_format::GddV1>,
+		gdd: Option<Box<document_format::GddV1>>,
 	},
 	DestroyAllDocuments,
 	EditorPreferences,

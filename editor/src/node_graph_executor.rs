@@ -47,7 +47,7 @@ pub struct CompilationResponse {
 }
 
 pub enum NodeGraphUpdate {
-	ExecutionResponse(ExecutionResponse),
+	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
@@ -368,7 +368,7 @@ impl NodeGraphExecutor {
 						responses: existing_responses,
 						vector_modify,
 						inspect_result,
-					} = execution_response;
+					} = *execution_response;
 
 					while let Some(&(queued_execution_id, _)) = self.futures.front() {
 						if queued_execution_id < execution_id {
