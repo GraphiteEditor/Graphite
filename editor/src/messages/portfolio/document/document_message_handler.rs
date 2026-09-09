@@ -4164,9 +4164,8 @@ mod document_message_handler_tests {
 			.await;
 
 		// The operation completed without crashing
-		// Verifying application still functions by performing another operation
+		// Verifying application still functions by performing another operation, which panics if the folder move left the editor broken
 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-		assert!(true, "Application didn't crash after folder move operation");
 	}
 
 	// Merging nodes whose output isn't wired downstream produces an encapsulating subnetwork with no exports.
