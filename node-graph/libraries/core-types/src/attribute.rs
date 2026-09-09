@@ -310,7 +310,7 @@ pub fn intern_name(name: &str) -> &'static str {
 /// `Row: &T` and `Row: Option<&T>` declare a token naming a reference value,
 /// whose payload the writing kernel parks in the arena.
 ///
-/// ```
+/// ```ignore
 /// core_types::named_value! {
 ///     /// Plain rows, implemented on the value type itself.
 ///     for f64;
@@ -318,6 +318,9 @@ pub fn intern_name(name: &str) -> &'static str {
 ///     pub Text: &str;
 /// }
 /// ```
+///
+/// The `for T` arm implements this crate's trait on `T`, so rows over types
+/// this crate does not own are declared here rather than by a caller.
 #[macro_export]
 macro_rules! named_value {
 	() => {};
