@@ -407,6 +407,58 @@ fn deep_repark_appearance(value: &dyn core_types::list::AnyAttributeValue, arena
 	Some(Some(Box::new(Some(appearance))))
 }
 
+/// Every group held in an appearance's paint columns, promoted into the
+/// persistent region on the same Cow dispatch the elements take. `None`
+/// reports arena exhaustion.
+fn map_appearance_groups_to_persistent(appearance: &mut Appearance, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
+	for key in appearance_attribute_keys(appearance) {
+		// A column of a type that cannot hold groups is skipped whole.
+		let Some(values) = appearance.0.iter_attribute_values_mut::<Graphic>(&key) else { continue };
+		for value in values {
+			let promoted = map_groups_to_persistent(value, promotion)?;
+			// SAFETY: the attribute store is erased, and persistent content
+			// outlives the evaluation.
+			*value = unsafe { core_types::record::erase_static(promoted) };
+		}
+	}
+	Some(())
+}
+
+/// The promote for appearance fields, retargeting the paint list promote onto
+/// the coverage container: the header moves where no group is reachable from
+/// any paint column, and otherwise clones into a fresh persistent park, with
+/// content groups taking [`map_groups_to_persistent`]'s Cow dispatch one level
+/// inside, exactly as [`promote_graphic_list`] dispatches for the paint lists.
+///
+/// # Safety
+/// `src` must point at a live parked appearance field, and `dst` at the field
+/// slot the promoted reference is written to.
+unsafe fn promote_appearance(src: *const u8, dst: *mut u8, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
+	// SAFETY: the caller's contract; the slot holds one optional reference.
+	let Some(appearance) = (unsafe { src.cast::<Option<&Appearance>>().read() }) else {
+		// SAFETY: as above, into the promoted image's own field slot.
+		unsafe { dst.cast::<Option<&Appearance>>().write(None) };
+		return Some(());
+	};
+	let retained = appearance_retained_heap(appearance);
+	if !appearance_contains_groups(appearance) {
+		// SAFETY: an appearance no group is reachable from owns all of its
+		// content, and the arena declines a reference that is not a park at the
+		// appearance's own address and size.
+		if let Some(moved) = unsafe { promotion.move_park::<Appearance>(std::ptr::from_ref(appearance).cast(), retained) } {
+			// SAFETY: the move published a live appearance in the persistent region.
+			unsafe { dst.cast::<Option<&Appearance>>().write(Some(&*moved)) };
+			return Some(());
+		}
+	}
+	let mut promoted = appearance.clone();
+	map_appearance_groups_to_persistent(&mut promoted, promotion)?;
+	let (parked, _) = promotion.persistent().alloc_sized(promoted, retained)?;
+	// SAFETY: the slot holds one optional reference.
+	unsafe { dst.cast::<Option<&Appearance>>().write(Some(parked)) };
+	Some(())
+}
+
 const _: () = {
 	fn register_all() {
 		core_types::record::register_deep_element_clone::<Graphic>(deep_clone_graphic, deep_repark_graphic);
@@ -414,6 +466,7 @@ const _: () = {
 		core_types::record::register_field_promote::<Option<&'static List<Graphic<'static>>>>(promote_graphic_list);
 		core_types::record::register_element_promote::<Graphic>(promote_graphic);
 		core_types::record::register_deep_field_value::<Option<Appearance>>(deep_clone_appearance, deep_repark_appearance);
+		core_types::record::register_field_promote::<Option<&'static Appearance>>(promote_appearance);
 		core_types::record::register_retained_heap::<Appearance>(|value| value.downcast_ref::<Appearance>().map_or(0, appearance_retained_heap));
 		core_types::record::register_retained_heap::<Graphic>(|value| value.downcast_ref::<Graphic>().map_or(0, graphic_retained_heap));
 		core_types::record::register_retained_heap::<Vector>(|value| value.downcast_ref::<Vector>().map_or(0, vector_retained_heap));
@@ -750,5 +803,170 @@ mod run_tests {
 		let held = served.attribute::<Option<List<Graphic>>>(Stroke::NAME, 0).expect("the stroke attribute rides the replayed list");
 		let held = held.as_ref().expect("the stroke is present");
 		assert_eq!(map_groups_to_legacy(held.element(0).unwrap()), expected, "the attribute-held group replayed into the serving arena");
+	}
+
+	use crate::appearance::{Cover, CoverPlacement, Coverage};
+	use crate::markers::Appearance as AppearanceMarker;
+
+	/// A `lanes`-long frame promoted out of `transient` into `persistent`, with
+	/// `appearance` written into the appearance field of every lane. The frame
+	/// buffer comes back so it outlives the promote's reads.
+	fn promote_appearance_field(
+		appearance: Option<&Appearance>,
+		lanes: usize,
+		transient: &core_types::arena::Arena,
+		persistent: &core_types::arena::Arena,
+	) -> (core_types::record::Layout, core_types::record::MaterializedSpan, Vec<u64>) {
+		use core_types::record::{Layout, MaterializedSpan, Promotion, element_write, write_field};
+
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[FieldWrite::of::<AppearanceMarker>(0)]);
+		let offset = layout.offset_of(AppearanceMarker::NAME, 0).unwrap();
+		let stride = layout.lane_stride();
+		let mut buffer = vec![0u64; (lanes * stride).div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		let bounds = (base as usize, buffer.len() * 8);
+		for lane in 0..lanes {
+			// SAFETY: the frame is this layout's, written at the element slot and
+			// at the appearance field's own offset.
+			unsafe {
+				base.add(lane * stride).cast::<f64>().write(lane as f64);
+				write_field::<Option<&Appearance>>(base.add(lane * stride), offset, appearance);
+			}
+		}
+		// SAFETY: the frames hold `lanes` live records of `layout`.
+		let batch = unsafe { core_types::node::RecordBatch::new(base.cast_const(), lanes, &layout) };
+		let promotion = Promotion::new(transient, bounds, persistent);
+		// SAFETY: as above.
+		let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) }.expect("the region holds the promote");
+		(layout, span, buffer)
+	}
+
+	/// The promoted appearance of one lane, at the layout the promote published.
+	fn promoted_appearance<'p>(span: &core_types::record::MaterializedSpan, layout: &core_types::record::Layout, lane: usize, persistent: &'p core_types::arena::Arena) -> &'p Appearance {
+		let offset = layout.offset_of(AppearanceMarker::NAME, 0).unwrap();
+		let batch = span.batch(persistent, layout).expect("the span resolves in its own region");
+		// SAFETY: the promote wrote a record of `layout` into every lane.
+		unsafe { batch.get(lane).rec().read::<Option<&Appearance>>(offset) }.expect("the appearance promotes present")
+	}
+
+	#[test]
+	fn a_promoted_appearance_shares_persistent_interiors() {
+		let inner_vector = unit_square_at(DVec2::ZERO);
+		let transient = core_types::arena::Arena::new(1 << 16).unwrap();
+		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
+
+		// The interior an upstream promote already published, named by a paint
+		// the evaluation parked in a coverage's paint column.
+		let published = native_group_paint(&inner_vector, &persistent);
+		let Some(Graphic::Group(group)) = published.element(0) else {
+			panic!("the paint carries a native group")
+		};
+		let interior = group.content.lanes().get(0).rec().ptr();
+		// SAFETY: the group serves only while `persistent` is live, and the
+		// promote under test replaces every borrow it carries.
+		let paint = unsafe { core_types::record::erase_static(Graphic::Group(group.clone())) };
+		let appearance = Appearance::new_single(Coverage::new_fill(), paint);
+		let (appearance, _) = transient.alloc_sized_keyed(appearance, 0).unwrap();
+
+		let (layout, span, _frames) = promote_appearance_field(Some(appearance), 1, &transient, &persistent);
+		let served = promoted_appearance(&span, &layout, 0, &persistent);
+
+		let Some(Graphic::Group(group)) = served.paint_at(0) else {
+			panic!("the promote keeps the group form")
+		};
+		assert_eq!(group.content.lanes().get(0).rec().ptr(), interior, "a persistent interior is shared pointer for pointer");
+	}
+
+	#[test]
+	fn a_group_free_appearance_moves_its_parked_header() {
+		let mut transient = core_types::arena::Arena::new(1 << 16).unwrap();
+		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
+
+		let appearance = Appearance::new_single(Coverage::new_fill(), Graphic::Vector(unit_square_at(DVec2::ZERO)));
+		let heap = {
+			let Some(Graphic::Vector(vector)) = appearance.paint_at(0) else {
+				panic!("the paint carries a vector")
+			};
+			vector.point_domain.positions().as_ptr()
+		};
+		let (appearance, _) = transient.alloc_sized_keyed(appearance, 0).unwrap();
+
+		let (layout, span, _frames) = promote_appearance_field(Some(appearance), 2, &transient, &persistent);
+		let served = promoted_appearance(&span, &layout, 0, &persistent);
+		let Some(Graphic::Vector(vector)) = served.paint_at(0) else {
+			panic!("the promote keeps the vector")
+		};
+		assert_eq!(
+			vector.point_domain.positions().as_ptr(),
+			heap,
+			"the promote moved the header, so the served paint names the pre-promote heap"
+		);
+		assert!(std::ptr::eq(served, promoted_appearance(&span, &layout, 1, &persistent)), "an appearance two lanes share moves once");
+
+		transient.reset();
+		let served = promoted_appearance(&span, &layout, 0, &persistent);
+		assert!(matches!(served.paint_at(0), Some(Graphic::Vector(_))), "the moved appearance survives the transient reset");
+	}
+
+	#[test]
+	fn an_appearance_whose_paint_holds_groups_never_moves() {
+		let inner_vector = unit_square_at(DVec2::ZERO);
+		let mut transient = core_types::arena::Arena::new(1 << 16).unwrap();
+		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
+
+		let native = native_group_paint(&inner_vector, &transient);
+		let Some(native_group) = native.element(0) else { panic!("the paint carries a group") };
+		let expected = map_groups_to_legacy(native_group);
+		// SAFETY: the erased native group serves only while `transient` is live;
+		// the promote under test replaces its borrows.
+		let paint = unsafe { core_types::record::erase_static(native_group.clone()) };
+		let appearance = Appearance::new_single(Coverage::new_fill(), paint);
+		let (appearance, _) = transient.alloc_sized_keyed(appearance, 0).unwrap();
+
+		let (layout, span, _frames) = promote_appearance_field(Some(appearance), 1, &transient, &persistent);
+		let served = promoted_appearance(&span, &layout, 0, &persistent);
+		let moved = std::ptr::eq(std::ptr::from_ref(served).cast::<u8>(), std::ptr::from_ref(appearance).cast::<u8>());
+		assert!(!moved, "a paint-held group denies the move, so the promote parks a header of its own");
+
+		transient.reset();
+		let served = promoted_appearance(&span, &layout, 0, &persistent);
+		let held = served.paint_at(0).expect("the paint rides the promoted appearance");
+		assert_eq!(map_groups_to_legacy(held), expected, "the paint-held group serves from persistent storage after the reset");
+	}
+
+	#[test]
+	fn a_group_free_appearance_moves_past_its_stroke_columns() {
+		let mut transient = core_types::arena::Arena::new(1 << 16).unwrap();
+		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
+
+		// Stroke parameters on the coverage and a group-free paint: neither denies the move.
+		let mut appearance = Appearance::new_single(Coverage::new_stroke(&vector_types::vector::style::Stroke::new(2.)), Graphic::Vector(unit_square_at(DVec2::ZERO)));
+		appearance.replace_or_insert(Coverage::new_fill(), Graphic::Color(Color::WHITE), CoverPlacement::Below);
+		let heap = {
+			let Some(Graphic::Vector(vector)) = appearance.paint_at(1) else {
+				panic!("the stroke paint carries a vector")
+			};
+			vector.point_domain.positions().as_ptr()
+		};
+		let (appearance, _) = transient.alloc_sized_keyed(appearance, 0).unwrap();
+
+		let (layout, span, _frames) = promote_appearance_field(Some(appearance), 1, &transient, &persistent);
+		let served = promoted_appearance(&span, &layout, 0, &persistent);
+		let Some(Graphic::Vector(vector)) = served.paint_at(1) else {
+			panic!("the promote keeps the vector")
+		};
+		assert_eq!(
+			vector.point_domain.positions().as_ptr(),
+			heap,
+			"the promote moved the header, so the served paint names the pre-promote heap"
+		);
+
+		transient.reset();
+		let served = promoted_appearance(&span, &layout, 0, &persistent);
+		assert_eq!(
+			served.first_coverage_of(Cover::Stroke).map(|coverage| coverage.stroke_params().weight),
+			Some(2.),
+			"the stroke parameters survive the move"
+		);
 	}
 }
