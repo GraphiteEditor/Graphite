@@ -376,7 +376,7 @@ impl TableItemLayout for Vector {
 		)
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let table_tab_entries = [VectorTableTab::Properties, VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Regions]
+		let table_tab_entries = [VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Regions, VectorTableTab::Handles]
 			.into_iter()
 			.map(|tab| {
 				RadioEntryData::new(format!("{tab:?}"))
@@ -388,57 +388,6 @@ impl TableItemLayout for Vector {
 
 		let mut table_rows = Vec::new();
 		match data.vector_table_tab {
-			VectorTableTab::Properties => {
-				table_rows.push(column_headings(&["property", "value"]));
-
-				if let Some(stroke) = self.stroke.as_ref() {
-					table_rows.push(vec![
-						TextLabel::new("Stroke Weight").narrow(true).widget_instance(),
-						TextLabel::new(format!("{} px", stroke.weight)).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Dash Lengths").narrow(true).widget_instance(),
-						TextLabel::new(if stroke.dash_lengths.is_empty() {
-							"-".to_string()
-						} else {
-							format!("[{}]", stroke.dash_lengths.iter().map(|x| format!("{x} px")).collect::<Vec<_>>().join(", "))
-						})
-						.narrow(true)
-						.widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Dash Offset").narrow(true).widget_instance(),
-						TextLabel::new(format!("{}", stroke.dash_offset)).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Cap").narrow(true).widget_instance(),
-						TextLabel::new(stroke.cap.to_string()).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Join").narrow(true).widget_instance(),
-						TextLabel::new(stroke.join.to_string()).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Join Miter Limit").narrow(true).widget_instance(),
-						TextLabel::new(format!("{}", stroke.join_miter_limit)).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Align").narrow(true).widget_instance(),
-						TextLabel::new(stroke.align.to_string()).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
-						TextLabel::new("Stroke Transform").narrow(true).widget_instance(),
-						TextLabel::new(format_transform_matrix(stroke.transform)).narrow(true).widget_instance(),
-					]);
-				}
-
-				let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
-				let colinear = if colinear.is_empty() { "-".to_string() } else { colinear };
-				table_rows.push(vec![
-					TextLabel::new("Colinear Handle IDs").narrow(true).widget_instance(),
-					TextLabel::new(colinear).narrow(true).widget_instance(),
-				]);
-			}
 			VectorTableTab::Points => {
 				table_rows.push(column_headings(&["", "position"]));
 				table_rows.extend(self.point_domain.iter().map(|(id, position)| {
@@ -466,6 +415,16 @@ impl TableItemLayout for Vector {
 						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
 						TextLabel::new(format!("{segment_range:?}")).narrow(true).widget_instance(),
 						TextLabel::new(format!("{}", fill.inner())).narrow(true).widget_instance(),
+					]
+				}));
+			}
+			VectorTableTab::Handles => {
+				table_rows.push(column_headings(&["", "colinear_manipulators[0]", "colinear_manipulators[1]"]));
+				table_rows.extend(self.colinear_manipulators.iter().enumerate().map(|(index, [a, b])| {
+					vec![
+						TextLabel::new(format!("{index}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("{a}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("{b}")).narrow(true).widget_instance(),
 					]
 				}));
 			}

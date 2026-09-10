@@ -54,7 +54,6 @@ fn boolean_core<'e>(
 
 		let result_vector = result_vector_list.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
-		result_vector.set_stroke_transform(DAffine2::IDENTITY);
 
 		// Clean up the boolean operation result by merging duplicated points
 		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
@@ -236,12 +235,7 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 
 		bake_paint_transforms(&mut attributes, copy_from_transform);
 
-		let copy_from = vector.element(index).unwrap();
-		let element = Vector {
-			stroke: copy_from.stroke.clone(),
-			..Default::default()
-		};
-		Item::from_parts(element, attributes)
+		Item::from_parts(Vector::default(), attributes)
 	} else {
 		Item::<Vector>::default()
 	};
@@ -308,10 +302,7 @@ fn fill_appearance(paint: List<Graphic<'static>>) -> Appearance {
 fn color_paint_row(color: Color, mut attributes: core_types::list::ItemAttributeValues) -> Item<Vector> {
 	attributes.insert(graphic_types::ATTR_APPEARANCE, fill_appearance(List::new_from_element(Graphic::Color(color))));
 
-	let mut element = Vector::default();
-	element.set_stroke_transform(DAffine2::IDENTITY);
-
-	Item::from_parts(element, attributes)
+	Item::from_parts(Vector::default(), attributes)
 }
 
 /// A gradient row: an empty vector carrying the stops as its fill paint, the
@@ -329,10 +320,7 @@ fn gradient_paint_row(stops: GradientStops, mut attributes: core_types::list::It
 	}
 	attributes.insert(graphic_types::ATTR_APPEARANCE, fill_appearance(gradient_paint));
 
-	let mut element = Vector::default();
-	element.set_stroke_transform(DAffine2::IDENTITY);
-
-	Item::from_parts(element, attributes)
+	Item::from_parts(Vector::default(), attributes)
 }
 
 /// A text lane's rows: the shaped glyph vectors under the composed transform.

@@ -24,8 +24,7 @@ use graph_craft::Type;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
-use graphene_std::Graphic;
-use graphene_std::list::List;
+use graphene_std::Appearance;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
@@ -3439,14 +3438,9 @@ impl NodeNetworkInterface {
 		self.document_metadata.layer_vector_data = new_layer_vector_data;
 	}
 
-	/// Update the per-layer fill paint snapshot.
-	pub fn update_fill_attributes(&mut self, new_layer_fill_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic<'static>>>>) {
-		self.document_metadata.layer_fill_attributes = new_layer_fill_attributes;
-	}
-
-	/// Update the per-layer stroke paint snapshot.
-	pub fn update_stroke_attributes(&mut self, new_layer_stroke_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic<'static>>>>) {
-		self.document_metadata.layer_stroke_attributes = new_layer_stroke_attributes;
+	/// Update the per-layer resolved appearance snapshot.
+	pub fn update_appearance_attributes(&mut self, new_layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>) {
+		self.document_metadata.layer_appearance_attributes = new_layer_appearance_attributes;
 	}
 }
 

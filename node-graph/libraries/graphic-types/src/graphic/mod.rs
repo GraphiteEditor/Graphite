@@ -419,9 +419,8 @@ impl<'e> Graphic<'e> {
 	pub fn is_fully_transparent(&self) -> bool {
 		match self {
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
-			// A bare leaf carries no paint attribute, so only an unstroked
-			// vector is invisible on its own.
-			Graphic::Vector(vector) => vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()),
+			// A bare vector leaf carries no paint or stroke of its own, so it is invisible on its own
+			Graphic::Vector(_) => true,
 			Graphic::Color(color) => color.a() == 0.,
 			Graphic::Gradient(stops) => stops.iter().all(|stop| stop.color.a() == 0.),
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,

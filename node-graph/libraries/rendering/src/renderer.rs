@@ -540,12 +540,9 @@ pub struct RenderMetadata {
 	pub text_frames: HashMap<NodeId, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
-	/// Per-layer fill paint snapshot from the resolved appearance, exposed so message handlers can read it.
+	/// Per-layer resolved appearance snapshot, exposed so message handlers can read the paint.
 	#[cfg_attr(feature = "serde", serde(skip))]
-	pub fill_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,
-	/// Per-layer stroke paint snapshot from the resolved appearance, exposed so message handlers can read it.
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub stroke_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,
+	pub appearance_attributes: HashMap<NodeId, Arc<Appearance>>,
 	pub backgrounds: Vec<Background>,
 }
 
@@ -569,8 +566,7 @@ impl RenderMetadata {
 			text_frames,
 			clip_targets,
 			vector_data,
-			fill_attributes,
-			stroke_attributes,
+			appearance_attributes,
 			backgrounds,
 		} = self;
 		upstream_footprints.extend(other.upstream_footprints.iter());
@@ -581,8 +577,7 @@ impl RenderMetadata {
 		text_frames.extend(other.text_frames.iter());
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
-		fill_attributes.extend(other.fill_attributes.iter().map(|(id, data)| (*id, data.clone())));
-		stroke_attributes.extend(other.stroke_attributes.iter().map(|(id, data)| (*id, data.clone())));
+		appearance_attributes.extend(other.appearance_attributes.iter().map(|(id, data)| (*id, data.clone())));
 
 		// TODO: Find a better non O(n^2) way to merge backgrounds
 		for background in &other.backgrounds {
@@ -1352,7 +1347,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, inherited_appe
 		let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 		let layer_bounds = vector.bounding_box().unwrap_or_default();
 		let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
-		let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY).unwrap_or(layer_bounds);
+		let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY, element_stroke).unwrap_or(layer_bounds);
 
 		let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
 		let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
@@ -1404,8 +1399,7 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, inherited_appe
 		let push_id = needs_separate_alignment_fill.then_some({
 			let id = format!("alignment-{}", generate_uuid());
 
-			let mut cloned_vector = vector.clone();
-			cloned_vector.stroke = None;
+			let cloned_vector = vector.clone();
 
 			// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 			// The wrapping SVG group (above) handles the user-set opacity.
@@ -1759,8 +1753,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(
 			}
 			_ => {
 				if use_layer {
-					let mut cloned_element = element.clone();
-					cloned_element.stroke = None;
+					let cloned_element = element.clone();
 
 					// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 					// The outer opacity/blend layer (above) handles the user-set opacity.
@@ -1894,11 +1887,8 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(
 			if let std::collections::hash_map::Entry::Vacant(e) = metadata.vector_data.entry(element_id) {
 				e.insert(Arc::new(element.clone()));
 
-				if let Some(fill_graphic) = resolved.fill_paint.and_then(paint_cell_rows) {
-					metadata.fill_attributes.insert(element_id, Arc::new(fill_graphic.clone()));
-				}
-				if let Some(stroke_graphic) = resolved.stroke_paint.and_then(paint_cell_rows) {
-					metadata.stroke_attributes.insert(element_id, Arc::new(stroke_graphic.clone()));
+				if let Some(appearance) = appearance {
+					metadata.appearance_attributes.insert(element_id, Arc::new(appearance.clone()));
 				}
 			}
 
@@ -3212,7 +3202,14 @@ mod group_walk_tests {
 		assert!(native.local_transforms.contains_key(&caller));
 		assert!(native.upstream_footprints.contains_key(&caller));
 		assert_eq!(native.vector_data.get(&caller).map(|vector| vector.as_ref()), Some(&vectors[0]));
-		assert!(native.fill_attributes.get(&caller).is_some_and(|fill| matches!(fill.element(0), Some(Graphic::Color(_)))));
+		assert!(
+			native
+				.appearance_attributes
+				.get(&caller)
+				.and_then(|appearance| appearance.first_paint_of(graphic_types::appearance::Cover::Fill))
+				.and_then(paint_cell_rows)
+				.is_some_and(|fill| matches!(fill.element(0), Some(Graphic::Color(_))))
+		);
 	}
 
 	#[test]
