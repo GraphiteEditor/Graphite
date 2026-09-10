@@ -386,13 +386,33 @@ fn median_quickselect(values: &mut [f32]) -> f32 {
 }
 
 fn sharpen_algorithm(mut buffer: Image<Color>, amount: f32, radius: f64, threshold: f32) -> Image<Color> {
-	let kernel = gaussian_kernel(radius);
-	let working = premultiply_gamma(buffer.clone());
-	let blurred_image = gaussian_separable(working, &kernel, |r, g, b, a| PremultipliedGammaPixel { r, g, b, a });
-
 	// Normalize threshold and amount
 	let amount = amount / 100.;
 	let threshold = threshold / 255.;
+
+	if threshold >= 1. {
+		return buffer;
+	}
+
+	let kernel = gaussian_kernel(radius);
+
+	let working_data = buffer
+		.data
+		.iter()
+		.map(|c| {
+			let [r, g, b, a] = c.to_gamma_srgb_channels();
+			PremultipliedGammaPixel { r: r * a, g: g * a, b: b * a, a }
+		})
+		.collect();
+	let working = Image {
+		width: buffer.width,
+		height: buffer.height,
+		data: working_data,
+		base64_string: None,
+	};
+
+	let blurred_image = gaussian_separable(working, &kernel, |r, g, b, a| PremultipliedGammaPixel { r, g, b, a });
+
 	// Width of the linear transition around the threshold
 	let threshold_fade_width = threshold * 0.75;
 
@@ -416,7 +436,8 @@ fn sharpen_algorithm(mut buffer: Image<Color>, amount: f32, radius: f64, thresho
 		let final_g = sharpen_channel(original_g, blurred_g);
 		let final_b = sharpen_channel(original_b, blurred_b);
 
-		*original = Color::from_gamma_srgb_channels(final_r, final_g, final_b, original_a);
+		let unassociated = Color::from_gamma_srgb_channels(final_r, final_g, final_b, original_a);
+		*original = Color::from_rgbaf32_unchecked(unassociated.r() * original_a, unassociated.g() * original_a, unassociated.b() * original_a, original_a);
 	}
 
 	buffer
