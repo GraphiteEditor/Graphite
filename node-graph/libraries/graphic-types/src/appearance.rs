@@ -2,8 +2,7 @@
 //! Data uniform across all covers (the paint) rides the outer `List<Coverage>` so columnar presence holds,
 //! while cover-specific data rides the inner `Item<Cover>`, reusing `ATTR_TRANSFORM` for the stroke-authoring space.
 //!
-//! The interior is `'static` in this first form: the paint column stores `Graphic<'static>`, exactly as the
-//! `Fill` marker's paint list does today. Native-resident interiors are the recorded follow-up.
+//! The interior is `'static`: the paint column stores `Graphic<'static>`.
 
 use crate::Graphic;
 use crate::markers::ATTR_PAINT;
@@ -36,8 +35,7 @@ impl std::fmt::Display for Cover {
 #[derive(Clone, Debug, Default, dyn_any::DynAny)]
 pub struct Coverage(pub Item<Cover>);
 
-// Item equality ignores attributes, but the stroke parameters live there, so both impls walk the
-// attribute pairs in the erased display form, the same comparison `AttributeValueDyn` uses.
+// Item equality ignores attributes, but the stroke parameters live there.
 impl PartialEq for Coverage {
 	fn eq(&self, other: &Self) -> bool {
 		self.0.element() == other.0.element()
@@ -125,7 +123,6 @@ impl Coverage {
 	/// Extracts the stroke parameters into a [`Stroke`], falling back to the default for any absent attribute.
 	/// Dash lengths are clamped to non-negative, matching what rendering accepts.
 	pub fn stroke_params(&self) -> Stroke {
-		// A single walk of the attribute pairs instead of one keyed scan per parameter, since this runs per item per render pass
 		let mut stroke = Stroke::default();
 		for (key, value) in self.0.attributes().iter() {
 			match key {

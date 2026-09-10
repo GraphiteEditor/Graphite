@@ -910,8 +910,6 @@ pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, netw
 		return false;
 	}
 
-	// Swap the pair in place: the downstream node takes the upstream one's source, consumers of the
-	// downstream node move over to the upstream one, and the wire linking the pair reverses direction
 	let (upstream, downstream) = if currently_above { (fill_node_id, stroke_node_id) } else { (stroke_node_id, fill_node_id) };
 	let Some(upstream_source) = network_interface.input_from_connector(&InputConnector::node(upstream, 0), network_path).cloned() else {
 		return false;

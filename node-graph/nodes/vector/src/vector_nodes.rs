@@ -367,9 +367,8 @@ fn fill<'e>(
 	Ok((element, Attr(Some(parked_appearance))))
 }
 
-/// The fill over graphic lanes: the marker parks on the lane and the render
-/// boundary moves it onto the interior vector lists the legacy paint readers
-/// inspect. Registered under the fill's identifier.
+/// The fill over graphic lanes: the appearance parks on the lane and cascades
+/// to the vectors beneath it. Registered under the fill's identifier.
 #[node_macro::node(category(""))]
 fn fill_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
@@ -433,22 +432,19 @@ fn stroke<'e>(
 		transform: DAffine2::IDENTITY,
 	};
 
-	// The coverage records the stroke's authoring space, so the item transform is composed in, translation
-	// included so the render consumers see the exact legacy stroke space.
+	// The coverage records the stroke's authoring space: the item transform, translation included
 	let mut coverage_stroke = stroke;
 	coverage_stroke.transform *= *content_transform;
 
 	let paint = paint_table(paint);
-	// The paint order is the coverage row order: appending above follows the painter's algorithm, and a
-	// below stroke is expressed by the chain running the stroke node before the fill
+	// A below stroke is the chain running the stroke node before the fill, so the coverage appends above
 	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint, CoverPlacement::Above);
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
 	Ok((element, Attr(*content_transform), Attr(Some(parked_appearance))))
 }
 
-/// The stroke over graphic lanes: the style applies to the interior vectors,
-/// the paint marker parks on the lane for the render boundary to place.
-/// Registered under the stroke's identifier.
+/// The stroke over graphic lanes: the appearance parks on the lane and cascades
+/// to the vectors beneath it. Registered under the stroke's identifier.
 #[node_macro::node(category(""))]
 fn stroke_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
@@ -476,13 +472,12 @@ fn stroke_graphic_leveled<'e>(
 		transform: DAffine2::IDENTITY,
 	};
 
-	// The coverage records the stroke's authoring space at the lane, composing the lane transform as in `stroke` above.
+	// The coverage records the stroke's authoring space: the lane transform, translation included
 	let mut coverage_stroke = stroke;
 	coverage_stroke.transform *= *content_transform;
 
 	let paint = paint_table(paint);
-	// The paint order is the coverage row order: appending above follows the painter's algorithm, and a
-	// below stroke is expressed by the chain running the stroke node before the fill
+	// A below stroke is the chain running the stroke node before the fill, so the coverage appends above
 	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint, CoverPlacement::Above);
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
 	Ok((element, Attr(*content_transform), Attr(Some(parked_appearance))))
@@ -2710,8 +2705,8 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		}
 	}
 
-	// Lerp between two appearances, pairing coverages by cover so a fill and a stroke never interpolate into each other.
-	// Stroke parameter pairs interpolate; other coverage pairings and the paint order step at the midpoint.
+	/// Lerps two appearances pairing coverages by cover, so a fill and a stroke never interpolate into each other.
+	/// Stroke parameter pairs interpolate; other coverage pairings and the paint order step at the midpoint.
 	fn lerp_appearance(a: Option<&Appearance>, b: Option<&Appearance>, time: f64) -> Option<Appearance> {
 		if a.is_none() && b.is_none() {
 			return None;
