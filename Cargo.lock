@@ -375,6 +375,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-cache",
  "graphene-hash",
  "graphic-types",
  "half",
@@ -2052,6 +2053,7 @@ dependencies = [
  "glam",
  "graph-craft",
  "graphene-application-io",
+ "graphene-cache",
  "graphene-core",
  "graphene-hash",
  "graphic-types",
@@ -2094,6 +2096,16 @@ dependencies = [
  "text-nodes",
  "vector-types",
  "web-sys",
+]
+
+[[package]]
+name = "graphene-cache"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "serde",
 ]
 
 [[package]]
