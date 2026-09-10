@@ -1,6 +1,6 @@
 use std::array;
 use std::ops::{Add, Deref, Mul, Sub};
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use core_types::bounds::RenderBoundingBox;
 use core_types::list::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item};
@@ -32,6 +32,9 @@ pub struct MeshGradient {
 	corner_colors: MeshGrid<Color>,
 	horizontal_edges: MeshGrid<SegmentId>,
 	vertical_edges: MeshGrid<SegmentId>,
+	#[cache_hash(skip)]
+	#[cfg_attr(feature = "serde", serde(skip, default))]
+	evaluator_cache: MeshGradientEvaluatorCache,
 }
 
 impl Default for MeshGradient {
@@ -108,8 +111,7 @@ impl MeshGradient {
 			}
 		}
 
-		// FIXME: only for debug purpose
-		let colors = [Color::RED, Color::GREEN, Color::BLUE, Color::YELLOW];
+		let colors = [Color::RED, Color::GREEN, Color::BLUE, Color::GREEN];
 		let corner_colors = (0..corner_rows)
 			.flat_map(|row| {
 				(0..corner_columns).map(move |column| {
@@ -126,6 +128,7 @@ impl MeshGradient {
 			corner_colors: MeshGrid::new(corner_colors, corner_rows, corner_columns)?,
 			horizontal_edges: MeshGrid::new(horizontal_edges, corner_rows, corner_columns - 1)?,
 			vertical_edges: MeshGrid::new(vertical_edges, corner_rows - 1, corner_columns)?,
+			evaluator_cache: MeshGradientEvaluatorCache::default(),
 		})
 	}
 
@@ -189,16 +192,6 @@ impl MeshGradient {
 		(0..patch_rows).flat_map(move |row| (0..patch_columns).map(move |column| self.patch(row, column)))
 	}
 
-	// FIXME: probably better to split to color evaluator and shape evaluator
-	// TODO: Research the way to handle polar color spaces for mesh gradient
-	/// Returns a new `MeshGradientEvaluator` whose Hermite color field is expressed in `space`.
-	pub fn evaluator(&self, space: GradientSpace, interpolation: GradientInterpolation) -> Result<MeshGradientEvaluator, MeshGradientEvaluatorError> {
-		if space.is_polar() {
-			return Err(MeshGradientEvaluatorError::UnsupportedColorSpace);
-		}
-		MeshGradientEvaluator::new(self, space, interpolation)
-	}
-
 	/// Returns the read only mesh gradient's geometry.
 	pub fn geometry(&self) -> &Vector {
 		&self.mesh_geometry
@@ -243,18 +236,23 @@ impl MeshGradient {
 
 		self.mesh_geometry.point_domain.set_position(point_index, position);
 
+		self.evaluator_cache.invalidate();
 		Some(())
 	}
 
 	/// Set the corner color by flat corner index.
 	pub fn set_corner_color(&mut self, corner_index: usize, color: Color) -> Option<()> {
 		*self.corner_colors.get_flat_mut(corner_index)? = color;
+
+		self.evaluator_cache.invalidate();
 		Some(())
 	}
 
 	pub fn set_edge_handles(&mut self, segment_id: SegmentId, new_handles: BezierHandles) -> Option<()> {
 		let (_, handles, _, _) = self.mesh_geometry.handles_mut().find(|(id, _, _, _)| *id == segment_id)?;
 		*handles = new_handles;
+
+		self.evaluator_cache.invalidate();
 		Some(())
 	}
 
@@ -274,6 +272,7 @@ impl MeshGradient {
 			_ => return None,
 		}
 
+		self.evaluator_cache.invalidate();
 		Some(())
 	}
 
@@ -382,6 +381,7 @@ impl MeshGradient {
 		let point_count = self.mesh_geometry.point_domain.ids().len();
 		self.mesh_geometry.segment_domain.retain(|id| !replaced_edges.contains(id), point_count);
 
+		self.evaluator_cache.invalidate();
 		Some(())
 	}
 
@@ -455,7 +455,16 @@ impl MeshGradient {
 		let Vector { point_domain, segment_domain, .. } = &mut self.mesh_geometry;
 		point_domain.retain(segment_domain, |id| !removed_corner_ids.contains(id));
 
+		self.evaluator_cache.invalidate();
 		Some(())
+	}
+
+	/// Returns a `Arc<MeshGradientEvaluator>` to evaluate position or color in the mesh.
+	pub fn evaluator(&self, space: GradientSpace, interpolation: GradientInterpolation) -> Result<Arc<MeshGradientEvaluator>, MeshGradientEvaluatorError> {
+		if space.is_polar() {
+			return Err(MeshGradientEvaluatorError::UnsupportedColorSpace);
+		}
+		self.evaluator_cache.get_or_init(self, space, interpolation)
 	}
 }
 
@@ -469,10 +478,24 @@ impl core_types::bounds::BoundingBox for MeshGradient {
 	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
 		let mut mesh_min = DVec2::MAX;
 		let mut mesh_max = DVec2::MIN;
-		let Ok(mesh_evaluator) = self.evaluator(GradientSpace::RgbGamma, GradientInterpolation::Linear) else {
-			return RenderBoundingBox::None;
+
+		let evaluator = {
+			let mut guard = self.evaluator_cache.get_clean_guard();
+			match guard.as_ref() {
+				Some(cached) => Arc::clone(cached),
+				None => {
+					let Ok(fresh_evaluator) = self
+						.evaluator_cache
+						.create_fresh_evaluator(&mut guard, self, GradientSpace::default(), GradientInterpolation::default())
+					else {
+						return RenderBoundingBox::None;
+					};
+					fresh_evaluator
+				}
+			}
 		};
-		for patch_evaluator in mesh_evaluator.patches() {
+
+		for patch_evaluator in evaluator.patches() {
 			let [patch_min, patch_max] = patch_evaluator.position_bezier_net().control_net_bounds(transform);
 			mesh_min = mesh_min.min(patch_min);
 			mesh_max = mesh_max.max(patch_max);
@@ -542,7 +565,6 @@ impl MeshPatch {
 	}
 }
 
-// FIXME: do we really need these?
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MeshGradientCorner {
 	pub index: usize,
@@ -862,6 +884,90 @@ impl BicubicBezierNet<Vec4> {
 // MeshGradientEvaluator
 // =====================
 
+#[derive(Default)]
+struct MeshGradientEvaluatorCache {
+	evaluator: Mutex<Option<Arc<MeshGradientEvaluator>>>,
+}
+
+impl MeshGradientEvaluatorCache {
+	fn invalidate(&mut self) {
+		match self.evaluator.get_mut() {
+			Ok(slot) => *slot = None,
+			Err(poisoned) => *poisoned.into_inner() = None,
+		}
+
+		self.evaluator.clear_poison();
+	}
+
+	fn get_clean_guard(&self) -> MutexGuard<'_, Option<Arc<MeshGradientEvaluator>>> {
+		match self.evaluator.lock() {
+			Ok(guard) => guard,
+			Err(poisoned) => {
+				let mut guard = poisoned.into_inner();
+				*guard = None;
+				self.evaluator.clear_poison();
+				guard
+			}
+		}
+	}
+
+	fn get_or_init(&self, mesh_gradient: &MeshGradient, space: GradientSpace, interpolation: GradientInterpolation) -> Result<Arc<MeshGradientEvaluator>, MeshGradientEvaluatorError> {
+		let mut guard = self.get_clean_guard();
+
+		match guard.as_ref() {
+			Some(cached) => {
+				if cached.space == space && cached.interpolation == interpolation {
+					return Ok(Arc::clone(cached));
+				}
+				self.create_fresh_evaluator(&mut guard, mesh_gradient, space, interpolation)
+			}
+			None => self.create_fresh_evaluator(&mut guard, mesh_gradient, space, interpolation),
+		}
+	}
+
+	fn create_fresh_evaluator(
+		&self,
+		slot: &mut Option<Arc<MeshGradientEvaluator>>,
+		mesh_gradient: &MeshGradient,
+		space: GradientSpace,
+		interpolation: GradientInterpolation,
+	) -> Result<Arc<MeshGradientEvaluator>, MeshGradientEvaluatorError> {
+		let evaluator = Arc::new(MeshGradientEvaluator::try_new(mesh_gradient, space, interpolation)?);
+		*slot = Some(Arc::clone(&evaluator));
+		// log::debug!("created a fresh mesh gradient evaluator");
+		Ok(evaluator)
+	}
+}
+
+impl Clone for MeshGradientEvaluatorCache {
+	fn clone(&self) -> Self {
+		let guard = match self.evaluator.lock() {
+			Ok(guard) => guard,
+			Err(poisoned) => {
+				let mut guard = poisoned.into_inner();
+				*guard = None;
+				self.evaluator.clear_poison();
+				guard
+			}
+		};
+		Self {
+			evaluator: Mutex::new(guard.as_ref().map(Arc::clone)),
+		}
+	}
+}
+
+impl PartialEq for MeshGradientEvaluatorCache {
+	fn eq(&self, _other: &Self) -> bool {
+		true
+	}
+}
+
+impl std::fmt::Debug for MeshGradientEvaluatorCache {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str("MeshGradientEvaluatorCache")
+	}
+}
+
 #[derive(Clone, Copy)]
 pub struct ColorDerivative {
 	pub u: Vec4,
@@ -910,7 +1016,7 @@ pub struct MeshGradientEvaluator {
 }
 
 impl MeshGradientEvaluator {
-	pub fn new(mesh_gradient: &MeshGradient, space: GradientSpace, interpolation: GradientInterpolation) -> Result<Self, MeshGradientEvaluatorError> {
+	pub fn try_new(mesh_gradient: &MeshGradient, space: GradientSpace, interpolation: GradientInterpolation) -> Result<Self, MeshGradientEvaluatorError> {
 		let [corner_rows, corner_columns] = mesh_gradient.corner_points.dimensions();
 		if corner_rows < 2 || corner_columns < 2 {
 			return Err(MeshGradientEvaluatorError::InsufficientCornerGrid);

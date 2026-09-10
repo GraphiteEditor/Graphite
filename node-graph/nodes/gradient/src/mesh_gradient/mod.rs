@@ -40,6 +40,10 @@ pub async fn mesh_gradient_value<'a: 'n>(
 	let interpolation_space: GradientSpace = mesh_gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_SPACE);
 	let interpolation_method: GradientInterpolation = mesh_gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION);
 
+	let Some(evaluator) = mesh_gradient.evaluator(interpolation_space, interpolation_method).ok() else {
+		return Item::default();
+	};
+
 	let mesh_to_target = ctx.paint_render_params().fallback_paint_to_target.unwrap_or_default();
 	let mesh_to_output = ctx.footprint().transform * mesh_to_target;
 	let Some((texture_to_output, texture_size)) = calc_texture_to_output(mesh_gradient, mesh_to_output, *ctx.footprint()) else {
@@ -52,9 +56,6 @@ pub async fn mesh_gradient_value<'a: 'n>(
 	// Need to offset the paint target's transform to prevent duplicated application
 	let texture_transform = ctx.footprint().transform.inverse() * texture_to_output;
 
-	let Some(evaluator) = mesh_gradient.evaluator(interpolation_space, interpolation_method).ok() else {
-		return Item::default();
-	};
 	let tessellator = MeshGradientTessellator::new(&evaluator, mesh_to_texture, mesh_to_output);
 
 	let (vertices, indices) = match tessellator.tessellate() {
