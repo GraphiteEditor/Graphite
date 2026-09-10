@@ -109,12 +109,18 @@ fn attribute_keys(list: &List<Graphic>) -> Vec<String> {
 pub(crate) fn map_attribute_groups_to_owned(list: &mut List<Graphic<'_>>) {
 	for key in attribute_keys(list) {
 		// A column of a type that cannot hold groups is skipped whole.
-		let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(&key) else { continue };
-		for value in values.flatten() {
-			for element in value.iter_element_values_mut() {
-				*element = map_groups_to_owned(element);
+		if let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(&key) {
+			for value in values.flatten() {
+				for element in value.iter_element_values_mut() {
+					*element = map_groups_to_owned(element);
+				}
+				map_attribute_groups_to_owned(value);
 			}
-			map_attribute_groups_to_owned(value);
+			continue;
+		}
+		let Some(appearances) = list.iter_attribute_values_mut::<Appearance>(&key) else { continue };
+		for appearance in appearances {
+			map_appearance_groups_to_owned(appearance);
 		}
 	}
 }
@@ -124,15 +130,21 @@ pub(crate) fn map_attribute_groups_to_owned(list: &mut List<Graphic<'_>>) {
 pub(crate) fn map_attribute_groups_to_resident(list: &mut List<Graphic<'_>>, arena: &core_types::arena::Arena) -> Option<()> {
 	for key in attribute_keys(list) {
 		// A column of a type that cannot hold groups is skipped whole.
-		let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(&key) else { continue };
-		for value in values.flatten() {
-			for element in value.iter_element_values_mut() {
-				let resident = map_groups_to_resident(element, arena)?;
-				// SAFETY: the attribute store is erased, and the replay serves as
-				// long as `arena`, which the store's reader outlives.
-				*element = unsafe { core_types::record::erase_static(resident) };
+		if let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(&key) {
+			for value in values.flatten() {
+				for element in value.iter_element_values_mut() {
+					let resident = map_groups_to_resident(element, arena)?;
+					// SAFETY: the attribute store is erased, and the replay serves as
+					// long as `arena`, which the store's reader outlives.
+					*element = unsafe { core_types::record::erase_static(resident) };
+				}
+				map_attribute_groups_to_resident(value, arena)?;
 			}
-			map_attribute_groups_to_resident(value, arena)?;
+			continue;
+		}
+		let Some(appearances) = list.iter_attribute_values_mut::<Appearance>(&key) else { continue };
+		for appearance in appearances {
+			map_appearance_groups_to_resident(appearance, arena)?;
 		}
 	}
 	Some(())
@@ -144,15 +156,21 @@ pub(crate) fn map_attribute_groups_to_resident(list: &mut List<Graphic<'_>>, are
 pub(crate) fn map_attribute_groups_to_persistent(list: &mut List<Graphic<'_>>, promotion: &core_types::record::Promotion<'_>) -> Option<()> {
 	for key in attribute_keys(list) {
 		// A column of a type that cannot hold groups is skipped whole.
-		let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(&key) else { continue };
-		for value in values.flatten() {
-			for element in value.iter_element_values_mut() {
-				let promoted = map_groups_to_persistent(element, promotion)?;
-				// SAFETY: the attribute store is erased, and persistent content
-				// outlives the evaluation.
-				*element = unsafe { core_types::record::erase_static(promoted) };
+		if let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(&key) {
+			for value in values.flatten() {
+				for element in value.iter_element_values_mut() {
+					let promoted = map_groups_to_persistent(element, promotion)?;
+					// SAFETY: the attribute store is erased, and persistent content
+					// outlives the evaluation.
+					*element = unsafe { core_types::record::erase_static(promoted) };
+				}
+				map_attribute_groups_to_persistent(value, promotion)?;
 			}
-			map_attribute_groups_to_persistent(value, promotion)?;
+			continue;
+		}
+		let Some(appearances) = list.iter_attribute_values_mut::<Appearance>(&key) else { continue };
+		for appearance in appearances {
+			map_appearance_groups_to_persistent(appearance, promotion)?;
 		}
 	}
 	Some(())
@@ -231,13 +249,14 @@ pub(crate) fn list_contains_groups(list: &List<Graphic>) -> bool {
 
 /// Whether any group hides in the list's item attribute values. Only the
 /// group-capable columns are scanned: those are the value types the deep field
-/// glue is registered for, today `Option<List<Graphic>>` alone. A list with no
-/// attribute columns costs nothing, and a column of any other type is decided
-/// by its one downcast rather than per value.
+/// glue is registered for, `Option<List<Graphic>>` and `Appearance`. A list
+/// with no attribute columns costs nothing, and a column of any other type is
+/// decided by its one downcast rather than per value.
 fn attribute_values_contain_groups(list: &List<Graphic>) -> bool {
 	list.attribute_keys().any(|key| {
 		list.iter_attribute_values::<Option<List<Graphic>>>(key)
 			.is_some_and(|mut values| values.any(|value| value.as_ref().is_some_and(list_contains_groups)))
+			|| list.iter_attribute_values::<Appearance>(key).is_some_and(|mut values| values.any(appearance_contains_groups))
 	})
 }
 
@@ -968,5 +987,76 @@ mod run_tests {
 			Some(2.),
 			"the stroke parameters survive the move"
 		);
+	}
+
+	#[test]
+	fn a_paint_field_whose_appearance_column_holds_groups_never_moves() {
+		let inner_vector = unit_square_at(DVec2::ZERO);
+		let mut transient = core_types::arena::Arena::new(1 << 16).unwrap();
+		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
+
+		// Group-free elements, with the resident group hidden in an item's appearance paint cell.
+		let native = native_group_paint(&inner_vector, &transient);
+		let Some(native_group) = native.element(0) else { panic!("the paint carries a group") };
+		let expected = map_groups_to_legacy(native_group);
+		// SAFETY: the erased native group serves only while `transient` is live;
+		// the promote under test replaces its borrows.
+		let paint_cell = unsafe { core_types::record::erase_static(native_group.clone()) };
+		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(4., 4.))));
+		paint.set_attribute(crate::markers::ATTR_APPEARANCE, 0, Appearance::new_single(Coverage::new_fill(), paint_cell));
+		let (paint, _) = transient.alloc_sized_keyed(paint, 0).unwrap();
+
+		let (layout, span, _frames) = promote_paint_field(Some(paint), 1, &transient, &persistent);
+		let served = promoted_paint(&span, &layout, 0, &persistent);
+		let moved = std::ptr::eq(std::ptr::from_ref(served).cast::<u8>(), std::ptr::from_ref(paint).cast::<u8>());
+		assert!(!moved, "an appearance-held group denies the move, so the promote parks a header of its own");
+
+		transient.reset();
+		let served = promoted_paint(&span, &layout, 0, &persistent);
+		let held = served.attribute::<Appearance>(crate::markers::ATTR_APPEARANCE, 0).expect("the appearance rides the promoted list");
+		let held = held.paint_at(0).expect("the fill coverage keeps its paint");
+		assert_eq!(map_groups_to_legacy(held), expected, "the appearance-held group serves from persistent storage after the reset");
+	}
+
+	#[test]
+	fn an_owned_record_deep_copies_appearance_column_groups() {
+		let inner_vector = unit_square_at(DVec2::ZERO);
+		let source = core_types::arena::Arena::new(1 << 16).unwrap();
+		let native = native_group_paint(&inner_vector, &source);
+		let Some(native_group) = native.element(0) else { panic!("the paint carries a group") };
+		let expected = map_groups_to_legacy(native_group);
+
+		// The field's elements are group-free; the group rides an item's appearance
+		// paint cell, which the shallow read alone would leave borrowing `source`.
+		// SAFETY: the erased native group serves only while `source` is live; the
+		// deep glue under test replaces its borrows at the copy-out seam.
+		let paint_cell = unsafe { core_types::record::erase_static(native_group.clone()) };
+		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(2., 2.))));
+		paint.set_attribute(crate::markers::ATTR_APPEARANCE, 0, Appearance::new_single(Coverage::new_fill(), paint_cell));
+
+		let vector = unit_square_at(DVec2::new(4., 4.));
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<EditorMergedLayers>(0)], 1).unwrap();
+		let lane = builder.push(vector.clone()).unwrap();
+		builder.attr::<EditorMergedLayers>(lane, Some(&paint));
+		let item = builder.finish();
+		let layout = item.layout().clone();
+		let offset = layout.offset_of(EditorMergedLayers::NAME, 0).unwrap();
+		// SAFETY: the item's lane is a live record of `layout`.
+		let owned = unsafe { core_types::record::OwnedRecord::copy_out(&layout, item.lanes().get(0).rec()) };
+		drop(item);
+		drop(paint);
+		drop(source);
+
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let frames = core_types::record::test_frames(layout.frame_bytes());
+		let mut slot = frames.claim(&layout);
+		owned.replay_into(&mut slot, &arena).expect("the arena holds the replay");
+		// SAFETY: the replay completes the record in the claimed frame.
+		let value = unsafe { slot.finish() };
+		// SAFETY: the replay wrote a record of `layout`.
+		let served = unsafe { layout.rec(&value).read::<Option<&List<Graphic>>>(offset) }.expect("the field replays present");
+		let held = served.attribute::<Appearance>(crate::markers::ATTR_APPEARANCE, 0).expect("the appearance rides the replayed list");
+		let held = held.paint_at(0).expect("the fill coverage keeps its paint");
+		assert_eq!(map_groups_to_legacy(held), expected, "the appearance-held group replayed into the serving arena");
 	}
 }
