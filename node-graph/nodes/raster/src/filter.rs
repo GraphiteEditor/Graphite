@@ -428,7 +428,7 @@ fn sharpen_algorithm(mut buffer: Image<Color>, amount: f32, radius: f64, thresho
 	};
 
 	for (original, blurred) in buffer.data.iter_mut().zip(&blurred_image.data) {
-		let [original_r, original_g, original_b, original_a] = original.to_gamma_srgb_channels();
+		let [original_r, original_g, original_b, original_a] = original.to_unassociated_alpha().to_gamma_srgb_channels();
 		let [blurred_r, blurred_g, blurred_b, _] = blurred.to_unpremultiplied_channels();
 
 		// Sharpens RGB channels while preserving alpha channel
