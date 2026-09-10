@@ -56,7 +56,7 @@ edition = "2024"
 authors = ["Graphite Authors <contact@graphite.art>"]
 homepage = "https://graphite.art"
 repository = "https://github.com/GraphiteEditor/Graphite"
-license = "Apache-2.0"
+license = "MIT OR Apache-2.0"
 version = "0.0.0"
 readme = "README.md"
 publish = false
@@ -141,7 +141,7 @@ wgpu = { version = "29.0", features = [
 	"strict_asserts",
 ] }
 once_cell = "1.13" # Remove and replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
-wasm-bindgen = "=0.2.121" # NOTICE: keep in sync with the `wasm-bindgen-cli` version pinned across CI workflows, devcontainer, Nix, and the `cargo-run` tool. We pin this version because wasm-bindgen upgrades may break various things.
+wasm-bindgen = "=0.2.121" # NOTICE: keep in sync with the `wasm-bindgen-cli` version pinned in `.github/workflows/build.yml`, `.devcontainer/devcontainer.json`, `.nix/dev.nix`, `.nix/pkgs/graphite.nix`, and `tools/cargo-run/src/requirements.rs`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
 js-sys = "=0.3.98"
 web-sys = { version = "=0.3.98", features = [
@@ -221,8 +221,8 @@ gungraun = { version = "0.18" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = "149"
-cef-dll-sys = "149"
+cef = "151"
+cef-dll-sys = "151"
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
@@ -262,5 +262,5 @@ debug = true
 
 [patch.crates-io]
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
-cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-149" }
-cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-149" }
+cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-151" }
+cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-151" }

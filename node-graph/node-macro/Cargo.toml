@@ -8,13 +8,10 @@ edition = "2024"
 readme = "../../README.md"
 homepage = "https://graphite.art"
 repository = "https://github.com/GraphiteEditor/Graphite"
-license = "Apache-2.0"
+license = "MIT OR Apache-2.0"
 
 [lib]
 proc-macro = true
-
-[features]
-disable-registration = []
 
 [dependencies]
 # Workspace dependencies
