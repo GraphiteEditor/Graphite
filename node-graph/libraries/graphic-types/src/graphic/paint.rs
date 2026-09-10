@@ -1,10 +1,10 @@
-//! The paint column level: fill and stroke read as lane columns and threaded down to the elements they reach.
+//! The appearance cascade level: the declared appearance read as a lane column and threaded down to the elements it reaches.
 
-use super::{Graphic, IntoGraphicList};
+use super::Graphic;
 use crate::appearance::Appearance;
-use crate::markers::{ATTR_FILL, ATTR_STROKE, Appearance as AppearanceMarker, Fill, Stroke};
+use crate::markers::Appearance as AppearanceMarker;
 use core_types::ATTR_TRANSFORM;
-use core_types::attribute::{Attribute, Opacity};
+use core_types::attribute::Opacity;
 use core_types::lane::{LaneColumn, LaneSource};
 use core_types::list::{ItemAttributeValues, List};
 use glam::DAffine2;
@@ -14,28 +14,6 @@ use vector_types::Vector;
 /// A 0-item list, or a list whose first graphic is empty, is treated as no paint.
 pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 	graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
-}
-
-/// Look up the paint graphics stored under the marker `A`, in the canonical `List<Graphic>` form.
-pub fn paint_graphics<'a, A, S>(source: &'a S, index: usize) -> Option<&'a List<Graphic<'static>>>
-where
-	S: LaneSource,
-	A: Attribute<Value<'a> = Option<&'a List<Graphic<'static>>>>,
-{
-	source
-		.attr::<A>(index)
-		// Treat a blank paint attribute as absent so an empty attribute doesn't count as painted
-		.filter(|graphic_list| is_paint_present(graphic_list))
-}
-
-/// Whether the item carries a non-blank canonical `List<Graphic>` paint under the marker `A`,
-/// checked by borrowing without cloning the renderable list.
-pub fn has_paint<'a, A, S>(source: &'a S, index: usize) -> bool
-where
-	S: LaneSource,
-	A: Attribute<Value<'a> = Option<&'a List<Graphic<'static>>>>,
-{
-	paint_graphics::<A, S>(source, index).is_some()
 }
 
 /// Whether every lane of a vector source draws as a plain clip path: fully
@@ -65,44 +43,15 @@ pub fn vector_can_reduce_to_clip_path<S: LaneSource<Element = Vector>>(source: &
 	})
 }
 
-/// The paint a lane carries for its interiors, in the reference form
-/// [`PaintOverlay`] threads down.
-#[derive(Clone, Copy, Default)]
-pub struct LanePaint<'a> {
-	pub fill: Option<&'a List<Graphic<'static>>>,
-	pub stroke: Option<&'a List<Graphic<'static>>>,
-}
-
-impl<'a> LanePaint<'a> {
-	pub const NONE: Self = Self { fill: None, stroke: None };
-
-	pub fn is_present(&self) -> bool {
-		self.fill.is_some() || self.stroke.is_some()
-	}
-}
-
-/// A source's fill, stroke, and appearance columns, resolved once for per-lane reads.
+/// A source's declared appearance column, resolved once for per-lane reads.
 pub struct PaintColumns<'a, S: LaneSource + 'a> {
-	fill: S::Column<'a, Fill>,
-	stroke: S::Column<'a, Stroke>,
 	appearance: S::Column<'a, AppearanceMarker>,
 }
 
 impl<'a, S: LaneSource> PaintColumns<'a, S> {
 	pub fn new(source: &'a S) -> Self {
 		Self {
-			fill: source.column::<Fill>(),
-			stroke: source.column::<Stroke>(),
 			appearance: source.column::<AppearanceMarker>(),
-		}
-	}
-
-	/// The lane's present, non-blank paint.
-	pub fn read(&self, lane: usize) -> LanePaint<'a> {
-		let present = |value: Option<Option<&'a List<Graphic<'static>>>>| value.flatten().filter(|list| is_paint_present(list));
-		LanePaint {
-			fill: present(self.fill.try_get(lane)),
-			stroke: present(self.stroke.try_get(lane)),
 		}
 	}
 
@@ -112,69 +61,23 @@ impl<'a, S: LaneSource> PaintColumns<'a, S> {
 	}
 }
 
-/// How far a lane's paint reaches into the element beneath it, mirroring the
-/// legacy conversion's paint push: vector interiors directly and vector
-/// children of a nested graphic list, one level deep.
-///
-/// The appearance cascade rides beside the paint push with its own rule: a
-/// lane's own declared appearance wins wholesale, an undeclared lane inherits
-/// the nearest ancestor's, at any depth. Only a fresh entry (a pattern's own
+/// The appearance cascade threading down the graphic levels: a lane's own
+/// declared appearance wins wholesale, an undeclared lane inherits the
+/// nearest ancestor's, at any depth. Only a fresh entry (a pattern's own
 /// render, or any standalone render root) starts without an inherited one.
 #[derive(Clone, Copy)]
 pub struct PaintReach<'a> {
-	pub paint: LanePaint<'a>,
 	/// The cascade's resolved appearance: the nearest declared one at or above this lane.
 	pub appearance: Option<&'a Appearance>,
-	hops: u8,
 }
 
 impl<'a> PaintReach<'a> {
-	pub const NONE: Self = Self {
-		paint: LanePaint::NONE,
-		appearance: None,
-		hops: 0,
-	};
+	pub const NONE: Self = Self { appearance: None };
 
-	/// The lane's effective reach: an inherited paint stays authoritative
-	/// (lane paint below a push's origin is inert in the legacy model), an
-	/// absent one reads the lane's own paint. The appearance arbitrates the
-	/// opposite way: the lane's own declared appearance wins over the
-	/// inherited one.
+	/// The lane's effective reach: its own declared appearance wins over the inherited one.
 	pub fn for_lane<S: LaneSource>(self, columns: &PaintColumns<'a, S>, index: usize) -> Self {
-		let appearance = Appearance::cascade(columns.read_appearance(index), self.appearance);
-		match self.paint.is_present() {
-			true => Self { appearance, ..self },
-			false => Self {
-				paint: columns.read(index),
-				appearance,
-				hops: 2,
-			},
-		}
-	}
-
-	pub fn applies(&self) -> bool {
-		self.hops > 0 && self.paint.is_present()
-	}
-
-	/// The reach one graphic nesting level further down. The appearance
-	/// cascade is not hop-limited, so it passes through unchanged.
-	pub fn nested(self) -> Self {
 		Self {
-			hops: self.hops.saturating_sub(1),
-			..self
-		}
-	}
-
-	/// The reach entering a group's own graphic run: a spent or absent reach
-	/// resets so the group's own lane paint applies at its own boundary,
-	/// while the appearance cascades through the boundary.
-	pub fn into_group_graphics(self) -> Self {
-		match self.applies() {
-			true => self.nested(),
-			false => Self {
-				appearance: self.appearance,
-				..Self::NONE
-			},
+			appearance: Appearance::cascade(columns.read_appearance(index), self.appearance),
 		}
 	}
 }
@@ -189,18 +92,8 @@ pub fn paint_cell_rows<'a>(cell: &'a Graphic<'static>) -> Option<&'a List<Graphi
 	}
 }
 
-/// Stores a paint attribute in the paint marker's owned form, the only representation paint readers accept.
-pub fn set_paint_attribute(attributes: &mut ItemAttributeValues, key: &str, paint: impl IntoGraphicList) {
-	attributes.insert(key, Some(paint.into_graphic_list()));
-}
-
-/// Stores a paint attribute at a list index in the paint marker's owned form, the only representation paint readers accept.
-pub fn set_paint_attribute_at<T>(list: &mut List<T>, index: usize, key: &str, paint: impl IntoGraphicList) {
-	list.set_attribute(key, index, Some(paint.into_graphic_list()));
-}
-
-/// Bake the provided transform into the per-item transforms of the paint graphics stored under the
-/// canonical `List<Graphic>` fill and stroke attributes.
+/// Bake the provided transform into the per-item transforms of the paint
+/// graphics inside the item's appearance coverage cells.
 pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DAffine2) {
 	fn bake_graphic_paint_transform(graphics: &mut List<Graphic>, transform: DAffine2) {
 		for item_transform in graphics.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
@@ -213,9 +106,13 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 		}
 	}
 
-	for paint_key in [ATTR_FILL, ATTR_STROKE] {
-		if let Some(Some(graphics)) = attributes.get_mut::<Option<List<Graphic>>>(paint_key) {
-			bake_graphic_paint_transform(graphics, transform);
+	if let Some(appearance) = attributes.get_mut::<Appearance>(crate::markers::ATTR_APPEARANCE) {
+		if let Some(cells) = appearance.0.iter_attribute_values_mut::<Graphic>(crate::markers::ATTR_PAINT) {
+			for cell in cells {
+				if let Graphic::Graphic(list) = cell {
+					bake_graphic_paint_transform(list, transform);
+				}
+			}
 		}
 	}
 }
@@ -230,23 +127,24 @@ mod run_tests {
 	use glam::DVec2;
 
 	#[test]
-	fn a_run_serves_the_parked_paint_reference() {
-		let paint = List::new_from_element(Graphic::Color(Color::BLACK));
+	fn a_run_serves_the_parked_appearance_reference() {
+		use crate::appearance::Coverage;
+		use core_types::lane::LaneSource;
+
+		let appearance = Appearance::new_single(Coverage::new_fill(), Graphic::Color(Color::BLACK));
 		let vector = unit_square_at(DVec2::ZERO);
 
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
-		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
 		let lane = builder.push(vector.clone()).unwrap();
-		builder.attr::<Fill>(lane, Some(&paint));
+		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
 		let item = builder.finish();
 		let run = RunView::<Vector>::new(&item).expect("the run holds vector elements");
 
-		assert_eq!(run.attr::<Fill>(0), Some(&paint));
-		assert_eq!(paint_graphics::<Fill, _>(&run, 0), Some(&paint));
-		assert_eq!(paint_graphics::<Stroke, _>(&run, 0), None);
+		assert_eq!(run.attr::<AppearanceMarker>(0), Some(&appearance));
 
 		let legacy = run_to_legacy_list::<Vector>(&item).expect("the run lowers to a legacy vector list");
-		assert_eq!(paint_graphics::<Fill, _>(&legacy, 0), paint_graphics::<Fill, _>(&run, 0));
+		assert_eq!(legacy.attr::<AppearanceMarker>(0), Some(&appearance));
 	}
 
 	#[test]
@@ -263,32 +161,10 @@ mod run_tests {
 		list.set_attribute(ATTR_APPEARANCE, 0, own.clone());
 
 		let columns = PaintColumns::new(&list);
-		let ancestor = PaintReach {
-			appearance: Some(&inherited),
-			..PaintReach::NONE
-		};
+		let ancestor = PaintReach { appearance: Some(&inherited) };
 
 		assert_eq!(ancestor.for_lane(&columns, 0).appearance, Some(&own), "a declared lane wins over the inherited appearance");
 		assert_eq!(ancestor.for_lane(&columns, 1).appearance, Some(&inherited), "a padded lane inherits");
 		assert_eq!(PaintReach::NONE.for_lane(&columns, 1).appearance, None, "no ancestor leaves an undeclared lane bare");
-	}
-
-	#[test]
-	fn reach_carries_the_appearance_through_nesting_and_group_boundaries() {
-		use crate::appearance::Coverage;
-
-		let inherited = Appearance::new_single(Coverage::new_fill(), Graphic::Color(Color::WHITE));
-		let reach = PaintReach {
-			appearance: Some(&inherited),
-			..PaintReach::NONE
-		};
-
-		assert_eq!(reach.nested().appearance, Some(&inherited), "nesting does not hop-limit the cascade");
-		assert_eq!(
-			reach.into_group_graphics().appearance,
-			Some(&inherited),
-			"the cascade crosses a group boundary the paint push resets at"
-		);
-		assert_eq!(PaintReach::NONE.into_group_graphics().appearance, None);
 	}
 }

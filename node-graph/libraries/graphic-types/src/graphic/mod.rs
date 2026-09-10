@@ -7,10 +7,7 @@ pub(crate) use glue::{list_contains_groups, map_attribute_groups_to_owned, map_a
 pub use glue::{map_groups_to_owned, map_groups_to_persistent, map_groups_to_resident};
 pub(crate) use legacy::run_to_legacy_list;
 pub use legacy::{group_to_legacy_graphic, group_to_legacy_list, map_groups_to_legacy, map_paint_attrs_to_legacy, run_to_list};
-pub use paint::{
-	LanePaint, PaintColumns, PaintReach, bake_paint_transforms, has_paint, is_paint_present, paint_cell_rows, paint_graphics, set_paint_attribute, set_paint_attribute_at,
-	vector_can_reduce_to_clip_path,
-};
+pub use paint::{PaintColumns, PaintReach, bake_paint_transforms, is_paint_present, paint_cell_rows, vector_can_reduce_to_clip_path};
 pub use walk::{GraphicLevel, GraphicLevelColumn, RowStep, VectorRow, direct_vector_len, flatten_vector_rows, group_is_empty, lane_attributes, run_lane_attributes, walk_vector_rows};
 use walk::{group_all_clipped, group_bounding_box, group_is_fully_transparent, group_is_opaque, group_render_complexity};
 

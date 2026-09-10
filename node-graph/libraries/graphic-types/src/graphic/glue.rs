@@ -492,7 +492,7 @@ mod run_tests {
 	use super::*;
 	use crate::graphic::test_support::{native_group_paint, unit_square_at};
 	use crate::graphic::{group_to_legacy_list, map_groups_to_legacy};
-	use crate::markers::{Fill, Stroke};
+	use crate::markers::EditorMergedLayers;
 	use core_types::attribute::Attribute;
 	use core_types::lane::LaneSource;
 	use core_types::record::{FieldWrite, RunBuilder, RunView, element_write_hashed};
@@ -504,9 +504,9 @@ mod run_tests {
 		let vector = unit_square_at(DVec2::ZERO);
 
 		let source = core_types::arena::Arena::new(1 << 16).unwrap();
-		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<EditorMergedLayers>(0)], 1).unwrap();
 		let lane = builder.push(vector.clone()).unwrap();
-		builder.attr::<Fill>(lane, Some(&paint));
+		builder.attr::<EditorMergedLayers>(lane, Some(&paint));
 		let group = core_types::record::Group { row: None, content: builder.finish() };
 		let expected = group_to_legacy_list(&group);
 		let owned = map_groups_to_owned(&Graphic::Group(group));
@@ -548,9 +548,9 @@ mod run_tests {
 		let paint = unsafe { core_types::record::erase_static(native_group_paint(&inner_vector, &source)) };
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
-		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<EditorMergedLayers>(0)], 1).unwrap();
 		let lane = builder.push(vector.clone()).unwrap();
-		builder.attr::<Fill>(lane, Some(&paint));
+		builder.attr::<EditorMergedLayers>(lane, Some(&paint));
 		let item = builder.finish();
 		let owned = item.copy_out();
 		let expected = map_groups_to_legacy(paint.element(0).unwrap());
@@ -561,7 +561,7 @@ mod run_tests {
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		let replayed = owned.replay(&arena).expect("the arena holds the replay");
 		let run = RunView::<Vector>::new(&replayed).expect("the run holds vector elements");
-		let served = run.attr::<Fill>(0).expect("the fill replays present");
+		let served = run.attr::<EditorMergedLayers>(0).expect("the fill replays present");
 		assert_eq!(map_groups_to_legacy(served.element(0).unwrap()), expected);
 	}
 
@@ -574,12 +574,12 @@ mod run_tests {
 		let paint = unsafe { core_types::record::erase_static(native_group_paint(&inner_vector, &source)) };
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
-		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<EditorMergedLayers>(0)], 1).unwrap();
 		let lane = builder.push(vector.clone()).unwrap();
-		builder.attr::<Fill>(lane, Some(&paint));
+		builder.attr::<EditorMergedLayers>(lane, Some(&paint));
 		let item = builder.finish();
 		let layout = item.layout().clone();
-		let offset = layout.offset_of(Fill::NAME, 0).unwrap();
+		let offset = layout.offset_of(EditorMergedLayers::NAME, 0).unwrap();
 		// SAFETY: the item's lane is a live record of `layout`.
 		let owned = unsafe { core_types::record::OwnedRecord::copy_out(&layout, item.lanes().get(0).rec()) };
 		let expected = map_groups_to_legacy(paint.element(0).unwrap());
@@ -609,8 +609,8 @@ mod run_tests {
 	) -> (core_types::record::Layout, core_types::record::MaterializedSpan, Vec<u64>) {
 		use core_types::record::{Layout, MaterializedSpan, Promotion, element_write, write_field};
 
-		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[FieldWrite::of::<Fill>(0)]);
-		let offset = layout.offset_of(Fill::NAME, 0).unwrap();
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[FieldWrite::of::<EditorMergedLayers>(0)]);
+		let offset = layout.offset_of(EditorMergedLayers::NAME, 0).unwrap();
 		let stride = layout.lane_stride();
 		let mut buffer = vec![0u64; (lanes * stride).div_ceil(8)];
 		let base = buffer.as_mut_ptr().cast::<u8>();
@@ -633,7 +633,7 @@ mod run_tests {
 
 	/// The promoted paint of one lane, at the layout the promote published.
 	fn promoted_paint<'p>(span: &core_types::record::MaterializedSpan, layout: &core_types::record::Layout, lane: usize, persistent: &'p core_types::arena::Arena) -> &'p List<Graphic<'p>> {
-		let offset = layout.offset_of(Fill::NAME, 0).unwrap();
+		let offset = layout.offset_of(EditorMergedLayers::NAME, 0).unwrap();
 		let batch = span.batch(persistent, layout).expect("the span resolves in its own region");
 		// SAFETY: the promote wrote a record of `layout` into every lane.
 		unsafe { batch.get(lane).rec().read::<Option<&List<Graphic>>>(offset) }.expect("the paint promotes present")
@@ -713,7 +713,7 @@ mod run_tests {
 		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(4., 4.))));
 		// SAFETY: the erased native list serves only while `transient` is live; the
 		// promote under test replaces its borrows.
-		paint.set_attribute::<Option<List<Graphic>>>(Stroke::NAME, 0, Some(unsafe { core_types::record::erase_static(native) }));
+		paint.set_attribute::<Option<List<Graphic>>>("probe:paint", 0, Some(unsafe { core_types::record::erase_static(native) }));
 		let (paint, _) = transient.alloc_sized_keyed(paint, 0).unwrap();
 
 		let (layout, span, _frames) = promote_paint_field(Some(paint), 1, &transient, &persistent);
@@ -723,7 +723,7 @@ mod run_tests {
 
 		transient.reset();
 		let served = promoted_paint(&span, &layout, 0, &persistent);
-		let held = served.attribute::<Option<List<Graphic>>>(Stroke::NAME, 0).expect("the stroke attribute rides the promoted list");
+		let held = served.attribute::<Option<List<Graphic>>>("probe:paint", 0).expect("the stroke attribute rides the promoted list");
 		let held = held.as_ref().expect("the stroke is present");
 		assert_eq!(
 			map_groups_to_legacy(held.element(0).unwrap()),
@@ -742,7 +742,7 @@ mod run_tests {
 		// whose value holds none: neither denies the move.
 		paint.set_attribute::<f64>("opacity", 0, 0.5);
 		paint.set_attribute::<Color>("probe:color", 0, Color::BLACK);
-		paint.set_attribute::<Option<List<Graphic>>>(Stroke::NAME, 0, Some(List::new_from_element(Graphic::Color(Color::WHITE))));
+		paint.set_attribute::<Option<List<Graphic>>>("probe:paint", 0, Some(List::new_from_element(Graphic::Color(Color::WHITE))));
 		let heap = {
 			let Some(Graphic::Vector(vector)) = paint.element(0) else { panic!("the paint carries a vector") };
 			vector.point_domain.positions().as_ptr()
@@ -777,15 +777,15 @@ mod run_tests {
 		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(2., 2.))));
 		// SAFETY: the erased native list serves only while `source` is live; the
 		// deep glue under test replaces its borrows at the copy-out seam.
-		paint.set_attribute::<Option<List<Graphic>>>(Stroke::NAME, 0, Some(unsafe { core_types::record::erase_static(native) }));
+		paint.set_attribute::<Option<List<Graphic>>>("probe:paint", 0, Some(unsafe { core_types::record::erase_static(native) }));
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
-		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<EditorMergedLayers>(0)], 1).unwrap();
 		let lane = builder.push(vector.clone()).unwrap();
-		builder.attr::<Fill>(lane, Some(&paint));
+		builder.attr::<EditorMergedLayers>(lane, Some(&paint));
 		let item = builder.finish();
 		let layout = item.layout().clone();
-		let offset = layout.offset_of(Fill::NAME, 0).unwrap();
+		let offset = layout.offset_of(EditorMergedLayers::NAME, 0).unwrap();
 		// SAFETY: the item's lane is a live record of `layout`.
 		let owned = unsafe { core_types::record::OwnedRecord::copy_out(&layout, item.lanes().get(0).rec()) };
 		drop(item);
@@ -800,7 +800,7 @@ mod run_tests {
 		let value = unsafe { slot.finish() };
 		// SAFETY: the replay wrote a record of `layout`.
 		let served = unsafe { layout.rec(&value).read::<Option<&List<Graphic>>>(offset) }.expect("the fill replays present");
-		let held = served.attribute::<Option<List<Graphic>>>(Stroke::NAME, 0).expect("the stroke attribute rides the replayed list");
+		let held = served.attribute::<Option<List<Graphic>>>("probe:paint", 0).expect("the stroke attribute rides the replayed list");
 		let held = held.as_ref().expect("the stroke is present");
 		assert_eq!(map_groups_to_legacy(held.element(0).unwrap()), expected, "the attribute-held group replayed into the serving arena");
 	}

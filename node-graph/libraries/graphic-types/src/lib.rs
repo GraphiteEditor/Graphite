@@ -13,7 +13,7 @@ pub use vector_types;
 pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
 pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
-pub use markers::{ATTR_APPEARANCE, ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_PAINT, ATTR_STROKE};
+pub use markers::{ATTR_APPEARANCE, ATTR_EDITOR_MERGED_LAYERS, ATTR_PAINT};
 
 pub mod migrations {
 	use crate::Vector;

@@ -24,7 +24,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::appearance::{Appearance, Coverage};
-use graphic_types::graphic::{PaintColumns, PaintReach, is_paint_present, paint_cell_rows, set_paint_attribute, vector_can_reduce_to_clip_path};
+use graphic_types::graphic::{PaintColumns, PaintReach, is_paint_present, paint_cell_rows, vector_can_reduce_to_clip_path};
 use graphic_types::markers::{Appearance as AppearanceMarker, EditorMergedLayers};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
@@ -32,7 +32,7 @@ use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, Spr
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
-use graphic_types::{ATTR_FILL, Artboard, Graphic, Vector};
+use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -540,10 +540,10 @@ pub struct RenderMetadata {
 	pub text_frames: HashMap<NodeId, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
-	/// Per-layer `ATTR_FILL` row attribute, exposed so message handlers can read it.
+	/// Per-layer fill paint snapshot from the resolved appearance, exposed so message handlers can read it.
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub fill_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,
-	/// Per-layer `ATTR_STROKE` row attribute, exposed so message handlers can read it.
+	/// Per-layer stroke paint snapshot from the resolved appearance, exposed so message handlers can read it.
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub stroke_attributes: HashMap<NodeId, Arc<List<Graphic<'static>>>>,
 	pub backgrounds: Vec<Background>,
@@ -684,7 +684,7 @@ impl Render for Graphic<'_> {
 fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
 	match element {
 		Graphic::Vector(vector) => render_vector_svg(&Single(vector), reach.appearance, render, render_params),
-		Graphic::Graphic(inner) => render_graphic_svg_with(inner, reach.nested(), render, render_params),
+		Graphic::Graphic(inner) => render_graphic_svg_with(inner, reach, render, render_params),
 		Graphic::Group(group) => render_group_svg(group, reach, render, render_params),
 		_ => element.render_svg(render, render_params),
 	}
@@ -693,7 +693,7 @@ fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &
 fn render_element_vello<'a>(element: &'a Graphic, reach: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 	match element {
 		Graphic::Vector(vector) => render_vector_vello(&Single(vector), reach.appearance, scene, transform, context, render_params),
-		Graphic::Graphic(inner) => render_graphic_vello_with(inner, reach.nested(), scene, transform, context, render_params),
+		Graphic::Graphic(inner) => render_graphic_vello_with(inner, reach, scene, transform, context, render_params),
 		Graphic::Group(group) => render_group_vello(group, reach, scene, transform, context, render_params),
 		_ => element.render_to_vello(scene, transform, context, render_params),
 	}
@@ -736,7 +736,7 @@ fn collect_element_metadata<'a>(
 	}
 
 	match element {
-		Graphic::Graphic(list) => collect_graphic_metadata_with(list, reach.nested(), metadata, footprint, element_id),
+		Graphic::Graphic(list) => collect_graphic_metadata_with(list, reach, metadata, footprint, element_id),
 		Graphic::Vector(vector) => collect_vector_metadata(&Single(vector), reach.appearance, metadata, footprint, element_id),
 		Graphic::RasterCPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::RasterGPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
@@ -778,7 +778,7 @@ fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, elem
 
 fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
 	match element {
-		Graphic::Graphic(list) => add_graphic_upstream_click_targets_with(list, reach.nested(), click_targets),
+		Graphic::Graphic(list) => add_graphic_upstream_click_targets_with(list, reach, click_targets),
 		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(vector), reach.appearance, click_targets),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(click_targets),
 		Graphic::Color(_) | Graphic::Gradient(_) => {}
@@ -789,7 +789,7 @@ fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReac
 
 fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
 	match element {
-		Graphic::Graphic(list) => add_graphic_upstream_outline_targets_with(list, reach.nested(), outlines),
+		Graphic::Graphic(list) => add_graphic_upstream_outline_targets_with(list, reach, outlines),
 		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(vector), reach.appearance, outlines),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(outlines),
 		Graphic::Color(_) | Graphic::Gradient(_) => {}
@@ -803,7 +803,7 @@ fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintRe
 fn render_group_svg<'a>(group: &'a Group, reach: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
 	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
-		render_graphic_svg_with(&run, reach.into_group_graphics(), render, render_params)
+		render_graphic_svg_with(&run, reach, render, render_params)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
 		render_vector_svg(&run, reach.appearance, render, render_params)
 	} else if let Some(run) = RunView::<Raster<CPU>>::new(item) {
@@ -821,7 +821,7 @@ fn render_group_svg<'a>(group: &'a Group, reach: PaintReach<'a>, render: &mut Sv
 fn render_group_vello<'a>(group: &'a Group, reach: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
-		render_graphic_vello_with(&run, reach.into_group_graphics(), scene, transform, context, render_params)
+		render_graphic_vello_with(&run, reach, scene, transform, context, render_params)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
 		render_vector_vello(&run, reach.appearance, scene, transform, context, render_params)
 	} else if let Some(run) = RunView::<Raster<CPU>>::new(item) {
@@ -843,7 +843,7 @@ fn render_group_vello<'a>(group: &'a Group, reach: PaintReach<'a>, scene: &mut S
 fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
-		collect_graphic_metadata_with(&run, reach.into_group_graphics(), metadata, footprint, element_id)
+		collect_graphic_metadata_with(&run, reach, metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
 		collect_vector_metadata(&run, reach.appearance, metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Raster<CPU>>::new(item) {
@@ -859,7 +859,7 @@ fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata:
 fn add_group_upstream_click_targets<'a>(group: &'a Group, reach: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
 	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
-		add_graphic_upstream_click_targets_with(&run, reach.into_group_graphics(), click_targets)
+		add_graphic_upstream_click_targets_with(&run, reach, click_targets)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
 		add_vector_upstream_click_targets(&run, reach.appearance, click_targets)
 	} else if item.typed_lanes::<Raster<CPU>>().is_some() || item.typed_lanes::<Raster<GPU>>().is_some() {
@@ -872,7 +872,7 @@ fn add_group_upstream_click_targets<'a>(group: &'a Group, reach: PaintReach<'a>,
 fn add_group_upstream_outline_targets<'a>(group: &'a Group, reach: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
 	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
-		add_graphic_upstream_outline_targets_with(&run, reach.into_group_graphics(), outlines)
+		add_graphic_upstream_outline_targets_with(&run, reach, outlines)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
 		add_vector_upstream_outline_targets(&run, reach.appearance, outlines)
 	} else if item.typed_lanes::<Raster<CPU>>().is_some() || item.typed_lanes::<Raster<GPU>>().is_some() {
@@ -1410,7 +1410,6 @@ fn render_vector_svg<S: LaneSource<Element = Vector>>(source: &S, inherited_appe
 			// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 			// The wrapping SVG group (above) handles the user-set opacity.
 			let mut mask_item = Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform);
-			set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
 			mask_item.set_attribute(graphic_types::ATTR_APPEARANCE, black_fill_appearance());
 			let vector_item = List::new_from_item(mask_item);
 
@@ -1766,7 +1765,6 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(
 					// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 					// The outer opacity/blend layer (above) handles the user-set opacity.
 					let mut mask_item = Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform);
-					set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
 					mask_item.set_attribute(graphic_types::ATTR_APPEARANCE, black_fill_appearance());
 					let vector_list = List::new_from_item(mask_item);
 
@@ -3129,7 +3127,6 @@ impl SvgRenderAttrs<'_> {
 mod group_walk_tests {
 	use super::*;
 	use core_types::record::{FieldWrite, RunBuilder, element_write_hashed};
-	use graphic_types::markers::Fill;
 	use graphic_types::vector_types::vector::PointId;
 
 	fn unit_square_at(corner: DVec2) -> Vector {
@@ -3140,7 +3137,7 @@ mod group_walk_tests {
 		List::new_from_element(Graphic::Color(Color::from_rgbaf32(0.8, 0.2, 0.33, 1.).unwrap()))
 	}
 
-	/// The appearance the fill node stamps beside the legacy fill marker, so test content mirrors node output.
+	/// The appearance the fill node stamps, so test content mirrors node output.
 	fn fill_appearance(paint: &List<Graphic<'static>>) -> Appearance {
 		Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(paint.clone()))
 	}
@@ -3158,9 +3155,8 @@ mod group_walk_tests {
 		let vectors = [unit_square_at(DVec2::ZERO), unit_square_at(DVec2::new(3., 1.))];
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		let appearance = fill_appearance(&paint);
-		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0), FieldWrite::of::<AppearanceMarker>(0)], 2).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<AppearanceMarker>(0)], 2).unwrap();
 		let lane = builder.push(vectors[0].clone()).unwrap();
-		builder.attr::<Fill>(lane, Some(&paint));
 		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
 		builder.push(vectors[1].clone()).unwrap();
 		let item = builder.finish();
@@ -3179,9 +3175,8 @@ mod group_walk_tests {
 		let inner = Graphic::Vector(unit_square_at(DVec2::ZERO));
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		let appearance = fill_appearance(&paint);
-		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Graphic>(), &[FieldWrite::of::<Fill>(0), FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Graphic>(), &[FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
 		let lane = builder.push(inner.clone()).unwrap();
-		builder.attr::<Fill>(lane, Some(&paint));
 		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
 		let item = builder.finish();
 		let group = Group { row: None, content: item };
@@ -3200,9 +3195,8 @@ mod group_walk_tests {
 		let vectors = [unit_square_at(DVec2::ZERO)];
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		let appearance = fill_appearance(&paint);
-		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0), FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
 		let lane = builder.push(vectors[0].clone()).unwrap();
-		builder.attr::<Fill>(lane, Some(&paint));
 		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
 		let item = builder.finish();
 		let group = Group { row: None, content: item };
@@ -3227,9 +3221,8 @@ mod group_walk_tests {
 		let vectors = [unit_square_at(DVec2::ZERO), unit_square_at(DVec2::new(2., 2.))];
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		let appearance = fill_appearance(&paint);
-		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0), FieldWrite::of::<AppearanceMarker>(0)], 2).unwrap();
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<AppearanceMarker>(0)], 2).unwrap();
 		let lane = builder.push(vectors[0].clone()).unwrap();
-		builder.attr::<Fill>(lane, Some(&paint));
 		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
 		builder.push(vectors[1].clone()).unwrap();
 		let item = builder.finish();

@@ -1,8 +1,8 @@
 //! The legacy bridge: record-backed groups rebuilt as owned legacy lists.
 
-use super::walk::push_lane_paint_into_interiors;
 use super::{Graphic, detable_items};
-use crate::markers::{ATTR_FILL, ATTR_STROKE};
+use crate::appearance::Appearance;
+use crate::markers::{ATTR_APPEARANCE, ATTR_EDITOR_MERGED_LAYERS, ATTR_PAINT};
 use core_types::Color;
 use core_types::list::{Item, List};
 use raster_types::{CPU, GPU, Raster};
@@ -15,11 +15,19 @@ pub fn run_to_list<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(item: &cor
 	core_types::record::run_to_owned_list(item)
 }
 
-/// Converts the group content of the list's paint attribute values to legacy
-/// form, so a legacy product owns everything its attributes reach.
+/// Converts the group content the list's attribute values reach to legacy
+/// form, so a legacy product owns everything its attributes hold: the paint
+/// cells inside each appearance, and the merged-layers snapshot.
 pub fn map_paint_attrs_to_legacy<T>(list: &mut List<T>) {
-	for key in [ATTR_FILL, ATTR_STROKE, crate::markers::ATTR_EDITOR_MERGED_LAYERS] {
-		let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(key) else { continue };
+	if let Some(appearances) = list.iter_attribute_values_mut::<Appearance>(ATTR_APPEARANCE) {
+		for appearance in appearances {
+			let Some(cells) = appearance.0.iter_attribute_values_mut::<Graphic>(ATTR_PAINT) else { continue };
+			for cell in cells {
+				*cell = map_groups_to_legacy(cell);
+			}
+		}
+	}
+	if let Some(values) = list.iter_attribute_values_mut::<Option<List<Graphic>>>(ATTR_EDITOR_MERGED_LAYERS) {
 		for value in values.flatten() {
 			for element in value.iter_element_values_mut() {
 				*element = map_groups_to_legacy(element);
@@ -86,7 +94,6 @@ pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic<'
 		for element in list.iter_element_values_mut() {
 			*element = map_groups_to_legacy(element);
 		}
-		push_lane_paint_into_interiors(&mut list);
 		return list;
 	}
 	None.or_else(|| run_to_legacy_list::<Vector>(item).map(|list| detable_items(list, Graphic::Vector)))
@@ -101,24 +108,25 @@ pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic<'
 #[cfg(test)]
 mod run_tests {
 	use super::*;
+	use crate::appearance::Coverage;
 	use crate::graphic::test_support::{native_group_paint, unit_square_at};
-	use crate::markers::Fill;
-	use core_types::attribute::Attribute;
+	use crate::markers::Appearance as AppearanceMarker;
 	use core_types::record::{FieldWrite, RunBuilder, element_write_hashed};
 	use glam::DVec2;
 
 	#[test]
-	fn a_legacy_list_owns_its_paint_attr_content() {
+	fn a_legacy_list_owns_its_appearance_paint_content() {
 		let inner_vector = unit_square_at(DVec2::ZERO);
 		let source = core_types::arena::Arena::new(1 << 16).unwrap();
 		// SAFETY: the erased native list serves only while `source` is live; the
 		// deep glue under test replaces its borrows at the copy-out seam.
 		let paint = unsafe { core_types::record::erase_static(native_group_paint(&inner_vector, &source)) };
+		let appearance = Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(paint.clone()));
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
-		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<Fill>(0)], 1).unwrap();
+		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
 		let lane = builder.push(vector.clone()).unwrap();
-		builder.attr::<Fill>(lane, Some(&paint));
+		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
 		let item = builder.finish();
 		let legacy = run_to_legacy_list::<Vector>(&item).expect("the run lowers to a legacy vector list");
 		let expected = map_groups_to_legacy(paint.element(0).unwrap());
@@ -126,9 +134,10 @@ mod run_tests {
 		drop(paint);
 		drop(source);
 
-		let served = legacy.attribute::<Option<List<Graphic>>>(Fill::NAME, 0).expect("the fill attribute rides the list");
-		let served = served.as_ref().expect("the fill is present");
-		assert_eq!(served.element(0).unwrap(), &expected);
+		let served = legacy.attribute::<Appearance>(ATTR_APPEARANCE, 0).expect("the appearance rides the list");
+		let cell = served.paint_at(0).expect("the fill coverage keeps its paint");
+		let Graphic::Graphic(cell_rows) = cell else { panic!("the paint cell keeps the list form") };
+		assert_eq!(cell_rows.element(0).unwrap(), &expected);
 	}
 
 	#[test]

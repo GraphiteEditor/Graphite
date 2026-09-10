@@ -181,8 +181,6 @@ fn mirror_lane<'e, T: Clone + Default + Send + Sync + 'static>(
 	(
 		T,
 		Attr<'e, TransformAttr>,
-		Attr<'e, graphic_types::markers::Fill>,
-		Attr<'e, graphic_types::markers::Stroke>,
 		Attr<'e, graphic_types::markers::Appearance>,
 		Attr<'e, core_types::attribute::BlendMode>,
 		Attr<'e, core_types::attribute::Opacity>,
@@ -214,20 +212,11 @@ where
 			trace: Vec::new(),
 		})
 	};
-	let park_paint = |paint: Option<List<Graphic<'static>>>| -> Result<Option<&'e List<Graphic<'static>>>, Interrupt> {
-		match paint {
-			Some(paint) => Ok(Some(arena.alloc_sized_keyed(paint, 0).ok_or_else(exhausted)?.0)),
-			None => Ok(None),
-		}
-	};
-
 	let element = legacy.element(source).cloned().unwrap_or_default();
 	let mut transform: DAffine2 = legacy.attribute_cloned_or_default(ATTR_TRANSFORM, source);
 	if mirrored {
 		transform = reflected_transform.expect("a mirrored lane exists only under a reflection") * transform;
 	}
-	let fill = park_paint(legacy.attribute::<Option<List<Graphic>>>(graphic_types::ATTR_FILL, source).cloned().flatten())?;
-	let stroke = park_paint(legacy.attribute::<Option<List<Graphic>>>(graphic_types::ATTR_STROKE, source).cloned().flatten())?;
 	let appearance = match legacy.attribute::<graphic_types::Appearance>(graphic_types::ATTR_APPEARANCE, source).cloned() {
 		Some(appearance) => Some(&*arena.alloc_sized_keyed(appearance, 0).ok_or_else(exhausted)?.0),
 		None => None,
@@ -238,8 +227,6 @@ where
 	Ok((
 		element,
 		Attr(transform),
-		Attr(fill),
-		Attr(stroke),
 		Attr(appearance),
 		Attr(legacy.attribute_cloned_or_default(core_types::ATTR_BLEND_MODE, source)),
 		Attr(legacy.attribute_cloned_or(core_types::ATTR_OPACITY, source, 1.)),
@@ -272,8 +259,6 @@ fn mirror<'e>(
 	IList<(
 		Graphic<'static>,
 		Attr<'e, TransformAttr>,
-		Attr<'e, graphic_types::markers::Fill>,
-		Attr<'e, graphic_types::markers::Stroke>,
 		Attr<'e, graphic_types::markers::Appearance>,
 		Attr<'e, core_types::attribute::BlendMode>,
 		Attr<'e, core_types::attribute::Opacity>,
@@ -323,8 +308,6 @@ fn mirror_vector<'e>(
 	IList<(
 		Vector,
 		Attr<'e, TransformAttr>,
-		Attr<'e, graphic_types::markers::Fill>,
-		Attr<'e, graphic_types::markers::Stroke>,
 		Attr<'e, graphic_types::markers::Appearance>,
 		Attr<'e, core_types::attribute::BlendMode>,
 		Attr<'e, core_types::attribute::Opacity>,
