@@ -2,7 +2,7 @@ use bytemuck::{Pod, Zeroable};
 use core_types::color::{Alpha, Color, Pixel, RGB};
 use core_types::context::Ctx;
 use core_types::list::Item;
-use core_types::registry::types::PixelLength;
+use core_types::registry::types::{Percentage, PixelLength};
 use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
@@ -16,6 +16,17 @@ struct PremultipliedGammaPixel {
 	g: f32,
 	b: f32,
 	a: f32,
+}
+
+impl PremultipliedGammaPixel {
+	fn to_unpremultiplied_channels(self) -> [f32; 4] {
+		if self.a > 0. {
+			let inv_a = 1. / self.a;
+			[self.r * inv_a, self.g * inv_a, self.b * inv_a, self.a]
+		} else {
+			[0., 0., 0., 0.]
+		}
+	}
 }
 
 impl Pixel for PremultipliedGammaPixel {}
@@ -73,12 +84,8 @@ fn unpremultiply_gamma_to_linear(buffer: Image<PremultipliedGammaPixel>) -> Imag
 			.data
 			.into_iter()
 			.map(|px| {
-				if px.a > 0. {
-					let inv_a = 1. / px.a;
-					Color::from_gamma_srgb_channels(px.r * inv_a, px.g * inv_a, px.b * inv_a, px.a)
-				} else {
-					Color::TRANSPARENT
-				}
+				let [r, g, b, a] = px.to_unpremultiplied_channels();
+				Color::from_gamma_srgb_channels(r, g, b, a)
 			})
 			.collect(),
 		base64_string: None,
@@ -141,6 +148,42 @@ async fn median_filter(
 	};
 
 	Item::from_parts(filtered_image, attributes)
+}
+
+/// Sharpens the image using unsharp mask.
+#[node_macro::node(category("Raster: Filter"))]
+async fn sharpen(
+	_: impl Ctx,
+	/// The image to be sharpened.
+	image_frame: Item<Raster<CPU>>,
+	/// The strength of the sharpening effect.
+	#[range]
+	#[hard(0..)]
+	#[soft(..100)]
+	amount: Item<Percentage>,
+	/// Sets how many pixels around edges are affected.
+	#[range]
+	#[hard(0..)]
+	#[soft(..50)]
+	radius: Item<PixelLength>,
+	/// Sets how many different pixels must be from surrounding area before sharpening is applied.
+	#[range]
+	#[hard(0..255)]
+	#[soft(..30)]
+	threshold: Item<u32>,
+) -> Item<Raster<CPU>> {
+	let (amount, radius, threshold) = (*amount.element(), *radius.element(), *threshold.element());
+
+	let (image, attributes) = image_frame.into_parts();
+
+	let sharpened_image = if radius < 0.1 || amount == 0. {
+		// Minimum sharpen radius and amount
+		image
+	} else {
+		Raster::new_cpu(sharpen_algorithm(image.into_data(), amount as f32, radius, threshold as f32))
+	};
+
+	Item::from_parts(sharpened_image, attributes)
 }
 
 // 1D gaussian kernel
@@ -340,4 +383,41 @@ fn median_quickselect(values: &mut [f32]) -> f32 {
 	// nth_unstable is like quickselect: average O(n)
 	// Use total_cmp for safe NaN handling instead of partial_cmp().unwrap()
 	*values.select_nth_unstable_by(mid, |a, b| a.total_cmp(b)).1
+}
+
+fn sharpen_algorithm(mut buffer: Image<Color>, amount: f32, radius: f64, threshold: f32) -> Image<Color> {
+	let kernel = gaussian_kernel(radius);
+	let working = premultiply_gamma(buffer.clone());
+	let blurred_image = gaussian_separable(working, &kernel, |r, g, b, a| PremultipliedGammaPixel { r, g, b, a });
+
+	// Normalize threshold and amount
+	let amount = amount / 100.;
+	let threshold = threshold / 255.;
+	// Width of the linear transition around the threshold
+	let threshold_fade_width = threshold * 0.75;
+
+	let sharpen_channel = |orig: f32, blur: f32| -> f32 {
+		// This operates on normalized sRGB values
+		let diff = orig - blur;
+		let mask = if threshold_fade_width > 0.0 {
+			((diff.abs() - threshold + threshold_fade_width) / (threshold_fade_width * 2.)).clamp(0., 1.)
+		} else {
+			1.0
+		};
+		(orig + diff * amount * mask).clamp(0., 1.)
+	};
+
+	for (original, blurred) in buffer.data.iter_mut().zip(&blurred_image.data) {
+		let [original_r, original_g, original_b, original_a] = original.to_gamma_srgb_channels();
+		let [blurred_r, blurred_g, blurred_b, _] = blurred.to_unpremultiplied_channels();
+
+		// Sharpens RGB channels while preserving alpha channel
+		let final_r = sharpen_channel(original_r, blurred_r);
+		let final_g = sharpen_channel(original_g, blurred_g);
+		let final_b = sharpen_channel(original_b, blurred_b);
+
+		*original = Color::from_gamma_srgb_channels(final_r, final_g, final_b, original_a);
+	}
+
+	buffer
 }
