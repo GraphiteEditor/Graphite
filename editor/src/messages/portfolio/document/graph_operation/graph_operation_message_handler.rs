@@ -16,6 +16,7 @@ use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
+use std::str::FromStr;
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -711,6 +712,8 @@ fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, Gradient> {
 		Err(_) => return result,
 	};
 
+	let mut raw_stops: HashMap<String, Vec<GradientStop>> = HashMap::new();
+
 	for node in doc.descendants() {
 		match node.tag_name().name() {
 			"linearGradient" | "radialGradient" => {}
@@ -722,7 +725,7 @@ fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, Gradient> {
 			None => continue,
 		};
 
-		let mut real_stops = Vec::new();
+		let mut stops = Vec::new();
 		let mut has_any_midpoint = false;
 
 		for child in node.children() {
@@ -735,31 +738,88 @@ fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, Gradient> {
 			if let Some(midpoint) = midpoint {
 				has_any_midpoint = true;
 
-				let offset = child.attribute("offset").and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.);
+				let offset = parse_stop_offset(child.attribute("offset").unwrap_or("0"));
 				let opacity = child.attribute("stop-opacity").and_then(|v| v.parse::<f32>().ok()).unwrap_or(1.);
-				let color = child.attribute("stop-color").and_then(|hex| parse_hex_stop_color(hex, opacity)).unwrap_or(Color::BLACK);
+				let color = child.attribute("stop-color").and_then(|c| parse_stop_color(c, opacity)).unwrap_or(Color::BLACK);
 
-				real_stops.push(GradientStop { position: offset, midpoint, color });
+				stops.push(GradientStop { position: offset, midpoint, color });
 			}
 		}
 
-		if has_any_midpoint && !real_stops.is_empty() {
-			result.insert(gradient_id, Gradient::new(real_stops));
+		if has_any_midpoint && !stops.is_empty() {
+			raw_stops.insert(gradient_id, stops);
 		}
+	}
+
+	for node in doc.descendants() {
+		match node.tag_name().name() {
+			"linearGradient" | "radialGradient" => {}
+			_ => continue,
+		}
+
+		let gradient_id = match node.attribute("id") {
+			Some(id) => id.to_string(),
+			None => continue,
+		};
+
+		if raw_stops.contains_key(&gradient_id) {
+			continue;
+		}
+
+		let href = node.attribute("href").or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")));
+		if let Some(referenced_id) = href.and_then(|h| h.strip_prefix('#')) {
+			if let Some(inherited) = raw_stops.get(referenced_id) {
+				raw_stops.insert(gradient_id, inherited.clone());
+			}
+		}
+	}
+
+	for (id, stops) in raw_stops {
+		result.insert(id, Gradient::new(stops));
 	}
 
 	result
 }
 
-fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
-	let hex = hex.strip_prefix('#')?;
-	if hex.len() != 6 {
-		return None;
+fn parse_stop_offset(s: &str) -> f64 {
+	if let Some(pct) = s.strip_suffix('%') {
+		pct.trim().parse::<f64>().unwrap_or(0.) / 100.
+	} else {
+		s.trim().parse::<f64>().unwrap_or(0.)
 	}
-	let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.;
-	let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.;
-	let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.;
-	Some(Color::from_gamma_srgb_channels(r, g, b, opacity))
+}
+
+fn parse_stop_color(value: &str, opacity: f32) -> Option<Color> {
+	let value = value.trim();
+	if let Some(hex) = value.strip_prefix('#') {
+		return parse_hex_color(hex, opacity);
+	}
+	named_css_color(value).map(|(r, g, b, alpha)| Color::from_gamma_srgb_channels(r as f32 / 255., g as f32 / 255., b as f32 / 255., alpha.unwrap_or(opacity)))
+}
+
+fn parse_hex_color(hex: &str, opacity: f32) -> Option<Color> {
+	let (r, g, b) = match hex.len() {
+		6 => (
+			u8::from_str_radix(&hex[0..2], 16).ok()?,
+			u8::from_str_radix(&hex[2..4], 16).ok()?,
+			u8::from_str_radix(&hex[4..6], 16).ok()?,
+		),
+		3 => {
+			let r = u8::from_str_radix(&hex[0..1], 16).ok()?;
+			let g = u8::from_str_radix(&hex[1..2], 16).ok()?;
+			let b = u8::from_str_radix(&hex[2..3], 16).ok()?;
+			(r * 17, g * 17, b * 17)
+		}
+		_ => return None,
+	};
+	Some(Color::from_gamma_srgb_channels(r as f32 / 255., g as f32 / 255., b as f32 / 255., opacity))
+}
+
+fn named_css_color(name: &str) -> Option<(u8, u8, u8, Option<f32>)> {
+	if name.to_ascii_lowercase() == "transparent" {
+		return Some((0, 0, 0, Some(0.)));
+	}
+	svgtypes::Color::from_str(name).ok().map(|c| (c.red, c.green, c.blue, None))
 }
 
 /// Import a usvg node as the root of an SVG import operation.
@@ -1037,15 +1097,17 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
+
 			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
-			let edge = center + DVec2::X * radial.r().get() as f64;
+			let radius = radial.r().get() as f64;
+			let edge = center + DVec2::X * radius;
 			let (start, end) = (gradient_transform.transform_point2(center), gradient_transform.transform_point2(edge));
 			let direction = end - start;
 			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
 			let gradient_form = GradientForm::Radial;
 
-			let gradient = match gradient_info.graphite_stops.get(radial.id()) {
+			let mut gradient = match gradient_info.graphite_stops.get(radial.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
 				None => {
 					let stops = radial.stops().iter().map(|stop| GradientStop {
@@ -1056,6 +1118,18 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 					Gradient::new(stops)
 				}
 			};
+
+			// The focal circle's center offset and radius, relative to the gradient's center and outer radius,
+			// so SVG `fr`/`fx`/`fy` round-trips through the two-circle geometry model. `curvature_a` derives from `fr`.
+			// A plain radial (no focal offset, no `fr`) carries no geometry: the fill node then derives the radial
+			// form from its form input, keeping the properties panel and gradient tool form switches live.
+			let focal = DVec2::new(radial.fx() as f64, radial.fy() as f64);
+			let focal_center = if radius > 0. { (focal - center) / radius } else { DVec2::ZERO };
+			let focal_radius = if radius > 0. { radial.fr().get() as f64 / radius } else { 0. };
+			if focal_radius > 0. || focal_center != DVec2::ZERO {
+				gradient.set_focal_geometry(focal_center, focal_radius);
+			}
+
 			let settings = GradientSettings {
 				spread: convert_gradient_spread(radial.spread_method()),
 				space: gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma),

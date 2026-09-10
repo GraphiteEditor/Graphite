@@ -1377,11 +1377,19 @@ fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHIT
 	gradient
 }
 
-/// Sets the form (linear or radial) of each gradient in the input list.
+/// Sets the form (linear or radial) of each gradient in the input list,
+/// encoding the choice as unified two-circle curvatures so renderers derive
+/// the form from geometry rather than the legacy `gradient_form` attribute.
 #[node_macro::node(category("Gradient"))]
 fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vector_types::GradientForm>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_FORM, *gradient_form.element());
+	let geometry = vector_types::gradient::GradientGeometry::from(*gradient_form.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_CURVATURE_A, geometry.curvature_a);
+	gradient.set_attribute(core_types::ATTR_GRADIENT_CURVATURE_B, geometry.curvature_b);
+	// `angular` is always false for the classic Linear/Radial forms; drop the attribute so a previously conic gradient
+	// doesn't keep rendering nothing, and clear any baked focal center so toggling forms doesn't resurrect stale SVG data.
+	let _: Option<bool> = gradient.remove_attribute(core_types::ATTR_GRADIENT_ANGULAR);
+	let _: Option<glam::DVec2> = gradient.remove_attribute(core_types::ATTR_FOCAL_CENTER);
 	gradient
 }
 
