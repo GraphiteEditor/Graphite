@@ -1,5 +1,6 @@
 use core_types::attribute::{Attr, BlendMode as BlendModeAttr, ClippingMask, EditorLayerPath, Opacity, OpacityFill, Transform as TransformAttr};
 use core_types::list::{Item, List};
+use core_types::node::Lane;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
 use glam::{DAffine2, DVec2};
@@ -29,21 +30,7 @@ fn boolean_core<'e>(
 	flattened: List<Vector>,
 	snapshot: List<Graphic<'static>>,
 	operation: BooleanOperation,
-) -> Result<
-	(
-		Vector,
-		Attr<'e, TransformAttr>,
-		Attr<'e, Fill>,
-		Attr<'e, Stroke>,
-		Attr<'e, BlendModeAttr>,
-		Attr<'e, Opacity>,
-		Attr<'e, OpacityFill>,
-		Attr<'e, ClippingMask>,
-		Attr<'e, EditorLayerPath>,
-		Attr<'e, EditorMergedLayers>,
-	),
-	core_types::gpoll::Interrupt,
-> {
+) -> Result<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, Stroke>, Attr<'e, EditorMergedLayers>), core_types::gpoll::Interrupt> {
 	// The first index is the bottom of the stack
 	let mut result_vector_list = boolean_operation_on_vector_list(&flattened, operation);
 
@@ -78,22 +65,17 @@ fn boolean_core<'e>(
 	use core_types::lane::LaneSource;
 	let fill = park_paint(result_vector_list.attr::<Fill>(0).filter(|paint| is_paint_present(paint)).cloned())?;
 	let stroke = park_paint(result_vector_list.attr::<Stroke>(0).filter(|paint| is_paint_present(paint)).cloned())?;
-	let layer_path: Vec<NodeId> = result_vector_list.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, 0).cloned().unwrap_or_default();
-	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 	// Snapshot the input layers so the renderer can recurse into them for
 	// editor click-target preservation.
 	let merged_layers = arena.alloc_sized_keyed(snapshot, 0).ok_or_else(exhausted)?.0;
 
+	// Blending, clipping and the layer path are the merge's carried columns: the
+	// caller gathers them from the lane it names, so they are not re-read here.
 	Ok((
 		element,
 		Attr(result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0)),
 		Attr(fill),
 		Attr(stroke),
-		Attr(result_vector_list.attribute_cloned_or_default(ATTR_BLEND_MODE, 0)),
-		Attr(result_vector_list.attribute_cloned_or(ATTR_OPACITY, 0, 1.)),
-		Attr(result_vector_list.attribute_cloned_or(ATTR_OPACITY_FILL, 0, 1.)),
-		Attr(result_vector_list.attribute_cloned_or_default(ATTR_CLIPPING_MASK, 0)),
-		Attr(layer_path.as_slice()),
 		Attr(Some(merged_layers)),
 	))
 }
@@ -111,25 +93,17 @@ fn boolean_operation<'e>(
 	/// Intersection cuts away all but the overlapping areas shared by every path.
 	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
 	operation: BooleanOperation,
-) -> Result<
-	(
-		Vector,
-		Attr<'e, TransformAttr>,
-		Attr<'e, Fill>,
-		Attr<'e, Stroke>,
-		Attr<'e, BlendModeAttr>,
-		Attr<'e, Opacity>,
-		Attr<'e, OpacityFill>,
-		Attr<'e, ClippingMask>,
-		Attr<'e, EditorLayerPath>,
-		Attr<'e, EditorMergedLayers>,
-	),
-	core_types::gpoll::Interrupt,
-> {
+) -> Result<(Lane<Vector>, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, Stroke>, Attr<'e, EditorMergedLayers>), core_types::gpoll::Interrupt> {
+	if content.is_empty() {
+		return Err(core_types::gpoll::GraphError::past_end().into());
+	}
 	let item = content.as_group_item();
 	let flattened = flatten_vector_run(GraphicLevel::Run(&item), DAffine2::IDENTITY, PaintReach::NONE);
 	let snapshot = graphic_types::graphic::run_to_list::<Graphic>(&item).expect("the run holds the row's element type").into_graphic_list();
-	boolean_core(ctx.arena(), flattened, snapshot, operation)
+	let (element, transform, fill, stroke, merged) = boolean_core(ctx.arena(), flattened, snapshot, operation)?;
+	// The merge presents the bottom-of-stack lane's blending, clipping and layer
+	// path, carried rather than re-read: one named lane instead of four copies.
+	Ok((content.lane(0).map_element(element), transform, fill, stroke, merged))
 }
 
 /// The boolean operation over a plain vector level, as [`boolean_operation`].
@@ -138,25 +112,15 @@ fn boolean_operation_vector<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + core_types::InjectIndex + Copy,
 	content: IList<Vector>,
 	operation: BooleanOperation,
-) -> Result<
-	(
-		Vector,
-		Attr<'e, TransformAttr>,
-		Attr<'e, Fill>,
-		Attr<'e, Stroke>,
-		Attr<'e, BlendModeAttr>,
-		Attr<'e, Opacity>,
-		Attr<'e, OpacityFill>,
-		Attr<'e, ClippingMask>,
-		Attr<'e, EditorLayerPath>,
-		Attr<'e, EditorMergedLayers>,
-	),
-	core_types::gpoll::Interrupt,
-> {
+) -> Result<(Lane<Vector>, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, Stroke>, Attr<'e, EditorMergedLayers>), core_types::gpoll::Interrupt> {
+	if content.is_empty() {
+		return Err(core_types::gpoll::GraphError::past_end().into());
+	}
 	let item = content.as_group_item();
 	let flattened = graphic_types::graphic::run_to_list::<Vector>(&item).expect("the run holds vector lanes");
 	let snapshot = graphic_types::graphic::run_to_list::<Vector>(&item).expect("the run holds the row's element type").into_graphic_list();
-	boolean_core(ctx.arena(), flattened, snapshot, operation)
+	let (element, transform, fill, stroke, merged) = boolean_core(ctx.arena(), flattened, snapshot, operation)?;
+	Ok((content.lane(0).map_element(element), transform, fill, stroke, merged))
 }
 
 pub use _boolean_operation_vector_mod::boolean_operation_vector_entries;
