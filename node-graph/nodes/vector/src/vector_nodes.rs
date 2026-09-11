@@ -1795,6 +1795,21 @@ fn map_points_extent(content: ListIn<'_, Vector>, _mapped: ExtentIn<'_>, level: 
 	subject_counts_extent(content, level)
 }
 
+/// The level's flattened rows paired with the top-level lane each descends
+/// from, so a merge can name the input lane whose columns its result carries.
+fn flatten_rows_with_top_lanes(level: graphic_types::graphic::GraphicLevel<'_>) -> (List<Vector>, Vec<usize>) {
+	let mut rows = List::new();
+	let mut tops = Vec::new();
+	graphic_types::graphic::walk_vector_rows(level, &mut |row| {
+		tops.push(row.top_lane());
+		row.build_into(&mut rows);
+		graphic_types::graphic::RowStep::Continue
+	});
+	(rows, tops)
+}
+
+/// Also reports the flattened row the merge took its paint and layer from, so
+/// the caller can carry that row's top-level lane.
 #[allow(clippy::type_complexity)]
 fn flatten_path_core<'e>(
 	arena: &'e core_types::arena::Arena,
@@ -1808,6 +1823,7 @@ fn flatten_path_core<'e>(
 		Attr<'e, StrokeAttr>,
 		Attr<'e, EditorLayerPath>,
 		Attr<'e, EditorMergedLayers>,
+		Option<usize>,
 	),
 	Interrupt,
 > {
@@ -1871,7 +1887,15 @@ fn flatten_path_core<'e>(
 	// editor click-target preservation, as the boolean operation does.
 	let merged_layers = arena.alloc_sized_keyed(snapshot, 0).ok_or_else(exhausted)?.0;
 
-	Ok((output, Attr(DAffine2::IDENTITY), Attr(fill), Attr(stroke), Attr(layer_path.as_slice()), Attr(Some(merged_layers))))
+	Ok((
+		output,
+		Attr(DAffine2::IDENTITY),
+		Attr(fill),
+		Attr(stroke),
+		Attr(layer_path.as_slice()),
+		Attr(Some(merged_layers)),
+		primary_source.map(|(index, _)| index),
+	))
 }
 
 // TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
@@ -1881,7 +1905,7 @@ pub fn flatten_path<'e>(
 	content: IList<Graphic<'static>>,
 ) -> Result<
 	(
-		Vector,
+		Lane<Vector>,
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
@@ -1890,10 +1914,18 @@ pub fn flatten_path<'e>(
 	),
 	Interrupt,
 > {
+	if content.is_empty() {
+		return Err(GraphError::past_end().into());
+	}
 	let item = content.as_group_item();
-	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Run(&item));
+	let (flattened, tops) = flatten_rows_with_top_lanes(graphic_types::graphic::GraphicLevel::Run(&item));
 	let snapshot = graphic_types::graphic::run_to_list::<Graphic>(&item).expect("the run holds the row's element type");
-	flatten_path_core(ctx.arena(), flattened, snapshot)
+	let (element, transform, fill, stroke, layer_path, merged, primary) = flatten_path_core(ctx.arena(), flattened, snapshot)?;
+	// The merge presents the blending of the top-level row its last contributing
+	// path came from, carried rather than re-read. The layer path stays an
+	// override: it deliberately names the contributing CHILD layer, not the row.
+	let carrier = primary.and_then(|row| tops.get(row).copied()).unwrap_or(0);
+	Ok((content.lane(carrier).map_element(element), transform, fill, stroke, layer_path, merged))
 }
 
 /// The path flattening over a plain vector level, as [`flatten_path`].
@@ -1904,7 +1936,7 @@ pub fn flatten_path_vector<'e>(
 	content: IList<Vector>,
 ) -> Result<
 	(
-		Vector,
+		Lane<Vector>,
 		Attr<'e, TransformAttr>,
 		Attr<'e, Fill>,
 		Attr<'e, StrokeAttr>,
@@ -1913,10 +1945,18 @@ pub fn flatten_path_vector<'e>(
 	),
 	Interrupt,
 > {
+	if content.is_empty() {
+		return Err(GraphError::past_end().into());
+	}
 	let wrapper = wrap_vector_level(content);
 	let flattened = graphic_types::graphic::flatten_vector_rows(graphic_types::graphic::GraphicLevel::Legacy(&wrapper));
 	let snapshot = legacy_graphic_list_of(content);
-	flatten_path_core(ctx.arena(), flattened, snapshot)
+	let (element, transform, fill, stroke, layer_path, merged, primary) = flatten_path_core(ctx.arena(), flattened, snapshot)?;
+	// `top_lane` is degenerate here - the wrapper is one graphic lane holding the
+	// whole vector run, so every row reports 0. The rows ARE the input lanes in
+	// order though, so the contributing row index names the lane directly.
+	let carrier = primary.filter(|row| *row < content.len()).unwrap_or(0);
+	Ok((content.lane(carrier).map_element(element), transform, fill, stroke, layer_path, merged))
 }
 
 pub use _flatten_path_vector_mod::flatten_path_vector_entries;
