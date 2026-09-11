@@ -815,9 +815,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// The record-io write set, resolved from the output item and carrier input.
 	let write_markers: Vec<&Type> = node.output.shape.attrs.iter().map(|attr| &attr.marker).collect();
 	let removes: Vec<&Type> = node.output.removes.iter().map(|attr| &attr.marker).collect();
-	// A gathered element rides the copy plan, never a write.
+	// A gathered element of a known type is a write, not a plan entry: the lane's
+	// subject is substitutable through `map_element`, so the frame takes the
+	// replacement where there is one and carries the source bytes where there is
+	// not. A gathered element that is still generic keeps the plan's byte carry
+	// and cannot be substituted.
 	let element_write: Option<&Type> = match &node.output.shape.element {
-		crate::codegen::ir::Element::Concrete(ty) if !gather_carrier => Some(ty),
+		crate::codegen::ir::Element::Concrete(ty) => Some(ty),
 		_ => None,
 	};
 	let carrier_read_ty: Option<&Type> = node.inputs.first().filter(|input| input.subject).and_then(|input| match &input.shape.element {
@@ -2112,14 +2116,33 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		// A droppable element parks in the arena and rides as a reference.
 		let element_store = element_write.map(|ty| {
 			let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'_");
-			quote! {
-				if __frame.element::<#ty>(__element, #core_types::context::ExtractArena::arena(__input)).is_none() {
-					return #core_types::gpoll::Interrupt::from(#core_types::gpoll::GraphError {
-						kind: #core_types::gpoll::ErrorKind::ArenaExhausted,
-						trace: ::std::vec::Vec::new(),
-					})
-					.into();
-				}
+			let exhausted = quote! {
+				return #core_types::gpoll::Interrupt::from(#core_types::gpoll::GraphError {
+					kind: #core_types::gpoll::ErrorKind::ArenaExhausted,
+					trace: ::std::vec::Vec::new(),
+				})
+				.into();
+			};
+			match gather_carrier {
+				// A gathered lane writes the subject `map_element` substituted,
+				// and otherwise carries the source record's own element bytes.
+				true => quote! {
+					match #core_types::node::Lane::into_element(__element) {
+						::core::option::Option::Some(__subject) => {
+							if __frame.element::<#ty>(__subject, #core_types::context::ExtractArena::arena(__input)).is_none() {
+								#exhausted
+							}
+						}
+						// SAFETY: `__src_rec` is the gathered lane's own live record, whose
+						// element slot the output layout resolved against.
+						::core::option::Option::None => unsafe { __frame.carry_element(__src_rec) },
+					}
+				},
+				false => quote! {
+					if __frame.element::<#ty>(__element, #core_types::context::ExtractArena::arena(__input)).is_none() {
+						#exhausted
+					}
+				},
 			}
 		});
 		let attr_stores = attr_binders.iter().enumerate().map(|(index, binder)| {

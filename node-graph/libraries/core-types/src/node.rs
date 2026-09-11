@@ -188,20 +188,48 @@ impl<'a> RecordLane<'a> {
 
 /// One lane of a materialized level, element-typed. In a kernel's element
 /// position the output frame is copied from this lane.
+///
+/// The subject is substitutable: [`map_element`](Self::map_element) keeps the
+/// lane's whole record and swaps what it is a record *of*, so a node that
+/// rewrites its element still carries every column it never mentions. `Attr`
+/// members of the kernel's return tuple remain overrides layered on top.
 #[derive(Debug)]
 pub struct Lane<'a, T> {
 	lane: RecordLane<'a>,
-	_element: PhantomData<T>,
+	/// `Some` once the subject was replaced; the carried record's own element
+	/// is then ignored in favour of this value.
+	subject: Option<T>,
 }
 
-// A view regardless of `T`: copying a lane copies no record.
-impl<T> Clone for Lane<'_, T> {
+// A lane that carries no substitute is still a pure view: copying it copies no
+// record. One holding a replaced subject owns it, so it clones with the value.
+impl<T: Clone> Clone for Lane<'_, T> {
 	fn clone(&self) -> Self {
-		*self
+		Self {
+			lane: self.lane,
+			subject: self.subject.clone(),
+		}
 	}
 }
 
-impl<T> Copy for Lane<'_, T> {}
+impl<T: Copy> Copy for Lane<'_, T> {}
+
+impl<'a, T> Lane<'a, T> {
+	/// The same source lane with a different subject. The record's columns are
+	/// carried unchanged; only the element becomes `element`.
+	pub fn map_element<U>(self, element: U) -> Lane<'a, U> {
+		Lane {
+			lane: self.lane,
+			subject: Some(element),
+		}
+	}
+
+	/// The substituted subject, or `None` where this lane still stands for its
+	/// source record's own element.
+	pub fn into_element(self) -> Option<T> {
+		self.subject
+	}
+}
 
 impl<'a, T> Deref for Lane<'a, T> {
 	type Target = RecordLane<'a>;
@@ -276,7 +304,7 @@ impl<'a, T> List<'a, T> {
 	pub fn lane(&self, index: usize) -> Lane<'a, T> {
 		Lane {
 			lane: self.batch.get(index),
-			_element: PhantomData,
+			subject: None,
 		}
 	}
 

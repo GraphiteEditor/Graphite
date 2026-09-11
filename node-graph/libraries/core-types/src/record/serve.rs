@@ -127,6 +127,23 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 		self.filled_fields = true;
 	}
 
+	/// Copies the source record's element bytes into the frame, for a gathered
+	/// lane whose subject [`map_element`](crate::node::Lane::map_element) never
+	/// replaced. Carrying the element is not a field write, so it leaves
+	/// `filled_fields` alone.
+	///
+	/// # Safety
+	/// As [`Self::carry`]: `src` must be a live record of the gather's source
+	/// layout and must not overlap this frame. The element slots agree because
+	/// an unsubstituted `Lane<T>` can only come from a level whose element is
+	/// already `T`.
+	pub unsafe fn carry_element(&mut self, src: Rec<'_>) {
+		let size = self.layout.element.size;
+		if size > 0 {
+			unsafe { apply_plan(src, self.dst(), &[(0, 0, size)]) };
+		}
+	}
+
 	/// Writes a field at its wiring-resolved offset.
 	///
 	/// # Safety

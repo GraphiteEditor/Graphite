@@ -300,7 +300,11 @@ fn mirror_extent(content: ListIn<'_, f64>, keep_original: ValueIn<'_, bool>, lev
 /// copies that lane's whole record, so undeclared attributes ride along and
 /// only the declared opacity is rewritten.
 #[node_macro::node(category("Test"), extent(reverse_lanes_extent))]
-fn reverse_lanes(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<f64>, opacity: f64) -> Result<IList<(Lane<f64>, Attr<Opacity>)>, Interrupt> {
+fn reverse_lanes<'e>(
+	ctx: impl Ctx + core_types::context::ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<f64>,
+	opacity: f64,
+) -> Result<IList<(Lane<f64>, Attr<Opacity>)>, Interrupt> {
 	let lane = ctx.innermost_index() as usize;
 	if lane >= content.len() {
 		return Err(GraphError::past_end().into());
@@ -313,6 +317,24 @@ fn reverse_lanes_extent(content: ListIn<'_, f64>, _opacity: ValueIn<'_, f64>, le
 		true => content.total(),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
+}
+
+/// Gather-carrier kernel with a substituted subject: the lane's record carries
+/// exactly as it does for [`reverse_lanes`], but `map_element` replaces the
+/// element, so a node that rewrites what it produces still keeps every column
+/// it never declares.
+#[node_macro::node(category("Test"), extent(reverse_lanes_extent))]
+fn scale_lanes<'e>(
+	ctx: impl Ctx + core_types::context::ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<f64>,
+	opacity: f64,
+) -> Result<IList<(Lane<f64>, Attr<Opacity>)>, Interrupt> {
+	let lane = ctx.innermost_index() as usize;
+	if lane >= content.len() {
+		return Err(GraphError::past_end().into());
+	}
+	let scaled = content.element_ref(lane) * 2.;
+	Ok((content.lane(lane).map_element(scaled), Attr(opacity)))
 }
 
 #[node_macro::node(category("Test"))]
@@ -515,6 +537,42 @@ mod tests {
 				return GPoll::arena_exhausted();
 			}
 			write_attr_at::<Transform>(&mut frame, &self.layout, transform);
+			// SAFETY: the writes above complete the record of this layout.
+			GPoll::Final(unsafe { frame.finish_served() })
+		}
+
+		fn extent_at<'x>(&self, _input: &C, _level: u8, _frames: &core_types::record::Frames<'x>) -> GPoll<Extent>
+		where
+			C: ExtractArena<ArenaRef = &'x Arena>,
+		{
+			GPoll::Final(Extent::Exactly(self.rows.len()))
+		}
+
+		fn layout(&self) -> &Layout {
+			&self.layout
+		}
+	}
+
+	/// Serves lanes carrying both a Transform no gather kernel declares and an
+	/// Opacity one does, so a carried column can be told apart from a written one.
+	struct LeveledCarriedSource {
+		layout: Layout,
+		rows: Vec<(f64, DAffine2, f64)>,
+	}
+
+	impl<C: ExtractIndex> Node<C> for LeveledCarriedSource {
+		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
+		where
+			C: ExtractArena<ArenaRef = &'e Arena>,
+		{
+			let (element, transform, opacity) = self.rows[input.innermost_index() as usize % self.rows.len()];
+			let mut frame = slot;
+			let arena = ExtractArena::arena(input);
+			if frame.element(element, arena).is_none() {
+				return GPoll::arena_exhausted();
+			}
+			write_attr_at::<Transform>(&mut frame, &self.layout, transform);
+			write_attr_at::<Opacity>(&mut frame, &self.layout, opacity);
 			// SAFETY: the writes above complete the record of this layout.
 			GPoll::Final(unsafe { frame.finish_served() })
 		}
@@ -1505,6 +1563,56 @@ mod tests {
 			assert_eq!(transform.translation.x, x, "lane {lane} carries the gathered transform");
 			let opacity: f64 = served.attr::<Opacity>();
 			assert_eq!(opacity, 0.25, "lane {lane} takes the declared write");
+		}
+	}
+
+	#[test]
+	fn a_substituted_subject_keeps_the_lanes_other_columns() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		// Each lane carries a Transform the kernel never declares and an Opacity
+		// it does, so the carried columns and the written one are distinguishable.
+		let layout = Layout::default().with_writes(
+			1,
+			core_types::record::element_write::<f64>(),
+			&[core_types::record::FieldWrite::of::<Transform>(0), core_types::record::FieldWrite::of::<Opacity>(0)],
+		);
+		let frames = frames_for(&[&layout]);
+		let rows = [(1., 10., 0.1), (2., 30., 0.2), (3., 20., 0.3)];
+		let content = LeveledCarriedSource {
+			layout: layout.clone(),
+			rows: rows
+				.iter()
+				.map(|&(element, x, opacity)| (element, DAffine2::from_translation(glam::DVec2::new(x, 0.)), opacity))
+				.collect(),
+		};
+		let node = install(
+			ScaleLanesNode::new(RecordSource::new(content, &layout, &layout), ValueSource::new(0.25)),
+			scale_lanes_layout_meta(),
+			&[Some(&layout)],
+		);
+
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(out.depth, 1, "substituting the subject preserves the level's depth");
+		assert!(
+			out.offset_of(<Transform as AttributeMarker>::NAME, 0).is_some(),
+			"the undeclared attribute survives a substituted subject"
+		);
+
+		let head = ctx.index_head();
+		for (lane, &(element, x, carried_opacity)) in rows.iter().enumerate() {
+			let GPoll::Final(served) = core_types::record::capture(&node, &ctx.promoted(&head, lane as u64), &frames) else {
+				panic!("expected a final record");
+			};
+			assert_eq!(served.element::<f64>(), element * 2., "lane {lane} takes the substituted element, not the source's");
+			let transform: DAffine2 = served.attr::<Transform>();
+			assert_eq!(transform.translation.x, x, "lane {lane} still carries the undeclared transform");
+			let opacity: f64 = served.attr::<Opacity>();
+			assert_ne!(opacity, carried_opacity, "the declared write must not leave the carried opacity in place");
+			assert_eq!(opacity, 0.25, "lane {lane} takes the declared write over the carried column");
 		}
 	}
 
