@@ -426,17 +426,8 @@ fn singular_values(transform: DAffine2) -> (f64, f64) {
 pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
 	let Some(bg) = background else { return core_types::consts::LAYER_OUTLINE_STROKE_COLOR };
 
-	let alpha = bg.a();
-
-	// Un-premultiply, then encode to gamma sRGB to do the composite in display space.
-	let (gamma_r, gamma_g, gamma_b) = if alpha > f32::EPSILON {
-		let [r, g, b, _] = Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb_channels();
-		(r, g, b)
-	} else {
-		(0., 0., 0.)
-	};
-
-	// Composite over black in sRGB space (premultiplied by alpha), then decode to linear for the luminance test.
+	// Composite over black in gamma sRGB space, then decode to linear for the luminance test.
+	let [gamma_r, gamma_g, gamma_b, alpha] = bg.to_gamma_srgb_channels();
 	let composited = Color::from_gamma_srgb_channels(gamma_r * alpha, gamma_g * alpha, gamma_b * alpha, 1.);
 
 	let threshold = (1.05 * 0.05f32).sqrt() - 0.05;

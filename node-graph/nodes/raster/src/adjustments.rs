@@ -144,12 +144,7 @@ fn make_opaque<T: Adjust<Color>>(
 	input: Item<T>,
 ) -> Item<T> {
 	let mut input = input;
-	input.element_mut().adjust(|color| {
-		if color.a() == 0. {
-			return color.with_alpha(1.);
-		}
-		Color::from_rgbaf32_unchecked(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.)
-	});
+	input.element_mut().adjust(|color| color.with_alpha(1.));
 	input
 }
 
