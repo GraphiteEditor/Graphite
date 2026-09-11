@@ -3,6 +3,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt, Level};
 use core_types::list::List;
+use core_types::node::Lane;
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyIndex};
@@ -165,32 +166,18 @@ where
 	})
 }
 
-/// One output lane of the mirror over its legacy-converted level: the source
-/// row's element and standard attributes, the reflection composed onto the
-/// mirrored half's transforms.
-#[allow(clippy::type_complexity)]
-fn mirror_lane<'e, T: Clone + Default + Send + Sync + 'static>(
-	arena: &'e core_types::arena::Arena,
+/// One output lane of the mirror over its legacy-converted level: the input
+/// lane it reflects, that row's element, and the reflection composed onto the
+/// mirrored half's transform. The materialized list holds one item per input
+/// lane, so `source` names the lane whose columns the output row carries.
+fn mirror_lane<T: Clone + Default + Send + Sync + 'static>(
 	legacy: List<T>,
 	lane: usize,
 	relative_to_bounds: ReferencePoint,
 	offset: f64,
 	angle: f64,
 	keep_original: bool,
-) -> Result<
-	(
-		T,
-		Attr<'e, TransformAttr>,
-		Attr<'e, graphic_types::markers::Fill>,
-		Attr<'e, graphic_types::markers::Stroke>,
-		Attr<'e, core_types::attribute::BlendMode>,
-		Attr<'e, core_types::attribute::Opacity>,
-		Attr<'e, core_types::attribute::OpacityFill>,
-		Attr<'e, core_types::attribute::ClippingMask>,
-		Attr<'e, EditorLayerPath>,
-	),
-	Interrupt,
->
+) -> Result<(usize, T, DAffine2), Interrupt>
 where
 	List<T>: BoundingBox,
 {
@@ -207,40 +194,13 @@ where
 		return Err(GraphError::past_end().into());
 	}
 
-	let exhausted = || {
-		Interrupt::from(GraphError {
-			kind: core_types::gpoll::ErrorKind::ArenaExhausted,
-			trace: Vec::new(),
-		})
-	};
-	let park_paint = |paint: Option<List<Graphic<'static>>>| -> Result<Option<&'e List<Graphic<'static>>>, Interrupt> {
-		match paint {
-			Some(paint) => Ok(Some(arena.alloc_sized_keyed(paint, 0).ok_or_else(exhausted)?.0)),
-			None => Ok(None),
-		}
-	};
-
 	let element = legacy.element(source).cloned().unwrap_or_default();
 	let mut transform: DAffine2 = legacy.attribute_cloned_or_default(ATTR_TRANSFORM, source);
 	if mirrored {
 		transform = reflected_transform.expect("a mirrored lane exists only under a reflection") * transform;
 	}
-	let fill = park_paint(legacy.attribute::<Option<List<Graphic>>>(graphic_types::ATTR_FILL, source).cloned().flatten())?;
-	let stroke = park_paint(legacy.attribute::<Option<List<Graphic>>>(graphic_types::ATTR_STROKE, source).cloned().flatten())?;
-	let layer_path: Vec<NodeId> = legacy.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH, source).cloned().unwrap_or_default();
-	let layer_path = arena.alloc(layer_path).ok_or_else(exhausted)?.0;
 
-	Ok((
-		element,
-		Attr(transform),
-		Attr(fill),
-		Attr(stroke),
-		Attr(legacy.attribute_cloned_or_default(core_types::ATTR_BLEND_MODE, source)),
-		Attr(legacy.attribute_cloned_or(core_types::ATTR_OPACITY, source, 1.)),
-		Attr(legacy.attribute_cloned_or(core_types::ATTR_OPACITY_FILL, source, 1.)),
-		Attr(legacy.attribute_cloned_or_default(core_types::ATTR_CLIPPING_MASK, source)),
-		Attr(layer_path.as_slice()),
-	))
+	Ok((source, element, transform))
 }
 
 /// The materialized level as its legacy list, content kept native.
@@ -262,21 +222,9 @@ fn mirror<'e>(
 	#[soft(-90..90)]
 	angle: Angle,
 	#[default(true)] keep_original: bool,
-) -> Result<
-	IList<(
-		Graphic<'static>,
-		Attr<'e, TransformAttr>,
-		Attr<'e, graphic_types::markers::Fill>,
-		Attr<'e, graphic_types::markers::Stroke>,
-		Attr<'e, core_types::attribute::BlendMode>,
-		Attr<'e, core_types::attribute::Opacity>,
-		Attr<'e, core_types::attribute::OpacityFill>,
-		Attr<'e, core_types::attribute::ClippingMask>,
-		Attr<'e, EditorLayerPath>,
-	)>,
-	Interrupt,
-> {
-	mirror_lane(ctx.arena(), legacy_render_list_of(content), ctx.index() as usize, relative_to_bounds, offset, angle, keep_original)
+) -> Result<IList<(Lane<Graphic<'static>>, Attr<'e, TransformAttr>)>, Interrupt> {
+	let (source, element, transform) = mirror_lane(legacy_render_list_of(content), ctx.index() as usize, relative_to_bounds, offset, angle, keep_original)?;
+	Ok((content.lane(source).map_element(element), Attr(transform)))
 }
 
 /// The kept originals double the level, counted from the subject's extent
@@ -312,21 +260,9 @@ fn mirror_vector<'e>(
 	#[soft(-90..90)]
 	angle: Angle,
 	#[default(true)] keep_original: bool,
-) -> Result<
-	IList<(
-		Vector,
-		Attr<'e, TransformAttr>,
-		Attr<'e, graphic_types::markers::Fill>,
-		Attr<'e, graphic_types::markers::Stroke>,
-		Attr<'e, core_types::attribute::BlendMode>,
-		Attr<'e, core_types::attribute::Opacity>,
-		Attr<'e, core_types::attribute::OpacityFill>,
-		Attr<'e, core_types::attribute::ClippingMask>,
-		Attr<'e, EditorLayerPath>,
-	)>,
-	Interrupt,
-> {
-	mirror_lane(ctx.arena(), legacy_render_list_of(content), ctx.index() as usize, relative_to_bounds, offset, angle, keep_original)
+) -> Result<IList<(Lane<Vector>, Attr<'e, TransformAttr>)>, Interrupt> {
+	let (source, element, transform) = mirror_lane(legacy_render_list_of(content), ctx.index() as usize, relative_to_bounds, offset, angle, keep_original)?;
+	Ok((content.lane(source).map_element(element), Attr(transform)))
 }
 
 fn mirror_vector_extent(
