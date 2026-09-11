@@ -561,8 +561,21 @@ pub use _to_graphic_typed_mod::to_graphic_typed_entries;
 pub use _to_graphic_unit_mod::to_graphic_unit_entries;
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
+///
+/// A hoisted leaf carries the columns of the TOP-LEVEL row it came out of, not
+/// of the nested lane it sat in. That is forced rather than chosen: a gather's
+/// carry is a byte-copy plan resolved once, at wiring, from a statically known
+/// layout, and only the subject's own per-lane layout is known then. A leaf's
+/// layout belongs to whatever nested level held it and varies leaf by leaf, so
+/// there is no single plan that could copy from it. Columns the top row does not
+/// supply read their declared defaults, and any it carries that this output does
+/// not declare are truncated.
 #[node_macro::node(category("General"), extent(flatten_graphic_extent))]
-pub fn flatten_graphic(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic<'static>>, fully_flatten: bool) -> Result<IList<(Graphic<'static>, Attr<TransformAttr>)>, Interrupt> {
+pub fn flatten_graphic<'e>(
+	ctx: impl Ctx + core_types::context::ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Graphic<'static>>,
+	fully_flatten: bool,
+) -> Result<IList<(Lane<Graphic<'static>>, Attr<'e, TransformAttr>)>, Interrupt> {
 	let mut remaining = ctx.index() as usize;
 	for row in 0..content.len() {
 		let graphic = content.element_ref(row);
@@ -573,7 +586,9 @@ pub fn flatten_graphic(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, conten
 		}
 		let transform: DAffine2 = content.lane(row).attr::<TransformAttr>();
 		if let Some((leaf, composed)) = crate::record::locate(graphic, transform, fully_flatten, 0, &mut remaining) {
-			return Ok((leaf, Attr(composed)));
+			// The composed transform is the one genuine override: it is the path's
+			// product, not any single lane's column.
+			return Ok((content.lane(row).map_element(leaf), Attr(composed)));
 		}
 	}
 	Err(GraphError::new("flatten addressed past its leaf count").into())
