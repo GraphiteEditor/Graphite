@@ -252,6 +252,10 @@ pub struct VectorRow<'w> {
 	scale: FlattenScale,
 	layer_path: Option<&'w [NodeId]>,
 	paint: LanePaint<'w>,
+	/// The lane of the walk's OWN top level whose subtree produced this row.
+	/// A leaf at any depth reports the top-level row it descends from, which is
+	/// the lane whose columns a consumer carries onto it.
+	top_lane: usize,
 }
 
 enum RowSourceRef<'w> {
@@ -262,6 +266,15 @@ enum RowSourceRef<'w> {
 }
 
 impl VectorRow<'_> {
+	/// The lane of the walked level's top row this row descends from.
+	///
+	/// Constant for every leaf under one top-level row, however deep the leaf
+	/// sits, which is what lets a consumer carry ONE lane's columns onto all of
+	/// them and resolve its output layout from the top level alone.
+	pub fn top_lane(&self) -> usize {
+		self.top_lane
+	}
+
 	/// The row's vector, borrowed.
 	pub fn element(&self) -> &Vector {
 		match &self.source {
@@ -319,7 +332,16 @@ impl VectorRow<'_> {
 	}
 }
 
-fn walk_rows_of_run(item: &core_types::record::GroupItem, scale: FlattenScale, layer_path: Option<&[NodeId]>, paint: LanePaint<'_>, visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep) -> RowStep {
+/// `top_lane` is `None` only when the run IS the walk's top level, where each
+/// lane is its own top row; nested runs inherit the row they descend from.
+fn walk_rows_of_run(
+	item: &core_types::record::GroupItem,
+	scale: FlattenScale,
+	layer_path: Option<&[NodeId]>,
+	paint: LanePaint<'_>,
+	top_lane: Option<usize>,
+	visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep,
+) -> RowStep {
 	let Some(run) = core_types::record::RunView::<Vector>::new(item) else {
 		return RowStep::Continue;
 	};
@@ -329,6 +351,7 @@ fn walk_rows_of_run(item: &core_types::record::GroupItem, scale: FlattenScale, l
 			scale,
 			layer_path,
 			paint,
+			top_lane: top_lane.unwrap_or(lane),
 		}) {
 			return RowStep::Stop;
 		}
@@ -342,14 +365,18 @@ fn walk_rows_of_run(item: &core_types::record::GroupItem, scale: FlattenScale, l
 /// level's parent layer path overwrites its rows, and non-vector content is
 /// discarded. A de-tabled leaf's row is its lane, attributes included.
 pub fn walk_vector_rows(level: GraphicLevel<'_>, visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep) {
-	walk_vector_rows_impl(level, FlattenScale::ROOT, None, PaintReach::NONE, visit);
+	walk_vector_rows_impl(level, FlattenScale::ROOT, None, PaintReach::NONE, None, visit);
 }
 
+/// `top_lane` carries the walk's own top-level row down the recursion: `None`
+/// at the top, where each lane names itself, and `Some(row)` thereafter so every
+/// leaf beneath a row reports that row rather than its immediate parent's index.
 fn walk_vector_rows_impl<'a>(
 	level: GraphicLevel<'a>,
 	scale: FlattenScale,
 	parent_layer_path: Option<&'a [NodeId]>,
 	inherited: PaintReach<'a>,
+	top_lane: Option<usize>,
 	visit: &mut dyn FnMut(VectorRow<'_>) -> RowStep,
 ) -> RowStep {
 	if let GraphicLevel::Run(item) = level {
@@ -359,7 +386,7 @@ fn walk_vector_rows_impl<'a>(
 				true => inherited.paint,
 				false => LanePaint::NONE,
 			};
-			return walk_rows_of_run(item, scale, parent_layer_path, paint, visit);
+			return walk_rows_of_run(item, scale, parent_layer_path, paint, top_lane, visit);
 		}
 	}
 	let columns = PaintColumns::new(&level);
@@ -370,30 +397,35 @@ fn walk_vector_rows_impl<'a>(
 			true => reach.paint,
 			false => LanePaint::NONE,
 		};
+		// At the top level this lane IS the row every leaf under it reports.
+		let row_top = top_lane.unwrap_or(index);
 		let step = match element {
 			Graphic::Vector(_) => visit(VectorRow {
 				source: RowSourceRef::Lane(level, index),
 				scale,
 				layer_path: parent_layer_path,
 				paint: row_paint,
+				top_lane: row_top,
 			}),
 			Graphic::Graphic(children) => walk_vector_rows_impl(
 				GraphicLevel::Legacy(children),
 				scale.composed(&level, index),
 				level.try_attr::<EditorLayerPath>(index),
 				reach.nested(),
+				Some(row_top),
 				visit,
 			),
 			Graphic::Group(group) => {
 				let item = &group.content;
 				if item.typed_lanes::<Vector>().is_some() {
-					walk_rows_of_run(item, scale.composed(&level, index), level.try_attr::<EditorLayerPath>(index), row_paint, visit)
+					walk_rows_of_run(item, scale.composed(&level, index), level.try_attr::<EditorLayerPath>(index), row_paint, Some(row_top), visit)
 				} else if item.typed_lanes::<Graphic>().is_some() {
 					walk_vector_rows_impl(
 						GraphicLevel::Run(item),
 						scale.composed(&level, index),
 						level.try_attr::<EditorLayerPath>(index),
 						reach.into_group_graphics(),
+						Some(row_top),
 						visit,
 					)
 				} else {
@@ -476,6 +508,39 @@ mod run_tests {
 	use crate::graphic::test_support::unit_square_at;
 	use crate::graphic::{IntoGraphicList, map_groups_to_legacy, run_to_legacy_list};
 	use core_types::record::{FieldWrite, RunBuilder, RunView, element_write_hashed};
+
+	#[test]
+	fn leaves_at_different_depths_report_the_same_top_row() {
+		// One top-level row holding a leaf at depth 1 AND a leaf at depth 2, so
+		// "which lane's columns does this row carry" cannot depend on the depth
+		// the leaf was found at. That independence is what lets an adopter's
+		// output layout resolve from the input's TOP-LEVEL layout alone instead
+		// of being discovered per leaf.
+		//
+		// The nesting sits at top row 1 on purpose: both inner leaves have index
+		// 0 within their own parents, so an implementation reporting the
+		// immediate lane rather than the top row would answer 0 and be caught,
+		// where a fixture nested at row 0 would have agreed by coincidence.
+		let deep = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(3., 3.))));
+		let mut mixed = List::new();
+		mixed.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO))));
+		mixed.push(Item::new_from_element(Graphic::Graphic(deep)));
+
+		let mut top = List::new();
+		top.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(9., 9.)))));
+		top.push(Item::new_from_element(Graphic::Graphic(mixed)));
+
+		let mut reported = Vec::new();
+		walk_vector_rows(GraphicLevel::Legacy(&top), &mut |row| {
+			reported.push(row.top_lane());
+			RowStep::Continue
+		});
+
+		assert_eq!(reported.len(), 3, "one top-level leaf plus two leaves under row 1");
+		assert_eq!(reported[0], 0, "a top-level leaf reports its own lane");
+		assert_eq!(reported[1], 1, "the depth-1 leaf reports the top row it descends from");
+		assert_eq!(reported[2], 1, "the depth-2 leaf reports the SAME top row, not its own index within its parent");
+	}
 
 	#[test]
 	fn the_vector_row_walk_matches_the_legacy_flatten() {
