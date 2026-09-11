@@ -478,6 +478,18 @@ pub struct LayoutMeta {
 	/// The materialized subject a reducer folds, as `(input, levels)`. The fold
 	/// consumes the whole subject input, so only the node's own levels remain.
 	pub folded: Option<(u8, u8)>,
+	/// Whether [`sources`](Self::sources)`[0]` is a GATHERED subject, whose
+	/// per-lane layout is this output's base.
+	///
+	/// Carried explicitly because it cannot be inferred from `sources` and
+	/// `level_delta`. A gathered subject that also collapses the level
+	/// (`level_delta < 0`) still has a well-defined copy plan: the gathered
+	/// lane's layout IS the base being copied into. A LAZY folding subject looks
+	/// identical from the outside - un-materialized, so it also sits in
+	/// `sources` with a negative delta - but copying its fields down is exactly
+	/// what the plan must not do. Keying on "sources is non-empty" would
+	/// conflate the two and reintroduce the defect in the other direction.
+	pub gathered: bool,
 }
 
 /// The attributes a node reads from one input, recorded on [`LayoutMeta`] for
@@ -513,6 +525,8 @@ impl LayoutMeta {
 			removes: Vec::new(),
 			level_delta: 0,
 			folded: None,
+			// A retype keeps input 0's level, so its plan is already unconditional.
+			gathered: false,
 		}
 	}
 
@@ -545,7 +559,9 @@ impl LayoutMeta {
 		let layout = self.fold(inputs);
 		let frame_bytes = layout.frame_bytes();
 		let plan = match self.sources.first() {
-			Some(&source) if self.level_delta >= 0 => {
+			// A gathered subject copies from the lane it gathered, whose layout is
+			// this output's base, so its plan holds however the level moves.
+			Some(&source) if self.level_delta >= 0 || self.gathered => {
 				let from = inputs[source as usize].expect("layout resolve source input has no layout");
 				let carry_element = matches!(self.element, ElementSpec::Carried);
 				let removes: Vec<(&str, u8)> = self.removes.clone();

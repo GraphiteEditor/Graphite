@@ -293,6 +293,8 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 		Some((index, levels)) => quote!(::core::option::Option::Some((#index, #levels))),
 		None => quote!(::core::option::Option::None),
 	};
+	// A gathered subject's plan holds however the level moves; see `LayoutMeta::gathered`.
+	let gathered = gathered_subject(node).is_some();
 	quote! {
 		#core_types::record::LayoutMeta {
 			sources: ::std::vec![#(#sources),*],
@@ -306,6 +308,7 @@ pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_t
 			removes: ::std::vec![#(#removes),*],
 			level_delta: #level_delta,
 			folded: #folded,
+			gathered: #gathered,
 		}
 	}
 }

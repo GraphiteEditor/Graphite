@@ -437,6 +437,7 @@ mod tests {
 			removes: vec![],
 			level_delta,
 			folded: None,
+			gathered: false,
 		}
 	}
 
