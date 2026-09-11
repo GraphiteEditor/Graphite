@@ -42,17 +42,6 @@ use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, 
 use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use vector_types::{GradientSpreadMethod, GradientType};
 
-/// The standard row attributes a per-lane re-emission carries from its
-/// materialized source lane, parked for the fresh output row.
-fn carried_lane_attrs<'e>(arena: &'e core_types::arena::Arena, lane: core_types::node::RecordLane<'_>) -> Result<(Attr<'e, TransformAttr>, Attr<'e, EditorLayerPath>), Interrupt> {
-	let layer_path: Vec<NodeId> = lane.attr::<EditorLayerPath>().to_vec();
-	let (layer_path, _) = arena.alloc(layer_path).ok_or(GraphError {
-		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
-		trace: Vec::new(),
-	})?;
-	Ok((Attr(lane.attr::<TransformAttr>()), Attr(layer_path.as_slice())))
-}
-
 /// The gradient color for one assign-colors position, replaying the
 /// randomized draws up to it.
 fn assign_color_at(gradient: &GradientStops, position: usize, length: usize, randomize: bool, seed: SeedValue, repeat_every: u32) -> Color {
@@ -100,7 +89,7 @@ fn assign_colors<'e>(
 	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
 	repeat_every: u32,
-) -> Result<IList<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, StrokeAttr>, Attr<'e, EditorLayerPath>)>, Interrupt> {
+) -> Result<IList<(Lane<Vector>, Attr<'e, Fill>, Attr<'e, StrokeAttr>)>, Interrupt> {
 	let lane = ctx.index() as usize;
 	if lane >= content.len() {
 		return Err(GraphError::past_end().into());
@@ -109,11 +98,9 @@ fn assign_colors<'e>(
 	let park_existing = |paint: Option<&List<Graphic<'static>>>| -> Result<Option<&'e List<Graphic>>, Interrupt> { paint.map(|paint| park_paint(ctx.arena(), paint.clone())).transpose() };
 	let existing_fill = park_existing(content.lane(lane).attr::<Fill>())?;
 	let existing_stroke = park_existing(content.lane(lane).attr::<StrokeAttr>())?;
-	let carried = carried_lane_attrs(ctx.arena(), *content.lane(lane))?;
-	let (transform, layer_path) = carried;
 
 	if gradient.is_empty() {
-		return Ok((element, transform, Attr(existing_fill), Attr(existing_stroke), layer_path));
+		return Ok((content.lane(lane).map_element(element), Attr(existing_fill), Attr(existing_stroke)));
 	}
 	let gradient_element = gradient.element_ref(0);
 	let reversed;
@@ -137,7 +124,7 @@ fn assign_colors<'e>(
 		true => Some(parked),
 		false => existing_stroke,
 	};
-	Ok((element, transform, Attr(fill_attr), Attr(stroke_attr), layer_path))
+	Ok((content.lane(lane).map_element(element), Attr(fill_attr), Attr(stroke_attr)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -173,16 +160,15 @@ fn assign_colors_graphic<'e>(
 	randomize: bool,
 	seed: SeedValue,
 	repeat_every: u32,
-) -> Result<IList<(Graphic<'e>, Attr<'e, TransformAttr>, Attr<'e, EditorLayerPath>)>, Interrupt> {
+) -> Result<IList<Lane<Graphic<'e>>>, Interrupt> {
 	let lane = ctx.index() as usize;
 	if lane >= content.len() {
 		return Err(GraphError::past_end().into());
 	}
 	let original = content.element_ref(lane);
-	let (transform, layer_path) = carried_lane_attrs(ctx.arena(), *content.lane(lane))?;
 
 	if gradient.is_empty() {
-		return Ok((original.clone(), transform, layer_path));
+		return Ok(content.lane(lane).map_element(original.clone()));
 	}
 	let gradient_element = gradient.element_ref(0);
 	let reversed;
@@ -244,7 +230,7 @@ fn assign_colors_graphic<'e>(
 		None => original.clone(),
 	};
 
-	Ok((element, transform, layer_path))
+	Ok(content.lane(lane).map_element(element))
 }
 
 /// Where each lane's colors start in the level's flattened vector run, valid
