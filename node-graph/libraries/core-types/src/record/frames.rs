@@ -112,6 +112,7 @@ impl<'e> Frames<'e> {
 			frame,
 			free: self.reborrow(),
 			filled_fields: false,
+			carried_empty: false,
 		}
 	}
 
@@ -181,5 +182,49 @@ mod tests {
 			assert_eq!(frames.free_words(), free, "the scope returns its claims");
 		}
 		assert!(addresses.windows(2).all(|pair| pair[0] == pair[1]), "each claim reuses the same region");
+	}
+
+	#[test]
+	#[should_panic(expected = "carried an empty plan and filled nothing")]
+	fn carrying_an_empty_plan_and_filling_nothing_refuses_to_close() {
+		// The shape that served uninitialized bytes before this guard existed: a
+		// layout that DECLARES a field, a carry whose plan turned out empty, and
+		// nothing else to fill it. The field would otherwise be the prior frame's
+		// bytes, which for a reference field is an uninitialized read.
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity")]);
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(1 << 10);
+		let frames = frame_arena.frames();
+		let scope = frames.scope();
+		let mut claim = scope.claim(&layout);
+		let value = crate::record::access::RecordValue::zeroed();
+		let src = layout.rec(&value);
+		// SAFETY: an empty plan reads nothing from `src`; closing afterwards is
+		// what the guard refuses.
+		unsafe { claim.carry(src, &[]) };
+		// SAFETY: the assertion fires before anything reads the unfilled field.
+		let _ = unsafe { claim.finish() };
+	}
+
+	#[test]
+	fn an_empty_carry_whose_fields_are_written_closes_normally() {
+		// The control that pins what the guard actually tracks: the same empty
+		// carry, but the declared field is then written. Closing must succeed, so
+		// the guard is about a field left unfilled rather than about the carry.
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity")]);
+		let offset = layout.fields.first().expect("the fixture declares one field").offset;
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(1 << 10);
+		let frames = frame_arena.frames();
+		let scope = frames.scope();
+		let mut claim = scope.claim(&layout);
+		let value = crate::record::access::RecordValue::zeroed();
+		let src = layout.rec(&value);
+		// SAFETY: an empty plan reads nothing from `src`.
+		unsafe { claim.carry(src, &[]) };
+		// SAFETY: `offset` is this layout's own resolved offset for an f64 field.
+		unsafe { claim.attr_at(offset, 0.5_f64) };
+		// SAFETY: the write above filled the declared field.
+		let _ = unsafe { claim.finish() };
 	}
 }

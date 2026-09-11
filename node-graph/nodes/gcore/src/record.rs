@@ -319,6 +319,19 @@ fn reverse_lanes_extent(content: ListIn<'_, f64>, _opacity: ValueIn<'_, f64>, le
 	}
 }
 
+/// Gather-carrier kernel that COLLAPSES its level: one value for the whole
+/// subject, gathered from a named lane. Before a gathered subject built its copy
+/// plan regardless of the level change, this shape declared the lane's columns
+/// and copied none of them, serving the previous frame's bytes instead.
+#[node_macro::node(category("Test"))]
+fn collapse_to_lane<'e>(_ctx: impl Ctx + core_types::context::ExtractArena<'e> + Copy, content: IList<f64>, opacity: f64) -> Result<(Lane<f64>, Attr<Opacity>), Interrupt> {
+	if content.is_empty() {
+		return Err(GraphError::past_end().into());
+	}
+	let total: f64 = (0..content.len()).map(|lane| content.get(lane)).sum();
+	Ok((content.lane(0).map_element(total), Attr(opacity)))
+}
+
 /// Gather-carrier kernel with a substituted subject: the lane's record carries
 /// exactly as it does for [`reverse_lanes`], but `map_element` replaces the
 /// element, so a node that rewrites what it produces still keeps every column
@@ -839,6 +852,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 1,
 			folded: None,
+			gathered: false,
 		};
 		let node = install(
 			RepeatNode::new(RecordSource::new(bare_source(&base, 7.), &base, &base), count_edge, reverse_edge, &base, &count_layout, &reverse_layout),
@@ -879,6 +893,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 1,
 			folded: None,
+			gathered: false,
 		};
 		let repeat = install(
 			RepeatNode::new(
@@ -927,6 +942,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 1,
 			folded: None,
+			gathered: false,
 		};
 		let repeat = install(
 			RepeatNode::new(
@@ -981,6 +997,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 1,
 			folded: None,
+			gathered: false,
 		};
 		let repeat = install(
 			RepeatNode::new(
@@ -1083,6 +1100,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 0,
 			folded: None,
+			gathered: false,
 		};
 		let node = install(
 			ExtendNode::new(RecordSource::new(base, &base_layout, &union), RecordSource::new(new, &new_layout, &union), &union),
@@ -1155,6 +1173,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 0,
 			folded: None,
+			gathered: false,
 		};
 
 		let left_inner = install(
@@ -1233,6 +1252,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 0,
 			folded: None,
+			gathered: false,
 		};
 		let extend = install(
 			ExtendNode::new(RecordSource::new(base, &base_layout, &union), RecordSource::new(new, &new_layout, &union), &union),
@@ -1281,6 +1301,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 1,
 			folded: None,
+			gathered: false,
 		};
 		let extend_meta = || core_types::record::LayoutMeta {
 			named_writes: Vec::new(),
@@ -1294,6 +1315,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 0,
 			folded: None,
+			gathered: false,
 		};
 		let (base_count, base_count_layout) = lifted_value(2u32);
 		let (base_reverse, base_reverse_layout) = lifted_value(false);
@@ -1373,6 +1395,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 0,
 			folded: None,
+			gathered: false,
 		};
 		let build = |index: f64| {
 			let content = LeveledSourceNode {
@@ -1430,6 +1453,7 @@ mod tests {
 				removes: vec![],
 				level_delta: 0,
 				folded: None,
+				gathered: false,
 			};
 			install(
 				IndexElementsNode::new(RecordSource::new(content, &layout, &layout), index_edge, &layout, &index_layout),
@@ -1564,6 +1588,52 @@ mod tests {
 			let opacity: f64 = served.attr::<Opacity>();
 			assert_eq!(opacity, 0.25, "lane {lane} takes the declared write");
 		}
+	}
+
+	#[test]
+	fn a_gathered_collapse_carries_its_named_lanes_columns() {
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		// Lanes carry DISTINCT transforms, so "carried lane 0's column" is
+		// distinguishable from "carried some other lane's" and from stale bytes.
+		let layout = Layout::default().with_writes(
+			1,
+			core_types::record::element_write::<f64>(),
+			&[core_types::record::FieldWrite::of::<Transform>(0), core_types::record::FieldWrite::of::<Opacity>(0)],
+		);
+		let frames = frames_for(&[&layout]);
+		let rows = [(1., 10., 0.1), (2., 30., 0.2), (3., 20., 0.3)];
+		let content = LeveledCarriedSource {
+			layout: layout.clone(),
+			rows: rows
+				.iter()
+				.map(|&(element, x, opacity)| (element, DAffine2::from_translation(glam::DVec2::new(x, 0.)), opacity))
+				.collect(),
+		};
+		let node = install(
+			CollapseToLaneNode::new(RecordSource::new(content, &layout, &layout), ValueSource::new(0.25)),
+			collapse_to_lane_layout_meta(),
+			&[Some(&layout)],
+		);
+
+		let out = Node::<ContextImpl>::layout(&node).clone();
+		assert_eq!(out.depth, 0, "the collapse serves one value rather than a level");
+		assert!(
+			out.offset_of(<Transform as AttributeMarker>::NAME, 0).is_some(),
+			"the gathered lane's undeclared column is declared on the output"
+		);
+
+		let GPoll::Final(served) = core_types::record::capture(&node, &ctx, &frames) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(served.element::<f64>(), 6., "the collapsed element is the kernel's own value");
+		let transform: DAffine2 = served.attr::<Transform>();
+		assert_eq!(transform.translation.x, 10., "lane 0's transform is carried - not lane 1's or 2's, and not stale frame bytes");
+		let opacity: f64 = served.attr::<Opacity>();
+		assert_eq!(opacity, 0.25, "the declared write still overrides the carried opacity");
 	}
 
 	#[test]
@@ -1781,6 +1851,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 1,
 			folded: None,
+			gathered: false,
 		};
 		let nested = install(
 			RepeatNode::new(
@@ -1838,6 +1909,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 1,
 			folded: None,
+			gathered: false,
 		};
 		let nested = install(
 			RepeatNode::new(
@@ -1952,6 +2024,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 1,
 			folded: None,
+			gathered: false,
 		};
 		let repeat = install(
 			RepeatNode::new(
@@ -2082,6 +2155,7 @@ mod tests {
 			removes: vec![],
 			level_delta: 1,
 			folded: None,
+			gathered: false,
 		};
 		let repeat = install(
 			RepeatNode::new(

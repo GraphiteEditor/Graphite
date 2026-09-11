@@ -47,6 +47,7 @@ impl<'a> SlotRun<'a> {
 			frame: (self.layout.frame_bytes() != 0).then_some(frame),
 			free: frames.reborrow(),
 			filled_fields: false,
+			carried_empty: false,
 		}
 	}
 
@@ -86,6 +87,11 @@ pub struct FrameClaim<'e, 'l> {
 	/// Set by the writes that fill the declared fields, so the safe closers can
 	/// refuse a field-bearing frame that was never filled.
 	pub(in crate::record) filled_fields: bool,
+	/// Set where a carry ran against an EMPTY plan, which fills nothing. Kept
+	/// apart from `filled_fields` because "carried nothing" and "never carried"
+	/// are different mistakes: the first is a wiring defect the closers can
+	/// prove, the second is the ordinary shape of a fresh record.
+	pub(in crate::record) carried_empty: bool,
 }
 
 impl<'e, 'l> FrameClaim<'e, 'l> {
@@ -124,7 +130,16 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// serving the source through [`Self::frames`] establishes it.
 	pub unsafe fn carry(&mut self, src: Rec<'_>, plan: &[(usize, usize, usize)]) {
 		unsafe { apply_plan(src, self.dst(), plan) };
-		self.filled_fields = true;
+		// An empty plan copied nothing, so it must not satisfy the closers'
+		// "carried or wrote its fields" guard: the frame still holds whatever
+		// bytes the previous claim left, and a declared field read out of them
+		// is an uninitialized read rather than a missing value. Recorded rather
+		// than ignored so the closers can tell "carried nothing" apart from
+		// "never carried", which are not the same mistake.
+		match plan.is_empty() {
+			true => self.carried_empty = true,
+			false => self.filled_fields = true,
+		}
 	}
 
 	/// Copies the source record's element bytes into the frame, for a gathered
@@ -207,6 +222,17 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 	/// The frame must hold a complete record of the layout, written through
 	/// the carry, element, and field writes.
 	pub unsafe fn finish(mut self) -> RecordValue<'e> {
+		// A frame that CARRIED, but through an empty plan, and then filled
+		// nothing else: its declared fields hold the previous claim's bytes, and
+		// a reference field read out of them is an uninitialized read. This is
+		// narrower than [`Self::lift`]'s guard on purpose - a frame that never
+		// carried at all may legitimately serve fields the census staged as
+		// declared defaults, so only an empty carry is evidence of the defect.
+		assert!(
+			!(self.carried_empty && !self.filled_fields && !self.layout.fields.is_empty()),
+			"a layout with {} fields carried an empty plan and filled nothing: its fields would be the prior frame's bytes",
+			self.layout.fields.len()
+		);
 		match self.frame {
 			Some(frame) => RecordValue::spilled(unsafe { Rec::new(frame.cast_const()) }),
 			// SAFETY: the inline record is the value's own bytes.
