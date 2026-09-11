@@ -60,13 +60,13 @@ impl Alpha for PremultipliedGammaPixel {
 	}
 }
 
-fn premultiply_gamma(buffer: Image<Color>) -> Image<PremultipliedGammaPixel> {
+fn premultiply_gamma(buffer: &Image<Color>) -> Image<PremultipliedGammaPixel> {
 	Image {
 		width: buffer.width,
 		height: buffer.height,
 		data: buffer
 			.data
-			.into_iter()
+			.iter()
 			.map(|px| {
 				let [r, g, b, a] = px.to_gamma_srgb_channels();
 				PremultipliedGammaPixel { r: r * a, g: g * a, b: b * a, a }
@@ -215,7 +215,7 @@ fn gaussian_kernel(radius: f64) -> Vec<f64> {
 fn gaussian_blur_algorithm(buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
 	let kernel = gaussian_kernel(radius);
 	if gamma {
-		let working = premultiply_gamma(buffer);
+		let working = premultiply_gamma(&buffer);
 		let blurred = gaussian_separable(working, &kernel, |r, g, b, a| PremultipliedGammaPixel { r, g, b, a });
 		unpremultiply_gamma_to_linear(blurred)
 	} else {
@@ -229,7 +229,7 @@ fn gaussian_blur_algorithm(buffer: Image<Color>, radius: f64, gamma: bool) -> Im
 
 fn box_blur_algorithm(buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
 	if gamma {
-		let working = premultiply_gamma(buffer);
+		let working = premultiply_gamma(&buffer);
 		let blurred = box_separable(working, radius, |r, g, b, a| PremultipliedGammaPixel { r, g, b, a });
 		unpremultiply_gamma_to_linear(blurred)
 	} else {
@@ -395,21 +395,7 @@ fn sharpen_algorithm(mut buffer: Image<Color>, amount: f32, radius: f64, thresho
 	}
 
 	let kernel = gaussian_kernel(radius);
-
-	let working_data = buffer
-		.data
-		.iter()
-		.map(|c| {
-			let [r, g, b, a] = c.to_gamma_srgb_channels();
-			PremultipliedGammaPixel { r: r * a, g: g * a, b: b * a, a }
-		})
-		.collect();
-	let working = Image {
-		width: buffer.width,
-		height: buffer.height,
-		data: working_data,
-		base64_string: None,
-	};
+	let working = premultiply_gamma(&buffer);
 
 	let blurred_image = gaussian_separable(working, &kernel, |r, g, b, a| PremultipliedGammaPixel { r, g, b, a });
 
@@ -428,7 +414,7 @@ fn sharpen_algorithm(mut buffer: Image<Color>, amount: f32, radius: f64, thresho
 	};
 
 	for (original, blurred) in buffer.data.iter_mut().zip(&blurred_image.data) {
-		let [original_r, original_g, original_b, original_a] = original.to_unassociated_alpha().to_gamma_srgb_channels();
+		let [original_r, original_g, original_b, original_a] = original.to_gamma_srgb_channels();
 		let [blurred_r, blurred_g, blurred_b, _] = blurred.to_unpremultiplied_channels();
 
 		// Sharpens RGB channels while preserving alpha channel
