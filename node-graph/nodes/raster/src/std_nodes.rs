@@ -260,8 +260,8 @@ pub fn image<'a: 'n>(_: impl Ctx, resource: Item<Resource>) -> Item<Raster<CPU>>
 		data: image
 			.chunks(4)
 			.map(|pixel| {
-				let alpha = pixel[3];
-				Color::from_gamma_srgb_channels(pixel[0] * alpha, pixel[1] * alpha, pixel[2] * alpha, alpha)
+				let color = Color::from_gamma_srgb_channels(pixel[0], pixel[1], pixel[2], pixel[3]);
+				color.map_rgb(|channel| channel * color.a())
 			})
 			.collect(),
 		width: image.width(),

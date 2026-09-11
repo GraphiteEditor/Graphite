@@ -360,8 +360,8 @@ impl Pixel for Color {
 
 	fn from_bytes(bytes: &[u8]) -> Self {
 		// `Image<Color>` pixel convention is linear-light with associated (premultiplied) alpha.
-		let srgba = SRGBA8::new(bytes[0], bytes[1], bytes[2], bytes[3]);
-		Color::from(srgba).apply_opacity(bytes[3] as f32 / 255.)
+		let color = Color::from(SRGBA8::new(bytes[0], bytes[1], bytes[2], bytes[3]));
+		color.map_rgb(|channel| channel * color.a())
 	}
 	fn byte_size() -> usize {
 		4

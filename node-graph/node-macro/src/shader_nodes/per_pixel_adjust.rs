@@ -149,7 +149,11 @@ impl PerPixelAdjustCodegen<'_> {
 			.iter()
 			.map(|Param { ident, param_type, item_wrapped, .. }| {
 				let bare_value = match param_type {
-					ParamType::Image { .. } => quote!(Color::from_vec4(#ident.fetch_with(texel_coord, lod(0)))),
+					// Textures hold unassociated alpha but node functions take premultiplied `Color`
+					ParamType::Image { .. } => quote!({
+						let texel = Color::from_vec4(#ident.fetch_with(texel_coord, lod(0)));
+						texel.map_rgb(|channel| channel * texel.a())
+					}),
 					ParamType::Uniform => quote!(uniform.#ident),
 				};
 				if *item_wrapped { quote!(Item::new_from_element(#bare_value)) } else { bare_value }
@@ -184,7 +188,7 @@ impl PerPixelAdjustCodegen<'_> {
 					let uniform = <Uniform as #gcore_shaders::shaders::buffer_struct::BufferStruct>::read(*uniform);
 					let texel_coord = frag_coord.xy().as_uvec2();
 					let color: Color = #fn_name(#context, #(#call_args),*)#unwrap_result;
-					*color_out = color.to_vec4();
+					*color_out = color.to_unassociated_alpha().to_vec4();
 				}
 			}
 		})

@@ -8,14 +8,14 @@ use raster_types::Image;
 use raster_types::{CPU, GPU, Raster, Texture};
 use wgpu::{Extent3d, TextureFormat};
 
-/// Uploads CPU image data to a GPU texture
+/// Uploads CPU image data to a GPU texture as gamma sRGB with unassociated alpha, the convention for all GPU raster textures.
 fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raster<CPU>) -> Texture {
-	let rgba8_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();
+	let rgba8_data = image.to_flat_u8().0;
 
 	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), TextureFormat::Rgba8UnormSrgb);
 	queue.write_texture(
 		texture.as_image_copy(),
-		bytemuck::cast_slice(rgba8_data.as_slice()),
+		&rgba8_data,
 		wgpu::TexelCopyBufferLayout {
 			offset: 0,
 			bytes_per_row: Some(4 * image.width),
@@ -116,8 +116,8 @@ impl RasterGpuToRasterCpuConverter {
 			let row_slice = &view[start..start + row_bytes];
 			for px in row_slice.chunks_exact(4) {
 				// `Image<Color>` pixels are stored linear-light with associated (premultiplied) alpha
-				let srgba = SRGBA8::new(px[0], px[1], px[2], px[3]);
-				cpu_data.push(Color::from(srgba).apply_opacity(px[3] as f32 / 255.));
+				let color = Color::from(SRGBA8::new(px[0], px[1], px[2], px[3]));
+				cpu_data.push(color.map_rgb(|channel| channel * color.a()));
 			}
 		}
 

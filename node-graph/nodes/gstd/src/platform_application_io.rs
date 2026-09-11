@@ -174,9 +174,9 @@ fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 		data: image
 			.chunks(4)
 			.map(|pixel| {
-				// Decoded bytes are unassociated gamma sRGB; premultiply in gamma then lift to linear
-				let a = pixel[3];
-				Color::from_gamma_srgb_channels(pixel[0] * a, pixel[1] * a, pixel[2] * a, a)
+				// Decoded bytes are unassociated gamma sRGB, so lift to linear before premultiplying
+				let color = Color::from_gamma_srgb_channels(pixel[0], pixel[1], pixel[2], pixel[3]);
+				color.map_rgb(|channel| channel * color.a())
 			})
 			.collect(),
 		width: image.width(),

@@ -148,8 +148,8 @@ impl Image<Color> {
 			.chunks_exact(4)
 			.map(|v| {
 				// `Image<Color>` pixels are stored linear-light with premultiplied alpha
-				let srgba = SRGBA8::new(v[0], v[1], v[2], v[3]);
-				Color::from(srgba).apply_opacity(v[3] as f32 / 255.)
+				let color = Color::from(SRGBA8::new(v[0], v[1], v[2], v[3]));
+				color.map_rgb(|channel| channel * color.a())
 			})
 			.collect();
 		Image {
