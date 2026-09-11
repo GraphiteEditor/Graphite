@@ -115,13 +115,10 @@ fn color_overlay<T: Adjust<Color>>(
 	let opacity = (opacity / 100.).clamp(0., 1.);
 
 	image.element_mut().adjust(|pixel| {
-		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
+		let overlay = apply_blend_mode(color, *pixel, blend_mode);
+		let mix = |image: f32, overlay: f32| image + (overlay - image) * opacity;
 
-		// The apply blend mode function divides rgb by the alpha channel for the background. This undoes that.
-		let associated_pixel = Color::from_rgbaf32_unchecked(pixel.r() * pixel.a(), pixel.g() * pixel.a(), pixel.b() * pixel.a(), pixel.a());
-		let overlay = apply_blend_mode(color, associated_pixel, blend_mode).map_rgb(|channel| channel * opacity);
-
-		Color::from_rgbaf32_unchecked(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a())
+		Color::from_rgbaf32_unchecked(mix(pixel.r(), overlay.r()), mix(pixel.g(), overlay.g()), mix(pixel.b(), overlay.b()), pixel.a())
 	});
 	image
 }

@@ -171,14 +171,7 @@ fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
-		data: image
-			.chunks(4)
-			.map(|pixel| {
-				// Decoded bytes are unassociated gamma sRGB; premultiply in gamma then lift to linear
-				let a = pixel[3];
-				Color::from_gamma_srgb_channels(pixel[0] * a, pixel[1] * a, pixel[2] * a, a)
-			})
-			.collect(),
+		data: image.chunks(4).map(|pixel| Color::from_gamma_srgb_channels(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
 		width: image.width(),
 		height: image.height(),
 		..Default::default()
