@@ -259,7 +259,7 @@ impl InputState {
 		}
 	}
 
-	fn scale(&self) -> f64 {
+	pub(crate) fn viewport_scale(&self) -> f64 {
 		self.viewport_info.as_ref().map_or(1., |info| info.scale)
 	}
 
@@ -280,7 +280,7 @@ impl InputState {
 
 	fn pointer_state(&self) -> EditorPointerState {
 		EditorPointerState {
-			editor_position: (self.pointer_position.x / self.scale(), self.pointer_position.y / self.scale()).into(),
+			editor_position: (self.pointer_position.x / self.viewport_scale(), self.pointer_position.y / self.viewport_scale()).into(),
 			mouse_keys: self.pointer_keys(),
 			time: Some(self.start.elapsed().as_secs_f64() * 1000.),
 			..Default::default()
