@@ -581,6 +581,49 @@ pub enum ColorPresetsInputUpdate {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
+pub struct TransferCurveInput {
+	// Content
+	/// The control points in the units of `domain` and `range`, in any x order, since sampling sorts them.
+	#[widget_builder(constructor)]
+	pub points: Vec<(f64, f64)>,
+	/// The x extent the box spans, left to right.
+	pub domain: [f64; 2],
+	/// The y extent the box spans, bottom to top.
+	pub range: [f64; 2],
+	/// Whether the drawn curve and a dragged point's y stay inside `range`. A point's x always stays inside `domain`.
+	#[serde(rename = "clampToRange")]
+	pub clamp_to_range: bool,
+	/// Polyline of the curve in box-normalized 0..1 coordinates with y upward. Auto-populated from `points` at layout-send time.
+	#[widget_builder(skip)]
+	pub samples: Vec<(f64, f64)>,
+	/// Whether clicking empty space inserts a point.
+	#[serde(rename = "allowInsert")]
+	pub allow_insert: bool,
+	/// Whether double-click or right-click removes a point. The handler still has the final say (e.g., enforcing a minimum count).
+	#[serde(rename = "allowDelete")]
+	pub allow_delete: bool,
+	pub disabled: bool,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<TransferCurveInputUpdate>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum TransferCurveInputUpdate {
+	MovePoint { index: u32, x: f64, y: f64 },
+	InsertPoint { x: f64, y: f64 },
+	DeletePoint { index: u32 },
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
+#[derivative(Debug, PartialEq, Default)]
 pub struct SpectrumInput {
 	// Content
 	/// The colored gradient drawn behind the markers (display-only, caller-owned).

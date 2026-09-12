@@ -471,6 +471,7 @@ impl LayoutGroup {
 				| Widget::ColorComparisonInput(_)
 				| Widget::ColorPresetsInput(_)
 				| Widget::SpectrumInput(_)
+				| Widget::TransferCurveInput(_)
 				| Widget::VisualColorPickersInput(_) => continue,
 			};
 			if val.is_empty() {
@@ -808,6 +809,7 @@ pub enum Widget {
 	ColorComparisonInput(ColorComparisonInput),
 	ColorInput(ColorInput),
 	ColorPresetsInput(ColorPresetsInput),
+	TransferCurveInput(TransferCurveInput),
 	DropdownInput(DropdownInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
@@ -887,6 +889,7 @@ impl DiffUpdate {
 				| Widget::ColorComparisonInput(_)
 				| Widget::ColorPresetsInput(_)
 				| Widget::SpectrumInput(_)
+				| Widget::TransferCurveInput(_)
 				| Widget::VisualColorPickersInput(_) => None,
 			};
 

@@ -4,7 +4,11 @@ use crate::adjust::Adjust;
 use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
 #[cfg(feature = "std")]
-use core_types::list::Item;
+use core_types::list::{Item, List};
+#[cfg(feature = "std")]
+use core_types::transfer_curve::{TransferCurve, TransferCurveEvaluator};
+#[cfg(feature = "std")]
+use glam::DVec2;
 use glam::Vec3;
 use no_std_types::color::{Color, linear_to_srgb, srgb_to_linear};
 use no_std_types::context::Ctx;
@@ -263,6 +267,23 @@ fn brightness_contrast<T: Adjust<Color>>(
 	input
 }
 
+#[repr(u32)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[widget(Dropdown)]
+/// The channel whose settings are shown, with RGB adjusting all three color channels together.
+pub enum AdjustmentChannel {
+	#[default]
+	#[label("RGB")]
+	Rgb,
+	Red,
+	Green,
+	Blue,
+	Alpha,
+}
+
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels
 //
@@ -347,6 +368,59 @@ fn levels<T: Adjust<Color>>(
 		Color::from_gamma_srgb_channels(r, g, b, a)
 	});
 	image
+}
+
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27curv%27%20%3D%20Curves
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Curves%20file%20format
+//
+// Each curve is any number of (x, y) points on 0..1 joined by a natural cubic spline held flat beyond the outermost
+// points, and the per-channel curves apply before the composite one, like Levels. The value between those two stages
+// stays exact rather than rounding through an 8-bit table, which can leave results a level away from 8-bit pipelines.
+// Needs the heap for its curves, so it stays off the shader build for now.
+#[cfg(feature = "std")]
+#[node_macro::node(category("Raster: Adjustment"), properties("transfer_curves_properties"))]
+async fn curves<T: Adjust<Color> + Send>(
+	_: impl Ctx,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	curve: Item<TransferCurve>,
+	#[name("(Red) Curve")] red_curve: Item<TransferCurve>,
+	#[name("(Green) Curve")] green_curve: Item<TransferCurve>,
+	#[name("(Blue) Curve")] blue_curve: Item<TransferCurve>,
+	#[name("(Alpha) Curve")] alpha_curve: Item<TransferCurve>,
+	_channel: Item<AdjustmentChannel>,
+) -> Item<T> {
+	let mut image = image;
+	let composite = curve.into_element().evaluator();
+	let red = red_curve.into_element().evaluator();
+	let green = green_curve.into_element().evaluator();
+	let blue = blue_curve.into_element().evaluator();
+	let alpha = alpha_curve.into_element().evaluator();
+	let map = |channel: &TransferCurveEvaluator, value: f32| composite.evaluate(channel.evaluate(value as f64).clamp(0., 1.)).clamp(0., 1.) as f32;
+
+	image.element_mut().adjust(|color| {
+		// Curves math operates in gamma space
+		let [r, g, b, a] = color.to_gamma_srgb_channels();
+
+		// Alpha stands apart from the composite curve that the three color channels pass through
+		let a = alpha.evaluate(a as f64).clamp(0., 1.) as f32;
+
+		Color::from_gamma_srgb_channels(map(&red, r), map(&green, g), map(&blue, b), a)
+	});
+
+	image
+}
+
+/// Builds a transfer curve from a `Vec2[]` of control points, each mapping the input value at its x to the output value at its y. A smooth spline runs through them, holding the outermost points' values beyond them.
+#[cfg(feature = "std")]
+#[node_macro::node(category("Raster: Adjustment"), name("Points to Transfer Curve"))]
+fn points_to_transfer_curve(
+	_: impl Ctx,
+	/// The control points, in any order, with both coordinates on the 0 to 1 range.
+	points: List<DVec2>,
+) -> Item<TransferCurve> {
+	let points: Vec<DVec2> = points.iter_element_values().copied().collect();
+	Item::new_from_element(TransferCurve::new(points))
 }
 
 // Aims for interoperable compatibility with:
@@ -1124,7 +1198,10 @@ fn exposure<T: Adjust<Color>>(
 
 #[cfg(feature = "std")]
 mod _graphene_hash_impls {
-	use super::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice};
+	use super::{
+		AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
+		SelectiveColorChoice,
+	};
 	graphene_hash::impl_via_hash!(
 		LuminanceCalculation,
 		RedGreenBlue,
@@ -1135,7 +1212,8 @@ mod _graphene_hash_impls {
 		CellularReturnType,
 		DomainWarpType,
 		RelativeAbsolute,
-		SelectiveColorChoice
+		SelectiveColorChoice,
+		AdjustmentChannel
 	);
 }
 
