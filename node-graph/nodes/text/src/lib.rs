@@ -394,6 +394,32 @@ fn string_to_number(
 	Item::from_parts(string.trim().parse::<f64>().unwrap_or(*fallback.element()), attributes)
 }
 
+/// Parses a string like `"3, 4.5"` into a Vec2, using a comma and/or whitespace as separators. Falls back to the chosen value if the string is not a valid pair of numbers.
+#[node_macro::node(category("Text"), name("String to Vec2"))]
+fn string_to_vec2(
+	_: impl Ctx,
+	/// The string containing two numbers separated by a comma or whitespace, like `"3, 4.5"`, optionally wrapped in `(`parentheses`)` or `[`square brackets`]`. Each number follows the same rules as the "String to Number" node.
+	string: Item<String>,
+	/// The value of the result if the string cannot be parsed as a valid Vec2.
+	fallback: Item<DVec2>,
+) -> Item<DVec2> {
+	let (string, attributes) = string.into_parts();
+
+	let trimmed = string.trim();
+	let unwrapped = (trimmed.strip_prefix('(').and_then(|inner| inner.strip_suffix(')')))
+		.or_else(|| trimmed.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')))
+		.unwrap_or(trimmed);
+
+	// Exactly two numbers, so a longer list is not quietly truncated into a pair
+	let mut numbers = unwrapped.split(|c: char| c == ',' || c.is_whitespace()).filter(|piece| !piece.is_empty()).map(str::parse::<f64>);
+	let parsed = match (numbers.next(), numbers.next(), numbers.next()) {
+		(Some(Ok(x)), Some(Ok(y)), None) => DVec2::new(x, y),
+		_ => *fallback.element(),
+	};
+
+	Item::from_parts(parsed, attributes)
+}
+
 /// Removes leading and/or trailing whitespace from a string. Common whitespace characters include spaces, tabs, and newlines.
 #[node_macro::node(category("Text"))]
 fn string_trim(
@@ -890,4 +916,23 @@ fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f
 	let result = serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string());
 
 	Item::from_parts(result, attributes)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn string_to_vec2_accepts_pairs_and_falls_back_otherwise() {
+		let fallback = DVec2::new(-1., -1.);
+		let parse = |text: &str| string_to_vec2((), Item::new_from_element(text.to_string()), Item::new_from_element(fallback)).into_element();
+
+		for text in ["3, 4.5", "3 4.5", " 3,4.5 ", "(3, 4.5)", "[3, 4.5]", "3e0,\t4.5"] {
+			assert_eq!(parse(text), DVec2::new(3., 4.5), "{text:?} should parse");
+		}
+
+		for text in ["", "3", "3, 4, 5", "3, four", "(3, 4.5]"] {
+			assert_eq!(parse(text), fallback, "{text:?} should fall back");
+		}
+	}
 }
