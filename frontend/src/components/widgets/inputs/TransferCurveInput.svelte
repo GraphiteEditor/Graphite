@@ -33,7 +33,7 @@
 	// Whether the press moved the point, so the double-click a second press can produce deletes nothing
 	let dragMoved = false;
 	// An insert waiting to be reported back, with the point asked for and the count before it, so its index can be read off the reply
-	let pendingInsert: { point: [number, number]; priorCount: number } | undefined = undefined;
+	let pendingInsert: { point: [number, number]; priorCount: number; abandoned: boolean } | undefined = undefined;
 	// The curve's place under the pointer, previewed while the pointer sits over empty space
 	let insertPreview: [number, number] | undefined = undefined;
 	// The point a press would take, lit so it is clear which one a click affects
@@ -76,7 +76,11 @@
 			if (other === index) return;
 
 			const at = normalizedX(point[0]);
-			if (Math.abs(x - at) < MINIMUM_X_GAP) x = at + (x >= at ? MINIMUM_X_GAP : -MINIMUM_X_GAP);
+			if (Math.abs(x - at) >= MINIMUM_X_GAP) return;
+
+			// Steps to the side it came from, or the other side when that one would leave the box
+			const ahead = x >= at ? at + MINIMUM_X_GAP : at - MINIMUM_X_GAP;
+			x = ahead >= 0 && ahead <= 1 ? ahead : 2 * at - ahead;
 		});
 
 		return x;
@@ -121,7 +125,7 @@
 		emit({ InsertPoint: { x: point[0], y: point[1] } });
 
 		// The drag waits for the reply, since until then an index would name a neighbor in the curve as it stands without the point
-		pendingInsert = { point, priorCount: points.length };
+		pendingInsert = { point, priorCount: points.length, abandoned: false };
 		activePointIndex = undefined;
 		dragRestore = point;
 		dragInserted = true;
@@ -144,7 +148,7 @@
 
 		if (index !== undefined) {
 			if (e.button === BUTTON_LEFT) beginPointDrag(index);
-			else if (e.button === BUTTON_RIGHT && allowDelete) deletePoint(index);
+			else if (e.button === BUTTON_RIGHT) removePoint(index);
 			return;
 		}
 
@@ -154,22 +158,26 @@
 	// Acts only where both presses took the same point, so the one an empty-space click inserts is not deleted by the click after it
 	function boxDoubleClick() {
 		if (disabled || dragMoved || pressIndex === undefined || pressIndex !== previousPressIndex) return;
+		removePoint(pressIndex);
+	}
 
-		const pressed = points[pressIndex];
+	// A right-click or double-click removes a point, except that the outermost points anchor the corners and return to their own instead
+	function removePoint(index: number) {
+		const pressed = points[index];
 		if (!pressed) return;
 
-		// The outermost points anchor the corners instead of being removable, so one of those returns to its own
 		let end: number | undefined = undefined;
 		if (points.every((point) => point[0] >= pressed[0])) end = 0;
 		else if (points.every((point) => point[0] <= pressed[0])) end = 1;
 
 		if (end !== undefined) {
 			const corner = fromNormalized(end, end);
-			emit({ MovePoint: { index: pressIndex, x: corner[0], y: corner[1] } });
-			return;
+			dispatch("commit");
+			emit({ MovePoint: { index, x: corner[0], y: corner[1] } });
+		} else if (allowDelete) {
+			dispatch("commit");
+			deletePoint(index);
 		}
-
-		if (allowDelete) deletePoint(pressIndex);
 	}
 
 	// Takes up the dragging of an inserted point once the reply carries it, found by position since Rust chooses where it lands
@@ -183,7 +191,8 @@
 			if (distanceSquared(reported[i]) < distanceSquared(reported[nearest])) nearest = i;
 		}
 
-		activePointIndex = nearest;
+		if (pendingInsert.abandoned) deletePoint(nearest);
+		else activePointIndex = nearest;
 		pendingInsert = undefined;
 	}
 	$: adoptInsertedPoint(points);
@@ -227,6 +236,9 @@
 		if (activePointIndex !== undefined) {
 			if (dragInserted) deletePoint(activePointIndex);
 			else if (dragRestore) emit({ MovePoint: { index: activePointIndex, x: dragRestore[0], y: dragRestore[1] } });
+		} else if (pendingInsert) {
+			// The reply has yet to name the inserted point, so it is deleted when that arrives
+			pendingInsert.abandoned = true;
 		}
 		stopDrag();
 	}
@@ -236,7 +248,7 @@
 		activePointIndex = undefined;
 		dragRestore = undefined;
 		dragInserted = false;
-		pendingInsert = undefined;
+		if (!pendingInsert?.abandoned) pendingInsert = undefined;
 	}
 
 	function onPointerUp() {

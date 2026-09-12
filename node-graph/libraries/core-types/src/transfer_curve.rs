@@ -96,9 +96,9 @@ impl TransferCurveEvaluator {
 		let mut points = points.to_vec();
 		points.sort_by(|a, b| a.x.total_cmp(&b.x));
 
-		// Points sharing an x would make the spline's system singular, so the later-stored one at each x stands alone
+		// Points within epsilon of the same x would make the spline's system singular, so the later-stored one stands alone
 		points.reverse();
-		points.dedup_by(|a, b| a.x == b.x);
+		points.dedup_by(|a, b| (a.x - b.x).abs() <= f64::EPSILON);
 		points.reverse();
 
 		let second_derivatives = natural_spline_second_derivatives(&points);
