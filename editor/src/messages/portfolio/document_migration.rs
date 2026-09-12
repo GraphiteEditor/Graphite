@@ -2123,7 +2123,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			_ => None,
 		});
 
-		if let Some(image) = image {
+		if let Some(mut image) = image {
+			// Legacy embedded pixel data is premultiplied, so restore straight alpha before encoding it
+			image.data.iter_mut().for_each(|pixel| *pixel = pixel.to_unassociated_alpha());
 			let hash = document.resources.embedded.store(Resource::new(image.to_png()));
 
 			let resource_id = ResourceId::new();

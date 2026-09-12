@@ -123,14 +123,6 @@ pub trait RGBMut: RGB {
 	fn set_blue(&mut self, blue: Self::ColorChannel);
 }
 
-pub trait AssociatedAlpha: RGB + Alpha {
-	fn to_unassociated<Out: UnassociatedAlpha>(&self) -> Out;
-}
-
-pub trait UnassociatedAlpha: RGB + Alpha {
-	fn to_associated<Out: AssociatedAlpha>(&self) -> Out;
-}
-
 pub trait Alpha {
 	type AlphaChannel: LinearChannel;
 	const TRANSPARENT: Self;

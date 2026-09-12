@@ -144,14 +144,7 @@ impl<P: Pixel> Image<P> {
 impl Image<Color> {
 	/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 	pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
-		let data = image_data
-			.chunks_exact(4)
-			.map(|v| {
-				// `Image<Color>` pixels are stored linear-light with premultiplied alpha
-				let srgba = SRGBA8::new(v[0], v[1], v[2], v[3]);
-				Color::from(srgba).apply_opacity(v[3] as f32 / 255.)
-			})
-			.collect();
+		let data = image_data.chunks_exact(4).map(|v| SRGBA8::new(v[0], v[1], v[2], v[3]).into()).collect();
 		Image {
 			width,
 			height,
@@ -171,7 +164,7 @@ impl Image<Color> {
 }
 
 use super::*;
-impl<P: Alpha + RGB + AssociatedAlpha> Image<P>
+impl<P: Alpha + RGB> Image<P>
 where
 	P::ColorChannel: Linear,
 	<P as Alpha>::AlphaChannel: Linear,
@@ -195,10 +188,9 @@ where
 			// Smaller alpha values than this would map to fully transparent
 			// anyway, avoid expensive encoding.
 			if a >= 0.5 / 255. {
-				let undo_premultiply = 1. / a;
-				let r = color.r().to_f32() * undo_premultiply;
-				let g = color.g().to_f32() * undo_premultiply;
-				let b = color.b().to_f32() * undo_premultiply;
+				let r = color.r().to_f32();
+				let g = color.g().to_f32();
+				let b = color.b().to_f32();
 
 				// Compute new sRGB value if necessary.
 				if r != last_r {
@@ -286,5 +278,15 @@ mod test {
 		println!("{deserialized:?}");
 
 		assert_eq!(image, deserialized);
+	}
+
+	#[test]
+	fn image_data_round_trips_translucent_pixels() {
+		use super::*;
+		let bytes = [255, 0, 0, 128, 0, 255, 0, 1, 255, 255, 255, 41, 10, 20, 30, 255];
+
+		let image = Image::from_image_data(&bytes, 4, 1);
+
+		assert_eq!(image.to_flat_u8().0, bytes);
 	}
 }
