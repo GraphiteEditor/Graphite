@@ -72,7 +72,7 @@ impl Alpha for RGBA16F {
 	type AlphaChannel = f32;
 	#[inline(always)]
 	fn alpha(&self) -> f32 {
-		self.alpha.to_f32() / 255.
+		self.alpha.to_f32()
 	}
 
 	const TRANSPARENT: Self = RGBA16F {
@@ -83,9 +83,8 @@ impl Alpha for RGBA16F {
 	};
 
 	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self {
-		let alpha = alpha * 255.;
 		let mut result = *self;
-		result.alpha = f16::from_f32(alpha * self.alpha());
+		result.alpha = f16::from_f32(self.alpha() * alpha);
 		result
 	}
 }

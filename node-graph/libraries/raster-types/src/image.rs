@@ -279,4 +279,14 @@ mod test {
 
 		assert_eq!(image, deserialized);
 	}
+
+	#[test]
+	fn image_data_round_trips_translucent_pixels() {
+		use super::*;
+		let bytes = [255, 0, 0, 128, 0, 255, 0, 1, 255, 255, 255, 41, 10, 20, 30, 255];
+
+		let image = Image::from_image_data(&bytes, 4, 1);
+
+		assert_eq!(image.to_flat_u8().0, bytes);
+	}
 }

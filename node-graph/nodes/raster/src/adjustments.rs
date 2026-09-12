@@ -497,11 +497,7 @@ fn invert<T: Adjust<Color>>(
 	input: Item<T>,
 ) -> Item<T> {
 	let mut input = input;
-	input.element_mut().adjust(|color| {
-		// Invert in gamma space relative to alpha
-		let [r, g, b, a] = color.to_gamma_srgb_channels();
-		Color::from_gamma_srgb_channels(a - r, a - g, a - b, a)
-	});
+	input.element_mut().adjust(|color| color.map_gamma_rgb(|channel| 1. - channel));
 	input
 }
 
@@ -1141,4 +1137,20 @@ mod _graphene_hash_impls {
 		RelativeAbsolute,
 		SelectiveColorChoice
 	);
+}
+
+#[cfg(all(feature = "std", test))]
+mod test {
+	use super::*;
+
+	#[test]
+	fn invert_flips_straight_channels_and_keeps_alpha() {
+		let color = Color::from_gamma_srgb_channels(1., 0.25, 0., 0.5);
+
+		let inverted = invert((), Item::new_from_element(color)).into_element();
+
+		let [r, g, b, a] = inverted.to_gamma_srgb_channels();
+		assert!((r - 0.).abs() < 1e-5 && (g - 0.75).abs() < 1e-5 && (b - 1.).abs() < 1e-5, "inverted channels were {r} {g} {b}");
+		assert!((a - 0.5).abs() < 1e-5, "alpha was {a}");
+	}
 }
