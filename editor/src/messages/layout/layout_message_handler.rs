@@ -274,6 +274,20 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
+			Widget::TransferCurveInput(curve_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (curve_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<TransferCurveInputUpdate>(value) else {
+							warn!("TransferCurveInput update was not able to be parsed as TransferCurveInputUpdate");
+							return;
+						};
+						(curve_input.on_update.callback)(&update)
+					}
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::IconButton(icon_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (icon_button.on_commit.callback)(&()),
@@ -533,6 +547,23 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 		match &mut *instance.widget {
 			Widget::ColorInput(color_input) => {
 				color_input.chosen_gradient = color_input.value.to_css_background_image();
+			}
+			Widget::TransferCurveInput(curve_input) => {
+				const SAMPLE_COUNT: usize = 128;
+				let curve = graphene_std::transfer_curve::TransferCurve::new(curve_input.points.iter().map(|&(x, y)| glam::DVec2::new(x, y)).collect());
+				let evaluator = curve.evaluator();
+				let [x_min, x_max] = curve_input.domain;
+				let [y_min, y_max] = curve_input.range;
+				let (x_span, y_span) = ((x_max - x_min).max(f64::EPSILON), (y_max - y_min).max(f64::EPSILON));
+				// A spline overshooting the range rides its edge as a flat line, as the clamped adjustment it depicts does
+				let clamp_to_range = curve_input.clamp_to_range;
+				curve_input.samples = (0..=SAMPLE_COUNT)
+					.map(|i| {
+						let t = i as f64 / SAMPLE_COUNT as f64;
+						let y = (evaluator.evaluate(x_min + t * x_span) - y_min) / y_span;
+						(t, if clamp_to_range { y.clamp(0., 1.) } else { y })
+					})
+					.collect();
 			}
 			Widget::SpectrumInput(spectrum_input) => {
 				// The track strip spans exactly 0 to 1, which no spread affects, so the widget carries no spread of its own

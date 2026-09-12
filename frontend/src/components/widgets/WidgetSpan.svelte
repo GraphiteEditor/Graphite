@@ -18,6 +18,7 @@
 	import SpectrumInput from "/src/components/widgets/inputs/SpectrumInput.svelte";
 	import TextAreaInput from "/src/components/widgets/inputs/TextAreaInput.svelte";
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
+	import TransferCurveInput from "/src/components/widgets/inputs/TransferCurveInput.svelte";
 	import VisualColorPickersInput from "/src/components/widgets/inputs/VisualColorPickersInput.svelte";
 	import WorkingColorsInput from "/src/components/widgets/inputs/WorkingColorsInput.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
@@ -230,6 +231,16 @@
 			getProps: (props, index) => ({
 				...props,
 				$$events: { value: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
+			}),
+		},
+		TransferCurveInput: {
+			component: TransferCurveInput,
+			getProps: (props, index) => ({
+				...props,
+				$$events: {
+					update: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
+					commit: () => widgetValueCommit(index, undefined),
+				},
 			}),
 		},
 		SpectrumInput: {
