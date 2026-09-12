@@ -1520,13 +1520,14 @@ mod test_transform_layer {
 	}
 
 	#[tokio::test]
-	async fn test_modifier_refresh_does_not_move_a_locked_transform() {
+	async fn test_locked_drag_ignores_stale_absolute_reports() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		let layer = editor.active_document().metadata().all_layers().next().unwrap();
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		let origin = editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler.mouse_position;
 		editor.handle_message(TransformLayerMessage::PointerLockMove { delta: DVec2::new(100., 0.) }).await;
 
 		let transform_after_drag = get_layer_transform(&mut editor, layer).await.unwrap();
@@ -1535,6 +1536,7 @@ mod test_transform_layer {
 			(handler.software_cursor_pos, handler.mouse_position)
 		};
 
+		// Shift and Control re-dispatch this message through the input mapper's `refresh_keys` while the absolute position stays frozen
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -1546,51 +1548,62 @@ mod test_transform_layer {
 			let handler = &editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler;
 			(handler.software_cursor_pos, handler.mouse_position)
 		};
-		assert_eq!(cursor_after_refresh, cursor_after_drag, "A modifier refresh must not move the software cursor");
-		assert_eq!(mouse_after_refresh, mouse_after_drag, "A modifier refresh must not move the tracked pointer position");
-
-		let transform_after_refresh = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(transform_after_refresh.abs_diff_eq(transform_after_drag, 1e-5), "A modifier refresh must not move the layer");
+		assert_eq!(cursor_after_refresh, cursor_after_drag, "A stale absolute report must not move the software cursor");
+		assert_eq!(mouse_after_refresh, mouse_after_drag, "A stale absolute report must not move the tracked pointer position");
+		assert!(
+			get_layer_transform(&mut editor, layer).await.unwrap().abs_diff_eq(transform_after_drag, 1e-5),
+			"A stale absolute report must not move the layer"
+		);
 
 		editor.handle_message(TransformLayerMessage::PointerLockMove { delta: DVec2::new(10., 0.) }).await;
 		let transform_after_more_dragging = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(
-			!transform_after_more_dragging.abs_diff_eq(transform_after_drag, 1e-5),
-			"Locked deltas must keep moving the layer after a modifier refresh"
-		);
+		assert!(!transform_after_more_dragging.abs_diff_eq(transform_after_drag, 1e-5), "Locked deltas must keep driving the transform");
 
-		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
-	}
-
-	#[tokio::test]
-	async fn test_absolute_pointer_drives_a_grab_when_the_lock_never_engaged() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let layer = editor.active_document().metadata().all_layers().next().unwrap();
-
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		let transform_before = get_layer_transform(&mut editor, layer).await.unwrap();
-
-		editor.move_mouse(220., 160., ModifierKeys::empty(), MouseKeys::NONE).await;
+		// The lock goes away and the platform restores the bare cursor where the lock began
+		editor.move_mouse(origin.x, origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
 				increments_key: Key::Control,
 			})
 			.await;
-
-		let transform_after = get_layer_transform(&mut editor, layer).await.unwrap();
 		assert!(
-			!transform_after.abs_diff_eq(transform_before, 1e-5),
-			"An absolute pointer position away from the lock origin must still drive the transform"
+			get_layer_transform(&mut editor, layer).await.unwrap().abs_diff_eq(transform_after_more_dragging, 1e-5),
+			"The restored cursor position must not move the layer"
+		);
+
+		// The first absolute movement adopts the restored position, so the drag must not snap back by the wrapped distance
+		editor.move_mouse(origin.x + 10., origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		let transform_after_resuming = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(
+			transform_after_resuming.abs_diff_eq(transform_after_more_dragging, 1e-5),
+			"Resuming absolute tracking must not move the layer by the wrapped distance"
+		);
+
+		editor.move_mouse(origin.x + 40., origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		let transform_after_moving = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(
+			transform_after_moving.translation.x > transform_after_resuming.translation.x + 1.,
+			"Absolute movement must drive the transform again once tracking resumes"
 		);
 
 		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
 	}
 
 	#[tokio::test]
-	async fn test_absolute_pointer_returning_to_the_lock_origin_still_drives_the_grab() {
+	async fn test_absolute_pointer_drives_a_grab_without_a_lock() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
@@ -1619,69 +1632,8 @@ mod test_transform_layer {
 			.await;
 		let transform_after_returning = get_layer_transform(&mut editor, layer).await.unwrap();
 		assert!(
-			!transform_after_returning.abs_diff_eq(transform_after_moving, 1e-5),
-			"Returning the absolute pointer to the position where the lock began must not be swallowed"
-		);
-		assert!(
 			transform_after_returning.abs_diff_eq(transform_before, 1e-3),
-			"Returning to where the grab began should undo the drag of the grabbed layer"
-		);
-
-		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
-	}
-
-	#[tokio::test]
-	async fn test_absolute_pointer_after_the_lock_goes_away_does_not_jump_back() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let layer = editor.active_document().metadata().all_layers().next().unwrap();
-
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		let transform_before = get_layer_transform(&mut editor, layer).await.unwrap();
-		let origin = editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler.mouse_position;
-
-		editor.handle_message(TransformLayerMessage::PointerLockMove { delta: DVec2::new(100., 0.) }).await;
-		let transform_after_locked_drag = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(!transform_after_locked_drag.abs_diff_eq(transform_before, 1e-5), "Locked deltas must drive the transform");
-
-		editor.move_mouse(origin.x, origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		let transform_after_restoring = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(
-			transform_after_restoring.abs_diff_eq(transform_after_locked_drag, 1e-5),
-			"The restored cursor position must not move the layer"
-		);
-
-		editor.move_mouse(origin.x + 10., origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		let transform_after_resuming = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(
-			transform_after_resuming.abs_diff_eq(transform_after_locked_drag, 1e-5),
-			"Resuming absolute tracking must not move the layer by the wrapped distance"
-		);
-
-		editor.move_mouse(origin.x + 40., origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		let transform_after_moving = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(
-			transform_after_moving.translation.x > transform_after_resuming.translation.x + 1.,
-			"Absolute movement must drive the transform again once tracking resumes"
+			"Returning the absolute pointer to where the grab began must drive the transform back, not be swallowed"
 		);
 
 		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
