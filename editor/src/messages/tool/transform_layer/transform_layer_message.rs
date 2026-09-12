@@ -23,6 +23,7 @@ pub enum TransformLayerMessage {
 	ConstrainX,
 	ConstrainY,
 	PointerMove { slow_key: Key, increments_key: Key },
+	PointerLockMove { delta: DVec2 },
 	SelectionChanged,
 	TypeBackspace,
 	TypeDecimalPoint,
