@@ -1365,9 +1365,9 @@ fn hsla_to_color(
 }
 
 /// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce a transparent color.
-#[node_macro::node(category("Color"), name("Hex to Color"))]
-fn hex_to_color(_: impl Ctx, hex_code: Item<String>) -> Item<Color> {
-	let color = core_types::misc::parse_css_color(hex_code.element()).unwrap_or_default();
+#[node_macro::node(category("Color"), name("String to Color"))]
+fn string_to_color(_: impl Ctx, string: Item<String>) -> Item<Color> {
+	let color = core_types::misc::parse_css_color(string.element()).unwrap_or_default();
 	Item::new_from_element(color)
 }
 
