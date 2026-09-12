@@ -540,6 +540,17 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				let old_ptz = self.ptz;
 				self.ptz = document.document_ptz;
 				if old_ptz != self.ptz {
+					if self.software_cursor_active {
+						let delta = mouse_position - self.mouse_position;
+						self.software_cursor_pos += delta;
+						self.software_cursor_pos = wrap_software_cursor(self.software_cursor_pos, viewport.size().into_dvec2());
+
+						responses.add(FrontendMessage::UpdateSoftwareCursor {
+							visible: true,
+							x: self.software_cursor_pos.x,
+							y: self.software_cursor_pos.y,
+						});
+					}
 					self.mouse_position = mouse_position;
 					return;
 				}
