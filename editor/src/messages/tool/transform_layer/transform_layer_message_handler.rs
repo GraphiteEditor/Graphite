@@ -540,17 +540,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				let old_ptz = self.ptz;
 				self.ptz = document.document_ptz;
 				if old_ptz != self.ptz {
-					if self.software_cursor_active {
-						let delta = mouse_position - self.mouse_position;
-						self.software_cursor_pos += delta;
-						self.software_cursor_pos = wrap_software_cursor(self.software_cursor_pos, viewport.size().into_dvec2());
-
-						responses.add(FrontendMessage::UpdateSoftwareCursor {
-							visible: true,
-							x: self.software_cursor_pos.x,
-							y: self.software_cursor_pos.y,
-						});
-					}
+					// The viewport changed, so this frame's pointer delta can't be applied to the transform without a jump.
+					// The software cursor must drop it too, since it would otherwise drift away from the transformed layer.
 					self.mouse_position = mouse_position;
 					return;
 				}
@@ -1437,6 +1428,46 @@ mod test_transform_layer {
 			Some((true, expected.x, expected.y)),
 			"A locked delta during a transform should update the software cursor"
 		);
+
+		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+	}
+
+	#[tokio::test]
+	async fn test_ptz_change_mid_transform_keeps_software_cursor_in_lockstep() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.handle_message(TransformLayerMessage::PointerLockMove { delta: DVec2::new(10., 0.) }).await;
+
+		// A viewport change makes the next pointer move drop its delta for the transform, so the software cursor must not consume it either
+		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(20., 20.) }).await;
+		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
+
+		let transform_before = get_layer_transform(&mut editor, layer).await.unwrap();
+		let (cursor_before, mouse_before) = {
+			let handler = &editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler;
+			(handler.software_cursor_pos, handler.mouse_position)
+		};
+
+		let dropped = DVec2::new(75., 40.);
+		let messages = editor.handle_message(TransformLayerMessage::PointerLockMove { delta: dropped }).await;
+
+		let (cursor_after, mouse_after) = {
+			let handler = &editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler;
+			(handler.software_cursor_pos, handler.mouse_position)
+		};
+		assert_eq!(cursor_after, cursor_before, "The software cursor must not advance on the frame whose delta the transform drops");
+		assert_eq!(mouse_after, mouse_before + dropped, "The tracking position still resyncs to the pointer");
+		assert!(
+			!messages.iter().any(|message| matches!(message, FrontendMessage::UpdateSoftwareCursor { .. })),
+			"Dropping the delta must not move the software cursor away from the transformed layer"
+		);
+
+		let transform_after = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(transform_after.abs_diff_eq(transform_before, 1e-5), "The dropped delta must not move the layer either");
 
 		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
 	}
