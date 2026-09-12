@@ -11,11 +11,6 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 	subscriptionsRouter = subscriptions;
 	editorWrapper = editor;
 
-	subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
-		// If the Clipboard API is supported in the browser, copy text to the clipboard
-		navigator.clipboard?.writeText?.(data.content);
-	});
-
 	subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
 		editor.readSelection(readAtCaret(data.cut), data.cut);
 	});
@@ -23,13 +18,27 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 	subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {
 		insertAtCaret(data.content);
 	});
+
+	subscriptions.subscribeFrontendMessage("TriggerClipboardSvgAndJsonWrite", (data) => {
+		// Adopted from https://developer.mozilla.org/en-US/docs/Web/API/ClipboardItem#browser_compatibility
+		if (ClipboardItem.supports("image/svg+xml") && data.svg_string !== undefined) {
+			navigator.clipboard?.write?.([
+				new ClipboardItem({
+					"image/svg+xml": data.svg_string,
+					"text/plain": data.graphite_json,
+				}),
+			]);
+		} else {
+			navigator.clipboard?.writeText?.(data.graphite_json);
+		}
+	});
 }
 
 export function destroyClipboardManager() {
 	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
-	subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
+	subscriptions.unsubscribeFrontendMessage("TriggerClipboardSvgAndJsonWrite");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
 }

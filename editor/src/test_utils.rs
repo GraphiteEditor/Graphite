@@ -33,9 +33,9 @@ impl EditorTestUtils {
 		Self { editor, runtime }
 	}
 
-	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<Instrumented, String>> + 'a {
+	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<(Instrumented, Vec<FrontendMessage>), String>> + 'a {
 		// An inner function is required since async functions in traits are a bit weird
-		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<Instrumented, String> {
+		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<(Instrumented, Vec<FrontendMessage>), String> {
 			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 			let document_id = portfolio.active_document_id.unwrap();
 			let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
@@ -55,24 +55,25 @@ impl EditorTestUtils {
 			if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
 				return Err(format!("Graph should render\n\n{e}"));
 			}
-			let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
+			let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message)).collect::<Vec<_>>();
 
-			for message in frontend_messages {
+			for message in &frontend_messages {
 				message.check_node_graph_error();
 			}
 
-			Ok(instrumented)
+			Ok((instrumented, frontend_messages))
 		}
 
 		run(&mut self.editor, &mut self.runtime)
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
-		let frontend_messages_from_msg = self.editor.handle_message(message);
+		let mut frontend_messages_from_msg = self.editor.handle_message(message);
 
 		// Required to process any buffered messages
-		if let Err(e) = self.eval_graph().await {
-			panic!("Failed to evaluate graph: {e}");
+		match self.eval_graph().await {
+			Ok((_, new_messages)) => frontend_messages_from_msg.extend(new_messages),
+			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		}
 
 		// Sweep the network interface's structural invariants so any desync fails at the message that caused it
