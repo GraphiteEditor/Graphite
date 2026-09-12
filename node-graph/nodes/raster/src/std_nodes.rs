@@ -48,8 +48,10 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item
 	let (image, mut attributes) = image_frame.into_parts();
 	let (width, height) = (image.width, image.height);
 
-	// Resize the image using the image crate
-	let data = bytemuck::cast_vec(image.into_data().data);
+	// Resize the image using the image crate, which filters each channel independently, so premultiply to keep transparent texels from bleeding into edges
+	let mut image = image.into_data();
+	image.map_pixels(|px| px.to_associated_alpha());
+	let data = bytemuck::cast_vec(image.data);
 	let image_size = DAffine2::from_scale(DVec2::new(width as f64, height as f64));
 	let size_px = image_size.transform_vector2(size).as_uvec2();
 
@@ -77,12 +79,13 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item
 	let buffer = resized.to_rgba32f();
 	let buffer = buffer.into_raw();
 	let vec = bytemuck::cast_vec(buffer);
-	let image = Image {
+	let mut image = Image {
 		width: new_width,
 		height: new_height,
 		data: vec,
 		base64_string: None,
 	};
+	image.map_pixels(|px: Color| px.to_unassociated_alpha());
 	// we need to adjust the offset if we truncate the offset calculation
 
 	let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
@@ -257,13 +260,7 @@ pub fn image<'a: 'n>(_: impl Ctx, resource: Item<Resource>) -> Item<Raster<CPU>>
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
-		data: image
-			.chunks(4)
-			.map(|pixel| {
-				let alpha = pixel[3];
-				Color::from_gamma_srgb_channels(pixel[0] * alpha, pixel[1] * alpha, pixel[2] * alpha, alpha)
-			})
-			.collect(),
+		data: image.chunks(4).map(|pixel| Color::from_gamma_srgb_channels(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
 		width: image.width(),
 		height: image.height(),
 		..Default::default()
