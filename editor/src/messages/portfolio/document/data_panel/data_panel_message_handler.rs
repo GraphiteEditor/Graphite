@@ -16,11 +16,13 @@ use graphene_std::list::{Item, List, NodeIdPath};
 use graphene_std::math::float_noise::round_away_float_noise;
 use graphene_std::memo::IORecord;
 use graphene_std::raster::{
-	CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice,
+	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
+	SelectiveColorChoice,
 };
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::text::TextAlign;
 use graphene_std::text_nodes::StringCapitalization;
+use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
 	ArcType, BezierHandles, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,
@@ -228,6 +230,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<GradientInterpolation>,
 		List<DashPattern>,
 		List<BoxCorners>,
+		List<TransferCurve>,
 		List<StrokeJoin>,
 		List<StrokeAlign>,
 		List<StrokeCap>,
@@ -240,6 +243,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<RedGreenBlueAlpha>,
 		List<RelativeAbsolute>,
 		List<SelectiveColorChoice>,
+		List<AdjustmentChannel>,
 		List<XY>,
 		List<ScaleType>,
 		List<ReferencePoint>,
@@ -283,6 +287,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<GradientInterpolation>,
 		Item<DashPattern>,
 		Item<BoxCorners>,
+		Item<TransferCurve>,
 		Item<StrokeJoin>,
 		Item<StrokeAlign>,
 		Item<StrokeCap>,
@@ -295,6 +300,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<RedGreenBlueAlpha>,
 		Item<RelativeAbsolute>,
 		Item<SelectiveColorChoice>,
+		Item<AdjustmentChannel>,
 		Item<XY>,
 		Item<ScaleType>,
 		Item<ReferencePoint>,
@@ -551,6 +557,26 @@ impl TableItemLayout for Coverage {
 		"Coverage".to_string()
 	}
 	// The wrapping row already contributes the breadcrumb; the inner item supplies the next level
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
+	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
+		self.0.value_widgets(target, data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.0.layout_with_breadcrumb(data)
+	}
+}
+
+impl TableItemLayout for TransferCurve {
+	fn type_name() -> &'static str {
+		"Transfer Curve"
+	}
+	fn identifier(&self) -> String {
+		let points = self.points().len();
+		format!("Transfer Curve ({points} {})", if points == 1 { "point" } else { "points" })
+	}
+	// The wrapping `Item` already contributes the breadcrumb; the inner list supplies the next level
 	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		self.value_page(data)
 	}
@@ -1044,6 +1070,7 @@ impl_table_item_layout_for_choice_enum!(
 	RedGreenBlueAlpha,
 	RelativeAbsolute,
 	SelectiveColorChoice,
+	AdjustmentChannel,
 	XY,
 	ScaleType,
 	CentroidType,
@@ -1243,6 +1270,7 @@ macro_rules! known_item_types {
 			Cover,
 			DashPattern,
 			BoxCorners,
+			TransferCurve,
 			BlendMode,
 			GradientForm,
 			GradientSpread,
@@ -1261,6 +1289,7 @@ macro_rules! known_item_types {
 			RedGreenBlueAlpha,
 			RelativeAbsolute,
 			SelectiveColorChoice,
+			AdjustmentChannel,
 			XY,
 			ScaleType,
 			ReferencePoint,

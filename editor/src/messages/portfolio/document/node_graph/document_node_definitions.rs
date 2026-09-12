@@ -914,6 +914,7 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("brightness_contrast_properties".to_string(), Box::new(node_properties::brightness_contrast_properties));
 	map.insert("channel_mixer_properties".to_string(), Box::new(node_properties::channel_mixer_properties));
 	map.insert("levels_properties".to_string(), Box::new(node_properties::levels_properties));
+	map.insert("transfer_curves_properties".to_string(), Box::new(node_properties::transfer_curves_properties));
 	map.insert("hue_saturation_properties".to_string(), Box::new(node_properties::hue_saturation_properties));
 	map.insert("black_and_white_properties".to_string(), Box::new(node_properties::black_and_white_properties));
 	map.insert("threshold_properties".to_string(), Box::new(node_properties::threshold_properties));
