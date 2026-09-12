@@ -2042,6 +2042,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "gradient-nodes"
+version = "0.1.0"
+dependencies = [
+ "brush-types",
+ "bytemuck",
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphene-hash",
+ "graphic-types",
+ "half",
+ "log",
+ "node-macro",
+ "raster-types",
+ "serde",
+ "tokio",
+ "vector-types",
+ "wgpu",
+ "wgpu-executor",
+]
+
+[[package]]
 name = "graph-craft"
 version = "0.1.0"
 dependencies = [
@@ -2191,6 +2213,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "gradient-nodes",
  "graph-craft",
  "graphene-application-io",
  "graphene-canvas-utils",
@@ -4897,6 +4920,7 @@ dependencies = [
  "graphene-hash",
  "graphene-resource",
  "graphic-types",
+ "image",
  "kurbo",
  "log",
  "num-traits",

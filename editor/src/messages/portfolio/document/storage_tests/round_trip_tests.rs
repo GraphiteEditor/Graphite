@@ -784,7 +784,7 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
 	let fill_node = &network.nodes[&node_id];
 
-	assert_eq!(fill_node.inputs.len(), 7, "the legacy Fill should upgrade to the 7-input shape");
+	assert_eq!(fill_node.inputs.len(), 10, "the legacy Fill should upgrade to the 10-input shape");
 	let paint = fill_node.input(graphene_std::vector::fill::PaintInput);
 	assert!(
 		matches!(paint, Some(graph_craft::document::NodeInput::Node { .. })),
@@ -799,6 +799,21 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 	assert!(
 		matches!(transform, Some(TaggedValue::DAffine2(_))),
 		"the transform input should hold a matrix, but became {transform:?}"
+	);
+	let backup_mesh_gradient = fill_node.input_value(graphene_std::vector::fill::BackupMeshGradientInput);
+	assert!(
+		matches!(backup_mesh_gradient, Some(TaggedValue::MeshGradient(_))),
+		"the backup mesh gradient input should hold a mesh gradient, but became {backup_mesh_gradient:?}"
+	);
+	let has_mesh_transform = fill_node.input_value(graphene_std::vector::fill::HasMeshTransformInput);
+	assert!(
+		matches!(has_mesh_transform, Some(TaggedValue::Bool(false))),
+		"the unrelated wired fill should leave mesh placement disabled, but became {has_mesh_transform:?}"
+	);
+	let mesh_transform = fill_node.input_value(graphene_std::vector::fill::MeshTransformInput);
+	assert!(
+		matches!(mesh_transform, Some(TaggedValue::DAffine2(transform)) if *transform == glam::DAffine2::IDENTITY),
+		"the unrelated wired fill should retain the default mesh placement, but became {mesh_transform:?}"
 	);
 
 	// The Evaluate Gradient parameter held the tuple-form stops, which parse as the ramp value with even positions elided
@@ -842,7 +857,7 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
 	let fill_node = &network.nodes[&node_id];
 
-	assert_eq!(fill_node.inputs.len(), 7, "the eight-input Fill should fold down to the 7-input shape");
+	assert_eq!(fill_node.inputs.len(), 10, "the eight-input Fill should upgrade to the 10-input shape");
 
 	let paint = fill_node.input_value(graphene_std::vector::fill::PaintInput);
 	let Some(TaggedValue::GradientRamp(ramp)) = paint else {

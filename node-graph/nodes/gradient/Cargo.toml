@@ -1,0 +1,37 @@
+[package]
+name = "gradient-nodes"
+version = "0.1.0"
+edition = "2024"
+description = "Mesh gradient rendering nodes for Graphene"
+authors = ["Graphite Authors <contact@graphite.art>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "core-types/serde", "raster-types/serde"]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+brush-types = { workspace = true }
+core-types = { workspace = true }
+graphene-hash = { workspace = true }
+graphic-types = { workspace = true }
+vector-types = { workspace = true }
+raster-types = { workspace = true, features = ["wgpu"] }
+wgpu-executor = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+log = { workspace = true }
+glam = { workspace = true }
+half = { workspace = true }
+bytemuck = { workspace = true }
+wgpu = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true, features = ["derive"] }
+
+[dev-dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
