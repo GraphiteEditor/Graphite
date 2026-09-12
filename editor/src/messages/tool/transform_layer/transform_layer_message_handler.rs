@@ -102,8 +102,8 @@ pub struct TransformLayerMessageHandler {
 	software_cursor_pos: ViewportPosition,
 	// A locked pointer delta waiting to be applied by the next `PointerMove`
 	pointer_lock_delta: Option<ViewportPosition>,
-	// Set once the platform reports locked deltas, which it only does after the pointer lock is actually engaged
-	pointer_lock_engaged: bool,
+	// The last absolute pointer position reported by the input, so a repeat of it isn't mistaken for movement
+	last_absolute_pointer: ViewportPosition,
 }
 
 #[message_handler_data]
@@ -535,13 +535,16 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.transform_operation.grs_typed(self.typing.evaluate(), &mut selected, &self.state, document);
 			}
 			TransformLayerMessage::PointerMove { slow_key, increments_key } => {
+				// A repeated absolute position isn't movement. That matters while the software cursor is active because a locked
+				// pointer leaves that position frozen, so reading it as movement would undo the relative-delta dragging, which
+				// happens whenever Shift or Control re-dispatches this message through the input mapper's `refresh_keys`.
+				let repeated_absolute_pointer = input.mouse.position == self.last_absolute_pointer;
+				self.last_absolute_pointer = input.mouse.position;
+
 				// Use a pending locked delta if there is one, otherwise the absolute pointer position
 				let mouse_position = match self.pointer_lock_delta.take() {
 					Some(position) => position,
-					// An engaged lock reports no absolute movement, so the absolute position is stale there and must not be read
-					// as movement. That would otherwise happen when the input mapper re-dispatches this message for a Shift or
-					// Control change, which would yank the transform back towards where the lock began.
-					None if self.software_cursor_active && self.pointer_lock_engaged => self.mouse_position,
+					None if self.software_cursor_active && repeated_absolute_pointer => self.mouse_position,
 					None => input.mouse.position,
 				};
 
@@ -625,7 +628,6 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			TransformLayerMessage::PointerLockMove { delta } => {
 				// Locked deltas only matter while a G/R/S transform owns the pointer
 				if self.software_cursor_active {
-					self.pointer_lock_engaged = true;
 					self.pointer_lock_delta = Some(self.mouse_position + delta);
 					responses.add(TransformLayerMessage::PointerMove {
 						slow_key: SLOW_KEY,
@@ -709,7 +711,7 @@ impl TransformLayerMessageHandler {
 		self.software_cursor_pos = pos;
 		// `input.mouse.position` is frozen during pointer lock, so seed the tracking position here
 		self.mouse_position = pos;
-		self.pointer_lock_engaged = false;
+		self.last_absolute_pointer = pos;
 		responses.add(FrontendMessage::UpdateSoftwareCursor { visible: true, x: pos.x, y: pos.y });
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
 		responses.add(AppWindowMessage::PointerLock);
@@ -721,7 +723,6 @@ impl TransformLayerMessageHandler {
 		}
 		self.software_cursor_active = false;
 		self.pointer_lock_delta = None;
-		self.pointer_lock_engaged = false;
 		responses.add(FrontendMessage::UpdateSoftwareCursor { visible: false, x: 0., y: 0. });
 		// Let the active tool re-emit its own cursor instead of resetting to a default
 		responses.add(ToolMessage::UpdateCursor);
@@ -1624,6 +1625,39 @@ mod test_transform_layer {
 		assert!(
 			transform_after_returning.abs_diff_eq(transform_before, 1e-3),
 			"Returning to where the grab began should undo the drag of the grabbed layer"
+		);
+
+		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+	}
+
+	#[tokio::test]
+	async fn test_absolute_pointer_resumes_driving_after_the_lock_goes_away() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		let transform_before = get_layer_transform(&mut editor, layer).await.unwrap();
+		let origin = editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler.mouse_position;
+
+		// Drag with relative deltas while the pointer is locked
+		editor.handle_message(TransformLayerMessage::PointerLockMove { delta: DVec2::new(40., 20.) }).await;
+		let transform_after_locked_drag = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(!transform_after_locked_drag.abs_diff_eq(transform_before, 1e-5), "Locked deltas must drive the transform");
+
+		// If the lock is released without ending the transform, absolute positions resume and must drive it again
+		editor.move_mouse(origin.x + 70., origin.y + 30., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		let transform_after_unlocked_move = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(
+			!transform_after_unlocked_move.abs_diff_eq(transform_after_locked_drag, 1e-5),
+			"The transform must keep responding to absolute movement once the lock is gone"
 		);
 
 		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
