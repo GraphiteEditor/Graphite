@@ -553,6 +553,14 @@ fn knot_channels<CS: color::ColorSpace>(knots: &[GradientStop], gradient_hue_dir
 	channels
 }
 
+/// The tangent a [`MonotonicSpline`] takes at its two outermost knots: the end secant itself, or half of it as the mean of
+/// that secant and the flat continuation beyond the end, so the curve settles into its ends instead of arriving at full slope.
+#[derive(Clone, Copy)]
+enum EndTangent {
+	Secant,
+	HalfSecant,
+}
+
 /// A Piecewise Cubic Hermite Interpolating Polynomial (PCHIP) spline, preserving its samples' monotonicity:
 /// it passes through every sample and joins the pieces with matching slopes, while the Fritsch-Carlson
 /// limiter keeps each piece bounded by its own two samples, so the curve rises and falls only where its
@@ -566,7 +574,7 @@ struct MonotonicSpline {
 }
 
 impl MonotonicSpline {
-	fn new(position: Vec<f64>, value: Vec<f64>) -> Self {
+	fn new(position: Vec<f64>, value: Vec<f64>, end_tangent: EndTangent) -> Self {
 		let count = position.len();
 		if count < 2 {
 			let tangent = vec![0.; count];
@@ -580,15 +588,20 @@ impl MonotonicSpline {
 			})
 			.collect();
 
+		let end_scale = match end_tangent {
+			EndTangent::Secant => 1.,
+			EndTangent::HalfSecant => 0.5,
+		};
+
 		// A sign change or a flat run between neighboring secants pins that tangent to zero,
 		// which is what stops the curve from bulging past a local extreme
 		let mut tangent = Vec::with_capacity(count);
-		tangent.push(secant[0]);
+		tangent.push(secant[0] * end_scale);
 		for index in 1..count - 1 {
 			let (before, after) = (secant[index - 1], secant[index]);
 			tangent.push(if before * after <= 0. { 0. } else { (before + after) / 2. });
 		}
-		tangent.push(secant[count - 2]);
+		tangent.push(secant[count - 2] * end_scale);
 
 		// Fritsch-Carlson: pull any tangent pair back inside the radius-3 circle around their shared secant
 		for index in 0..count - 1 {
@@ -635,9 +648,10 @@ impl MonotonicSpline {
 	}
 }
 
-/// The Smooth path: a monoticity-preserving spline per color channel through every stop, traversed by a second such spline that
+/// The Smooth path: a monotonicity-preserving spline per color channel through every stop, traversed by a second such spline that
 /// maps ramp position to spline parameter. Fitting the stop and midpoint constraints into one global warp is what keeps the
 /// traversal rate continuous across stops, where independent per-interval curves (what Linear uses) would kink at each one.
+/// The color splines take [`EndTangent::HalfSecant`] at a ramp's real ends while the warp keeps the full secant, so the color eases but the traversal stays even.
 struct SmoothPath {
 	space: GradientSpace,
 	hue_index: Option<usize>,
@@ -677,7 +691,9 @@ impl SmoothPath {
 
 		let channels = with_space!(settings.space, knot_channels, &knots, settings.hue_direction);
 		let parameter: Vec<f64> = (0..knots.len()).map(|index| index as f64).collect();
-		let channel = std::array::from_fn(|component| MonotonicSpline::new(parameter.clone(), channels.iter().map(|values| values[component]).collect()));
+		// Wrapped copies give the end stops neighbors on both sides, so only a ramp with real ends eases into them
+		let end_tangent = if settings.cyclic && wrapped_interval { EndTangent::Secant } else { EndTangent::HalfSecant };
+		let channel = std::array::from_fn(|component| MonotonicSpline::new(parameter.clone(), channels.iter().map(|values| values[component]).collect(), end_tangent));
 
 		// Each stop pins its own knot parameter and each midpoint the half-parameter between two,
 		// so one monotonic curve satisfies every midpoint constraint at once
@@ -700,7 +716,7 @@ impl SmoothPath {
 			space: settings.space,
 			hue_index: with_space!(settings.space, space_hue_index),
 			channel,
-			warp: MonotonicSpline::new(warp_position, warp_value),
+			warp: MonotonicSpline::new(warp_position, warp_value, EndTangent::Secant),
 		}
 	}
 
@@ -1783,7 +1799,7 @@ pub enum GradientInterpolation {
 	/// Transitions straight from each stop to the next, turning a corner at every stop.
 	#[default]
 	Linear,
-	/// Transitions along a curve that flows through the stops without corners.
+	/// Transitions along a curve that flows through the stops without corners and settles gently into the two ends.
 	///
 	/// The rate of color change carries smoothly through each stop (C1 continuity) and never overshoots beyond the stop colors, properties of its spline: a Piecewise Cubic Hermite Interpolating Polynomial (PCHIP) with Fritsch-Carlson tangent limiting.
 	Smooth,
@@ -2214,6 +2230,24 @@ mod tests {
 		let (first, last) = (samples.first().expect("a baked ramp has samples"), samples.last().expect("a baked ramp has samples"));
 		assert_eq!((first.0, first.1), (0., Color::BLACK));
 		assert_eq!((last.0, last.1), (1., Color::WHITE));
+	}
+
+	#[test]
+	fn smooth_eases_into_the_ends_of_an_open_ramp() {
+		let smooth = GradientSettings {
+			space: GradientSpace::RgbLinear,
+			interpolation: GradientInterpolation::Smooth,
+			..Default::default()
+		};
+
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+
+		// Half the end secant as the end tangent makes a two-stop ramp the cubic 0.5 t + 1.5 t^2 - t^3, which leaves
+		// and arrives at half speed and crosses the middle at the halfway color
+		for (t, expected) in [(0.25, 0.203125), (0.5, 0.5), (0.75, 0.796875)] {
+			let red = gradient.evaluate(t, smooth).r() as f64;
+			assert!((red - expected).abs() < 1e-4, "expected {expected} at {t}, got {red}");
+		}
 	}
 
 	#[test]
