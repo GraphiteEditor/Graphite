@@ -591,8 +591,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::luminance::IDENTIFIER,
+		node: graphene_std::raster_nodes::adjustments::desaturate::IDENTIFIER,
 		aliases: &[
+			"raster_nodes::adjustments::LuminanceNode",
 			"graphene_raster_nodes::adjustments::LuminanceNode",
 			"graphene_core::raster::adjustments::LuminanceNode",
 			"graphene_core::raster::LuminanceNode",

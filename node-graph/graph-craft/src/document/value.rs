@@ -548,7 +548,8 @@ tagged_value! {
 	// ENUM TYPES
 	// ==========
 	BlendMode(core_types::blending::BlendMode),
-	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
+	#[serde(alias = "LuminanceCalculation")]
+	DesaturateMethod(raster_nodes::adjustments::DesaturateMethod),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
 	XY(graphene_core::extract_xy::XY),
 	StringCapitalization(text_nodes::StringCapitalization),
