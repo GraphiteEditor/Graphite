@@ -919,6 +919,7 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("black_and_white_properties".to_string(), Box::new(node_properties::black_and_white_properties));
 	map.insert("threshold_properties".to_string(), Box::new(node_properties::threshold_properties));
 	map.insert("vibrance_properties".to_string(), Box::new(node_properties::vibrance_properties));
+	map.insert("color_balance_properties".to_string(), Box::new(node_properties::color_balance_properties));
 	map.insert("fill_properties".to_string(), Box::new(node_properties::fill_properties));
 	map.insert("stroke_properties".to_string(), Box::new(node_properties::stroke_properties));
 	map.insert("offset_path_properties".to_string(), Box::new(node_properties::offset_path_properties));
