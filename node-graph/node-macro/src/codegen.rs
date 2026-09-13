@@ -228,8 +228,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						quote!(Some(concrete!(#implementation_ty)))
 					}
 				}
-				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution);
-				// without one it keeps the structural `Type::Item` wire type with the element's alias on its descriptor (so the rank-0 Properties widget still dispatches, e.g. `Progression`), and `node_inputs` peels to `T` if no `Item` type default exists
+				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution); without one it keeps
+				// the structural `Type::Item` wire type, and `node_inputs` peels to `T` if no `Item` type default exists. Either way the element's alias stays
+				// on its descriptor so the rank-0 Properties widget still dispatches, e.g. `Progression`.
 				None => match &field.ty {
 					ParsedFieldType::Item {
 						field: RegularParsedField { value_source, .. },
@@ -241,7 +242,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						// The fn's lifetimes are elided since the metadata registration fn declares none of them
 						let element = substitute_lifetimes(element.clone(), "_");
 						match value_source {
-							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element))),
+							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element, #element))),
 							_ => quote!(Some(#core_types::item!(#element, #element))),
 						}
 					}
