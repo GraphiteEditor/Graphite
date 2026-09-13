@@ -1,0 +1,24 @@
+[package]
+name = "compression_test"
+rust-version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+version.workspace = true
+readme.workspace = true
+publish.workspace = true
+
+[dependencies]
+document-format.workspace = true
+document-container.workspace = true
+document-graph-storage.workspace = true
+rmp-serde.workspace = true
+lz4_flex = { version = "0.14.0", features = ["alloc"] }
+futures.workspace = true
+zstd = "0.13"
+zstd-safe = "7"
+
+[lints]
+workspace = true

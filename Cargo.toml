@@ -33,7 +33,7 @@ members = [
 	"tools/crate-hierarchy-viz",
 	"tools/third-party-licenses",
 	"tools/editor-message-tree",
-	"tools/node-docs",
+	"tools/node-docs", "tools/compression_test",
 ]
 default-members = [
 	"editor",
