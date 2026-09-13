@@ -614,6 +614,45 @@ fn threshold<T: Adjust<Color>>(
 }
 
 // Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
+//
+// TODO: Full PSD interop needs a compatibility variant of `GradientInterpolation` with its own midpoint semantics, position warp,
+// TODO: and smoothing (a `gradient_smoothness` attribute), plus noise gradients, which we don't yet support.
+// TODO: Its axes differ from ours: its midpoint is always a knee in the position warp and its smoothness blends the curve over
+// TODO: that fixed warp, while each variant here picks warp and curve together, so neither end of the blend is Linear or Smooth.
+// TODO: Per channel in the gradient space (measured on gamma RGB):
+// TODO: - Position t maps to a parameter p by a piecewise-linear knee through (stop position, index) and (midpoint, index - 0.5).
+// TODO: - Linear lerps the interval's stop colors by the fraction of p. Smooth is a cubic Hermite over the stop index with tangent
+// TODO:   `(c[i + 1] - c[i - 1]) / 2`, the end stops repeated past the ends, so two stops give `0.5 p + 1.5 p^2 - p^3`.
+// TODO: - The ramp is `(1 - s) * linear + s * smooth` for smoothness s, clamped per interval to its two stop colors.
+#[cfg(feature = "std")]
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn gradient_map<T: Adjust<Color> + Send>(
+	_: impl Ctx,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>,
+	reverse: Item<bool>,
+) -> Item<T> {
+	let mut image = image;
+	let settings = vector_types::GradientSettings::from(&gradient);
+	let evaluator = gradient.into_element().evaluator(settings);
+	let reverse = reverse.into_element();
+
+	image.element_mut().adjust(|color| {
+		// The classic 0.3/0.59/0.11 luma of the gamma-encoded channels picks the position along the gradient
+		let [r, g, b, alpha] = color.to_gamma_srgb_channels();
+		let intensity = 0.3 * r + 0.59 * g + 0.11 * b;
+		let intensity = if reverse { 1. - intensity } else { intensity };
+
+		// The source alpha is kept and the gradient's own alpha stops are ignored
+		evaluator.evaluate(intensity as f64).with_alpha(alpha)
+	});
+
+	image
+}
+
+// Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27-,vibA%27%20%3D%20Vibrance,-%27hue%20%27%20%3D%20Old
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Vibrance%20(Photoshop%20CS3)
 //
