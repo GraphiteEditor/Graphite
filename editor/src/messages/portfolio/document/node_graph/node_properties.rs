@@ -1647,15 +1647,8 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 
 	let params: &[(ParameterRef, Color, f64)] = &[(MinLuminanceInput.into(), Color::BLACK, 50.), (MaxLuminanceInput.into(), Color::WHITE, 100.)];
 
-	let mut layout = Vec::with_capacity(3);
+	let mut layout = Vec::with_capacity(2);
 	build_shared_spectrum_section(node_id, context, params, &mut layout);
-
-	let luminance_calc = {
-		let mut info = ParameterWidgetsInfo::new(node_id, LuminanceCalcInput, true, context);
-		info.exposable = false;
-		enum_choice::<LuminanceCalculation>().for_socket(info).property_row()
-	};
-	layout.push(luminance_calc);
 
 	layout
 }

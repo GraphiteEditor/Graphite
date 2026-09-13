@@ -2182,6 +2182,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
+	// The Threshold node's luminance calculation input was retired
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::adjustments::threshold::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (i, input) in old_inputs.iter().enumerate().take(3) {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i), input.clone(), network_path);
+		}
+		inputs_count = 3;
+	}
+
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) && inputs_count == 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
