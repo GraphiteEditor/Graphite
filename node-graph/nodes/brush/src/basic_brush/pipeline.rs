@@ -7,9 +7,10 @@ use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use core_types::transform::Footprint;
 use glam::{DAffine2, UVec2};
-use graphene_cache::{Cache, GenerationalEviction};
 use raster_types::Texture;
 use wgpu_executor::{AsyncWgpuPipeline, Buffer, WgpuExecutor};
+
+use crate::BrushCache;
 
 pub(super) const DENSITY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
 pub(super) const COMPOSITE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -68,7 +69,7 @@ pub(super) struct FieldViews {
 pub struct BasicBrushPipelineArgs<'a> {
 	pub(super) footprint: Footprint,
 	pub(super) strokes: &'a [StyledStroke],
-	pub(super) cache: &'a Cache<Footprint, GenerationalEviction<2, 3>>,
+	pub(super) cache: &'a BrushCache,
 }
 
 impl AsyncWgpuPipeline for BasicBrushPipeline {
