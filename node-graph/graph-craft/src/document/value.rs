@@ -562,6 +562,7 @@ tagged_value! {
 	DomainWarpType(raster_nodes::adjustments::DomainWarpType),
 	RelativeAbsolute(raster_nodes::adjustments::RelativeAbsolute),
 	SelectiveColorChoice(raster_nodes::adjustments::SelectiveColorChoice),
+	TonalRange(raster_nodes::adjustments::TonalRange),
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	GridType(vector::misc::GridType),
 	ArcType(vector::misc::ArcType),
