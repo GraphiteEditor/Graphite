@@ -227,7 +227,13 @@
 			return `${sign}${unitlessDisplayValue.toFixed(decimalPlaces)}${unPluralize(unit, displayValue)}`;
 		}
 
-		return `${unitlessDisplayValue}${unPluralize(unit, displayValue)}`;
+		return `${numberText(unitlessDisplayValue)}${unPluralize(unit, displayValue)}`;
+	}
+
+	// Infinity is written as the math parser reads it, so a field showing it can be edited and committed unchanged
+	function numberText(number: number): string {
+		if (Math.abs(number) === Infinity) return number < 0 ? "-∞" : "∞";
+		return `${number}`;
 	}
 
 	// Removes the trailing "s" from a unit if the quantity is 1.
@@ -242,11 +248,11 @@
 
 	function onTextFocused() {
 		// The number shown when editing the field, with floating point imprecision noise removed
-		const noFloatingImprecisionValue = value === undefined ? undefined : roundAwayFloatNoise(value);
+		const noFloatingImprecisionText = value === undefined ? undefined : numberText(roundAwayFloatNoise(value));
 
 		if (value === undefined) text = "";
-		else if (unitIsHiddenWhenEditing) text = `${noFloatingImprecisionValue}`;
-		else text = `${noFloatingImprecisionValue}${unPluralize(unit, value)}`;
+		else if (unitIsHiddenWhenEditing) text = `${noFloatingImprecisionText}`;
+		else text = `${noFloatingImprecisionText}${unPluralize(unit, value)}`;
 
 		editing = true;
 

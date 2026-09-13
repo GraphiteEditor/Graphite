@@ -844,9 +844,8 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 		string
 			.split(&[',', ' '])
 			.filter(|x| !x.is_empty())
-			.map(str::parse::<f64>)
-			.collect::<Result<Vec<_>, _>>()
-			.ok()
+			.map(graphene_std::core_types::misc::parse_f64)
+			.collect::<Option<Vec<_>>>()
 			.map(TaggedValue::F64Array)
 	};
 

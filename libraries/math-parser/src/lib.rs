@@ -59,7 +59,7 @@ mod tests {
 	#[test]
 	fn dot_led_function_suffixes_fail_to_parse() {
 		// A `.`-led base suffix must stay an error, keeping dot-after-identifier free for possible future accessor syntax (the supported spelling is `log0.5`)
-		for input in ["log.5(8)", "log.5", "root.5(9)"] {
+		for input in ["log.5(8)", "log.5", "root.5(9)", "log_.5(8)"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
 	}
@@ -76,20 +76,6 @@ mod tests {
 		// A base is plain decimal, so `log2e5(8)` reads as the variable `log2e5` times 8, never a base-200000 log
 		let result = ast::Node::try_parse_from_str("log2e5(8)").unwrap().eval(&EvalContext::new(ScientificName, context::NothingMap));
 		assert_eq!(result.unwrap().as_real(), Some(80.));
-	}
-
-	#[test]
-	fn underscore_dot_suffix_stays_implicit_multiplication() {
-		struct LogUnderscore;
-		impl context::ValueProvider for LogUnderscore {
-			fn get_value(&self, name: &str) -> Option<Value> {
-				(name == "log_").then(|| Value::from_f64(10.))
-			}
-		}
-
-		// `log_.5(8)` is not a suffixed function call: it reads as the variable `log_` times 0.5 times 8
-		let result = ast::Node::try_parse_from_str("log_.5(8)").unwrap().eval(&EvalContext::new(LogUnderscore, context::NothingMap));
-		assert_eq!(result.unwrap().as_real(), Some(40.));
 	}
 
 	#[test]
@@ -437,6 +423,35 @@ mod tests {
 		// Change of base widens into the complex plane, including through the base-suffixed spellings
 		log_complex_change_of_base: "log(i, 2)" => Complex::new(0., std::f64::consts::FRAC_PI_2 / std::f64::consts::LN_2),
 		log_complex_suffixed_base: "log3(i)" => Complex::new(0., std::f64::consts::FRAC_PI_2 / 3f64.ln()),
+	}
+
+	#[test]
+	fn names_are_unicode_identifiers() {
+		// Any script's letters begin a name, and combining marks extend one, so a decomposed `é` is a single name
+		let decomposed_e_acute = format!("e{}", char::from_u32(0x301).unwrap());
+		for input in ["λ + 1", "あ", "א", "x_2", decomposed_e_acute.as_str()] {
+			assert!(ast::Node::try_parse_from_str(input).is_ok(), "expected `{input}` to parse");
+		}
+
+		// Symbols, emoji, digits of any script, lone marks, and invisible formatting characters cannot begin one,
+		// and neither can an underscore, whose leading position Rust allows by a special case that we do not
+		let lone_acute_mark = char::from_u32(0x301).unwrap().to_string();
+		let right_to_left_override = format!("{}foo", char::from_u32(0x202E).unwrap());
+		let flag = format!("{}{}", char::from_u32(0x1F1FA).unwrap(), char::from_u32(0x1F1F8).unwrap());
+		for input in ["👍", "2👍", "٣", "²", "_foo", lone_acute_mark.as_str(), right_to_left_override.as_str(), flag.as_str()] {
+			assert!(ast::Node::try_parse_from_str(input).is_err(), "expected `{input}` to be a parse error");
+		}
+
+		// Neither middle dot continues a name, so `a·b` is an error rather than one variable of that name
+		for middle_dot in [0xB7, 0x387] {
+			let input = format!("a{}b", char::from_u32(middle_dot).unwrap());
+			assert!(ast::Node::try_parse_from_str(&input).is_err(), "expected `{input}` to be a parse error");
+		}
+
+		// A name ending in a combining mark is still an operand, so a spaced number after it doesn't silently multiply
+		for input in ["x 2".to_string(), format!("{decomposed_e_acute} 2")] {
+			assert!(ast::Node::try_parse_from_str(&input).is_err(), "expected `{input}` to be a parse error");
+		}
 	}
 
 	#[test]

@@ -4,6 +4,7 @@ use crate::messages::tool::common_functionality::color_selector::{DrawingToolSta
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::choice_type::ChoiceTypeStatic;
+use graphene_std::core_types::misc::parse_f64;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 /// All non-color stroke-related options surfaced in the control bar popover.
@@ -151,7 +152,7 @@ where
 			.tooltip_label("Dash Pattern")
 			.tooltip_description("Comma-separated dash and gap lengths.")
 			.on_update(move |input: &TextInput| {
-				let parsed = input.value.split(&[',', ' ']).filter(|piece| !piece.is_empty()).map(str::parse::<f64>).collect::<Result<Vec<_>, _>>();
+				let parsed = input.value.split(&[',', ' ']).filter(|piece| !piece.is_empty()).map(parse_f64).collect::<Option<Vec<_>>>();
 				parsed.map_or(Message::NoOp, |lengths| to_message(StrokeOptionsUpdate::DashLengths(lengths)))
 			})
 			.on_commit(|_| DocumentMessage::StartTransaction.into())
