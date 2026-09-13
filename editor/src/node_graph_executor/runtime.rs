@@ -5,7 +5,7 @@ use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
-use graph_craft::graphene_compiler::Compiler;
+use graph_craft::graphene_compiler::{CompileError, Compiler};
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig, Texture};
 use graphene_std::bounds::RenderBoundingBox;
@@ -441,7 +441,12 @@ impl NodeRuntime {
 		let c = Compiler {};
 		let proto_network = match c.compile_single(scoped_network, &interpreted_executor::node_registry::NODE_REGISTRY) {
 			Ok(network) => network,
-			Err(e) => return Err((ResolvedDocumentNodeTypesDelta::default(), e)),
+			// Errors pinned to nodes (the attribute-name fold) show in the graph like type errors do
+			Err(CompileError::Graph(errors)) => {
+				self.node_graph_errors.clone_from(&errors);
+				return Err((ResolvedDocumentNodeTypesDelta::default(), format!("{errors:?}")));
+			}
+			Err(error) => return Err((ResolvedDocumentNodeTypesDelta::default(), error.to_string())),
 		};
 		self.monitor_nodes = proto_network
 			.nodes
@@ -499,6 +504,10 @@ impl NodeRuntime {
 			let result = self.executor.introspect_with(monitor_node_path, |layout, batch, _arena| {
 				use graphene_std::core_types::record::{Group, GroupItem, RunView};
 				let type_id = layout.element.type_id;
+				// A bare constant (a value input under a test monitor) has no run to read: only a level's records adopt as one
+				if layout.element.content_hash.is_none() {
+					return Some(());
+				}
 				// Graphic run: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
 				if type_id == std::any::TypeId::of::<Graphic>() {
 					if update_thumbnails {

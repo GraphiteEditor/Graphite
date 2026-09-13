@@ -136,6 +136,17 @@ impl Preprocessor {
 			if valid_call_args.len() > 1 {
 				input_type = &const { generic!(D) };
 			}
+			// An attribute name folds to a constant when the graph compiles, so its input keeps the
+			// document's value in place rather than riding a coercion the fold could not see through.
+			let name_inputs: HashSet<usize> = implementations
+				.iter()
+				.filter_map(|entry| entry.layout_meta.as_ref())
+				.flat_map(|meta| {
+					let writes = meta.named_writes.iter().map(|named| named.name_input as usize);
+					let reads = meta.named_reads.iter().map(|named| named.name_input as usize);
+					writes.chain(reads)
+				})
+				.collect();
 
 			let mut inputs: Vec<_> = node_inputs(fields, first_node_io);
 			let wrapper_input_count = inputs.len() - if *async_source_fields { 2 } else { 0 };
@@ -156,7 +167,7 @@ impl Preprocessor {
 					(
 						NodeId(i as u64),
 						match inputs.len() {
-							1 => {
+							1 if !name_inputs.contains(&i) => {
 								let input = inputs.iter().next().unwrap();
 								let input_ty = input.nested_type();
 								let mut inputs = vec![NodeInput::import(input.clone(), i)];
@@ -309,5 +320,32 @@ impl std::fmt::Display for PreprocessorError {
 		match self {
 			PreprocessorError::ResourceNotFound(id) => write!(f, "Resource not found: {id:?}"),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use graph_craft::document::DocumentNodeImplementation;
+
+	/// An attribute name folds when the graph compiles, so the preprocessor
+	/// must leave the name input as the document's constant rather than coerce it.
+	#[test]
+	fn an_attribute_name_input_is_not_coerced() {
+		let preprocessor = Preprocessor::new();
+		let Some(substitution) = preprocessor.substitutions.get(&graphene_std::graphic::write_attribute::IDENTIFIER) else {
+			// Nothing to coerce on any input means no wrapper at all, which is also correct
+			return;
+		};
+		let DocumentNodeImplementation::Network(wrapper) = &substitution.implementation else {
+			panic!("a substitution wraps the node in a network");
+		};
+		let name_slot = &wrapper.nodes[&NodeId(1)];
+		assert_eq!(
+			name_slot.implementation,
+			DocumentNodeImplementation::ProtoNode(ops::passthrough::IDENTIFIER),
+			"the name input passes through untouched, got {:?}",
+			name_slot.implementation
+		);
 	}
 }

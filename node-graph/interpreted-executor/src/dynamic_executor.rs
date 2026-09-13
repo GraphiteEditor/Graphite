@@ -881,6 +881,29 @@ mod test {
 		);
 	}
 
+	/// The editor's monitors and the compiler's memo and nullification nodes
+	/// pass a constant on unchanged, so a name reaches the fold through them.
+	#[test]
+	fn a_constant_name_folds_through_a_monitor() {
+		let mut network = ProtoNetwork {
+			stack_need: 0,
+			inputs: vec![],
+			output: NodeId(4),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
+				(NodeId(1), string_value("novel:count")),
+				(NodeId(2), proto_node("graphene_core::memo::MonitorNode", vec![NodeId(1)])),
+				(NodeId(3), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(2.5).into()), vec![])),
+				(NodeId(4), proto_node("graphic_nodes::graphic::WriteAttributeNode", vec![NodeId(0), NodeId(2), NodeId(3)])),
+			],
+		};
+		network.resolve_types(&node_registry::NODE_REGISTRY).unwrap();
+		network.compute_layouts().expect("a monitored constant still folds");
+		let executor = DynamicExecutor::new(network).unwrap();
+		let layout = executor.tree().get(NodeId(4)).unwrap().layout().clone();
+		assert!(layout.offset_of("novel:count", 0).is_some(), "the folded name names a field of the output layout");
+	}
+
 	#[test]
 	fn a_runtime_attribute_name_is_refused_when_the_graph_compiles() {
 		// The outer node's name comes off another node rather than sitting on

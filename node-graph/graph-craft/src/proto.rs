@@ -424,6 +424,27 @@ impl ProtoNetwork {
 		errors.is_empty().then_some(()).ok_or(errors)
 	}
 
+	/// The constant a node serves, seen through the wrappers that pass a value
+	/// on unchanged (the editor's monitors, memo and nullification nodes, and
+	/// passthroughs); a node that computes its value names itself instead.
+	fn constant_behind(&self, id: NodeId) -> Result<&MemoHash<TaggedValue>, &str> {
+		let transparent = [
+			graphene_core::memo::monitor::IDENTIFIER,
+			graphene_core::memo::memoize::IDENTIFIER,
+			graphene_core::memo::frame_memo::IDENTIFIER,
+			graphene_core::context_modification::context_modification::IDENTIFIER,
+			graphene_core::ops::passthrough::IDENTIFIER,
+		];
+		let mut node = &self.nodes[id.0 as usize].1;
+		loop {
+			match &node.construction_args {
+				ConstructionArgs::Value(value) => return Ok(value),
+				ConstructionArgs::Nodes(items) if transparent.contains(&node.identifier) && !items.is_empty() => node = &self.nodes[items[0].0 as usize].1,
+				_ => return Err(node.identifier.as_str()),
+			}
+		}
+	}
+
 	/// Resolves every name-from-input write against the constant its name
 	/// input carries, leaving each node's meta indistinguishable from a marker
 	/// node's. A name input that is not a constant is refused here, which is
@@ -449,18 +470,17 @@ impl ProtoNetwork {
 				.collect();
 			let names: Vec<Result<&'static str, GraphErrorType>> = sources
 				.iter()
-				.map(
-					|&(name_input, _)| match inputs.get(name_input as usize).map(|input| &self.nodes[input.0 as usize].1.construction_args) {
-						Some(ConstructionArgs::Value(value)) => match &**value {
-							value::TaggedValue::String(name) => Ok(core_types::attribute::intern_name(name)),
-							other => Err(GraphErrorType::AttributeName(format!("an attribute name must be text, but input {} is {}", name_input + 1, other.ty()))),
-						},
-						_ => Err(GraphErrorType::AttributeName(format!(
-							"input {} must be a constant, since attribute names resolve when the graph compiles rather than when it runs",
-							name_input + 1
-						))),
+				.map(|&(name_input, _)| match inputs.get(name_input as usize).map(|input| self.constant_behind(*input)) {
+					Some(Ok(value)) => match &**value {
+						value::TaggedValue::String(name) => Ok(core_types::attribute::intern_name(name)),
+						other => Err(GraphErrorType::AttributeName(format!("an attribute name must be text, but input {} is {}", name_input + 1, other.ty()))),
 					},
-				)
+					Some(Err(computed_by)) => Err(GraphErrorType::AttributeName(format!(
+						"input {} must be a constant, since attribute names resolve when the graph compiles rather than when it runs, but it is computed by {computed_by}",
+						name_input + 1
+					))),
+					None => Err(GraphErrorType::AttributeName(format!("input {} must be a constant, but the node has no such input", name_input + 1))),
+				})
 				.collect();
 			let node = &self.nodes[index].1;
 			let mut folded: Vec<(&'static str, std::any::TypeId)> = Vec::new();
