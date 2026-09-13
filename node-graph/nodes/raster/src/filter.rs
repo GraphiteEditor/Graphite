@@ -422,8 +422,7 @@ fn sharpen_algorithm(mut buffer: Image<Color>, amount: f32, radius: f64, thresho
 		let final_g = sharpen_channel(original_g, blurred_g);
 		let final_b = sharpen_channel(original_b, blurred_b);
 
-		let unassociated = Color::from_gamma_srgb_channels(final_r, final_g, final_b, original_a);
-		*original = Color::from_rgbaf32_unchecked(unassociated.r() * original_a, unassociated.g() * original_a, unassociated.b() * original_a, original_a);
+		*original = Color::from_gamma_srgb_channels(final_r, final_g, final_b, original_a);
 	}
 
 	buffer
