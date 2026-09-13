@@ -618,21 +618,13 @@ impl TaggedValue {
 		}
 
 		fn to_color(input: &str) -> Option<Color> {
-			// String syntax (e.g. "000000ff")
-			if input.starts_with('"') && input.ends_with('"') {
-				let hex = input.trim().trim_matches('"').trim().trim_start_matches('#');
-				let color = SRGBA8::from_hex_str(hex).map(Color::from);
-				if color.is_none() {
-					log::error!("Invalid default value color string: {input}");
-				}
-				return color;
-			}
-
 			// Color constant syntax (e.g. Color::BLACK)
-			let mut choices = input.split("::");
-			let (first, second) = (choices.next()?.trim(), choices.next()?.trim());
-			if first == "Color" {
-				return Some(match second {
+			if let Some((first, second)) = input.split_once("::") {
+				if first.trim() != "Color" {
+					log::error!("Invalid default value color: {input}");
+					return None;
+				}
+				return Some(match second.trim() {
 					"BLACK" => Color::BLACK,
 					"WHITE" => Color::WHITE,
 					"RED" => Color::RED,
@@ -649,8 +641,13 @@ impl TaggedValue {
 				});
 			}
 
-			log::error!("Invalid default value color: {input}");
-			None
+			// Hex syntax (e.g. "000000ff"), which a string literal default reaches here without its quotes
+			let hex = input.trim().trim_matches('"').trim().trim_start_matches('#');
+			let color = SRGBA8::from_hex_str(hex).map(Color::from);
+			if color.is_none() {
+				log::error!("Invalid default value color string: {input}");
+			}
+			color
 		}
 
 		fn to_gradient(input: &str) -> Option<Gradient> {
@@ -1036,6 +1033,18 @@ mod paint_default_parsing {
 			TaggedValue::from_primitive_string("Color::BLACK", &item!(Graphic)),
 			black,
 			"an `Item<Graphic>` paint wire should resolve its color default"
+		);
+	}
+
+	/// A hex string default reaches the parser without the quotes its literal had in the node signature, and must still parse.
+	#[test]
+	fn hex_string_color_default_parses_without_quotes() {
+		let tint = Some(TaggedValue::Color(Color::from(SRGBA8::new(225, 211, 179, 255))));
+		assert_eq!(TaggedValue::from_primitive_string("e1d3b3", &item!(Color)), tint, "a bare hex default should resolve");
+		assert_eq!(
+			TaggedValue::from_primitive_string("\"#e1d3b3\"", &item!(Color)),
+			tint,
+			"a quoted, hash-prefixed hex default should resolve"
 		);
 	}
 
