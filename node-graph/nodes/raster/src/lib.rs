@@ -15,8 +15,6 @@ pub mod dehaze;
 #[cfg(feature = "std")]
 pub mod filter;
 #[cfg(feature = "std")]
-pub mod gradient_map;
-#[cfg(feature = "std")]
 pub mod image_color_palette;
 #[cfg(feature = "std")]
 pub mod std_nodes;

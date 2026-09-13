@@ -539,7 +539,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_raster_nodes::adjustments::GammaCorrectionNode", "graphene_core::raster::adjustments::GammaCorrectionNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
+		node: graphene_std::raster_nodes::adjustments::gradient_map::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::gradient_map::GradientMapNode",
 			"graphene_raster_nodes::adjustments::GradientMapNode",
