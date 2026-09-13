@@ -15,6 +15,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, has_paintable_selection, swap_fill_and_stroke, sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
+use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoManager;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
@@ -478,6 +479,9 @@ enum SelectToolFsmState {
 	},
 	RotatingBounds,
 	DraggingPivot,
+	/// Dragging a registry-driven gizmo handle. Entered only when a handle was under the cursor at
+	/// press time, so the transform cage and the marquee keep their existing behaviour everywhere else.
+	ModifyingGizmo,
 }
 
 impl Default for SelectToolFsmState {
@@ -489,6 +493,10 @@ impl Default for SelectToolFsmState {
 
 #[derive(Clone, Debug, Default)]
 struct SelectToolData {
+	/// Gizmos for the selected layer's node, from the registry. This is what lets a node that is not a
+	/// shape -- a Blur radius, a Transform translation -- carry a canvas handle: the Shape tool never
+	/// sees those layers.
+	gizmo_manager: GizmoManager,
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	lasso_polygon: Vec<ViewportPosition>,
@@ -731,12 +739,26 @@ impl Fsm for SelectToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionMessageContext { document, input, viewport, fonts, .. } = tool_action_data;
+		let ToolActionMessageContext {
+			document,
+			input,
+			viewport,
+			fonts,
+			shape_editor,
+			..
+		} = tool_action_data;
 
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
 			(_, SelectToolMessage::Overlays { context: mut overlay_context }) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
+
+				if self == SelectToolFsmState::ModifyingGizmo {
+					tool_data.gizmo_manager.dragging_overlays(document, input, shape_editor, input.mouse.position, &mut overlay_context);
+				} else {
+					tool_data.gizmo_manager.handle_actions(input.mouse.position, document, responses);
+					tool_data.gizmo_manager.overlays(document, input, shape_editor, input.mouse.position, &mut overlay_context);
+				}
 
 				crate::messages::tool::common_functionality::layer_origin_cross::draw_for_selected_layers(&mut overlay_context, document);
 
@@ -1149,6 +1171,16 @@ impl Fsm for SelectToolFsmState {
 				tool_data.drag_current = input.mouse.position;
 				tool_data.selection_mode = None;
 
+				// Checked before the transform cage and the marquee, because a handle sitting inside the
+				// bounding box would otherwise never receive the press.
+				if tool_data.gizmo_manager.handle_click() {
+					responses.add(DocumentMessage::StartTransaction);
+					let cursor = tool_data.gizmo_manager.mouse_cursor_icon().unwrap_or(MouseCursorIcon::Default);
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+					return SelectToolFsmState::ModifyingGizmo;
+				}
+
 				let mut selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 				let intersection_list = document.click_list(input, viewport).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
@@ -1438,6 +1470,20 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::Drawing { selection_shape, has_drawn: true }
 			}
+			(SelectToolFsmState::ModifyingGizmo, SelectToolMessage::PointerMove { .. }) => {
+				tool_data.gizmo_manager.handle_update(tool_data.drag_start, document, input, responses);
+				responses.add(OverlaysMessage::Draw);
+
+				SelectToolFsmState::ModifyingGizmo
+			}
+			(SelectToolFsmState::ModifyingGizmo, SelectToolMessage::DragStop { .. } | SelectToolMessage::Abort) => {
+				input.mouse.finish_transaction(tool_data.drag_start, responses);
+				tool_data.gizmo_manager.handle_cleanup();
+				responses.add(OverlaysMessage::Draw);
+
+				let selection = tool_data.nested_selection_behavior;
+				SelectToolFsmState::Ready { selection }
+			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove { .. }) => {
 				let dragging_bounds = tool_data
 					.bounding_box_manager
@@ -1453,6 +1499,12 @@ impl Fsm for SelectToolFsmState {
 				// Dragging the pivot overrules the other operations
 				if tool_data.state_from_pivot_gizmo(input.mouse.position).is_some() {
 					cursor = MouseCursorIcon::Move;
+				}
+
+				// A hovered gizmo handle owns the cursor, so the cage's resize arrows do not claim a
+				// press that is about to go to the handle instead.
+				if let Some(gizmo_cursor) = tool_data.gizmo_manager.mouse_cursor_icon() {
+					cursor = gizmo_cursor;
 				}
 
 				// Generate the hover outline
@@ -1826,6 +1878,10 @@ impl Fsm for SelectToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		match self {
+			SelectToolFsmState::ModifyingGizmo => {
+				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel")])]);
+				hint_data.send_layout(responses);
+			}
 			SelectToolFsmState::Ready { selection } => {
 				let hint_data = HintData(vec![
 					HintGroup({
