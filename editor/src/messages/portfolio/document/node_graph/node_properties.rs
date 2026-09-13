@@ -21,7 +21,7 @@ use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::{
 	AdjustmentChannel, BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
-	SelectiveColorChoice,
+	SelectiveColorChoice, TonalRange,
 };
 use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TextAlign};
@@ -318,6 +318,7 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
@@ -1674,6 +1675,51 @@ pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesC
 		0.,
 		NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
 	)]
+}
+
+pub(crate) fn color_balance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::color_balance::*;
+
+	let mut tone_info = ParameterWidgetsInfo::new(node_id, ToneInput, true, context);
+	tone_info.exposable = false;
+	let tone = enum_choice::<TonalRange>().for_socket(tone_info).property_row();
+	let preserve_luminosity = bool_widget(ParameterWidgetsInfo::new(node_id, PreserveLuminosityInput, true, context), CheckboxInput::default());
+
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in color_balance_properties: {err}");
+			return Vec::new();
+		}
+	};
+	let tone_choice = match document_node.input_value(ToneInput) {
+		Some(TaggedValue::TonalRange(choice)) => *choice,
+		_ => {
+			warn!("Color Balance node properties panel could not be displayed.");
+			return vec![];
+		}
+	};
+
+	// Only the selected tone's three sliders are shown
+	let parameters: [ParameterRef; 3] = match tone_choice {
+		TonalRange::Shadows => [ShadowsCyanRedInput.into(), ShadowsMagentaGreenInput.into(), ShadowsYellowBlueInput.into()],
+		TonalRange::Midtones => [MidtonesCyanRedInput.into(), MidtonesMagentaGreenInput.into(), MidtonesYellowBlueInput.into()],
+		TonalRange::Highlights => [HighlightsCyanRedInput.into(), HighlightsMagentaGreenInput.into(), HighlightsYellowBlueInput.into()],
+	};
+	let tracks = [
+		Gradient::from(vec![Color::CYAN, Color::RED]),
+		Gradient::from(vec![Color::MAGENTA, Color::GREEN]),
+		Gradient::from(vec![Color::YELLOW, Color::BLUE]),
+	];
+	let number_input = NumberInput::default().mode_increment().unit("%").min(-100.).max(100.);
+
+	let mut layout = vec![tone];
+	for (parameter, track) in parameters.into_iter().zip(tracks) {
+		layout.push(spectrum_slider_row(node_id, context, parameter, track, Color::WHITE, -100., 100., 0., number_input.clone()));
+	}
+	layout.push(LayoutGroup::row(preserve_luminosity));
+
+	layout
 }
 
 pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
