@@ -576,37 +576,59 @@ fn invert<T: Adjust<Color>>(
 #[node_macro::node(category("Raster: Adjustment"), properties("threshold_properties"), shader_node(PerPixelAdjust))]
 fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
 	#[default(50.)] min_luminance: Item<PercentageF32>,
 	#[default(100.)] max_luminance: Item<PercentageF32>,
-	luminance_calc: Item<LuminanceCalculation>,
 ) -> Item<T> {
 	let mut image = image;
-	let min_luminance = min_luminance.into_element();
-	let max_luminance = max_luminance.into_element();
-	let luminance_calc = luminance_calc.into_element();
+	let min_luminance = min_luminance.into_element() / 100.;
+	let max_luminance = max_luminance.into_element() / 100.;
 
 	image.element_mut().adjust(|color| {
-		let min_luminance = srgb_to_linear(min_luminance / 100.);
-		let max_luminance = srgb_to_linear(max_luminance / 100.);
+		// For PSD interop, we compare this 14-bit fixed-point Rec. 601 luma against the level unrounded
+		let [r, g, b, _] = color.to_gamma_srgb_channels();
+		let luminance = (4915. * r + 9667. * g + 1802. * b) / 16384.;
 
-		let luminance = match luminance_calc {
-			LuminanceCalculation::SRGB => color.luminance_rec_709(),
-			LuminanceCalculation::Perceptual => color.luminance_perceptual(),
-			LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
-			LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
-			LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
-		};
-
-		if luminance >= min_luminance && luminance <= max_luminance { Color::WHITE } else { Color::BLACK }
+		let output = if luminance >= min_luminance && luminance <= max_luminance { Color::WHITE } else { Color::BLACK };
+		output.with_alpha(color.a())
 	});
 	image
+}
+
+#[cfg(all(feature = "std", test))]
+mod threshold_tests {
+	use super::*;
+
+	/// Whether one gamma-space RGB value (0..255) ends up white at the given threshold level (0..255).
+	fn is_white(input: [f32; 3], level: f32) -> bool {
+		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
+		let result = threshold((), Item::new_from_element(pixel), (level / 255. * 100.).into(), 100_f32.into());
+		result.into_element().r() == 1.
+	}
+
+	#[test]
+	fn rec_601_luma_is_compared_as_an_8_bit_level() {
+		assert!(!is_white([200., 100., 40.], 128.));
+		assert!(!is_white([125., 130., 120.], 128.));
+		assert!(is_white([0., 255., 0.], 128.));
+		assert!(!is_white([255., 0., 0.], 128.));
+		assert!(is_white([128., 128., 128.], 128.));
+		assert!(!is_white([127., 127., 127.], 128.));
+		assert!(is_white([200., 100., 40.], 123.));
+		assert!(!is_white([200., 100., 40.], 124.));
+	}
+
+	#[test]
+	fn ties_follow_the_unrounded_fixed_point_luma() {
+		// Half-level lumas in 0.3/0.59/0.11 stay below the level either way, and the 14-bit weights pull a whole-level red or blue luma just under it
+		assert!(!is_white([189., 120., 0.], 128.));
+		assert!(!is_white([248., 90., 0.], 128.));
+		assert!(!is_white([135., 100., 0.], 100.));
+		assert!(!is_white([255., 0., 50.], 82.));
+		assert!(is_white([0., 200., 0.], 118.));
+	}
 }
 
 // Aims for interoperable compatibility with:
