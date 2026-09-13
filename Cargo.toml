@@ -45,6 +45,7 @@ members = [
 	"tools/node-docs",
 	"tools/regression",
 	"tools/web-editor-driver",
+	"tools/compression_test",
 ]
 default-members = [
 	"editor",
