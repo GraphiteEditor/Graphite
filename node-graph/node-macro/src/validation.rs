@@ -80,7 +80,8 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 					emit_error!(field.pat_ident.span(), "attribute-only inputs are not supported yet; the value component cannot be `()`");
 				}
 				let is_token_carrier = index == 0 && implementations.is_empty() && crate::codegen::unbounded_generic(parsed, ty).is_some();
-				if !is_token_carrier && crate::codegen::contains_open_generic(parsed, ty) {
+				// An input spelling its rows out is concrete in each of them, so its reads monomorphize with the row.
+				if !is_token_carrier && implementations.is_empty() && crate::codegen::contains_open_generic(parsed, ty) {
 					emit_error!(
 						field.pat_ident.span(),
 						"a reading input's value is monomorphic for now; use a concrete type or an unbounded passthrough generic in the primary input"
@@ -110,6 +111,9 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		);
 		return;
 	};
+	// A carrier spelling its rows out is concrete in each of them, so its element generic is not an open one.
+	let carrier_rows = matches!(&carrier.ty, ParsedFieldType::Regular(RegularParsedField { implementations, .. }) if !implementations.is_empty());
+
 	let node = crate::codegen::ir::build(parsed);
 	if lazy_carrier && !node.derives {
 		emit_error!(parsed.input.pat_ident.span(), "a lazy record carrier evaluates at derived contexts; spell `impl Ctx + DeriveCtx`");
@@ -149,12 +153,12 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		None => {
 			if let Some(ident) = crate::codegen::unbounded_generic(parsed, element) {
 				emit_error!(parsed.output_type.span(), "the returned generic element `{}` has no matching input", ident);
-			} else if !no_carrier && !node.output.gathers && crate::codegen::contains_open_generic(parsed, carrier_ty) {
+			} else if !no_carrier && !node.output.gathers && !carrier_rows && crate::codegen::contains_open_generic(parsed, carrier_ty) {
 				emit_error!(
 					carrier.pat_ident.span(),
 					"record element reads are monomorphic for now; use a concrete element type or an unbounded passthrough generic"
 				);
-			} else if !node.output.gathers && crate::codegen::contains_open_generic(parsed, element) {
+			} else if !node.output.gathers && !carrier_rows && crate::codegen::contains_open_generic(parsed, element) {
 				emit_error!(parsed.output_type.span(), "a written element must be a concrete type");
 			}
 		}

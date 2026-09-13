@@ -134,7 +134,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let ctx_ident_for_flip = context_param(parsed).map(|ctx| ctx.ident.clone());
 	let carries_generic = |ident: &Ident| {
 		regular_fields.iter().enumerate().any(|(index, field)| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, list_levels, .. }) => (*list_levels > 0 || (record_io && index > 0)) && type_contains_ident(ty, ident),
+			// A reading carrier spelling its rows out reaches the kernel concrete, so the struct carries its element generic like a ranked or secondary one.
+			ParsedFieldType::Regular(RegularParsedField { ty, list_levels, implementations, .. }) => {
+				(*list_levels > 0 || (record_io && (index > 0 || !implementations.is_empty()))) && type_contains_ident(ty, ident)
+			}
 			_ => false,
 		})
 	};
@@ -804,10 +807,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// A gather carrier copies the returned lane's frame, so it needs the plan
 	// without a carrier layout of its own.
 	let gather_carrier = record_io && node.output.gathers;
+	// A carrier spelling its rows out is concrete in each row and the struct carries its element
+	// generic, so it reads like a concrete element; a passthrough carrier keeps its opaque token.
+	let carrier_rows = matches!(parsed.fields.first().map(|field| &field.ty), Some(ParsedFieldType::Regular(RegularParsedField { implementations, .. })) if !implementations.is_empty());
 	// A gathered element is carried by the copy plan, not as a lazy token, so
 	// its generic stays a struct parameter.
 	let record_token = match (kind, &node.output.shape.element) {
-		(crate::codegen::ir::NodeKind::RecordIo, crate::codegen::ir::Element::Generic(ident)) if !gather_carrier => Some(ident.clone()),
+		// A carrier spelling its rows out monomorphizes the element per row, so it stays a real struct parameter rather than an erased token.
+		(crate::codegen::ir::NodeKind::RecordIo, crate::codegen::ir::Element::Generic(ident)) if !gather_carrier && !carrier_rows => Some(ident.clone()),
 		// An opaque reading input's element is byte-carried the same way, even
 		// though the output replaces it rather than carrying it through.
 		_ => crate::codegen::classify::opaque_reading_carrier(parsed),
@@ -820,8 +827,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		crate::codegen::ir::Element::Concrete(ty) if !gather_carrier => Some(ty),
 		_ => None,
 	};
-	let carrier_read_ty: Option<&Type> = node.inputs.first().filter(|input| input.subject).and_then(|input| match &input.shape.element {
-		crate::codegen::ir::Element::Concrete(ty) => Some(ty),
+	let carrier_read_ty: Option<Type> = node.inputs.first().filter(|input| input.subject).and_then(|input| match &input.shape.element {
+		crate::codegen::ir::Element::Concrete(ty) => Some(ty.clone()),
+		crate::codegen::ir::Element::Generic(ident) if carrier_rows => Some(syn::parse_quote!(#ident)),
 		_ => None,
 	});
 	let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth);
@@ -1890,7 +1898,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(record_io && async_source && !skips_carrier).then(|| {
 			let field = regular_fields[0];
 			let name = &field.pat_ident.ident;
-			let ty = carrier_read_ty.expect("a carrying record source reads a concrete element");
+			let ty = carrier_read_ty.as_ref().expect("a carrying record source reads a concrete element");
 			quote! {
 				let __src = match __cell.eval_input(0, &self.#name, __input, __frame.frames()) {
 					Ok(value) => value,
@@ -2033,7 +2041,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			// The kernel drives the derived carrier itself through its handle.
 			let name = &regular_fields[0].pat_ident.ident;
 			Some(quote!(#name))
-		} else if let Some(ty) = carrier_read_ty {
+		} else if let Some(ty) = carrier_read_ty.as_ref() {
 			Some(tuple_arg(regular_fields[0], quote!(unsafe { #core_types::record::read_element::<#ty>(__src_rec) })))
 		} else {
 			Some(tuple_arg(regular_fields[0], quote!(#core_types::record::ElToken)))
@@ -2464,7 +2472,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						_ => None,
 					}),
 			);
-			if let Some(ty) = carrier_read_ty {
+			if let Some(ty) = carrier_read_ty.as_ref() {
 				bounds.push({
 					let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
 					quote!(#ty: ::core::clone::Clone)

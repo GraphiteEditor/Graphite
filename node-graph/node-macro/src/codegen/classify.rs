@@ -370,12 +370,14 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 	};
 	// A gathered subject is never read as an element, so its generic stays open.
 	let gathers = crate::codegen::ir::gathers_lane(parsed);
+	// A carrier spelling its rows out is concrete in each of them, so its element generic monomorphizes with the row rather than staying open.
+	let carrier_rows = !implementations.is_empty();
 	let token = match ty {
 		Type::Tuple(tuple) if tuple.elems.is_empty() => None,
 		ty => match implementations.is_empty().then(|| unbounded_generic(parsed, ty)).flatten() {
 			Some(token) => Some(token),
 			None => {
-				if !gathers && contains_open_generic(parsed, ty) {
+				if !gathers && !carrier_rows && contains_open_generic(parsed, ty) {
 					return None;
 				}
 				None
@@ -405,7 +407,7 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 			}
 		}
 		None => {
-			if !gathers && contains_open_generic(parsed, &element) {
+			if !gathers && !carrier_rows && contains_open_generic(parsed, &element) {
 				return None;
 			}
 		}

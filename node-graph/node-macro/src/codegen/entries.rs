@@ -277,6 +277,9 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 	// A record-io node's plain secondary reaches the constructor concrete, so its generic monomorphizes the row like a ranked element does.
 	let record_secondary =
 		|index: usize| matches!(ir::node_kind(&node), ir::NodeKind::RecordIo) && index > 0 && !node.inputs[index].subject && matches!(&regular_fields[index].ty, ParsedFieldType::Regular(_));
+	// A reading carrier that spells its rows out is concrete in each of them, so its element generic monomorphizes the row
+	// (and with it the row's reads) rather than erasing. A passthrough carrier names no implementations and stays erased.
+	let record_carrier = |index: usize| matches!(ir::node_kind(&node), ir::NodeKind::RecordIo) && node.inputs[index].subject && matches!(&regular_fields[index].ty, ParsedFieldType::Regular(_));
 	let names_generic = |index: usize, generic: &Ident| match &regular_fields[index].ty {
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => crate::codegen::type_contains_ident(ty, generic),
 		_ => false,
@@ -292,13 +295,14 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 			GenericParam::Type(type_param) if Some(&type_param.ident) != ctx_ident.as_ref() => Some(type_param.ident.clone()),
 			_ => None,
 		})
-		.filter(|ident| (0..regular_fields.len()).any(|index| (ranked(index) || record_secondary(index)) && names_generic(index, ident)))
+		.filter(|ident| (0..regular_fields.len()).any(|index| ((ranked(index) || record_secondary(index)) && names_generic(index, ident)) || (record_carrier(index) && solves_generic(index, ident))))
 		.collect();
 	// Ranked sources come first, so a generic a ranked input already carries keeps sourcing its rows from that input.
 	let carried_source = |generic: &Ident| {
 		(0..regular_fields.len())
 			.find(|&index| ranked(index) && solves_generic(index, generic))
 			.or_else(|| (0..regular_fields.len()).find(|&index| record_secondary(index) && solves_generic(index, generic)))
+			.or_else(|| (0..regular_fields.len()).find(|&index| record_carrier(index) && solves_generic(index, generic)))
 	};
 	let carried: Option<Vec<(Ident, usize)>> = carried_generic_idents.iter().map(|ident| carried_source(ident).map(|index| (ident.clone(), index))).collect();
 	let Some(carried) = carried else {
@@ -340,7 +344,11 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 			let slots: Vec<SlotKind> = slots
 				.iter()
 				.map(|slot| match slot {
-					SlotKind::BaseGeneric(name) => SlotKind::BaseGeneric(name.clone()),
+					// A generic subject the row assigns is that row's concrete carrier.
+					SlotKind::BaseGeneric(name) => match assignments.iter().find(|(generic, _)| generic == name) {
+						Some((_, ty)) => SlotKind::BaseConcrete(substitute_lifetimes(ty, "'static")),
+						None => SlotKind::BaseGeneric(name.clone()),
+					},
 					SlotKind::BaseConcrete(ty) => SlotKind::BaseConcrete(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
 					SlotKind::Value(ty) => SlotKind::Value(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
 					SlotKind::Extracted(ty) => SlotKind::Extracted(substitute_lifetimes(&substitute_ident_types(ty, assignments), "'static")),
@@ -664,5 +672,27 @@ mod tests {
 			let row = format!("record_source_type :: < {element} > ()");
 			assert!(generated.contains(&row), "the row carries the leveled element {element}: {generated}");
 		}
+	}
+
+	/// A reading carrier that spells its rows out monomorphizes per row, so its
+	/// element generic reaches the registry concrete instead of erasing to a
+	/// token. Without this the node compiles but registers nothing.
+	#[test]
+	fn a_reading_carrier_rows_its_element_generic() {
+		let entries = entries_of(
+			quote!(category("")),
+			quote!(
+				fn round<V: Clone + Send + Sync>(_: impl Ctx, #[implementations(Graphic, Vector)] (content, transform): (V, Attr<Transform>), radius: f64) -> (V, Attr<Transform>) {
+					todo!()
+				}
+			),
+		);
+		assert!(entries.contains("fn round_entries"), "a reading carrier with implementations must emit its entries fn: {entries}");
+		assert_eq!(entries.matches("constructor :").count(), 2, "one row per implementation: {entries}");
+		for element in ["Graphic", "Vector"] {
+			let row = format!("record_source_type :: < {element} > ()");
+			assert!(entries.contains(&row), "the implementations row {element} is missing: {entries}");
+		}
+		assert!(!entries.contains("< V >"), "every row instantiates the carried element generic: {entries}");
 	}
 }
