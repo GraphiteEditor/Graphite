@@ -3,11 +3,11 @@ use super::convert::Convert;
 use super::kernel::{Kernel, KernelCache};
 use super::region::{Crop, Region};
 use super::stroke::{Edge, StyledStroke};
-use brush_types::BrushCache;
 use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use core_types::transform::Footprint;
 use glam::{DAffine2, UVec2};
+use graphene_cache::{Cache, GenerationalEviction};
 use raster_types::Texture;
 use wgpu_executor::{AsyncWgpuPipeline, Buffer, WgpuExecutor};
 
@@ -68,7 +68,7 @@ pub(super) struct FieldViews {
 pub struct BasicBrushPipelineArgs<'a> {
 	pub(super) footprint: Footprint,
 	pub(super) strokes: &'a [StyledStroke],
-	pub(super) cache: &'a BrushCache,
+	pub(super) cache: &'a Cache<Footprint, GenerationalEviction<2, 3>>,
 }
 
 impl AsyncWgpuPipeline for BasicBrushPipeline {
