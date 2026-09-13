@@ -155,6 +155,27 @@ impl<'e> RunBuilder<'e> {
 		unsafe { (info.write_stored)(value, self.frames.add(lane * self.layout.lane_stride() + offset), self.arena) }
 	}
 
+	/// Copies a source lane's fields onto an already pushed lane through `plan`.
+	/// The columns move as bytes rather than through a read-write round trip, so a
+	/// parked payload carries as its arena reference and stays valid for the
+	/// evaluation, exactly as a lane's own carry does.
+	///
+	/// # Safety
+	/// `src` must be a live record of `plan`'s source layout, `plan` must target
+	/// this builder's layout, and `src` must not overlap the frames.
+	pub unsafe fn carry(&mut self, lane: usize, src: crate::record::Rec<'_>, plan: &[(usize, usize, usize)]) {
+		assert!(lane < self.pushed, "a carry lands on a pushed lane");
+		// SAFETY: the lane is below `pushed`, so its frame is within the allocation.
+		let dst = unsafe { self.frames.add(lane * self.layout.lane_stride()) };
+		// SAFETY: the caller's contract.
+		unsafe { crate::record::apply_plan(src, dst, plan) };
+	}
+
+	/// The layout the finished run carries, for computing a carry plan into it.
+	pub fn layout(&self) -> &Layout {
+		&self.layout
+	}
+
 	/// The finished run. Panics unless every lane was pushed, since an
 	/// unwritten parked element slot must never become readable.
 	pub fn finish(self) -> GroupItem<'e> {

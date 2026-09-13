@@ -1,7 +1,10 @@
 mod glue;
 mod legacy;
+mod map;
 mod paint;
 mod walk;
+
+pub use map::{MapVectorContent, MappableLeaf};
 
 pub(crate) use glue::{list_contains_groups, map_attribute_groups_to_owned, map_attribute_groups_to_persistent, map_attribute_groups_to_resident};
 pub use glue::{map_groups_to_owned, map_groups_to_persistent, map_groups_to_resident};
@@ -256,6 +259,9 @@ pub trait TryFromGraphic: Clone + Sized {
 
 	/// The leaf's element, borrowed, where `graphic` is this type's variant.
 	fn leaf_of<'a>(graphic: &'a Graphic<'_>) -> Option<&'a Self>;
+
+	/// The leaf's element, mutably, where `graphic` is this type's variant.
+	fn leaf_mut<'a>(graphic: &'a mut Graphic<'_>) -> Option<&'a mut Self>;
 }
 
 macro_rules! try_from_graphic {
@@ -267,6 +273,10 @@ macro_rules! try_from_graphic {
 				}
 
 				fn leaf_of<'a>(graphic: &'a Graphic<'_>) -> Option<&'a Self> {
+					if let Graphic::$variant(t) = graphic { Some(t) } else { None }
+				}
+
+				fn leaf_mut<'a>(graphic: &'a mut Graphic<'_>) -> Option<&'a mut Self> {
 					if let Graphic::$variant(t) = graphic { Some(t) } else { None }
 				}
 			}

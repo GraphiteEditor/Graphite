@@ -842,10 +842,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// replacement where there is one and carries the source bytes where there is
 	// not. A gathered element that is still generic keeps the plan's byte carry
 	// and cannot be substituted.
-	let element_write: Option<&Type> = match &node.output.shape.element {
-		crate::codegen::ir::Element::Concrete(ty) => Some(ty),
-		_ => None,
-	};
+	// A monomorphized generic element is written too: each row knows its own element
+	// type, so the kernel's value lands in the frame rather than the source's bytes
+	// being carried over it. Only an element with no row to resolve it (an opaque or
+	// token-carried one) genuinely carries.
+	let element_write: Option<Type> = crate::codegen::ir::writes_element(&node, parsed);
+	let element_write = element_write.as_ref();
 	let carrier_read_ty: Option<Type> = node.inputs.first().filter(|input| input.subject).and_then(|input| match &input.shape.element {
 		crate::codegen::ir::Element::Concrete(ty) => Some(ty.clone()),
 		crate::codegen::ir::Element::Generic(ident) if carrier_rows => Some(syn::parse_quote!(#ident)),
@@ -2512,12 +2514,11 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					quote!(#ty: ::core::clone::Clone)
 				});
 			}
-			// The element store parks droppable elements in the arena.
+			// The element store parks droppable elements in the arena. A `Live`
+			// projection is written at whichever lifetime the frame was claimed for, so
+			// its bound quantifies over that lifetime rather than pinning it to `'static`.
 			if let Some(ty) = element_write {
-				bounds.push({
-					let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'static");
-					quote!(#ty: ::core::marker::Send + ::core::marker::Sync + #core_types::StaticTypeSized + 'static)
-				});
+				bounds.push(crate::codegen::classify::flip_output_bound(ty, declared_arena_lifetime.is_some(), core_types));
 			}
 		}
 		// A routing node's value elements copy out of their records.
@@ -2708,6 +2709,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		};
 		// A gather carrier's base is the gathered subject's layout, so its free
 		// layout fn takes that layout even though the subject materializes.
+		// A generic element cannot be named outside the impl's scope, so the free
+		// layout fns are emitted only for a concrete one; the registry rows carry the
+		// generic case, where each row substitutes its own element type.
+		let element_generic = element_write.is_some_and(|ty| crate::codegen::classify::contains_open_generic(parsed, ty));
 		let layout_def = match skips_carrier && !gather_carrier {
 			true => quote! {
 				#vis fn #layout_fn() -> #core_types::record::Layout {
@@ -2815,6 +2820,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			})
 			.collect();
 		let marker_init = (!carried_type_params.is_empty()).then(|| quote!(__marker: ::core::marker::PhantomData,)).into_iter();
+		let layout_def = (!element_generic).then_some(layout_def);
+		let layout_meta_def = (!element_generic).then_some(layout_meta_def);
 		quote! {
 			#layout_def
 			#layout_meta_def

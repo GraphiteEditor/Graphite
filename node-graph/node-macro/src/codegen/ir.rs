@@ -116,6 +116,38 @@ fn output(parsed: &ParsedNodeFn, generics: &[Ident]) -> Output {
 	}
 }
 
+/// The element type the row writes into its frame, or `None` where the element is
+/// carried from the source's bytes instead.
+///
+/// A `Live` projection is the case worth naming: the kernel produced a fresh element at
+/// the serving lifetime, so the row must WRITE it. Classifying such an output as a
+/// carried generic makes the tail copy the input over the kernel's result, turning the
+/// node into a silent no-op, which is exactly the regression this rule exists to prevent.
+/// Any other generic element is the lane's own and genuinely carries.
+pub(crate) fn writes_element(node: &Node, parsed: &ParsedNodeFn) -> Option<Type> {
+	let declared = written_element_type(parsed);
+	let written = match &node.output.shape.element {
+		Element::Concrete(_) => true,
+		Element::Generic(_) => {
+			let generics: Vec<Ident> = node.generics.iter().map(|generic| generic.ident.clone()).collect();
+			!node.monomorphizations.is_empty() && declared.as_ref().is_some_and(|ty| relifted_generic(ty, &generics).is_some())
+		}
+		Element::Opaque => false,
+	};
+
+	written.then_some(declared).flatten()
+}
+
+/// The element type the output row declares, before classification: the row itself, or
+/// what remains once the attribute writes and any `Lane` gather wrapper are stripped.
+/// This is the spelling the serve body writes the element at, `Live` projection and all.
+pub(crate) fn written_element_type(parsed: &ParsedNodeFn) -> Option<Type> {
+	let row = slot_value_type(&parsed.output_type);
+	let element = record_writes(&row).map_or(row, |writes| writes.element);
+
+	Some(lane_inner(&element).unwrap_or(element))
+}
+
 fn monomorphizations(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &[Ident]) -> Vec<ImplRow> {
 	if generics.is_empty() {
 		return Vec::new();
@@ -183,8 +215,28 @@ fn element_of(ty: &Type, generics: &[Ident]) -> Element {
 	}
 	match bare_ident(ty) {
 		Some(ident) if generics.contains(ident) => Element::Generic(ident.clone()),
-		_ => Element::Concrete(ty.clone()),
+		_ => match relifted_generic(ty, generics) {
+			Some(ident) => Element::Generic(ident),
+			None => Element::Concrete(ty.clone()),
+		},
 	}
+}
+
+/// The generic a `Relift::Live` projection is taken off, as in `V::Live<'a>`.
+///
+/// Only `Live` counts, and that is the whole point: `Relift`'s safety contract says
+/// `Live<'a>` is the type itself with its lifetimes re-stated, so it erases to the same
+/// static type. That is what lets a registry row name the element as the generic's own
+/// monomorphization while the serve body types it at the serving lifetime. An arbitrary
+/// associated type carries no such promise, so it stays a concrete element.
+pub(crate) fn relifted_generic(ty: &Type, generics: &[Ident]) -> Option<Ident> {
+	let Type::Path(path) = ty else { return None };
+	if path.qself.is_some() || path.path.segments.len() != 2 || path.path.segments.last()?.ident != "Live" {
+		return None;
+	}
+	let head = &path.path.segments.first()?.ident;
+
+	generics.contains(head).then(|| head.clone())
 }
 
 pub(crate) fn strip_ilist(ty: &Type) -> (Type, u8) {
@@ -239,7 +291,7 @@ fn gathered_element(parsed: &ParsedNodeFn) -> Option<Type> {
 }
 
 /// The element type inside a `Lane<T>` position, lifetime argument skipped.
-fn lane_inner(ty: &Type) -> Option<Type> {
+pub(crate) fn lane_inner(ty: &Type) -> Option<Type> {
 	let Type::Path(path) = ty else { return None };
 	let segment = path.path.segments.last()?;
 	if segment.ident != "Lane" {
@@ -1469,6 +1521,63 @@ mod tests {
 		assert_eq!(node.output.shape.attrs.len(), 1, "the write is recorded on the output");
 		assert_eq!(tail_label(record_tail(&node)), "forward", "the opaque branch still shadows the column work");
 		assert!(opaque_swallows_columns(&node), "so the shape is refused rather than lowered");
+	}
+
+	#[test]
+	fn a_live_projection_is_written_not_carried() {
+		// A modifier returning its content re-stated at the arena's lifetime. The kernel
+		// computed a new element, so the row must write it: classifying this as a carried
+		// generic makes the tail copy the input over the result and the node silently
+		// returns its input unchanged.
+		let node = node_of(quote!(
+			fn resample<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash + 'static>(
+				ctx: impl Ctx + ExtractArena<'e>,
+				#[implementations(Graphic, Vector)] (content, transform): (V, Attr<TransformAttr>),
+			) -> Result<(V::Live<'e>, Attr<TransformAttr>), Interrupt> {
+				todo!()
+			}
+		));
+		let mut parsed = parse_node_fn(
+			quote!(category("")),
+			quote!(
+				fn resample<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash + 'static>(
+					ctx: impl Ctx + ExtractArena<'e>,
+					#[implementations(Graphic, Vector)] (content, transform): (V, Attr<TransformAttr>),
+				) -> Result<(V::Live<'e>, Attr<TransformAttr>), Interrupt> {
+					todo!()
+				}
+			),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+
+		assert!(matches!(node.output.shape.element, Element::Generic(_)), "the projection rides the generic");
+		assert!(!node.monomorphizations.is_empty(), "the implementations give each row a concrete element");
+		let written = writes_element(&node, &parsed).expect("a `Live` projection is written, not carried");
+		assert_eq!(quote!(#written).to_string(), "V :: Live < 'e >", "written at the declared projection");
+	}
+
+	#[test]
+	fn a_gathered_generic_element_still_carries() {
+		// A lane rearranger hands back the lane it was given, so its element is the
+		// source's own bytes and the plan carries it.
+		let node = node_of(quote!(
+			fn reorder<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(f64, Vector)] list: IList<T>) -> IList<Lane<T>> {
+				todo!()
+			}
+		));
+		let mut parsed = parse_node_fn(
+			quote!(category("")),
+			quote!(
+				fn reorder<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(f64, Vector)] list: IList<T>) -> IList<Lane<T>> {
+					todo!()
+				}
+			),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+
+		assert!(writes_element(&node, &parsed).is_none(), "a gathered generic element carries rather than being written");
 	}
 
 	#[test]

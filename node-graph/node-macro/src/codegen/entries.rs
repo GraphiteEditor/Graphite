@@ -444,12 +444,21 @@ fn single_row_entries(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields
 					// generic, which only the row resolves, so such a node's
 					// meta is emitted per row instead of shared across them.
 					let named = node.output.shape.attrs.iter().any(|attr| crate::parsing::named_marker(&attr.marker).is_some());
-					let meta = match named {
+					// A generic element is likewise per-row: only the row knows which type
+					// the element resolves to, so no shared meta can name it.
+					let generic_element = matches!(&node.output.shape.element, ir::Element::Generic(_)) && ir::writes_element(&node, parsed).is_some();
+					let meta = match named || generic_element {
 						false => quote!(Some(self::#layout_meta_fn())),
 						true => {
 							let element_spec = match &node.output.shape.element {
 								ir::Element::Concrete(element) => {
 									let ty = substitute_ident_types(element, assignments);
+									quote!(gcore::record::ElementSpec::Concrete({ use gcore::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&gcore::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() }))
+								}
+								// `Relift` promises the `Live` projection erases to the generic's
+								// own static type, so the row's element is its assignment for it.
+								ir::Element::Generic(ident) if generic_element => {
+									let ty = assignments.iter().find(|(generic, _)| generic == ident).map(|(_, ty)| ty.clone()).unwrap_or_else(|| syn::parse_quote!(#ident));
 									quote!(gcore::record::ElementSpec::Concrete({ use gcore::record::{ElementWritePickHashed as _, ElementWritePickPlain as _}; (&gcore::record::ElementWritePick::<#ty>(::core::marker::PhantomData)).element_write() }))
 								}
 								_ => quote!(gcore::record::ElementSpec::Carried),
