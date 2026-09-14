@@ -35,24 +35,52 @@ use vector_types::Gradient;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27clrL%27%20%3D%20Color%20Lookup
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
+/// Conversion from a color to grayscale.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 #[repr(u32)]
-pub enum LuminanceCalculation {
+pub enum DesaturateMethod {
+	/// Light level of the color, the Y (luminance) of Rec. 709, which weights the linear-light RGB channels by `0.2126, 0.7152, 0.0722`.
+	///
+	/// Accessibility contrast ratios and SVG luminance masks use this.
 	#[default]
-	#[label("sRGB")]
-	SRGB,
-	Perceptual,
-	AverageChannels,
-	MinimumChannels,
-	MaximumChannels,
+	#[label("Luminance (Rec. 709)")]
+	#[cfg_attr(feature = "serde", serde(alias = "SRGB"))]
+	LuminanceRec709,
+	/// Light level approximation for the color, the Y′ (luma) of Rec. 709, which weights the gamma-encoded RGB channels by `0.2126, 0.7152, 0.0722`.
+	///
+	/// CSS filter functions such as `grayscale()` use this.
+	#[label("Luma (Rec. 709)")]
+	LumaRec709,
+	/// Light level approximation for the color, the Y′ (luma) of Rec. 601, which weights the gamma-encoded RGB channels by `0.299, 0.587, 0.114`.
+	#[label("Luma (Rec. 601)")]
+	LumaRec601,
+	/// Perceptually uniform scale from black to white, the L (lightness) of OkLab.
+	#[label("Lightness (OkLab)")]
+	#[cfg_attr(feature = "serde", serde(alias = "Perceptual"))]
+	LightnessOkLab,
+	/// Mean of the three linear-light RGB channels.
+	#[menu_separator]
+	#[cfg_attr(feature = "serde", serde(alias = "AverageChannels"))]
+	ChannelsAverage,
+	/// Smallest of the three linear-light RGB channels.
+	#[cfg_attr(feature = "serde", serde(alias = "MinimumChannels"))]
+	ChannelsMinimum,
+	/// Largest of the three linear-light RGB channels, the V (value) of HSV.
+	#[cfg_attr(feature = "serde", serde(alias = "MaximumChannels"))]
+	ChannelsMaximum,
+	/// Midpoint of the largest and smallest gamma-encoded RGB channels, the L (lightness) of HSL.
+	///
+	/// The classic "Desaturate" command of many image editors uses this.
+	#[label("Lightness (HSL)")]
+	LightnessHsl,
 }
 
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-fn luminance<T: Adjust<Color>>(
+fn desaturate<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Raster<CPU>,
@@ -61,18 +89,38 @@ fn luminance<T: Adjust<Color>>(
 	)]
 	#[gpu_image]
 	input: Item<T>,
-	luminance_calc: Item<LuminanceCalculation>,
+	method: Item<DesaturateMethod>,
 ) -> Item<T> {
 	let mut input = input;
-	let luminance_calc = luminance_calc.into_element();
+	let method = method.into_element();
 
 	input.element_mut().adjust(|color| {
-		let luminance = match luminance_calc {
-			LuminanceCalculation::SRGB => color.luminance_rec_709(),
-			LuminanceCalculation::Perceptual => color.luminance_perceptual(),
-			LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
-			LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
-			LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
+		// Gamma-encoded formulas are decoded as if they were a gray
+		let gamma = || color.to_gamma_srgb_channels();
+		let luminance = match method {
+			DesaturateMethod::LuminanceRec709 => color.luminance_rec_709(),
+			DesaturateMethod::LumaRec709 => {
+				let [r, g, b, _] = gamma();
+				srgb_to_linear(0.2126 * r + 0.7152 * g + 0.0722 * b)
+			}
+			DesaturateMethod::LumaRec601 => {
+				let [r, g, b, _] = gamma();
+				srgb_to_linear(0.299 * r + 0.587 * g + 0.114 * b)
+			}
+			DesaturateMethod::LightnessOkLab => {
+				// A gray's OkLab lightness is the cube root of its linear value, so cubing gives the gray of equal lightness
+				let lightness = color.lightness_oklab();
+				lightness * lightness * lightness
+			}
+			DesaturateMethod::ChannelsAverage => color.average_rgb_channels(),
+			DesaturateMethod::ChannelsMinimum => color.minimum_rgb_channels(),
+			DesaturateMethod::ChannelsMaximum => color.maximum_rgb_channels(),
+			DesaturateMethod::LightnessHsl => {
+				// The transfer curve is monotonic, so the extremes are found first and only they are encoded
+				let max = linear_to_srgb(color.maximum_rgb_channels());
+				let min = linear_to_srgb(color.minimum_rgb_channels());
+				srgb_to_linear((max + min) / 2.)
+			}
 		};
 		color.map_rgb(|_| luminance)
 	});
@@ -1401,11 +1449,11 @@ fn color_balance<T: Adjust<Color>>(
 #[cfg(feature = "std")]
 mod _graphene_hash_impls {
 	use super::{
-		AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
+		AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 		SelectiveColorChoice, TonalRange,
 	};
 	graphene_hash::impl_via_hash!(
-		LuminanceCalculation,
+		DesaturateMethod,
 		RedGreenBlue,
 		RedGreenBlueAlpha,
 		NoiseType,

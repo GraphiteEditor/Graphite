@@ -351,7 +351,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				ExtrudeJoiningAlgorithm,
 				PointSpacingType,
 				StringCapitalization,
-				LuminanceCalculation,
+				DesaturateMethod,
 				RedGreenBlue,
 				RedGreenBlueAlpha,
 				RelativeAbsolute,
