@@ -183,6 +183,79 @@ pub fn star_polygon_bezpath(center: DVec2, sides: u64, radius: f64, inner_radius
 	polyline_bezpath(positions, true)
 }
 
+/// Proportional controls for [`heart_bezpath`]. Lengths are fractions of the heart's radius and angles are
+/// in radians, so a heart keeps its shape at any size.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HeartProportions {
+	/// How far the top V dips below the upper bound of the heart.
+	pub cleavage_depth: f64,
+	/// Half-angle of the top V. Zero produces a needle-sharp notch with vertical tangents; larger angles open it into a smooth join.
+	pub cleavage_angle: f64,
+	/// Tangent length leaving the top cusp, controlling the upper roundness of each lobe.
+	pub lobe_fullness: f64,
+	/// Vertical position of the side anchor (positive raises the shoulder).
+	pub shoulder_height: f64,
+	/// Horizontal position of the side anchor.
+	pub shoulder_width: f64,
+	/// Rotation of the shoulder tangent from vertical. Positive leans the shoulder outward at top.
+	pub shoulder_tilt: f64,
+	/// Tangent length at the shoulder going up, controlling the curvature of the upper lobe side.
+	pub upper_curvature: f64,
+	/// Tangent length at the shoulder going down, controlling the curvature of the lower side.
+	pub lower_curvature: f64,
+	/// Half-angle of the bottom V. Zero produces a needle-sharp point with vertical tangents.
+	pub point_sharpness: f64,
+	/// Tangent length arriving at the bottom cusp, controlling how the sides taper into the point.
+	pub taper_length: f64,
+}
+
+/// Constructs a heart from a `radius` and a set of proportional controls. The path is closed and runs
+/// clockwise from the top cusp: top, right shoulder, bottom point, left shoulder. The two cusps are sharp
+/// joins; the shoulders are G1-continuous. The left half is a mirror of the right, so the shape is always
+/// symmetric about the vertical axis through `center`.
+pub fn heart_bezpath(center: DVec2, radius: f64, proportions: HeartProportions) -> BezPath {
+	let HeartProportions {
+		cleavage_depth,
+		cleavage_angle,
+		lobe_fullness,
+		shoulder_height,
+		shoulder_width,
+		shoulder_tilt,
+		upper_curvature,
+		lower_curvature,
+		point_sharpness,
+		taper_length,
+	} = proportions;
+
+	// Anchors for the right half plus the two y-axis cusps, in normalized coordinates (y points downward).
+	let top = DVec2::new(0., -1. + cleavage_depth);
+	let shoulder = DVec2::new(shoulder_width, -shoulder_height);
+	let bottom = DVec2::new(0., 1.);
+
+	// Unit tangent directions, all measured from the upward vertical.
+	let top_direction = DVec2::new(cleavage_angle.sin(), -cleavage_angle.cos());
+	let bottom_direction = DVec2::new(point_sharpness.sin(), -point_sharpness.cos());
+	let shoulder_up = DVec2::new(shoulder_tilt.sin(), -shoulder_tilt.cos());
+
+	// Cubic Bezier control points for the right half.
+	let top_out = top + top_direction * lobe_fullness;
+	let shoulder_in = shoulder + shoulder_up * upper_curvature;
+	let shoulder_out = shoulder - shoulder_up * lower_curvature;
+	let bottom_in = bottom + bottom_direction * taper_length;
+
+	let place = |point: DVec2| center + point * radius;
+	let mirror = |point: DVec2| DVec2::new(-point.x, point.y);
+
+	let anchors = [
+		Anchor::new(place(top), Some(place(mirror(top_out))), Some(place(top_out))),
+		Anchor::new(place(shoulder), Some(place(shoulder_in)), Some(place(shoulder_out))),
+		Anchor::new(place(bottom), Some(place(bottom_in)), Some(place(mirror(bottom_in)))),
+		Anchor::new(place(mirror(shoulder)), Some(place(mirror(shoulder_out))), Some(place(mirror(shoulder_in)))),
+	];
+
+	bezpath_from_anchors(&anchors, true)
+}
+
 /// Constructs a line from `point1` to `point2`.
 pub fn line_bezpath(point1: DVec2, point2: DVec2) -> BezPath {
 	polyline_bezpath([point1, point2], false)
@@ -342,4 +415,86 @@ fn archimedean_spiral_arc_length_origin(theta: f64, a: f64, b: f64) -> f64 {
 	let r = a + b * theta;
 	let sqrt_term = (r * r + b * b).sqrt();
 	(r * sqrt_term + b * b * ((r + sqrt_term).ln())) / (2. * b)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use kurbo::ParamCurve;
+	use kurbo::{PathEl, Shape};
+
+	fn default_heart() -> HeartProportions {
+		HeartProportions {
+			cleavage_depth: 0.2,
+			cleavage_angle: 45_f64.to_radians(),
+			lobe_fullness: 0.55,
+			shoulder_height: 0.5,
+			shoulder_width: 1.,
+			shoulder_tilt: 0.,
+			upper_curvature: 0.55,
+			lower_curvature: 1.,
+			point_sharpness: 30_f64.to_radians(),
+			taper_length: 0.7,
+		}
+	}
+
+	#[test]
+	fn heart_is_a_closed_path_of_four_curves() {
+		let bezpath = heart_bezpath(DVec2::ZERO, 50., default_heart());
+		let elements: Vec<_> = bezpath.elements().to_vec();
+
+		assert!(matches!(elements.first(), Some(PathEl::MoveTo(_))));
+		assert!(matches!(elements.last(), Some(PathEl::ClosePath)));
+		assert_eq!(elements.iter().filter(|element| matches!(element, PathEl::CurveTo(..))).count(), 4);
+	}
+
+	#[test]
+	fn heart_is_symmetric_about_the_vertical_axis() {
+		let center = DVec2::new(7., -3.);
+		let bezpath = heart_bezpath(center, 50., default_heart());
+
+		// Sample the curve, not the control net: the left half is built by mirroring the right, so every
+		// control point has a twin by construction and comparing them cannot fail. What the control points
+		// were assembled into is where an ordering mistake shows up.
+		const STEPS: usize = 64;
+		let samples: Vec<DVec2> = bezpath
+			.segments()
+			.flat_map(|segment| (0..=STEPS).map(move |step| segment.eval(step as f64 / STEPS as f64)))
+			.map(|point| DVec2::new(point.x, point.y))
+			.collect();
+		for point in &samples {
+			let mirrored = DVec2::new(2. * center.x - point.x, point.y);
+			let nearest = samples.iter().map(|other| other.distance(mirrored)).fold(f64::INFINITY, f64::min);
+			assert!(nearest < 0.5, "outline point {point:?} has no counterpart across the axis (nearest {nearest})");
+		}
+
+		// The extremes must balance too, which catches a half that is mirrored but misplaced.
+		let left = samples.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+		let right = samples.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
+		assert!(((left + right) / 2. - center.x).abs() < 1e-9, "outline is not centred: [{left}, {right}] about {}", center.x);
+	}
+
+	#[test]
+	fn heart_scales_linearly_with_radius() {
+		let small = heart_bezpath(DVec2::ZERO, 1., default_heart());
+		let large = heart_bezpath(DVec2::ZERO, 50., default_heart());
+
+		let small_box = small.bounding_box();
+		let large_box = large.bounding_box();
+
+		assert!((large_box.width() - small_box.width() * 50.).abs() < 1e-9);
+		assert!((large_box.height() - small_box.height() * 50.).abs() < 1e-9);
+	}
+
+	#[test]
+	fn heart_respects_its_center() {
+		let origin = heart_bezpath(DVec2::ZERO, 20., default_heart());
+		let offset = heart_bezpath(DVec2::new(100., -40.), 20., default_heart());
+
+		let origin_box = origin.bounding_box();
+		let offset_box = offset.bounding_box();
+
+		assert!((offset_box.center().x - (origin_box.center().x + 100.)).abs() < 1e-9);
+		assert!((offset_box.center().y - (origin_box.center().y - 40.)).abs() < 1e-9);
+	}
 }

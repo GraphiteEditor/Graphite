@@ -1,106 +1,14 @@
 use super::shape_utility::{ShapeToolModifierKey, update_radius_sign};
 use super::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of_points_dial::{NumberOfPointsDial, NumberOfPointsDialState};
-use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::{PointRadiusHandle, PointRadiusHandleState};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
-use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, polygon_outline};
 use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
-
-#[derive(Clone, Debug, Default)]
-pub struct PolygonGizmoHandler {
-	number_of_points_dial: NumberOfPointsDial,
-	point_radius_handle: PointRadiusHandle,
-}
-
-impl ShapeGizmoHandler for PolygonGizmoHandler {
-	fn is_any_gizmo_hovered(&self) -> bool {
-		self.number_of_points_dial.is_hovering() || self.point_radius_handle.hovered()
-	}
-
-	fn handle_state(&mut self, selected_star_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.number_of_points_dial.handle_actions(selected_star_layer, mouse_position, document, responses);
-		self.point_radius_handle.handle_actions(selected_star_layer, document, mouse_position, responses);
-	}
-
-	fn handle_click(&mut self) {
-		if self.number_of_points_dial.is_hovering() {
-			self.number_of_points_dial.update_state(NumberOfPointsDialState::Dragging);
-			return;
-		}
-
-		if self.point_radius_handle.hovered() {
-			self.point_radius_handle.update_state(PointRadiusHandleState::Dragging);
-		}
-	}
-
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		if self.number_of_points_dial.is_dragging() {
-			self.number_of_points_dial.update_number_of_sides(document, input, responses, drag_start);
-		}
-
-		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.update_inner_radius(document, input, responses, drag_start);
-		}
-	}
-
-	fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		selected_polygon_layer: Option<LayerNodeIdentifier>,
-		_input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
-		self.number_of_points_dial.overlays(document, selected_polygon_layer, shape_editor, mouse_position, overlay_context);
-		self.point_radius_handle.overlays(selected_polygon_layer, document, overlay_context);
-
-		polygon_outline(selected_polygon_layer, document, overlay_context);
-	}
-
-	fn dragging_overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		_input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
-		if self.number_of_points_dial.is_dragging() {
-			self.number_of_points_dial.overlays(document, None, shape_editor, mouse_position, overlay_context);
-		}
-
-		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.overlays(None, document, overlay_context);
-		}
-	}
-
-	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
-		if self.number_of_points_dial.is_dragging() || self.number_of_points_dial.is_hovering() {
-			return Some(MouseCursorIcon::EWResize);
-		}
-
-		if self.point_radius_handle.is_dragging_or_snapped() || self.point_radius_handle.hovered() {
-			return Some(MouseCursorIcon::Default);
-		}
-
-		None
-	}
-
-	fn cleanup(&mut self) {
-		self.number_of_points_dial.cleanup();
-		self.point_radius_handle.cleanup();
-	}
-}
 
 #[derive(Default)]
 pub struct Polygon;
