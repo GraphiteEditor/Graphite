@@ -645,40 +645,6 @@ fn threshold<T: Adjust<Color>>(
 	image
 }
 
-#[cfg(all(feature = "std", test))]
-mod threshold_tests {
-	use super::*;
-
-	/// Whether one gamma-space RGB value (0..255) ends up white at the given threshold level (0..255).
-	fn is_white(input: [f32; 3], level: f32) -> bool {
-		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
-		let result = threshold((), Item::new_from_element(pixel), (level / 255. * 100.).into(), 100_f32.into());
-		result.into_element().r() == 1.
-	}
-
-	#[test]
-	fn rec_601_luma_is_compared_as_an_8_bit_level() {
-		assert!(!is_white([200., 100., 40.], 128.));
-		assert!(!is_white([125., 130., 120.], 128.));
-		assert!(is_white([0., 255., 0.], 128.));
-		assert!(!is_white([255., 0., 0.], 128.));
-		assert!(is_white([128., 128., 128.], 128.));
-		assert!(!is_white([127., 127., 127.], 128.));
-		assert!(is_white([200., 100., 40.], 123.));
-		assert!(!is_white([200., 100., 40.], 124.));
-	}
-
-	#[test]
-	fn ties_follow_the_unrounded_fixed_point_luma() {
-		// Half-level lumas in 0.3/0.59/0.11 stay below the level either way, and the 14-bit weights pull a whole-level red or blue luma just under it
-		assert!(!is_white([189., 120., 0.], 128.));
-		assert!(!is_white([248., 90., 0.], 128.));
-		assert!(!is_white([135., 100., 0.], 100.));
-		assert!(!is_white([255., 0., 50.], 82.));
-		assert!(is_white([0., 200., 0.], 118.));
-	}
-}
-
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
@@ -1016,16 +982,19 @@ fn channel_mixer<T: Adjust<Color>>(
 	image.element_mut().adjust(|color| {
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
 
+		// Weights and constants are 10-bit fixed point truncated toward zero, which PSD interop depends on
+		let weight = |percent: f32| (percent * 1024. / 100.).trunc() / 1024.;
+
 		let (out_r, out_g, out_b) = if monochrome {
-			let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r / 100., monochrome_g / 100., monochrome_b / 100., monochrome_c / 100.);
+			let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (weight(monochrome_r), weight(monochrome_g), weight(monochrome_b), weight(monochrome_c));
 
 			let gray = (r * monochrome_r + g * monochrome_g + b * monochrome_b + monochrome_c).clamp(0., 1.);
 
 			(gray, gray, gray)
 		} else {
-			let (red_r, red_g, red_b, red_c) = (red_r / 100., red_g / 100., red_b / 100., red_c / 100.);
-			let (green_r, green_g, green_b, green_c) = (green_r / 100., green_g / 100., green_b / 100., green_c / 100.);
-			let (blue_r, blue_g, blue_b, blue_c) = (blue_r / 100., blue_g / 100., blue_b / 100., blue_c / 100.);
+			let (red_r, red_g, red_b, red_c) = (weight(red_r), weight(red_g), weight(red_b), weight(red_c));
+			let (green_r, green_g, green_b, green_c) = (weight(green_r), weight(green_g), weight(green_b), weight(green_c));
+			let (blue_r, blue_g, blue_b, blue_c) = (weight(blue_r), weight(blue_g), weight(blue_b), weight(blue_c));
 
 			let red = (r * red_r + g * red_g + b * red_b + red_c).clamp(0., 1.);
 			let green = (r * green_r + g * green_g + b * green_b + green_c).clamp(0., 1.);
@@ -1167,7 +1136,8 @@ fn selective_color<T: Adjust<Color>>(
 			SelectiveColorChoice::Blues => max_channel == b,
 			SelectiveColorChoice::Magentas => min_channel == g,
 			SelectiveColorChoice::Whites => r > 0.5 && g > 0.5 && b > 0.5,
-			SelectiveColorChoice::Neutrals => r > 0. && g > 0. && b > 0. && r < 1. && g < 1. && b < 1.,
+			// Every pixel, since the neutrals scale factor already vanishes at black, white, and fully saturated colors
+			SelectiveColorChoice::Neutrals => true,
 			SelectiveColorChoice::Blacks => r < 0.5 && g < 0.5 && b < 0.5,
 		};
 
@@ -1192,17 +1162,17 @@ fn selective_color<T: Adjust<Color>>(
 			(SelectiveColorChoice::Blacks, (k_c, k_m, k_y, k_k)),
 		];
 		let mut sum = Vec3::ZERO;
+		// Indexed because the shader compiler cannot lower array iterators
+		#[allow(clippy::needless_range_loop)]
 		for i in 0..array.len() {
 			let (color_parameter_group, (c, m, y, k)) = array[i];
 
 			// Skip this color parameter group...
 			// ...if it's unchanged from the default of zero offset on all CMYK parameters, or...
 			// ...if this pixel's color isn't in the range affected by this color parameter group
-			if (c < f32::EPSILON && m < f32::EPSILON && y < f32::EPSILON && k < f32::EPSILON) || (!pixel_color_range(color_parameter_group)) {
+			if (c == 0. && m == 0. && y == 0. && k == 0.) || !pixel_color_range(color_parameter_group) {
 				continue;
 			}
-
-			let (c, m, y, k) = (c / 100., m / 100., y / 100., k / 100.);
 
 			let color_parameter_group_scale_factor = match color_parameter_group {
 				SelectiveColorChoice::Reds | SelectiveColorChoice::Greens | SelectiveColorChoice::Blues => color_parameter_group_scale_factor_rgb,
@@ -1212,10 +1182,28 @@ fn selective_color<T: Adjust<Color>>(
 				SelectiveColorChoice::Blacks => 1. - max(r, g, b) * 2.,
 			};
 
-			let offset_r = f32::clamp((c + k * (c + 1.)) * slope_r, -r, -r + 1.) * color_parameter_group_scale_factor;
-			let offset_g = f32::clamp((m + k * (m + 1.)) * slope_g, -g, -g + 1.) * color_parameter_group_scale_factor;
-			let offset_b = f32::clamp((y + k * (y + 1.)) * slope_b, -b, -b + 1.) * color_parameter_group_scale_factor;
+			// For PSD interop, the combined percent (c + k + c k / 100) rounds half up to an integer
+			let ink = |color: f32| {
+				let percent = ((2. * (100. * (color + k) + color * k) + 100.) / 200.).floor();
+				match mode {
+					// The multiplier is stored as one byte, 255 / b above 1 and b / 255 below, so 99% and 100% both act as 127/128
+					RelativeAbsolute::Relative => {
+						let multiplier = 1. + percent / 100.;
+						if multiplier >= 1. {
+							255. / (255. / multiplier).round() - 1.
+						} else {
+							(255. * multiplier).round() / 255. - 1.
+						}
+					}
+					RelativeAbsolute::Absolute => percent / 100.,
+				}
+			};
 
+			let offset_r = f32::clamp(ink(c) * slope_r, -r, -r + 1.) * color_parameter_group_scale_factor;
+			let offset_g = f32::clamp(ink(m) * slope_g, -g, -g + 1.) * color_parameter_group_scale_factor;
+			let offset_b = f32::clamp(ink(y) * slope_b, -b, -b + 1.) * color_parameter_group_scale_factor;
+
+			// An 8-bit PSD document sums the groups' 8-bit offsets, which this float node does not currently attempt to reproduce
 			sum += Vec3::new(offset_r, offset_g, offset_b);
 		}
 
@@ -1229,10 +1217,6 @@ fn selective_color<T: Adjust<Color>>(
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=nvrt%27%20%3D%20Invert-,%27post%27%20%3D%20Posterize,-%27thrs%27%20%3D%20Threshold
-//
-// Algorithm based on:
-// https://www.axiomx.com/posterize.htm
-// This algorithm produces fully accurate output in relation to the industry standard.
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
@@ -1251,9 +1235,12 @@ fn posterize<T: Adjust<Color>>(
 	let levels = levels.into_element() as f32;
 
 	input.element_mut().adjust(|color| {
-		let number_of_areas = levels.recip();
-		let size_of_areas = (levels - 1.).recip();
-		color.map_gamma_rgb(|c| (c / number_of_areas).floor() * size_of_areas)
+		color.map_gamma_rgb(|c| {
+			// Bins as floor(c * levels) with the outputs spread evenly to white.
+			// The sliver of slack keeps an input exactly on an edge in the upper bin despite float ties.
+			let bin = ((c + 2e-7) * levels).floor().min(levels - 1.);
+			bin / (levels - 1.)
+		})
 	});
 	input
 }
@@ -1262,7 +1249,7 @@ fn posterize<T: Adjust<Color>>(
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=curv%27%20%3D%20Curves-,%27expA%27%20%3D%20Exposure,-%27vibA%27%20%3D%20Vibrance
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Flag%20(%20%3D%20128%20)-,Exposure,-Key%20is%20%27expA
 //
-// Algorithm based on:
+// The exposure, offset, and gamma operations follow:
 // https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node(category("Raster: Adjustment"), properties("exposure_properties"), shader_node(PerPixelAdjust))]
 fn exposure<T: Adjust<Color>>(
@@ -1287,16 +1274,19 @@ fn exposure<T: Adjust<Color>>(
 	let offset = offset.into_element();
 	let gamma_correction = gamma_correction.into_element();
 
-	input.element_mut().adjust(|color| {
-		let adjusted = color
-			// Exposure
-			.map_rgb(|c: f32| c * 2_f32.powf(exposure))
-			// Offset
-			.map_rgb(|c: f32| c + offset)
-			// Gamma correction
-			.apply_gamma_exponent(gamma_correction);
+	// Linearizes with a 2.2 power above a straight toe of slope 1/32, the two meeting at this constant
+	const TOE_END: f32 = 0.05568117; // 32^(-1. / 1.2)
 
-		adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
+	let decode = |value: f32| if value < TOE_END { value / 32. } else { value.powf(2.2) };
+	let encode = |linear: f32| if linear < TOE_END / 32. { linear * 32. } else { linear.powf(1. / 2.2) };
+	let adjust = |c: f32| {
+		let linear = decode(c) * 2_f32.powf(exposure) + offset;
+		encode(linear.max(0.).powf(1. / gamma_correction).min(1.))
+	};
+
+	input.element_mut().adjust(|color| {
+		let [r, g, b, a] = color.to_gamma_srgb_channels();
+		Color::from_gamma_srgb_channels(adjust(r), adjust(g), adjust(b), a)
 	});
 	input
 }
@@ -1469,8 +1459,15 @@ mod _graphene_hash_impls {
 }
 
 #[cfg(all(feature = "std", test))]
-mod test {
+mod tests {
 	use super::*;
+
+	/// Matched to within one 8-bit level.
+	fn assert_close(actual: [f32; 3], expected: [f32; 3]) {
+		for (actual, expected) in actual.iter().zip(expected) {
+			assert!((actual - expected).abs() <= 1., "expected {expected}, got {actual}");
+		}
+	}
 
 	#[test]
 	fn invert_flips_straight_channels_and_keeps_alpha() {
@@ -1482,14 +1479,136 @@ mod test {
 		assert!((r - 0.).abs() < 1e-5 && (g - 0.75).abs() < 1e-5 && (b - 1.).abs() < 1e-5, "inverted channels were {r} {g} {b}");
 		assert!((a - 0.5).abs() < 1e-5, "alpha was {a}");
 	}
-}
 
-#[cfg(all(feature = "std", test))]
-mod color_balance_tests {
-	use super::*;
+	/// Whether one gamma-space RGB value (0..255) ends up white at the given threshold level (0..255).
+	fn threshold_is_white(input: [f32; 3], level: f32) -> bool {
+		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
+		let result = threshold((), Item::new_from_element(pixel), (level / 255. * 100.).into(), 100_f32.into());
+		result.into_element().r() == 1.
+	}
+
+	#[test]
+	fn threshold_compares_rec_601_luma_as_an_8_bit_level() {
+		assert!(!threshold_is_white([200., 100., 40.], 128.));
+		assert!(!threshold_is_white([125., 130., 120.], 128.));
+		assert!(threshold_is_white([0., 255., 0.], 128.));
+		assert!(!threshold_is_white([255., 0., 0.], 128.));
+		assert!(threshold_is_white([128., 128., 128.], 128.));
+		assert!(!threshold_is_white([127., 127., 127.], 128.));
+		assert!(threshold_is_white([200., 100., 40.], 123.));
+		assert!(!threshold_is_white([200., 100., 40.], 124.));
+	}
+
+	#[test]
+	fn threshold_ties_follow_the_unrounded_fixed_point_luma() {
+		// Half-level lumas in 0.3/0.59/0.11 stay below the level either way, and the 14-bit weights pull a whole-level red or blue luma just under it
+		assert!(!threshold_is_white([189., 120., 0.], 128.));
+		assert!(!threshold_is_white([248., 90., 0.], 128.));
+		assert!(!threshold_is_white([135., 100., 0.], 100.));
+		assert!(!threshold_is_white([255., 0., 50.], 82.));
+		assert!(threshold_is_white([0., 200., 0.], 118.));
+	}
+
+	/// Runs Selective Color on one gamma-space RGB value (0..255) with the given group values
+	/// (Reds through Blacks, each cyan, magenta, yellow, black) and returns the gamma-space result on the same scale.
+	fn run_selective_color(input: [f32; 3], mode: RelativeAbsolute, groups: [[f32; 4]; 9]) -> [f32; 3] {
+		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
+		let g = |group: usize, component: usize| Item::new_from_element(groups[group][component]);
+		#[rustfmt::skip]
+		let result = selective_color(
+			(), Item::new_from_element(pixel), mode.into(),
+			g(0, 0), g(0, 1), g(0, 2), g(0, 3), g(1, 0), g(1, 1), g(1, 2), g(1, 3), g(2, 0), g(2, 1), g(2, 2), g(2, 3),
+			g(3, 0), g(3, 1), g(3, 2), g(3, 3), g(4, 0), g(4, 1), g(4, 2), g(4, 3), g(5, 0), g(5, 1), g(5, 2), g(5, 3),
+			g(6, 0), g(6, 1), g(6, 2), g(6, 3), g(7, 0), g(7, 1), g(7, 2), g(7, 3), g(8, 0), g(8, 1), g(8, 2), g(8, 3),
+			SelectiveColorChoice::Reds.into(),
+		);
+		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		[r * 255., g * 255., b * 255.]
+	}
+
+	#[test]
+	fn selective_color_applies_negative_values() {
+		let mut groups = [[0.; 4]; 9];
+		groups[0] = [-100., 0., 0., 0.];
+		assert_close(run_selective_color([125., 0., 0.], RelativeAbsolute::Relative, groups), [189., 0., 0.]);
+		assert_close(run_selective_color([120., 100., 5.], RelativeAbsolute::Relative, groups), [131., 100., 5.]);
+
+		let mut groups = [[0.; 4]; 9];
+		groups[0] = [0., 0., 0., -100.];
+		assert_close(run_selective_color([110., 65., 25.], RelativeAbsolute::Absolute, groups), [136., 99., 66.]);
+	}
+
+	#[test]
+	fn selective_color_neutrals_include_pixels_with_an_empty_channel() {
+		let mut groups = [[0.; 4]; 9];
+		groups[7] = [0., -100., 0., 0.];
+		assert_close(run_selective_color([100., 0., 130.], RelativeAbsolute::Relative, groups), [100., 125., 130.]);
+		assert_close(run_selective_color([100., 50., 130.], RelativeAbsolute::Relative, groups), [100., 191., 130.]);
+	}
+
+	/// Runs Posterize on one gamma-space gray value (0..255) and returns the gamma-space result on the same scale.
+	fn run_posterize(value: f32, levels: u32) -> f32 {
+		let pixel = Color::from_gamma_srgb_channels(value / 255., value / 255., value / 255., 1.);
+		posterize((), Item::new_from_element(pixel), levels.into()).into_element().to_gamma_srgb_channels()[0] * 255.
+	}
+
+	#[test]
+	fn posterize_bins_by_floor_with_levels_spread_to_white() {
+		for (value, levels, expected) in [
+			(84., 3, 0.),
+			(85., 3, 127.5),
+			(169., 3, 127.5),
+			(170., 3, 255.),
+			(36., 7, 0.),
+			(37., 7, 42.5),
+			(110., 7, 127.5),
+			(255., 7, 255.),
+		] {
+			let actual = run_posterize(value, levels);
+			assert!((actual - expected).abs() <= 0.01, "{value} at {levels} levels: expected {expected}, got {actual}");
+		}
+	}
+
+	/// Runs Exposure on one gamma-space gray value (0..255) and returns the gamma-space result on the same scale.
+	fn run_exposure(value: f32, exposure: f32, offset: f32, gamma_correction: f32) -> f32 {
+		let pixel = Color::from_gamma_srgb_channels(value / 255., value / 255., value / 255., 1.);
+		let result = super::exposure((), Item::new_from_element(pixel), exposure.into(), offset.into(), gamma_correction.into());
+		result.into_element().to_gamma_srgb_channels()[0] * 255.
+	}
+
+	#[test]
+	fn exposure_linearizes_through_the_toe_and_power_curve() {
+		for (value, exposure, offset, gamma_correction, expected) in [
+			(1., 1., 0., 1., 2.),
+			(8., 1., 0., 1., 15.),
+			(16., 1., 0., 1., 22.),
+			(128., 1., 0., 1., 175.),
+			(200., 1., 0., 1., 255.),
+			(1., 0., 0., 2., 33.),
+			(16., 0., 0., 2., 64.),
+			(128., 0., 0., 2., 181.),
+			(200., 0., 0., 2., 226.),
+			(0., -2., 0.2, 1.5, 157.),
+			(100., -2., 0.2, 1.5, 164.),
+			(200., -2., 0.2, 1.5, 185.),
+			(100., 0., -0.25, 1., 0.),
+			(200., 0., -0.25, 1., 155.),
+		] {
+			let actual = run_exposure(value, exposure, offset, gamma_correction);
+			assert!(
+				(actual - expected).abs() <= 1.,
+				"{value} at exposure {exposure}, offset {offset}, gamma {gamma_correction}: expected {expected}, got {actual}"
+			);
+		}
+	}
+
+	#[test]
+	fn exposure_clamps_negative_offsets_before_the_gamma_power() {
+		assert_eq!(run_exposure(50., 0., -0.5, 2.), 0.);
+	}
 
 	/// Runs Color Balance on one gamma-space RGB value (0..255) and returns the gamma-space result on the same scale.
-	fn run(input: [f32; 3], shadows: [f32; 3], midtones: [f32; 3], highlights: [f32; 3], preserve_luminosity: bool) -> [f32; 3] {
+	fn run_color_balance(input: [f32; 3], shadows: [f32; 3], midtones: [f32; 3], highlights: [f32; 3], preserve_luminosity: bool) -> [f32; 3] {
 		let color = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
 		let result = color_balance(
 			(),
@@ -1510,46 +1629,39 @@ mod color_balance_tests {
 		[r * 255., g * 255., b * 255.]
 	}
 
-	/// Matched to within one 8-bit level.
-	fn assert_close(actual: [f32; 3], expected: [f32; 3]) {
-		for (actual, expected) in actual.iter().zip(expected) {
-			assert!((actual - expected).abs() <= 1., "expected {expected}, got {actual}");
-		}
-	}
-
 	#[test]
-	fn midtones_are_a_gamma_with_a_toe() {
+	fn color_balance_midtones_are_a_gamma_with_a_toe() {
 		let none = [0., 0., 0.];
-		assert_close(run([100., 100., 100.], none, [100., 0., 0.], none, false), [160., 100., 100.]);
-		assert_close(run([200., 200., 200.], none, [100., 0., 0.], none, false), [226., 200., 200.]);
-		assert_close(run([4., 4., 4.], none, [100., 0., 0.], none, false), [16., 4., 4.]);
-		assert_close(run([1., 1., 1.], none, [100., 0., 0.], none, false), [4., 1., 1.]);
-		assert_close(run([100., 100., 100.], none, [-100., 0., 0.], none, false), [39., 100., 100.]);
+		assert_close(run_color_balance([100., 100., 100.], none, [100., 0., 0.], none, false), [160., 100., 100.]);
+		assert_close(run_color_balance([200., 200., 200.], none, [100., 0., 0.], none, false), [226., 200., 200.]);
+		assert_close(run_color_balance([4., 4., 4.], none, [100., 0., 0.], none, false), [16., 4., 4.]);
+		assert_close(run_color_balance([1., 1., 1.], none, [100., 0., 0.], none, false), [4., 1., 1.]);
+		assert_close(run_color_balance([100., 100., 100.], none, [-100., 0., 0.], none, false), [39., 100., 100.]);
 	}
 
 	#[test]
-	fn shadows_and_highlights_move_the_end_points() {
+	fn color_balance_shadows_and_highlights_move_the_end_points() {
 		let none = [0., 0., 0.];
-		assert_close(run([100., 100., 100.], [-100., 0., 0.], none, none, false), [0., 100., 100.]);
-		assert_close(run([150., 150., 150.], [-100., 0., 0.], none, none, false), [52., 150., 150.]);
-		assert_close(run([200., 200., 200.], [-100., 0., 0.], none, none, false), [138., 200., 200.]);
-		assert_close(run([100., 100., 100.], none, none, [100., 0., 0.], false), [187., 100., 100.]);
-		assert_close(run([155., 155., 155.], none, none, [100., 0., 0.], false), [255., 155., 155.]);
+		assert_close(run_color_balance([100., 100., 100.], [-100., 0., 0.], none, none, false), [0., 100., 100.]);
+		assert_close(run_color_balance([150., 150., 150.], [-100., 0., 0.], none, none, false), [52., 150., 150.]);
+		assert_close(run_color_balance([200., 200., 200.], [-100., 0., 0.], none, none, false), [138., 200., 200.]);
+		assert_close(run_color_balance([100., 100., 100.], none, none, [100., 0., 0.], false), [187., 100., 100.]);
+		assert_close(run_color_balance([155., 155., 155.], none, none, [100., 0., 0.], false), [255., 155., 155.]);
 	}
 
 	#[test]
-	fn preserve_luminosity_makes_sliders_relative() {
+	fn color_balance_preserve_luminosity_makes_sliders_relative() {
 		let none = [0., 0., 0.];
-		assert_close(run([90., 90., 90.], none, [-100., 0., 0.], none, true), [59., 122., 122.]);
-		assert_close(run([90., 90., 90.], [50., 0., 0.], none, none, true), [90., 50., 50.]);
-		assert_close(run([120., 120., 120.], none, none, [-100., 0., 0.], true), [120., 197., 197.]);
-		assert_close(run([90., 90., 90.], [100., 100., 100.], [100., 100., 100.], [100., 100., 100.], true), [90., 90., 90.]);
+		assert_close(run_color_balance([90., 90., 90.], none, [-100., 0., 0.], none, true), [59., 122., 122.]);
+		assert_close(run_color_balance([90., 90., 90.], [50., 0., 0.], none, none, true), [90., 50., 50.]);
+		assert_close(run_color_balance([120., 120., 120.], none, none, [-100., 0., 0.], true), [120., 197., 197.]);
+		assert_close(run_color_balance([90., 90., 90.], [100., 100., 100.], [100., 100., 100.], [100., 100., 100.], true), [90., 90., 90.]);
 	}
 
 	#[test]
-	fn combined_tones_use_integer_arithmetic() {
+	fn color_balance_combined_tones_use_integer_arithmetic() {
 		// Red: black 39, white 235, gamma 1.09; green: gamma 0.91; blue: white 210, gamma 1.13
-		let result = run([128., 128., 128.], [-39., 6., 42.], [21., 0., -25.], [20., -35., 45.], false);
+		let result = run_color_balance([128., 128., 128.], [-39., 6., 42.], [21., 0., -25.], [20., -35., 45.], false);
 		assert_close(result, [124., 120., 164.]);
 	}
 }
