@@ -2539,8 +2539,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 				})
 				.collect();
-			let out = crate::codegen::classify::substitute_lifetimes(&slot_value_type(&parsed.output_type), "'static");
-			bounds.push(quote!(#out: ::core::marker::Send + ::core::marker::Sync + #core_types::StaticTypeSized + 'static));
+			let output_row = slot_value_type(&parsed.output_type);
+			bounds.push(crate::codegen::classify::flip_output_bound(&output_row, declared_arena_lifetime.is_some(), core_types));
 			bounds
 		}
 		false => Vec::new(),

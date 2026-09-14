@@ -790,6 +790,8 @@ pub(crate) fn substitute_lifetimes(ty: &Type, replacement: &str) -> Type {
 
 	let replacement = match replacement {
 		"'static" => "'static",
+		// The bound lifetime of a higher-ranked where-clause, which `'_` cannot spell.
+		"'__any" => "'__any",
 		_ => "'_",
 	};
 	let mut ty = ty.clone();
@@ -841,6 +843,24 @@ pub(crate) fn desugar_extract_lifetime(bound: &TypeParamBound, core_types: &Toke
 	quote!(#core_types::context::ExtractArena<ArenaRef = &#lifetime #core_types::arena::Arena>)
 }
 
+/// The bound a flip node's output row must satisfy to be lifted into a frame.
+/// An output naming the kernel's arena lifetime is served at whichever lifetime
+/// the frame was claimed for, so the bound quantifies over that lifetime instead
+/// of pinning it to `'static`, which would demand the serving borrow outlive the
+/// program and rules out the arena residency the output was written for.
+pub(crate) fn flip_output_bound(output_row: &Type, kernel_declares_arena: bool, core_types: &TokenStream2) -> TokenStream2 {
+	match kernel_declares_arena && named_serving_lifetime(output_row).is_some() {
+		true => {
+			let out = substitute_lifetimes(output_row, "'__any");
+			quote!(for<'__any> #out: ::core::marker::Send + ::core::marker::Sync + #core_types::StaticTypeSized)
+		}
+		false => {
+			let out = substitute_lifetimes(output_row, "'static");
+			quote!(#out: ::core::marker::Send + ::core::marker::Sync + #core_types::StaticTypeSized + 'static)
+		}
+	}
+}
+
 #[cfg(test)]
 mod lifetime_subst_tests {
 	use super::*;
@@ -850,5 +870,29 @@ mod lifetime_subst_tests {
 		let ty: Type = syn::parse_quote!(Graphic<'e>);
 		let erased = substitute_lifetimes(&ty, "'static");
 		assert_eq!(quote::quote!(#erased).to_string(), "Graphic < 'static >");
+	}
+
+	#[test]
+	fn an_arena_served_flip_output_is_bounded_for_every_lifetime() {
+		let output: Type = syn::parse_quote!(<V as Relift>::Live<'e>);
+		let bound = flip_output_bound(&output, true, &quote!(gcore)).to_string();
+		assert!(bound.starts_with("for < '__any >"), "the serving lifetime is quantified, got {bound}");
+		assert!(!bound.contains("'static"), "no part of the bound pins the serving lifetime, got {bound}");
+	}
+
+	#[test]
+	fn a_lifetime_free_flip_output_keeps_the_static_bound() {
+		let output: Type = syn::parse_quote!(Vector);
+		let bound = flip_output_bound(&output, true, &quote!(gcore)).to_string();
+		assert!(!bound.contains("for <"), "an output that names no lifetime needs no quantifier, got {bound}");
+		assert!(bound.contains("'static"), "it keeps the plain bound, got {bound}");
+	}
+
+	#[test]
+	fn a_kernel_without_an_arena_keeps_the_static_bound() {
+		// The lifetime is some other borrow, which the serving claim does not supply.
+		let output: Type = syn::parse_quote!(Cow<'a, str>);
+		let bound = flip_output_bound(&output, false, &quote!(gcore)).to_string();
+		assert!(bound.starts_with("Cow < 'static , str >"), "the lifetime erases as before, got {bound}");
 	}
 }
