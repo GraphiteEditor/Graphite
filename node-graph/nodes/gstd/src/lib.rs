@@ -8,6 +8,7 @@ pub mod text;
 pub use blending_nodes;
 pub use brush_nodes as brush;
 pub use core_types::*;
+pub use gradient_nodes;
 pub use graphene_application_io as application_io;
 pub use graphene_core;
 pub use graphene_core::debug;
@@ -54,7 +55,7 @@ pub mod artboard {
 }
 
 pub mod gradient {
-	pub use vector_types::{Gradient, GradientStop};
+	pub use vector_types::{Gradient, GradientStop, MeshGradient};
 }
 
 pub mod transform {

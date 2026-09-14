@@ -9,7 +9,12 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["wgpu"]
 gpu = []
-wgpu = ["gpu", "graph-craft/wgpu", "graphene-application-io/wgpu", "graphene-canvas-utils?/wgpu"]
+wgpu = [
+	"gpu",
+	"graph-craft/wgpu",
+	"graphene-application-io/wgpu",
+	"graphene-canvas-utils?/wgpu",
+]
 wasm = [
 	"wasm-bindgen",
 	"wasm-bindgen-futures",
@@ -24,7 +29,7 @@ wasm = [
 	"vector-nodes/wasm",
 	"graphene-core/wasm",
 	"graph-craft/wasm",
-	"dep:graphene-canvas-utils"
+	"dep:graphene-canvas-utils",
 ]
 image-compare = []
 vello = ["gpu"]
@@ -49,6 +54,7 @@ rendering = { workspace = true }
 graphene-application-io = { workspace = true }
 raster-nodes = { workspace = true }
 brush-nodes = { workspace = true }
+gradient-nodes = { workspace = true }
 graphene-core = { workspace = true }
 graphic-nodes = { workspace = true }
 repeat-nodes = { workspace = true }

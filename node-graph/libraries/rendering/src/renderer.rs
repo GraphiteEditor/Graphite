@@ -1,13 +1,15 @@
+mod mesh_gradient;
+
 use crate::render_ext::{PaintTarget, RenderExt};
+use crate::renderer::mesh_gradient::SvgMeshPatchRenderer;
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
-use core_types::CacheHash;
 use core_types::blending::{BlendMode, apply_blend_mode};
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::consts::DEFAULT_FONT_SIZE;
-use core_types::list::ATTR_APPEARANCE;
+use core_types::list::{ATTR_APPEARANCE, ATTR_TEXTURE};
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
@@ -15,9 +17,10 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN,
-	ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
+	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
+use core_types::{ATTR_GRADIENT_INTERPOLATION, CacheHash};
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
@@ -28,7 +31,7 @@ use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Appearance, Artboard, Cover, Coverage, FillAndStroke, Graphic, Vector};
-use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, Join, ParamCurve, PathEl, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -39,7 +42,8 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::{GradientSettings, GradientSpread};
+use vector_types::GradientInterpolation;
+use vector_types::gradient::{GradientSettings, GradientSpace, GradientSpread, MeshGradient};
 use vello::*;
 
 /// A borrowed view of one item of ranked content: one index of a `List<T>`'s attributes, or a lone `Item<T>` reading its own envelope.
@@ -1047,6 +1051,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(item) => render_color_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::Gradient(item) => render_gradient_item_svg(ItemRef::Item(item), render, render_params),
+			Graphic::MeshGradient(item) => render_mesh_gradient_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::Text(item) => render_text_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::GraphicList(list) => list.render_svg(render, render_params),
 			Graphic::VectorList(list) => list.render_svg(render, render_params),
@@ -1054,6 +1059,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(_) => (),
 			Graphic::ColorList(list) => list.render_svg(render, render_params),
 			Graphic::GradientList(list) => list.render_svg(render, render_params),
+			Graphic::MeshGradientList(list) => list.render_svg(render, render_params),
 			Graphic::TextList(list) => list.render_svg(render, render_params),
 			Graphic::StrokeList(_) => (),
 		}
@@ -1075,6 +1081,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => render_raster_gpu_item_to_vello(ItemRef::Item(item), scene, transform, context, render_params),
 			Graphic::Color(item) => render_color_item_to_vello(ItemRef::Item(item), scene, render_params),
 			Graphic::Gradient(item) => render_gradient_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
+			Graphic::MeshGradient(item) => render_mesh_gradient_item_to_vello(ItemRef::Item(item), scene, transform, context, render_params),
 			Graphic::Text(item) => render_text_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::VectorList(list) => list.render_to_vello(scene, transform, context, render_params),
@@ -1082,6 +1089,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::ColorList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::GradientList(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::MeshGradientList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::TextList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::StrokeList(_) => (),
 		}
@@ -1118,6 +1126,7 @@ impl Render for Graphic {
 				Graphic::RasterGPU(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::Color(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::Gradient(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
+				Graphic::MeshGradient(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::Text(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::RasterCPUList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
@@ -1144,6 +1153,14 @@ impl Render for Graphic {
 					}
 				}
 				Graphic::GradientList(list) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than the first item
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					}
+				}
+				Graphic::MeshGradientList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -1178,6 +1195,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => collect_raster_metadata(Some(ItemRef::Item(item)), metadata, footprint, element_id),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(item) => collect_gradient_items_metadata(std::iter::once(ItemRef::Item(item)), metadata, element_id),
+			Graphic::MeshGradient(item) => collect_mesh_gradient_items_metadata(std::iter::once(ItemRef::Item(item)), metadata, element_id),
 			Graphic::Text(item) => collect_text_items_metadata(std::iter::once(ItemRef::Item(item)), metadata, footprint, element_id),
 			Graphic::GraphicList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::VectorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
@@ -1185,6 +1203,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::ColorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::GradientList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::MeshGradientList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::TextList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::StrokeList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 		}
@@ -1199,6 +1218,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => add_unit_square_click_target(item.attribute_cloned_or_default(ATTR_TRANSFORM), click_targets),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(item) => add_gradient_item_click_targets(ItemRef::Item(item), click_targets),
+			Graphic::MeshGradient(item) => add_mesh_gradient_item_click_targets(ItemRef::Item(item), click_targets),
 			Graphic::Text(item) => add_text_item_click_targets(ItemRef::Item(item), click_targets),
 			Graphic::GraphicList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::VectorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
@@ -1206,6 +1226,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::ColorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::GradientList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::MeshGradientList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::TextList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::StrokeList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 		}
@@ -1220,6 +1241,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => add_unit_square_click_target(item.attribute_cloned_or_default(ATTR_TRANSFORM), outlines),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(item) => add_gradient_item_outline_targets(ItemRef::Item(item), outlines),
+			Graphic::MeshGradient(item) => add_mesh_gradient_item_outline_targets(ItemRef::Item(item), outlines),
 			Graphic::Text(item) => add_text_item_click_targets(ItemRef::Item(item), outlines),
 			Graphic::GraphicList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::VectorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
@@ -1227,6 +1249,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::ColorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::GradientList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::MeshGradientList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::TextList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::StrokeList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 		}
@@ -1268,6 +1291,7 @@ impl Render for List<Artboard> {
 		for index in 0..self.len() {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
+			let artboard_transform = DAffine2::from_translation(location);
 
 			let x = location.x.min(location.x + dimensions.x);
 			let y = location.y.min(location.y + dimensions.y);
@@ -1292,7 +1316,7 @@ impl Render for List<Artboard> {
 				"g",
 				// Group tag attributes
 				|attributes| {
-					let matrix = format_transform_matrix(DAffine2::from_translation(location));
+					let matrix = format_transform_matrix(artboard_transform);
 					if !matrix.is_empty() {
 						attributes.push(ATTR_TRANSFORM, matrix);
 					}
@@ -1839,6 +1863,8 @@ fn render_vector_item_to_vello(
 			| Graphic::RasterGPUList(_)
 			| Graphic::GraphicList(_)
 			| Graphic::TextList(_)
+			| Graphic::MeshGradient(_)
+			| Graphic::MeshGradientList(_)
 			| Graphic::StrokeList(_) => {
 				scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 				paint.render_to_vello(scene, multiplied_transform, context, paint_render_params);
@@ -1932,6 +1958,8 @@ fn render_vector_item_to_vello(
 			| Graphic::RasterGPUList(_)
 			| Graphic::GraphicList(_)
 			| Graphic::TextList(_)
+			| Graphic::MeshGradient(_)
+			| Graphic::MeshGradientList(_)
 			| Graphic::StrokeList(_) => {
 				let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
@@ -2668,6 +2696,22 @@ fn gradient_control_outline(gradient_form: GradientForm) -> BezPath {
 	}
 }
 
+/// The mesh's painted region as a click/outline target.
+fn mesh_control_target(mesh: &MeshGradient) -> ClickTarget {
+	let mut boundary = BezPath::new();
+
+	for patch in mesh.patches().flatten() {
+		let [top, bottom, left, right] = patch.edges;
+		boundary.move_to(top.start());
+		for edge in [top, right, bottom.reverse(), left.reverse()] {
+			boundary.push(edge.as_path_el());
+		}
+		boundary.close_path();
+	}
+
+	ClickTarget::new_with_path(boundary, 0.)
+}
+
 /// Whether the control geometry's interior is a draggable click area: a radial's main ellipse acts as the layer's handle regardless of spread, while a linear's control line has no interior.
 fn gradient_control_interior_is_clickable(gradient_form: GradientForm) -> bool {
 	gradient_form == GradientForm::Radial
@@ -2938,6 +2982,151 @@ fn add_gradient_item_outline_targets(item: ItemRef<'_, Gradient>, outlines: &mut
 	let mut target = ClickTarget::new_with_path(gradient_control_outline(gradient_form), 0.);
 	target.apply_transform(transform);
 	outlines.push(target);
+}
+
+impl Render for List<MeshGradient> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_mesh_gradient_item_svg(ItemRef::ListItem(self, index), render, render_params);
+		}
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_mesh_gradient_item_to_vello(ItemRef::ListItem(self, index), scene, parent_transform, context, render_params);
+		}
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, _footprint: Footprint, element_id: Option<NodeId>, _inherited_appearance: Option<&Appearance>) {
+		collect_mesh_gradient_items_metadata((0..self.len()).map(|index| ItemRef::ListItem(self, index)), metadata, element_id);
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
+		for index in 0..self.len() {
+			add_mesh_gradient_item_click_targets(ItemRef::ListItem(self, index), click_targets);
+		}
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
+		self.add_upstream_click_targets(outlines, inherited_appearance);
+	}
+}
+
+/// Emits one item of mesh gradient content as SVG.
+fn render_mesh_gradient_item_svg(item: ItemRef<'_, MeshGradient>, render: &mut SvgRender, render_params: &RenderParams) {
+	// SVG mesh gradient rendering has two stages:
+	//
+	// 1. Approximate the patch's color field over a unit square.
+	//    N u-direction gradients using N-1 v-direction masks to approximate the color surface.
+	//    The key observation is that source-over compositing with opaque color layers forms a convex combination.
+	//    This allows us to reproduce a bicubic Bezier surface or approximate any surface, by stacking gradients and alpha masks.
+	//
+	// 2. Warp the unit square into the Coons patch geometry using an feDisplacementMap.
+	//    feDisplacementMap performs inverse mapping: for each output position (x, y), it samples the source at
+	//    P'(x, y) = P(x + scale * (XC(x, y) - 0.5), y + scale * (YC(x, y) - 0.5)).
+	//    We numerically invert the Coons patch to find the source UV corresponding to each output position,
+	//    then encode the offset from the output position to that UV in the displacement map's X and Y channels.
+	//    Therefore, any injective Coons patch can be approximated by a raster displacement map, with the result clipped to the patch boundary.
+
+	let Some(mesh_gradient) = item.element() else { return };
+	let space: GradientSpace = item.attribute_cloned_or_default::<GradientSpace>(ATTR_GRADIENT_SPACE);
+	let interpolation_method: GradientInterpolation = item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION);
+	let Some(mesh_evaluator) = mesh_gradient.evaluator(space, interpolation_method).ok() else {
+		return;
+	};
+
+	let mesh_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let parent_transform = DAffine2::from_scale(DVec2::splat(1. / render_params.scale)) * render_params.footprint.transform * render.transform;
+
+	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
+	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+	let opacity = opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr };
+
+	let has_transparency = mesh_gradient.corners().any(|corner| !corner.color.is_opaque());
+	let mesh_transparency_mask_id = has_transparency.then(|| format!("mg-ma-{}", generate_uuid()));
+	let mut mesh_transparency_field = String::new();
+
+	let mut patch_renderer = SvgMeshPatchRenderer::new(render, &mesh_evaluator, parent_transform, mesh_transform, has_transparency.then_some(&mut mesh_transparency_field));
+
+	render.parent_tag(
+		"g",
+		|attributes| {
+			if opacity < 1. {
+				attributes.push("opacity", opacity.to_string());
+			}
+			if blend_mode != BlendMode::default() {
+				attributes.push("style", blend_mode.render());
+			}
+			if let Some(mask_id) = &mesh_transparency_mask_id.as_deref() {
+				attributes.push("mask", format!("url(#{mask_id})"));
+			}
+		},
+		|render| {
+			for patch in mesh_gradient.patches() {
+				let Some(patch) = patch else { continue };
+				patch_renderer.render_patch(render, &patch);
+			}
+		},
+	);
+	if let Some(mask_id) = mesh_transparency_mask_id.as_deref() {
+		write!(
+			&mut render.svg_defs,
+			r##"<mask id="{mask_id}" maskContentUnits="userSpaceOnUse" mask-type="luminance" color-interpolation="sRGB"><g style="isolation:isolate">{mesh_transparency_field}</g></mask>"##,
+		)
+		.unwrap();
+	}
+}
+
+/// Draws one item of mesh gradient content into the Vello scene.
+fn render_mesh_gradient_item_to_vello(item: ItemRef<'_, MeshGradient>, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+	let texture_item: Option<Item<Texture>> = item.attribute_cloned_or_default(ATTR_TEXTURE);
+	let Some(texture_item) = texture_item else { return };
+	let texture_transform: DAffine2 = texture_item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let texture = texture_item.into_element();
+
+	let raster_item_ref = ItemRef::Item(&Item::from(Raster::<GPU>::new_gpu(texture)));
+	render_raster_gpu_item_to_vello(raster_item_ref, scene, parent_transform * texture_transform, context, render_params);
+}
+
+fn collect_mesh_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, MeshGradient>>, metadata: &mut RenderMetadata, element_id: Option<NodeId>) {
+	let Some(element_id) = element_id else { return };
+
+	let mut item_zero_inverse = None;
+	let mut targets = Vec::new();
+	for item in items {
+		let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+
+		// The first item's transform is the reference all targets bake against, matching the `local_transforms` entry `Graphic::collect_metadata` records
+		let item_zero_inverse = *item_zero_inverse.get_or_insert_with(|| if transform_is_invertible(item_transform) { item_transform.inverse() } else { DAffine2::IDENTITY });
+
+		let Some(mesh_gradient) = item.element() else { continue };
+
+		let mut target = mesh_control_target(mesh_gradient);
+		target.apply_transform(item_zero_inverse * item_transform);
+		targets.push(Arc::new(target));
+	}
+
+	if targets.is_empty() {
+		return;
+	}
+	metadata.outlines.insert(element_id, targets.clone());
+	// The painted region is the mesh boundary itself, so its interior is what a click lands on
+	metadata.click_targets.insert(element_id, targets);
+}
+
+fn add_mesh_gradient_item_click_targets(item: ItemRef<'_, MeshGradient>, click_targets: &mut Vec<ClickTarget>) {
+	let Some(mesh_gradient) = item.element() else { return };
+	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+
+	let mut target = mesh_control_target(mesh_gradient);
+	target.apply_transform(transform);
+	click_targets.push(target);
+}
+
+/// Collects one gradient item's control geometry as an outline target.
+fn add_mesh_gradient_item_outline_targets(item: ItemRef<'_, MeshGradient>, outlines: &mut Vec<ClickTarget>) {
+	add_mesh_gradient_item_click_targets(item, outlines)
 }
 
 /// Builds a `kurbo::BezPath` from a glyph outline, baking in the glyph origin (`ox`, `oy`) and faux-italic shear (`tilt_tan`).

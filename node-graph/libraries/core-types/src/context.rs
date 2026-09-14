@@ -1,3 +1,4 @@
+use crate::paint::PaintRenderParams;
 use crate::transform::Footprint;
 use glam::DVec2;
 pub use no_std_types::context::{ArcCtx, Ctx};
@@ -51,6 +52,17 @@ pub trait CloneVarArgs: ExtractVarArgs {
 	// fn box_clone(&self) -> Vec<DynBox>;
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>>;
 }
+pub trait ExtractPaintRenderParams {
+	#[track_caller]
+	fn try_paint_render_params(&self) -> Option<&PaintRenderParams>;
+	#[track_caller]
+	fn paint_render_params(&self) -> &PaintRenderParams {
+		self.try_paint_render_params().unwrap_or_else(|| {
+			log::error!("Context did not have paint render params, called from: {}", Location::caller());
+			&PaintRenderParams::DEFAULT
+		})
+	}
+}
 
 // =============
 // INJECT TRAITS
@@ -63,6 +75,7 @@ pub trait InjectAnimationTime {}
 pub trait InjectPointerPosition {}
 pub trait InjectPosition {}
 pub trait InjectIndex {}
+pub trait InjectPaintRenderParams {}
 pub trait InjectVarArgs {}
 
 // ================
@@ -77,7 +90,8 @@ pub trait ExtractAll:
 	ExtractPointerPosition +
 	ExtractPosition +
 	ExtractIndex +
-	ExtractVarArgs {}
+	ExtractVarArgs +
+	ExtractPaintRenderParams {}
 impl<
 	T: ?Sized
 		// Extract traits
@@ -87,7 +101,8 @@ impl<
 		+ ExtractPointerPosition
 		+ ExtractPosition
 		+ ExtractIndex
-		+ ExtractVarArgs,
+		+ ExtractVarArgs
+		+ ExtractPaintRenderParams,
 > ExtractAll for T
 {
 }
@@ -103,6 +118,7 @@ impl<T: Ctx> InjectPointerPosition for T {}
 impl<T: Ctx> InjectPosition for T {}
 impl<T: Ctx> InjectIndex for T {}
 impl<T: Ctx> InjectVarArgs for T {}
+impl<T: Ctx> InjectPaintRenderParams for T {}
 
 // =============
 // MODIFY TRAITS
@@ -116,6 +132,7 @@ pub trait ModifyPointerPosition: ExtractPointerPosition + InjectPointerPosition 
 pub trait ModifyPosition: ExtractPosition + InjectPosition {}
 pub trait ModifyIndex: ExtractIndex + InjectIndex {}
 pub trait ModifyVarArgs: ExtractVarArgs + InjectVarArgs {}
+pub trait ModifyPaintRenderParams: ExtractPaintRenderParams + InjectPaintRenderParams {}
 
 impl<T: Ctx + InjectFootprint + ExtractFootprint> ModifyFootprint for T {}
 impl<T: Ctx + InjectRealTime + ExtractRealTime> ModifyRealTime for T {}
@@ -124,6 +141,7 @@ impl<T: Ctx + InjectPointerPosition + ExtractPointerPosition> ModifyPointerPosit
 impl<T: Ctx + InjectPosition + ExtractPosition> ModifyPosition for T {}
 impl<T: Ctx + InjectIndex + ExtractIndex> ModifyIndex for T {}
 impl<T: Ctx + InjectVarArgs + ExtractVarArgs> ModifyVarArgs for T {}
+impl<T: Ctx + InjectPaintRenderParams + ExtractPaintRenderParams> ModifyPaintRenderParams for T {}
 
 // ================
 // CONTEXT FEATURES
@@ -140,6 +158,7 @@ pub enum ContextFeature {
 	ExtractPosition,
 	ExtractIndex,
 	ExtractVarArgs,
+	ExtractPaintRenderParams,
 	InjectFootprint,
 	InjectRealTime,
 	InjectAnimationTime,
@@ -147,6 +166,7 @@ pub enum ContextFeature {
 	InjectPosition,
 	InjectIndex,
 	InjectVarArgs,
+	InjectPaintRenderParams,
 }
 
 // Internal bitflags for fast compiler analysis
@@ -162,6 +182,7 @@ bitflags! {
 		const POSITION = 1 << 4;
 		const INDEX = 1 << 5;
 		const VARARGS = 1 << 6;
+		const PAINT_RENDER_PARAMS = 1 << 7;
 	}
 }
 
@@ -181,6 +202,7 @@ impl ContextFeatures {
 			ContextFeatures::POSITION => "Position",
 			ContextFeatures::INDEX => "Index",
 			ContextFeatures::VARARGS => "VarArgs",
+			ContextFeatures::PAINT_RENDER_PARAMS => "PaintRenderParams",
 			_ => "Multiple Features",
 		}
 	}
@@ -210,6 +232,7 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				ContextFeature::ExtractPosition => ContextFeatures::POSITION,
 				ContextFeature::ExtractIndex => ContextFeatures::INDEX,
 				ContextFeature::ExtractVarArgs => ContextFeatures::VARARGS,
+				ContextFeature::ExtractPaintRenderParams => ContextFeatures::PAINT_RENDER_PARAMS,
 				_ => ContextFeatures::empty(),
 			};
 			inject |= match feature {
@@ -220,6 +243,7 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				ContextFeature::InjectPosition => ContextFeatures::POSITION,
 				ContextFeature::InjectIndex => ContextFeatures::INDEX,
 				ContextFeature::InjectVarArgs => ContextFeatures::VARARGS,
+				ContextFeature::InjectPaintRenderParams => ContextFeatures::PAINT_RENDER_PARAMS,
 				_ => ContextFeatures::empty(),
 			};
 		}
@@ -292,6 +316,12 @@ impl<T: CloneVarArgs + Sync> CloneVarArgs for Option<T> {
 	}
 }
 
+impl<T: ExtractPaintRenderParams + Sync> ExtractPaintRenderParams for Option<T> {
+	fn try_paint_render_params(&self) -> Option<&PaintRenderParams> {
+		self.as_ref().and_then(|ctx| ctx.try_paint_render_params())
+	}
+}
+
 // ================================
 // EXTRACT TRAIT IMPLS FOR `Arc<T>`
 // ================================
@@ -343,6 +373,12 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Arc<T> {
 impl<T: CloneVarArgs + Sync> CloneVarArgs for Arc<T> {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
 		(**self).arc_clone()
+	}
+}
+
+impl<T: ExtractPaintRenderParams + Sync> ExtractPaintRenderParams for Arc<T> {
+	fn try_paint_render_params(&self) -> Option<&PaintRenderParams> {
+		(**self).try_paint_render_params()
 	}
 }
 
@@ -496,6 +532,11 @@ impl ExtractVarArgs for OwnedContextImpl {
 		};
 	}
 }
+impl ExtractPaintRenderParams for OwnedContextImpl {
+	fn try_paint_render_params(&self) -> Option<&PaintRenderParams> {
+		self.paint_render_params.as_ref()
+	}
+}
 
 impl CloneVarArgs for Arc<OwnedContextImpl> {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
@@ -521,6 +562,7 @@ pub struct OwnedContextImpl {
 	position: Option<Vec<DVec2>>,
 	// This could be converted into a single enum to save extra bytes
 	index: Option<Vec<usize>>,
+	paint_render_params: Option<PaintRenderParams>,
 	varargs: Option<Arc<[DynBox]>>,
 }
 
@@ -534,6 +576,7 @@ impl std::fmt::Debug for OwnedContextImpl {
 			.field("pointer_position", &self.pointer_position)
 			.field("index", &self.index)
 			.field("varargs_len", &self.varargs.as_ref().map(|x| x.len()))
+			.field("paint_render_params", &self.paint_render_params)
 			.finish()
 	}
 }
@@ -554,6 +597,7 @@ impl graphene_hash::CacheHash for OwnedContextImpl {
 		self.position.cache_hash(state);
 		self.index.cache_hash(state);
 		self.hash_varargs(state);
+		self.paint_render_params.cache_hash(state);
 	}
 }
 
@@ -578,6 +622,7 @@ impl OwnedContextImpl {
 		let pointer_position = bitflags.contains(ContextFeatures::POINTER_POSITION).then(|| value.try_pointer_position()).flatten();
 		let position = bitflags.contains(ContextFeatures::POSITION).then(|| value.try_position()).flatten().map(|x| x.collect());
 		let index = bitflags.contains(ContextFeatures::INDEX).then(|| value.try_index()).flatten().map(|x| x.collect());
+		let paint_render_params = bitflags.contains(ContextFeatures::PAINT_RENDER_PARAMS).then(|| value.try_paint_render_params().copied()).flatten();
 
 		OwnedContextImpl {
 			parent,
@@ -588,6 +633,7 @@ impl OwnedContextImpl {
 			position,
 			index,
 			varargs: None,
+			paint_render_params,
 		}
 	}
 
@@ -601,6 +647,7 @@ impl OwnedContextImpl {
 			position: None,
 			index: None,
 			varargs: None,
+			paint_render_params: None,
 		}
 	}
 }
@@ -669,6 +716,10 @@ impl OwnedContextImpl {
 	pub fn with_vararg(mut self, value: Box<dyn AnyHash + Send + Sync>) -> Self {
 		assert!(self.varargs.is_none_or(|value| value.is_empty()));
 		self.varargs = Some(Arc::new([value]));
+		self
+	}
+	pub fn with_paint_render_params(mut self, paint_render_params: PaintRenderParams) -> Self {
+		self.paint_render_params = Some(paint_render_params);
 		self
 	}
 	pub fn into_context(self) -> Option<Arc<Self>> {
