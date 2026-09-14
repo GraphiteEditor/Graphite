@@ -15,6 +15,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_lend_fields,
 		validate_record_io,
 		validate_lazy_reads,
+		validate_lowering_supported,
 	];
 
 	for validator in validators {
@@ -22,6 +23,28 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	}
 
 	Ok(())
+}
+
+/// A signature no lowering claims generates no `Node` impl at all, so the node
+/// compiles and is simply missing at runtime. Naming the gap is the only thing
+/// that ends it, since nothing downstream can tell "declined" from "absent".
+fn validate_lowering_supported(parsed: &ParsedNodeFn) {
+	// A record-io refusal already reported its own reason.
+	if crate::codegen::classify::record_shape_checked(parsed).is_err() || crate::codegen::classify::analyze(parsed).is_some() {
+		return;
+	}
+
+	// An async kernel with lazy inputs is refused by `validate_async_source`, which
+	// names the spawn boundary rather than the missing lowering.
+	if parsed.is_async && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+		return;
+	}
+
+	emit_error!(
+		parsed.fn_name.span(),
+		"no lowering supports this signature, so the node would generate no `Node` impl";
+		help = "a node is one of: attribute io (`Attr<..>` reads or writes), routing (an unbounded generic forwarded whole), a flipped kernel over an owned primary, or one with a ranked `IList` input"
+	);
 }
 
 fn validate_record_io(parsed: &ParsedNodeFn) {
@@ -41,6 +64,15 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	let writes = record_writes(&value);
 	let has_reads = parsed.fields.iter().any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
 	if !has_reads && writes.is_none() {
+		return;
+	}
+
+	// A shape the record lowering refuses generates no node impl at all, so without a
+	// diagnostic the node compiles and is simply absent from the registry. The lowering
+	// is the authority on what it can serve, so its refusal is the one error reported:
+	// the checks below describe a shape it already accepted.
+	if let Err(reason) = crate::codegen::classify::record_shape_checked(parsed) {
+		emit_error!(parsed.fn_name.span(), "this node declares attribute io the record lowering cannot serve: {}", reason);
 		return;
 	}
 

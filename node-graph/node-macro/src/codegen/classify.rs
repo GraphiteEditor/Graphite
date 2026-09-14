@@ -312,26 +312,35 @@ pub(crate) fn unbounded_generic(parsed: &ParsedNodeFn, ty: &Type) -> Option<Iden
 }
 
 pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
+	record_shape_checked(parsed).ok().flatten()
+}
+
+/// [`record_shape`] with its refusals named. `Ok(None)` is "not a record node",
+/// which the other classes still answer for; `Err` is a node that declares
+/// attribute io the record lowering cannot serve, and only a diagnostic ends it.
+pub(crate) fn record_shape_checked(parsed: &ParsedNodeFn) -> Result<Option<RecordShape>, &'static str> {
 	let source = is_async_source(parsed);
 	let value = match kernel_kind(&parsed.output_type) {
 		KernelKind::Plain => parsed.output_type.clone(),
 		KernelKind::Interrupt(inner) => inner,
 		_ if source => slot_value_type(&parsed.output_type),
-		_ => return None,
+		_ => return Ok(None),
 	};
 	let writes = record_writes(&value);
 	let has_reads = parsed.fields.iter().any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
 	if !has_reads && writes.is_none() {
-		return None;
+		return Ok(None);
 	}
 	// An async source's slot stores the kernel's plain tuple; the per-eval lift
 	// writes it through the claim, and the reads have no input to bind against.
 	if source && (has_reads || writes.is_none()) {
-		return None;
+		return Err("an async source writes its tuple through the claim, so it takes writes and no reads");
 	}
-	let carrier_field = parsed.fields.first()?;
+	let Some(carrier_field) = parsed.fields.first() else {
+		return Err("attribute io needs a primary input as the first parameter after the context");
+	};
 	if carrier_field.is_data_field {
-		return None;
+		return Err("a `#[data]` field is not a record carrier");
 	}
 	// A first-field lazy carrier: the kernel evaluates the derived content
 	// itself and returns its opaque row token beside the write set.
@@ -343,30 +352,32 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 		ParsedFieldType::Regular(_) => false,
 	};
 	if parsed.fields.iter().skip(lazy_carrier as usize).any(unsupported_lazy_secondary) {
-		return None;
+		return Err("a lazy secondary consumes a plain element, so it takes no served, ranked, or reading input");
 	}
 	let reads_well_placed = parsed.fields.iter().enumerate().all(|(index, field)| {
 		field.attribute_reads.is_empty() || (lazy_carrier && index == 0) || (!field.is_data_field && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: None, .. })))
 	});
 	if !reads_well_placed {
-		return None;
+		return Err("an attribute read needs an owned regular input, not a `#[data]` field or a `&T`");
 	}
 	if lazy_carrier {
 		let ParsedFieldType::Node(NodeParsedField { output_type, .. }) = &carrier_field.ty else {
 			unreachable!("guarded by the lazy_carrier match");
 		};
-		let token = unbounded_generic(parsed, output_type)?;
+		let Some(token) = unbounded_generic(parsed, output_type) else {
+			return Err("a lazy carrier passes an unbounded generic row token through");
+		};
 		let element = match writes {
 			Some(RecordWrites { element, .. }) => element,
 			None => value,
 		};
 		if !matches!(bare_ident(&element), Some(ident) if ident == &token) {
-			return None;
+			return Err("a lazy carrier returns the row token it received, so the element is that generic");
 		}
-		return Some(RecordShape { carrier: RecordCarrier::LazyToken });
+		return Ok(Some(RecordShape { carrier: RecordCarrier::LazyToken }));
 	}
 	let ParsedFieldType::Regular(RegularParsedField { ty, lend: None, implementations, .. }) = &carrier_field.ty else {
-		return None;
+		return Err("a record carrier is an owned value input, not a `&T` or a lazy one");
 	};
 	// A gathered subject is never read as an element, so its generic stays open.
 	let gathers = crate::codegen::ir::gathers_lane(parsed);
@@ -378,7 +389,7 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 			Some(token) => Some(token),
 			None => {
 				if !gathers && !carrier_rows && contains_open_generic(parsed, ty) {
-					return None;
+					return Err("a reading carrier's element is monomorphic; spell it concretely or give it an `#[implementations]` list");
 				}
 				None
 			}
@@ -398,29 +409,29 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 		// fresh one instead of passing the token through.
 		Some(_) if opaque_reading_carrier(parsed).is_some() => {
 			if contains_open_generic(parsed, &element) {
-				return None;
+				return Err("an opaque reading carrier writes a concrete element, since its own is never read");
 			}
 		}
 		Some(token) => {
 			if !matches!(bare_ident(&element), Some(ident) if ident == token) {
-				return None;
+				return Err("a passthrough generic element returns unchanged in the first tuple position");
 			}
 		}
 		None => {
 			if !gathers && !carrier_rows && contains_open_generic(parsed, &element) {
-				return None;
+				return Err("a written element is monomorphic; spell it concretely or give the carrier an `#[implementations]` list");
 			}
 		}
 	}
 	if matches!(carrier, RecordCarrier::None) && !removes.is_empty() {
-		return None;
+		return Err("a node with no carrier has no columns to remove");
 	}
 	// The byte-carried token never becomes a value, so it cannot cross a
 	// future boundary.
 	if source && matches!(carrier, RecordCarrier::Token) {
-		return None;
+		return Err("a byte-carried token never becomes a value, so it cannot cross a future boundary");
 	}
-	Some(RecordShape { carrier })
+	Ok(Some(RecordShape { carrier }))
 }
 
 pub(crate) fn is_poll_kernel(output: &Type) -> bool {
