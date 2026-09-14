@@ -1,5 +1,5 @@
 use core_types::transform::Footprint;
-use dyn_any::{DynAny, StaticType, StaticTypeSized};
+use dyn_any::DynAny;
 use glam::DVec2;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
@@ -106,6 +106,8 @@ impl GetEditorPreferences for DummyPreferences {
 	}
 }
 
+#[derive(dyn_any::DynAny)]
+#[dyn_any_derive(project)]
 pub struct EditorApi<Io> {
 	/// Gives access to APIs like resources.
 	pub application_io: Option<Arc<Io>>,
@@ -154,8 +156,4 @@ impl<T> Debug for EditorApi<T> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("EditorApi").finish()
 	}
-}
-
-unsafe impl<T: StaticTypeSized> StaticType for EditorApi<T> {
-	type Static = EditorApi<T::Static>;
 }

@@ -695,3 +695,39 @@ mod test_support {
 		List::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: builder.finish() }))
 	}
 }
+
+#[cfg(test)]
+mod relift_tests {
+	use super::Graphic;
+	use core_types::arena::Arena;
+	use core_types::record::{Group, RunBuilder, element_write_hashed};
+	use dyn_any::Relift;
+	use vector_types::Vector;
+
+	/// `Relift` inverts the erasure a registry row keys on, so an element's `'static`
+	/// spelling names the borrowing form that live code needs.
+	#[test]
+	fn a_graphic_relifts_to_the_arena_lifetime() {
+		fn resident<'a>(arena: &'a Arena) -> <Graphic<'static> as Relift>::Live<'a> {
+			let mut builder = RunBuilder::new(arena, element_write_hashed::<Vector>(), &[], 1).unwrap();
+			builder.push(Vector::default()).unwrap();
+
+			Graphic::Group(Group { row: None, content: builder.finish() })
+		}
+
+		let arena = Arena::new(1 << 16).unwrap();
+		let live: Graphic<'_> = resident(&arena);
+
+		assert!(matches!(live, Graphic::Group(_)), "the relifted spelling is the same type, only its borrows differ");
+	}
+
+	/// A borrow-free element relifts to itself, so code over it never spells a lifetime.
+	#[test]
+	fn a_borrow_free_element_relifts_to_itself() {
+		fn same<'a>(vector: Vector) -> <Vector as Relift>::Live<'a> {
+			vector
+		}
+
+		assert_eq!(same(Vector::default()), Vector::default());
+	}
+}

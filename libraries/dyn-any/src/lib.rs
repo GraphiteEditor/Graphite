@@ -142,6 +142,18 @@ where
 {
 	type Static = <T as StaticType>::Static;
 }
+/// The inverse of [`StaticType`]: the `'static` spelling of a type re-stated at a
+/// live lifetime. Where `StaticType` erases borrows so a value can be keyed and
+/// stored, `Relift` names the borrowing form again so code holding the borrow can
+/// be typed. A type without lifetimes relifts to itself.
+///
+/// # Safety
+/// `Live<'a>` must be `Self` with every lifetime replaced by `'a`, so the two
+/// spellings differ in nothing but the borrows they claim.
+pub unsafe trait Relift {
+	type Live<'a>;
+}
+
 pub unsafe trait StaticTypeClone {
 	type Static: 'static + Clone;
 	fn type_id(&self) -> core::any::TypeId {

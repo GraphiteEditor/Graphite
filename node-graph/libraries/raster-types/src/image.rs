@@ -3,7 +3,6 @@ use core_types::Color;
 use core_types::color::float_to_srgb_u8;
 // use crate::vector::Vector; // TODO: Check if Vector is actually used, if so handle differently
 use core_types::color::*;
-use dyn_any::StaticType;
 use glam::{DAffine2, DVec2};
 use std::vec::Vec;
 
@@ -49,7 +48,8 @@ mod base64_serde {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Eq, Default)]
+#[derive(Clone, Eq, Default, dyn_any::DynAny)]
+#[dyn_any_derive(project)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Image<P: Pixel> {
 	pub width: u32,
@@ -90,14 +90,6 @@ impl<P: Pixel + std::fmt::Debug> std::fmt::Debug for Image<P> {
 			.field("data", if length < 100 { &self.data } else { &length })
 			.finish()
 	}
-}
-
-unsafe impl<P> StaticType for Image<P>
-where
-	P: dyn_any::StaticTypeSized + Pixel,
-	P::Static: Pixel,
-{
-	type Static = Image<P::Static>;
 }
 
 impl<P: Copy + Pixel> Bitmap for Image<P> {

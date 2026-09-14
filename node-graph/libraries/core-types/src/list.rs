@@ -1,7 +1,7 @@
 use crate::attribute::Attribute as _;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::transform::ApplyTransform;
-use dyn_any::{StaticType, StaticTypeSized};
+use dyn_any::StaticType;
 use glam::DAffine2;
 use graphene_hash::CacheHash;
 use std::fmt::Debug;
@@ -879,7 +879,10 @@ impl Attributes {
 /// Elements are stored contiguously in a `Vec<T>`, while attributes live in an internal
 /// [`Attributes`] store that keeps one attribute per attribute key. Items are accessed by
 /// index through element/attribute accessor methods, or consumed as owned [`Item`]s via iteration.
-#[derive(Clone, Debug)]
+// The list carries its lifetime only through T, so its parameter projects: substituting
+// T's static form substitutes the list's and keeps the layout identical.
+#[derive(Clone, Debug, dyn_any::DynAny)]
+#[dyn_any_derive(project)]
 pub struct List<T> {
 	element: Vec<T>,
 	attributes: Attributes,
@@ -1192,12 +1195,6 @@ impl<T> ApplyTransform for List<T> {
 	}
 }
 
-// SAFETY: the list carries its lifetime only through T, so substituting T's
-// static form substitutes the list's and keeps the layout identical.
-unsafe impl<T: StaticTypeSized> StaticType for List<T> {
-	type Static = List<T::Static>;
-}
-
 impl<T> FromIterator<Item<T>> for List<T> {
 	/// Collects an iterator of [`Item`]s into a [`List`], pre-allocating based on the iterator's size hint.
 	fn from_iter<I: IntoIterator<Item = Item<T>>>(iter: I) -> Self {
@@ -1220,7 +1217,9 @@ impl<T> FromIterator<Item<T>> for List<T> {
 /// An owned item containing an element of type `T` and a set of type-erased scalar attributes.
 ///
 /// Used to build individual items before pushing them into a [`List`], or when consuming items out of a list via [`IntoIterator`].
-#[derive(Clone, Debug)]
+// As for `List`, the item's lifetime rides its element alone, so the parameter projects.
+#[derive(Clone, Debug, dyn_any::DynAny)]
+#[dyn_any_derive(project)]
 pub struct Item<T> {
 	element: T,
 	attributes: ItemAttributeValues,

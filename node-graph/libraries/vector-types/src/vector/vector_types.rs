@@ -9,13 +9,12 @@ use core::borrow::Borrow;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Transform;
-use dyn_any::StaticType;
 use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, Rect, Shape};
 use std::collections::HashMap;
 
 /// Represents vector graphics data, composed of Bézier curves in a path or mesh arrangement.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Vector {
 	pub stroke: Option<Stroke>,
@@ -27,9 +26,6 @@ pub struct Vector {
 	pub point_domain: PointDomain,
 	pub segment_domain: SegmentDomain,
 	pub region_domain: RegionDomain,
-}
-unsafe impl StaticType for Vector {
-	type Static = Self;
 }
 
 impl Default for Vector {
