@@ -99,6 +99,7 @@ macro_rules! tagged_value {
 			/// Stored as the `MeshGradientSurface` exchange struct (nested `{ mesh: ... }`), materializing as an `Item<MeshGradient>` at runtime.
 			MeshGradient(MeshGradientSurface),
 			Strokes(Vec<Stroke>),
+			#[serde(alias = "NodeCache", alias = "FootprintCache")]
 			BrushCache(BrushCache),
 			// =======================
 			// AUTO-GENERATED VARIANTS

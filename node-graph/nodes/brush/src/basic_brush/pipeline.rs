@@ -3,13 +3,14 @@ use super::convert::Convert;
 use super::kernel::{Kernel, KernelCache};
 use super::region::{Crop, Region};
 use super::stroke::{Edge, StyledStroke};
-use brush_types::BrushCache;
 use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use core_types::transform::Footprint;
 use glam::{DAffine2, UVec2};
 use raster_types::Texture;
 use wgpu_executor::{AsyncWgpuPipeline, Buffer, WgpuExecutor};
+
+use crate::BrushCache;
 
 pub(super) const DENSITY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
 pub(super) const COMPOSITE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
