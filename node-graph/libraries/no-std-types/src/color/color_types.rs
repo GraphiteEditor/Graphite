@@ -45,7 +45,6 @@ impl Luminance for RGBA16F {
 	type LuminanceChannel = f32;
 	#[inline(always)]
 	fn luminance(&self) -> f32 {
-		// TODO: verify this is correct for sRGB
 		0.2126 * self.red() + 0.7152 * self.green() + 0.0722 * self.blue()
 	}
 }

@@ -116,8 +116,10 @@ fn desaturate<T: Adjust<Color>>(
 			DesaturateMethod::ChannelsMinimum => color.minimum_rgb_channels(),
 			DesaturateMethod::ChannelsMaximum => color.maximum_rgb_channels(),
 			DesaturateMethod::LightnessHsl => {
-				let [r, g, b, _] = gamma();
-				srgb_to_linear((r.max(g).max(b) + r.min(g).min(b)) / 2.)
+				// The transfer curve is monotonic, so the extremes are found first and only they are encoded
+				let max = linear_to_srgb(color.maximum_rgb_channels());
+				let min = linear_to_srgb(color.minimum_rgb_channels());
+				srgb_to_linear((max + min) / 2.)
 			}
 		};
 		color.map_rgb(|_| luminance)
