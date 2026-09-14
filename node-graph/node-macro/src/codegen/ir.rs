@@ -326,6 +326,14 @@ pub(crate) fn gathered_subject(node: &Node) -> Option<usize> {
 	if !node.output.gathers {
 		return None;
 	}
+	materialized_subject(node)
+}
+
+/// The subject a gather copies frames from or a fold consumes, if any. At most one
+/// exists: materializing takes an eager subject of non-zero depth, and [`subject`]
+/// admits an eager one only at index 0 or as a routing source, whose bare-ident
+/// match rules out any `IList` nesting.
+pub(crate) fn materialized_subject(node: &Node) -> Option<usize> {
 	node.inputs
 		.iter()
 		.enumerate()
@@ -357,11 +365,7 @@ pub(crate) fn folded_subject(node: &Node) -> Option<(u8, u8)> {
 	if node.output.gathers {
 		return None;
 	}
-	node.inputs
-		.iter()
-		.enumerate()
-		.find(|(index, input)| input.subject && materialized_levels(node, *index) > 0)
-		.map(|(index, _)| (index as u8, materialized_levels(node, index)))
+	materialized_subject(node).map(|index| (index as u8, materialized_levels(node, index)))
 }
 
 fn field_writes(attrs: &[LevelAttr], core_types: &TokenStream2) -> Vec<TokenStream2> {
@@ -474,8 +478,9 @@ pub(crate) fn name_input(node: &Node, placeholder: &Type) -> Option<usize> {
 
 fn level_delta(node: &Node) -> i8 {
 	// A folded subject contributes no base layout, so the delta is relative to
-	// the fresh (empty) base.
-	let base_depth = layout_sources(node).first().map_or(0, |&index| node.inputs[index].shape.depth as i8);
+	// the fresh (empty) base. Several sources union into that base, and the union
+	// lifts the shallower ones, so the deepest is what the delta measures from.
+	let base_depth = layout_sources(node).iter().map(|&index| node.inputs[index].shape.depth as i8).max().unwrap_or(0);
 	node.output.shape.depth as i8 - base_depth
 }
 
@@ -718,13 +723,12 @@ mod tests {
 			Element::Generic(_) => node.monomorphizations.is_empty(),
 			Element::Concrete(_) => false,
 		};
-		let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth as i8);
 		Facts {
 			sources: layout_sources(node),
 			carried,
 			writes: markers(node.output.shape.attrs.iter().map(|attr| &attr.marker)),
 			removes: markers(node.output.removes.iter().map(|attr| &attr.marker)),
-			delta: node.output.shape.depth as i8 - subject_depth,
+			delta: level_delta(node),
 		}
 	}
 
@@ -1356,6 +1360,33 @@ mod tests {
 		assert_eq!(subject.shape.depth, 1);
 		assert_eq!(node.output.shape.depth, 0);
 		assert_eq!(node.output.shape.depth as i8 - subject.shape.depth as i8, -1, "the reducer collapses one level");
+	}
+
+	#[test]
+	fn the_deepest_layout_source_is_the_delta_base() {
+		let mut parsed = parse_node_fn(
+			quote!(category("")),
+			quote!(
+				fn pick<T>(ctx: impl Ctx + Copy, condition: bool, scalar: impl Node<Context<'_>, Output = T>, listed: impl Node<Context<'_>, Output = IList<T>>) -> Result<IList<T>, Interrupt> {
+					if condition { listed.eval(ctx) } else { emit(scalar.eval(ctx)?) }
+				}
+			),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+		let node = build(&parsed);
+
+		// Both branches are lazy, so neither materializes and both source the
+		// output's layout, at depths 0 and 1.
+		let sources = layout_sources(&node);
+		let depths: Vec<u8> = sources.iter().map(|&index| node.inputs[index].shape.depth).collect();
+		assert_eq!(depths, vec![0, 1], "the two branches source the layout at differing depths");
+
+		// The union lifts the scalar side to the listed side's depth, so the
+		// output sits at the base rather than one level above it. Measuring from
+		// the first source instead would read a spurious +1 push.
+		assert_eq!(node.output.shape.depth, 1);
+		assert_eq!(level_delta(&node), 0, "the delta measures from the deepest source, not the first");
 	}
 
 	#[test]
