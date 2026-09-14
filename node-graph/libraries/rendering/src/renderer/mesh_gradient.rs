@@ -10,7 +10,7 @@ use glam::{DAffine2, DVec2, Vec4};
 use image::ImageEncoder;
 use kurbo::{Affine, BezPath, Shape};
 use vector_types::GradientInterpolation;
-use vector_types::gradient::MeshPatch;
+use vector_types::mesh_gradient::MeshPatch;
 use vector_types::{
 	gradient::GradientSpace,
 	mesh_gradient::{MeshGradientEvaluator, MeshPatchEvaluator},

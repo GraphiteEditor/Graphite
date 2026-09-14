@@ -22,7 +22,8 @@ use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArcle
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
-use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box, initial_mesh_gradient_transform_for_bounding_box};
+use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
+use vector_types::mesh_gradient::initial_mesh_gradient_transform_for_bounding_box;
 use vector_types::vector::algorithms::bezpath_algorithms::{
 	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
 };

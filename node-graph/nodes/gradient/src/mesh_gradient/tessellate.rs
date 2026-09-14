@@ -6,10 +6,7 @@ use std::{
 };
 
 use glam::{DAffine2, DVec2};
-use vector_types::{
-	gradient::MeshGradientEvaluator,
-	mesh_gradient::{BicubicBezierNet, evaluate_cubic_bezier_bernstein},
-};
+use vector_types::mesh_gradient::{BicubicBezierNet, MeshGradientEvaluator, evaluate_cubic_bezier_bernstein};
 
 /// Maximum allowed geometry approximation error in viewport pixels.
 const MESH_POSITION_DEVIATION_TOLERANCE: PositionDeviationBound = PositionDeviationBound(2.);

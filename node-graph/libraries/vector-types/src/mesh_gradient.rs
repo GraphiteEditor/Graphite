@@ -2,14 +2,6 @@ use std::array;
 use std::ops::{Add, Deref, Mul, Sub};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use core_types::bounds::RenderBoundingBox;
-use core_types::list::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item};
-use core_types::{Color, render_complexity::RenderComplexity};
-use dyn_any::DynAny;
-use glam::{DAffine2, DMat2, DVec2, Mat4, Vec4};
-use kurbo::{BezPath, CubicBez, ParamCurve, PathSeg};
-use num_traits::Float;
-
 use crate::{
 	Vector,
 	gradient::{GradientInterpolation, GradientSpace, color_from_gradient_space_channels, gradient_space_channels},
@@ -18,6 +10,16 @@ use crate::{
 		misc::{BezierHandles, HandleId, HandleType, pathseg_points, point_to_dvec2},
 	},
 };
+use core_types::bounds::RenderBoundingBox;
+use core_types::list::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item};
+use core_types::{Color, render_complexity::RenderComplexity};
+use dyn_any::DynAny;
+use glam::{DAffine2, DMat2, DVec2, Mat4, Vec4};
+use graphene_cache::{Cache, Lru};
+use kurbo::{BezPath, CubicBez, ParamCurve, PathSeg};
+use num_traits::Float;
+
+pub type MeshGradientCache = Cache<u64, Lru<4>>;
 
 // =============
 // Mesh Gradient

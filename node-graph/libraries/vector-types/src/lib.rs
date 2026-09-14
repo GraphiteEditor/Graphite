@@ -8,10 +8,9 @@ pub mod vector;
 
 // Re-export commonly used types at the crate root
 pub use core_types as gcore;
-pub use gradient::{
-	Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStop, MeshGradient, MeshGradientSurface,
-};
+pub use gradient::{Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStop};
 pub use math::QuadExt;
+pub use mesh_gradient::{MeshGradient, MeshGradientCache, MeshGradientSurface};
 pub use vector::Vector;
 pub use vector::reference_point::ReferencePoint;
 

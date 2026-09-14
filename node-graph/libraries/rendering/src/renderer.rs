@@ -43,7 +43,8 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vector_types::GradientInterpolation;
-use vector_types::gradient::{GradientSettings, GradientSpace, GradientSpread, MeshGradient};
+use vector_types::gradient::{GradientSettings, GradientSpace, GradientSpread};
+use vector_types::mesh_gradient::MeshGradient;
 use vello::*;
 
 /// A borrowed view of one item of ranked content: one index of a `List<T>`'s attributes, or a lone `Item<T>` reading its own envelope.
