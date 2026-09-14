@@ -45,7 +45,6 @@ impl Luminance for RGBA16F {
 	type LuminanceChannel = f32;
 	#[inline(always)]
 	fn luminance(&self) -> f32 {
-		// TODO: verify this is correct for sRGB
 		0.2126 * self.red() + 0.7152 * self.green() + 0.0722 * self.blue()
 	}
 }
@@ -541,37 +540,36 @@ impl Color {
 	}
 
 	/// Relative luminance using Rec.709 / sRGB-primary weights, computed on linear-light RGB.
-	// From https://stackoverflow.com/a/56678483/775283
 	#[inline(always)]
 	pub fn luminance_rec_709(&self) -> f32 {
+		// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
 		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
 	}
 
 	/// Luma using Rec.601 SDTV coefficients.
-	// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
 	#[inline(always)]
 	pub fn luminance_rec_601(&self) -> f32 {
+		// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
 		0.299 * self.red + 0.587 * self.green + 0.114 * self.blue
 	}
 
 	/// Luma using rounded Rec.601 coefficients (`0.3 / 0.59 / 0.11`), as used by some legacy image processing.
-	// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
 	#[inline(always)]
 	pub fn luminance_rec_601_rounded(&self) -> f32 {
+		// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
 		0.3 * self.red + 0.59 * self.green + 0.11 * self.blue
 	}
 
-	/// Perceptual lightness (CIE L*) of the Rec.709 luminance, normalized to 0..1.
-	// From https://stackoverflow.com/a/56678483/775283
+	/// Perceptual lightness (OkLab L) of the linear-light RGB, 0..1.
 	#[inline(always)]
-	pub fn luminance_perceptual(&self) -> f32 {
-		let luminance = self.luminance_rec_709();
+	pub fn lightness_oklab(&self) -> f32 {
+		// From https://bottosson.github.io/posts/oklab/#converting-from-linear-srgb-to-oklab
 
-		if luminance <= 0.008856 {
-			(luminance * 903.3) / 100.
-		} else {
-			(luminance.cbrt() * 116. - 16.) / 100.
-		}
+		let long = 0.41222147 * self.red + 0.53633254 * self.green + 0.05144599 * self.blue;
+		let medium = 0.2119035 * self.red + 0.6806995 * self.green + 0.10739696 * self.blue;
+		let short = 0.08830246 * self.red + 0.28171884 * self.green + 0.6299787 * self.blue;
+
+		0.21045426 * long.cbrt() + 0.7936178 * medium.cbrt() - 0.004072047 * short.cbrt()
 	}
 
 	/// Construct an opaque grayscale color where R = G = B = `luminance`.
@@ -1062,6 +1060,15 @@ impl Color {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn oklab_lightness_spans_black_to_white() {
+		assert!(Color::BLACK.lightness_oklab().abs() < 1e-4);
+		assert!((Color::WHITE.lightness_oklab() - 1.).abs() < 1e-4);
+		// A gray keeps L at the cube root of its linear value, since the three cone responses sum to it
+		assert!((Color::from_luminance(0.18).lightness_oklab() - 0.18_f32.cbrt()).abs() < 1e-3);
+	}
+
 	#[test]
 	fn hsl_roundtrip() {
 		for (red, green, blue) in [
