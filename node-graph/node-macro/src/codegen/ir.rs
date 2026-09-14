@@ -2,7 +2,9 @@
 // Fields below the `Node` root are read by the IR's own tests only.
 #![allow(dead_code)]
 
-use crate::codegen::classify::{Dialect, RoutingIo, bare_ident, context_param, dialect, flip_carrier, generic_assignment, generic_extractable, is_served, record_shape, routing_io, slot_value_type};
+use crate::codegen::classify::{
+	Dialect, RoutingIo, Tail, bare_ident, context_param, dialect, flip_carrier, generic_assignment, generic_extractable, is_served, record_shape, routing_io, slot_value_type,
+};
 use crate::codegen::entries::implementation_rows;
 use crate::parsing::{AttributeRead, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RecordWrites, RegularParsedField, record_writes};
 use proc_macro2::TokenStream as TokenStream2;
@@ -546,6 +548,33 @@ pub(crate) fn node_kind(node: &Node) -> NodeKind {
 	}
 }
 
+/// The tail that closes a node's `eval` body, read off what the node does to the
+/// record. The branch order is a priority, not a partition: an opaque kernel owns
+/// the frame and has already served it, so it shadows every question below; a node
+/// touching columns needs the record tail to write them, which shadows the carried
+/// forward a routing output would otherwise take. Only a node writing a fresh
+/// element and touching no columns flips.
+///
+/// Opaque shadowing column work would silently drop it, so
+/// [`crate::validation`] refuses that combination rather than letting it lower.
+pub(crate) fn record_tail(node: &Node) -> Tail {
+	if matches!(node.output.shape.element, Element::Opaque) {
+		Tail::Forward
+	} else if has_attr_io(node) {
+		Tail::Record
+	} else if is_routing(node) {
+		Tail::Forward
+	} else {
+		Tail::Flip
+	}
+}
+
+/// The column work an opaque kernel would swallow: it serves the frame itself, so
+/// writes, removes, and gathers the macro would otherwise emit never run.
+pub(crate) fn opaque_swallows_columns(node: &Node) -> bool {
+	matches!(node.output.shape.element, Element::Opaque) && (!node.output.shape.attrs.is_empty() || !node.output.removes.is_empty() || node.output.gathers)
+}
+
 /// Routing forwards an unbounded generic from a source whole; a bounded generic
 /// or one transformed into a different output type works on the element and flips.
 fn is_routing(node: &Node) -> bool {
@@ -814,12 +843,37 @@ mod tests {
 		}
 	}
 
+	fn tail_label(tail: Tail) -> &'static str {
+		match tail {
+			Tail::Forward => "forward",
+			Tail::Record => "record",
+			Tail::Flip => "flip",
+			Tail::SpawnAsyncFn => "spawn-async-fn",
+			Tail::SpawnFuture => "spawn-future",
+		}
+	}
+
+	/// The tail the kind mapping used to pick, frozen as the oracle
+	/// [`record_tail`] must reproduce now that it reads the node's record work.
+	fn tail_from_kind(node: &Node) -> Tail {
+		match node_kind(node) {
+			NodeKind::RecordIo => Tail::Record,
+			NodeKind::Flip => Tail::Flip,
+			NodeKind::Routing | NodeKind::Opaque => Tail::Forward,
+		}
+	}
+
+	fn assert_tail_matches_kind(node: &Node) {
+		assert_eq!(tail_label(record_tail(node)), tail_label(tail_from_kind(node)), "the derived tail must agree with the kind mapping");
+	}
+
 	fn assert_bridge(attr: TokenStream2, item: TokenStream2) -> Node {
 		let mut parsed = parse_node_fn(attr, item).unwrap();
 		parsed.replace_impl_trait_in_input();
 		analyze(&parsed).expect("representative resolves to a supported node");
 		let node = build(&parsed);
 		assert_eq!(facts_from_ir(&node), facts_from_signature(&parsed));
+		assert_tail_matches_kind(&node);
 		node
 	}
 
@@ -1360,6 +1414,58 @@ mod tests {
 		assert_eq!(subject.shape.depth, 1);
 		assert_eq!(node.output.shape.depth, 0);
 		assert_eq!(node.output.shape.depth as i8 - subject.shape.depth as i8, -1, "the reducer collapses one level");
+	}
+
+	fn node_of(item: TokenStream2) -> Node {
+		let mut parsed = parse_node_fn(quote!(category("")), item).unwrap();
+		parsed.replace_impl_trait_in_input();
+		build(&parsed)
+	}
+
+	#[test]
+	fn every_tail_is_read_off_the_node_the_kind_mapping_agreed_on() {
+		// One signature per branch of the priority, so a reordering shows up here
+		// rather than as a silently different tail.
+		let flip = node_of(quote!(
+			fn negate(_: impl Ctx, x: f64) -> f64 {
+				-x
+			}
+		));
+		let record = node_of(quote!(
+			fn set_opacity(_: impl Ctx, val: f64) -> (f64, Attr<Opacity>) {
+				(val, Attr(1.))
+			}
+		));
+		let routing = node_of(quote!(
+			fn pick<T>(ctx: impl Ctx + Copy, condition: bool, on: impl Node<Context<'_>, Output = T>, off: impl Node<Context<'_>, Output = T>) -> Result<T, Interrupt> {
+				if condition { on.eval(ctx) } else { off.eval(ctx) }
+			}
+		));
+		let opaque = node_of(quote!(
+			fn hold<'e, 'l>(ctx: impl Ctx + Copy, content: impl Node<Context<'_>>, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>> {
+				content.serve(ctx, slot)
+			}
+		));
+
+		for (name, node, expected) in [("flip", &flip, "flip"), ("record", &record, "record"), ("routing", &routing, "forward"), ("opaque", &opaque, "forward")] {
+			assert_eq!(tail_label(record_tail(node)), expected, "{name} takes the {expected} tail");
+			assert_tail_matches_kind(node);
+		}
+	}
+
+	#[test]
+	fn an_opaque_kernel_that_declares_a_write_is_caught() {
+		// The kernel serves its own frame, so the forward tail it takes emits no
+		// write: without the refusal the declared attribute silently vanishes.
+		let node = node_of(quote!(
+			fn hold<'e, 'l>(_: impl Ctx, content: impl Node<Context<'_>>, slot: FrameClaim<'e, 'l>) -> (Served<'e>, Attr<'e, Opacity>) {
+				todo!()
+			}
+		));
+		assert!(matches!(node.output.shape.element, Element::Opaque), "the served return is the opaque element");
+		assert_eq!(node.output.shape.attrs.len(), 1, "the write is recorded on the output");
+		assert_eq!(tail_label(record_tail(&node)), "forward", "the opaque branch still shadows the column work");
+		assert!(opaque_swallows_columns(&node), "so the shape is refused rather than lowered");
 	}
 
 	#[test]

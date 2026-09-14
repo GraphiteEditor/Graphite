@@ -16,6 +16,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_record_io,
 		validate_lazy_reads,
 		validate_lowering_supported,
+		validate_opaque_frame_ownership,
 	];
 
 	for validator in validators {
@@ -23,6 +24,21 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	}
 
 	Ok(())
+}
+
+/// A kernel returning `Served` has already closed the frame, so the forward tail
+/// it takes emits none of the column work the signature declares. Left to lower,
+/// the writes simply never happen and the node reports no error.
+fn validate_opaque_frame_ownership(parsed: &ParsedNodeFn) {
+	let node = crate::codegen::ir::build(parsed);
+	if crate::codegen::ir::opaque_swallows_columns(&node) {
+		emit_error!(
+			parsed.fn_name.span(),
+			"`{}` serves its own frame, so the attributes it declares would never be written",
+			parsed.fn_name;
+			help = "drop the attributes from the return type, or return the element instead of `Served` so the macro owns the frame"
+		);
+	}
 }
 
 /// A signature no lowering claims generates no `Node` impl at all, so the node

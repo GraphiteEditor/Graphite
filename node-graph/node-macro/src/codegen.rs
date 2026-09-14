@@ -1861,11 +1861,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	} else if future_kernel {
 		Tail::SpawnFuture
 	} else {
-		match ir::node_kind(&node) {
-			ir::NodeKind::RecordIo => Tail::Record,
-			ir::NodeKind::Flip => Tail::Flip,
-			ir::NodeKind::Routing | ir::NodeKind::Opaque => Tail::Forward,
-		}
+		ir::record_tail(&node)
 	};
 	// A carried tail claims the node's frame first, evaluates the carrier
 	// beyond it, and carries its fields; every exit closes the frame through
