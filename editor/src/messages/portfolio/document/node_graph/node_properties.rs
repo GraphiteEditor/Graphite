@@ -21,12 +21,13 @@ use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::{
-	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
-	SelectiveColorChoice,
+	AdjustmentChannel, BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
+	SelectiveColorChoice, TonalRange,
 };
 use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::StringCapitalization;
+use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{
@@ -290,6 +291,7 @@ pub(crate) fn property_from_type(
 						// STRUCT TYPES
 						// ============
 						Some(x) if id_is::<Font>(x) => font_widget(default_info),
+						Some(x) if id_is::<TransferCurve>(x) => transfer_curve_widget(default_info),
 						Some(x) if id_is::<Footprint>(x) => footprint_widget(default_info, &mut extra_widgets),
 						Some(x) if id_is::<Box<VectorModification>>(x) => vector_modification_widget(default_info).into(),
 						Some(x) if id_is::<Image<Color>>(x) => image_data_widget(default_info).into(),
@@ -317,6 +319,8 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
@@ -1178,6 +1182,44 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	LayoutGroup::row(widgets)
 }
 
+/// A [`TransferCurve`] input's row: the label, then the curve editor spanning the unit square when the input is not exposed.
+pub fn transfer_curve_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(NodeInput::Value { tagged_value, exposed: false }) = parameter_widgets_info.input() else {
+		return LayoutGroup::row(widgets);
+	};
+	let TaggedValue::TransferCurve(points) = &**tagged_value else { return LayoutGroup::row(widgets) };
+	let curve = TransferCurve::from(points.clone());
+
+	widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+	widgets.push(
+		TransferCurveInput::new(curve.points().iter().map(|point| (point.x, point.y)).collect())
+			.domain([0., 1.])
+			.range([0., 1.])
+			.clamp_to_range(true)
+			.allow_insert(true)
+			.allow_delete(true)
+			.on_update(parameter_widgets_info.update_value(move |update: &TransferCurveInputUpdate| {
+				let mut curve = curve.clone();
+				match *update {
+					TransferCurveInputUpdate::MovePoint { index, x, y } => curve.move_point(index as usize, DVec2::new(x, y)),
+					TransferCurveInputUpdate::InsertPoint { x, y } => {
+						curve.insert_point(DVec2::new(x, y));
+					}
+					// A transfer curve keeps at least its two end points
+					TransferCurveInputUpdate::DeletePoint { index } if curve.points().len() > 2 => curve.remove_point(index as usize),
+					TransferCurveInputUpdate::DeletePoint { .. } => {}
+				}
+				TaggedValue::TransferCurve(curve.points().to_vec())
+			}))
+			.on_commit(commit_value)
+			.widget_instance(),
+	);
+
+	LayoutGroup::row(widgets)
+}
+
 pub fn font_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
 	let (font_widgets, style_widgets) = font_inputs(parameter_widgets_info);
 	font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
@@ -1301,6 +1343,29 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	}
 
 	layout
+}
+
+pub(crate) fn transfer_curves_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::curves::*;
+
+	let mut channel_info = ParameterWidgetsInfo::new(node_id, ChannelInput, true, context);
+	channel_info.exposable = false;
+	let channel = enum_choice::<AdjustmentChannel>().for_socket(channel_info).property_row();
+
+	let channel_value = match get_document_node(node_id, context).ok().and_then(|document_node| document_node.input_value(ChannelInput).cloned()) {
+		Some(TaggedValue::AdjustmentChannel(channel)) => channel,
+		_ => AdjustmentChannel::Rgb,
+	};
+	let curve_parameter: ParameterRef = match channel_value {
+		AdjustmentChannel::Rgb => CurveInput.into(),
+		AdjustmentChannel::Red => RedCurveInput.into(),
+		AdjustmentChannel::Green => GreenCurveInput.into(),
+		AdjustmentChannel::Blue => BlueCurveInput.into(),
+		AdjustmentChannel::Alpha => AlphaCurveInput.into(),
+	};
+	let transfer_curve = transfer_curve_widget(ParameterWidgetsInfo::new(node_id, curve_parameter, true, context));
+
+	vec![channel, transfer_curve]
 }
 
 pub(crate) fn levels_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1595,15 +1660,8 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 
 	let params: &[(ParameterRef, Color, f64)] = &[(MinLuminanceInput.into(), Color::BLACK, 50.), (MaxLuminanceInput.into(), Color::WHITE, 100.)];
 
-	let mut layout = Vec::with_capacity(3);
+	let mut layout = Vec::with_capacity(2);
 	build_shared_spectrum_section(node_id, context, params, &mut layout);
-
-	let luminance_calc = {
-		let mut info = ParameterWidgetsInfo::new(node_id, LuminanceCalcInput, true, context);
-		info.exposable = false;
-		enum_choice::<LuminanceCalculation>().for_socket(info).property_row()
-	};
-	layout.push(luminance_calc);
 
 	layout
 }
@@ -1623,6 +1681,51 @@ pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesC
 		0.,
 		NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
 	)]
+}
+
+pub(crate) fn color_balance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::color_balance::*;
+
+	let mut tone_info = ParameterWidgetsInfo::new(node_id, ToneInput, true, context);
+	tone_info.exposable = false;
+	let tone = enum_choice::<TonalRange>().for_socket(tone_info).property_row();
+	let preserve_luminosity = bool_widget(ParameterWidgetsInfo::new(node_id, PreserveLuminosityInput, true, context), CheckboxInput::default());
+
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in color_balance_properties: {err}");
+			return Vec::new();
+		}
+	};
+	let tone_choice = match document_node.input_value(ToneInput) {
+		Some(TaggedValue::TonalRange(choice)) => *choice,
+		_ => {
+			warn!("Color Balance node properties panel could not be displayed.");
+			return vec![];
+		}
+	};
+
+	// Only the selected tone's three sliders are shown
+	let parameters: [ParameterRef; 3] = match tone_choice {
+		TonalRange::Shadows => [ShadowsCyanRedInput.into(), ShadowsMagentaGreenInput.into(), ShadowsYellowBlueInput.into()],
+		TonalRange::Midtones => [MidtonesCyanRedInput.into(), MidtonesMagentaGreenInput.into(), MidtonesYellowBlueInput.into()],
+		TonalRange::Highlights => [HighlightsCyanRedInput.into(), HighlightsMagentaGreenInput.into(), HighlightsYellowBlueInput.into()],
+	};
+	let tracks = [
+		Gradient::from(vec![Color::CYAN, Color::RED]),
+		Gradient::from(vec![Color::MAGENTA, Color::GREEN]),
+		Gradient::from(vec![Color::YELLOW, Color::BLUE]),
+	];
+	let number_input = NumberInput::default().mode_increment().unit("%").min(-100.).max(100.);
+
+	let mut layout = vec![tone];
+	for (parameter, track) in parameters.into_iter().zip(tracks) {
+		layout.push(spectrum_slider_row(node_id, context, parameter, track, Color::WHITE, -100., 100., 0., number_input.clone()));
+	}
+	layout.push(LayoutGroup::row(preserve_luminosity));
+
+	layout
 }
 
 pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

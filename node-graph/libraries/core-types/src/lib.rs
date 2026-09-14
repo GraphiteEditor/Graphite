@@ -13,6 +13,7 @@ pub mod ops;
 pub mod paint;
 pub mod registry;
 pub mod render_complexity;
+pub mod transfer_curve;
 pub mod transform;
 pub mod uuid;
 pub mod value;

@@ -5,6 +5,7 @@ use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
+use core_types::transfer_curve::TransferCurve;
 use core_types::transform::Footprint;
 use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
 use dyn_any::DynAny;
@@ -89,6 +90,8 @@ macro_rules! tagged_value {
 			DashPattern(Vec<f64>),
 			/// Stored compactly as a `Vec<f64>` of corner values, materializes as an `Item<BoxCorners>` at runtime via `to_dynany`/`to_any`.
 			BoxCorners(Vec<f64>),
+			/// Stored compactly as a `Vec<DVec2>` of control points, materializes as an `Item<TransferCurve>` at runtime via `to_dynany`/`to_any`.
+			TransferCurve(Vec<DVec2>),
 			/// Stored as the `GradientRamp` exchange struct (nested `{ stops: { color, position?, midpoint? } }`), materializing as an `Item<Gradient>` at runtime. Aliases recover legacy on-disk shapes.
 			/// (Old documents stored flat stops, a tuple list, or the ancient full `Gradient` struct under the legacy `"Gradient"` tag, all routed by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(alias = "Gradient", alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
@@ -138,6 +141,7 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => values.cache_hash(state),
 					Self::DashPattern(lengths) => lengths.cache_hash(state),
 					Self::BoxCorners(values) => values.cache_hash(state),
+					Self::TransferCurve(points) => points.cache_hash(state),
 					Self::GradientRamp(ramp) => ramp.cache_hash(state),
 					Self::MeshGradient(surface) => surface.cache_hash(state),
 					Self::Strokes(strokes) => strokes.cache_hash(state),
@@ -203,6 +207,7 @@ macro_rules! tagged_value {
 					}
 					Self::DashPattern(lengths) => Box::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Box::new(Item::new_from_element(BoxCorners::from(values))),
+					Self::TransferCurve(points) => Box::new(Item::new_from_element(TransferCurve::from(points))),
 					Self::GradientRamp(ramp) => Box::new(Item::<Gradient>::from(ramp)),
 					Self::MeshGradient(surface) => Box::new(Item::<MeshGradient>::from(surface)),
 					Self::Strokes(strokes) => {
@@ -271,6 +276,7 @@ macro_rules! tagged_value {
 					}
 					Self::DashPattern(lengths) => Arc::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Arc::new(Item::new_from_element(BoxCorners::from(values))),
+					Self::TransferCurve(points) => Arc::new(Item::new_from_element(TransferCurve::from(points))),
 					Self::GradientRamp(ramp) => Arc::new(Item::<Gradient>::from(ramp)),
 					Self::MeshGradient(surface) => Arc::new(Item::<MeshGradient>::from(surface)),
 					Self::Strokes(strokes) => {
@@ -305,6 +311,7 @@ macro_rules! tagged_value {
 					Self::F64Array(_) => list!(f64),
 					Self::DashPattern(_) => item!(DashPattern),
 					Self::BoxCorners(_) => item!(BoxCorners),
+					Self::TransferCurve(_) => item!(TransferCurve),
 					Self::GradientRamp(_) => item!(Gradient),
 					Self::MeshGradient(_) => item!(MeshGradient),
 					Self::Strokes(_) => list!(Stroke),
@@ -345,6 +352,8 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(downcast::<Item<DashPattern>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(downcast::<Item<BoxCorners>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<TransferCurve>() => Ok(TaggedValue::TransferCurve(downcast::<TransferCurve>(input).unwrap().points().to_vec())),
+					x if x == TypeId::of::<Item<TransferCurve>>() => Ok(TaggedValue::TransferCurve(downcast::<Item<TransferCurve>>(input).unwrap().into_element().points().to_vec())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*downcast::<Gradient>(input).unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*downcast::<Item<Gradient>>(input).unwrap()))),
 					x if x == TypeId::of::<MeshGradient>() => Ok(TaggedValue::MeshGradient(MeshGradientSurface::from(*downcast::<MeshGradient>(input).unwrap()))),
@@ -381,6 +390,8 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<Item<DashPattern>>().unwrap().element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<Item<BoxCorners>>().unwrap().element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<TransferCurve>() => Ok(TaggedValue::TransferCurve(input.downcast_ref::<TransferCurve>().unwrap().points().to_vec())),
+					x if x == TypeId::of::<Item<TransferCurve>>() => Ok(TaggedValue::TransferCurve(input.downcast_ref::<Item<TransferCurve>>().unwrap().element().points().to_vec())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Gradient>().unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Item<Gradient>>().unwrap()))),
 					x if x == TypeId::of::<MeshGradient>() => Ok(TaggedValue::MeshGradient(MeshGradientSurface::from(input.downcast_ref::<MeshGradient>().unwrap().clone()))),
@@ -413,6 +424,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Gradient>() { return Some(TaggedValue::GradientRamp(GradientRamp::default())) }
 						if name == std::any::type_name::<DashPattern>() { return Some(TaggedValue::DashPattern(Vec::new())) }
 						if name == std::any::type_name::<BoxCorners>() { return Some(TaggedValue::BoxCorners(Vec::new())) }
+						if name == std::any::type_name::<TransferCurve>() { return Some(TaggedValue::TransferCurve(TransferCurve::default().points().to_vec())) }
 						if name == std::any::type_name::<MeshGradient>() { return Some(TaggedValue::MeshGradient(MeshGradientSurface::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<Stroke>>() { return Some(TaggedValue::Strokes(Vec::new())) }
@@ -471,6 +483,7 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => format!("F64Array({values:?})"),
 					Self::DashPattern(lengths) => format!("DashPattern({lengths:?})"),
 					Self::BoxCorners(values) => format!("BoxCorners({values:?})"),
+					Self::TransferCurve(points) => format!("TransferCurve({points:?})"),
 					Self::GradientRamp(ramp) => format!("GradientRamp({ramp:?})"),
 					Self::MeshGradient(surface) => format!("MeshGradient({surface:?})"),
 					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
@@ -561,6 +574,8 @@ tagged_value! {
 	DomainWarpType(raster_nodes::adjustments::DomainWarpType),
 	RelativeAbsolute(raster_nodes::adjustments::RelativeAbsolute),
 	SelectiveColorChoice(raster_nodes::adjustments::SelectiveColorChoice),
+	TonalRange(raster_nodes::adjustments::TonalRange),
+	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	GridType(vector::misc::GridType),
 	ArcType(vector::misc::ArcType),
 	RowsOrColumns(vector::misc::RowsOrColumns),
@@ -616,21 +631,13 @@ impl TaggedValue {
 		}
 
 		fn to_color(input: &str) -> Option<Color> {
-			// String syntax (e.g. "000000ff")
-			if input.starts_with('"') && input.ends_with('"') {
-				let hex = input.trim().trim_matches('"').trim().trim_start_matches('#');
-				let color = SRGBA8::from_hex_str(hex).map(Color::from);
-				if color.is_none() {
-					log::error!("Invalid default value color string: {input}");
-				}
-				return color;
-			}
-
 			// Color constant syntax (e.g. Color::BLACK)
-			let mut choices = input.split("::");
-			let (first, second) = (choices.next()?.trim(), choices.next()?.trim());
-			if first == "Color" {
-				return Some(match second {
+			if let Some((first, second)) = input.split_once("::") {
+				if first.trim() != "Color" {
+					log::error!("Invalid default value color: {input}");
+					return None;
+				}
+				return Some(match second.trim() {
 					"BLACK" => Color::BLACK,
 					"WHITE" => Color::WHITE,
 					"RED" => Color::RED,
@@ -647,8 +654,13 @@ impl TaggedValue {
 				});
 			}
 
-			log::error!("Invalid default value color: {input}");
-			None
+			// Hex syntax (e.g. "000000ff"), which a string literal default reaches here without its quotes
+			let hex = input.trim().trim_matches('"').trim().trim_start_matches('#');
+			let color = SRGBA8::from_hex_str(hex).map(Color::from);
+			if color.is_none() {
+				log::error!("Invalid default value color string: {input}");
+			}
+			color
 		}
 
 		fn to_gradient(input: &str) -> Option<Gradient> {
@@ -1034,6 +1046,18 @@ mod paint_default_parsing {
 			TaggedValue::from_primitive_string("Color::BLACK", &item!(Graphic)),
 			black,
 			"an `Item<Graphic>` paint wire should resolve its color default"
+		);
+	}
+
+	/// A hex string default reaches the parser without the quotes its literal had in the node signature, and must still parse.
+	#[test]
+	fn hex_string_color_default_parses_without_quotes() {
+		let tint = Some(TaggedValue::Color(Color::from(SRGBA8::new(225, 211, 179, 255))));
+		assert_eq!(TaggedValue::from_primitive_string("e1d3b3", &item!(Color)), tint, "a bare hex default should resolve");
+		assert_eq!(
+			TaggedValue::from_primitive_string("\"#e1d3b3\"", &item!(Color)),
+			tint,
+			"a quoted, hash-prefixed hex default should resolve"
 		);
 	}
 

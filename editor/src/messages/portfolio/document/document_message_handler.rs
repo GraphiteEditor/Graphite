@@ -802,8 +802,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				parent_and_insert_index,
 				place_at_origin,
 			} => {
-				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
-
 				let layer_parent = self.new_layer_parent(true);
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 

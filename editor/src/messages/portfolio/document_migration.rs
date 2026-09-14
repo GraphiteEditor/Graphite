@@ -400,6 +400,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::SineInverseNode", "graphene_core::ops::SineInverseNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::math_nodes::string_to_color::IDENTIFIER,
+		aliases: &["math_nodes::HexToColorNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::math_nodes::subtract::IDENTIFIER,
 		aliases: &["graphene_math_nodes::SubtractNode", "graphene_core::ops::SubtractNode"],
 	},
@@ -535,7 +539,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_raster_nodes::adjustments::GammaCorrectionNode", "graphene_core::raster::adjustments::GammaCorrectionNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
+		node: graphene_std::raster_nodes::adjustments::gradient_map::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::gradient_map::GradientMapNode",
 			"graphene_raster_nodes::adjustments::GradientMapNode",
@@ -2135,7 +2139,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			_ => None,
 		});
 
-		if let Some(image) = image {
+		if let Some(mut image) = image {
+			// Legacy embedded pixel data is premultiplied, so restore straight alpha before encoding it
+			image.data.iter_mut().for_each(|pixel| *pixel = pixel.to_unassociated_alpha());
 			let hash = document.resources.embedded.store(Resource::new(image.to_png()));
 
 			let resource_id = ResourceId::new();
@@ -2186,6 +2192,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		for (i, input) in old_inputs.iter().enumerate() {
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i + 1), input.clone(), network_path);
 		}
+	}
+
+	// The Threshold node's luminance calculation input was retired
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::adjustments::threshold::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (i, input) in old_inputs.iter().enumerate().take(3) {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i), input.clone(), network_path);
+		}
+		inputs_count = 3;
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) && inputs_count == 2 {

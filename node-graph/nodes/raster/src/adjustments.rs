@@ -4,7 +4,11 @@ use crate::adjust::Adjust;
 use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
 #[cfg(feature = "std")]
-use core_types::list::Item;
+use core_types::list::{Item, List};
+#[cfg(feature = "std")]
+use core_types::transfer_curve::{TransferCurve, TransferCurveEvaluator};
+#[cfg(feature = "std")]
+use glam::DVec2;
 use glam::Vec3;
 use no_std_types::color::{Color, linear_to_srgb, srgb_to_linear};
 use no_std_types::context::Ctx;
@@ -21,10 +25,6 @@ use raster_types::{CPU, Raster};
 use vector_types::Gradient;
 
 // TODO: Implement the following:
-// Color Balance
-// Aims for interoperable compatibility with:
-// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27blnc%27%20%3D%20Color%20Balance
-//
 // Photo Filter
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27phfl%27%20%3D%20Photo%20Filter
@@ -144,12 +144,7 @@ fn make_opaque<T: Adjust<Color>>(
 	input: Item<T>,
 ) -> Item<T> {
 	let mut input = input;
-	input.element_mut().adjust(|color| {
-		if color.a() == 0. {
-			return color.with_alpha(1.);
-		}
-		Color::from_rgbaf32_unchecked(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.)
-	});
+	input.element_mut().adjust(|color| color.with_alpha(1.));
 	input
 }
 
@@ -268,6 +263,23 @@ fn brightness_contrast<T: Adjust<Color>>(
 	input
 }
 
+#[repr(u32)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[widget(Dropdown)]
+/// The channel whose settings are shown, with RGB adjusting all three color channels together.
+pub enum AdjustmentChannel {
+	#[default]
+	#[label("RGB")]
+	Rgb,
+	Red,
+	Green,
+	Blue,
+	Alpha,
+}
+
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels
 //
@@ -352,6 +364,59 @@ fn levels<T: Adjust<Color>>(
 		Color::from_gamma_srgb_channels(r, g, b, a)
 	});
 	image
+}
+
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27curv%27%20%3D%20Curves
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Curves%20file%20format
+//
+// Each curve is any number of (x, y) points on 0..1 joined by a natural cubic spline held flat beyond the outermost
+// points, and the per-channel curves apply before the composite one, like Levels. The value between those two stages
+// stays exact rather than rounding through an 8-bit table, which can leave results a level away from 8-bit pipelines.
+// Needs the heap for its curves, so it stays off the shader build for now.
+#[cfg(feature = "std")]
+#[node_macro::node(category("Raster: Adjustment"), properties("transfer_curves_properties"))]
+async fn curves<T: Adjust<Color> + Send>(
+	_: impl Ctx,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	curve: Item<TransferCurve>,
+	#[name("(Red) Curve")] red_curve: Item<TransferCurve>,
+	#[name("(Green) Curve")] green_curve: Item<TransferCurve>,
+	#[name("(Blue) Curve")] blue_curve: Item<TransferCurve>,
+	#[name("(Alpha) Curve")] alpha_curve: Item<TransferCurve>,
+	_channel: Item<AdjustmentChannel>,
+) -> Item<T> {
+	let mut image = image;
+	let composite = curve.into_element().evaluator();
+	let red = red_curve.into_element().evaluator();
+	let green = green_curve.into_element().evaluator();
+	let blue = blue_curve.into_element().evaluator();
+	let alpha = alpha_curve.into_element().evaluator();
+	let map = |channel: &TransferCurveEvaluator, value: f32| composite.evaluate(channel.evaluate(value as f64).clamp(0., 1.)).clamp(0., 1.) as f32;
+
+	image.element_mut().adjust(|color| {
+		// Curves math operates in gamma space
+		let [r, g, b, a] = color.to_gamma_srgb_channels();
+
+		// Alpha stands apart from the composite curve that the three color channels pass through
+		let a = alpha.evaluate(a as f64).clamp(0., 1.) as f32;
+
+		Color::from_gamma_srgb_channels(map(&red, r), map(&green, g), map(&blue, b), a)
+	});
+
+	image
+}
+
+/// Builds a transfer curve from a `Vec2[]` of control points, each mapping the input value at its x to the output value at its y. A smooth spline runs through them, holding the outermost points' values beyond them.
+#[cfg(feature = "std")]
+#[node_macro::node(category("Raster: Adjustment"), name("Points to Transfer Curve"))]
+fn points_to_transfer_curve(
+	_: impl Ctx,
+	/// The control points, in any order, with both coordinates on the 0 to 1 range.
+	points: List<DVec2>,
+) -> Item<TransferCurve> {
+	let points: Vec<DVec2> = points.iter_element_values().copied().collect();
+	Item::new_from_element(TransferCurve::new(points))
 }
 
 // Aims for interoperable compatibility with:
@@ -502,11 +567,7 @@ fn invert<T: Adjust<Color>>(
 	input: Item<T>,
 ) -> Item<T> {
 	let mut input = input;
-	input.element_mut().adjust(|color| {
-		// Invert in gamma space relative to alpha
-		let [r, g, b, a] = color.to_gamma_srgb_channels();
-		Color::from_gamma_srgb_channels(a - r, a - g, a - b, a)
-	});
+	input.element_mut().adjust(|color| color.map_gamma_rgb(|channel| 1. - channel));
 	input
 }
 
@@ -515,36 +576,97 @@ fn invert<T: Adjust<Color>>(
 #[node_macro::node(category("Raster: Adjustment"), properties("threshold_properties"), shader_node(PerPixelAdjust))]
 fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
 	#[default(50.)] min_luminance: Item<PercentageF32>,
 	#[default(100.)] max_luminance: Item<PercentageF32>,
-	luminance_calc: Item<LuminanceCalculation>,
 ) -> Item<T> {
 	let mut image = image;
-	let min_luminance = min_luminance.into_element();
-	let max_luminance = max_luminance.into_element();
-	let luminance_calc = luminance_calc.into_element();
+	let min_luminance = min_luminance.into_element() / 100.;
+	let max_luminance = max_luminance.into_element() / 100.;
 
 	image.element_mut().adjust(|color| {
-		let min_luminance = srgb_to_linear(min_luminance / 100.);
-		let max_luminance = srgb_to_linear(max_luminance / 100.);
+		// For PSD interop, we compare this 14-bit fixed-point Rec. 601 luma against the level unrounded
+		let [r, g, b, _] = color.to_gamma_srgb_channels();
+		let luminance = (4915. * r + 9667. * g + 1802. * b) / 16384.;
 
-		let luminance = match luminance_calc {
-			LuminanceCalculation::SRGB => color.luminance_rec_709(),
-			LuminanceCalculation::Perceptual => color.luminance_perceptual(),
-			LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
-			LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
-			LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
-		};
-
-		if luminance >= min_luminance && luminance <= max_luminance { Color::WHITE } else { Color::BLACK }
+		let output = if luminance >= min_luminance && luminance <= max_luminance { Color::WHITE } else { Color::BLACK };
+		output.with_alpha(color.a())
 	});
+	image
+}
+
+#[cfg(all(feature = "std", test))]
+mod threshold_tests {
+	use super::*;
+
+	/// Whether one gamma-space RGB value (0..255) ends up white at the given threshold level (0..255).
+	fn is_white(input: [f32; 3], level: f32) -> bool {
+		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
+		let result = threshold((), Item::new_from_element(pixel), (level / 255. * 100.).into(), 100_f32.into());
+		result.into_element().r() == 1.
+	}
+
+	#[test]
+	fn rec_601_luma_is_compared_as_an_8_bit_level() {
+		assert!(!is_white([200., 100., 40.], 128.));
+		assert!(!is_white([125., 130., 120.], 128.));
+		assert!(is_white([0., 255., 0.], 128.));
+		assert!(!is_white([255., 0., 0.], 128.));
+		assert!(is_white([128., 128., 128.], 128.));
+		assert!(!is_white([127., 127., 127.], 128.));
+		assert!(is_white([200., 100., 40.], 123.));
+		assert!(!is_white([200., 100., 40.], 124.));
+	}
+
+	#[test]
+	fn ties_follow_the_unrounded_fixed_point_luma() {
+		// Half-level lumas in 0.3/0.59/0.11 stay below the level either way, and the 14-bit weights pull a whole-level red or blue luma just under it
+		assert!(!is_white([189., 120., 0.], 128.));
+		assert!(!is_white([248., 90., 0.], 128.));
+		assert!(!is_white([135., 100., 0.], 100.));
+		assert!(!is_white([255., 0., 50.], 82.));
+		assert!(is_white([0., 200., 0.], 118.));
+	}
+}
+
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
+//
+// TODO: Full PSD interop needs a compatibility variant of `GradientInterpolation` with its own midpoint semantics, position warp,
+// TODO: and smoothing (a `gradient_smoothness` attribute), plus noise gradients, which we don't yet support.
+// TODO: Its axes differ from ours: its midpoint is always a knee in the position warp and its smoothness blends the curve over
+// TODO: that fixed warp, while each variant here picks warp and curve together, so neither end of the blend is Linear or Smooth.
+// TODO: Per channel in the gradient space (measured on gamma RGB):
+// TODO: - Position t maps to a parameter p by a piecewise-linear knee through (stop position, index) and (midpoint, index - 0.5).
+// TODO: - Linear lerps the interval's stop colors by the fraction of p. Smooth is a cubic Hermite over the stop index with tangent
+// TODO:   `(c[i + 1] - c[i - 1]) / 2`, the end stops repeated past the ends, so two stops give `0.5 p + 1.5 p^2 - p^3`.
+// TODO: - The ramp is `(1 - s) * linear + s * smooth` for smoothness s, clamped per interval to its two stop colors.
+#[cfg(feature = "std")]
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn gradient_map<T: Adjust<Color> + Send>(
+	_: impl Ctx,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>,
+	reverse: Item<bool>,
+) -> Item<T> {
+	let mut image = image;
+	let settings = vector_types::GradientSettings::from(&gradient);
+	let evaluator = gradient.into_element().evaluator(settings);
+	let reverse = reverse.into_element();
+
+	image.element_mut().adjust(|color| {
+		// The classic 0.3/0.59/0.11 luma of the gamma-encoded channels picks the position along the gradient
+		let [r, g, b, alpha] = color.to_gamma_srgb_channels();
+		let intensity = 0.3 * r + 0.59 * g + 0.11 * b;
+		let intensity = if reverse { 1. - intensity } else { intensity };
+
+		// The source alpha is kept and the gradient's own alpha stops are ignored
+		evaluator.evaluate(intensity as f64).with_alpha(alpha)
+	});
+
 	image
 }
 
@@ -1131,9 +1253,157 @@ fn exposure<T: Adjust<Color>>(
 	input
 }
 
+#[repr(u32)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[widget(Dropdown)]
+pub enum TonalRange {
+	Shadows,
+	#[default]
+	Midtones,
+	Highlights,
+}
+
+/// A Levels-style tone curve: input black and white points on a 0..255 scale and a gamma exponent. For gamma above 1 the
+/// power curve's slope is unbounded at black, so a cubic toe holds it to 2^gamma until past where that line meets the curve.
+#[derive(Debug, Clone, Copy)]
+struct LevelsCurve {
+	black: f32,
+	white: f32,
+	exponent: f32,
+	toe_end: f32,
+	toe_value: f32,
+	toe_slope_start: f32,
+	toe_slope_end: f32,
+}
+
+impl LevelsCurve {
+	fn new(black: i32, white: i32, gamma: f32) -> Self {
+		Self::from_points(black as f32, white as f32, gamma)
+	}
+
+	/// `gamma` is the Levels dialog value (pixel exponent 1/gamma).
+	fn from_points(black: f32, white: f32, gamma: f32) -> Self {
+		let gamma = gamma.max(0.01);
+		let black = black.min(white - 1.);
+		let exponent = 1. / gamma;
+
+		let mut curve = Self {
+			black,
+			white,
+			exponent,
+			toe_end: 0.,
+			toe_value: 0.,
+			toe_slope_start: 0.,
+			toe_slope_end: 0.,
+		};
+		if gamma > 1. {
+			let slope = 2_f32.powf(gamma);
+			let intersection = 255. * slope.powf(-1. / (1. - exponent));
+			// The cubic toe joins the power curve at twice the intersection
+			if intersection > 1e-3 {
+				let toe_end = 2. * intersection;
+				curve.toe_end = toe_end;
+				curve.toe_value = 255. * (toe_end / 255.).powf(exponent);
+				curve.toe_slope_start = slope;
+				curve.toe_slope_end = exponent * (toe_end / 255.).powf(exponent - 1.);
+			}
+		}
+		curve
+	}
+
+	/// Maps one gamma-space channel value in 0..1.
+	fn apply(&self, value: f32) -> f32 {
+		let t = ((value * 255. - self.black) * 255. / (self.white - self.black)).clamp(0., 255.);
+		let y = if t < self.toe_end {
+			let u = t / self.toe_end;
+			let hermite_start = u * u * u - 2. * u * u + u;
+			let hermite_end_value = 3. * u * u - 2. * u * u * u;
+			let hermite_end_slope = u * u * u - u * u;
+			hermite_start * self.toe_end * self.toe_slope_start + hermite_end_value * self.toe_value + hermite_end_slope * self.toe_end * self.toe_slope_end
+		} else {
+			255. * (t / 255.).powf(self.exponent)
+		};
+		y / 255.
+	}
+}
+
+/// One channel's Levels parameters from its own slider values, and (with preserve_luminosity) the slider
+/// extremes across all three channels. The halvings truncate toward zero, as PSD interop requires.
+fn color_balance_curve(s: i32, m: i32, h: i32, s_max: i32, m_max: i32, m_min: i32, h_min: i32, preserve_luminosity: bool) -> LevelsCurve {
+	let (black, white, tone) = if preserve_luminosity {
+		(s_max - s, 255 - (h - h_min), m - (m_max + m_min) / 2)
+	} else {
+		(0.max(-s), 255 - 0.max(h), (s + h) / 2 + m)
+	};
+
+	// Rounding the derived gamma to hundredths, the precision of a PSD Levels record, is needed for compatible results
+	let gamma = (2_f32.powf(tone as f32 / 100.) * 100.).round() / 100.;
+	LevelsCurve::new(black, white, gamma)
+}
+
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27blnc%27%20%3D%20Color%20Balance
+//
+// Every channel is a Levels curve whose black point, white point, and two-decimal gamma are derived from
+// the nine sliders, see `color_balance_curve`.
+#[node_macro::node(category("Raster: Adjustment"), properties("color_balance_properties"), shader_node(PerPixelAdjust))]
+fn color_balance<T: Adjust<Color>>(
+	_: impl Ctx,
+	#[implementations(Raster<CPU>, Color, Gradient)]
+	#[gpu_image]
+	image: Item<T>,
+
+	#[name("(Shadows) Cyan-Red")] shadows_cyan_red: Item<SignedPercentageF32>,
+	#[name("(Shadows) Magenta-Green")] shadows_magenta_green: Item<SignedPercentageF32>,
+	#[name("(Shadows) Yellow-Blue")] shadows_yellow_blue: Item<SignedPercentageF32>,
+
+	#[name("(Midtones) Cyan-Red")] midtones_cyan_red: Item<SignedPercentageF32>,
+	#[name("(Midtones) Magenta-Green")] midtones_magenta_green: Item<SignedPercentageF32>,
+	#[name("(Midtones) Yellow-Blue")] midtones_yellow_blue: Item<SignedPercentageF32>,
+
+	#[name("(Highlights) Cyan-Red")] highlights_cyan_red: Item<SignedPercentageF32>,
+	#[name("(Highlights) Magenta-Green")] highlights_magenta_green: Item<SignedPercentageF32>,
+	#[name("(Highlights) Yellow-Blue")] highlights_yellow_blue: Item<SignedPercentageF32>,
+
+	#[default(true)] preserve_luminosity: Item<bool>,
+
+	// Display-only property (not used within the node)
+	_tone: Item<TonalRange>,
+) -> Item<T> {
+	let mut image = image;
+	let preserve_luminosity = preserve_luminosity.into_element();
+
+	// The derivation below is integer arithmetic, so the sliders round to whole percentages first
+	let slider = |value: Item<SignedPercentageF32>| value.into_element().clamp(-100., 100.).round() as i32;
+	let (s_r, s_g, s_b) = (slider(shadows_cyan_red), slider(shadows_magenta_green), slider(shadows_yellow_blue));
+	let (m_r, m_g, m_b) = (slider(midtones_cyan_red), slider(midtones_magenta_green), slider(midtones_yellow_blue));
+	let (h_r, h_g, h_b) = (slider(highlights_cyan_red), slider(highlights_magenta_green), slider(highlights_yellow_blue));
+
+	let s_max = s_r.max(s_g).max(s_b);
+	let m_max = m_r.max(m_g).max(m_b);
+	let m_min = m_r.min(m_g).min(m_b);
+	let h_min = h_r.min(h_g).min(h_b);
+	let red = color_balance_curve(s_r, m_r, h_r, s_max, m_max, m_min, h_min, preserve_luminosity);
+	let green = color_balance_curve(s_g, m_g, h_g, s_max, m_max, m_min, h_min, preserve_luminosity);
+	let blue = color_balance_curve(s_b, m_b, h_b, s_max, m_max, m_min, h_min, preserve_luminosity);
+
+	image.element_mut().adjust(|color| {
+		// The curves operate on gamma-space channel values
+		let [r, g, b, a] = color.to_gamma_srgb_channels();
+		Color::from_gamma_srgb_channels(red.apply(r), green.apply(g), blue.apply(b), a)
+	});
+	image
+}
+
 #[cfg(feature = "std")]
 mod _graphene_hash_impls {
-	use super::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice};
+	use super::{
+		AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
+		SelectiveColorChoice, TonalRange,
+	};
 	graphene_hash::impl_via_hash!(
 		LuminanceCalculation,
 		RedGreenBlue,
@@ -1144,6 +1414,94 @@ mod _graphene_hash_impls {
 		CellularReturnType,
 		DomainWarpType,
 		RelativeAbsolute,
-		SelectiveColorChoice
+		SelectiveColorChoice,
+		AdjustmentChannel,
+		TonalRange,
 	);
+}
+
+#[cfg(all(feature = "std", test))]
+mod test {
+	use super::*;
+
+	#[test]
+	fn invert_flips_straight_channels_and_keeps_alpha() {
+		let color = Color::from_gamma_srgb_channels(1., 0.25, 0., 0.5);
+
+		let inverted = invert((), Item::new_from_element(color)).into_element();
+
+		let [r, g, b, a] = inverted.to_gamma_srgb_channels();
+		assert!((r - 0.).abs() < 1e-5 && (g - 0.75).abs() < 1e-5 && (b - 1.).abs() < 1e-5, "inverted channels were {r} {g} {b}");
+		assert!((a - 0.5).abs() < 1e-5, "alpha was {a}");
+	}
+}
+
+#[cfg(all(feature = "std", test))]
+mod color_balance_tests {
+	use super::*;
+
+	/// Runs Color Balance on one gamma-space RGB value (0..255) and returns the gamma-space result on the same scale.
+	fn run(input: [f32; 3], shadows: [f32; 3], midtones: [f32; 3], highlights: [f32; 3], preserve_luminosity: bool) -> [f32; 3] {
+		let color = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
+		let result = color_balance(
+			(),
+			Item::new_from_element(color),
+			shadows[0].into(),
+			shadows[1].into(),
+			shadows[2].into(),
+			midtones[0].into(),
+			midtones[1].into(),
+			midtones[2].into(),
+			highlights[0].into(),
+			highlights[1].into(),
+			highlights[2].into(),
+			preserve_luminosity.into(),
+			TonalRange::Midtones.into(),
+		);
+		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		[r * 255., g * 255., b * 255.]
+	}
+
+	/// Matched to within one 8-bit level.
+	fn assert_close(actual: [f32; 3], expected: [f32; 3]) {
+		for (actual, expected) in actual.iter().zip(expected) {
+			assert!((actual - expected).abs() <= 1., "expected {expected}, got {actual}");
+		}
+	}
+
+	#[test]
+	fn midtones_are_a_gamma_with_a_toe() {
+		let none = [0., 0., 0.];
+		assert_close(run([100., 100., 100.], none, [100., 0., 0.], none, false), [160., 100., 100.]);
+		assert_close(run([200., 200., 200.], none, [100., 0., 0.], none, false), [226., 200., 200.]);
+		assert_close(run([4., 4., 4.], none, [100., 0., 0.], none, false), [16., 4., 4.]);
+		assert_close(run([1., 1., 1.], none, [100., 0., 0.], none, false), [4., 1., 1.]);
+		assert_close(run([100., 100., 100.], none, [-100., 0., 0.], none, false), [39., 100., 100.]);
+	}
+
+	#[test]
+	fn shadows_and_highlights_move_the_end_points() {
+		let none = [0., 0., 0.];
+		assert_close(run([100., 100., 100.], [-100., 0., 0.], none, none, false), [0., 100., 100.]);
+		assert_close(run([150., 150., 150.], [-100., 0., 0.], none, none, false), [52., 150., 150.]);
+		assert_close(run([200., 200., 200.], [-100., 0., 0.], none, none, false), [138., 200., 200.]);
+		assert_close(run([100., 100., 100.], none, none, [100., 0., 0.], false), [187., 100., 100.]);
+		assert_close(run([155., 155., 155.], none, none, [100., 0., 0.], false), [255., 155., 155.]);
+	}
+
+	#[test]
+	fn preserve_luminosity_makes_sliders_relative() {
+		let none = [0., 0., 0.];
+		assert_close(run([90., 90., 90.], none, [-100., 0., 0.], none, true), [59., 122., 122.]);
+		assert_close(run([90., 90., 90.], [50., 0., 0.], none, none, true), [90., 50., 50.]);
+		assert_close(run([120., 120., 120.], none, none, [-100., 0., 0.], true), [120., 197., 197.]);
+		assert_close(run([90., 90., 90.], [100., 100., 100.], [100., 100., 100.], [100., 100., 100.], true), [90., 90., 90.]);
+	}
+
+	#[test]
+	fn combined_tones_use_integer_arithmetic() {
+		// Red: black 39, white 235, gamma 1.09; green: gamma 0.91; blue: white 210, gamma 1.13
+		let result = run([128., 128., 128.], [-39., 6., 42.], [21., 0., -25.], [20., -35., 45.], false);
+		assert_close(result, [124., 120., 164.]);
+	}
 }
