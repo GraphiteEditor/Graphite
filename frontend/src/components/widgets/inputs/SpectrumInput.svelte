@@ -26,6 +26,7 @@
 	export let allowDelete = true;
 	export let allowReorder = true;
 	export let narrow = false;
+	export let rangeSlider = false;
 	export let disabled = false;
 
 	// Reference to the marker track DOM element so we can convert pointer coordinates to a 0..1 position along the track.
@@ -39,8 +40,8 @@
 	// Active marker selection at drag start, restored if the drag is cancelled.
 	let activeMarkerIndexRestore: number | undefined = undefined;
 	let activeMarkerIsMidpointRestore = false;
-	// Tracks whether a midpoint drag has actually moved by at least one frame, to distinguish click-to-select from drag.
-	let midpointDragged = false;
+	// Whether the current or last drag moved anything, so the double-click a drag's second press can produce resets nothing.
+	let dragMoved = false;
 	// Mirrors whether Alt is currently held during the drag (the desired state).
 	let duplicateRequested = false;
 	// Mirrors whether a frozen copy currently exists in the gradient (the materialized state).
@@ -72,19 +73,28 @@
 		return Math.max(lower, Math.min(upper, position));
 	}
 
+	// The nearest of the markers drawn on the track, skipping any outside 0..1 as the template does
+	function nearestMarkerIndex(position: number): number | undefined {
+		let nearest: number | undefined = undefined;
+		let nearestDistance = Number.POSITIVE_INFINITY;
+
+		markers.forEach((marker, index) => {
+			if (marker.position < 0 || marker.position > 1) return;
+			const distance = Math.abs(marker.position - position);
+			if (distance < nearestDistance) {
+				nearestDistance = distance;
+				nearest = index;
+			}
+		});
+
+		return nearest;
+	}
+
 	function markerPointerDown(e: PointerEvent, index: number) {
 		if (disabled) return;
 
 		if (e.button === BUTTON_LEFT) {
-			activeMarkerIndexRestore = activeMarkerIndex;
-			activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
-			dragRestorePosition = markers[index].position;
-			dragInsertedMarker = false;
-			// Only offer duplication where new stops are allowed. Don't materialize yet: wait for the first move so an Alt-click without a drag leaves no stray copy.
-			duplicateRequested = allowInsert && e.altKey;
-			duplicateActive = false;
-			setActive(index, false);
-			addEvents();
+			beginMarkerDrag(e, index);
 			return;
 		}
 
@@ -93,11 +103,30 @@
 		}
 	}
 
+	function beginMarkerDrag(e: PointerEvent, index: number) {
+		activeMarkerIndexRestore = activeMarkerIndex;
+		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
+		dragRestorePosition = markers[index].position;
+		dragInsertedMarker = false;
+		dragMoved = false;
+		// Only offer duplication where new stops are allowed. Don't materialize yet: wait for the first move so an Alt-click without a drag leaves no stray copy.
+		duplicateRequested = allowInsert && e.altKey;
+		duplicateActive = false;
+		setActive(index, false);
+		addEvents();
+	}
+
+	// Picks up the marker at `index` and carries it to the pointer
+	function pickUpMarker(e: PointerEvent, index: number) {
+		beginMarkerDrag(e, index);
+		moveActiveMarker(e);
+	}
+
 	function midpointPointerDown(e: PointerEvent, index: number) {
 		if (disabled) return;
 		if (e.button !== BUTTON_LEFT) return;
 
-		midpointDragged = false;
+		dragMoved = false;
 		activeMarkerIndexRestore = activeMarkerIndex;
 		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
 		dragRestorePosition = markers[index].midpoint;
@@ -106,22 +135,28 @@
 	}
 
 	function midpointDoubleClick(index: number) {
-		if (disabled || midpointDragged) return;
+		if (disabled || dragMoved) return;
 		emit({ ResetMidpoint: { index } });
 	}
 
 	function markerDoubleClick(index: number) {
-		if (disabled) return;
+		if (disabled || dragMoved) return;
 		emit({ ResetMarker: { index } });
 	}
 
 	function trackPointerDown(e: PointerEvent) {
 		if (disabled) return;
 		if (e.button !== BUTTON_LEFT) return;
-		if (!allowInsert) return;
 
 		const position = pointerPosition(e);
 		if (position === undefined) return;
+
+		// Where nothing can be inserted, the click picks up the nearest marker instead
+		if (!allowInsert) {
+			const index = nearestMarkerIndex(position);
+			if (index !== undefined) pickUpMarker(e, index);
+			return;
+		}
 
 		// Compute the index this marker will land at after Rust inserts it (matches Rust's `insert_stop` logic).
 		let insertIndex = markers.findIndex((m) => m.position > position);
@@ -133,6 +168,7 @@
 		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
 		dragRestorePosition = position;
 		dragInsertedMarker = true;
+		dragMoved = false;
 		// A stop being created by this drag can't be duplicated; duplication is only for dragging an existing stop.
 		duplicateRequested = false;
 		duplicateActive = false;
@@ -140,6 +176,12 @@
 		activeMarkerIndex = insertIndex;
 		activeMarkerIsMidpoint = false;
 		addEvents();
+	}
+
+	// The lane the handles hang in picks up the nearest marker like the strip does, except where the click landed on a marker itself
+	function markerTrackPointerDown(e: PointerEvent) {
+		if (e.target !== e.currentTarget) return;
+		trackPointerDown(e);
 	}
 
 	function deleteShortcut(e: KeyboardEvent) {
@@ -231,6 +273,7 @@
 		if (position === undefined) return;
 		if (!allowReorder) position = clampToNeighbors(activeMarkerIndex, position);
 
+		dragMoved = true;
 		if (!dragInsertedMarker) dispatch("dragging", true);
 		emit({ MoveMarker: { index: activeMarkerIndex, position } });
 	}
@@ -265,7 +308,7 @@
 		}
 		const local = absolute < deadZoneSplit ? absolute + 1 - left : absolute - left;
 
-		midpointDragged = true;
+		dragMoved = true;
 		dispatch("dragging", true);
 		emit({ MoveMidpoint: { index: activeMarkerIndex, position: local / range } });
 	}
@@ -303,7 +346,6 @@
 		dragInsertedMarker = false;
 		activeMarkerIndexRestore = undefined;
 		activeMarkerIsMidpointRestore = false;
-		midpointDragged = false;
 		duplicateRequested = false;
 		duplicateActive = false;
 		skipNextMove = false;
@@ -395,22 +437,24 @@
 
 <LayoutCol
 	class="spectrum-input"
-	classes={{ narrow, disabled }}
+	classes={{ narrow, disabled, "range-slider": rangeSlider }}
 	styles={{
 		"--gradient-start": trackStartCSS,
 		"--gradient-end": trackEndCSS,
 	}}
 >
 	<LayoutRow class="gradient-strip" on:pointerdown={trackPointerDown}>
-		<!-- An SVG gradient interpolates its stops with straight alpha, matching the renderers, where a CSS gradient would premultiply -->
-		<svg class="strip-gradient" xmlns="http://www.w3.org/2000/svg">
-			<linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
-				{#each trackSamples as sample}
-					<stop offset={sample.position} stop-color={sample.color} stop-opacity={sample.alpha} />
-				{/each}
-			</linearGradient>
-			<rect width="100%" height="100%" fill={`url(#${gradientId})`} />
-		</svg>
+		{#if !rangeSlider}
+			<!-- An SVG gradient interpolates its stops with straight alpha, matching the renderers, where a CSS gradient would premultiply -->
+			<svg class="strip-gradient" xmlns="http://www.w3.org/2000/svg">
+				<linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+					{#each trackSamples as sample}
+						<stop offset={sample.position} stop-color={sample.color} stop-opacity={sample.alpha} />
+					{/each}
+				</linearGradient>
+				<rect width="100%" height="100%" fill={`url(#${gradientId})`} />
+			</svg>
+		{/if}
 	</LayoutRow>
 	<LayoutRow class="midpoint-track">
 		{#each midpointPositions as midpoint, index}
@@ -430,7 +474,7 @@
 			{/if}
 		{/each}
 	</LayoutRow>
-	<LayoutRow class="marker-track" bind:this={markerTrackElement}>
+	<LayoutRow class="marker-track" classes={{ interactive: !allowInsert }} bind:this={markerTrackElement} on:pointerdown={markerTrackPointerDown}>
 		{#each markers as marker, index}
 			{#if marker.position >= 0 && marker.position <= 1}
 				<svg
@@ -496,12 +540,30 @@
 			height: 8px;
 		}
 
+		// A flat 4px track at the row's center, with the handle raised 4px further into it than the gradient's
+		&.range-slider {
+			.gradient-strip {
+				margin-top: 10px;
+				height: 4px;
+				background: var(--color-5-dullgray);
+			}
+
+			.marker-track {
+				margin-top: calc(24px - 14px - 12px - 2px);
+			}
+
+			&.disabled .gradient-strip {
+				background: var(--color-4-dimgray);
+			}
+		}
+
+		// The lane overlaps the strip's lower half, so the whole widget carries the hover rather than the strip alone
 		&.disabled .gradient-strip {
 			transition: opacity 0.1s;
+		}
 
-			&:hover {
-				opacity: 0.5;
-			}
+		&.disabled:hover .gradient-strip {
+			opacity: 0.5;
 		}
 
 		.midpoint-track {
@@ -541,8 +603,14 @@
 			margin-top: calc(24px - 16px - 12px);
 			margin-left: var(--marker-half-width);
 			width: calc(100% - 2 * var(--marker-half-width));
+			height: 12px;
 			position: relative;
 			pointer-events: none;
+
+			// Only where clicks pick up the nearest marker, so insertion keeps the strip's overlapped bottom edge
+			&.interactive {
+				pointer-events: auto;
+			}
 
 			.marker {
 				position: absolute;

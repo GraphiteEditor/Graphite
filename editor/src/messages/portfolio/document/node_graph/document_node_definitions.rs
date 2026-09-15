@@ -1,7 +1,7 @@
 mod document_node_derive;
 
 use super::node_properties::choice::enum_choice;
-use super::node_properties::{self, ParameterWidgetsInfo};
+use super::node_properties::{self, ParameterWidgetsInfo, SliderRange};
 use super::utility_types::{FrontendNodeType, InputTypeConstraint};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
@@ -1073,19 +1073,26 @@ fn static_input_properties() -> InputProperties {
 				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
+				None,
 			))])
 		}),
 	);
 	map.insert(
-		// Like `optional_f64`, but the number input is configured as a percentage with a 0-100 range.
+		// Like `optional_f64`, but with a 0-100% range slider beside the number input, double-click restoring the full 100%.
 		// As with `optional_f64`, the bool input must be at the input index directly before the f64 input.
 		"optional_percentage".to_string(),
 		Box::new(|node_id, index, context| {
-			let number_input = NumberInput::default().percentage().min(0.).max(100.);
+			let number_input = NumberInput::default().mode_increment().unit("%").min(0.).max(100.);
+			let slider = SliderRange {
+				min: 0.,
+				max: 100.,
+				default: Some(100.),
+			};
 			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
+				Some(slider),
 			))])
 		}),
 	);
@@ -1241,13 +1248,13 @@ fn static_input_properties() -> InputProperties {
 		"noise_properties_fractal_weighted_strength".to_string(),
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let fractal_weighted_strength = node_properties::number_widget(
+			let fractal_weighted_strength = node_properties::range_slider_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
-					.mode_range()
 					.min(0.)
-					.max(1.) // Defined for the 0-1 range
+					.max(1.)
 					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				SliderRange { min: 0., max: 1., default: Some(0.) },
 			);
 			Ok(vec![fractal_weighted_strength.into()])
 		}),
