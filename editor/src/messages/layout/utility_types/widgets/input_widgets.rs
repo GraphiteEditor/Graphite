@@ -668,9 +668,13 @@ pub struct SpectrumInput {
 	/// Whether right-click or pressing Delete removes a marker. The handler still has the final say on whether the deletion goes through (e.g., enforcing a minimum count).
 	#[serde(rename = "allowDelete")]
 	pub allow_delete: bool,
-	/// Whether dragging a marker past another reorders them. If false, the dragged marker is clamped between its neighbors.
+	/// Whether dragging a marker past another reorders them, which also needs `allow_select`. Otherwise the dragged marker is clamped between its neighbors.
 	#[serde(rename = "allowReorder")]
 	pub allow_reorder: bool,
+	/// Whether clicking a marker selects it, keeping it highlighted and reported as the active marker until another is chosen,
+	/// as a gradient editor needs for the stop being edited. Otherwise the highlight only follows the pointer and the drag.
+	#[serde(rename = "allowSelect")]
+	pub allow_select: bool,
 	/// Compact mode: 8px track height with 8px top padding, for use in rows alongside other widgets.
 	pub narrow: bool,
 	/// Plain range-slider mode, for a number beside its number input: a flat 4px track is drawn in place of the gradient, so `track` is never shown.
