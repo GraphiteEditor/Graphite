@@ -15,7 +15,6 @@ use glam::{DAffine2, DVec2};
 use graphene_std::ATTR_TRANSFORM;
 use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
-use graphene_std::subpath::{self, Subpath};
 use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
@@ -404,14 +403,14 @@ impl OverlayContext {
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.internal().fill_path(subpaths, transform, color);
+	pub fn fill_path(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
+		self.internal().fill_path(bezpath, transform, color);
 	}
 
 	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
 	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.internal().fill_path_pattern(subpaths, transform, color);
+	pub fn fill_path_pattern(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
+		self.internal().fill_path_pattern(bezpath, transform, color);
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
@@ -978,49 +977,25 @@ impl OverlayContextInternal {
 		path.push(bezier.as_path_el());
 	}
 
-	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) -> BezPath {
+	fn push_path(&mut self, bezpath: &BezPath, transform: DAffine2) -> BezPath {
 		let mut path = BezPath::new();
 
-		for subpath in subpaths {
-			let subpath = subpath.borrow();
-			let mut curves = subpath.iter().peekable();
+		let snap_start = |context: &Self, point: kurbo::Point| {
+			let snapped = context.snap_to_physical_pixel(transform.transform_point2(point_to_dvec2(point)));
+			kurbo::Point::new(snapped.x, snapped.y)
+		};
+		let snap_center = |context: &Self, point: kurbo::Point| {
+			let snapped = context.snap_to_physical_pixel_center(transform.transform_point2(point_to_dvec2(point)));
+			kurbo::Point::new(snapped.x, snapped.y)
+		};
 
-			let Some(first) = curves.peek() else {
-				continue;
-			};
-
-			let start_point = transform.transform_point2(point_to_dvec2(first.start()));
-			let start_point = self.snap_to_physical_pixel(start_point);
-			path.move_to(kurbo::Point::new(start_point.x, start_point.y));
-
-			for curve in curves {
-				match curve {
-					PathSeg::Line(line) => {
-						let a = transform.transform_point2(point_to_dvec2(line.p1));
-						let a = self.snap_to_physical_pixel_center(a);
-						path.line_to(kurbo::Point::new(a.x, a.y));
-					}
-					PathSeg::Quad(quad_bez) => {
-						let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
-						let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
-						let a = self.snap_to_physical_pixel_center(a);
-						let b = self.snap_to_physical_pixel_center(b);
-						path.quad_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y));
-					}
-					PathSeg::Cubic(cubic_bez) => {
-						let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
-						let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
-						let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
-						let a = self.snap_to_physical_pixel_center(a);
-						let b = self.snap_to_physical_pixel_center(b);
-						let c = self.snap_to_physical_pixel_center(c);
-						path.curve_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y), kurbo::Point::new(c.x, c.y));
-					}
-				}
-			}
-
-			if subpath.closed() {
-				path.close_path();
+		for element in bezpath.elements() {
+			match *element {
+				kurbo::PathEl::MoveTo(point) => path.move_to(snap_start(self, point)),
+				kurbo::PathEl::LineTo(point) => path.line_to(snap_center(self, point)),
+				kurbo::PathEl::QuadTo(a, b) => path.quad_to(snap_center(self, a), snap_center(self, b)),
+				kurbo::PathEl::CurveTo(a, b, c) => path.curve_to(snap_center(self, a), snap_center(self, b), snap_center(self, c)),
+				kurbo::PathEl::ClosePath => path.close_path(),
 			}
 		}
 
@@ -1029,20 +1004,19 @@ impl OverlayContextInternal {
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
-		let mut subpaths: Vec<subpath::Subpath<PointId>> = vec![];
+		let mut combined = BezPath::new();
 
 		for target_type in target_types {
 			match target_type.borrow() {
 				ClickTargetType::FreePoint(point) => {
 					self.manipulator_anchor(transform.transform_point2(point.position), false, None);
 				}
-				ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
-				ClickTargetType::CompoundPath(compound) => subpaths.extend(compound.iter().cloned()),
+				ClickTargetType::Path(bezpath) => combined.extend(bezpath.elements().iter().copied()),
 			}
 		}
 
-		if !subpaths.is_empty() {
-			let path = self.push_path(subpaths.iter(), transform);
+		if !combined.is_empty() {
+			let path = self.push_path(&combined, transform);
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 
 			self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(color), None, &path);
@@ -1051,15 +1025,15 @@ impl OverlayContextInternal {
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
-	fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		let path = self.push_path(subpaths, transform);
+	fn fill_path(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
+		let path = self.push_path(bezpath, transform);
 
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
 	}
 
 	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
 	/// Used by the fill tool to show the area to be filled.
-	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+	fn fill_path_pattern(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
 		const PATTERN_WIDTH: u32 = 4;
 		const PATTERN_HEIGHT: u32 = 4;
 
@@ -1096,7 +1070,7 @@ impl OverlayContextInternal {
 			},
 		};
 
-		let path = self.push_path(subpaths, transform);
+		let path = self.push_path(bezpath, transform);
 		let brush = peniko::Brush::Image(image);
 
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);

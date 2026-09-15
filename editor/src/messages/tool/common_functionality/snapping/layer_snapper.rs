@@ -13,7 +13,7 @@ use graphene_std::vector::algorithms::bezpath_algorithms::{pathseg_normals_to_po
 use graphene_std::vector::algorithms::intersection::filtered_segment_intersections;
 use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::misc::point_to_dvec2;
-use kurbo::{Affine, ParamCurve, PathSeg};
+use kurbo::{Affine, BezPath, ParamCurve, PathEl, PathSeg};
 
 #[derive(Clone, Debug, Default)]
 pub struct LayerSnapper {
@@ -74,26 +74,20 @@ impl LayerSnapper {
 			}
 
 			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::IntersectionPoint)) || document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AlongPath)) {
-				let mut push_candidates = |subpath: &Subpath<PointId>, transform: DAffine2| {
-					for (start_index, curve) in subpath.iter().enumerate() {
-						let document_curve = Affine::new(transform.to_cols_array()) * curve;
-						let start = subpath.manipulator_groups()[start_index].id;
-						if snap_data.ignore_manipulator(layer, start) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(start_index + 1) % subpath.len()].id) {
-							continue;
+				// Post-solidified outline (the layer's recorded geometry). Its anchors carry no point IDs,
+				// so while this layer's manipulators are being dragged the whole outline is skipped instead of filtering per manipulator.
+				if !snap_data.ignore_bounds(layer) {
+					for bezpath in document.metadata().layer_outline(layer) {
+						for curve in bezpath.segments() {
+							self.paths_to_snap.push(SnapCandidatePath {
+								document_curve: Affine::new(transform.to_cols_array()) * curve,
+								layer,
+								start: PointId::new(),
+								target: SnapTarget::Path(PathSnapTarget::AlongPath),
+								bounds: None,
+							});
 						}
-						self.paths_to_snap.push(SnapCandidatePath {
-							document_curve,
-							layer,
-							start,
-							target: SnapTarget::Path(PathSnapTarget::AlongPath),
-							bounds: None,
-						});
 					}
-				};
-
-				// Post-solidified outline (the layer's recorded geometry)
-				for subpath in document.metadata().layer_outline(layer) {
-					push_candidates(subpath, transform);
 				}
 
 				// Pre-solidified centerline (the Path tool's view) when an upstream Path node exists,
@@ -102,7 +96,20 @@ impl LayerSnapper {
 					let path_aware_transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 					if path_aware_transform.is_finite() {
 						for subpath in vector.stroke_bezier_paths() {
-							push_candidates(&subpath, path_aware_transform);
+							for (start_index, curve) in subpath.iter().enumerate() {
+								let start = subpath.manipulator_groups()[start_index].id;
+								let end = subpath.manipulator_groups()[(start_index + 1) % subpath.len()].id;
+								if snap_data.ignore_manipulator(layer, start) || snap_data.ignore_manipulator(layer, end) {
+									continue;
+								}
+								self.paths_to_snap.push(SnapCandidatePath {
+									document_curve: Affine::new(path_aware_transform.to_cols_array()) * curve,
+									layer,
+									start,
+									target: SnapTarget::Path(PathSnapTarget::AlongPath),
+									bounds: None,
+								});
+							}
 						}
 					}
 				}
@@ -608,6 +615,96 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 	}
 }
 
+fn bezpath_anchor_snap_points(layer: LayerNodeIdentifier, bezpath: &BezPath, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>, to_document: DAffine2) {
+	let document = snap_data.document;
+
+	// Split the path into contours so endpoint and wraparound handling stays per-subpath
+	let mut contours = Vec::new();
+	let mut current = BezPath::new();
+	for element in bezpath.elements() {
+		if matches!(element, PathEl::MoveTo(_)) && !current.elements().is_empty() {
+			contours.push(std::mem::take(&mut current));
+		}
+		current.push(*element);
+	}
+	if !current.elements().is_empty() {
+		contours.push(current);
+	}
+
+	for contour in contours {
+		let closed = matches!(contour.elements().last(), Some(PathEl::ClosePath));
+		let segments: Vec<PathSeg> = contour.segments().collect();
+		if segments.is_empty() {
+			continue;
+		}
+
+		// Midpoints of linear segments
+		if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::LineMidpoint)) {
+			for &segment in &segments {
+				if points.len() >= crate::consts::MAX_LAYER_SNAP_POINTS {
+					return;
+				}
+
+				let curve = pathseg_points(segment);
+				let in_handle = curve.p1.map(|handle| handle - curve.p0).filter(handle_not_under(to_document));
+				let out_handle = curve.p2.map(|handle| handle - curve.p3).filter(handle_not_under(to_document));
+				if in_handle.is_none() && out_handle.is_none() {
+					points.push(SnapCandidatePoint::new(
+						to_document.transform_point2(curve.p0 * 0.5 + curve.p3 * 0.5),
+						SnapSource::Path(PathSnapSource::LineMidpoint),
+						SnapTarget::Path(PathSnapTarget::LineMidpoint),
+						Some(layer),
+					));
+				}
+			}
+		}
+
+		// Anchors
+		let anchor_count = segments.len() + if closed { 0 } else { 1 };
+		for index in 0..anchor_count {
+			if points.len() >= crate::consts::MAX_LAYER_SNAP_POINTS {
+				return;
+			}
+
+			let anchor = if index < segments.len() {
+				pathseg_points(segments[index]).p0
+			} else {
+				pathseg_points(segments[index - 1]).p3
+			};
+
+			let in_handle = if index > 0 {
+				pathseg_points(segments[index - 1]).p2
+			} else if closed {
+				pathseg_points(segments[segments.len() - 1]).p2
+			} else {
+				None
+			};
+			let out_handle = if index < segments.len() { pathseg_points(segments[index]).p1 } else { None };
+
+			let handle_in = in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
+			let handle_out = out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));
+			let anchor_is_endpoint = !closed && (index == 0 || index == anchor_count - 1);
+			let colinear = !anchor_is_endpoint && handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_to(handle_out) < 1e-5));
+
+			if colinear && document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AnchorPointWithColinearHandles)) {
+				points.push(SnapCandidatePoint::new(
+					to_document.transform_point2(anchor),
+					SnapSource::Path(PathSnapSource::AnchorPointWithColinearHandles),
+					SnapTarget::Path(PathSnapTarget::AnchorPointWithColinearHandles),
+					Some(layer),
+				));
+			} else if !colinear && document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AnchorPointWithFreeHandles)) {
+				points.push(SnapCandidatePoint::new(
+					to_document.transform_point2(anchor),
+					SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles),
+					SnapTarget::Path(PathSnapTarget::AnchorPointWithFreeHandles),
+					Some(layer),
+				));
+			}
+		}
+	}
+}
+
 pub fn are_manipulator_handles_colinear(manipulators: &ManipulatorGroup<PointId>, to_document: DAffine2, subpath: &Subpath<PointId>, index: usize) -> bool {
 	let anchor = manipulators.anchor;
 	let handle_in = manipulators.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
@@ -633,11 +730,11 @@ pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, p
 			get_layer_snap_points(child, snap_data, points);
 		}
 	} else {
-		// Post-solidified outline (the layer's recorded geometry)
-		if document.metadata().layer_outline(layer).next().is_some() {
+		// Post-solidified outline (the layer's recorded geometry), skipped wholesale while this layer's manipulators are being dragged since the outline carries no point IDs
+		if !snap_data.ignore_bounds(layer) {
 			let to_document = document.metadata().transform_to_document(layer);
-			for subpath in document.metadata().layer_outline(layer) {
-				subpath_anchor_snap_points(layer, subpath, snap_data, points, to_document);
+			for bezpath in document.metadata().layer_outline(layer) {
+				bezpath_anchor_snap_points(layer, bezpath, snap_data, points, to_document);
 			}
 		}
 
