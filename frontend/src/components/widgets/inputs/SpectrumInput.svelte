@@ -50,7 +50,9 @@
 	// Set when a key-triggered reconcile inserts/removes the frozen copy, so the next pointer move skips emitting a `MoveMarker`
 	// that would otherwise race the structural change before Rust has reported the dragged marker's new index.
 	let skipNextMove = false;
-	// The hovered marker, highlighted ahead of the drag.
+	// Set while a run of markers drags together: its bounds, the first's offset from the pointer, each member's gap from the first, and their start positions for cancelling.
+	let dragRun: { first: number; last: number; offset: number; spacings: number[]; restore: number[] } | undefined = undefined;
+	// The run a hovered marker or dashed link would carry, highlighted ahead of the drag.
 	let hoverRun: [number, number] | undefined = undefined;
 	// The marker being dragged, or the left marker of the interval when a midpoint is dragged, and which of the two it is.
 	// Where selecting is allowed, these follow the selection, which Rust renumbers across structural changes.
@@ -60,9 +62,10 @@
 		dragIndex = activeMarkerIndex;
 		dragIsMidpoint = activeMarkerIsMidpoint;
 	}
-	// The marker highlighted: the one hovered, else the one being dragged (or selected, where selecting is allowed).
+	// The markers highlighted: the run being dragged or hovered, else the marker dragged alone (or selected, where selecting is allowed).
 	let highlightedRun: [number, number] | undefined;
-	$: highlightedRun = hoverRun !== undefined ? hoverRun : typeof dragIndex === "number" && !dragIsMidpoint ? [dragIndex, dragIndex] : undefined;
+	$: highlightedRun =
+		dragRun !== undefined ? [dragRun.first, dragRun.last] : hoverRun !== undefined ? hoverRun : typeof dragIndex === "number" && !dragIsMidpoint ? [dragIndex, dragIndex] : undefined;
 
 	function emit(intent: SpectrumInputUpdate) {
 		dispatch("update", intent);
@@ -91,10 +94,28 @@
 		return clamp ? Math.max(0, Math.min(1, ratio)) : ratio;
 	}
 
-	function clampToNeighbors(index: number, position: number): number {
-		const lower = markers[index - 1]?.position ?? 0;
-		const upper = markers[index + 1]?.position ?? 1;
+	// Holds markers `first..=last` (spanning `spacing`) between their neighbors as they move to `position`
+	function holdBetweenNeighbors(first: number, last: number, spacing: number, position: number): number {
+		// Without selection nothing reports the dragged marker's new index after a reorder, so it stays between its neighbors
+		if (allowReorder && allowSelect) return position;
+		const lower = markers[first - 1]?.position ?? 0;
+		const upper = (markers[last + 1]?.position ?? 1) - spacing;
 		return Math.max(lower, Math.min(upper, position));
+	}
+
+	// The spans from each marker passing `linked` to its successor
+	function markerSpans(markers: SpectrumMarker[], linked: (marker: SpectrumMarker) => boolean): { index: number; left: number; width: number }[] {
+		const spans: { index: number; left: number; width: number }[] = [];
+
+		markers.forEach((marker, index) => {
+			const next = markers[index + 1];
+			if (!linked(marker) || next === undefined || next.position === marker.position) return;
+
+			const [left, right] = next.position > marker.position ? [marker.position, next.position] : [next.position, marker.position];
+			spans.push({ index, left, width: right - left });
+		});
+
+		return spans;
 	}
 
 	// The nearest of the markers drawn on the track, skipping any outside 0..1 as the template does
@@ -140,6 +161,43 @@
 		addEvents();
 	}
 
+	// Drags markers `first..=last` as one, keeping the pointer's offset from the first when `grabbed` and otherwise carrying the run to the pointer
+	function beginRunDrag(e: PointerEvent, first: number, last: number, grabbed: boolean) {
+		const pointer = pointerPosition(e);
+		if (pointer === undefined) return;
+		const start = markers[first].position;
+
+		const spacings: number[] = [];
+		const restore: number[] = [];
+		for (let index = first; index <= last; index += 1) {
+			const position = markers[index].position;
+			spacings.push(position - start);
+			restore.push(position);
+		}
+
+		activeMarkerIndexRestore = activeMarkerIndex;
+		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
+		dragRestorePosition = start;
+		dragInsertedMarker = false;
+		dragMoved = false;
+		duplicateRequested = false;
+		duplicateActive = false;
+		dragRun = { first, last, offset: grabbed ? start - pointer : 0, spacings, restore };
+		setActive(first, false);
+		addEvents();
+	}
+
+	// The run a dashed link from `index` carries: the two markers it joins
+	function dashedRun(index: number): [number, number] {
+		return [index, index + 1];
+	}
+
+	function dashPointerDown(e: PointerEvent, index: number) {
+		if (disabled || e.button !== BUTTON_LEFT) return;
+		const [first, last] = dashedRun(index);
+		beginRunDrag(e, first, last, true);
+	}
+
 	// Picks up the marker at `index` and carries it to the pointer
 	function pickUpMarker(e: PointerEvent, index: number) {
 		beginMarkerDrag(e, index);
@@ -166,6 +224,11 @@
 	function markerDoubleClick(index: number) {
 		if (disabled || dragMoved) return;
 		emit({ ResetMarker: { index } });
+	}
+
+	function resetRun(first: number, last: number) {
+		if (disabled || dragMoved) return;
+		for (let index = first; index <= last; index += 1) emit({ ResetMarker: { index } });
 	}
 
 	function trackPointerDown(e: PointerEvent) {
@@ -297,12 +360,30 @@
 
 		let position = pointerPosition(e);
 		if (position === undefined) return;
-		// Without selection nothing reports the dragged marker's new index after a reorder, so it stays between its neighbors
-		if (!allowReorder || !allowSelect) position = clampToNeighbors(dragIndex, position);
+		position = holdBetweenNeighbors(dragIndex, dragIndex, 0, position);
 
 		dragMoved = true;
 		if (!dragInsertedMarker) dispatch("dragging", true);
 		emit({ MoveMarker: { index: dragIndex, position } });
+	}
+
+	function moveRun(e: PointerEvent) {
+		if (disabled || dragRun === undefined) return;
+		if (e.buttons === 0) {
+			endDrag();
+			return;
+		}
+
+		const { first, last, offset, spacings } = dragRun;
+		const pointer = pointerPosition(e);
+		if (pointer === undefined) return;
+
+		const span = spacings[spacings.length - 1];
+		const start = holdBetweenNeighbors(first, last, span, pointer + offset);
+
+		dragMoved = true;
+		dispatch("dragging", true);
+		spacings.forEach((spacing, i) => emit({ MoveMarker: { index: first + i, position: start + spacing } }));
 	}
 
 	function moveActiveMidpoint(e: PointerEvent) {
@@ -352,6 +433,10 @@
 		} else if (anchor !== undefined) {
 			// A duplicated pre-existing marker: the frozen copy already sits at the start position, so deleting the dragged copy restores the original.
 			emit({ DeleteMarker: { index: dragged } });
+		} else if (dragRun !== undefined) {
+			// A run drag: return every member to where it began.
+			const { first, restore } = dragRun;
+			restore.forEach((position, i) => emit({ MoveMarker: { index: first + i, position } }));
 		} else if (dragRestorePosition !== undefined) {
 			// Plain drag: return the marker (or midpoint) to where it began.
 			if (dragIsMidpoint) emit({ MoveMidpoint: { index: dragged, position: dragRestorePosition } });
@@ -376,6 +461,7 @@
 		duplicateRequested = false;
 		duplicateActive = false;
 		skipNextMove = false;
+		dragRun = undefined;
 		// Without selection nothing stays active once the drag ends
 		if (!allowSelect) {
 			dragIndex = undefined;
@@ -386,6 +472,7 @@
 
 	function onPointerMove(e: PointerEvent) {
 		if (dragIsMidpoint) moveActiveMidpoint(e);
+		else if (dragRun !== undefined) moveRun(e);
 		else moveActiveMarker(e);
 	}
 
@@ -457,6 +544,7 @@
 		return positions;
 	}
 	$: midpointPositions = diamondPositions(markers, showMidpoints, trackCyclic, trackInterpolation);
+	$: dashes = markerSpans(markers, (marker) => marker.dashedToNext);
 
 	onMount(() => {
 		document.addEventListener("keydown", deleteShortcut);
@@ -507,6 +595,18 @@
 		{/each}
 	</LayoutRow>
 	<LayoutRow class="marker-track" classes={{ interactive: !allowInsert }} bind:this={markerTrackElement} on:pointerdown={markerTrackPointerDown}>
+		{#each dashes as dash}
+			<div
+				class="dashed-link"
+				class:active={highlightedRun !== undefined && dash.index >= highlightedRun[0] && dash.index < highlightedRun[1]}
+				style:--span-left={dash.left}
+				style:--span-width={dash.width}
+				on:pointerenter={() => (hoverRun = dashedRun(dash.index))}
+				on:pointerleave={() => (hoverRun = undefined)}
+				on:pointerdown={(e) => dashPointerDown(e, dash.index)}
+				on:dblclick={() => resetRun(...dashedRun(dash.index))}
+			></div>
+		{/each}
 		{#each markers as marker, index}
 			{#if marker.position >= 0 && marker.position <= 1}
 				<svg
@@ -646,6 +746,20 @@
 				pointer-events: auto;
 			}
 
+			// Full width and clipped to its span, so the dashes keep the lane's phase rather than walking with the left handle.
+			// The whole band is the grab area, with the 1px line drawn through its middle in the same neutral as the strip's edges.
+			.dashed-link {
+				--link-color: var(--color-5-dullgray);
+				position: absolute;
+				top: 4px;
+				left: 0;
+				width: 100%;
+				height: 8px;
+				background: repeating-linear-gradient(to right, var(--link-color) 0 2px, transparent 2px 4px) 0 4px / auto 1px repeat-x;
+				clip-path: inset(0 calc((1 - var(--span-left) - var(--span-width)) * 100%) 0 calc(var(--span-left) * 100%));
+				pointer-events: auto;
+			}
+
 			.marker {
 				position: absolute;
 				transform: translateX(-50%);
@@ -675,6 +789,14 @@
 			.outer-border {
 				fill: var(--color-4-dimgray);
 			}
+		}
+
+		&.disabled .marker-track .dashed-link {
+			--link-color: var(--color-4-dimgray);
+		}
+
+		&:not(.disabled) .marker-track .dashed-link.active {
+			--link-color: var(--color-e-nearwhite);
 		}
 
 		&:not(.disabled) .marker-track .marker {
