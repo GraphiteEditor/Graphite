@@ -705,12 +705,25 @@ pub struct SpectrumMarker {
 	/// discarding any transparency so the handle always shows the RGB that steers the interpolation.
 	#[serde(rename = "handleColorCSS")]
 	handle_color_css: String,
+	/// Whether a dashed line runs from this marker to the next through the lane below the track. Dragging it carries both markers.
+	#[serde(rename = "dashedToNext")]
+	dashed_to_next: bool,
 }
 
 impl SpectrumMarker {
 	pub fn new(position: f64, midpoint: f64, handle_color: Color) -> Self {
 		let handle_color_css = format!("#{}", SRGBA8::from(handle_color).to_rgb_hex());
-		Self { position, midpoint, handle_color_css }
+		Self {
+			position,
+			midpoint,
+			handle_color_css,
+			dashed_to_next: false,
+		}
+	}
+
+	pub fn dash_to_next(mut self) -> Self {
+		self.dashed_to_next = true;
+		self
 	}
 }
 
