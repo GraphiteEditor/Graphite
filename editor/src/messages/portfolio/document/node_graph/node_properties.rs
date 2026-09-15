@@ -1399,17 +1399,63 @@ pub(crate) fn transfer_curves_properties(node_id: NodeId, context: &mut NodeProp
 pub(crate) fn levels_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::levels::*;
 
+	let mut channel_info = ParameterWidgetsInfo::new(node_id, ChannelInput, true, context);
+	channel_info.exposable = false;
+	let channel = enum_choice::<AdjustmentChannel>().for_socket(channel_info).property_row();
+
+	let channel_value = match get_document_node(node_id, context).ok().and_then(|document_node| document_node.input_value(ChannelInput).cloned()) {
+		Some(TaggedValue::AdjustmentChannel(channel)) => channel,
+		_ => AdjustmentChannel::Rgb,
+	};
+	let [shadows, midtones, highlights, output_minimums, output_maximums]: [ParameterRef; 5] = match channel_value {
+		AdjustmentChannel::Rgb => [
+			ShadowsInput.into(),
+			MidtonesInput.into(),
+			HighlightsInput.into(),
+			OutputMinimumsInput.into(),
+			OutputMaximumsInput.into(),
+		],
+		AdjustmentChannel::Red => [
+			RedShadowsInput.into(),
+			RedMidtonesInput.into(),
+			RedHighlightsInput.into(),
+			RedOutputMinimumsInput.into(),
+			RedOutputMaximumsInput.into(),
+		],
+		AdjustmentChannel::Green => [
+			GreenShadowsInput.into(),
+			GreenMidtonesInput.into(),
+			GreenHighlightsInput.into(),
+			GreenOutputMinimumsInput.into(),
+			GreenOutputMaximumsInput.into(),
+		],
+		AdjustmentChannel::Blue => [
+			BlueShadowsInput.into(),
+			BlueMidtonesInput.into(),
+			BlueHighlightsInput.into(),
+			BlueOutputMinimumsInput.into(),
+			BlueOutputMaximumsInput.into(),
+		],
+		AdjustmentChannel::Alpha => [
+			AlphaShadowsInput.into(),
+			AlphaMidtonesInput.into(),
+			AlphaHighlightsInput.into(),
+			AlphaOutputMinimumsInput.into(),
+			AlphaOutputMaximumsInput.into(),
+		],
+	};
+
 	let input_range_params = [
-		SpectrumSectionParam::new(ShadowsInput, Color::BLACK, 0., MarkerScale::Percent),
-		SpectrumSectionParam::new(MidtonesInput, Color::MIDDLE_GRAY, 50., MarkerScale::Percent),
-		SpectrumSectionParam::new(HighlightsInput, Color::WHITE, 100., MarkerScale::Percent),
+		SpectrumSectionParam::new(shadows, Color::BLACK, 0., MarkerScale::Percent),
+		SpectrumSectionParam::new(midtones, Color::MIDDLE_GRAY, 1., MarkerScale::Gamma).between_neighbors(),
+		SpectrumSectionParam::new(highlights, Color::WHITE, 100., MarkerScale::Percent),
 	];
 	let output_range_params = [
-		SpectrumSectionParam::new(OutputMinimumsInput, Color::BLACK, 0., MarkerScale::Percent),
-		SpectrumSectionParam::new(OutputMaximumsInput, Color::WHITE, 100., MarkerScale::Percent),
+		SpectrumSectionParam::new(output_minimums, Color::BLACK, 0., MarkerScale::Percent),
+		SpectrumSectionParam::new(output_maximums, Color::WHITE, 100., MarkerScale::Percent),
 	];
 
-	let mut layout = Vec::with_capacity(5);
+	let mut layout = vec![channel];
 	build_shared_spectrum_section(node_id, context, &bw_track(), &input_range_params, &mut layout);
 	build_shared_spectrum_section(node_id, context, &bw_track(), &output_range_params, &mut layout);
 	layout
@@ -1459,6 +1505,8 @@ struct SpectrumSectionParam {
 	scale: MarkerScale,
 	/// Whether a dashed line joins the marker to the next parameter's marker.
 	dash_to_next: bool,
+	/// Whether the marker takes its scale position within the span between its neighbors rather than the whole track, following them as they move.
+	between_neighbors: bool,
 }
 
 impl SpectrumSectionParam {
@@ -1469,7 +1517,13 @@ impl SpectrumSectionParam {
 			default_value,
 			scale,
 			dash_to_next: false,
+			between_neighbors: false,
 		}
+	}
+
+	fn between_neighbors(mut self) -> Self {
+		self.between_neighbors = true;
+		self
 	}
 
 	fn dash_to_next(mut self) -> Self {
@@ -1507,6 +1561,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 	let mut marker_default_positions = Vec::new();
 	let mut marker_scales = Vec::new();
 	let mut marker_positions = Vec::new();
+	let mut marker_between = Vec::new();
 	let mut marker_colors_and_links = Vec::new();
 	for (i, param) in params.iter().enumerate() {
 		let (exposed, value) = exposure_and_value[i];
@@ -1518,20 +1573,41 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 		marker_input_indices.push(param.parameter.input_index);
 		marker_default_positions.push(param.scale.position(param.default_value));
 		marker_scales.push(param.scale);
+		marker_between.push(param.between_neighbors);
 		marker_colors_and_links.push((param.handle_color, param.dash_to_next && next_has_marker));
 	}
 
-	// Enforce non-decreasing order so markers never visually cross, matching the node's algorithm where shadows takes precedence
-	for i in 1..marker_positions.len() {
-		marker_positions[i] = marker_positions[i].max(marker_positions[i - 1]);
+	// Enforce non-decreasing order so markers never visually cross, matching the node's algorithm where shadows takes precedence.
+	// A marker placed between its neighbors bounds nothing here and instead takes its scale position within their settled span.
+	let mut floor = 0.;
+	for (position, &between) in marker_positions.iter_mut().zip(&marker_between) {
+		if between {
+			continue;
+		}
+		*position = position.max(floor);
+		floor = *position;
+	}
+	for i in 0..marker_positions.len() {
+		if marker_between[i] {
+			let left = if i == 0 { 0. } else { marker_positions[i - 1] };
+			let right = marker_positions.get(i + 1).copied().unwrap_or(1.);
+			marker_positions[i] = left + marker_positions[i] * (right - left);
+		}
 	}
 
 	let spectrum_markers: Vec<SpectrumMarker> = marker_positions
 		.iter()
 		.zip(&marker_colors_and_links)
-		.map(|(&position, &(handle_color, dashed))| {
-			let marker = SpectrumMarker::new(position, 0.5, handle_color);
-			if dashed { marker.dash_to_next() } else { marker }
+		.zip(&marker_between)
+		.map(|((&position, &(handle_color, dashed)), &between)| {
+			let mut marker = SpectrumMarker::new(position, 0.5, handle_color);
+			if dashed {
+				marker = marker.dash_to_next();
+			}
+			if between {
+				marker = marker.between_neighbors();
+			}
+			marker
 		})
 		.collect();
 
@@ -1550,21 +1626,35 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 				let marker_default_positions = marker_default_positions.clone();
 				let marker_scales = marker_scales.clone();
 				let marker_positions = marker_positions.clone();
+				let marker_between = marker_between.clone();
 				move |update: &SpectrumInputUpdate| {
 					let i = match update {
 						SpectrumInputUpdate::MoveMarker { index, .. } | SpectrumInputUpdate::ResetMarker { index } => *index as usize,
 						_ => return Message::NoOp,
 					};
-					let (Some(&input_index), Some(&scale), Some(&default_position)) = (marker_input_indices.get(i), marker_scales.get(i), marker_default_positions.get(i)) else {
+					let (Some(&input_index), Some(&scale), Some(&between), Some(&default_position)) =
+						(marker_input_indices.get(i), marker_scales.get(i), marker_between.get(i), marker_default_positions.get(i))
+					else {
 						return Message::NoOp;
 					};
-					let left = if i == 0 { 0. } else { marker_positions[i - 1] };
-					let right = marker_positions.get(i + 1).copied().unwrap_or(1.);
+
+					// The span the marker's scale maps onto: its neighbors' positions when placed between them, otherwise the track between the
+					// nearest markers that bound it, which a marker placed between its neighbors never does
+					let bounding = |j: usize| between || !marker_between[j];
+					let left = (0..i).rev().find(|&j| bounding(j)).map_or(0., |j| marker_positions[j]);
+					let right = (i + 1..marker_positions.len()).find(|&j| bounding(j)).map_or(1., |j| marker_positions[j]);
 
 					let scale_position = match update {
+						SpectrumInputUpdate::MoveMarker { position, .. } if between => {
+							let span = right - left;
+							if span <= f64::EPSILON {
+								return Message::NoOp;
+							}
+							((position - left) / span).clamp(0., 1.)
+						}
 						SpectrumInputUpdate::MoveMarker { position, .. } => *position,
 						// A default that would cross a neighbor falls back to the midpoint between them
-						SpectrumInputUpdate::ResetMarker { .. } if (left..=right).contains(&default_position) => default_position,
+						SpectrumInputUpdate::ResetMarker { .. } if between || (left..=right).contains(&default_position) => default_position,
 						SpectrumInputUpdate::ResetMarker { .. } => (left + right) / 2.,
 						_ => return Message::NoOp,
 					};

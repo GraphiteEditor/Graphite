@@ -695,11 +695,9 @@ pub struct SpectrumInput {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpectrumMarker {
-	/// Position of the marker along the spectrum track, normally from 0 to 1. A shifted or stretched non-cyclic ramp can
-	/// place it outside that range, where the track draws only the markers falling within its visible span.
+	/// Position along the track, normally 0..1. A shifted or stretched non-cyclic ramp can push it outside, where it is not drawn.
 	position: f64,
-	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true.
-	/// The last marker's value controls the wrapped interval when `track_cyclic` is set, and is otherwise ignored.
+	/// Midpoint (0..1) of the interval to the next marker, used only with `show_midpoints`. The last marker's midpoint spans the wrap of a cyclic track, or is otherwise ignored.
 	midpoint: f64,
 	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`],
 	/// discarding any transparency so the handle always shows the RGB that steers the interpolation.
@@ -708,6 +706,9 @@ pub struct SpectrumMarker {
 	/// Whether a dashed line runs from this marker to the next through the lane below the track. Dragging it carries both markers.
 	#[serde(rename = "dashedToNext")]
 	dashed_to_next: bool,
+	/// Whether this marker follows its neighbors instead of bounding them, so they may drag past its drawn position.
+	#[serde(rename = "betweenNeighbors")]
+	between_neighbors: bool,
 }
 
 impl SpectrumMarker {
@@ -718,7 +719,13 @@ impl SpectrumMarker {
 			midpoint,
 			handle_color_css,
 			dashed_to_next: false,
+			between_neighbors: false,
 		}
+	}
+
+	pub fn between_neighbors(mut self) -> Self {
+		self.between_neighbors = true;
+		self
 	}
 
 	pub fn dash_to_next(mut self) -> Self {
