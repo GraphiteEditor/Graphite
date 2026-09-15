@@ -529,6 +529,7 @@ impl ColorPickerMessageHandler {
 					.allow_insert(!self.disabled)
 					.allow_delete(!self.disabled)
 					.allow_reorder(true)
+					.allow_select(true)
 					.disabled(self.disabled)
 					.on_update(|update: &SpectrumInputUpdate| ColorPickerMessage::GradientUpdate { update: update.clone() }.into())
 					.widget_instance(),

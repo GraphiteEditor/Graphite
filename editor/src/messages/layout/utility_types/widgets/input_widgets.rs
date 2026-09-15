@@ -671,6 +671,10 @@ pub struct SpectrumInput {
 	/// Whether dragging a marker past another reorders them. If false, the dragged marker is clamped between its neighbors.
 	#[serde(rename = "allowReorder")]
 	pub allow_reorder: bool,
+	/// Whether clicking a marker selects it, keeping it highlighted and reported as the active marker until another is chosen,
+	/// as a gradient editor needs for the stop being edited. Otherwise the highlight only follows the pointer and the drag.
+	#[serde(rename = "allowSelect")]
+	pub allow_select: bool,
 	/// Compact mode: 8px track height with 8px top padding, for use in rows alongside other widgets.
 	pub narrow: bool,
 	/// Plain range-slider mode, for a number beside its number input: a flat 4px track is drawn in place of the gradient, so `track` is never shown.

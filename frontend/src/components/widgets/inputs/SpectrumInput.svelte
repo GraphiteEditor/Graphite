@@ -25,6 +25,7 @@
 	export let allowInsert = true;
 	export let allowDelete = true;
 	export let allowReorder = true;
+	export let allowSelect = false;
 	export let narrow = false;
 	export let rangeSlider = false;
 	export let disabled = false;
@@ -49,15 +50,32 @@
 	// Set when a key-triggered reconcile inserts/removes the frozen copy, so the next pointer move skips emitting a `MoveMarker`
 	// that would otherwise race the structural change before Rust has reported the dragged marker's new index.
 	let skipNextMove = false;
+	// The hovered marker, highlighted ahead of the drag.
+	let hoverRun: [number, number] | undefined = undefined;
+	// The marker being dragged, or the left marker of the interval when a midpoint is dragged. Where selecting is allowed, this follows the selection, which Rust renumbers across structural changes.
+	let dragIndex: number | undefined = undefined;
+	$: if (allowSelect) dragIndex = activeMarkerIndex;
+	// The marker highlighted: the one hovered, else the one being dragged (or selected, where selecting is allowed).
+	let highlightedRun: [number, number] | undefined;
+	$: highlightedRun = hoverRun !== undefined ? hoverRun : typeof dragIndex === "number" && !activeMarkerIsMidpoint ? [dragIndex, dragIndex] : undefined;
 
 	function emit(intent: SpectrumInputUpdate) {
 		dispatch("update", intent);
 	}
 
 	function setActive(index: number | undefined, isMidpoint: boolean) {
+		dragIndex = index;
+		if (!allowSelect) return;
+
 		activeMarkerIndex = index;
 		activeMarkerIsMidpoint = isMidpoint;
 		emit({ ActiveMarker: { activeMarkerIndex: index, activeMarkerIsMidpoint: isMidpoint } });
+	}
+
+	// Hovering highlights what a drag would carry, except where selecting is allowed and hover keeps its lighter tint
+	function markerPointerEnter(index: number) {
+		if (allowSelect) return;
+		hoverRun = [index, index];
 	}
 
 	function pointerPosition(e: MouseEvent, clamp = true): number | undefined {
@@ -173,6 +191,7 @@
 		duplicateRequested = false;
 		duplicateActive = false;
 		// Don't dispatch an `ActiveMarker` here. The Rust handler already updates the active marker in response to `InsertMarker` and a duplicate `ActiveMarker` would race the layout update.
+		dragIndex = insertIndex;
 		activeMarkerIndex = insertIndex;
 		activeMarkerIsMidpoint = false;
 		addEvents();
@@ -208,7 +227,7 @@
 		let bestDistance = DUPLICATE_POSITION_EPSILON;
 
 		markers.forEach((marker, index) => {
-			if (index === activeMarkerIndex) return;
+			if (index === dragIndex) return;
 
 			const distance = Math.abs(marker.position - startPosition);
 			if (distance < bestDistance) {
@@ -223,14 +242,14 @@
 	// Bring the materialized duplicate state in line with whether Alt is currently held, inserting or removing the frozen copy.
 	// Returns whether a structural change was emitted, so callers can skip the next move that would race it.
 	function reconcileDuplicate(): boolean {
-		if (!allowInsert || activeMarkerIndex === undefined || activeMarkerIsMidpoint) return false;
+		if (!allowInsert || dragIndex === undefined || activeMarkerIsMidpoint) return false;
 
 		if (duplicateRequested && !duplicateActive) {
 			// Drop a frozen copy at the drag's start position. The dragged marker stays active and becomes the duplicate being moved.
 
 			if (dragRestorePosition === undefined) return false;
 
-			emit({ InsertDuplicate: { index: activeMarkerIndex, position: dragRestorePosition } });
+			emit({ InsertDuplicate: { index: dragIndex, position: dragRestorePosition } });
 			duplicateActive = true;
 
 			return true;
@@ -250,7 +269,7 @@
 	}
 
 	function moveActiveMarker(e: PointerEvent) {
-		if (disabled || activeMarkerIndex === undefined) return;
+		if (disabled || dragIndex === undefined) return;
 		if (e.buttons === 0) {
 			endDrag();
 			return;
@@ -271,15 +290,15 @@
 
 		let position = pointerPosition(e);
 		if (position === undefined) return;
-		if (!allowReorder) position = clampToNeighbors(activeMarkerIndex, position);
+		if (!allowReorder) position = clampToNeighbors(dragIndex, position);
 
 		dragMoved = true;
 		if (!dragInsertedMarker) dispatch("dragging", true);
-		emit({ MoveMarker: { index: activeMarkerIndex, position } });
+		emit({ MoveMarker: { index: dragIndex, position } });
 	}
 
 	function moveActiveMidpoint(e: PointerEvent) {
-		if (disabled || activeMarkerIndex === undefined) return;
+		if (disabled || dragIndex === undefined) return;
 		if (e.buttons === 0) {
 			endDrag();
 			return;
@@ -287,12 +306,12 @@
 
 		// The wrapped interval's diamond (cyclic only) belongs to the last marker and spans through the 1|0 boundary to the first.
 		// Its pointer ratio stays unclamped so overdragging past the strip's right or left edge keeps tracking after the 1|0 wrap.
-		const isWrappedInterval = trackCyclic && activeMarkerIndex === markers.length - 1;
+		const isWrappedInterval = trackCyclic && dragIndex === markers.length - 1;
 		const absolute = pointerPosition(e, !isWrappedInterval);
 		if (absolute === undefined) return;
 
-		const left = markers[activeMarkerIndex]?.position;
-		const right = isWrappedInterval ? markers[0].position + 1 : markers[activeMarkerIndex + 1]?.position;
+		const left = markers[dragIndex]?.position;
+		const right = isWrappedInterval ? markers[0].position + 1 : markers[dragIndex + 1]?.position;
 		if (left === undefined || right === undefined) return;
 		const range = right - left;
 		if (range <= 0) return;
@@ -310,13 +329,13 @@
 
 		dragMoved = true;
 		dispatch("dragging", true);
-		emit({ MoveMidpoint: { index: activeMarkerIndex, position: local / range } });
+		emit({ MoveMidpoint: { index: dragIndex, position: local / range } });
 	}
 
 	function abortDrag() {
-		if (disabled || activeMarkerIndex === undefined) return;
+		if (disabled || dragIndex === undefined) return;
 
-		const dragged = activeMarkerIndex;
+		const dragged = dragIndex;
 		const anchor = duplicateActive ? findDuplicateAnchorIndex() : undefined;
 
 		if (dragInsertedMarker) {
@@ -349,6 +368,8 @@
 		duplicateRequested = false;
 		duplicateActive = false;
 		skipNextMove = false;
+		// Without selection nothing stays active once the drag ends
+		if (!allowSelect) dragIndex = undefined;
 		dispatch("dragging", false);
 	}
 
@@ -479,9 +500,11 @@
 			{#if marker.position >= 0 && marker.position <= 1}
 				<svg
 					class="marker"
-					class:active={index === activeMarkerIndex && !activeMarkerIsMidpoint}
+					class:active={highlightedRun !== undefined && index >= highlightedRun[0] && index <= highlightedRun[1]}
 					style:--marker-position={marker.position}
 					style:--marker-color={marker.handleColorCSS}
+					on:pointerenter={() => markerPointerEnter(index)}
+					on:pointerleave={() => (hoverRun = undefined)}
 					on:pointerdown={(e) => markerPointerDown(e, index)}
 					on:dblclick={() => markerDoubleClick(index)}
 					data-gradient-marker
