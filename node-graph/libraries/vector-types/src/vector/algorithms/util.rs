@@ -18,7 +18,7 @@ pub fn pathseg_tangent(segment: PathSeg, t: f64) -> DVec2 {
 #[cfg(test)]
 pub(crate) fn compare_points(p1: kurbo::Point, p2: kurbo::Point) -> bool {
 	let (p1, p2) = (crate::vector::misc::point_to_dvec2(p1), crate::vector::misc::point_to_dvec2(p2));
-	p1.abs_diff_eq(p2, super::contants::MAX_ABSOLUTE_DIFFERENCE)
+	p1.abs_diff_eq(p2, super::consts::MAX_ABSOLUTE_DIFFERENCE)
 }
 
 /// Compare vectors of points by allowing some maximum absolute difference to account for floating point errors

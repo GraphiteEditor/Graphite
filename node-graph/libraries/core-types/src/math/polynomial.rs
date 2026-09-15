@@ -1,10 +1,9 @@
 use kurbo::PathSeg;
-use std::fmt::{self, Display, Formatter};
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::ops::{Mul, MulAssign};
 
 /// A struct that represents a polynomial with a maximum degree of `N-1`.
 ///
-/// It provides basic mathematical operations for polynomials like addition, multiplication, differentiation, integration, etc.
+/// It provides basic mathematical operations for polynomials like multiplication, differentiation, integration, etc.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Polynomial<const N: usize> {
 	coefficients: [f64; N],
@@ -16,18 +15,6 @@ impl<const N: usize> Polynomial<N> {
 	/// The coefficient for nth degree is at the nth index in array. Therefore the order of coefficients are reversed than the usual order for writing polynomials mathematically.
 	pub fn new(coefficients: [f64; N]) -> Polynomial<N> {
 		Polynomial { coefficients }
-	}
-
-	/// Create a polynomial where all its coefficients are zero.
-	pub fn zero() -> Polynomial<N> {
-		Polynomial { coefficients: [0.; N] }
-	}
-
-	/// Return an immutable reference to the coefficients.
-	///
-	/// The coefficient for nth degree is at the nth index in array. Therefore the order of coefficients are reversed than the usual order for writing polynomials mathematically.
-	pub fn coefficients(&self) -> &[f64; N] {
-		&self.coefficients
 	}
 
 	/// Return a mutable reference to the coefficients.
@@ -82,98 +69,6 @@ impl<const N: usize> Polynomial<N> {
 		let mut ans = *self;
 		ans.derivative_mut();
 		ans
-	}
-
-	/// Computes the antiderivative at `C = 0`.
-	///
-	/// Returns `None` if the polynomial is not big enough to accommodate the extra degree.
-	pub fn antiderivative(&self) -> Option<Polynomial<N>> {
-		let mut ans = *self;
-		ans.antiderivative_mut()?;
-		Some(ans)
-	}
-}
-
-impl<const N: usize> Default for Polynomial<N> {
-	fn default() -> Self {
-		Self::zero()
-	}
-}
-
-impl<const N: usize> Display for Polynomial<N> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let mut first = true;
-		for (index, coefficient) in self.coefficients.iter().enumerate().rev().filter(|&(_, &coefficient)| coefficient != 0.) {
-			if first {
-				first = false;
-			} else {
-				f.write_str(" + ")?
-			}
-
-			coefficient.fmt(f)?;
-			if index == 0 {
-				continue;
-			}
-			f.write_str("x")?;
-			if index == 1 {
-				continue;
-			}
-			f.write_str("^")?;
-			index.fmt(f)?;
-		}
-
-		Ok(())
-	}
-}
-
-impl<const N: usize> AddAssign<&Polynomial<N>> for Polynomial<N> {
-	fn add_assign(&mut self, rhs: &Polynomial<N>) {
-		self.coefficients.iter_mut().zip(rhs.coefficients.iter()).for_each(|(a, b)| *a += b);
-	}
-}
-
-impl<const N: usize> Add for &Polynomial<N> {
-	type Output = Polynomial<N>;
-
-	fn add(self, other: &Polynomial<N>) -> Polynomial<N> {
-		let mut output = *self;
-		output += other;
-		output
-	}
-}
-
-impl<const N: usize> Neg for &Polynomial<N> {
-	type Output = Polynomial<N>;
-
-	fn neg(self) -> Polynomial<N> {
-		let mut output = *self;
-		output.coefficients.iter_mut().for_each(|x| *x = -*x);
-		output
-	}
-}
-
-impl<const N: usize> Neg for Polynomial<N> {
-	type Output = Polynomial<N>;
-
-	fn neg(mut self) -> Polynomial<N> {
-		self.coefficients.iter_mut().for_each(|x| *x = -*x);
-		self
-	}
-}
-
-impl<const N: usize> SubAssign<&Polynomial<N>> for Polynomial<N> {
-	fn sub_assign(&mut self, rhs: &Polynomial<N>) {
-		self.coefficients.iter_mut().zip(rhs.coefficients.iter()).for_each(|(a, b)| *a -= b);
-	}
-}
-
-impl<const N: usize> Sub for &Polynomial<N> {
-	type Output = Polynomial<N>;
-
-	fn sub(self, other: &Polynomial<N>) -> Polynomial<N> {
-		let mut output = *self;
-		output -= other;
-		output
 	}
 }
 
@@ -249,18 +144,6 @@ mod test {
 	}
 
 	#[test]
-	fn addition_and_subtaction() {
-		let p1 = Polynomial::new([1., 2., 3.]);
-		let p2 = Polynomial::new([4., 5., 6.]);
-
-		let addition = Polynomial::new([5., 7., 9.]);
-		let subtraction = Polynomial::new([-3., -3., -3.]);
-
-		assert_eq!(&p1 + &p2, addition);
-		assert_eq!(&p1 - &p2, subtraction);
-	}
-
-	#[test]
 	fn multiplication() {
 		let p1 = Polynomial::new([1., 2., 3.]).as_size().unwrap();
 		let p2 = Polynomial::new([4., 5., 6.]).as_size().unwrap();
@@ -278,15 +161,10 @@ mod test {
 		assert_eq!(p.derivative(), p_deriv);
 
 		p.coefficients_mut()[0] = 0.;
-		assert_eq!(p_deriv.antiderivative().unwrap(), p);
+		let mut antiderivative = p_deriv;
+		assert_eq!(antiderivative.antiderivative_mut(), Some(()));
+		assert_eq!(antiderivative, p);
 
-		assert_eq!(p.antiderivative(), None);
-	}
-
-	#[test]
-	fn display() {
-		let p = Polynomial::new([1., 2., 0., 3.]);
-
-		assert_eq!(format!("{p:.2}"), "3.00x^3 + 2.00x + 1.00");
+		assert_eq!(p.antiderivative_mut(), None);
 	}
 }

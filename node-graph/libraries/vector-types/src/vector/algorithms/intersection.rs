@@ -1,4 +1,4 @@
-use super::contants::MIN_SEPARATION_VALUE;
+use super::consts::MIN_SEPARATION_VALUE;
 use kurbo::{BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
 use lyon_geom::{CubicBezierSegment, Point};
 
@@ -260,7 +260,7 @@ pub(crate) fn pathseg_self_intersections(segment: PathSeg, accuracy: Option<f64>
 mod tests {
 	use super::{bezpath_and_segment_intersections, filtered_segment_intersections};
 	use crate::vector::algorithms::{
-		contants::MAX_ABSOLUTE_DIFFERENCE,
+		consts::MAX_ABSOLUTE_DIFFERENCE,
 		util::{compare_points, compare_vec_of_points, dvec2_compare},
 	};
 
