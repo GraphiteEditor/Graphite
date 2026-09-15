@@ -1399,36 +1399,101 @@ pub(crate) fn transfer_curves_properties(node_id: NodeId, context: &mut NodeProp
 pub(crate) fn levels_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::levels::*;
 
-	// (parameter, marker handle color, default percentage for double-click reset)
 	let input_range_params = [
-		(ShadowsInput.into(), Color::BLACK, 0.),
-		(MidtonesInput.into(), Color::MIDDLE_GRAY, 50.),
-		(HighlightsInput.into(), Color::WHITE, 100.),
+		SpectrumSectionParam::new(ShadowsInput, Color::BLACK, 0., MarkerScale::Percent),
+		SpectrumSectionParam::new(MidtonesInput, Color::MIDDLE_GRAY, 50., MarkerScale::Percent),
+		SpectrumSectionParam::new(HighlightsInput, Color::WHITE, 100., MarkerScale::Percent),
 	];
-	let output_range_params = [(OutputMinimumsInput.into(), Color::BLACK, 0.), (OutputMaximumsInput.into(), Color::WHITE, 100.)];
+	let output_range_params = [
+		SpectrumSectionParam::new(OutputMinimumsInput, Color::BLACK, 0., MarkerScale::Percent),
+		SpectrumSectionParam::new(OutputMaximumsInput, Color::WHITE, 100., MarkerScale::Percent),
+	];
 
 	let mut layout = Vec::with_capacity(5);
-	build_shared_spectrum_section(node_id, context, &input_range_params, &mut layout);
-	build_shared_spectrum_section(node_id, context, &output_range_params, &mut layout);
+	build_shared_spectrum_section(node_id, context, &bw_track(), &input_range_params, &mut layout);
+	build_shared_spectrum_section(node_id, context, &bw_track(), &output_range_params, &mut layout);
 	layout
 }
 
-/// Append a section of related percentage parameters as rows: a shared black-to-white spectrum (with one marker per non-exposed parameter) sits on the first non-exposed row
+/// How a shared spectrum marker's value maps onto its track.
+#[derive(Clone, Copy)]
+enum MarkerScale {
+	/// A 0..100 percentage, placed linearly.
+	Percent,
+	/// A gamma of 0.01..9.99 running from 9.99 at the left to 0.01 at the right, logarithmic on each side of the 1 at its center.
+	Gamma,
+}
+
+impl MarkerScale {
+	fn position(self, value: f64) -> f64 {
+		match self {
+			Self::Percent => value / 100.,
+			Self::Gamma if value >= 1. => 0.5 - 0.5 * value.log10() / 9.99_f64.log10(),
+			Self::Gamma => 0.5 + 0.5 * value.log10() / 0.01_f64.log10(),
+		}
+		.clamp(0., 1.)
+	}
+
+	fn value(self, position: f64) -> f64 {
+		match self {
+			Self::Percent => (position * 100.).clamp(0., 100.),
+			Self::Gamma if position <= 0.5 => 9.99_f64.powf(1. - 2. * position).clamp(1., 9.99),
+			Self::Gamma => 0.01_f64.powf(2. * position - 1.).clamp(0.01, 1.),
+		}
+	}
+
+	fn number_input(self) -> NumberInput {
+		match self {
+			Self::Percent => NumberInput::default().mode_increment().unit("%").min(0.).max(100.).display_decimal_places(0),
+			Self::Gamma => NumberInput::default().mode_increment().min(0.01).max(9.99).display_decimal_places(2),
+		}
+	}
+}
+
+/// One parameter of a shared spectrum section and how its marker sits on the track.
+struct SpectrumSectionParam {
+	parameter: ParameterRef,
+	handle_color: Color,
+	/// The value a double-click resets to.
+	default_value: f64,
+	scale: MarkerScale,
+	/// Whether a dashed line joins the marker to the next parameter's marker.
+	dash_to_next: bool,
+}
+
+impl SpectrumSectionParam {
+	fn new(parameter: impl Into<ParameterRef>, handle_color: Color, default_value: f64, scale: MarkerScale) -> Self {
+		Self {
+			parameter: parameter.into(),
+			handle_color,
+			default_value,
+			scale,
+			dash_to_next: false,
+		}
+	}
+
+	fn dash_to_next(mut self) -> Self {
+		self.dash_to_next = true;
+		self
+	}
+}
+
+/// Append a section of related parameters as rows: a shared spectrum over `track` (with one marker per non-exposed parameter) sits on the first non-exposed row
 /// alongside its 60px number input, and the remaining non-exposed rows show only their 60px number input. Exposed parameters render as the standard exposed-row display.
 /// Marker positions are clamped to non-decreasing display order so they never visually cross even if the underlying values do.
-fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesContext, params: &[(ParameterRef, Color, f64)], layout: &mut Vec<LayoutGroup>) {
+fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesContext, track: &Gradient, params: &[SpectrumSectionParam], layout: &mut Vec<LayoutGroup>) {
 	// Snapshot exposure and values before the mutable-borrow loop
 	let exposure_and_value: Vec<(bool, f64)> = match get_document_node(node_id, context) {
 		Ok(document_node) => params
 			.iter()
-			.map(|(parameter, _, _)| {
-				let input = document_node.inputs.get(parameter.input_index);
+			.map(|param| {
+				let input = document_node.inputs.get(param.parameter.input_index);
 				let exposed = input.is_some_and(|input| input.is_exposed());
-				let percent = input
+				let value = input
 					.and_then(|input| input.as_value())
 					.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value as f64) } else { None })
 					.unwrap_or(0.);
-				(exposed, percent)
+				(exposed, value)
 			})
 			.collect(),
 		Err(err) => {
@@ -1437,20 +1502,23 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 		}
 	};
 
-	// Build markers for all non-exposed params
+	// Build markers for all non-exposed params, linking one to the next only when both have markers
 	let mut marker_input_indices = Vec::new();
-	let mut marker_default_percents = Vec::new();
+	let mut marker_default_positions = Vec::new();
+	let mut marker_scales = Vec::new();
 	let mut marker_positions = Vec::new();
-	let mut handle_colors = Vec::new();
-	for (i, &(ref parameter, handle_color, default_percent)) in params.iter().enumerate() {
-		let (exposed, percent) = exposure_and_value[i];
+	let mut marker_colors_and_links = Vec::new();
+	for (i, param) in params.iter().enumerate() {
+		let (exposed, value) = exposure_and_value[i];
 		if exposed {
 			continue;
 		}
-		marker_positions.push((percent / 100.).clamp(0., 1.));
-		marker_input_indices.push(parameter.input_index);
-		marker_default_percents.push(default_percent);
-		handle_colors.push(handle_color);
+		let next_has_marker = exposure_and_value.get(i + 1).is_some_and(|&(next_exposed, _)| !next_exposed);
+		marker_positions.push(param.scale.position(value));
+		marker_input_indices.push(param.parameter.input_index);
+		marker_default_positions.push(param.scale.position(param.default_value));
+		marker_scales.push(param.scale);
+		marker_colors_and_links.push((param.handle_color, param.dash_to_next && next_has_marker));
 	}
 
 	// Enforce non-decreasing order so markers never visually cross, matching the node's algorithm where shadows takes precedence
@@ -1460,13 +1528,16 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 
 	let spectrum_markers: Vec<SpectrumMarker> = marker_positions
 		.iter()
-		.zip(&handle_colors)
-		.map(|(&position, &handle_color)| SpectrumMarker::new(position, 0.5, handle_color))
+		.zip(&marker_colors_and_links)
+		.map(|(&position, &(handle_color, dashed))| {
+			let marker = SpectrumMarker::new(position, 0.5, handle_color);
+			if dashed { marker.dash_to_next() } else { marker }
+		})
 		.collect();
 
 	// Build the shared spectrum widget (placed on the first non-exposed row)
 	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
-		SpectrumInput::new(GradientStops::from(&bw_track()))
+		SpectrumInput::new(GradientStops::from(track))
 			.track_space(GradientSpace::RgbGamma)
 			.markers(spectrum_markers)
 			.show_midpoints(false)
@@ -1476,31 +1547,31 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 			.narrow(true)
 			.on_update({
 				let marker_input_indices = marker_input_indices.clone();
-				let marker_default_percents = marker_default_percents.clone();
+				let marker_default_positions = marker_default_positions.clone();
+				let marker_scales = marker_scales.clone();
 				let marker_positions = marker_positions.clone();
 				move |update: &SpectrumInputUpdate| {
-					let (input_index, percent) = match update {
-						SpectrumInputUpdate::MoveMarker { index, position } => match marker_input_indices.get(*index as usize) {
-							Some(&input_index) => (input_index, *position * 100.),
-							None => return Message::NoOp,
-						},
-						SpectrumInputUpdate::ResetMarker { index } => {
-							let i = *index as usize;
-							let Some(&input_index) = marker_input_indices.get(i) else { return Message::NoOp };
-							let Some(&default_percent) = marker_default_percents.get(i) else { return Message::NoOp };
-							// Falls back to midpoint between neighbors if the default would cross one
-							let left = if i == 0 { 0. } else { marker_positions[i - 1] };
-							let right = marker_positions.get(i + 1).copied().unwrap_or(1.);
-							let default_position = default_percent / 100.;
-							let new_position = if (left..=right).contains(&default_position) { default_position } else { (left + right) / 2. };
-							(input_index, new_position * 100.)
-						}
+					let i = match update {
+						SpectrumInputUpdate::MoveMarker { index, .. } | SpectrumInputUpdate::ResetMarker { index } => *index as usize,
+						_ => return Message::NoOp,
+					};
+					let (Some(&input_index), Some(&scale), Some(&default_position)) = (marker_input_indices.get(i), marker_scales.get(i), marker_default_positions.get(i)) else {
+						return Message::NoOp;
+					};
+					let left = if i == 0 { 0. } else { marker_positions[i - 1] };
+					let right = marker_positions.get(i + 1).copied().unwrap_or(1.);
+
+					let scale_position = match update {
+						SpectrumInputUpdate::MoveMarker { position, .. } => *position,
+						// A default that would cross a neighbor falls back to the midpoint between them
+						SpectrumInputUpdate::ResetMarker { .. } if (left..=right).contains(&default_position) => default_position,
+						SpectrumInputUpdate::ResetMarker { .. } => (left + right) / 2.,
 						_ => return Message::NoOp,
 					};
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index,
-						value: TaggedValue::F32(percent.clamp(0., 100.) as f32).into(),
+						value: TaggedValue::F32(scale.value(scale_position) as f32).into(),
 					}
 					.into()
 				}
@@ -1510,12 +1581,11 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 	});
 	let spectrum_owner = marker_input_indices.first().copied();
 
-	let number_input = NumberInput::default().mode_increment().unit("%").min(0.).max(100.);
-
 	// One row per parameter: first non-exposed carries the shared spectrum, others get just a number input
-	for (i, (parameter, _, _)) in params.iter().enumerate() {
+	for (i, param) in params.iter().enumerate() {
 		let (exposed, current) = exposure_and_value[i];
-		let input_index = parameter.input_index;
+		let input_index = param.parameter.input_index;
+		let number_input = param.scale.number_input();
 
 		if exposed {
 			let row = number_widget(ParameterWidgetsInfo::at_index(node_id, input_index, true, context), number_input.clone());
@@ -1537,7 +1607,6 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 					.value(Some(current))
 					.min_width(60)
 					.max_width(60)
-					.display_decimal_places(0)
 					.on_update(update_value_at_index(
 						move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32),
 						node_id,
@@ -1772,10 +1841,13 @@ fn spectrum_slider_row(
 pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::threshold::*;
 
-	let params: &[(ParameterRef, Color, f64)] = &[(MinLuminanceInput.into(), Color::BLACK, 50.), (MaxLuminanceInput.into(), Color::WHITE, 100.)];
+	let params = [
+		SpectrumSectionParam::new(MinLuminanceInput, Color::WHITE, 50., MarkerScale::Percent).dash_to_next(),
+		SpectrumSectionParam::new(MaxLuminanceInput, Color::WHITE, 100., MarkerScale::Percent),
+	];
 
 	let mut layout = Vec::with_capacity(2);
-	build_shared_spectrum_section(node_id, context, params, &mut layout);
+	build_shared_spectrum_section(node_id, context, &bw_track(), &params, &mut layout);
 
 	layout
 }
@@ -2143,11 +2215,31 @@ pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodeProp
 pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::exposure::*;
 
-	let exposure = number_widget(ParameterWidgetsInfo::new(node_id, ExposureInput, true, context), NumberInput::default().min(-20.).max(20.));
-	let offset = number_widget(ParameterWidgetsInfo::new(node_id, OffsetInput, true, context), NumberInput::default().min(-0.5).max(0.5));
-	let gamma_correction = number_widget(
+	let exposure = range_slider_widget(
+		ParameterWidgetsInfo::new(node_id, ExposureInput, true, context),
+		NumberInput::default().min(-20.).max(20.),
+		SliderRange {
+			min: -20.,
+			max: 20.,
+			default: Some(0.),
+		},
+	);
+	let offset = range_slider_widget(
+		ParameterWidgetsInfo::new(node_id, OffsetInput, true, context),
+		NumberInput::default().min(-0.5).max(0.5),
+		SliderRange {
+			min: -0.5,
+			max: 0.5,
+			default: Some(0.),
+		},
+	);
+
+	let gamma_correction = slider_row(
 		ParameterWidgetsInfo::new(node_id, GammaCorrectionInput, true, context),
-		NumberInput::default().min(0.01).max(9.99).increment_step(0.1),
+		MarkerScale::Gamma.number_input().increment_step(0.1),
+		Some(1.),
+		|gamma| MarkerScale::Gamma.position(gamma),
+		|position| MarkerScale::Gamma.value(position),
 	);
 
 	vec![LayoutGroup::row(exposure), LayoutGroup::row(offset), LayoutGroup::row(gamma_correction)]
