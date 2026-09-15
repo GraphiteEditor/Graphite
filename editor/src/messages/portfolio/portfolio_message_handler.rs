@@ -828,6 +828,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			} => {
 				// Upgrade the document being opened to use fresh copies of all nodes
 				let reset_node_definitions_on_open = reset_node_definitions_on_open || document_migration_reset_node_definition(&document_serialized_content);
+				// Reinstall just the layer networks whose coercion nodes were split into "As Graphic" and "Into Group"
+				let reset_layer_definitions = document_migration_reset_layer_definitions(&document_serialized_content);
 				// Upgrade the document being opened with string replacements on the original JSON
 				let document_serialized_content = document_migration_string_preprocessing(document_serialized_content);
 				// Upgrade resources from being referend by hash to beeing referened by ID
@@ -878,7 +880,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 
 				// Upgrade the document's nodes to be compatible with the latest version
-				document_migration_upgrades(&mut document, reset_node_definitions_on_open);
+				document_migration_upgrades(&mut document, reset_node_definitions_on_open, reset_layer_definitions);
 
 				// Load the document's embedded resources into the resource storage
 				std::mem::take(&mut document.resources.embedded).into_iter().for_each(|(hash, resource)| {

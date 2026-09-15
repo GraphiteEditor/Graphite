@@ -374,6 +374,14 @@ impl From<DVec2> for Graphic<'_> {
 		Graphic::Vector(Vector::from_anchor_position(position))
 	}
 }
+
+/// A coordinate becomes the vector holding it as a lone anchor, so a level of
+/// coordinates coerces lane-for-lane into a level of single-point vectors.
+impl IntoGraphicElement for DVec2 {
+	fn into_graphic_element(self, _arena: &core_types::arena::Arena) -> Option<Graphic<'_>> {
+		Some(Graphic::Vector(Vector::from_anchor_position(self)))
+	}
+}
 // Note: List conversions handled by blanket impl in gcore
 
 impl<'e> Graphic<'e> {

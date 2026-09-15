@@ -45,6 +45,14 @@ pub struct NodeReplacement<'a> {
 	aliases: &'a [&'a str],
 }
 
+/// Every name the Merge layer network's two type-coercion nodes have gone by, which is every alias of the node they both converged on.
+fn into_group_aliases() -> impl Iterator<Item = &'static &'static str> {
+	NODE_REPLACEMENTS
+		.iter()
+		.filter(|replacement| replacement.node == graphene_std::graphic::into_group::IDENTIFIER)
+		.flat_map(|replacement| replacement.aliases)
+}
+
 const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	// ================================
 	// blending
@@ -200,22 +208,20 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::to_graphic::IDENTIFIER,
+		node: graphene_std::graphic::into_group::IDENTIFIER,
 		aliases: &[
-			"graphene_core::ToGraphicGroupNode",
-			"graphene_core::graphic_element::ToGroupNode",
-			"graphene_core::graphic_types::ToGroupNode",
-			"graphene_core::graphic::ToGraphicNode",
-		],
-	},
-	NodeReplacement {
-		node: graphene_std::graphic::wrap_graphic::IDENTIFIER,
-		aliases: &[
-			// Converted from "To Element"
+			// Converted from "To Element", then "Wrap Graphic"
 			"graphene_core::ToGraphicElementNode",
 			"graphene_core::graphic_element::ToElementNode",
 			"graphene_core::graphic_types::ToElementNode",
 			"graphene_core::graphic::WrapGraphicNode",
+			"graphic_nodes::graphic::WrapGraphicNode",
+			// Converted from "To Graphic", whose grouping of non-graphical content this node now carries alone
+			"graphene_core::ToGraphicGroupNode",
+			"graphene_core::graphic_element::ToGroupNode",
+			"graphene_core::graphic_types::ToGroupNode",
+			"graphene_core::graphic::ToGraphicNode",
+			"graphic_nodes::graphic::ToGraphicNode",
 		],
 	},
 	// ================================
@@ -1085,6 +1091,21 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 	false
 }
 
+/// Whether the layer networks built from the coercion nodes that became "As Graphic" and "Into Group" need their definitions reset.
+///
+/// A document still naming either node by an alias stores the pre-split plumbing, which the alias migration alone would mangle:
+/// it maps both names onto the reducer, leaving a reducer where the layer wants the assertion. Resetting those two layer
+/// definitions installs the current plumbing instead. This stays narrower than a full
+/// [`document_migration_reset_node_definition`], whose one-shot input reorderings would re-apply to documents already carrying them.
+pub fn document_migration_reset_layer_definitions(document_serialized_content: &str) -> bool {
+	into_group_aliases().any(|alias| document_serialized_content.contains(alias))
+}
+
+/// The layer networks whose definitions [`document_migration_reset_layer_definitions`] resets.
+fn is_coercion_layer_definition(reference: &DefinitionIdentifier) -> bool {
+	matches!(reference, DefinitionIdentifier::Network(name) if name == "Merge" || name == "Artboard")
+}
+
 pub fn document_migration_replace_resources_referenced_by_hash(document_serialized_content: String) -> (String, HashMap<ResourceHash, ResourceId>) {
 	fn collect_resources_referenced_by_hash(s: &str) -> HashMap<ResourceHash, Vec<Range<usize>>> {
 		let mut out: HashMap<ResourceHash, Vec<Range<usize>>> = HashMap::new();
@@ -1156,7 +1177,7 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 	(out, hash_to_id)
 }
 
-pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
+pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool, reset_layer_definitions: bool) {
 	document.network_interface.migrate_path_modify_node();
 
 	let network = document.network_interface.document_network().clone();
@@ -1323,7 +1344,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		.map(|(node_id, node, path)| (*node_id, node.clone(), path))
 		.collect::<Vec<(NodeId, graph_craft::document::DocumentNode, Vec<NodeId>)>>();
 	for (node_id, node, network_path) in &nodes {
-		migrate_node(node_id, node, network_path, document, reset_node_definitions_on_open);
+		migrate_node(node_id, node, network_path, document, reset_node_definitions_on_open, reset_layer_definitions);
 	}
 
 	// The old geometry-producing "Text" node was split into the current "Text" (`String[]`) -> converter pair, which reuses the same proto
@@ -1441,12 +1462,21 @@ fn fold_gradient_spread_into_ramp_input(input: &NodeInput, gradient_spread: Grad
 	}
 }
 
-fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
+fn migrate_node(
+	node_id: &NodeId,
+	node: &DocumentNode,
+	network_path: &[NodeId],
+	document: &mut DocumentMessageHandler,
+	reset_node_definitions_on_open: bool,
+	reset_layer_definitions: bool,
+) -> Option<()> {
 	// Must run before the reset block below: a node referencing a removed catalog entry would otherwise abort
 	// `migrate_node` via the `?` on `resolve_document_node_type`, preventing subsequent migration blocks from running.
 	migrate_removed_catalog_definitions(node_id, node, network_path, document);
 
-	if reset_node_definitions_on_open && let Some(reference) = document.network_interface.reference(node_id, network_path) {
+	if let Some(reference) = document.network_interface.reference(node_id, network_path)
+		&& (reset_node_definitions_on_open || (reset_layer_definitions && is_coercion_layer_definition(&reference)))
+	{
 		let node_definition = resolve_document_node_type(&reference)?;
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 
@@ -2984,6 +3014,25 @@ mod tests {
 		assert!(!document_migration_reset_node_definition(
 			r#"{"implementation":{"ProtoNode":{"name":"graphic_nodes::graphic::WriteAttributeNode"}}}"#
 		));
+	}
+
+	// Migrating a Merge network's coercion nodes by alias would leave a reducer in the primary slot, so every alias must reset instead
+	#[test]
+	fn every_into_group_alias_resets_the_merge_definition() {
+		let aliases = into_group_aliases().collect::<Vec<_>>();
+		assert!(!aliases.is_empty(), "the reset is driven by these aliases, so losing them all would disable it unnoticed");
+
+		for alias in aliases {
+			let document = format!(r#""implementation":{{"ProtoNode":"{alias}"}}"#);
+			assert!(
+				document_migration_reset_layer_definitions(&document),
+				"a document referencing `{alias}` should reset its layer definitions"
+			);
+			assert!(
+				!document_migration_reset_node_definition(&document),
+				"`{alias}` alone must not reset every definition, which would re-apply the one-shot input reorderings"
+			);
+		}
 	}
 
 	#[test]

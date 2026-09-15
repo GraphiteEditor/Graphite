@@ -265,12 +265,12 @@ attribute_reads! {
 	read_gradient_hue_direction_attribute: GradientHueDirection => GradientHueDirection;
 }
 
-/// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.
-/// The wrapped run keeps the level's element type, so the legacy boundary can
-/// lower a wrapped vector level to the bare typed graphic the pre-flip wrap made.
+/// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
+/// The collected run keeps the level's element type, so the legacy boundary can
+/// lower a grouped vector level to the bare typed graphic the pre-flip wrap made.
 /// The inverse of this node is 'Flatten Graphic'.
-#[node_macro::node(category("General"), extent(wrap_graphic_extent))]
-pub fn wrap_graphic<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
+#[node_macro::node(category("General"), extent(into_group_extent))]
+pub fn into_group<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] content: IList<T>,
 ) -> Result<IList<Graphic<'e>>, Interrupt> {
@@ -279,15 +279,14 @@ pub fn wrap_graphic<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static
 }
 
 /// The collected group is the level's single lane.
-fn wrap_graphic_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Extent> {
+fn into_group_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Extent> {
 	GPoll::Final(Extent::Exactly(1))
 }
 
-/// Converts graphical content into a `Graphic` level. A `Graphic` level passes through
-/// unchanged; a typed level nests as one graphic lane, keeping the pre-flip list
-/// collapse (`to_graphic_typed` serves those rows).
+/// Type-asserts a value to be graphical content, converting each lane of other content types into its matching form.
+/// Use the 'Into Group' node instead to collect the content into a single group.
 #[node_macro::node(category("General"))]
-pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(ctx: impl Ctx + ExtractArena<'e>, #[implementations(Graphic)] content: T) -> Result<Graphic<'e>, Interrupt> {
+pub fn as_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(ctx: impl Ctx + ExtractArena<'e>, #[implementations(Graphic)] content: T) -> Result<Graphic<'e>, Interrupt> {
 	content.into_graphic_element(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
 }
 
@@ -297,37 +296,24 @@ pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(ctx: impl C
 #[node_macro::node(category(""))]
 pub fn to_graphic_element<'e, T: graphic_types::graphic::IntoGraphicElement>(
 	ctx: impl Ctx + ExtractArena<'e>,
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] content: T,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, DVec2)] content: T,
 ) -> Result<Graphic<'e>, Interrupt> {
 	content.into_graphic_element(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
 }
 
-/// The typed-level conversion: the whole level nests as one graphic lane, as
-/// the pre-flip `Into<Graphic>` list collapse did. Registered under the to
-/// graphic identifier.
-#[node_macro::node(category(""), extent(wrap_graphic_extent))]
-pub fn to_graphic_typed<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
-	_: impl Ctx,
-	#[implementations(Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] content: IList<T>,
-) -> Result<IList<Graphic<'e>>, Interrupt> {
-	let item = content.as_group_item();
-	Ok(Graphic::Group(core_types::record::Group { row: None, content: item }))
-}
-
 /// An unconnected content input carries the unit, which renders as nothing like
-/// the pre-flip empty list. Registered under the to graphic identifier.
-#[node_macro::node(category(""), extent(to_graphic_unit_extent))]
-pub fn to_graphic_unit(_: impl Ctx, _content: ()) -> Result<IList<Graphic<'static>>, Interrupt> {
+/// the pre-flip empty list. Registered under the as graphic identifier.
+#[node_macro::node(category(""), extent(as_graphic_unit_extent))]
+pub fn as_graphic_unit(_: impl Ctx, _content: ()) -> Result<IList<Graphic<'static>>, Interrupt> {
 	Err(core_types::gpoll::GraphError::past_end().into())
 }
 
-fn to_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level: LevelIn) -> GPoll<Extent> {
+fn as_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level: LevelIn) -> GPoll<Extent> {
 	GPoll::Final(Extent::Exactly(0))
 }
 
+pub use _as_graphic_unit_mod::as_graphic_unit_entries;
 pub use _to_graphic_element_mod::to_graphic_element_entries;
-pub use _to_graphic_typed_mod::to_graphic_typed_entries;
-pub use _to_graphic_unit_mod::to_graphic_unit_entries;
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 ///

@@ -224,8 +224,8 @@ fn flatten_levels_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent>
 mod tests {
 	use super::*;
 	use crate::graphic::{
-		ColorsToGradientNode, FlattenColorNode, FlattenGraphicNode, GradientToColorsNode, WrapGraphicNode, flatten_color_layout_meta, flatten_graphic_layout_meta, gradient_to_colors_layout_meta,
-		wrap_graphic_layout_meta,
+		ColorsToGradientNode, FlattenColorNode, FlattenGraphicNode, GradientToColorsNode, IntoGroupNode, flatten_color_layout_meta, flatten_graphic_layout_meta, gradient_to_colors_layout_meta,
+		into_group_layout_meta,
 	};
 	use core_types::arena::Arena;
 	use core_types::attribute::Attribute as AttributeMarker;
@@ -670,8 +670,8 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let node = install(
-			WrapGraphicNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
-			wrap_graphic_layout_meta(),
+			IntoGroupNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
+			into_group_layout_meta(),
 			&[Some(&layout)],
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
@@ -708,8 +708,8 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let node = install(
-			WrapGraphicNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
-			wrap_graphic_layout_meta(),
+			IntoGroupNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
+			into_group_layout_meta(),
 			&[Some(&layout)],
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
@@ -858,8 +858,8 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let node = install(
-			WrapGraphicNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
-			wrap_graphic_layout_meta(),
+			IntoGroupNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
+			into_group_layout_meta(),
 			&[Some(&layout)],
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
@@ -890,8 +890,8 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let wrapped = install(
-			WrapGraphicNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
-			wrap_graphic_layout_meta(),
+			IntoGroupNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
+			into_group_layout_meta(),
 			&[Some(&layout)],
 		);
 		let wrap_out = Node::<ContextImpl>::layout(&wrapped).clone();

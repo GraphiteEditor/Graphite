@@ -83,17 +83,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.into_iter()
 			.map(|entry| (ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<Graphic>"), entry)),
 	);
-	// The typed-level collapse rows of To Graphic, served under its identifier.
+	// The unit row of As Graphic: an unconnected content input renders as nothing.
 	node_types.extend(
-		graphene_std::graphic::to_graphic_typed_entries()
+		graphene_std::graphic::as_graphic_unit_entries()
 			.into_iter()
-			.map(|entry| (graphene_std::graphic::to_graphic::IDENTIFIER.clone(), entry)),
-	);
-	// The unit row of To Graphic: an unconnected content input renders as nothing.
-	node_types.extend(
-		graphene_std::graphic::to_graphic_unit_entries()
-			.into_iter()
-			.map(|entry| (graphene_std::graphic::to_graphic::IDENTIFIER.clone(), entry)),
+			.map(|entry| (graphene_std::graphic::as_graphic::IDENTIFIER.clone(), entry)),
 	);
 	// =============
 	// CONVERT NODES

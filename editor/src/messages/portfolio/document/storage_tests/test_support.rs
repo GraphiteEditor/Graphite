@@ -24,7 +24,9 @@ pub fn load_demo(file_name: &str) -> DocumentMessageHandler {
 #[test]
 #[ignore = "dev tool: set DEMO_OUT and run explicitly"]
 fn migrate_demo_artwork_into_demo_out() {
-	use crate::messages::portfolio::document_migration::{document_migration_reset_node_definition, document_migration_string_preprocessing, document_migration_upgrades};
+	use crate::messages::portfolio::document_migration::{
+		document_migration_reset_layer_definitions, document_migration_reset_node_definition, document_migration_string_preprocessing, document_migration_upgrades,
+	};
 	let out_dir = std::env::var("DEMO_OUT").expect("set DEMO_OUT to the output directory");
 	for entry in std::fs::read_dir("../demo-artwork").unwrap() {
 		let path = entry.unwrap().path();
@@ -34,8 +36,9 @@ fn migrate_demo_artwork_into_demo_out() {
 		let content = std::fs::read_to_string(&path).unwrap();
 		let content = document_migration_string_preprocessing(content);
 		let reset = document_migration_reset_node_definition(&content);
+		let reset_layers = document_migration_reset_layer_definitions(&content);
 		let mut document = DocumentMessageHandler::deserialize_document(&content).unwrap_or_else(|e| panic!("Failed to deserialize {}: {e:?}", path.display()));
-		document_migration_upgrades(&mut document, reset);
+		document_migration_upgrades(&mut document, reset, reset_layers);
 		let out = format!("{out_dir}/{}", path.file_name().unwrap().to_string_lossy());
 		std::fs::write(out, document.serialize_document()).unwrap();
 	}

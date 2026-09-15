@@ -155,15 +155,15 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						// Primary (bottom) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::to_graphic::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::as_graphic::IDENTIFIER),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -2)),
 							..Default::default()
 						},
-						// Collection of the content into the layer's group; the wrap keeps
+						// Collection of the content into the layer's group; the group keeps
 						// the content level's element type for the legacy boundary.
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 1)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::wrap_graphic::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::into_group::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -1)),
 							..Default::default()
 						},
@@ -171,7 +171,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						NodeTemplate {
 							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 1)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 0)),
 							..Default::default()
 						},
 						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
@@ -194,7 +194,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							call_argument: generic!(T),
 							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(list::extend::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -3)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -2)),
 							..Default::default()
 						},
 					]
@@ -269,7 +269,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						// Content coercion into a graphic level, evaluated within the artboard's footprint
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 1)],
-							implementation: NodeTemplateImplementation::ProtoNode(graphic::to_graphic::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(graphic::as_graphic::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-35, -3)),
 							..Default::default()
 						},
