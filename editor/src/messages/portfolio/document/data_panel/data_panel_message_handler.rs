@@ -16,8 +16,8 @@ use graphene_std::list::{Item, List, NodeIdPath};
 use graphene_std::math::float_noise::round_away_float_noise;
 use graphene_std::memo::IORecord;
 use graphene_std::raster::{
-	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice,
-	TonalRange,
+	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
+	SelectiveColorChoice, TonalRange,
 };
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::text::TextAlign;
@@ -245,6 +245,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<SelectiveColorChoice>,
 		List<TonalRange>,
 		List<AdjustmentChannel>,
+		List<HueSaturationRange>,
 		List<XY>,
 		List<ScaleType>,
 		List<ReferencePoint>,
@@ -303,6 +304,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<SelectiveColorChoice>,
 		Item<TonalRange>,
 		Item<AdjustmentChannel>,
+		Item<HueSaturationRange>,
 		Item<XY>,
 		Item<ScaleType>,
 		Item<ReferencePoint>,
@@ -1074,6 +1076,7 @@ impl_table_item_layout_for_choice_enum!(
 	SelectiveColorChoice,
 	TonalRange,
 	AdjustmentChannel,
+	HueSaturationRange,
 	XY,
 	ScaleType,
 	CentroidType,
@@ -1294,6 +1297,7 @@ macro_rules! known_item_types {
 			SelectiveColorChoice,
 			TonalRange,
 			AdjustmentChannel,
+			HueSaturationRange,
 			XY,
 			ScaleType,
 			ReferencePoint,
