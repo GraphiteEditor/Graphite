@@ -49,7 +49,6 @@ clap = { workspace = true, features = ["derive"] }
 interprocess = "2.4.2"
 fd-lock = "4.0.4"
 ctrlc = "3.5.1"
-window_clipboard = "0.5"
 
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
