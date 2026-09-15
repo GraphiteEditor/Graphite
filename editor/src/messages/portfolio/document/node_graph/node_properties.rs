@@ -265,7 +265,7 @@ pub(crate) fn property_from_type(
 	let number_or_slider = |default_info: ParameterWidgetsInfo, number_input: NumberInput, type_limits: bool| -> LayoutGroup {
 		let fixed_extent = number_input.mode == NumberInputMode::Range && no_soft_bounds && (hard_both_ends || type_limits);
 		match (number_input.min, number_input.max) {
-			(Some(min), Some(max)) if fixed_extent && min.is_finite() && max.is_finite() => {
+			(Some(min), Some(max)) if fixed_extent && min.is_finite() && max.is_finite() && min < max => {
 				let default = definition_default_number(&default_info);
 				range_slider_widget(default_info, number_input.mode_increment(), SliderRange { min, max, default }).into()
 			}
