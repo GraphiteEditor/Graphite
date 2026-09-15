@@ -73,11 +73,13 @@
 		return Math.max(lower, Math.min(upper, position));
 	}
 
+	// The nearest of the markers drawn on the track, skipping any outside 0..1 as the template does
 	function nearestMarkerIndex(position: number): number | undefined {
 		let nearest: number | undefined = undefined;
 		let nearestDistance = Number.POSITIVE_INFINITY;
 
 		markers.forEach((marker, index) => {
+			if (marker.position < 0 || marker.position > 1) return;
 			const distance = Math.abs(marker.position - position);
 			if (distance < nearestDistance) {
 				nearestDistance = distance;

@@ -1254,7 +1254,7 @@ fn static_input_properties() -> InputProperties {
 					.min(0.)
 					.max(1.)
 					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-				SliderRange { min: 0., max: 1., default: Some(0.5) },
+				SliderRange { min: 0., max: 1., default: Some(0.) },
 			);
 			Ok(vec![fractal_weighted_strength.into()])
 		}),
