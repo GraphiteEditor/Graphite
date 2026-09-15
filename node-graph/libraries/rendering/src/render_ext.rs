@@ -266,12 +266,19 @@ impl RenderExt for List<Graphic<'_>> {
 				let composited = composite_paint_colors(self, |graphic| if let Graphic::Color(color) = graphic { Some(*color) } else { None }, render_params.for_mask);
 				render_color_paint(composited, target)
 			}
-			Some(Graphic::Gradient(gradient)) => {
+			// One gradient resolves to a paint server; stacking several needs them composited, which only the pattern below can do
+			Some(Graphic::Gradient(gradient)) if self.len() <= 1 => {
 				let gradient_id = render_gradient_paint(&core_types::lane::LeafLane::new(self, 0, gradient), svg_defs, item_transform, element_transform, render_params.for_mask);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
 			Some(Graphic::None) => format!(r#" {paint_attr}="none""#),
-			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::GraphicList(_)) | Some(Graphic::Text(_)) | Some(Graphic::Group(_)) => {
+			Some(Graphic::Gradient(_))
+			| Some(Graphic::Vector(_))
+			| Some(Graphic::RasterCPU(_))
+			| Some(Graphic::RasterGPU(_))
+			| Some(Graphic::GraphicList(_))
+			| Some(Graphic::Text(_))
+			| Some(Graphic::Group(_)) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };

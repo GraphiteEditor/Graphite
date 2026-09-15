@@ -3460,6 +3460,26 @@ mod group_walk_tests {
 		List::new_from_element(Graphic::Color(Color::from_rgbaf32(0.8, 0.2, 0.33, 1.).unwrap()))
 	}
 
+	/// A paint holding one gradient row per color, each ramping that color to transparent.
+	fn gradient_paint(colors: impl IntoIterator<Item = Color>) -> List<Graphic<'static>> {
+		use graphic_types::vector_types::gradient::{Gradient, GradientStop};
+
+		colors
+			.into_iter()
+			.map(|color| {
+				let stops = [
+					GradientStop { position: 0., midpoint: 0.5, color },
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: Color::TRANSPARENT,
+					},
+				];
+				Item::new_from_element(Graphic::Gradient(Gradient::new(stops)))
+			})
+			.collect()
+	}
+
 	/// The appearance the fill node stamps, so test content mirrors node output.
 	fn fill_appearance(paint: &List<Graphic<'static>>) -> Appearance {
 		Appearance::new_single(Coverage::new_fill(), Graphic::GraphicList(paint.clone()))
@@ -3569,6 +3589,37 @@ mod group_walk_tests {
 		let mut native_outlines = Vec::new();
 		Graphic::Group(group).add_upstream_outline_targets(&mut native_outlines);
 		assert_eq!(native_outlines, legacy);
+	}
+
+	/// Renders a unit square filled with `paint` and returns its SVG body and defs.
+	fn rendered_fill(paint: &List<Graphic<'static>>) -> (String, String) {
+		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
+		let appearance = fill_appearance(paint);
+		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Vector>(), &[FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
+		let lane = builder.push(unit_square_at(DVec2::ZERO)).unwrap();
+		builder.attr::<AppearanceMarker>(lane, Some(&appearance));
+		let group = Group { row: None, content: builder.finish() };
+
+		let params = RenderParams::default();
+		rendered_svg(|render| Graphic::Group(group.clone()).render_svg(render, &params))
+	}
+
+	#[test]
+	fn a_lone_gradient_paint_renders_as_one_paint_server() {
+		let (svg, defs) = rendered_fill(&gradient_paint([Color::RED]));
+
+		assert!(svg.contains("fill=\"url(#"), "a single gradient should reference a paint server directly, got {svg}");
+		assert_eq!(defs.matches("<linearGradient").count(), 1, "the lone gradient should reach the defs, got {defs}");
+		assert!(!defs.contains("<pattern"), "a single gradient needs no pattern, got {defs}");
+	}
+
+	#[test]
+	fn stacked_gradient_paints_render_every_row() {
+		let (_svg, defs) = rendered_fill(&gradient_paint([Color::RED, Color::BLUE]));
+
+		// Two gradients cannot collapse into one paint server, so they must stack inside a pattern
+		assert!(defs.contains("<pattern"), "stacked gradients should render through a pattern, got {defs}");
+		assert_eq!(defs.matches("<linearGradient").count(), 2, "both gradient rows should reach the defs, got {defs}");
 	}
 
 	#[test]
