@@ -334,7 +334,7 @@ fn stamp_inherited_appearance(out: &mut List<Vector>, index: usize, inherited: O
 
 fn push_union(out: &mut List<Vector>, flattened: List<Vector>) {
 	// The union emits one blank operand even from an empty list, which would fabricate a region out of nothing
-	if flattened.len() == 0 {
+	if flattened.is_empty() {
 		return;
 	}
 	for row in boolean_operation_on_vector_list(&flattened, BooleanOperation::Union).into_iter() {

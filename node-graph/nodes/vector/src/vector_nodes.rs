@@ -4150,7 +4150,7 @@ mod test {
 	fn voronoi_shared_mesh_has_no_regions() {
 		let vector = with_ctx(|ctx| super::voronoi_cells(ctx, vector_from_points(&SQUARE_WITH_CENTER), true).unwrap());
 		assert_eq!(vector.region_domain.ids().len(), 0);
-		assert!(vector.segment_domain.ids().len() > 0);
+		assert!(!vector.segment_domain.ids().is_empty());
 	}
 
 	#[test]
@@ -4179,8 +4179,8 @@ mod test {
 		assert_eq!(vector.point_domain.ids().len(), points.len());
 		assert_ne!(vector.point_domain.positions(), &points[..]);
 		// The convex-hull corners are pinned.
-		for i in 0..4 {
-			assert_eq!(vector.point_domain.positions()[i], points[i], "hull corner {i} should be pinned");
+		for (corner, &expected) in points.iter().enumerate().take(4) {
+			assert_eq!(vector.point_domain.positions()[corner], expected, "hull corner {corner} should be pinned");
 		}
 		for &point in vector.point_domain.positions() {
 			assert!(point.x >= -1e-6 && point.x <= 10. + 1e-6);

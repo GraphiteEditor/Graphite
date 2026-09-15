@@ -992,9 +992,8 @@ pub fn sum(_: impl Ctx, values: IList<f64>) -> f64 {
 #[node_macro::node(category("Math: Numeric"))]
 fn average(_: impl Ctx, values: IList<f64>) -> f64 {
 	let count = values.len();
-	let average = if count == 0 { 0. } else { values.iter().sum::<f64>() / count as f64 };
 
-	average
+	if count == 0 { 0. } else { values.iter().sum::<f64>() / count as f64 }
 }
 
 /// Gives the smallest number in the input list. An empty list gives 0.
