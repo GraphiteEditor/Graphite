@@ -52,12 +52,17 @@
 	let skipNextMove = false;
 	// The hovered marker, highlighted ahead of the drag.
 	let hoverRun: [number, number] | undefined = undefined;
-	// The marker being dragged, or the left marker of the interval when a midpoint is dragged. Where selecting is allowed, this follows the selection, which Rust renumbers across structural changes.
+	// The marker being dragged, or the left marker of the interval when a midpoint is dragged, and which of the two it is.
+	// Where selecting is allowed, these follow the selection, which Rust renumbers across structural changes.
 	let dragIndex: number | undefined = undefined;
-	$: if (allowSelect) dragIndex = activeMarkerIndex;
+	let dragIsMidpoint = false;
+	$: if (allowSelect) {
+		dragIndex = activeMarkerIndex;
+		dragIsMidpoint = activeMarkerIsMidpoint;
+	}
 	// The marker highlighted: the one hovered, else the one being dragged (or selected, where selecting is allowed).
 	let highlightedRun: [number, number] | undefined;
-	$: highlightedRun = hoverRun !== undefined ? hoverRun : typeof dragIndex === "number" && !activeMarkerIsMidpoint ? [dragIndex, dragIndex] : undefined;
+	$: highlightedRun = hoverRun !== undefined ? hoverRun : typeof dragIndex === "number" && !dragIsMidpoint ? [dragIndex, dragIndex] : undefined;
 
 	function emit(intent: SpectrumInputUpdate) {
 		dispatch("update", intent);
@@ -65,6 +70,7 @@
 
 	function setActive(index: number | undefined, isMidpoint: boolean) {
 		dragIndex = index;
+		dragIsMidpoint = isMidpoint;
 		if (!allowSelect) return;
 
 		activeMarkerIndex = index;
@@ -192,6 +198,7 @@
 		duplicateActive = false;
 		// Don't dispatch an `ActiveMarker` here. The Rust handler already updates the active marker in response to `InsertMarker` and a duplicate `ActiveMarker` would race the layout update.
 		dragIndex = insertIndex;
+		dragIsMidpoint = false;
 		activeMarkerIndex = insertIndex;
 		activeMarkerIsMidpoint = false;
 		addEvents();
@@ -242,7 +249,7 @@
 	// Bring the materialized duplicate state in line with whether Alt is currently held, inserting or removing the frozen copy.
 	// Returns whether a structural change was emitted, so callers can skip the next move that would race it.
 	function reconcileDuplicate(): boolean {
-		if (!allowInsert || dragIndex === undefined || activeMarkerIsMidpoint) return false;
+		if (!allowInsert || dragIndex === undefined || dragIsMidpoint) return false;
 
 		if (duplicateRequested && !duplicateActive) {
 			// Drop a frozen copy at the drag's start position. The dragged marker stays active and becomes the duplicate being moved.
@@ -290,7 +297,8 @@
 
 		let position = pointerPosition(e);
 		if (position === undefined) return;
-		if (!allowReorder) position = clampToNeighbors(dragIndex, position);
+		// Without selection nothing reports the dragged marker's new index after a reorder, so it stays between its neighbors
+		if (!allowReorder || !allowSelect) position = clampToNeighbors(dragIndex, position);
 
 		dragMoved = true;
 		if (!dragInsertedMarker) dispatch("dragging", true);
@@ -346,7 +354,7 @@
 			emit({ DeleteMarker: { index: dragged } });
 		} else if (dragRestorePosition !== undefined) {
 			// Plain drag: return the marker (or midpoint) to where it began.
-			if (activeMarkerIsMidpoint) emit({ MoveMidpoint: { index: dragged, position: dragRestorePosition } });
+			if (dragIsMidpoint) emit({ MoveMidpoint: { index: dragged, position: dragRestorePosition } });
 			else emit({ MoveMarker: { index: dragged, position: dragRestorePosition } });
 		}
 
@@ -369,12 +377,15 @@
 		duplicateActive = false;
 		skipNextMove = false;
 		// Without selection nothing stays active once the drag ends
-		if (!allowSelect) dragIndex = undefined;
+		if (!allowSelect) {
+			dragIndex = undefined;
+			dragIsMidpoint = false;
+		}
 		dispatch("dragging", false);
 	}
 
 	function onPointerMove(e: PointerEvent) {
-		if (activeMarkerIsMidpoint) moveActiveMidpoint(e);
+		if (dragIsMidpoint) moveActiveMidpoint(e);
 		else moveActiveMarker(e);
 	}
 
@@ -398,7 +409,7 @@
 		// Pressing Alt mid-drag duplicates the marker, leaving a frozen copy where the drag began. Reconcile immediately for instant
 		// feedback, and arm a skip so the next pointer move doesn't race the just-emitted structural change. Only when dragging an
 		// existing stop (not one being created by this drag).
-		if (e.key === "Alt" && allowInsert && !activeMarkerIsMidpoint && !dragInsertedMarker && !duplicateRequested) {
+		if (e.key === "Alt" && allowInsert && !dragIsMidpoint && !dragInsertedMarker && !duplicateRequested) {
 			duplicateRequested = true;
 			if (reconcileDuplicate()) skipNextMove = true;
 		}
