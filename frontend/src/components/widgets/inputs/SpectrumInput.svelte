@@ -98,9 +98,17 @@
 	function holdBetweenNeighbors(first: number, last: number, spacing: number, position: number): number {
 		// Without selection nothing reports the dragged marker's new index after a reorder, so it stays between its neighbors
 		if (allowReorder && allowSelect) return position;
-		const lower = markers[first - 1]?.position ?? 0;
-		const upper = (markers[last + 1]?.position ?? 1) - spacing;
+		const lower = neighborBound(first, -1) ?? 0;
+		const upper = (neighborBound(last, 1) ?? 1) - spacing;
 		return Math.max(lower, Math.min(upper, position));
+	}
+
+	// The position of the nearest marker past `index` in the direction of `step` that bounds others, skipping any placed between its neighbors since those follow them instead
+	function neighborBound(index: number, step: -1 | 1): number | undefined {
+		for (let i = index + step; i >= 0 && i < markers.length; i += step) {
+			if (!markers[i].betweenNeighbors) return markers[i].position;
+		}
+		return undefined;
 	}
 
 	// The spans from each marker passing `linked` to its successor
