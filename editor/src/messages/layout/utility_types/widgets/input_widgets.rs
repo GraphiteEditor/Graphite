@@ -671,6 +671,9 @@ pub struct SpectrumInput {
 	/// Whether dragging a marker past another reorders them, which also needs `allow_select`. Otherwise the dragged marker is clamped between its neighbors.
 	#[serde(rename = "allowReorder")]
 	pub allow_reorder: bool,
+	/// Whether the track's ends meet, as on a hue wheel: a run dragged by its strip or dashed link wraps past them, a lone marker stops.
+	#[serde(rename = "allowWrap")]
+	pub allow_wrap: bool,
 	/// Whether clicking a marker selects it, keeping it highlighted and reported as the active marker until another is chosen,
 	/// as a gradient editor needs for the stop being edited. Otherwise the highlight only follows the pointer and the drag.
 	#[serde(rename = "allowSelect")]
@@ -703,7 +706,10 @@ pub struct SpectrumMarker {
 	/// discarding any transparency so the handle always shows the RGB that steers the interpolation.
 	#[serde(rename = "handleColorCSS")]
 	handle_color_css: String,
-	/// Whether a dashed line runs from this marker to the next through the lane below the track. Dragging it carries both markers.
+	/// Whether this marker and the next form a split handle: one marker split down the middle while they coincide, two halves joined by a strip once apart.
+	#[serde(rename = "pairedWithNext")]
+	paired_with_next: bool,
+	/// Whether a dashed line runs from this marker to the next through the lane below the track. Dragging it carries both markers, along with any split-handle halves attached to them.
 	#[serde(rename = "dashedToNext")]
 	dashed_to_next: bool,
 	/// Whether this marker follows its neighbors instead of bounding them, so they may drag past its drawn position.
@@ -718,6 +724,7 @@ impl SpectrumMarker {
 			position,
 			midpoint,
 			handle_color_css,
+			paired_with_next: false,
 			dashed_to_next: false,
 			between_neighbors: false,
 		}
@@ -725,6 +732,11 @@ impl SpectrumMarker {
 
 	pub fn between_neighbors(mut self) -> Self {
 		self.between_neighbors = true;
+		self
+	}
+
+	pub fn pair_with_next(mut self) -> Self {
+		self.paired_with_next = true;
 		self
 	}
 

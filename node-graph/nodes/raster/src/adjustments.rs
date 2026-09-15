@@ -697,9 +697,196 @@ fn black_and_white<T: Adjust<Color>>(
 	image
 }
 
+#[repr(u32)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[widget(Dropdown)]
+pub enum HueSaturationRange {
+	#[default]
+	Master,
+	Reds,
+	Yellows,
+	Greens,
+	Cyans,
+	Blues,
+	Magentas,
+}
+
+/// HSL of gamma-encoded channels: hue in degrees, saturation and lightness in 0..1.
+fn gamma_rgb_to_hsl(r: f32, g: f32, b: f32) -> [f32; 3] {
+	let maximum = r.max(g).max(b);
+	let minimum = r.min(g).min(b);
+	let chroma = maximum - minimum;
+	let lightness = (maximum + minimum) / 2.;
+	if chroma <= 0. {
+		return [0., 0., lightness];
+	}
+
+	let saturation = chroma / (1. - (2. * lightness - 1.).abs()).max(1e-6);
+	[hexagon_hue_degrees(r, g, b), saturation.min(1.), lightness]
+}
+
+/// Hexagon hue in degrees of three channels in any encoding, 0 for gray.
+fn hexagon_hue_degrees(r: f32, g: f32, b: f32) -> f32 {
+	let maximum = r.max(g).max(b);
+	let chroma = maximum - r.min(g).min(b);
+	if chroma <= 0. {
+		return 0.;
+	}
+
+	let sector = if maximum == r {
+		wrap_positive((g - b) / chroma, 6.)
+	} else if maximum == g {
+		(b - r) / chroma + 2.
+	} else {
+		(r - g) / chroma + 4.
+	};
+	sector * 60.
+}
+
+/// `value` wrapped into the range from 0 to `modulus`.
+fn wrap_positive(value: f32, modulus: f32) -> f32 {
+	value - (value / modulus).floor() * modulus
+}
+
+/// Gamma-encoded channels from a hue in degrees and saturation and lightness in 0..1.
+fn hsl_to_gamma_rgb(hue: f32, saturation: f32, lightness: f32) -> [f32; 3] {
+	let chroma = (1. - (2. * lightness - 1.).abs()) * saturation;
+	let sector = wrap_positive(hue, 360.) / 60.;
+	let x = chroma * (1. - (wrap_positive(sector, 2.) - 1.).abs());
+	let (r, g, b) = if sector < 1. {
+		(chroma, x, 0.)
+	} else if sector < 2. {
+		(x, chroma, 0.)
+	} else if sector < 3. {
+		(0., chroma, x)
+	} else if sector < 4. {
+		(0., x, chroma)
+	} else if sector < 5. {
+		(x, 0., chroma)
+	} else {
+		(chroma, 0., x)
+	};
+	let m = lightness - chroma / 2.;
+
+	[(r + m).clamp(0., 1.), (g + m).clamp(0., 1.), (b + m).clamp(0., 1.)]
+}
+
+/// One set of Hue/Saturation sliders: a hue shift in degrees and saturation and lightness amounts in -1..1.
+#[derive(Clone, Copy)]
+struct HueSaturationSettings {
+	hue: f32,
+	saturation: f32,
+	lightness: f32,
+}
+
+impl HueSaturationSettings {
+	fn new(hue: f32, saturation_percent: f32, lightness_percent: f32) -> Self {
+		Self {
+			hue,
+			saturation: (saturation_percent / 100.).clamp(-1., 1.),
+			lightness: (lightness_percent / 100.).clamp(-1., 1.),
+		}
+	}
+}
+
+/// A hue range with its falloff: full weight from `range_start` to `range_end`, fading linearly to zero at the falloff ends.
+#[derive(Clone, Copy)]
+struct HueSaturationRangeSettings {
+	falloff_start: f32,
+	range_start: f32,
+	range_end: f32,
+	falloff_end: f32,
+	settings: HueSaturationSettings,
+}
+
+impl HueSaturationRangeSettings {
+	fn new(falloff_start: f32, range_start: f32, range_end: f32, falloff_end: f32, settings: HueSaturationSettings) -> Self {
+		// For PSD interop, each edge rounds to 1536 hue units per turn over 359 rather than 360 degrees, landing up to a degree late
+		let edge = |degrees: f32| (degrees * 1536. / 359.).round() * 360. / 1536.;
+
+		Self {
+			falloff_start: edge(falloff_start),
+			range_start: edge(range_start),
+			range_end: edge(range_end),
+			falloff_end: edge(falloff_end),
+			settings,
+		}
+	}
+
+	fn weight(&self, hue: f32) -> f32 {
+		let distance = |from: f32, to: f32| wrap_positive(to - from, 360.);
+		if distance(self.range_start, hue) <= distance(self.range_start, self.range_end) {
+			return 1.;
+		}
+		let start_falloff = distance(self.falloff_start, self.range_start);
+		let end_falloff = distance(self.range_end, self.falloff_end);
+		if distance(self.falloff_start, hue) < start_falloff {
+			return distance(self.falloff_start, hue) / start_falloff;
+		}
+		if distance(self.range_end, hue) < end_falloff {
+			return 1. - distance(self.range_end, hue) / end_falloff;
+		}
+		0.
+	}
+}
+
+/// The six ranges' combined effect on one pixel, gathered before the master sliders apply.
+struct HueSaturationRangeEffect {
+	hue_shift: f32,
+	saturation_factor: f32,
+	fully_saturate: bool,
+	rgb: [f32; 3],
+}
+
+impl HueSaturationRangeEffect {
+	fn apply(&mut self, range: &HueSaturationRangeSettings, original_hue: f32, original_saturation: f32) {
+		// Range weights come from the original hue, and grays belong to no range
+		let weight = if original_saturation > 0. { range.weight(original_hue) } else { 0. };
+		if weight <= 0. {
+			return;
+		}
+
+		self.hue_shift += range.settings.hue * weight;
+		if range.settings.saturation >= 1. {
+			self.fully_saturate = true;
+		} else {
+			self.saturation_factor *= 1. + (saturation_gain(range.settings.saturation) - 1.) * weight;
+		}
+		self.rgb = lightness_toward_max_or_min(self.rgb, range.settings.lightness * weight);
+	}
+}
+
+/// The factor a saturation amount in -1..1 applies to HSL saturation, quantized for PSD interop: 1 - trunc(256 a) / 256 below zero and floor(65280 / (255 - trunc(254 a))) / 256 above.
+fn saturation_gain(amount: f32) -> f32 {
+	if amount < 0. {
+		1. - (-amount * 256.).trunc() / 256.
+	} else {
+		(65280. / (255. - (amount * 254.).trunc())).floor() / 256.
+	}
+}
+
+/// Blends toward white for a positive amount and toward black for a negative one, as the master lightness slider does.
+fn lightness_toward_white_or_black(value: f32, amount: f32) -> f32 {
+	if amount >= 0. { value + (1. - value) * amount } else { value * (1. + amount) }
+}
+
+/// A range's lightness moves the channels toward the color's own maximum (positive) or minimum (negative) instead.
+fn lightness_toward_max_or_min(rgb: [f32; 3], amount: f32) -> [f32; 3] {
+	let maximum = rgb[0].max(rgb[1]).max(rgb[2]);
+	let minimum = rgb[0].min(rgb[1]).min(rgb[2]);
+	let toward = if amount >= 0. { maximum } else { minimum };
+	let blend = |value: f32| value + (toward - value) * amount.abs();
+	[blend(rgb[0]), blend(rgb[1]), blend(rgb[2])]
+}
+
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27hue%20%27%20%3D%20Old,saturation%2C%20Photoshop%205.0
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=0%20%3D%20Use%20other.-,Hue/Saturation,-Hue/Saturation%20settings
+//
+// TODO: Residuals in 8-bit PSD interop: the byte-hue colorize table, the colorize lightness slider (up to 2.5 levels), and the range edges (a few tenths of a degree)
 #[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), properties("hue_saturation_properties"), shader_node(PerPixelAdjust))]
 fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
@@ -710,27 +897,212 @@ fn hue_saturation<T: Adjust<Color>>(
 	)]
 	#[gpu_image]
 	input: Item<T>,
-	hue_shift: Item<AngleF32>,
-	saturation_shift: Item<SignedPercentageF32>,
-	lightness_shift: Item<SignedPercentageF32>,
+	hue: Item<AngleF32>,
+	saturation: Item<SignedPercentageF32>,
+	lightness: Item<SignedPercentageF32>,
+	colorize: Item<bool>,
+	#[name("(Colorize) Hue")]
+	#[default(24.)]
+	colorize_hue: Item<AngleF32>,
+	#[name("(Colorize) Saturation")]
+	#[default(25.)]
+	colorize_saturation: Item<PercentageF32>,
+	#[name("(Colorize) Lightness")] colorize_lightness: Item<SignedPercentageF32>,
+	#[name("(Reds) Hue")] reds_hue: Item<AngleF32>,
+	#[name("(Reds) Saturation")] reds_saturation: Item<SignedPercentageF32>,
+	#[name("(Reds) Lightness")] reds_lightness: Item<SignedPercentageF32>,
+	#[name("(Reds) Falloff Start")]
+	#[default(315.)]
+	reds_falloff_start: Item<f32>,
+	#[name("(Reds) Range Start")]
+	#[default(345.)]
+	reds_range_start: Item<f32>,
+	#[name("(Reds) Range End")]
+	#[default(15.)]
+	reds_range_end: Item<f32>,
+	#[name("(Reds) Falloff End")]
+	#[default(45.)]
+	reds_falloff_end: Item<f32>,
+	#[name("(Yellows) Hue")] yellows_hue: Item<AngleF32>,
+	#[name("(Yellows) Saturation")] yellows_saturation: Item<SignedPercentageF32>,
+	#[name("(Yellows) Lightness")] yellows_lightness: Item<SignedPercentageF32>,
+	#[name("(Yellows) Falloff Start")]
+	#[default(15.)]
+	yellows_falloff_start: Item<f32>,
+	#[name("(Yellows) Range Start")]
+	#[default(45.)]
+	yellows_range_start: Item<f32>,
+	#[name("(Yellows) Range End")]
+	#[default(75.)]
+	yellows_range_end: Item<f32>,
+	#[name("(Yellows) Falloff End")]
+	#[default(105.)]
+	yellows_falloff_end: Item<f32>,
+	#[name("(Greens) Hue")] greens_hue: Item<AngleF32>,
+	#[name("(Greens) Saturation")] greens_saturation: Item<SignedPercentageF32>,
+	#[name("(Greens) Lightness")] greens_lightness: Item<SignedPercentageF32>,
+	#[name("(Greens) Falloff Start")]
+	#[default(75.)]
+	greens_falloff_start: Item<f32>,
+	#[name("(Greens) Range Start")]
+	#[default(105.)]
+	greens_range_start: Item<f32>,
+	#[name("(Greens) Range End")]
+	#[default(135.)]
+	greens_range_end: Item<f32>,
+	#[name("(Greens) Falloff End")]
+	#[default(165.)]
+	greens_falloff_end: Item<f32>,
+	#[name("(Cyans) Hue")] cyans_hue: Item<AngleF32>,
+	#[name("(Cyans) Saturation")] cyans_saturation: Item<SignedPercentageF32>,
+	#[name("(Cyans) Lightness")] cyans_lightness: Item<SignedPercentageF32>,
+	#[name("(Cyans) Falloff Start")]
+	#[default(135.)]
+	cyans_falloff_start: Item<f32>,
+	#[name("(Cyans) Range Start")]
+	#[default(165.)]
+	cyans_range_start: Item<f32>,
+	#[name("(Cyans) Range End")]
+	#[default(195.)]
+	cyans_range_end: Item<f32>,
+	#[name("(Cyans) Falloff End")]
+	#[default(225.)]
+	cyans_falloff_end: Item<f32>,
+	#[name("(Blues) Hue")] blues_hue: Item<AngleF32>,
+	#[name("(Blues) Saturation")] blues_saturation: Item<SignedPercentageF32>,
+	#[name("(Blues) Lightness")] blues_lightness: Item<SignedPercentageF32>,
+	#[name("(Blues) Falloff Start")]
+	#[default(195.)]
+	blues_falloff_start: Item<f32>,
+	#[name("(Blues) Range Start")]
+	#[default(225.)]
+	blues_range_start: Item<f32>,
+	#[name("(Blues) Range End")]
+	#[default(255.)]
+	blues_range_end: Item<f32>,
+	#[name("(Blues) Falloff End")]
+	#[default(285.)]
+	blues_falloff_end: Item<f32>,
+	#[name("(Magentas) Hue")] magentas_hue: Item<AngleF32>,
+	#[name("(Magentas) Saturation")] magentas_saturation: Item<SignedPercentageF32>,
+	#[name("(Magentas) Lightness")] magentas_lightness: Item<SignedPercentageF32>,
+	#[name("(Magentas) Falloff Start")]
+	#[default(255.)]
+	magentas_falloff_start: Item<f32>,
+	#[name("(Magentas) Range Start")]
+	#[default(285.)]
+	magentas_range_start: Item<f32>,
+	#[name("(Magentas) Range End")]
+	#[default(315.)]
+	magentas_range_end: Item<f32>,
+	#[name("(Magentas) Falloff End")]
+	#[default(345.)]
+	magentas_falloff_end: Item<f32>,
+	_range: Item<HueSaturationRange>,
 ) -> Item<T> {
 	let mut input = input;
-	let hue_shift = hue_shift.into_element();
-	let saturation_shift = saturation_shift.into_element();
-	let lightness_shift = lightness_shift.into_element();
+	let master = HueSaturationSettings::new(hue.into_element(), saturation.into_element(), lightness.into_element());
+	let colorize = colorize.into_element();
+	let colorize_settings = HueSaturationSettings::new(colorize_hue.into_element(), colorize_saturation.into_element(), colorize_lightness.into_element());
+	let (reds, yellows, greens, cyans, blues, magentas) = (
+		HueSaturationRangeSettings::new(
+			reds_falloff_start.into_element(),
+			reds_range_start.into_element(),
+			reds_range_end.into_element(),
+			reds_falloff_end.into_element(),
+			HueSaturationSettings::new(reds_hue.into_element(), reds_saturation.into_element(), reds_lightness.into_element()),
+		),
+		HueSaturationRangeSettings::new(
+			yellows_falloff_start.into_element(),
+			yellows_range_start.into_element(),
+			yellows_range_end.into_element(),
+			yellows_falloff_end.into_element(),
+			HueSaturationSettings::new(yellows_hue.into_element(), yellows_saturation.into_element(), yellows_lightness.into_element()),
+		),
+		HueSaturationRangeSettings::new(
+			greens_falloff_start.into_element(),
+			greens_range_start.into_element(),
+			greens_range_end.into_element(),
+			greens_falloff_end.into_element(),
+			HueSaturationSettings::new(greens_hue.into_element(), greens_saturation.into_element(), greens_lightness.into_element()),
+		),
+		HueSaturationRangeSettings::new(
+			cyans_falloff_start.into_element(),
+			cyans_range_start.into_element(),
+			cyans_range_end.into_element(),
+			cyans_falloff_end.into_element(),
+			HueSaturationSettings::new(cyans_hue.into_element(), cyans_saturation.into_element(), cyans_lightness.into_element()),
+		),
+		HueSaturationRangeSettings::new(
+			blues_falloff_start.into_element(),
+			blues_range_start.into_element(),
+			blues_range_end.into_element(),
+			blues_falloff_end.into_element(),
+			HueSaturationSettings::new(blues_hue.into_element(), blues_saturation.into_element(), blues_lightness.into_element()),
+		),
+		HueSaturationRangeSettings::new(
+			magentas_falloff_start.into_element(),
+			magentas_range_start.into_element(),
+			magentas_range_end.into_element(),
+			magentas_falloff_end.into_element(),
+			HueSaturationSettings::new(magentas_hue.into_element(), magentas_saturation.into_element(), magentas_lightness.into_element()),
+		),
+	);
 
 	input.element_mut().adjust(|color| {
-		// HSL operates on gamma-space channels
-		let [hue, saturation, lightness, alpha] = color.to_hsla();
+		let [r, g, b, alpha] = color.to_gamma_srgb_channels();
 
-		Color::from_hsla(
-			(hue + hue_shift / 360.) % 1.,
-			// TODO: Improve the way saturation works (it's slightly off)
-			(saturation + saturation_shift / 100.).clamp(0., 1.),
-			// TODO: Fix the way lightness works (it's very off)
-			(lightness + lightness_shift / 100.).clamp(0., 1.),
-			alpha,
-		)
+		if colorize {
+			let [_, _, lightness] = gamma_rgb_to_hsl(r, g, b);
+			let lightness = lightness_toward_white_or_black(lightness, colorize_settings.lightness);
+			let saturation = colorize_settings.saturation.max(0.);
+			let [r, g, b] = hsl_to_gamma_rgb(colorize_settings.hue, saturation, lightness);
+			return Color::from_gamma_srgb_channels(r, g, b, alpha);
+		}
+
+		// Each range weights its sliders by its falloff around the original hue: hue shifts add and saturation gains multiply
+		let [original_hue, original_saturation, _] = gamma_rgb_to_hsl(r, g, b);
+		let mut effect = HueSaturationRangeEffect {
+			hue_shift: master.hue,
+			saturation_factor: 1.,
+			fully_saturate: false,
+			rgb: [r, g, b],
+		};
+		effect.apply(&reds, original_hue, original_saturation);
+		effect.apply(&yellows, original_hue, original_saturation);
+		effect.apply(&greens, original_hue, original_saturation);
+		effect.apply(&cyans, original_hue, original_saturation);
+		effect.apply(&blues, original_hue, original_saturation);
+		effect.apply(&magentas, original_hue, original_saturation);
+		let HueSaturationRangeEffect {
+			hue_shift,
+			mut saturation_factor,
+			mut fully_saturate,
+			rgb,
+		} = effect;
+		if master.saturation >= 1. {
+			fully_saturate = true;
+		} else {
+			saturation_factor *= saturation_gain(master.saturation);
+		}
+
+		// The master lightness blends toward white or black before the hue and saturation, which work in HSL of the gamma channels
+		let rgb = [
+			lightness_toward_white_or_black(rgb[0], master.lightness),
+			lightness_toward_white_or_black(rgb[1], master.lightness),
+			lightness_toward_white_or_black(rgb[2], master.lightness),
+		];
+		let [hue, saturation, lightness] = gamma_rgb_to_hsl(rgb[0], rgb[1], rgb[2]);
+		let saturation = if saturation <= 0. {
+			0.
+		} else if fully_saturate {
+			1.
+		} else {
+			(saturation * saturation_factor).min(1.)
+		};
+		let [r, g, b] = hsl_to_gamma_rgb(hue + hue_shift, saturation, lightness);
+
+		Color::from_gamma_srgb_channels(r, g, b, alpha)
 	});
 	input
 }
@@ -1573,8 +1945,8 @@ fn color_balance<T: Adjust<Color>>(
 #[cfg(feature = "std")]
 mod _graphene_hash_impls {
 	use super::{
-		AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
-		SelectiveColorChoice, TonalRange,
+		AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha,
+		RelativeAbsolute, SelectiveColorChoice, TonalRange,
 	};
 	graphene_hash::impl_via_hash!(
 		DesaturateMethod,
@@ -1589,6 +1961,7 @@ mod _graphene_hash_impls {
 		SelectiveColorChoice,
 		AdjustmentChannel,
 		TonalRange,
+		HueSaturationRange
 	);
 }
 
@@ -1600,6 +1973,12 @@ mod tests {
 	fn assert_close(actual: [f32; 3], expected: [f32; 3]) {
 		for (actual, expected) in actual.iter().zip(expected) {
 			assert!((actual - expected).abs() <= 1., "expected {expected}, got {actual}");
+		}
+	}
+
+	fn assert_close_with_label(actual: [f32; 3], expected: [f32; 3], label: &str) {
+		for channel in 0..3 {
+			assert!((actual[channel] - expected[channel]).abs() <= 1.5, "{label}: expected {expected:?}, got {actual:?}");
 		}
 	}
 
@@ -1665,6 +2044,162 @@ mod tests {
 			assert!((red_actual - expected_red).abs() <= 1.5, "{value} red: expected {expected_red}, got {red_actual}");
 			assert!((green_actual - expected_green).abs() <= 1.5, "{value} green: expected {expected_green}, got {green_actual}");
 		}
+	}
+
+	/// Runs the node on one gamma-space RGB value (0..255) with the master sliders, colorize, and one range's sliders at
+	/// its default range values, returning the gamma-space result on the same scale.
+	fn run_hue_saturation(input: [f32; 3], master: [f32; 3], colorize: Option<[f32; 3]>, range: Option<(HueSaturationRange, [f32; 3])>) -> [f32; 3] {
+		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
+		let colorize_values = colorize.unwrap_or([24., 25., 0.]);
+		let range_values = |which: HueSaturationRange| match range {
+			Some((selected, values)) if selected == which => values,
+			_ => [0., 0., 0.],
+		};
+		let [reds, yellows, greens, cyans, blues, magentas] = [
+			range_values(HueSaturationRange::Reds),
+			range_values(HueSaturationRange::Yellows),
+			range_values(HueSaturationRange::Greens),
+			range_values(HueSaturationRange::Cyans),
+			range_values(HueSaturationRange::Blues),
+			range_values(HueSaturationRange::Magentas),
+		];
+		let result = hue_saturation(
+			(),
+			Item::new_from_element(pixel),
+			master[0].into(),
+			master[1].into(),
+			master[2].into(),
+			colorize.is_some().into(),
+			colorize_values[0].into(),
+			colorize_values[1].into(),
+			colorize_values[2].into(),
+			reds[0].into(),
+			reds[1].into(),
+			reds[2].into(),
+			315_f32.into(),
+			345_f32.into(),
+			15_f32.into(),
+			45_f32.into(),
+			yellows[0].into(),
+			yellows[1].into(),
+			yellows[2].into(),
+			15_f32.into(),
+			45_f32.into(),
+			75_f32.into(),
+			105_f32.into(),
+			greens[0].into(),
+			greens[1].into(),
+			greens[2].into(),
+			75_f32.into(),
+			105_f32.into(),
+			135_f32.into(),
+			165_f32.into(),
+			cyans[0].into(),
+			cyans[1].into(),
+			cyans[2].into(),
+			135_f32.into(),
+			165_f32.into(),
+			195_f32.into(),
+			225_f32.into(),
+			blues[0].into(),
+			blues[1].into(),
+			blues[2].into(),
+			195_f32.into(),
+			225_f32.into(),
+			255_f32.into(),
+			285_f32.into(),
+			magentas[0].into(),
+			magentas[1].into(),
+			magentas[2].into(),
+			255_f32.into(),
+			285_f32.into(),
+			315_f32.into(),
+			345_f32.into(),
+			HueSaturationRange::Master.into(),
+		);
+		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		[r * 255., g * 255., b * 255.]
+	}
+
+	#[test]
+	fn hue_saturation_master_sliders_rotate_scale_and_lighten() {
+		assert_close_with_label(run_hue_saturation([200., 50., 50.], [30., 0., 0.], None, None), [200., 125., 50.], "hue +30");
+		assert_close_with_label(run_hue_saturation([60., 120., 200.], [30., 0., 0.], None, None), [70., 60., 200.], "hue +30 on blue");
+		assert_close_with_label(run_hue_saturation([200., 50., 50.], [0., 50., 0.], None, None), [250., 0., 0.], "saturation +50");
+		assert_close_with_label(run_hue_saturation([60., 120., 200.], [0., 50., 0.], None, None), [5., 111., 255.], "saturation +50 on blue");
+		assert_close_with_label(run_hue_saturation([200., 50., 50.], [0., -50., 0.], None, None), [162., 87., 87.], "saturation -50");
+		assert_close_with_label(run_hue_saturation([30., 200., 90.], [0., -50., 0.], None, None), [72., 157., 102.], "saturation -50 on green");
+		assert_close_with_label(run_hue_saturation([200., 50., 50.], [0., 0., 50.], None, None), [227., 152., 152.], "lightness +50");
+		assert_close_with_label(run_hue_saturation([250., 0., 130.], [0., 0., 50.], None, None), [252., 127., 192.], "lightness +50 on magenta");
+		assert_close_with_label(run_hue_saturation([60., 120., 200.], [0., 0., -50.], None, None), [30., 60., 100.], "lightness -50");
+		assert_close_with_label(run_hue_saturation([200., 50., 50.], [90., 60., -40.], None, None), [74., 150., 0.], "combined");
+		assert_close_with_label(run_hue_saturation([30., 200., 90.], [90., 60., -40.], None, None), [0., 20., 138.], "combined on green");
+		assert_close_with_label(run_hue_saturation([150., 150., 150.], [90., 60., -40.], None, None), [90., 90., 90.], "combined on gray");
+	}
+
+	#[test]
+	fn hue_saturation_colorize_rebuilds_the_exact_hsl_color() {
+		assert_close_with_label(run_hue_saturation([200., 50., 50.], [0., 0., 0.], Some([240., 100., 0.]), None), [0., 0., 250.], "colorize 240/100/0");
+		assert_close_with_label(run_hue_saturation([150., 150., 150.], [0., 0., 0.], Some([240., 100., 0.]), None), [45., 45., 255.], "colorize on gray");
+		assert_close_with_label(run_hue_saturation([30., 200., 90.], [0., 0., 0.], Some([60., 100., 0.]), None), [230., 230., 0.], "colorize 60/100/0");
+		assert_close_with_label(
+			run_hue_saturation([150., 150., 150.], [0., 0., 0.], Some([30., 60., -30.]), None),
+			[168., 104., 42.],
+			"colorize 30/60/-30",
+		);
+		assert_close_with_label(run_hue_saturation([120., 0., 30.], [0., 0., 0.], Some([30., 60., -30.]), None), [67., 42., 17.], "colorize dark");
+		assert_close_with_label(
+			run_hue_saturation([255., 0., 0.], [0., 0., 0.], Some([20., 100., 0.]), None),
+			[255., 85., 0.],
+			"colorize 20 is the exact HSL color",
+		);
+		assert_close_with_label(run_hue_saturation([255., 0., 0.], [0., 0., 0.], Some([160., 100., 0.]), None), [0., 255., 170.], "colorize 160");
+		assert_close_with_label(run_hue_saturation([255., 0., 0.], [0., 0., 0.], Some([340., 100., 0.]), None), [255., 0., 85.], "colorize 340");
+		assert_close_with_label(
+			run_hue_saturation([255., 0., 0.], [0., 0., 0.], Some([-20., 100., 0.]), None),
+			[255., 0., 85.],
+			"colorize -20 wraps to 340",
+		);
+	}
+
+	#[test]
+	fn hue_saturation_ranges_weight_their_sliders_by_falloff() {
+		let reds = HueSaturationRange::Reds;
+		assert_close_with_label(
+			run_hue_saturation([200., 50., 50.], [0., 0., 0.], None, Some((reds, [60., 0., 0.]))),
+			[199., 200., 50.],
+			"reds hue +60 inside",
+		);
+		assert_close_with_label(
+			run_hue_saturation([60., 120., 200.], [0., 0., 0.], None, Some((reds, [60., 0., 0.]))),
+			[60., 120., 200.],
+			"reds hue +60 outside",
+		);
+		assert_close_with_label(
+			run_hue_saturation([200., 50., 50.], [0., 0., 0.], None, Some((reds, [0., 100., 0.]))),
+			[250., 0., 0.],
+			"reds saturation +100",
+		);
+		assert_close_with_label(
+			run_hue_saturation([200., 50., 50.], [0., 0., 0.], None, Some((reds, [0., 0., -50.]))),
+			[125., 50., 50.],
+			"reds lightness -50",
+		);
+		assert_close_with_label(
+			run_hue_saturation([255., 65., 0.], [0., 0., 0.], None, Some((reds, [0., 0., -50.]))),
+			[129., 33., 0.],
+			"reds lightness -50 near the edge",
+		);
+		assert_close_with_label(
+			run_hue_saturation([30., 200., 90.], [0., 0., 0.], None, Some((HueSaturationRange::Greens, [0., 50., -25.]))),
+			[0., 196., 69.],
+			"greens saturation and lightness",
+		);
+		assert_close_with_label(
+			run_hue_saturation([200., 50., 50.], [30., 0., 0.], None, Some((reds, [0., 50., 0.]))),
+			[250., 125., 0.],
+			"master hue with a range saturation",
+		);
 	}
 
 	#[test]

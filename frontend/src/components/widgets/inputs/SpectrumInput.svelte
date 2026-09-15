@@ -25,6 +25,7 @@
 	export let allowInsert = true;
 	export let allowDelete = true;
 	export let allowReorder = true;
+	export let allowWrap = false;
 	export let allowSelect = false;
 	export let narrow = false;
 	export let rangeSlider = false;
@@ -50,9 +51,10 @@
 	// Set when a key-triggered reconcile inserts/removes the frozen copy, so the next pointer move skips emitting a `MoveMarker`
 	// that would otherwise race the structural change before Rust has reported the dragged marker's new index.
 	let skipNextMove = false;
-	// Set while a run of markers drags together: its bounds, the first's offset from the pointer, each member's gap from the first, and their start positions for cancelling.
-	let dragRun: { first: number; last: number; offset: number; spacings: number[]; restore: number[] } | undefined = undefined;
-	// The run a hovered marker or dashed link would carry, highlighted ahead of the drag.
+	// Set while a run of markers drags together: its bounds, the first's offset from the pointer, each member's gap from the first,
+	// their start positions for cancelling, and whether the run may cross the track's ends (only when dragged by a strip or dashed link).
+	let dragRun: { first: number; last: number; offset: number; spacings: number[]; restore: number[]; wrap: boolean } | undefined = undefined;
+	// The run a hovered marker, strip, or dashed link would carry, highlighted ahead of the drag.
 	let hoverRun: [number, number] | undefined = undefined;
 	// The marker being dragged, or the left marker of the interval when a midpoint is dragged, and which of the two it is.
 	// Where selecting is allowed, these follow the selection, which Rust renumbers across structural changes.
@@ -66,6 +68,29 @@
 	let highlightedRun: [number, number] | undefined;
 	$: highlightedRun =
 		dragRun !== undefined ? [dragRun.first, dragRun.last] : hoverRun !== undefined ? hoverRun : typeof dragIndex === "number" && !dragIsMidpoint ? [dragIndex, dragIndex] : undefined;
+
+	type MarkerShape = "Whole" | "Joined" | "Left" | "Right" | "Hidden";
+
+	// The whole marker and its left and right halves, each as an inner fill and a 1px border ring in a 12x12 box
+	const WHOLE_PATHS = {
+		fill: "M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z",
+		border:
+			"M6,1.4L1.3,6.1C1.1,6.3,1,6.6,1,6.8V10c0,0.6,0.4,1,1,1h8c0.6,0,1-0.4,1-1V6.8c0-0.3-0.1-0.5-0.3-0.7L6,1.4" +
+			"M6,0l5.4,5.4C11.8,5.8,12,6.3,12,6.8V10c0,1.1-0.9,2-2,2H2c-1.1,0-2-0.9-2-2V6.8c0-0.5,0.2-1,0.6-1.4L6,0z",
+	};
+	const LEFT_HALF_PATHS = {
+		fill: "M6,0.7V11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1z",
+		border: "M6,0V12H2c-1.1,0-2-0.9-2-2V6.8c0-0.5,0.2-1,0.6-1.4L6,0zM5,2.4L1.3,6.1C1.1,6.3,1,6.6,1,6.8V10c0,0.6,0.4,1,1,1h3z",
+	};
+	const RIGHT_HALF_PATHS = {
+		fill: "M6,0.7V11.5h4c0.8,0,1.5-0.7,1.5-1.5V6.8c0-0.4-0.2-0.8-0.4-1.1z",
+		border: "M6,0l5.4,5.4C11.8,5.8,12,6.3,12,6.8V10c0,1.1-0.9,2-2,2H6zM7,2.4V11h3c0.6,0,1-0.4,1-1V6.8c0-0.3-0.1-0.5-0.3-0.7z",
+	};
+	function shapePaths(shape: MarkerShape): { fill: string; border: string } {
+		if (shape === "Left") return LEFT_HALF_PATHS;
+		if (shape === "Right") return RIGHT_HALF_PATHS;
+		return WHOLE_PATHS;
+	}
 
 	function emit(intent: SpectrumInputUpdate) {
 		dispatch("update", intent);
@@ -84,7 +109,7 @@
 	// Hovering highlights what a drag would carry, except where selecting is allowed and hover keeps its lighter tint
 	function markerPointerEnter(index: number) {
 		if (allowSelect) return;
-		hoverRun = [index, index];
+		hoverRun = markerShape(markers, index) === "Joined" ? [index, index + 1] : [index, index];
 	}
 
 	function pointerPosition(e: MouseEvent, clamp = true): number | undefined {
@@ -94,13 +119,27 @@
 		return clamp ? Math.max(0, Math.min(1, ratio)) : ratio;
 	}
 
-	// Holds markers `first..=last` (spanning `spacing`) between their neighbors as they move to `position`
-	function holdBetweenNeighbors(first: number, last: number, spacing: number, position: number): number {
+	// Holds markers `first..=last` (spanning `spacing`, the first having begun its drag at `start`) between their neighbors as they move to `position`.
+	// On a wrapping track the hold works in the unwrapped frame around `start`, and the result then wraps back or, without `wrap`, stops at the ends.
+	function holdBetweenNeighbors(first: number, last: number, start: number, spacing: number, position: number, wrap: boolean): number {
 		// Without selection nothing reports the dragged marker's new index after a reorder, so it stays between its neighbors
-		if (allowReorder && allowSelect) return position;
-		const lower = neighborBound(first, -1) ?? 0;
-		const upper = (neighborBound(last, 1) ?? 1) - spacing;
-		return Math.max(lower, Math.min(upper, position));
+		const reorder = allowReorder && allowSelect;
+		let held = position;
+
+		if (!reorder && !allowWrap) {
+			const lower = neighborBound(first, -1) ?? 0;
+			const upper = (neighborBound(last, 1) ?? 1) - spacing;
+			held = Math.max(lower, Math.min(upper, position));
+		} else if (!reorder && last - first + 1 < markers.length) {
+			const lowerNeighbor = markers[(first + markers.length - 1) % markers.length].position;
+			const upperNeighbor = markers[(last + 1) % markers.length].position;
+			const lower = lowerNeighbor + Math.floor(start - lowerNeighbor);
+			const upper = upperNeighbor + Math.ceil(start + spacing - upperNeighbor) - spacing;
+			held = Math.max(lower, Math.min(upper, position));
+		}
+
+		if (!allowWrap) return held;
+		return wrap ? held - Math.floor(held) : Math.max(0, Math.min(1 - spacing, held));
 	}
 
 	// The position of the nearest marker past `index` in the direction of `step` that bounds others, skipping any placed between its neighbors since those follow them instead
@@ -111,16 +150,27 @@
 		return undefined;
 	}
 
-	// The spans from each marker passing `linked` to its successor
-	function markerSpans(markers: SpectrumMarker[], linked: (marker: SpectrumMarker) => boolean): { index: number; left: number; width: number }[] {
+	// A marker paired with its successor draws as one marker split down the middle while the two coincide (the successor drawing nothing) and as a half once apart
+	function markerShape(markers: SpectrumMarker[], index: number): MarkerShape {
+		const marker = markers[index];
+		const previous = markers[index - 1];
+		const next = markers[index + 1];
+		if (marker.pairedWithNext && next !== undefined) return next.position === marker.position ? "Joined" : "Left";
+		if (previous?.pairedWithNext) return previous.position === marker.position ? "Hidden" : "Right";
+		return "Whole";
+	}
+
+	// The spans from each marker passing `linked` to its successor, which on a wrapping track may cross the track's ends in two pieces
+	function markerSpans(markers: SpectrumMarker[], allowWrap: boolean, linked: (marker: SpectrumMarker) => boolean): { index: number; left: number; width: number }[] {
 		const spans: { index: number; left: number; width: number }[] = [];
 
 		markers.forEach((marker, index) => {
 			const next = markers[index + 1];
 			if (!linked(marker) || next === undefined || next.position === marker.position) return;
 
-			const [left, right] = next.position > marker.position ? [marker.position, next.position] : [next.position, marker.position];
-			spans.push({ index, left, width: right - left });
+			if (next.position > marker.position) spans.push({ index, left: marker.position, width: next.position - marker.position });
+			else if (allowWrap) spans.push({ index, left: marker.position, width: 1 - marker.position }, { index, left: 0, width: next.position });
+			else spans.push({ index, left: next.position, width: marker.position - next.position });
 		});
 
 		return spans;
@@ -147,6 +197,19 @@
 		if (disabled) return;
 
 		if (e.button === BUTTON_LEFT) {
+			// A joined pair drags as a whole, unless Alt breaks off the half under the pointer
+			if (markerShape(markers, index) === "Joined") {
+				if (!e.altKey) {
+					beginRunDrag(e, index, index + 1, true, false);
+					return;
+				}
+
+				const pointer = pointerPosition(e, false);
+				const half = pointer !== undefined && pointer >= markers[index].position ? index + 1 : index;
+				beginMarkerDrag(e, half);
+				return;
+			}
+
 			beginMarkerDrag(e, index);
 			return;
 		}
@@ -170,16 +233,17 @@
 	}
 
 	// Drags markers `first..=last` as one, keeping the pointer's offset from the first when `grabbed` and otherwise carrying the run to the pointer
-	function beginRunDrag(e: PointerEvent, first: number, last: number, grabbed: boolean) {
-		const pointer = pointerPosition(e);
+	function beginRunDrag(e: PointerEvent, first: number, last: number, grabbed: boolean, wrap: boolean) {
+		const pointer = pointerPosition(e, !wrap);
 		if (pointer === undefined) return;
 		const start = markers[first].position;
 
+		// Each member's forward gap from the first, so a run straddling the track's ends stays contiguous
 		const spacings: number[] = [];
 		const restore: number[] = [];
 		for (let index = first; index <= last; index += 1) {
 			const position = markers[index].position;
-			spacings.push(position - start);
+			spacings.push(allowWrap && position < start ? position + 1 - start : position - start);
 			restore.push(position);
 		}
 
@@ -190,26 +254,38 @@
 		dragMoved = false;
 		duplicateRequested = false;
 		duplicateActive = false;
-		dragRun = { first, last, offset: grabbed ? start - pointer : 0, spacings, restore };
+		dragRun = { first, last, offset: grabbed ? start - pointer : 0, spacings, restore, wrap };
 		setActive(first, false);
 		addEvents();
 	}
 
-	// The run a dashed link from `index` carries: the two markers it joins
+	function stripPointerDown(e: PointerEvent, leftIndex: number) {
+		if (disabled || e.button !== BUTTON_LEFT) return;
+		beginRunDrag(e, leftIndex, leftIndex + 1, true, allowWrap);
+	}
+
+	// The run a dashed link from `index` carries: the two markers it joins plus any split-handle halves attached to them
 	function dashedRun(index: number): [number, number] {
-		return [index, index + 1];
+		const first = markers[index - 1]?.pairedWithNext ? index - 1 : index;
+		const last = markers[index + 1]?.pairedWithNext && markers[index + 2] !== undefined ? index + 2 : index + 1;
+		return [first, last];
 	}
 
 	function dashPointerDown(e: PointerEvent, index: number) {
 		if (disabled || e.button !== BUTTON_LEFT) return;
 		const [first, last] = dashedRun(index);
-		beginRunDrag(e, first, last, true);
+		beginRunDrag(e, first, last, true, allowWrap);
 	}
 
-	// Picks up the marker at `index` and carries it to the pointer
+	// Picks up the marker at `index`, or the whole pair it is the joined half of, and carries it to the pointer
 	function pickUpMarker(e: PointerEvent, index: number) {
-		beginMarkerDrag(e, index);
-		moveActiveMarker(e);
+		if (markerShape(markers, index) === "Joined") {
+			beginRunDrag(e, index, index + 1, false, false);
+			moveRun(e);
+		} else {
+			beginMarkerDrag(e, index);
+			moveActiveMarker(e);
+		}
 	}
 
 	function midpointPointerDown(e: PointerEvent, index: number) {
@@ -231,7 +307,8 @@
 
 	function markerDoubleClick(index: number) {
 		if (disabled || dragMoved) return;
-		emit({ ResetMarker: { index } });
+		if (markerShape(markers, index) === "Joined") resetRun(index, index + 1);
+		else emit({ ResetMarker: { index } });
 	}
 
 	function resetRun(first: number, last: number) {
@@ -368,7 +445,7 @@
 
 		let position = pointerPosition(e);
 		if (position === undefined) return;
-		position = holdBetweenNeighbors(dragIndex, dragIndex, 0, position);
+		position = holdBetweenNeighbors(dragIndex, dragIndex, dragRestorePosition ?? position, 0, position, false);
 
 		dragMoved = true;
 		if (!dragInsertedMarker) dispatch("dragging", true);
@@ -376,22 +453,25 @@
 	}
 
 	function moveRun(e: PointerEvent) {
-		if (disabled || dragRun === undefined) return;
+		if (disabled || dragRun === undefined || dragRestorePosition === undefined) return;
 		if (e.buttons === 0) {
 			endDrag();
 			return;
 		}
 
-		const { first, last, offset, spacings } = dragRun;
-		const pointer = pointerPosition(e);
+		const { first, last, offset, spacings, wrap } = dragRun;
+		const pointer = pointerPosition(e, !wrap);
 		if (pointer === undefined) return;
 
 		const span = spacings[spacings.length - 1];
-		const start = holdBetweenNeighbors(first, last, span, pointer + offset);
+		const start = holdBetweenNeighbors(first, last, dragRestorePosition, span, pointer + offset, wrap);
 
 		dragMoved = true;
 		dispatch("dragging", true);
-		spacings.forEach((spacing, i) => emit({ MoveMarker: { index: first + i, position: start + spacing } }));
+		spacings.forEach((spacing, i) => {
+			const position = start + spacing;
+			emit({ MoveMarker: { index: first + i, position: wrap ? position - Math.floor(position) : position } });
+		});
 	}
 
 	function moveActiveMidpoint(e: PointerEvent) {
@@ -552,7 +632,8 @@
 		return positions;
 	}
 	$: midpointPositions = diamondPositions(markers, showMidpoints, trackCyclic, trackInterpolation);
-	$: dashes = markerSpans(markers, (marker) => marker.dashedToNext);
+	$: strips = markerSpans(markers, allowWrap, (marker) => marker.pairedWithNext);
+	$: dashes = markerSpans(markers, allowWrap, (marker) => marker.dashedToNext);
 
 	onMount(() => {
 		document.addEventListener("keydown", deleteShortcut);
@@ -615,10 +696,27 @@
 				on:dblclick={() => resetRun(...dashedRun(dash.index))}
 			></div>
 		{/each}
+		{#each strips as strip}
+			<div
+				class="pair-strip"
+				class:active={highlightedRun !== undefined && strip.index >= highlightedRun[0] && strip.index < highlightedRun[1]}
+				style:--span-left={strip.left}
+				style:--span-width={strip.width}
+				style:--span-color={markers[strip.index].handleColorCSS}
+				on:pointerenter={() => (hoverRun = [strip.index, strip.index + 1])}
+				on:pointerleave={() => (hoverRun = undefined)}
+				on:pointerdown={(e) => stripPointerDown(e, strip.index)}
+				on:dblclick={() => resetRun(strip.index, strip.index + 1)}
+			></div>
+		{/each}
 		{#each markers as marker, index}
-			{#if marker.position >= 0 && marker.position <= 1}
+			{@const shape = markerShape(markers, index)}
+			{@const paths = shapePaths(shape)}
+			{#if shape !== "Hidden" && marker.position >= 0 && marker.position <= 1}
 				<svg
 					class="marker"
+					class:left={shape === "Left"}
+					class:right={shape === "Right"}
 					class:active={highlightedRun !== undefined && index >= highlightedRun[0] && index <= highlightedRun[1]}
 					style:--marker-position={marker.position}
 					style:--marker-color={marker.handleColorCSS}
@@ -630,14 +728,14 @@
 					xmlns="http://www.w3.org/2000/svg"
 					viewBox="0 0 12 12"
 				>
-					<path class="inner-fill" d="M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z" />
+					<path class="inner-fill" d={paths.fill} />
 					{#if disabled}
-						<path class="disabled-fill" d="M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z" />
+						<path class="disabled-fill" d={paths.fill} />
 					{/if}
-					<path
-						class="outer-border"
-						d="M6,1.4L1.3,6.1C1.1,6.3,1,6.6,1,6.8V10c0,0.6,0.4,1,1,1h8c0.6,0,1-0.4,1-1V6.8c0-0.3-0.1-0.5-0.3-0.7L6,1.4M6,0l5.4,5.4C11.8,5.8,12,6.3,12,6.8V10c0,1.1-0.9,2-2,2H2c-1.1,0-2-0.9-2-2V6.8c0-0.5,0.2-1,0.6-1.4L6,0z"
-					/>
+					<path class="outer-border" d={paths.border} />
+					{#if shape === "Joined"}
+						<rect class="outer-border split-line" x="5.5" y="1.4" width="1" height="9.6" />
+					{/if}
 				</svg>
 			{/if}
 		{/each}
@@ -768,6 +866,19 @@
 				pointer-events: auto;
 			}
 
+			.pair-strip {
+				position: absolute;
+				top: 4px;
+				left: calc(var(--span-left) * 100%);
+				width: calc(var(--span-width) * 100%);
+				height: 8px;
+				box-sizing: border-box;
+				border-top: 1px solid var(--color-5-dullgray);
+				border-bottom: 1px solid var(--color-5-dullgray);
+				background: rgb(from var(--span-color) r g b / 0.5);
+				pointer-events: auto;
+			}
+
 			.marker {
 				position: absolute;
 				transform: translateX(-50%);
@@ -778,6 +889,15 @@
 				overflow: visible;
 				padding-top: 12px;
 				margin-top: -12px;
+
+				// A half's empty side neither draws nor takes the pointer
+				&.left {
+					clip-path: inset(0 50% 0 0);
+				}
+
+				&.right {
+					clip-path: inset(0 0 0 50%);
+				}
 
 				.inner-fill {
 					fill: var(--marker-color);
@@ -807,9 +927,24 @@
 			--link-color: var(--color-e-nearwhite);
 		}
 
+		&.disabled .marker-track .pair-strip {
+			border-color: var(--color-4-dimgray);
+			background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5));
+		}
+
+		&:not(.disabled) .marker-track .pair-strip {
+			&:not(.active):hover {
+				border-color: var(--color-6-lowergray);
+			}
+
+			&.active {
+				border-color: var(--color-e-nearwhite);
+			}
+		}
+
 		&:not(.disabled) .marker-track .marker {
 			&:not(.active) {
-				.inner-fill:hover + .outer-border,
+				.inner-fill:hover ~ .outer-border,
 				.outer-border:hover {
 					fill: var(--color-6-lowergray);
 				}
@@ -818,7 +953,9 @@
 			&.active {
 				z-index: 1;
 
-				.inner-fill {
+				// The split line shares the halo, or its near-white would vanish into a light fill
+				.inner-fill,
+				.split-line {
 					filter: drop-shadow(0 0 1px var(--color-2-mildblack)) drop-shadow(0 0 1px var(--color-2-mildblack));
 				}
 
@@ -827,7 +964,7 @@
 					fill: var(--color-e-nearwhite);
 				}
 
-				.inner-fill:hover + .outer-border,
+				.inner-fill:hover ~ .outer-border,
 				.outer-border:hover {
 					fill: var(--color-f-white);
 				}

@@ -20,8 +20,8 @@ use graphene_std::animation::RealTimeMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::{
-	AdjustmentChannel, BlendMode, CellularDistanceFunction, CellularReturnType, Color, DesaturateMethod, DomainWarpType, FractalType, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
-	SelectiveColorChoice, TonalRange,
+	AdjustmentChannel, BlendMode, CellularDistanceFunction, CellularReturnType, Color, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha,
+	RelativeAbsolute, SelectiveColorChoice, TonalRange,
 };
 use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TextAlign};
@@ -367,6 +367,7 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
@@ -1456,8 +1457,8 @@ pub(crate) fn levels_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	];
 
 	let mut layout = vec![channel];
-	build_shared_spectrum_section(node_id, context, &bw_track(), &input_range_params, &mut layout);
-	build_shared_spectrum_section(node_id, context, &bw_track(), &output_range_params, &mut layout);
+	build_shared_spectrum_section(node_id, context, &bw_track(), &input_range_params, false, &mut layout);
+	build_shared_spectrum_section(node_id, context, &bw_track(), &output_range_params, false, &mut layout);
 	layout
 }
 
@@ -1468,6 +1469,8 @@ enum MarkerScale {
 	Percent,
 	/// A gamma of 0.01..9.99 running from 9.99 at the left to 0.01 at the right, logarithmic on each side of the 1 at its center.
 	Gamma,
+	/// A hue of 0..360 degrees, placed linearly on a track that wraps around.
+	Degrees,
 }
 
 impl MarkerScale {
@@ -1476,6 +1479,11 @@ impl MarkerScale {
 			Self::Percent => value / 100.,
 			Self::Gamma if value >= 1. => 0.5 - 0.5 * value.log10() / 9.99_f64.log10(),
 			Self::Gamma => 0.5 + 0.5 * value.log10() / 0.01_f64.log10(),
+			Self::Degrees => {
+				// A full turn stays at the far end, so only a value beyond one turn wraps
+				let turns = value / 360.;
+				if (0.0..=1.).contains(&turns) { turns } else { turns.rem_euclid(1.) }
+			}
 		}
 		.clamp(0., 1.)
 	}
@@ -1485,6 +1493,7 @@ impl MarkerScale {
 			Self::Percent => (position * 100.).clamp(0., 100.),
 			Self::Gamma if position <= 0.5 => 9.99_f64.powf(1. - 2. * position).clamp(1., 9.99),
 			Self::Gamma => 0.01_f64.powf(2. * position - 1.).clamp(0.01, 1.),
+			Self::Degrees => (position * 360.).clamp(0., 360.),
 		}
 	}
 
@@ -1492,7 +1501,13 @@ impl MarkerScale {
 		match self {
 			Self::Percent => NumberInput::default().mode_increment().unit("%").min(0.).max(100.).display_decimal_places(0),
 			Self::Gamma => NumberInput::default().mode_increment().min(0.01).max(9.99).display_decimal_places(2),
+			Self::Degrees => NumberInput::default().mode_increment().unit("°").min(0.).max(360.).display_decimal_places(0),
 		}
+	}
+
+	/// Whether the track wraps around, so its markers may sit in any order.
+	fn cyclic(self) -> bool {
+		matches!(self, Self::Degrees)
 	}
 }
 
@@ -1503,6 +1518,8 @@ struct SpectrumSectionParam {
 	/// The value a double-click resets to.
 	default_value: f64,
 	scale: MarkerScale,
+	/// Whether the marker and the next parameter's marker form one split handle.
+	pair_with_next: bool,
 	/// Whether a dashed line joins the marker to the next parameter's marker.
 	dash_to_next: bool,
 	/// Whether the marker takes its scale position within the span between its neighbors rather than the whole track, following them as they move.
@@ -1516,6 +1533,7 @@ impl SpectrumSectionParam {
 			handle_color,
 			default_value,
 			scale,
+			pair_with_next: false,
 			dash_to_next: false,
 			between_neighbors: false,
 		}
@@ -1523,6 +1541,11 @@ impl SpectrumSectionParam {
 
 	fn between_neighbors(mut self) -> Self {
 		self.between_neighbors = true;
+		self
+	}
+
+	fn pair_with_next(mut self) -> Self {
+		self.pair_with_next = true;
 		self
 	}
 
@@ -1535,7 +1558,7 @@ impl SpectrumSectionParam {
 /// Append a section of related parameters as rows: a shared spectrum over `track` (with one marker per non-exposed parameter) sits on the first non-exposed row
 /// alongside its 60px number input, and the remaining non-exposed rows show only their 60px number input. Exposed parameters render as the standard exposed-row display.
 /// Marker positions are clamped to non-decreasing display order so they never visually cross even if the underlying values do.
-fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesContext, track: &Gradient, params: &[SpectrumSectionParam], layout: &mut Vec<LayoutGroup>) {
+fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesContext, track: &Gradient, params: &[SpectrumSectionParam], disabled: bool, layout: &mut Vec<LayoutGroup>) {
 	// Snapshot exposure and values before the mutable-borrow loop
 	let exposure_and_value: Vec<(bool, f64)> = match get_document_node(node_id, context) {
 		Ok(document_node) => params
@@ -1574,18 +1597,21 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 		marker_default_positions.push(param.scale.position(param.default_value));
 		marker_scales.push(param.scale);
 		marker_between.push(param.between_neighbors);
-		marker_colors_and_links.push((param.handle_color, param.dash_to_next && next_has_marker));
+		marker_colors_and_links.push((param.handle_color, param.pair_with_next && next_has_marker, param.dash_to_next && next_has_marker));
 	}
 
 	// Enforce non-decreasing order so markers never visually cross, matching the node's algorithm where shadows takes precedence.
 	// A marker placed between its neighbors bounds nothing here and instead takes its scale position within their settled span.
-	let mut floor = 0.;
-	for (position, &between) in marker_positions.iter_mut().zip(&marker_between) {
-		if between {
-			continue;
+	let cyclic = params.iter().any(|param| param.scale.cyclic());
+	if !cyclic {
+		let mut floor = 0.;
+		for (position, &between) in marker_positions.iter_mut().zip(&marker_between) {
+			if between {
+				continue;
+			}
+			*position = position.max(floor);
+			floor = *position;
 		}
-		*position = position.max(floor);
-		floor = *position;
 	}
 	for i in 0..marker_positions.len() {
 		if marker_between[i] {
@@ -1599,8 +1625,11 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 		.iter()
 		.zip(&marker_colors_and_links)
 		.zip(&marker_between)
-		.map(|((&position, &(handle_color, dashed)), &between)| {
+		.map(|((&position, &(handle_color, paired, dashed)), &between)| {
 			let mut marker = SpectrumMarker::new(position, 0.5, handle_color);
+			if paired {
+				marker = marker.pair_with_next();
+			}
 			if dashed {
 				marker = marker.dash_to_next();
 			}
@@ -1620,7 +1649,9 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 			.allow_insert(false)
 			.allow_delete(false)
 			.allow_reorder(false)
+			.allow_wrap(cyclic)
 			.narrow(true)
+			.disabled(disabled)
 			.on_update({
 				let marker_input_indices = marker_input_indices.clone();
 				let marker_default_positions = marker_default_positions.clone();
@@ -1654,7 +1685,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 						}
 						SpectrumInputUpdate::MoveMarker { position, .. } => *position,
 						// A default that would cross a neighbor falls back to the midpoint between them
-						SpectrumInputUpdate::ResetMarker { .. } if between || (left..=right).contains(&default_position) => default_position,
+						SpectrumInputUpdate::ResetMarker { .. } if between || cyclic || (left..=right).contains(&default_position) => default_position,
 						SpectrumInputUpdate::ResetMarker { .. } => (left + right) / 2.,
 						_ => return Message::NoOp,
 					};
@@ -1675,7 +1706,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 	for (i, param) in params.iter().enumerate() {
 		let (exposed, current) = exposure_and_value[i];
 		let input_index = param.parameter.input_index;
-		let number_input = param.scale.number_input();
+		let number_input = param.scale.number_input().disabled(disabled);
 
 		if exposed {
 			let row = number_widget(ParameterWidgetsInfo::at_index(node_id, input_index, true, context), number_input.clone());
@@ -1713,58 +1744,178 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::hue_saturation::*;
 
-	// Current hue position on the rainbow track, used for the saturation track's right-end color
-	let current_hue_shift = get_document_node(node_id, context)
-		.ok()
-		.and_then(|document_node| document_node.input(HueShiftInput).and_then(|input| input.as_value()))
-		.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value) } else { None })
-		.unwrap_or(0.);
-	// The rainbow has cyan at position 0.5 (hue_shift=0), so offset by +180 to align
-	let marker_hue = ((current_hue_shift + 180.) / 360.).rem_euclid(1.);
-	let saturated_current_hue = Color::from_hsva(marker_hue, 1., 1., 1.);
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in hue_saturation_properties: {err}");
+			return Vec::new();
+		}
+	};
+	let colorize_value = matches!(document_node.input_value(ColorizeInput), Some(TaggedValue::Bool(true)));
+	let range_value = match document_node.input_value(RangeInput) {
+		Some(TaggedValue::HueSaturationRange(range)) => *range,
+		_ => HueSaturationRange::Master,
+	};
+	let f32_value = |parameter: &ParameterRef| match document_node.inputs.get(parameter.input_index).and_then(|input| input.as_value()) {
+		Some(TaggedValue::F32(value)) => *value,
+		_ => 0.,
+	};
 
-	// Hue: cyclic rainbow
+	// The three sliders of the master, of the colorize mode, or of the selected range
+	let (hue, saturation, lightness): (ParameterRef, ParameterRef, ParameterRef) = if colorize_value {
+		(ColorizeHueInput.into(), ColorizeSaturationInput.into(), ColorizeLightnessInput.into())
+	} else {
+		match range_value {
+			HueSaturationRange::Master => (HueInput.into(), SaturationInput.into(), LightnessInput.into()),
+			HueSaturationRange::Reds => (RedsHueInput.into(), RedsSaturationInput.into(), RedsLightnessInput.into()),
+			HueSaturationRange::Yellows => (YellowsHueInput.into(), YellowsSaturationInput.into(), YellowsLightnessInput.into()),
+			HueSaturationRange::Greens => (GreensHueInput.into(), GreensSaturationInput.into(), GreensLightnessInput.into()),
+			HueSaturationRange::Cyans => (CyansHueInput.into(), CyansSaturationInput.into(), CyansLightnessInput.into()),
+			HueSaturationRange::Blues => (BluesHueInput.into(), BluesSaturationInput.into(), BluesLightnessInput.into()),
+			HueSaturationRange::Magentas => (MagentasHueInput.into(), MagentasSaturationInput.into(), MagentasLightnessInput.into()),
+		}
+	};
+	let range_values: Option<[ParameterRef; 4]> = match range_value {
+		HueSaturationRange::Reds => Some([RedsFalloffStartInput.into(), RedsRangeStartInput.into(), RedsRangeEndInput.into(), RedsFalloffEndInput.into()]),
+		HueSaturationRange::Yellows => Some([
+			YellowsFalloffStartInput.into(),
+			YellowsRangeStartInput.into(),
+			YellowsRangeEndInput.into(),
+			YellowsFalloffEndInput.into(),
+		]),
+		HueSaturationRange::Greens => Some([GreensFalloffStartInput.into(), GreensRangeStartInput.into(), GreensRangeEndInput.into(), GreensFalloffEndInput.into()]),
+		HueSaturationRange::Cyans => Some([CyansFalloffStartInput.into(), CyansRangeStartInput.into(), CyansRangeEndInput.into(), CyansFalloffEndInput.into()]),
+		HueSaturationRange::Blues => Some([BluesFalloffStartInput.into(), BluesRangeStartInput.into(), BluesRangeEndInput.into(), BluesFalloffEndInput.into()]),
+		HueSaturationRange::Magentas => Some([
+			MagentasFalloffStartInput.into(),
+			MagentasRangeStartInput.into(),
+			MagentasRangeEndInput.into(),
+			MagentasFalloffEndInput.into(),
+		]),
+		HueSaturationRange::Master => None,
+	};
+
+	let range_defaults: Option<[f64; 4]> = match range_value {
+		HueSaturationRange::Reds => Some([315., 345., 15., 45.]),
+		HueSaturationRange::Yellows => Some([15., 45., 75., 105.]),
+		HueSaturationRange::Greens => Some([75., 105., 135., 165.]),
+		HueSaturationRange::Cyans => Some([135., 165., 195., 225.]),
+		HueSaturationRange::Blues => Some([195., 225., 255., 285.]),
+		HueSaturationRange::Magentas => Some([255., 285., 315., 345.]),
+		HueSaturationRange::Master => None,
+	};
+
+	// Every saturation track fades from one middle gray. Colorize and a range head for the hue they act on. The master track favors none,
+	// sweeping in OkLCh at the gray's lightness the long way from azure (220°) to magenta (330°), skipping the dull blue and purple, as chroma climbs to the gamut.
+	use color::ColorSpace as _;
+	let gray_lightness = 0.7;
+	let oklch = |lightness: f32, chroma: f32, hue: f32| {
+		let [r, g, b] = color::Oklch::to_linear_srgb([lightness, chroma, hue]);
+		Color::from_rgbf32_unchecked(r.clamp(0., 1.), g.clamp(0., 1.), b.clamp(0., 1.))
+	};
+	// Fades from the gray to the pure hue at `turns` with the chroma rising evenly while the lightness eases to the hue's own
+	let toward_hue = |turns: f32| {
+		let pure = Color::from_hsva(turns.rem_euclid(1.), 1., 1., 1.);
+		let [pure_lightness, pure_chroma, pure_hue] = color::Oklch::from_linear_srgb([pure.r(), pure.g(), pure.b()]);
+		let stops = 24;
+		let stop = |i: i32| {
+			let t = i as f32 / stops as f32;
+			oklch(gray_lightness + (pure_lightness - gray_lightness) * t, pure_chroma * t, pure_hue)
+		};
+		Gradient::from((0..=stops).map(stop).collect::<Vec<_>>())
+	};
+	let saturation_track = if colorize_value {
+		toward_hue(f32_value(&hue) / 360.)
+	} else if let Some([_, range_start, range_end, _]) = &range_values {
+		let (start, end) = (f32_value(range_start), f32_value(range_end));
+		let center = start + (end - start).rem_euclid(360.) / 2.;
+		toward_hue(center / 360.)
+	} else {
+		let in_gamut = |lightness: f32, chroma: f32, hue: f32| color::Oklch::to_linear_srgb([lightness, chroma, hue]).iter().all(|channel| (0.0..=1.).contains(channel));
+		let gamut_chroma = |lightness: f32, hue: f32| {
+			let (mut inside, mut outside) = (0., 0.4);
+			for _ in 0..16 {
+				let chroma = (inside + outside) / 2.;
+				if in_gamut(lightness, chroma, hue) {
+					inside = chroma;
+				} else {
+					outside = chroma;
+				}
+			}
+			inside
+		};
+		let stops = 80;
+		let stop = |i: i32| {
+			let t = i as f32 / stops as f32;
+			// A triangle wave gives every hue the same width, where a cosine would linger at its turnarounds
+			let bounce = (4. * t + 1.).rem_euclid(2.);
+			let along = if bounce <= 1. { bounce } else { 2. - bounce };
+			let hue = 330. + 250. * along;
+			oklch(gray_lightness, gamut_chroma(gray_lightness, hue) * t, hue)
+		};
+		Gradient::from((0..=stops).map(stop).collect::<Vec<_>>())
+	};
 	let hue_track = Gradient::from(vec![Color::RED, Color::YELLOW, Color::GREEN, Color::CYAN, Color::BLUE, Color::MAGENTA, Color::RED]);
-	// Saturation: gray to the fully saturated current hue
-	let saturation_track = Gradient::from(vec![Color::MIDDLE_GRAY, saturated_current_hue]);
-	// Lightness: black to white
-	let lightness_track = bw_track();
+	let (hue_min, hue_max, hue_default) = if colorize_value { (0., 360., 24.) } else { (-180., 180., 0.) };
+	let (saturation_min, saturation_default) = if colorize_value { (0., 25.) } else { (-100., 0.) };
 
-	vec![
+	// Colorize replaces the ranges, so the selector and the selected range's edges stay in place but grayed out while it is on
+	let mut range_info = ParameterWidgetsInfo::new(node_id, RangeInput, true, context);
+	range_info.exposable = false;
+	let mut layout = vec![enum_choice::<HueSaturationRange>().for_socket(range_info).disabled(colorize_value).property_row()];
+
+	layout.extend([
 		spectrum_slider_row(
 			node_id,
 			context,
-			HueShiftInput,
-			hue_track,
+			hue,
+			hue_track.clone(),
 			Color::WHITE,
-			-180.,
-			180.,
-			0.,
-			NumberInput::default().mode_increment().unit("°").min(-180.).max(180.),
+			hue_min,
+			hue_max,
+			hue_default,
+			NumberInput::default().mode_increment().unit("°").min(hue_min).max(hue_max),
 		),
 		spectrum_slider_row(
 			node_id,
 			context,
-			SaturationShiftInput,
+			saturation,
 			saturation_track,
 			Color::WHITE,
-			-100.,
+			saturation_min,
 			100.,
-			0.,
-			NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
+			saturation_default,
+			NumberInput::default().mode_increment().unit("%").min(saturation_min).max(100.),
 		),
 		spectrum_slider_row(
 			node_id,
 			context,
-			LightnessShiftInput,
-			lightness_track,
+			lightness,
+			bw_track(),
 			Color::WHITE,
 			-100.,
 			100.,
 			0.,
 			NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
 		),
-	]
+	]);
+
+	// The selected range's edges share one rainbow as two split handles, a falloff half joined to a range half, with the range dashed between them
+	if let (Some(values), Some(defaults)) = (range_values, range_defaults) {
+		let [falloff_start, range_start, range_end, falloff_end] = values;
+		let params = [
+			SpectrumSectionParam::new(falloff_start, Color::WHITE, defaults[0], MarkerScale::Degrees).pair_with_next(),
+			SpectrumSectionParam::new(range_start, Color::WHITE, defaults[1], MarkerScale::Degrees).dash_to_next(),
+			SpectrumSectionParam::new(range_end, Color::WHITE, defaults[2], MarkerScale::Degrees).pair_with_next(),
+			SpectrumSectionParam::new(falloff_end, Color::WHITE, defaults[3], MarkerScale::Degrees),
+		];
+		build_shared_spectrum_section(node_id, context, &hue_track, &params, colorize_value, &mut layout);
+	}
+
+	let colorize = bool_widget(ParameterWidgetsInfo::new(node_id, ColorizeInput, true, context), CheckboxInput::default());
+	layout.push(LayoutGroup::row(colorize));
+
+	layout
 }
 
 /// A single-marker `SpectrumInput` over `track` driving the number at `input_index`: the marker sits at `position`, double-click
@@ -1937,7 +2088,7 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 	];
 
 	let mut layout = Vec::with_capacity(2);
-	build_shared_spectrum_section(node_id, context, &bw_track(), &params, &mut layout);
+	build_shared_spectrum_section(node_id, context, &bw_track(), &params, false, &mut layout);
 
 	layout
 }
