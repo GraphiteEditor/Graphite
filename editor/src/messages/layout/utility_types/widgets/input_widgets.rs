@@ -662,7 +662,7 @@ pub struct SpectrumInput {
 	/// Whether to render midpoint diamonds between adjacent markers (only meaningful for gradient-like uses).
 	#[serde(rename = "showMidpoints")]
 	pub show_midpoints: bool,
-	/// Whether clicking the track inserts a new marker at the click position.
+	/// Whether clicking the track inserts a new marker at the click position. Otherwise the click picks up the nearest marker.
 	#[serde(rename = "allowInsert")]
 	pub allow_insert: bool,
 	/// Whether right-click or pressing Delete removes a marker. The handler still has the final say on whether the deletion goes through (e.g., enforcing a minimum count).
@@ -673,6 +673,9 @@ pub struct SpectrumInput {
 	pub allow_reorder: bool,
 	/// Compact mode: 8px track height with 8px top padding, for use in rows alongside other widgets.
 	pub narrow: bool,
+	/// Plain range-slider mode, for a number beside its number input: a flat 4px track is drawn in place of the gradient, so `track` is never shown.
+	#[serde(rename = "rangeSlider")]
+	pub range_slider: bool,
 	/// Whether the input is disabled (dimmed and read-only).
 	pub disabled: bool,
 

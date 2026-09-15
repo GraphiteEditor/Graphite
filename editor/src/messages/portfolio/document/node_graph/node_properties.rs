@@ -178,6 +178,24 @@ pub(crate) struct NumberOptions {
 	pub slider: bool,
 }
 
+/// The values a range slider's two ends map to linearly and the one its double-click restores, if known.
+#[derive(Clone, Copy)]
+pub struct SliderRange {
+	pub min: f64,
+	pub max: f64,
+	pub default: Option<f64>,
+}
+
+impl SliderRange {
+	fn position(self, value: f64) -> f64 {
+		((value - self.min) / (self.max - self.min)).clamp(0., 1.)
+	}
+
+	fn value(self, position: f64) -> f64 {
+		(self.min + position * (self.max - self.min)).clamp(self.min, self.max)
+	}
+}
+
 pub(crate) fn property_from_type(
 	node_id: NodeId,
 	index: usize,
@@ -991,43 +1009,37 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 }
 
 /// `parameter_widgets_info` is for the f64 parameter. `bool_input_index` is the input index of the bool parameter for the checkbox.
-pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, number_props: NumberInput) -> Vec<WidgetInstance> {
-	let ParameterWidgetsInfo {
-		document_node,
-		node_id,
-		index: number_input_index,
-		..
-	} = parameter_widgets_info;
+/// A number row gated by the bool input at `bool_input_index`, drawn as a checkbox in the assist slot after the label like the
+/// Opacity node's toggles, so the caller passes `blank_assist = false`. Given a `slider`, a range slider spanning it sits between them.
+pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, number_props: NumberInput, slider: Option<SliderRange>) -> Vec<WidgetInstance> {
+	let node_id = parameter_widgets_info.node_id;
+	let enabled = parameter_widgets_info
+		.document_node
+		.and_then(|document_node| document_node.inputs.get(bool_input_index))
+		.and_then(|input| input.as_non_exposed_value())
+		.and_then(|value| if let TaggedValue::Bool(enabled) = value { Some(*enabled) } else { None });
+	let label_count = start_widgets(&parameter_widgets_info).len();
+	let exposed = parameter_widgets_info.is_exposed();
 
-	let mut widgets = start_widgets(&parameter_widgets_info);
+	let number_props = number_props.disabled(enabled == Some(false));
+	let mut widgets = match slider {
+		Some(slider) => range_slider_widget(parameter_widgets_info, number_props, slider),
+		None => number_widget(parameter_widgets_info, number_props),
+	};
 
-	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(number_input) = document_node.inputs.get(number_input_index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return vec![];
-	};
-	let Some(bool_input) = document_node.inputs.get(bool_input_index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return vec![];
-	};
-	if let (Some(&TaggedValue::Bool(enabled)), Some(&TaggedValue::F64(number))) = (bool_input.as_non_exposed_value(), number_input.as_non_exposed_value()) {
-		widgets.extend_from_slice(&[
+	if let Some(enabled) = enabled
+		&& !exposed
+	{
+		let checkbox = [
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
-			// The checkbox toggles if the value is Some or None
 			CheckboxInput::new(enabled)
 				.on_update(update_value_at_index(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			number_props
-				.value(Some(number))
-				.on_update(update_value_at_index(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap_or_default()), node_id, number_input_index))
-				.disabled(!enabled)
-				.on_commit(commit_value)
-				.widget_instance(),
-		]);
+		];
+		widgets.splice(label_count..label_count, checkbox);
 	}
 
 	widgets
@@ -1567,6 +1579,103 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	]
 }
 
+/// A single-marker `SpectrumInput` over `track` driving the number at `input_index`: the marker sits at `position`, double-click
+/// returns it to `default_position`, and each move sets the input to `value_at` the new position.
+fn value_slider(
+	node_id: NodeId,
+	input_index: usize,
+	track: GradientStops<SRGBA8>,
+	handle_color: Color,
+	position: f64,
+	default_position: Option<f64>,
+	value_at: impl Fn(f64) -> TaggedValue + 'static + Send + Sync,
+) -> SpectrumInput {
+	SpectrumInput::new(track)
+		.track_space(GradientSpace::RgbGamma)
+		.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
+		.show_midpoints(false)
+		.allow_insert(false)
+		.allow_delete(false)
+		.allow_reorder(false)
+		.on_update(move |update: &SpectrumInputUpdate| {
+			let new_position = match update {
+				SpectrumInputUpdate::MoveMarker { index: 0, position } => Some(*position),
+				SpectrumInputUpdate::ResetMarker { index: 0 } => default_position,
+				_ => None,
+			};
+			let Some(new_position) = new_position else { return Message::NoOp };
+
+			NodeGraphMessage::SetInputValue {
+				node_id,
+				input_index,
+				value: value_at(new_position).into(),
+			}
+			.into()
+		})
+		.on_commit(commit_value)
+}
+
+/// A row with a range slider and a 60px number input for the number at `parameter_widgets_info`. The slider's 0..1 position maps
+/// to the number through `position_of` and `value_at`, and double-click restores `default`.
+fn slider_row(
+	parameter_widgets_info: ParameterWidgetsInfo,
+	number_props: NumberInput,
+	default: Option<f64>,
+	position_of: impl Fn(f64) -> f64,
+	value_at: impl Fn(f64) -> f64 + 'static + Send + Sync,
+) -> Vec<WidgetInstance> {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(input) = parameter_widgets_info.input() else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	// An exposed input shows only its label and source
+	let (current, tagged_value): (f64, fn(f64) -> TaggedValue) = match input.as_non_exposed_value() {
+		Some(&TaggedValue::F64(value)) => (value, TaggedValue::F64),
+		Some(&TaggedValue::F32(value)) => (value as f64, |value| TaggedValue::F32(value as f32)),
+		_ => return widgets,
+	};
+	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
+
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		value_slider(
+			node_id,
+			index,
+			GradientStops::default(),
+			Color::WHITE,
+			position_of(current),
+			default.map(position_of),
+			move |position| tagged_value(value_at(position)),
+		)
+		.range_slider(true)
+		.disabled(number_props.disabled)
+		.widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		number_props
+			.value(Some(current))
+			.min_width(60)
+			.max_width(60)
+			.on_update(update_value_at_index(move |x: &NumberInput| tagged_value(x.value.unwrap_or_default()), node_id, index))
+			.on_commit(commit_value)
+			.widget_instance(),
+	]);
+
+	widgets
+}
+
+/// A slider row running linearly across `slider`'s bounds.
+pub(crate) fn range_slider_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput, slider: SliderRange) -> Vec<WidgetInstance> {
+	slider_row(
+		parameter_widgets_info,
+		number_props,
+		slider.default,
+		move |value| slider.position(value),
+		move |position| slider.value(position),
+	)
+}
+
 /// Build a row with a single-marker `SpectrumInput` and a 60px `NumberInput`. The marker maps `value_min..value_max` to position 0..1, and double-click resets to `default_value`.
 fn spectrum_slider_row(
 	node_id: NodeId,
@@ -1590,37 +1699,26 @@ fn spectrum_slider_row(
 
 	// Only add the spectrum and number widgets when the input is not exposed
 	if let Some(current) = current {
-		let value_range = value_max - value_min;
-		let position = ((current - value_min) / value_range).clamp(0., 1.);
-		let default_position = ((default_value - value_min) / value_range).clamp(0., 1.);
+		let slider = SliderRange {
+			min: value_min,
+			max: value_max,
+			default: Some(default_value),
+		};
+		let value_at = move |position| TaggedValue::F32(slider.value(position) as f32);
 
 		row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-
-		let position_to_value = move |position: f64| value_min + position * value_range;
 		row.push(
-			SpectrumInput::new(GradientStops::from(&track))
-				.track_space(GradientSpace::RgbGamma)
-				.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
-				.show_midpoints(false)
-				.allow_insert(false)
-				.allow_delete(false)
-				.allow_reorder(false)
-				.narrow(true)
-				.on_update(move |update: &SpectrumInputUpdate| {
-					let new_position = match update {
-						SpectrumInputUpdate::MoveMarker { index: 0, position } => *position,
-						SpectrumInputUpdate::ResetMarker { index: 0 } => default_position,
-						_ => return Message::NoOp,
-					};
-					NodeGraphMessage::SetInputValue {
-						node_id,
-						input_index,
-						value: TaggedValue::F32(position_to_value(new_position).clamp(value_min, value_max) as f32).into(),
-					}
-					.into()
-				})
-				.on_commit(commit_value)
-				.widget_instance(),
+			value_slider(
+				node_id,
+				input_index,
+				GradientStops::from(&track),
+				handle_color,
+				slider.position(current),
+				Some(slider.position(default_value)),
+				value_at,
+			)
+			.narrow(true)
+			.widget_instance(),
 		);
 		row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		row.push(
