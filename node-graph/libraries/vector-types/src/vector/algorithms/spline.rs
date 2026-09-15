@@ -150,7 +150,7 @@ mod tests {
 		// List of first handle or second point in a cubic bezier curve.
 		let first_handles = solve_spline_first_handle_closed(&points);
 
-		// Construct the Subpath
+		// Construct the subpath
 		let mut bezpath = BezPath::new();
 		bezpath.move_to(dvec2_to_point(points[0]));
 

@@ -1,5 +1,5 @@
 use super::*;
-use crate::subpath::BezierHandles;
+use crate::vector::misc::BezierHandles;
 use crate::vector::misc::{HandleId, HandleType, point_to_dvec2, segment_to_handles};
 use core_types::uuid::generate_uuid;
 use dyn_any::DynAny;
@@ -746,7 +746,11 @@ impl<'a> AppendBezpath<'a> {
 			let close_path = elements.peek().is_some_and(|elm| **elm == PathEl::ClosePath);
 
 			match *element {
-				PathEl::MoveTo(point) => this.append_first_point(point),
+				PathEl::MoveTo(point) => {
+					// Clear any segment state left by a preceding open contour so its segments don't leak into this contour's region
+					this.reset();
+					this.append_first_point(point);
+				}
 				PathEl::LineTo(point) => {
 					let handle = BezierHandles::Linear;
 					if close_path {
@@ -814,12 +818,13 @@ impl HandleExt for HandleId {
 mod tests {
 	use super::*;
 
-	use crate::subpath::{ManipulatorGroup, Subpath};
+	use crate::vector::algorithms::shapes::{ellipse_bezpath, rectangle_bezpath};
 	use kurbo::{PathSeg, QuadBez};
 
 	#[test]
 	fn modify_new() {
-		let vector: Vector = Vector::from_subpaths([Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), Subpath::new_rectangle(DVec2::NEG_ONE, DVec2::ZERO)], false);
+		let mut vector = Vector::from_bezpath(ellipse_bezpath(DVec2::ZERO, DVec2::ONE));
+		vector.append_bezpath(rectangle_bezpath(DVec2::NEG_ONE, DVec2::ZERO));
 
 		let modify = VectorModification::create_from_vector(&vector);
 
@@ -830,19 +835,14 @@ mod tests {
 
 	#[test]
 	fn modify_existing() {
-		let subpaths = [
-			Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE),
-			Subpath::new_rectangle(DVec2::NEG_ONE, DVec2::ZERO),
-			Subpath::new(
-				vec![
-					ManipulatorGroup::new(DVec2::new(0., 0.), None, None),
-					ManipulatorGroup::new(DVec2::new(10., 0.), Some(DVec2::new(5., 10.)), None),
-					ManipulatorGroup::new(DVec2::new(20., 0.), Some(DVec2::new(15., 10.)), None),
-				],
-				false,
-			),
-		];
-		let mut vector: Vector = Vector::from_subpaths(subpaths, false);
+		let mut open_quads = BezPath::new();
+		open_quads.move_to(Point::new(0., 0.));
+		open_quads.quad_to(Point::new(5., 10.), Point::new(10., 0.));
+		open_quads.quad_to(Point::new(15., 10.), Point::new(20., 0.));
+
+		let mut vector = Vector::from_bezpath(ellipse_bezpath(DVec2::ZERO, DVec2::ONE));
+		vector.append_bezpath(rectangle_bezpath(DVec2::NEG_ONE, DVec2::ZERO));
+		vector.append_bezpath(open_quads);
 
 		let mut modify_new = VectorModification::create_from_vector(&vector);
 		let mut modify_original = VectorModification::default();

@@ -185,7 +185,17 @@ mod test {
 	use core_types::node::Node;
 	use core_types::record::{FieldWrite, FrameClaim, Layout, RecordSource, Served, capture, element_write};
 	use core_types::value::ValueSource;
-	use vector_types::subpath::Subpath;
+
+	/// An open polyline through the anchors, standing in for the deleted `Subpath::from_anchors`.
+	fn polyline(anchors: &[DVec2]) -> Vector {
+		let mut bezpath = vector_types::kurbo::BezPath::new();
+		let Some((&first, rest)) = anchors.split_first() else { return Vector::default() };
+		bezpath.move_to(vector_types::vector::misc::dvec2_to_point(first));
+		for &anchor in rest {
+			bezpath.line_to(vector_types::vector::misc::dvec2_to_point(anchor));
+		}
+		Vector::from_bezpath(bezpath)
+	}
 
 	struct TransformSource {
 		layout: Layout,
@@ -398,10 +408,7 @@ mod test {
 		let row0_transform = DAffine2::from_translation(DVec2::new(100., 0.));
 		let points = VectorRows {
 			layout: vector_rows_layout(),
-			rows: vec![
-				(Vector::from_subpath(Subpath::from_anchors(row0.clone(), false)), row0_transform),
-				(Vector::from_subpath(Subpath::from_anchors(row1.clone(), false)), DAffine2::IDENTITY),
-			],
+			rows: vec![(polyline(&row0), row0_transform), (polyline(&row1), DAffine2::IDENTITY)],
 		};
 		let content_layout = transform_layout();
 		let content = PositionProbe { layout: content_layout.clone() };
@@ -442,7 +449,7 @@ mod test {
 		let positions: Vec<DVec2> = vec![DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
 		let points = VectorRows {
 			layout: vector_rows_layout(),
-			rows: vec![(Vector::from_subpath(Subpath::from_anchors(positions.clone(), false)), DAffine2::IDENTITY)],
+			rows: vec![(polyline(&positions), DAffine2::IDENTITY)],
 		};
 		let content_layout = transform_layout();
 		let content = PositionProbe { layout: content_layout.clone() };

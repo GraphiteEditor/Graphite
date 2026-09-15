@@ -1,7 +1,8 @@
 use glam::DVec2;
 use graphic_types::Vector;
 use std::collections::VecDeque;
-use vector_types::subpath;
+use vector_types::vector::VectorExt;
+use vector_types::vector::algorithms::shapes;
 
 pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode) -> Vector {
 	let mut vector = Vector::default();
@@ -106,7 +107,7 @@ pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode) -> Vector {
 							}
 
 							if !simplified.is_empty() {
-								vector.append_subpath(subpath::Subpath::from_anchors(simplified, true), false);
+								vector.append_bezpath(shapes::polyline_bezpath(simplified, true));
 							}
 						}
 					}

@@ -6,8 +6,7 @@ pub use crate::messages::portfolio::document::utility_types::text_metrics::text_
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
-use graphene_std::subpath::BezierHandles;
-use graphene_std::vector::misc::{ManipulatorPointId, point_to_dvec2, segment_to_handles};
+use graphene_std::vector::misc::{BezierHandles, ManipulatorPointId, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use kurbo::{Affine, ParamCurve, PathSeg};
 use std::collections::HashMap;

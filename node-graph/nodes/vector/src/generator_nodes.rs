@@ -3,7 +3,9 @@ use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
-use vector_types::subpath;
+use vector_types::vector::VectorExt;
+use vector_types::vector::algorithms::shapes;
+use vector_types::vector::misc::BezierHandles;
 use vector_types::vector::misc::{ArcType, AsU64, BoxCorners, GridType};
 use vector_types::vector::misc::{HandleId, SpiralType};
 use vector_types::vector::{PointId, SegmentId, StrokeId};
@@ -18,7 +20,7 @@ fn circle(
 	radius: f64,
 ) -> Vector {
 	let radius = radius.abs();
-	Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)))
+	Vector::from_bezpath(shapes::ellipse_bezpath(DVec2::splat(-radius), DVec2::splat(radius)))
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
@@ -36,7 +38,7 @@ fn arc(
 	sweep_angle: Angle,
 	arc_type: ArcType,
 ) -> Vector {
-	Vector::from_subpath(subpath::Subpath::new_arc(
+	Vector::from_bezpath(shapes::arc_bezpath(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
@@ -56,7 +58,7 @@ fn spiral(
 	#[default(25)] outer_radius: f64,
 	#[default(90.)] angular_resolution: f64,
 ) -> Vector {
-	Vector::from_subpath(subpath::Subpath::new_spiral(
+	Vector::from_bezpath(shapes::spiral_bezpath(
 		inner_radius,
 		outer_radius,
 		turns,
@@ -82,7 +84,7 @@ fn ellipse(
 	let corner1 = -radius;
 	let corner2 = radius;
 
-	let mut ellipse = Vector::from_subpath(subpath::Subpath::new_ellipse(corner1, corner2));
+	let mut ellipse = Vector::from_bezpath(shapes::ellipse_bezpath(corner1, corner2));
 
 	let len = ellipse.segment_domain.ids().len();
 	for i in 0..len {
@@ -130,7 +132,7 @@ fn rectangle(
 		radii
 	};
 
-	Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., radii))
+	Vector::from_bezpath(shapes::rounded_rectangle_bezpath(size / -2., size / 2., radii))
 }
 
 /// Builds a set of four corner values, such as a rectangle's corner radii, from a list of one, two, three, or four values.
@@ -158,8 +160,7 @@ fn regular_polygon<T: AsU64>(
 	radius: f64,
 ) -> Vector {
 	let points = sides.as_u64();
-	let radius: f64 = radius * 2.;
-	Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))
+	Vector::from_bezpath(shapes::regular_polygon_bezpath(DVec2::ZERO, points, radius))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
@@ -179,10 +180,7 @@ fn star<T: AsU64>(
 	radius_2: f64,
 ) -> Vector {
 	let points = sides.as_u64();
-	let diameter: f64 = radius_1 * 2.;
-	let inner_diameter = radius_2 * 2.;
-
-	Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))
+	Vector::from_bezpath(shapes::star_polygon_bezpath(DVec2::ZERO, points, radius_1, radius_2))
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -235,11 +233,7 @@ fn qr_code(
 				for x in 0..dimension {
 					if qr_code.get_module(x as i32, y as i32) {
 						let corner1 = DVec2::new(x as f64, y as f64);
-						let corner2 = corner1 + DVec2::splat(1.);
-						vector.append_subpath(
-							subpath::Subpath::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true),
-							false,
-						);
+						vector.append_bezpath(shapes::rectangle_bezpath(corner1, corner1 + DVec2::splat(1.)));
 					}
 				}
 			}
@@ -266,12 +260,12 @@ fn arrow(
 	#[default(30)] head_width: PixelLength,
 	#[default(20)] head_length: PixelLength,
 ) -> Vector {
-	Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length))
+	Vector::from_bezpath(shapes::arrow_bezpath(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
 fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: PixelSize) -> Vector {
-	Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to))
+	Vector::from_bezpath(shapes::line_bezpath(DVec2::ZERO, line_to))
 }
 
 trait GridSpacing {
@@ -353,9 +347,7 @@ fn grid<T: GridSpacing>(
 			// Helper function to connect points with line segments.
 			let mut push_segment = |to_index: Option<usize>| {
 				if let Some(other_index) = to_index {
-					vector
-						.segment_domain
-						.push(segment_id.next_id(), other_index, current_index, subpath::BezierHandles::Linear, StrokeId::ZERO);
+					vector.segment_domain.push(segment_id.next_id(), other_index, current_index, BezierHandles::Linear, StrokeId::ZERO);
 				}
 			};
 

@@ -799,11 +799,10 @@ mod test_support {
 	use core_types::record::{RunBuilder, element_write_hashed};
 	use glam::DVec2;
 	use vector_types::Vector;
-	use vector_types::subpath::Subpath;
-	use vector_types::vector::PointId;
+	use vector_types::kurbo::Shape;
 
 	pub(in crate::graphic) fn unit_square_at(corner: DVec2) -> Vector {
-		Vector::from_subpath(Subpath::<PointId>::new_rectangle(corner, corner + DVec2::ONE))
+		Vector::from_bezpath(vector_types::kurbo::Rect::new(corner.x, corner.y, corner.x + 1., corner.y + 1.).to_path(vector_types::kurbo::DEFAULT_ACCURACY))
 	}
 
 	pub(in crate::graphic) fn native_group_paint<'a>(vector: &Vector, arena: &'a core_types::arena::Arena) -> List<Graphic<'a>> {

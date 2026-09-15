@@ -53,10 +53,6 @@ pub mod artboard {
 	pub use graphic_types::artboard::*;
 }
 
-pub mod subpath {
-	pub use vector_types::subpath::*;
-}
-
 pub mod gradient {
 	pub use vector_types::{Gradient, GradientStop};
 }
