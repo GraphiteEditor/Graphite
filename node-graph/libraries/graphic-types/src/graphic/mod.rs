@@ -10,13 +10,12 @@ pub(crate) use glue::{list_contains_groups, map_attribute_groups_to_owned, map_a
 pub use glue::{map_groups_to_owned, map_groups_to_persistent, map_groups_to_resident};
 pub(crate) use legacy::run_to_legacy_list;
 pub use legacy::{group_to_legacy_graphic, group_to_legacy_list, map_groups_to_legacy, map_paint_attrs_to_legacy, run_to_list};
-pub use paint::{
-	LanePaint, PaintColumns, PaintOverlay, PaintOverlayColumn, PaintReach, bake_paint_transforms, has_paint, is_paint_present, paint_graphics, set_paint_attribute, set_paint_attribute_at,
-	vector_can_reduce_to_clip_path, vector_lane_can_reduce_to_clip_path,
-};
+pub use paint::{PaintColumns, PaintReach, bake_paint_transforms, is_paint_present, paint_cell_rows, vector_can_reduce_to_clip_path, vector_lane_can_reduce_to_clip_path};
 pub use walk::{GraphicLevel, GraphicLevelColumn, RowStep, VectorRow, direct_vector_len, flatten_vector_rows, group_is_empty, lane_attributes, run_lane_attributes, walk_vector_rows};
 use walk::{group_all_clipped, group_bounding_box, group_is_fully_transparent, group_is_opaque, group_render_complexity};
 
+use crate::appearance::Appearance;
+use crate::markers::ATTR_APPEARANCE;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
@@ -195,6 +194,7 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 			let current_opacity: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY, 1.);
 			let current_fill: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 			let lane_layer_path: Option<Vec<NodeId>> = current_graphic_item.attribute::<Vec<NodeId>>(ATTR_EDITOR_LAYER_PATH).cloned();
+			let parent_appearance = current_graphic_item.attribute::<Appearance>(ATTR_APPEARANCE).and_then(Appearance::declared).cloned();
 
 			let (element, attributes) = current_graphic_item.into_parts();
 			match element {
@@ -220,6 +220,14 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 					if parent_has_fill {
 						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY_FILL) {
 							*v *= current_fill;
+						}
+					}
+					// Appearance cascades into each child whose own is undeclared, since a declared child wins wholesale
+					if let Some(appearance) = &parent_appearance {
+						for v in sub_list.iter_attribute_values_mut_or_default::<Appearance>(ATTR_APPEARANCE) {
+							if v.is_empty() {
+								*v = appearance.clone();
+							}
 						}
 					}
 
@@ -418,9 +426,9 @@ impl<'e> Graphic<'e> {
 		}
 	}
 
-	pub fn can_reduce_to_clip_path(&self) -> bool {
+	pub fn can_reduce_to_clip_path(&self, inherited_appearance: Option<&Appearance>) -> bool {
 		match self {
-			Graphic::Vector(vector) => vector_can_reduce_to_clip_path(&core_types::lane::Single(vector)),
+			Graphic::Vector(vector) => vector_can_reduce_to_clip_path(&core_types::lane::Single(vector), inherited_appearance),
 			_ => false,
 		}
 	}
@@ -443,9 +451,8 @@ impl<'e> Graphic<'e> {
 		match self {
 			Graphic::None => true,
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
-			// A bare leaf carries no paint attribute, so only an unstroked
-			// vector is invisible on its own.
-			Graphic::Vector(vector) => vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()),
+			// A bare vector leaf carries no paint or stroke of its own, so it is invisible on its own
+			Graphic::Vector(_) => true,
 			Graphic::Color(color) => color.a() == 0.,
 			Graphic::Gradient(stops) => stops.iter().all(|stop| stop.color.a() == 0.),
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
@@ -673,6 +680,33 @@ mod tests {
 		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
 		let flattened: List<Vector> = group.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
+	}
+
+	// A padded (empty) appearance cell is undeclared, so the parent's appearance cascades into it while a declared sibling keeps its own
+	#[test]
+	fn flatten_cascades_into_padded_empty_appearance_items() {
+		use crate::appearance::Coverage;
+
+		let single = |color: Color| Appearance::new_single(Coverage::new_fill(), Graphic::Color(color));
+
+		// Declaring an appearance on item 0 forces the attribute, padding item 1 with the empty appearance
+		let mut inner = List::new();
+		inner.push(Item::new_from_element(vector_graphic()));
+		inner.push(Item::new_from_element(vector_graphic()));
+		inner.set_attribute(ATTR_APPEARANCE, 0, single(Color::BLACK));
+
+		let mut outer = List::new_from_element(Graphic::Graphic(inner));
+		outer.set_attribute(ATTR_APPEARANCE, 0, single(Color::WHITE));
+
+		let flattened: List<Vector> = outer.into_flattened_list();
+		let color_of = |index: usize| {
+			let appearance = flattened.attribute::<Appearance>(ATTR_APPEARANCE, index)?;
+			let Graphic::Color(color) = appearance.paint_at(0)? else { return None };
+			Some(*color)
+		};
+
+		assert_eq!(color_of(0), Some(Color::BLACK), "a declared item should keep its own appearance");
+		assert_eq!(color_of(1), Some(Color::WHITE), "a padded item should inherit the parent appearance");
 	}
 }
 

@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 	ARTBOARD_DIMENSIONS_INPUT_INDEX, ARTBOARD_LOCATION_INPUT_INDEX, DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
 };
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
 	ReplaceablePaintChain, get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
@@ -19,7 +19,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, Stroke};
+use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
 
@@ -858,8 +858,6 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeJoin(stroke.join), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::MiterLimitInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashPatternInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::DashPattern(stroke.dash_lengths), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput);
@@ -1006,4 +1004,64 @@ impl<'a> ModifyInputsContext<'a> {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
 	}
+}
+
+/// The wires feeding off a node's primary output.
+fn primary_output_consumers(network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], node_id: NodeId) -> Vec<InputConnector> {
+	network_interface
+		.outward_wires(network_path)
+		.and_then(|wires| wires.get(&OutputConnector::node(node_id, 0)).cloned())
+		.unwrap_or_default()
+}
+
+/// The fill wired directly to the stroke on either side, and whether the stroke currently paints above it.
+/// The downstream node of the pair appends its cover last, so it paints on top.
+pub fn adjacent_fill_of_stroke(network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], stroke_node_id: NodeId) -> Option<(NodeId, bool)> {
+	let fill_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+	let is_fill = |network_interface: &NodeNetworkInterface, node_id: &NodeId| network_interface.reference(node_id, network_path) == Some(fill_reference.clone());
+
+	let stroke_primary_source = match network_interface.input_from_connector(&InputConnector::node_at_index(stroke_node_id, 0), network_path) {
+		Some(NodeInput::Node { node_id, output_index: 0, .. }) => Some(*node_id),
+		_ => None,
+	};
+	if let Some(source) = stroke_primary_source.filter(|source| is_fill(network_interface, source)) {
+		return Some((source, true));
+	}
+	let consumers = primary_output_consumers(network_interface, network_path, stroke_node_id);
+	let fill_consumer = consumers.iter().find_map(|connector| match connector {
+		InputConnector::Node { node_id, input_index: 0 } if is_fill(network_interface, node_id) => Some(*node_id),
+		_ => None,
+	});
+	fill_consumer.map(|fill_node_id| (fill_node_id, false))
+}
+
+/// Swaps a chain's directly adjacent Stroke and Fill nodes when their order disagrees with the requested
+/// paint order: both nodes append their cover, so the downstream one of the pair paints on top, following
+/// the painter's algorithm. Without a fill wired directly to the stroke, nothing changes.
+/// Returns whether the graph changed.
+pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], stroke_node_id: NodeId, paint_order: PaintOrder) -> bool {
+	let Some((fill_node_id, currently_above)) = adjacent_fill_of_stroke(network_interface, network_path, stroke_node_id) else {
+		return false;
+	};
+
+	if (paint_order == PaintOrder::StrokeAbove) == currently_above {
+		return false;
+	}
+
+	let (upstream, downstream) = if currently_above { (fill_node_id, stroke_node_id) } else { (stroke_node_id, fill_node_id) };
+	let Some(upstream_source) = network_interface.input_from_connector(&InputConnector::node_at_index(upstream, 0), network_path).cloned() else {
+		return false;
+	};
+	let downstream_consumers = primary_output_consumers(network_interface, network_path, downstream);
+
+	network_interface.set_input(&InputConnector::node_at_index(downstream, 0), upstream_source, network_path);
+	network_interface.set_input(&InputConnector::node_at_index(upstream, 0), NodeInput::node(downstream, 0), network_path);
+	for consumer in &downstream_consumers {
+		if matches!(consumer, InputConnector::Node { node_id, .. } if *node_id == upstream || *node_id == downstream) {
+			continue;
+		}
+		network_interface.set_input(consumer, NodeInput::node(upstream, 0), network_path);
+	}
+
+	true
 }

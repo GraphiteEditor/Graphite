@@ -198,7 +198,10 @@ pub fn apply_miter_limit(drawing: &mut DrawingToolState, limit: f64, document: &
 
 pub fn apply_paint_order(drawing: &mut DrawingToolState, order: PaintOrder, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.paint_order = Some(order);
-	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::PaintOrderInput, TaggedValue::PaintOrder(order), responses);
+	// The paint order is the chain order of the Fill and Stroke nodes, so applying it reorders the pair
+	for layer in document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface) {
+		responses.add(GraphOperationMessage::StrokePaintOrderSet { layer, paint_order: order });
+	}
 }
 
 pub fn apply_dash_lengths(drawing: &mut DrawingToolState, lengths: Vec<f64>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {

@@ -1,3 +1,4 @@
+pub mod appearance;
 pub mod artboard;
 pub mod boundary;
 pub mod graphic;
@@ -9,9 +10,10 @@ pub use raster_types;
 pub use vector_types;
 
 // Re-export commonly used types at the crate root
+pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
 pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
-pub use markers::{ATTR_EDITOR_MERGED_LAYERS, ATTR_FILL, ATTR_STROKE};
+pub use markers::{ATTR_APPEARANCE, ATTR_EDITOR_MERGED_LAYERS, ATTR_PAINT};
 
 pub mod migrations {
 	use crate::Vector;
@@ -99,6 +101,7 @@ pub mod migrations {
 		#[derive(serde::Deserialize)]
 		#[cfg_attr(test, derive(Default, serde::Serialize))]
 		pub(super) struct PathStyle {
+			#[allow(dead_code)]
 			pub stroke: Option<Stroke>,
 		}
 
@@ -106,6 +109,7 @@ pub mod migrations {
 		#[derive(serde::Deserialize)]
 		#[cfg_attr(test, derive(Default, serde::Serialize))]
 		pub(super) struct VectorData {
+			#[allow(dead_code)]
 			pub style: PathStyle,
 			pub colinear_manipulators: Vec<[HandleId; 2]>,
 			pub point_domain: PointDomain,
@@ -138,7 +142,6 @@ pub mod migrations {
 
 		Ok(match VectorFormat::deserialize(deserializer)? {
 			VectorFormat::OldVectorData(old) => Some(Vector {
-				stroke: old.style.stroke,
 				colinear_manipulators: old.colinear_manipulators,
 				point_domain: old.point_domain,
 				segment_domain: old.segment_domain,
@@ -190,9 +193,12 @@ pub mod migrations {
 		use vector_types::vector::style::Stroke;
 
 		#[test]
-		fn preserves_stroke_from_old_vector_data_style() {
+		fn recovers_geometry_from_old_vector_data_style() {
+			use core_types::ops::FromAnchorPosition;
+
 			let old_vector = legacy::VectorData {
 				style: legacy::PathStyle { stroke: Some(Stroke::new(12.)) },
+				point_domain: Vector::from_anchor_position(glam::DVec2::new(3., 4.)).point_domain,
 				..Default::default()
 			};
 
@@ -207,20 +213,19 @@ pub mod migrations {
 				.insert("fill".into(), serde_json::to_value(legacy::LegacyFill::default()).unwrap());
 			let migrated = migrate_to_optional_vector(value).unwrap().unwrap();
 
-			assert_eq!(migrated.stroke.unwrap().weight, 12.);
+			assert_eq!(migrated.point_domain.positions(), [glam::DVec2::new(3., 4.)], "the geometry survives alongside the discarded style");
 		}
 
 		#[test]
-		fn preserves_stroke_from_current_vector_data() {
-			let vector = Vector {
-				stroke: Some(Stroke::new(12.)),
-				..Default::default()
-			};
+		fn recovers_geometry_from_current_vector_data() {
+			use core_types::ops::FromAnchorPosition;
+
+			let vector = Vector::from_anchor_position(glam::DVec2::new(3., 4.));
 
 			let value = serde_json::to_value(&vector).unwrap();
 			let migrated = migrate_to_optional_vector(value).unwrap().unwrap();
 
-			assert_eq!(migrated.stroke.unwrap().weight, 12.);
+			assert_eq!(migrated.point_domain.positions(), [glam::DVec2::new(3., 4.)]);
 		}
 	}
 }

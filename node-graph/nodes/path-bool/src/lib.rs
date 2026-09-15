@@ -3,12 +3,13 @@ use core_types::list::{Item, List};
 use core_types::node::Lane;
 use core_types::{ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Ctx};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_transforms, is_paint_present, set_paint_attribute_at};
-use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
+use graphic_types::appearance::Appearance;
+use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_transforms};
+use graphic_types::markers::{Appearance as AppearanceMarker, EditorMergedLayers};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use graphic_types::{ATTR_FILL, ATTR_STROKE, Graphic, IntoGraphicList, Vector};
+use graphic_types::{Graphic, IntoGraphicList, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
@@ -25,7 +26,7 @@ fn boolean_core<'e>(
 	flattened: List<Vector>,
 	snapshot: List<Graphic<'static>>,
 	operation: BooleanOperation,
-) -> Result<(Vector, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, Stroke>, Attr<'e, EditorMergedLayers>), core_types::gpoll::Interrupt> {
+) -> Result<(Vector, Attr<'e, TransformAttr>, Attr<'e, AppearanceMarker>, Attr<'e, EditorMergedLayers>), core_types::gpoll::Interrupt> {
 	// The first index is the bottom of the stack
 	let mut result_vector_list = boolean_operation_on_vector_list(&flattened, operation);
 
@@ -36,7 +37,6 @@ fn boolean_core<'e>(
 
 		let result_vector = result_vector_list.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
-		result_vector.set_stroke_transform(DAffine2::IDENTITY);
 
 		// Clean up the boolean operation result by merging duplicated points
 		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
@@ -49,17 +49,12 @@ fn boolean_core<'e>(
 			trace: Vec::new(),
 		})
 	};
-	let park_paint = |paint: Option<List<Graphic<'static>>>| -> Result<Option<&'e List<Graphic>>, core_types::gpoll::Interrupt> {
-		match paint {
-			Some(list) => Ok(Some(arena.alloc_sized_keyed(list, 0).ok_or_else(exhausted)?.0)),
-			None => Ok(None),
-		}
-	};
-
 	let element = result_vector_list.element(0).cloned().unwrap_or_default();
 	use core_types::lane::LaneSource;
-	let fill = park_paint(result_vector_list.attr::<Fill>(0).filter(|paint| is_paint_present(paint)).cloned())?;
-	let stroke = park_paint(result_vector_list.attr::<Stroke>(0).filter(|paint| is_paint_present(paint)).cloned())?;
+	let appearance = match result_vector_list.attr::<AppearanceMarker>(0).cloned() {
+		Some(appearance) => Some(arena.alloc_sized_keyed(appearance, 0).ok_or_else(exhausted)?.0),
+		None => None,
+	};
 	// Snapshot the input layers so the renderer can recurse into them for
 	// editor click-target preservation.
 	let merged_layers = arena.alloc_sized_keyed(snapshot, 0).ok_or_else(exhausted)?.0;
@@ -69,8 +64,7 @@ fn boolean_core<'e>(
 	Ok((
 		element,
 		Attr(result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0)),
-		Attr(fill),
-		Attr(stroke),
+		Attr(appearance),
 		Attr(Some(merged_layers)),
 	))
 }
@@ -88,17 +82,17 @@ fn boolean_operation<'e>(
 	/// Intersection cuts away all but the overlapping areas shared by every path.
 	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
 	operation: BooleanOperation,
-) -> Result<(Lane<Vector>, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, Stroke>, Attr<'e, EditorMergedLayers>), core_types::gpoll::Interrupt> {
+) -> Result<(Lane<Vector>, Attr<'e, TransformAttr>, Attr<'e, AppearanceMarker>, Attr<'e, EditorMergedLayers>), core_types::gpoll::Interrupt> {
 	if content.is_empty() {
 		return Err(core_types::gpoll::GraphError::past_end().into());
 	}
 	let item = content.as_group_item();
 	let flattened = flatten_vector_run(GraphicLevel::Run(&item), Ancestors::NONE, PaintReach::NONE);
 	let snapshot = graphic_types::graphic::run_to_list::<Graphic>(&item).expect("the run holds the row's element type").into_graphic_list();
-	let (element, transform, fill, stroke, merged) = boolean_core(ctx.arena(), flattened, snapshot, operation)?;
+	let (element, transform, appearance, merged) = boolean_core(ctx.arena(), flattened, snapshot, operation)?;
 	// The merge presents the bottom-of-stack lane's blending, clipping and layer
 	// path, carried rather than re-read: one named lane instead of four copies.
-	Ok((content.lane(0).map_element(element), transform, fill, stroke, merged))
+	Ok((content.lane(0).map_element(element), transform, appearance, merged))
 }
 
 /// The boolean operation over a plain vector level, as [`boolean_operation`].
@@ -107,15 +101,15 @@ fn boolean_operation_vector<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + core_types::InjectIndex + Copy,
 	content: IList<Vector>,
 	operation: BooleanOperation,
-) -> Result<(Lane<Vector>, Attr<'e, TransformAttr>, Attr<'e, Fill>, Attr<'e, Stroke>, Attr<'e, EditorMergedLayers>), core_types::gpoll::Interrupt> {
+) -> Result<(Lane<Vector>, Attr<'e, TransformAttr>, Attr<'e, AppearanceMarker>, Attr<'e, EditorMergedLayers>), core_types::gpoll::Interrupt> {
 	if content.is_empty() {
 		return Err(core_types::gpoll::GraphError::past_end().into());
 	}
 	let item = content.as_group_item();
 	let flattened = graphic_types::graphic::run_to_list::<Vector>(&item).expect("the run holds vector lanes");
 	let snapshot = graphic_types::graphic::run_to_list::<Vector>(&item).expect("the run holds the row's element type").into_graphic_list();
-	let (element, transform, fill, stroke, merged) = boolean_core(ctx.arena(), flattened, snapshot, operation)?;
-	Ok((content.lane(0).map_element(element), transform, fill, stroke, merged))
+	let (element, transform, appearance, merged) = boolean_core(ctx.arena(), flattened, snapshot, operation)?;
+	Ok((content.lane(0).map_element(element), transform, appearance, merged))
 }
 
 pub use _boolean_operation_vector_mod::boolean_operation_vector_entries;
@@ -203,12 +197,7 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 
 		bake_paint_transforms(&mut attributes, copy_from_transform);
 
-		let copy_from = vector.element(index).unwrap();
-		let element = Vector {
-			stroke: copy_from.stroke.clone(),
-			..Default::default()
-		};
-		Item::from_parts(element, attributes)
+		Item::from_parts(Vector::default(), attributes)
 	} else {
 		Item::<Vector>::default()
 	};
@@ -312,13 +301,7 @@ impl Ancestors {
 fn push_leaf_vector_row(out: &mut List<Vector>, level: GraphicLevel<'_>, index: usize, vector: &Vector, ancestors: Ancestors, reach: PaintReach<'_>) {
 	let out_index = out.len();
 	out.push(Item::from_parts(vector.clone(), graphic_types::graphic::lane_attributes(level, index)));
-	if reach.applies() {
-		for (key, slot) in [(ATTR_FILL, reach.paint.fill), (ATTR_STROKE, reach.paint.stroke)] {
-			if let Some(paint) = slot {
-				set_paint_attribute_at(out, out_index, key, paint.clone());
-			}
-		}
-	}
+	stamp_inherited_appearance(out, out_index, reach.appearance);
 	ancestors.compose(out, out_index);
 }
 
@@ -327,13 +310,7 @@ fn push_vector_rows(out: &mut List<Vector>, rows: &List<Vector>, composed: Ances
 		let Some(item) = rows.clone_item(row) else { continue };
 		let index = out.len();
 		out.push(item);
-		if reach.applies() {
-			for (key, slot) in [(ATTR_FILL, reach.paint.fill), (ATTR_STROKE, reach.paint.stroke)] {
-				if let Some(paint) = slot {
-					set_paint_attribute_at(out, index, key, paint.clone());
-				}
-			}
-		}
+		stamp_inherited_appearance(out, index, reach.appearance);
 		composed.compose(out, index);
 	}
 }
@@ -344,6 +321,15 @@ fn push_text_rows(out: &mut List<Vector>, text: &List<String>, composed: Ancesto
 	push_rows(out, text_rows(text, DAffine2::IDENTITY));
 	for row in start..out.len() {
 		composed.compose(out, row);
+	}
+}
+
+/// The cascade's resolved appearance lands on a row whose own is undeclared, since a declared row wins wholesale.
+fn stamp_inherited_appearance(out: &mut List<Vector>, index: usize, inherited: Option<&Appearance>) {
+	if let Some(appearance) = inherited
+		&& out.attribute::<Appearance>(graphic_types::ATTR_APPEARANCE, index).and_then(Appearance::declared).is_none()
+	{
+		out.set_attribute(graphic_types::ATTR_APPEARANCE, index, appearance.clone());
 	}
 }
 
@@ -375,7 +361,7 @@ fn flatten_vector_run_into<'a>(out: &mut List<Vector>, level: GraphicLevel<'a>, 
 		let composed = ancestors.through(&level, index);
 		match element {
 			Graphic::Vector(vector) => push_leaf_vector_row(out, level, index, vector, ancestors, reach),
-			Graphic::Graphic(children) => push_union(out, flatten_vector_run(GraphicLevel::Legacy(children), composed, reach.nested())),
+			Graphic::Graphic(children) => push_union(out, flatten_vector_run(GraphicLevel::Legacy(children), composed, reach)),
 			Graphic::Group(group) => flatten_group(out, group, composed, reach),
 			Graphic::Text(text) => {
 				let one = List::new_from_item(Item::from_parts(text.clone(), graphic_types::graphic::lane_attributes(level, index)));
@@ -395,7 +381,7 @@ fn flatten_group(out: &mut List<Vector>, group: &core_types::record::Group, comp
 	if let Some(rows) = graphic_types::graphic::run_to_list::<Vector>(item) {
 		push_vector_rows(out, &rows, composed, reach);
 	} else if core_types::record::RunView::<Graphic>::new(item).is_some() {
-		push_union(out, flatten_vector_run(GraphicLevel::Run(item), composed, reach.into_group_graphics()));
+		push_union(out, flatten_vector_run(GraphicLevel::Run(item), composed, reach));
 	} else if let Some(text) = graphic_types::graphic::run_to_list::<String>(item) {
 		push_text_rows(out, &text, composed);
 	}
@@ -502,6 +488,12 @@ mod tests {
 		List::new_from_element(Graphic::Color(Color::BLACK))
 	}
 
+	/// The single-fill appearance a built row paints with.
+	fn fill_appearance(paint: List<Graphic<'static>>) -> Appearance {
+		use graphic_types::appearance::Coverage;
+		Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(paint))
+	}
+
 	#[test]
 	fn the_native_flatten_reads_lanes_groups_and_reach() {
 		let inner_vector = square(DVec2::ZERO);
@@ -515,7 +507,7 @@ mod tests {
 		top.push(Item::new_from_element(Graphic::Color(Color::BLACK)));
 		top.push(Item::new_from_element(Graphic::Group(Group { row: None, content: inner_item })));
 		top.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(5., 5.)));
-		set_paint_attribute_at(&mut top, 0, ATTR_FILL, black_paint());
+		top.set_attribute(graphic_types::ATTR_APPEARANCE, 0, fill_appearance(black_paint()));
 		top.set_attribute(ATTR_OPACITY, 1, 0.5);
 		top.set_attribute(ATTR_TRANSFORM, 2, DAffine2::from_scale(DVec2::splat(3.)));
 
@@ -523,10 +515,16 @@ mod tests {
 		// The color lane bounds no region, so it serves no operand and the group's row lands at 1
 		assert_eq!(rows.len(), 2);
 
+		let fill_of = |index: usize| {
+			rows.attribute::<Appearance>(graphic_types::ATTR_APPEARANCE, index)
+				.and_then(|appearance| appearance.first_paint_of(graphic_types::appearance::Cover::Fill))
+				.and_then(graphic_types::graphic::paint_cell_rows)
+		};
+
 		// Lane 0: the leaf row keeps its lane attributes, with the lane fill
 		// present and the ancestor composition the identity.
 		assert_eq!(rows.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0), DAffine2::from_translation(DVec2::new(5., 5.)));
-		assert!(graphic_types::graphic::paint_graphics::<Fill, _>(&rows, 0).is_some());
+		assert!(fill_of(0).is_some());
 
 		// Lane 1: the group's vector run serves its row under the lane
 		// transform.

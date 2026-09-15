@@ -11,9 +11,9 @@ use core_types::registry::types::Angle;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DVec2};
+use graphic_types::Vector;
 use graphic_types::graphic::{Graphic, GraphicLevel, RowStep, TryFromGraphic, is_lone_anonymous_leaf, walk_vector_rows};
-use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
-use graphic_types::{ATTR_FILL, ATTR_STROKE, Vector};
+use graphic_types::markers::EditorMergedLayers;
 use raster_types::{CPU, GPU, Raster};
 use vector_types::gradient::{GradientForm as GradientFormValue, GradientHueDirection, GradientSpace, GradientSpread};
 use vector_types::markers::GradientCyclic;
@@ -424,8 +424,6 @@ fn merged_layers_snapshot<'e>(arena: &'e Arena, mut snapshot: List<Graphic<'stat
 type FlattenedVectorRow<'a, 'e> = (
 	Lane<'a, Vector>,
 	Attr<'e, TransformAttr>,
-	Attr<'e, Fill>,
-	Attr<'e, StrokeAttr>,
 	Attr<'e, Opacity>,
 	Attr<'e, OpacityFill>,
 	Attr<'e, EditorLayerPath>,
@@ -436,14 +434,6 @@ type FlattenedVectorRow<'a, 'e> = (
 /// walk's composition, paint and layer path overriding, and `snapshot` parked
 /// as the merged layers where given.
 fn emit_vector_row<'a, 'e>(arena: &'e Arena, carrier: Lane<'a, Graphic<'static>>, row: List<Vector>, snapshot: Option<List<Graphic<'static>>>) -> Result<FlattenedVectorRow<'a, 'e>, Interrupt> {
-	let park_paint = |paint: Option<&Option<List<Graphic<'static>>>>| {
-		paint
-			.and_then(|paint| paint.as_ref())
-			.map(|paint| arena.alloc_sized_keyed(paint.clone(), 0).map(|(parked, _)| parked).ok_or_else(arena_exhausted))
-			.transpose()
-	};
-	let fill = park_paint(row.attribute(ATTR_FILL, 0))?;
-	let stroke = park_paint(row.attribute(ATTR_STROKE, 0))?;
 	let layer_path: Vec<NodeId> = row.attribute(ATTR_EDITOR_LAYER_PATH, 0).cloned().unwrap_or_default();
 	let (layer_path, _) = arena.alloc(layer_path).ok_or_else(arena_exhausted)?;
 
@@ -454,8 +444,6 @@ fn emit_vector_row<'a, 'e>(arena: &'e Arena, carrier: Lane<'a, Graphic<'static>>
 	Ok((
 		carrier.map_element(element),
 		Attr(transform),
-		Attr(fill),
-		Attr(stroke),
 		Attr(row.attribute_cloned_or(ATTR_OPACITY, 0, 1.)),
 		Attr(row.attribute_cloned_or(ATTR_OPACITY_FILL, 0, 1.)),
 		Attr(layer_path.as_slice()),
@@ -474,8 +462,6 @@ pub fn flatten_vector<'e>(
 	IList<(
 		Lane<Vector>,
 		Attr<'e, TransformAttr>,
-		Attr<'e, Fill>,
-		Attr<'e, StrokeAttr>,
 		Attr<'e, Opacity>,
 		Attr<'e, OpacityFill>,
 		Attr<'e, EditorLayerPath>,

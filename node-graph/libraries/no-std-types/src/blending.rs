@@ -185,3 +185,60 @@ impl Display for BlendMode {
 		}
 	}
 }
+
+/// Mixes the two colors by the blend mode's own formula, leaving the alpha compositing to the caller.
+pub fn apply_blend_mode(foreground: crate::color::Color, background: crate::color::Color, blend_mode: BlendMode) -> crate::color::Color {
+	use crate::color::Color;
+	match blend_mode {
+		// Normal group
+		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
+		// Darken group
+		BlendMode::Darken => background.blend_rgb(foreground, Color::blend_darken),
+		BlendMode::Multiply => background.blend_rgb(foreground, Color::blend_multiply),
+		BlendMode::ColorBurn => background.blend_rgb(foreground, Color::blend_color_burn),
+		BlendMode::LinearBurn => background.blend_rgb(foreground, Color::blend_linear_burn),
+		BlendMode::DarkerColor => background.blend_darker_color(foreground),
+		// Lighten group
+		BlendMode::Lighten => background.blend_rgb(foreground, Color::blend_lighten),
+		BlendMode::Screen => background.blend_rgb(foreground, Color::blend_screen),
+		BlendMode::ColorDodge => background.blend_rgb(foreground, Color::blend_color_dodge),
+		BlendMode::LinearDodge => background.blend_rgb(foreground, Color::blend_linear_dodge),
+		BlendMode::LighterColor => background.blend_lighter_color(foreground),
+		// Contrast group
+		BlendMode::Overlay => background.blend_rgb(foreground, Color::blend_overlay),
+		BlendMode::SoftLight => background.blend_rgb(foreground, Color::blend_softlight),
+		BlendMode::HardLight => background.blend_rgb(foreground, Color::blend_hardlight),
+		BlendMode::VividLight => background.blend_rgb(foreground, Color::blend_vivid_light),
+		BlendMode::LinearLight => background.blend_rgb(foreground, Color::blend_linear_light),
+		BlendMode::PinLight => background.blend_rgb(foreground, Color::blend_pin_light),
+		BlendMode::HardMix => background.blend_rgb(foreground, Color::blend_hard_mix),
+		// Inversion group
+		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_difference),
+		BlendMode::Exclusion => background.blend_rgb(foreground, Color::blend_exclusion),
+		BlendMode::Subtract => background.blend_rgb(foreground, Color::blend_subtract),
+		BlendMode::Divide => background.blend_rgb(foreground, Color::blend_divide),
+		// Component group
+		BlendMode::Hue => background.blend_hue(foreground),
+		BlendMode::Saturation => background.blend_saturation(foreground),
+		BlendMode::Color => background.blend_color(foreground),
+		BlendMode::Luminosity => background.blend_luminosity(foreground),
+		// The alpha-only utility modes mix no color, so the foreground passes through for the caller to composite
+		BlendMode::Erase | BlendMode::Restore | BlendMode::MultiplyAlpha => foreground,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::color::Color;
+
+	#[test]
+	fn overlay_is_hard_light_with_swapped_operands() {
+		let a = Color::from_rgbaf32_unchecked(0.8, 0.3, 0.6, 1.);
+		let b = Color::from_rgbaf32_unchecked(0.2, 0.7, 0.4, 1.);
+
+		let overlay = apply_blend_mode(a, b, BlendMode::Overlay);
+		let swapped_hard_light = apply_blend_mode(b, a, BlendMode::HardLight);
+		assert_eq!(overlay, swapped_hard_light);
+	}
+}
