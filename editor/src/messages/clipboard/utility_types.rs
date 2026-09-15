@@ -18,7 +18,6 @@ pub enum ClipboardContentRaw {
 pub enum ClipboardContent {
 	Graphite(String),
 	Text(String),
-	Svg(String),
 	Image { data: Vec<u8>, width: u32, height: u32 },
 }
 

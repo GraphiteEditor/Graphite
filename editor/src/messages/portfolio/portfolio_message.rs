@@ -219,6 +219,9 @@ pub enum PortfolioMessage {
 		/// New sizes for the children at that split node.
 		sizes: Vec<f64>,
 	},
+	RequestSvgTextCopy {
+		graphite_json: String,
+	},
 }
 
 /// Clone helper for the non-serializable `gdd` payload: a cloned mount message carries no `Gdd`.

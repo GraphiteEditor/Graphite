@@ -79,21 +79,18 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					responses.add(ClipboardMessage::CopyLayers);
 				}
 			}
-			ClipboardMessage::Write { content } => {
-				let text = match content {
-					ClipboardContent::Svg(_) => {
-						log::error!("SVG copying is not yet supported");
-						return;
-					}
-					ClipboardContent::Image { .. } => {
-						log::error!("Image copying is not yet supported");
-						return;
-					}
-					ClipboardContent::Graphite(graphite) => format!("{CLIPBOARD_PREFIX}{graphite}"),
-					ClipboardContent::Text(text) => text,
-				};
-				responses.add(FrontendMessage::TriggerClipboardWrite { content: text });
-			}
+			ClipboardMessage::Write { content } => match content {
+				ClipboardContent::Image { .. } => {
+					log::error!("Image copying is not yet supported");
+				}
+				ClipboardContent::Graphite(graphite) => {
+					let graphite_json = format!("{CLIPBOARD_PREFIX}{graphite}");
+					responses.add(PortfolioMessage::RequestSvgTextCopy { graphite_json });
+				}
+				ClipboardContent::Text(graphite_json) => {
+					responses.add(FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string: None, graphite_json });
+				}
+			},
 
 			ClipboardMessage::CopyLayers => {
 				if current_tool == &ToolType::Path {
@@ -526,7 +523,7 @@ mod test {
 			.await
 			.into_iter()
 			.find_map(|message| match message {
-				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+				FrontendMessage::TriggerClipboardSvgAndJsonWrite { graphite_json, .. } => Some(graphite_json),
 				_ => None,
 			})
 			.expect("copying layers should write a payload to the clipboard")

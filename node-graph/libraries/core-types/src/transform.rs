@@ -189,6 +189,14 @@ impl Footprint {
 		quality: RenderQuality::Full,
 	};
 
+	pub fn from_bounds(bounds: [DVec2; 2], quality: RenderQuality) -> Self {
+		Footprint {
+			transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
+			resolution: UVec2::new((bounds[1].x - bounds[0].x).abs().ceil() as u32, (bounds[1].y - bounds[0].y).abs().ceil() as u32).max(UVec2::ONE),
+			quality,
+		}
+	}
+
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
 		let inverse = self.transform.inverse();
 		let res = self.resolution.as_dvec2();
