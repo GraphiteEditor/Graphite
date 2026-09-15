@@ -190,11 +190,14 @@ impl Display for BlendMode {
 /// Composites `foreground` over `background` with the given blend mode, fading the result by `opacity`.
 #[inline(always)]
 pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
+	// The alpha-only utility modes composite no color, so opacity interpolates their alpha toward the backdrop's instead
+	let faded_alpha = |applied: Color| background.with_alpha(background.a() + (applied.a() - background.a()) * opacity);
+
 	let target_color = match blend_mode {
 		// The alpha-only utility modes composite alpha directly, with no color mixing to fade
-		BlendMode::Erase => return background.alpha_subtract(foreground),
-		BlendMode::Restore => return background.alpha_add(foreground),
-		BlendMode::MultiplyAlpha => return background.alpha_multiply(foreground),
+		BlendMode::Erase => return faded_alpha(background.alpha_subtract(foreground)),
+		BlendMode::Restore => return faded_alpha(background.alpha_add(foreground)),
+		BlendMode::MultiplyAlpha => return faded_alpha(background.alpha_multiply(foreground)),
 		blend_mode => apply_blend_mode(foreground, background, blend_mode),
 	};
 
@@ -253,5 +256,52 @@ mod tests {
 		let overlay = apply_blend_mode(a, b, BlendMode::Overlay);
 		let swapped_hard_light = apply_blend_mode(b, a, BlendMode::HardLight);
 		assert_eq!(overlay, swapped_hard_light);
+	}
+
+	#[test]
+	fn blended_colors_keep_the_foreground_alpha() {
+		let foreground = Color::from_rgbaf32_unchecked(0.8, 0.3, 0.6, 0.25);
+		let background = Color::from_rgbaf32_unchecked(0.2, 0.7, 0.4, 1.);
+
+		let modes = [
+			BlendMode::Multiply,
+			BlendMode::Overlay,
+			BlendMode::DarkerColor,
+			BlendMode::LighterColor,
+			BlendMode::Hue,
+			BlendMode::Saturation,
+			BlendMode::Color,
+			BlendMode::Luminosity,
+		];
+		for mode in modes {
+			let blended = apply_blend_mode(foreground, background, mode);
+			assert!((blended.a() - 0.25).abs() < 1e-5, "{mode} alpha was {}", blended.a());
+		}
+	}
+
+	#[test]
+	fn darker_color_compares_unassociated_channels() {
+		// The premultiplied backdrop reads as 0.1 gray but is really 0.5 gray, so the 0.4 gray foreground is the darker color
+		let foreground = Color::from_rgbaf32_unchecked(0.4, 0.4, 0.4, 1.);
+		let background = Color::from_rgbaf32_unchecked(0.1, 0.1, 0.1, 0.2);
+
+		let blended = apply_blend_mode(foreground, background, BlendMode::DarkerColor);
+
+		assert!((blended.r() - 0.4).abs() < 1e-5, "red was {}", blended.r());
+		assert!((blended.a() - 1.).abs() < 1e-5, "alpha was {}", blended.a());
+	}
+
+	#[test]
+	fn alpha_only_modes_fade_with_opacity() {
+		let foreground = Color::from_rgbaf32_unchecked(0.9, 0.9, 0.9, 1.);
+		let background = Color::from_rgbaf32_unchecked(0.3, 0.5, 0.7, 1.);
+
+		// A full-opacity erase removes all coverage, and half opacity fades that effect halfway back toward the backdrop
+		let full = blend_colors(foreground, background, BlendMode::Erase, 1.);
+		let half = blend_colors(foreground, background, BlendMode::Erase, 0.5);
+
+		assert!((full.a() - 0.).abs() < 1e-5, "alpha was {}", full.a());
+		assert!((half.a() - 0.5).abs() < 1e-5, "alpha was {}", half.a());
+		assert!((half.r() - 0.3).abs() < 1e-5, "red was {}", half.r());
 	}
 }
