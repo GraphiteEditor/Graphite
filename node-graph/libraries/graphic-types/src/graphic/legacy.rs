@@ -58,6 +58,7 @@ pub fn map_groups_to_legacy<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 			map_paint_attrs_to_legacy(&mut out);
 			Graphic::GraphicList(out)
 		}
+		Graphic::Stroke(stroke) => Graphic::Stroke(stroke.clone()),
 		Graphic::Vector(vector) => Graphic::Vector(vector.clone()),
 		Graphic::RasterCPU(raster) => Graphic::RasterCPU(raster.clone()),
 		Graphic::RasterGPU(raster) => Graphic::RasterGPU(raster.clone()),

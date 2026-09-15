@@ -742,6 +742,8 @@ impl Render for Graphic<'_> {
 			Graphic::Color(color) => render_color_svg(&Single(color), render, render_params),
 			Graphic::Gradient(gradient) => render_gradient_svg(&Single(gradient), render, render_params),
 			Graphic::Text(text) => render_text_svg(&Single(text), render, render_params),
+			// A stroke is brush input, not drawable content: the brush node rasterizes it
+			Graphic::Stroke(_) => (),
 			Graphic::Group(group) => render_group_svg(group, PaintReach::NONE, render, render_params),
 		}
 	}
@@ -756,6 +758,7 @@ impl Render for Graphic<'_> {
 			Graphic::Color(color) => render_color_vello(&Single(color), scene, render_params),
 			Graphic::Gradient(gradient) => render_gradient_vello(&Single(gradient), scene, transform, render_params),
 			Graphic::Text(text) => render_text_vello(&Single(text), scene, transform, render_params),
+			Graphic::Stroke(_) => (),
 			Graphic::Group(group) => render_group_vello(group, PaintReach::NONE, scene, transform, context, render_params),
 		}
 	}
@@ -853,6 +856,7 @@ fn collect_element_metadata<'a>(
 		Graphic::Color(_) => {}
 		Graphic::Gradient(gradient) => collect_gradient_metadata(&Single(gradient), metadata, element_id),
 		Graphic::Text(text) => collect_text_metadata(&Single(text), metadata, footprint, element_id),
+		Graphic::Stroke(_) => {}
 		Graphic::Group(group) => collect_group_metadata(group, reach, metadata, footprint, element_id),
 	}
 }
@@ -895,6 +899,7 @@ fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReac
 		Graphic::Color(_) => {}
 		Graphic::Gradient(gradient) => click_targets.extend(gradient_control_targets(&Single(gradient), |transform| transform, true)),
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), click_targets),
+		Graphic::Stroke(_) => (),
 		Graphic::Group(group) => add_group_upstream_click_targets(group, reach, click_targets),
 	}
 }
@@ -908,6 +913,7 @@ fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintRe
 		Graphic::Color(_) => {}
 		Graphic::Gradient(gradient) => outlines.extend(gradient_control_targets(&Single(gradient), |transform| transform, false)),
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), outlines),
+		Graphic::Stroke(_) => (),
 		Graphic::Group(group) => add_group_upstream_outline_targets(group, reach, outlines),
 	}
 }
@@ -1832,7 +1838,7 @@ fn render_vector_item_vello<S: LaneSource<Element = Vector>>(
 		for paint_index in 0..fill_graphic.len() {
 			let Some(paint) = fill_graphic.element(paint_index) else { continue };
 			match paint {
-				Graphic::None => continue,
+				Graphic::None | Graphic::Stroke(_) => continue,
 				Graphic::Color(color) => {
 					// The row's own opacity fades the pass, matching the composited SVG fast path
 					let color = color.with_alpha(color.a() * paint_row_opacity(fill_graphic, paint_index, render_params.for_mask));
@@ -1912,7 +1918,7 @@ fn render_vector_item_vello<S: LaneSource<Element = Vector>>(
 			};
 
 			match stroke_graphic {
-				Graphic::None => continue,
+				Graphic::None | Graphic::Stroke(_) => continue,
 				Graphic::Color(color) => {
 					// The row's own opacity fades the pass, matching the composited SVG fast path
 					let color = color.with_alpha(color.a() * paint_row_opacity(stroke_graphic_list, paint_index, render_params.for_mask));

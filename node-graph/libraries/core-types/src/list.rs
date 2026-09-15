@@ -38,6 +38,10 @@ pub const ATTR_LETTER_SPACING: &str = crate::attribute::LetterSpacing::NAME;
 pub const ATTR_MAX_WIDTH: &str = crate::attribute::MaxWidth::NAME;
 pub const ATTR_MAX_HEIGHT: &str = crate::attribute::MaxHeight::NAME;
 pub const ATTR_LETTER_TILT: &str = crate::attribute::LetterTilt::NAME;
+pub const ATTR_COLOR: &str = crate::attribute::BrushColor::NAME;
+pub const ATTR_DIAMETER: &str = crate::attribute::Diameter::NAME;
+pub const ATTR_HARDNESS: &str = crate::attribute::Hardness::NAME;
+pub const ATTR_FLOW: &str = crate::attribute::Flow::NAME;
 
 // ===========================
 // Implicit attribute defaults

@@ -733,6 +733,14 @@ attribute! {
 	pub MaxHeight("max_height"): Option<f64>;
 	/// Text item's faux-italic letter tilt angle in degrees.
 	pub LetterTilt("letter_tilt"): f64;
+	/// Brush stroke item's color its strokes are painted with.
+	pub BrushColor("color"): crate::Color;
+	/// Brush stroke item's tip diameter in document-space units.
+	pub Diameter("diameter"): f64 = 40.;
+	/// Brush stroke item's edge hardness from `0.` (softest) to `1.` (hardest).
+	pub Hardness("hardness"): f64;
+	/// Brush stroke item's per-pass paint coverage from `0.` to `1.`.
+	pub Flow("flow"): f64 = 1.;
 }
 
 #[cfg(test)]

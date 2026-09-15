@@ -23,6 +23,7 @@ pub fn map_groups_to_owned<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 			map_attribute_groups_to_owned(&mut out);
 			Graphic::GraphicList(out)
 		}
+		Graphic::Stroke(stroke) => Graphic::Stroke(stroke.clone()),
 		Graphic::Vector(vector) => Graphic::Vector(vector.clone()),
 		Graphic::RasterCPU(raster) => Graphic::RasterCPU(raster.clone()),
 		Graphic::RasterGPU(raster) => Graphic::RasterGPU(raster.clone()),
@@ -91,6 +92,7 @@ pub fn map_groups_to_persistent<'p>(graphic: &Graphic<'_>, promotion: &core_type
 			map_attribute_groups_to_persistent(&mut out, promotion)?;
 			Some(Graphic::GraphicList(out))
 		}
+		Graphic::Stroke(stroke) => Some(Graphic::Stroke(stroke.clone())),
 		Graphic::Vector(vector) => Some(Graphic::Vector(vector.clone())),
 		Graphic::RasterCPU(raster) => Some(Graphic::RasterCPU(raster.clone())),
 		Graphic::RasterGPU(raster) => Some(Graphic::RasterGPU(raster.clone())),
@@ -215,10 +217,24 @@ fn graphic_retained_heap(graphic: &Graphic<'_>) -> usize {
 		Graphic::Vector(vector) => vector_retained_heap(vector),
 		Graphic::RasterCPU(raster) => raster.data.len() * size_of::<Color>(),
 		Graphic::Text(text) => text.len(),
+		Graphic::Stroke(stroke) => stroke_retained_heap(stroke),
 		Graphic::Gradient(gradient) => gradient.len() * size_of::<(f64, Color)>(),
 		Graphic::GraphicList(children) => (0..children.len()).filter_map(|index| children.element(index)).map(graphic_retained_heap).sum(),
 		Graphic::None | Graphic::Group(_) | Graphic::RasterGPU(_) | Graphic::Color(_) => 0,
 	}
+}
+
+/// The heap a brush stroke's sample columns own. A uniform channel stores one
+/// value inline, so only the sampled channels contribute.
+fn stroke_retained_heap(stroke: &brush_types::Stroke) -> usize {
+	fn channel_heap<T>(channel: &brush_types::Channel<T>) -> usize {
+		match channel {
+			brush_types::Channel::Uniform(_) => 0,
+			brush_types::Channel::Samples(samples) => size_of_val(samples.as_slice()),
+		}
+	}
+
+	size_of_val(stroke.position.as_slice()) + channel_heap(&stroke.pressure) + channel_heap(&stroke.tilt) + channel_heap(&stroke.twist) + channel_heap(&stroke.time)
 }
 
 /// The heap a vector's domain columns own, summed over the columns it

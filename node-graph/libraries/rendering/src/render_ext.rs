@@ -273,6 +273,7 @@ impl RenderExt for List<Graphic<'_>> {
 			}
 			Some(Graphic::None) => format!(r#" {paint_attr}="none""#),
 			Some(Graphic::Gradient(_))
+			| Some(Graphic::Stroke(_))
 			| Some(Graphic::Vector(_))
 			| Some(Graphic::RasterCPU(_))
 			| Some(Graphic::RasterGPU(_))

@@ -13,8 +13,10 @@ serde = ["dep:serde", "core-types/serde", "raster-types/serde", "raster-nodes/se
 [dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
+brush-types = { workspace = true }
 core-types = { workspace = true }
 graphene-hash = { workspace = true }
+graphic-types = { workspace = true }
 raster-types = { workspace = true }
 raster-nodes = { workspace = true }
 node-macro = { workspace = true }

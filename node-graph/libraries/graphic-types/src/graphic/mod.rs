@@ -45,6 +45,7 @@ pub enum Graphic<'e> {
 	Color(Color),
 	Gradient(Gradient),
 	Text(String),
+	Stroke(brush_types::Stroke),
 	Group(core_types::record::Group<'e>),
 }
 
@@ -368,6 +369,13 @@ impl From<DAffine2> for Graphic<'_> {
 	}
 }
 
+// Stroke
+impl From<brush_types::Stroke> for Graphic<'_> {
+	fn from(stroke: brush_types::Stroke) -> Self {
+		Graphic::Stroke(stroke)
+	}
+}
+
 // DVec2
 impl From<DVec2> for Graphic<'_> {
 	fn from(position: DVec2) -> Self {
@@ -450,7 +458,7 @@ impl<'e> Graphic<'e> {
 			Graphic::Vector(_) => false,
 			Graphic::Color(color) => color.is_opaque(),
 			Graphic::Gradient(stops) => stops.iter().all(|stop| stop.color.is_opaque()),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) | Graphic::Stroke(_) => false,
 			Graphic::Group(group) => group_is_opaque(group),
 		}
 	}
@@ -463,7 +471,7 @@ impl<'e> Graphic<'e> {
 			Graphic::Vector(_) => true,
 			Graphic::Color(color) => color.a() == 0.,
 			Graphic::Gradient(stops) => stops.iter().all(|stop| stop.color.a() == 0.),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) | Graphic::Stroke(_) => false,
 			Graphic::Group(group) => group_is_fully_transparent(group),
 		}
 	}
@@ -496,6 +504,7 @@ impl BoundingBox for Graphic<'_> {
 			Graphic::Color(color) => color.bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.bounding_box(transform, include_stroke),
 			Graphic::Text(text) => text.bounding_box(transform, include_stroke),
+			Graphic::Stroke(stroke) => stroke.bounding_box(transform, include_stroke),
 			Graphic::Group(group) => group_bounding_box(group, transform, include_stroke, false),
 		}
 	}
@@ -510,6 +519,7 @@ impl BoundingBox for Graphic<'_> {
 			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Stroke(stroke) => stroke.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Group(group) => group_bounding_box(group, transform, include_stroke, true),
 		}
 	}
@@ -542,6 +552,7 @@ impl RenderComplexity for Graphic<'_> {
 			Self::Color(list) => list.render_complexity(),
 			Self::Gradient(list) => list.render_complexity(),
 			Self::Text(list) => list.render_complexity(),
+			Self::Stroke(stroke) => stroke.render_complexity(),
 			Self::Group(group) => group_render_complexity(group),
 		}
 	}

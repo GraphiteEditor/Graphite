@@ -366,8 +366,8 @@ fn flatten_vector_run_into<'a>(out: &mut List<Vector>, level: GraphicLevel<'a>, 
 				let one = List::new_from_item(Item::from_parts(text.clone(), graphic_types::graphic::lane_attributes(level, index)));
 				push_text_rows(out, &one, composed);
 			}
-			// Rasters, colors, and gradients bound no region, so they contribute no operand
-			Graphic::None | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) => continue,
+			// Rasters, colors, gradients, and brush strokes bound no region, so they contribute no operand
+			Graphic::None | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) | Graphic::Stroke(_) => continue,
 		}
 	}
 }
