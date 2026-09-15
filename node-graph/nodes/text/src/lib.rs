@@ -11,6 +11,7 @@ use convert_case::{Boundary, Converter, pattern};
 use core_types::extent::{LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
 use core_types::graphene_hash::CacheHash;
+use core_types::math::float_noise::round_away_float_noise;
 use core_types::node::Lane;
 use core_types::registry::types::{SignedInteger, TextArea};
 use core_types::{Ctx, ExtractIndex, InjectIndex};
@@ -287,6 +288,8 @@ fn format_number(
 	#[name("Start at 10,000")]
 	start_at_10000: bool,
 ) -> String {
+	// Denoise before formatting so 0.1 + 0.2 reads as "0.3" rather than "0.30000000000000004"
+	let number = round_away_float_noise(number);
 	// Find the maximum meaningful decimal precision by detecting where float noise begins.
 	// This works correctly whether the value originated as f32 or f64, since we find the
 	// shortest decimal representation that round-trips back to the same f64 value.

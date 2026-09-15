@@ -67,6 +67,7 @@ pub mod repeat {
 }
 
 pub mod math {
+	pub use core_types::math::float_noise;
 	pub use core_types::math::quad;
 
 	pub mod math_ext {

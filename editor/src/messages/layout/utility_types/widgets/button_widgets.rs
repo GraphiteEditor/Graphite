@@ -233,6 +233,24 @@ pub struct ColorInput {
 	pub on_commit: WidgetCallback<()>,
 }
 
+/// Shortens a breadcrumb label to fit the trail, replacing the tail with an ellipsis.
+/// Quotes delimit a string value, so a quoted label budgets only the text between them.
+pub fn truncate_breadcrumb_label(label: &str) -> String {
+	const MAX_CHARACTERS: usize = 40;
+
+	let quoted = label.len() >= 2 && label.starts_with('"') && label.ends_with('"');
+	let content = if quoted { &label[1..label.len() - 1] } else { label };
+
+	if content.chars().count() <= MAX_CHARACTERS {
+		return label.to_string();
+	}
+
+	let mut truncated: String = content.chars().take(MAX_CHARACTERS - 1).collect();
+	truncated.push('…');
+
+	if quoted { format!("\"{truncated}\"") } else { truncated }
+}
+
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
