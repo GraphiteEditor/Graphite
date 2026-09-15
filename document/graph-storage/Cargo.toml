@@ -1,10 +1,12 @@
 [package]
 name = "document-graph-storage"
 description = "Provides a delta based graph representation used in the Graphite file format"
-edition.workspace = true
 version.workspace = true
 license.workspace = true
 authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
 
 [features]
 conversion = ["dep:graph-craft", "dep:core-types"]
