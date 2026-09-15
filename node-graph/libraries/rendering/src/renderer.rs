@@ -1547,7 +1547,7 @@ fn render_vector_item_svg<S: LaneSource<Element = Vector>>(source: &S, index: us
 	});
 
 	if use_face_fill {
-		for mut face_path in vector.construct_faces().filter(|face| face.area() >= 0.) {
+		for mut face_path in vector.construct_faces() {
 			face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 			let face_d = face_path.to_svg();
 
@@ -1645,10 +1645,6 @@ fn render_vector_item_svg<S: LaneSource<Element = Vector>>(source: &S, index: us
 		attributes.push_val(fill_attribute);
 		attributes.push_val(stroke_shape_attribute);
 		attributes.push_val(stroke_attribute);
-
-		if vector.is_branching() && !use_face_fill {
-			attributes.push("fill-rule", "evenodd");
-		}
 
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 		if opacity < 1. {
@@ -1868,7 +1864,7 @@ fn render_vector_item_vello<S: LaneSource<Element = Vector>>(
 	let use_face_fill = element.use_face_fill();
 	let do_fill = |scene: &mut Scene, context: &mut RenderContext| {
 		if use_face_fill {
-			for mut face_path in element.construct_faces().filter(|face| face.area() >= 0.) {
+			for mut face_path in element.construct_faces() {
 				face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 				let mut kurbo_path = kurbo::BezPath::new();
 				for element in face_path {
@@ -1876,8 +1872,6 @@ fn render_vector_item_vello<S: LaneSource<Element = Vector>>(
 				}
 				do_fill_path(scene, context, &kurbo_path, peniko::Fill::NonZero);
 			}
-		} else if element.is_branching() {
-			do_fill_path(scene, context, &path, peniko::Fill::EvenOdd);
 		} else {
 			do_fill_path(scene, context, &path, peniko::Fill::NonZero);
 		}

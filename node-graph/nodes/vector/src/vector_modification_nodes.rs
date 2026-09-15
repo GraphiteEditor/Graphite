@@ -23,6 +23,10 @@ fn path_modify<'e>(
 		modification.apply(&mut element);
 	}
 
+	// Users draw subpaths in arbitrary winding directions, so normalize them here rather than
+	// letting the drawn direction decide fill insideness downstream
+	element.normalize_winding_directions();
+
 	// Set the path to the encapsulating subgraph (drop our own trailing entry from `node_path`),
 	// matching the `path_of_subgraph` proto so editor tools can route data back to the parent layer.
 	let path = match existing.is_empty() {

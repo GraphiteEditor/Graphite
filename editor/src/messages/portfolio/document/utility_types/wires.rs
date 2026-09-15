@@ -479,7 +479,7 @@ fn straight_wire_to_bezpath(locations: Vec<IVec2>) -> BezPath {
 	if locations.len() == 2 {
 		let p1 = to_point(locations[0]);
 		let p2 = to_point(locations[1]);
-		Line::new(p1, p2).to_path(DEFAULT_ACCURACY);
+		return Line::new(p1, p2).to_path(DEFAULT_ACCURACY);
 	}
 
 	let corner_radius = 10;
