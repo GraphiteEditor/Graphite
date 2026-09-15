@@ -382,6 +382,8 @@ fn grid<T: GridSpacing>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use kurbo::ParamCurve;
+	use vector_types::vector::misc::point_to_dvec2;
 	#[test]
 	fn isometric_grid_test() {
 		// Doesn't crash with weird angles
@@ -391,14 +393,11 @@ mod tests {
 		// Works properly
 		let grid = grid(&(), (), GridType::Isometric, 10., 5, 5, (30., 30.).into(), true);
 		assert_eq!(grid.point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.segment_bezier_iter() {
-			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
-			assert!(
-				((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
-				"Length of {} should be 10",
-				(bezier.start - bezier.end).length()
-			);
+		assert_eq!(grid.segment_iter().count(), 4 * 5 + 4 * 9);
+		for (_, segment, _, _) in grid.segment_iter() {
+			assert!(matches!(segment, kurbo::PathSeg::Line(_)));
+			let span = point_to_dvec2(segment.start()) - point_to_dvec2(segment.end());
+			assert!((span.length() - 10.).abs() < 1e-5, "Length of {} should be 10", span.length());
 		}
 	}
 
@@ -406,10 +405,10 @@ mod tests {
 	fn skew_isometric_grid_test() {
 		let grid = grid(&(), (), GridType::Isometric, 10., 5, 5, (40., 30.).into(), true);
 		assert_eq!(grid.point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.segment_bezier_iter() {
-			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
-			let vector = bezier.start - bezier.end;
+		assert_eq!(grid.segment_iter().count(), 4 * 5 + 4 * 9);
+		for (_, segment, _, _) in grid.segment_iter() {
+			assert!(matches!(segment, kurbo::PathSeg::Line(_)));
+			let vector = point_to_dvec2(segment.start()) - point_to_dvec2(segment.end());
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
 			assert!([90f64, 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {angle}")
 		}

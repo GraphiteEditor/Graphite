@@ -15,7 +15,7 @@ use glam::{DAffine2, DVec2};
 use graphene_std::subpath::{BezierHandles, Subpath};
 use graphene_std::subpath::{PathSegPoints, pathseg_points};
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModificationType};
 use kurbo::{Affine, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveNearest, PathSeg, Rect, Shape};
 use std::f64::consts::TAU;
@@ -251,7 +251,7 @@ impl ClosestSegment {
 		// Transform to viewport space
 		let transform = document_metadata.transform_to_viewport_if_feeds(self.layer, network_interface);
 
-		// Split the Bezier at the parameter `t`
+		// Split the segment at the parameter `t`
 		let first = self.bezier.subsegment(0_f64..self.t);
 		let second = self.bezier.subsegment(self.t..1.);
 
@@ -788,7 +788,7 @@ impl ShapeState {
 		}
 
 		if segments {
-			for (id, _, start, end) in vector.segment_bezier_iter() {
+			for (id, _, start, end) in vector.segment_iter() {
 				if connected_points.contains(&start) || connected_points.contains(&end) {
 					state.select_segment(id);
 				}
@@ -950,14 +950,14 @@ impl ShapeState {
 
 		// Move the other handle for a quadratic bezier
 		for segment in vector.end_connected(point) {
-			let Some((start, _end, bezier)) = vector.segment_points_from_id(segment) else { continue };
+			let Some((start, _end, path_segment)) = vector.segment_points_from_id(segment) else { continue };
 
-			if let BezierHandles::Quadratic { handle } = bezier.handles {
+			if let BezierHandles::Quadratic { handle } = segment_to_handles(&path_segment) {
 				if selected.is_some_and(|selected| selected.is_point_selected(ManipulatorPointId::Anchor(start))) {
 					continue;
 				}
 
-				let relative_position = handle - bezier.start + delta;
+				let relative_position = handle - point_to_dvec2(path_segment.start()) + delta;
 				let modification_type = VectorModificationType::SetPrimaryHandle { segment, relative_position };
 
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -1284,7 +1284,7 @@ impl ShapeState {
 			// Make a new set of anchor points which needs to be moved
 			let mut affected_points = state.selected_points.clone();
 
-			for (segment_id, _, start, end) in vector.segment_bezier_iter() {
+			for (segment_id, _, start, end) in vector.segment_iter() {
 				if state.is_segment_selected(segment_id) {
 					affected_points.insert(ManipulatorPointId::Anchor(start));
 					affected_points.insert(ManipulatorPointId::Anchor(end));
@@ -1570,7 +1570,7 @@ impl ShapeState {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
-			for (segment, _, start, end) in vector.segment_bezier_iter() {
+			for (segment, _, start, end) in vector.segment_iter() {
 				if state.selected_segments.contains(&segment) {
 					if start_transaction && !transaction_started {
 						responses.add(DocumentMessage::AddTransaction);
@@ -1785,20 +1785,23 @@ impl ShapeState {
 		let viewspace = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
 
 		// Handles
-		for (segment_id, bezier, _, _) in vector.segment_bezier_iter() {
-			let bezier = bezier.apply_transformation(|point| viewspace.transform_point2(point));
+		for (segment_id, segment, _, _) in vector.segment_iter() {
+			let segment = Affine::new(viewspace.to_cols_array()) * segment;
+			let handles = segment_to_handles(&segment);
+			let segment_start = point_to_dvec2(segment.start());
+			let segment_end = point_to_dvec2(segment.end());
 			let valid = |handle: DVec2, control: DVec2| handle.distance_squared(control) > crate::consts::HIDE_HANDLE_DISTANCE.powi(2);
 
-			if let Some(primary_handle) = bezier.handle_start()
-				&& valid(primary_handle, bezier.start)
-				&& (bezier.handle_end().is_some() || valid(primary_handle, bezier.end))
+			if let Some(primary_handle) = handles.start()
+				&& valid(primary_handle, segment_start)
+				&& (handles.end().is_some() || valid(primary_handle, segment_end))
 				&& primary_handle.distance_squared(pos) <= closest_distance_squared
 			{
 				closest_distance_squared = primary_handle.distance_squared(pos);
 				manipulator_point = Some(ManipulatorPointId::PrimaryHandle(segment_id));
 			}
-			if let Some(end_handle) = bezier.handle_end()
-				&& valid(end_handle, bezier.end)
+			if let Some(end_handle) = handles.end()
+				&& valid(end_handle, segment_end)
 				&& end_handle.distance_squared(pos) <= closest_distance_squared
 			{
 				closest_distance_squared = end_handle.distance_squared(pos);
@@ -2071,9 +2074,9 @@ impl ShapeState {
 					self.convert_manipulator_handles_to_colinear(&vector, point_id, responses, layer);
 				} else {
 					for handle in vector.all_connected(point_id) {
-						let Some(bezier) = vector.segment_from_id(handle.segment) else { continue };
+						let Some(path_segment) = vector.segment_from_id(handle.segment) else { continue };
 
-						match bezier.handles {
+						match segment_to_handles(&path_segment) {
 							BezierHandles::Linear => {}
 							BezierHandles::Quadratic { .. } => {
 								let segment = handle.segment;
@@ -2173,7 +2176,7 @@ impl ShapeState {
 			let Some(vector) = network_interface.compute_modified_vector(layer) else { continue };
 			if !select_points && select_segments {
 				vector
-					.segment_bezier_iter()
+					.segment_iter()
 					.filter(|(segment, _, _, _)| segments.contains(segment))
 					.for_each(|(_, _, start, end)| match selection_change {
 						SelectionChange::Shrink => {

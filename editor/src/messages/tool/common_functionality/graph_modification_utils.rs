@@ -168,7 +168,7 @@ pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifie
 	let transform = document.metadata().transform_to_document(layer);
 	let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
 
-	let segment = vector.segment_bezier_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
+	let segment = vector.segment_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
 	let Some((segment, _, mut segment_start_point, mut segment_end_point)) = segment else {
 		log::error!("Could not get the segment for second_endpoint.");
 		return;

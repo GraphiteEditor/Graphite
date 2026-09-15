@@ -1,10 +1,10 @@
 use super::*;
 use crate::subpath::BezierHandles;
-use crate::vector::misc::{HandleId, HandleType, point_to_dvec2};
+use crate::vector::misc::{HandleId, HandleType, point_to_dvec2, segment_to_handles};
 use core_types::uuid::generate_uuid;
 use dyn_any::DynAny;
 use glam::DVec2;
-use kurbo::{BezPath, PathEl, Point};
+use kurbo::{BezPath, ParamCurve, PathEl, Point};
 use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -225,8 +225,14 @@ impl SegmentModification {
 			remove: HashSet::new(),
 			start_point: vector.segment_domain.ids().iter().zip(vector.segment_domain.start_point()).map(point_id).collect(),
 			end_point: vector.segment_domain.ids().iter().zip(vector.segment_domain.end_point()).map(point_id).collect(),
-			handle_primary: vector.segment_bezier_iter().map(|(id, b, _, _)| (id, b.handle_start().map(|handle| handle - b.start))).collect(),
-			handle_end: vector.segment_bezier_iter().map(|(id, b, _, _)| (id, b.handle_end().map(|handle| handle - b.end))).collect(),
+			handle_primary: vector
+				.segment_iter()
+				.map(|(id, segment, _, _)| (id, segment_to_handles(&segment).start().map(|handle| handle - point_to_dvec2(segment.start()))))
+				.collect(),
+			handle_end: vector
+				.segment_iter()
+				.map(|(id, segment, _, _)| (id, segment_to_handles(&segment).end().map(|handle| handle - point_to_dvec2(segment.end()))))
+				.collect(),
 			stroke: vector.segment_domain.ids().iter().copied().zip(vector.segment_domain.stroke().iter().cloned()).collect(),
 		}
 	}
@@ -808,7 +814,8 @@ impl HandleExt for HandleId {
 mod tests {
 	use super::*;
 
-	use crate::subpath::{Bezier, ManipulatorGroup, Subpath};
+	use crate::subpath::{ManipulatorGroup, Subpath};
+	use kurbo::{PathSeg, QuadBez};
 
 	#[test]
 	fn modify_new() {
@@ -856,12 +863,12 @@ mod tests {
 		assert_eq!(vector.point_domain.positions()[0], DVec2::X);
 		assert_eq!(vector.point_domain.positions()[9], DVec2::new(11., 0.));
 		assert_eq!(
-			vector.segment_bezier_iter().nth(8).unwrap().1,
-			Bezier::from_quadratic_dvec2(DVec2::new(0., 0.), DVec2::new(5., 10.), DVec2::new(11., 0.))
+			vector.segment_iter().nth(8).unwrap().1,
+			PathSeg::Quad(QuadBez::new(Point::new(0., 0.), Point::new(5., 10.), Point::new(11., 0.)))
 		);
 		assert_eq!(
-			vector.segment_bezier_iter().nth(9).unwrap().1,
-			Bezier::from_quadratic_dvec2(DVec2::new(11., 0.), DVec2::new(16., 10.), DVec2::new(20., 0.))
+			vector.segment_iter().nth(9).unwrap().1,
+			PathSeg::Quad(QuadBez::new(Point::new(11., 0.), Point::new(16., 10.), Point::new(20., 0.)))
 		);
 	}
 }

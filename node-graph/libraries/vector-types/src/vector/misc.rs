@@ -449,8 +449,8 @@ impl ManipulatorPointId {
 	pub fn get_position(&self, vector: &Vector) -> Option<DVec2> {
 		match self {
 			ManipulatorPointId::Anchor(id) => vector.point_domain.position_from_id(*id),
-			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
-			ManipulatorPointId::EndHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
+			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|segment| segment_to_handles(&segment).start()),
+			ManipulatorPointId::EndHandle(id) => vector.segment_from_id(*id).and_then(|segment| segment_to_handles(&segment).end()),
 		}
 	}
 
