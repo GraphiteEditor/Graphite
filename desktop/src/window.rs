@@ -43,13 +43,6 @@ pub(crate) struct Window {
 	#[allow(dead_code)]
 	native_handle: native::NativeWindowImpl,
 	custom_cursors: HashMap<CustomCursorSource, CustomCursor>,
-	clipboard: Option<window_clipboard::Clipboard>,
-}
-impl Drop for Window {
-	fn drop(&mut self) {
-		// Clipboard must be dropped before `winit_window`
-		drop(self.clipboard.take());
-	}
 }
 
 impl Window {
@@ -70,12 +63,10 @@ impl Window {
 
 		let winit_window = event_loop.create_window(attributes).unwrap();
 		let native_handle = native::NativeWindowImpl::new(winit_window.as_ref(), app_event_scheduler);
-		let clipboard = unsafe { window_clipboard::Clipboard::connect(&winit_window) }.ok();
 		Self {
 			winit_window: winit_window.into(),
 			native_handle,
 			custom_cursors: HashMap::new(),
-			clipboard,
 		}
 	}
 
@@ -207,29 +198,5 @@ impl Window {
 
 	pub(crate) fn update_menu(&self, entries: Vec<MenuItem>) {
 		self.native_handle.update_menu(entries);
-	}
-
-	pub(crate) fn clipboard_read(&self) -> Option<String> {
-		let Some(clipboard) = &self.clipboard else {
-			tracing::error!("Clipboard not available");
-			return None;
-		};
-		match clipboard.read() {
-			Ok(data) => Some(data),
-			Err(e) => {
-				tracing::error!("Failed to read from clipboard: {e}");
-				None
-			}
-		}
-	}
-
-	pub(crate) fn clipboard_write(&mut self, data: String) {
-		let Some(clipboard) = &mut self.clipboard else {
-			tracing::error!("Clipboard not available");
-			return;
-		};
-		if let Err(e) = clipboard.write(data) {
-			tracing::error!("Failed to write to clipboard: {e}")
-		}
 	}
 }
