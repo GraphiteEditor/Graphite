@@ -1,7 +1,7 @@
-use super::utility_types::input_keyboard::KeysGroup;
+use super::utility_types::keyboard::KeysGroup;
 use super::utility_types::misc::Mapping;
 use crate::application::Editor;
-use crate::messages::input_mapper::utility_types::input_keyboard::{self, Key};
+use crate::messages::input_mapper::utility_types::keyboard::{self, Key};
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
 use crate::messages::prelude::*;
 
@@ -58,7 +58,7 @@ impl InputMapperMessageHandler {
 				.map(|i| {
 					// TODO: Use a safe solution eventually
 					assert!(
-						i < input_keyboard::NUMBER_OF_KEYS,
+						i < keyboard::NUMBER_OF_KEYS,
 						"Attempting to convert a Key with enum index {i}, which is larger than the number of Key enums",
 					);
 					(i as u8).try_into().unwrap()

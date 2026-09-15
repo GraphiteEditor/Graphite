@@ -8,7 +8,7 @@ use crate::native_communication::RasterizedImage;
 #[cfg(not(feature = "native"))]
 use editor::application::Editor;
 #[cfg(feature = "editor")]
-use editor::messages::input_mapper::utility_types::input_keyboard::Key;
+use editor::messages::input_mapper::utility_types::keyboard::Key;
 #[cfg(not(feature = "native"))]
 use editor::messages::prelude::*;
 use js_sys::{Object, Reflect};

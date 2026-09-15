@@ -392,7 +392,7 @@ impl TransformOperation {
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
-		use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
+		use crate::messages::input_mapper::utility_types::keyboard::{Key, MouseMotion};
 		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 		let mut input_hints = Vec::new();

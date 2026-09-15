@@ -2051,8 +2051,7 @@ enum GradientDragHintState {
 mod test_gradient {
 	use super::{gradient_to_viewport_transform, midpoint_diamonds, midpoint_ratio_at};
 	use crate::consts::{GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN};
-	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
-	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
+	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
@@ -2523,10 +2522,10 @@ mod test_gradient {
 		editor.move_mouse(end_pos.x, end_pos.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: end_pos,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2577,10 +2576,10 @@ mod test_gradient {
 		let click_position = DVec2::new(25., 0.);
 		editor
 			.mousedown(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: click_position,
 					mouse_keys: MouseKeys::LEFT,
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2591,10 +2590,10 @@ mod test_gradient {
 
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: drag_position,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2656,10 +2655,10 @@ mod test_gradient {
 		editor.left_mousedown(position2.x, position2.y, ModifierKeys::empty()).await;
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: position2,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2905,10 +2904,10 @@ mod test_gradient {
 		editor.move_mouse(new_viewport_end.x, new_viewport_end.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: new_viewport_end,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2982,10 +2981,10 @@ mod test_gradient {
 		editor.move_mouse(new_viewport_end.x, new_viewport_end.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: new_viewport_end,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)

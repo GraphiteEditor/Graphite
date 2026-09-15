@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
