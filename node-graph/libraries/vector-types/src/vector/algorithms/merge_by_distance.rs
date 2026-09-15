@@ -197,7 +197,6 @@ impl MergeByDistanceExt for Vector {
 			let start = self.segment_domain.start_point()[segment_idx];
 			let end = self.segment_domain.end_point()[segment_idx];
 			let handles = self.segment_domain.handles()[segment_idx];
-			let stroke = self.segment_domain.stroke()[segment_idx];
 
 			// Get new indices for start and end points
 			let new_start = point_index_map[start].unwrap();
@@ -205,7 +204,7 @@ impl MergeByDistanceExt for Vector {
 
 			// Skip segments where start and end points were merged
 			if new_start != new_end {
-				new_segment_domain.push(id, new_start, new_end, handles, stroke);
+				new_segment_domain.push(id, new_start, new_end, handles);
 			}
 		}
 

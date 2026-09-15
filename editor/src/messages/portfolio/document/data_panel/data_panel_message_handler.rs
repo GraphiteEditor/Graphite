@@ -619,12 +619,11 @@ impl TableItemLayout for Vector {
 				}));
 			}
 			VectorTableTab::Regions => {
-				table_rows.push(column_headings(&["", "segment_range", "fill"]));
-				table_rows.extend(self.region_domain.iter().map(|(id, segment_range, fill)| {
+				table_rows.push(column_headings(&["", "segment_range"]));
+				table_rows.extend(self.region_domain.iter().map(|(id, segment_range)| {
 					vec![
 						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
 						TextLabel::new(format!("{segment_range:?}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("{}", fill.inner())).narrow(true).widget_instance(),
 					]
 				}));
 			}

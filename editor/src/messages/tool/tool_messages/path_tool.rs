@@ -2781,7 +2781,7 @@ impl Fsm for PathToolFsmState {
 					let find_index = |id: PointId| new_vector.point_domain.iter().enumerate().find(|(_, (point_id, _))| *point_id == id).map(|(index, _)| index);
 
 					// Add segments which have selected ends
-					for ((segment_id, segment, start, end), stroke) in old_vector.segment_iter().zip(old_vector.segment_domain.stroke().iter()) {
+					for (segment_id, segment, start, end) in old_vector.segment_iter() {
 						let both_ends_selected = layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(end));
 
 						let segment_selected = layer_selection_state.is_segment_selected(segment_id);
@@ -2791,7 +2791,7 @@ impl Fsm for PathToolFsmState {
 								error!("Point does not exist in point domain");
 								return PathToolFsmState::Ready;
 							};
-							new_vector.segment_domain.push(segment_id, start_index, end_index, segment_to_handles(&segment), *stroke);
+							new_vector.segment_domain.push(segment_id, start_index, end_index, segment_to_handles(&segment));
 						}
 					}
 
