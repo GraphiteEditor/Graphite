@@ -39,6 +39,5 @@ pub enum VectorTableTab {
 	#[default]
 	Points,
 	Segments,
-	Regions,
 	Handles,
 }

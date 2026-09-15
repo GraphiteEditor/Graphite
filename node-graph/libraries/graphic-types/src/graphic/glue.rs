@@ -224,11 +224,7 @@ fn graphic_retained_heap(graphic: &Graphic<'_>) -> usize {
 /// The heap a vector's domain columns own, summed over the columns it
 /// exposes, so the segment domain's private parallel columns are undercounted.
 fn vector_retained_heap(vector: &Vector) -> usize {
-	size_of_val(vector.point_domain.ids())
-		+ size_of_val(vector.point_domain.positions())
-		+ size_of_val(vector.segment_domain.ids())
-		+ size_of_val(vector.region_domain.ids())
-		+ size_of_val(vector.colinear_manipulators.as_slice())
+	size_of_val(vector.point_domain.ids()) + size_of_val(vector.point_domain.positions()) + size_of_val(vector.segment_domain.ids()) + size_of_val(vector.colinear_manipulators.as_slice())
 }
 
 /// Whether any group is reachable from the graphic, so it does not own all of

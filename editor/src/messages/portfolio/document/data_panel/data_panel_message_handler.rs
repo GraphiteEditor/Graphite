@@ -585,7 +585,7 @@ impl TableItemLayout for Vector {
 		)
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let table_tab_entries = [VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Regions, VectorTableTab::Handles]
+		let table_tab_entries = [VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Handles]
 			.into_iter()
 			.map(|tab| {
 				RadioEntryData::new(format!("{tab:?}"))
@@ -615,15 +615,6 @@ impl TableItemLayout for Vector {
 						TextLabel::new(format!("{start}")).narrow(true).widget_instance(),
 						TextLabel::new(format!("{end}")).narrow(true).widget_instance(),
 						TextLabel::new(format!("{handles:?}")).narrow(true).widget_instance(),
-					]
-				}));
-			}
-			VectorTableTab::Regions => {
-				table_rows.push(column_headings(&["", "segment_range"]));
-				table_rows.extend(self.region_domain.iter().map(|(id, segment_range)| {
-					vec![
-						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format!("{segment_range:?}")).narrow(true).widget_instance(),
 					]
 				}));
 			}

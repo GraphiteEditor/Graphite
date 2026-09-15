@@ -42,7 +42,7 @@ use vector_types::vector::misc::{
 	bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-use vector_types::vector::{PointDomain, PointId, RegionDomain, RegionId, SegmentDomain, SegmentId, VectorExt};
+use vector_types::vector::{PointDomain, PointId, SegmentDomain, SegmentId, VectorExt};
 
 /// The gradient color for one assign-colors position, replaying the
 /// randomized draws up to it.
@@ -1314,7 +1314,7 @@ fn as_vector<T: Into<Vector>>(_: impl Ctx, #[implementations(Vector, DVec2)] val
 	value.into()
 }
 
-/// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
+/// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
 fn points_to_polyline<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash + 'static>(
 	ctx: impl Ctx + ExtractArena<'e>,
@@ -1334,8 +1334,6 @@ fn points_to_polyline<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash 
 
 			if closed && points_count != 2 {
 				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear);
-
-				points.region_domain.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap());
 			}
 		}
 
@@ -1373,7 +1371,7 @@ fn relax_points<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash + 'sta
 
 /// Builds a Voronoi diagram from the anchor points. Each point claims the region of space closest to it, and those regions tessellate the plane. Cells around the outside are clipped to the convex hull of the points so the diagram stays finite.
 ///
-/// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh with no fillable regions.
+/// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh.
 #[node_macro::node(category("Vector"), path(core_types::vector))]
 fn voronoi_cells<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash + 'static>(
 	ctx: impl Ctx + ExtractArena<'e>,
@@ -1395,7 +1393,7 @@ fn voronoi_cells<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash + 'st
 
 /// Builds a Delaunay triangulation connecting the anchor points. It is the geometric dual of the **Voronoi** node: a mesh of triangles in which no point lies inside any triangle's circumscribed circle.
 ///
-/// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh with no fillable regions.
+/// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh.
 #[node_macro::node(category("Vector"), path(core_types::vector))]
 fn triangulate<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash + 'static>(
 	ctx: impl Ctx + ExtractArena<'e>,
@@ -1418,17 +1416,15 @@ fn triangulate<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash + 'stat
 	Ok(content)
 }
 
-/// Replaces a vector's geometry (points, segments, and regions) with the given closed polygons, preserving its style.
+/// Replaces a vector's geometry (points and segments) with the given closed polygons, preserving its style.
 ///
-/// Without `connect_cells`, each polygon becomes its own closed subpath with a fillable region.
-/// With it, coincident vertices are welded and each shared edge is emitted once, producing a connected mesh with no regions.
+/// Without `connect_cells`, each polygon becomes its own closed subpath.
+/// With it, coincident vertices are welded and each shared edge is emitted once, producing a connected mesh.
 pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2>>, connect_cells: bool) {
 	let mut point_domain = PointDomain::new();
 	let mut segment_domain = SegmentDomain::new();
-	let mut region_domain = RegionDomain::new();
 	let mut next_point = PointId::ZERO;
 	let mut next_segment = SegmentId::ZERO;
-	let mut next_region = RegionId::ZERO;
 
 	if !connect_cells {
 		for polygon in &polygons {
@@ -1442,19 +1438,10 @@ pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2
 			}
 
 			let count = polygon.len();
-			let mut first_segment = None;
-			let mut last_segment = None;
 			for i in 0..count {
 				let start = base + i;
 				let end = base + (i + 1) % count;
-				let id = next_segment.next_id();
-				first_segment.get_or_insert(id);
-				last_segment = Some(id);
-				segment_domain.push(id, start, end, BezierHandles::Linear);
-			}
-
-			if let (Some(first), Some(last)) = (first_segment, last_segment) {
-				region_domain.push(next_region.next_id(), first..=last);
+				segment_domain.push(next_segment.next_id(), start, end, BezierHandles::Linear);
 			}
 		}
 	} else {
@@ -1498,7 +1485,6 @@ pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2
 
 	vector.point_domain = point_domain;
 	vector.segment_domain = segment_domain;
-	vector.region_domain = region_domain;
 }
 
 /// The distance below which two mesh vertices are welded into one, scaled to the diagram's size so it tracks coordinate magnitude.
@@ -2193,7 +2179,6 @@ fn sample_polyline<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash + '
 		let mut result = Vector {
 			point_domain: Default::default(),
 			segment_domain: Default::default(),
-			region_domain: Default::default(),
 			colinear_manipulators: Default::default(),
 		};
 		// Transfer the stroke transform from the input vector content to the result.
@@ -2935,7 +2920,7 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		}
 	}
 
-	/// Pushes a subpath (list of manipulators) directly into a Vector's point, segment, and region domains,
+	/// Pushes a subpath (list of manipulators) directly into a Vector's point and segment domains,
 	/// bypassing the BezPath intermediate representation used by `append_bezpath`.
 	fn push_manipulators_to_vector(vector: &mut Vector, manips: &[ManipulatorGroup], closed: bool, point_id: &mut PointId, segment_id: &mut SegmentId) {
 		let Some(first) = manips.first() else { return };
@@ -2943,28 +2928,20 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		let first_point_index = vector.point_domain.ids().len();
 		vector.point_domain.push_unchecked(point_id.next_id(), first.anchor);
 		let mut prev_point_index = first_point_index;
-		let mut first_segment_id = None;
 
 		for manip_window in manips.windows(2) {
 			let point_index = vector.point_domain.ids().len();
 			vector.point_domain.push_unchecked(point_id.next_id(), manip_window[1].anchor);
 
 			let handles = handles_from_manips(manip_window[0].out_handle, manip_window[1].in_handle);
-			let seg_id = segment_id.next_id();
-			first_segment_id.get_or_insert(seg_id);
-			vector.segment_domain.push_unchecked(seg_id, prev_point_index, point_index, handles);
+			vector.segment_domain.push_unchecked(segment_id.next_id(), prev_point_index, point_index, handles);
 
 			prev_point_index = point_index;
 		}
 
 		if closed && manips.len() > 1 {
 			let handles = handles_from_manips(manips.last().unwrap().out_handle, manips[0].in_handle);
-			let closing_seg_id = segment_id.next_id();
-			first_segment_id.get_or_insert(closing_seg_id);
-			vector.segment_domain.push_unchecked(closing_seg_id, prev_point_index, first_point_index, handles);
-
-			let region_id = vector.region_domain.next_id();
-			vector.region_domain.push_unchecked(region_id, first_segment_id.unwrap()..=closing_seg_id);
+			vector.segment_domain.push_unchecked(segment_id.next_id(), prev_point_index, first_point_index, handles);
 		}
 	}
 
@@ -3352,7 +3329,6 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 	// Pre-allocate domain storage based on total manipulator counts across all subpaths
 	let mut total_points = 0;
 	let mut total_segments = 0;
-	let mut total_regions = 0;
 	for ((source_manips, source_closed), (target_manips, _)) in source_subpaths.iter().zip(target_subpaths.iter()) {
 		if source_manips.is_empty() || target_manips.is_empty() {
 			continue;
@@ -3360,20 +3336,13 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		let manip_count = source_manips.len().max(target_manips.len());
 		total_points += manip_count;
 		total_segments += if *source_closed { manip_count } else { manip_count.saturating_sub(1) };
-		if *source_closed {
-			total_regions += 1;
-		}
 	}
 	for (manips, closed) in extra_source.iter().chain(extra_target.iter()) {
 		total_points += manips.len();
 		total_segments += if *closed { manips.len() } else { manips.len().saturating_sub(1) };
-		if *closed {
-			total_regions += 1;
-		}
 	}
 	vector.point_domain.reserve(total_points);
 	vector.segment_domain.reserve(total_segments);
-	vector.region_domain.reserve(total_regions);
 
 	let mut point_id = PointId::ZERO;
 	let mut segment_id = SegmentId::ZERO;
@@ -4082,12 +4051,13 @@ mod test {
 	}
 
 	#[test]
-	fn delaunay_disconnected_cells_make_one_region_per_triangle() {
+	fn delaunay_disconnected_cells_make_one_subpath_per_triangle() {
 		let vector = with_ctx(|ctx| super::triangulate(ctx, vector_from_points(&SQUARE_WITH_CENTER), false).unwrap());
 		// The square plus its center tessellates into four triangles, each its own closed subpath.
-		assert_eq!(vector.region_domain.ids().len(), 4);
+		assert_eq!(vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count(), 4);
 		assert_eq!(vector.segment_domain.ids().len(), 4 * 3);
 		assert_eq!(vector.point_domain.ids().len(), 4 * 3);
+		assert!(!vector.use_face_fill());
 	}
 
 	#[test]
@@ -4124,19 +4094,19 @@ mod test {
 	#[test]
 	fn delaunay_shared_mesh_welds_points_and_shares_edges() {
 		let vector = with_ctx(|ctx| super::triangulate(ctx, vector_from_points(&SQUARE_WITH_CENTER), true).unwrap());
-		// The connected mesh reuses the five input points and shares edges, with no fillable regions.
-		assert_eq!(vector.region_domain.ids().len(), 0);
+		// The connected mesh reuses the five input points and shares edges, so it fills face by face.
+		assert!(vector.use_face_fill());
 		assert_eq!(vector.point_domain.ids().len(), 5);
 		// Four hull edges plus four spokes to the center, each emitted once.
 		assert_eq!(vector.segment_domain.ids().len(), 8);
 	}
 
 	#[test]
-	fn voronoi_disconnected_cells_make_a_region_per_cell() {
+	fn voronoi_disconnected_cells_make_a_subpath_per_cell() {
 		let vector = with_ctx(|ctx| super::voronoi_cells(ctx, vector_from_points(&SQUARE_WITH_CENTER), false).unwrap());
-		let regions = vector.region_domain.ids().len();
-		assert!(regions > 0, "expected at least one Voronoi region");
-		// Every region is a closed subpath, so segments and points come in matched per-region loops.
+		let cells = vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count();
+		assert!(cells > 0, "expected at least one Voronoi cell");
+		// Every cell is a closed subpath, so segments and points come in matched per-cell loops.
 		assert_eq!(vector.segment_domain.ids().len(), vector.point_domain.ids().len());
 
 		// Clipping to the convex hull keeps all cell vertices within the input bounds.
@@ -4147,9 +4117,9 @@ mod test {
 	}
 
 	#[test]
-	fn voronoi_shared_mesh_has_no_regions() {
+	fn voronoi_shared_mesh_uses_face_fill() {
 		let vector = with_ctx(|ctx| super::voronoi_cells(ctx, vector_from_points(&SQUARE_WITH_CENTER), true).unwrap());
-		assert_eq!(vector.region_domain.ids().len(), 0);
+		assert!(vector.use_face_fill());
 		assert!(!vector.segment_domain.ids().is_empty());
 	}
 
