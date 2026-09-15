@@ -1457,8 +1457,8 @@ pub(crate) fn levels_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	];
 
 	let mut layout = vec![channel];
-	build_shared_spectrum_section(node_id, context, &bw_track(), &input_range_params, false, &mut layout);
-	build_shared_spectrum_section(node_id, context, &bw_track(), &output_range_params, false, &mut layout);
+	build_shared_spectrum_section(node_id, context, &bw_track(), &input_range_params, &mut layout);
+	build_shared_spectrum_section(node_id, context, &bw_track(), &output_range_params, &mut layout);
 	layout
 }
 
@@ -1558,7 +1558,7 @@ impl SpectrumSectionParam {
 /// Append a section of related parameters as rows: a shared spectrum over `track` (with one marker per non-exposed parameter) sits on the first non-exposed row
 /// alongside its 60px number input, and the remaining non-exposed rows show only their 60px number input. Exposed parameters render as the standard exposed-row display.
 /// Marker positions are clamped to non-decreasing display order so they never visually cross even if the underlying values do.
-fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesContext, track: &Gradient, params: &[SpectrumSectionParam], disabled: bool, layout: &mut Vec<LayoutGroup>) {
+fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesContext, track: &Gradient, params: &[SpectrumSectionParam], layout: &mut Vec<LayoutGroup>) {
 	// Snapshot exposure and values before the mutable-borrow loop
 	let exposure_and_value: Vec<(bool, f64)> = match get_document_node(node_id, context) {
 		Ok(document_node) => params
@@ -1651,7 +1651,6 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 			.allow_reorder(false)
 			.allow_wrap(cyclic)
 			.narrow(true)
-			.disabled(disabled)
 			.on_update({
 				let marker_input_indices = marker_input_indices.clone();
 				let marker_default_positions = marker_default_positions.clone();
@@ -1706,7 +1705,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 	for (i, param) in params.iter().enumerate() {
 		let (exposed, current) = exposure_and_value[i];
 		let input_index = param.parameter.input_index;
-		let number_input = param.scale.number_input().disabled(disabled);
+		let number_input = param.scale.number_input();
 
 		if exposed {
 			let row = number_widget(ParameterWidgetsInfo::at_index(node_id, input_index, true, context), number_input.clone());
@@ -1859,7 +1858,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	let (hue_min, hue_max, hue_default) = if colorize_value { (0., 360., 24.) } else { (-180., 180., 0.) };
 	let (saturation_min, saturation_default) = if colorize_value { (0., 25.) } else { (-100., 0.) };
 
-	// Colorize replaces the ranges, so the selector and the selected range's edges stay in place but grayed out while it is on
+	// Colorize replaces the ranges, so while it is on the selector stays but grayed out and the selected range's edges hide
 	let mut range_info = ParameterWidgetsInfo::new(node_id, RangeInput, true, context);
 	range_info.exposable = false;
 	let mut layout = vec![enum_choice::<HueSaturationRange>().for_socket(range_info).disabled(colorize_value).property_row()];
@@ -1901,7 +1900,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	]);
 
 	// The selected range's edges share one rainbow as two split handles, a falloff half joined to a range half, with the range dashed between them
-	if let (Some(values), Some(defaults)) = (range_values, range_defaults) {
+	if !colorize_value && let (Some(values), Some(defaults)) = (range_values, range_defaults) {
 		let [falloff_start, range_start, range_end, falloff_end] = values;
 		let params = [
 			SpectrumSectionParam::new(falloff_start, Color::WHITE, defaults[0], MarkerScale::Degrees).pair_with_next(),
@@ -1909,7 +1908,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 			SpectrumSectionParam::new(range_end, Color::WHITE, defaults[2], MarkerScale::Degrees).pair_with_next(),
 			SpectrumSectionParam::new(falloff_end, Color::WHITE, defaults[3], MarkerScale::Degrees),
 		];
-		build_shared_spectrum_section(node_id, context, &hue_track, &params, colorize_value, &mut layout);
+		build_shared_spectrum_section(node_id, context, &hue_track, &params, &mut layout);
 	}
 
 	let colorize = bool_widget(ParameterWidgetsInfo::new(node_id, ColorizeInput, true, context), CheckboxInput::default());
@@ -2088,7 +2087,7 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 	];
 
 	let mut layout = Vec::with_capacity(2);
-	build_shared_spectrum_section(node_id, context, &bw_track(), &params, false, &mut layout);
+	build_shared_spectrum_section(node_id, context, &bw_track(), &params, &mut layout);
 
 	layout
 }

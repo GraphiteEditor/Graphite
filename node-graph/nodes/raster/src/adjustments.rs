@@ -850,6 +850,7 @@ impl HueSaturationRangeEffect {
 		}
 
 		self.hue_shift += range.settings.hue * weight;
+		// For PSD interop, +100 saturates fully from the very edge of the falloff rather than scaling with the weight
 		if range.settings.saturation >= 1. {
 			self.fully_saturate = true;
 		} else {

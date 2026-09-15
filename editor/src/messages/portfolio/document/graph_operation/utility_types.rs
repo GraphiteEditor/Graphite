@@ -664,7 +664,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.nodes
 			.get(&node_id)
 			.and_then(|node| node.input(graphene_std::math_nodes::gradient_positions::PositionsInput));
-		if !current_input.is_some_and(|input| input.as_value().is_some()) {
+		if current_input.is_none_or(|input| input.as_value().is_none()) {
 			return;
 		}
 
@@ -688,7 +688,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.nodes
 			.get(&node_id)
 			.and_then(|node| node.input(graphene_std::math_nodes::gradient_midpoints::MidpointsInput));
-		if !current_input.is_some_and(|input| input.as_value().is_some()) {
+		if current_input.is_none_or(|input| input.as_value().is_none()) {
 			return;
 		}
 
