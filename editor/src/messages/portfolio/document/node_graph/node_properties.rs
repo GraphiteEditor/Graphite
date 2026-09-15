@@ -196,6 +196,20 @@ impl SliderRange {
 	}
 }
 
+/// The number a parameter's definition gives it by default, which a slider's double-click restores.
+fn definition_default_number(parameter_widgets_info: &ParameterWidgetsInfo) -> Option<f64> {
+	let identifier = parameter_widgets_info
+		.network_interface
+		.reference(&parameter_widgets_info.node_id, parameter_widgets_info.selection_network_path)?;
+	let input = resolve_document_node_type(&identifier)?.node_template.inputs.get(parameter_widgets_info.index)?;
+
+	match input.as_value()? {
+		TaggedValue::F64(value) => Some(*value),
+		TaggedValue::F32(value) => Some(*value as f64),
+		_ => None,
+	}
+}
+
 pub(crate) fn property_from_type(
 	node_id: NodeId,
 	index: usize,
@@ -244,6 +258,21 @@ pub(crate) fn property_from_type(
 			.range_max(Some(extent_max).filter(|bound| bound.is_finite()))
 	};
 
+	// A range-mode number clamped at both ends by its own hard bounds, or by a type whose extent is a true limit, becomes a range
+	// slider beside its number input, unless a soft bound lets typing pass the slider. An Angle's type default is no such limit.
+	let no_soft_bounds = soft_min.is_none() && soft_max.is_none();
+	let hard_both_ends = hard_min.is_some() && hard_max.is_some();
+	let number_or_slider = |default_info: ParameterWidgetsInfo, number_input: NumberInput, type_limits: bool| -> LayoutGroup {
+		let fixed_extent = number_input.mode == NumberInputMode::Range && no_soft_bounds && (hard_both_ends || type_limits);
+		match (number_input.min, number_input.max) {
+			(Some(min), Some(max)) if fixed_extent && min.is_finite() && max.is_finite() && min < max => {
+				let default = definition_default_number(&default_info);
+				range_slider_widget(default_info, number_input.mode_increment(), SliderRange { min, max, default }).into()
+			}
+			_ => number_widget(default_info, number_input).into(),
+		}
+	};
+
 	let default_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
 
 	// A type with no widget can only be supplied through the graph, labeled with a placeholder row
@@ -269,13 +298,13 @@ pub(crate) fn property_from_type(
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") | Some("PercentageF32") => number_widget(default_info, bounded(number_input.percentage(), 0., 100.)).into(),
-				Some("SignedPercentage") | Some("SignedPercentageF32") => number_widget(default_info, bounded(number_input.percentage(), -100., 100.)).into(),
-				Some("Angle") | Some("AngleF32") => number_widget(default_info, bounded(number_input.mode_range(), -180., 180.).unit(unit.unwrap_or("°"))).into(),
+				Some("Percentage") | Some("PercentageF32") => number_or_slider(default_info, bounded(number_input.percentage(), 0., 100.), true),
+				Some("SignedPercentage") | Some("SignedPercentageF32") => number_or_slider(default_info, bounded(number_input.percentage(), -100., 100.), true),
+				Some("Angle") | Some("AngleF32") => number_or_slider(default_info, bounded(number_input.mode_range(), -180., 180.).unit(unit.unwrap_or("°")), false),
 				Some("Multiplier") => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY).unit(unit.unwrap_or("x"))).into(),
 				Some("PixelLength") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY).unit(unit.unwrap_or(" px"))).into(),
 				Some("Length") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
-				Some("Fraction") => number_widget(default_info, bounded(number_input.mode_range(), 0., 1.)).into(),
+				Some("Fraction") => number_or_slider(default_info, bounded(number_input.mode_range(), 0., 1.), true),
 				Some("Progression") => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
 				Some("SignedInteger") => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
 				Some("SeedValue") => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
@@ -295,7 +324,7 @@ pub(crate) fn property_from_type(
 						// ===============
 						// PRIMITIVE TYPES
 						// ===============
-						Some(x) if id_is::<f64>(x) || id_is::<f32>(x) => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)).into(),
+						Some(x) if id_is::<f64>(x) || id_is::<f32>(x) => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), false),
 						Some(x) if id_is::<u32>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::from(u32::MAX))).into(),
 						Some(x) if id_is::<u64>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
 						Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
