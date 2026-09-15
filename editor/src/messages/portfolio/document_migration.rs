@@ -2196,6 +2196,26 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 3;
 	}
 
+	// Levels' Midtones became the gamma value it encoded, and each channel gained its own record after the composite one
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::levels::IDENTIFIER) && inputs_count == 6 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(6).enumerate() {
+			let input = match (index, input.as_value()) {
+				(2, Some(TaggedValue::F32(percent))) => {
+					// The old node's midtones-to-gamma mapping, from https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
+					let midtones = percent / 100.;
+					let gamma = if midtones < 0.5 { 1. + 9. * (1. - midtones * 2.) } else { ((1. - midtones) * 2.).max(0.01) };
+					NodeInput::value(TaggedValue::F32(gamma.clamp(0.1, 9.99)), input.is_exposed())
+				}
+				_ => input.clone(),
+			};
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+		inputs_count = 27;
+	}
+
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) && inputs_count == 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);

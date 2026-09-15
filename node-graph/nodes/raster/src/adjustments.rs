@@ -328,88 +328,222 @@ pub enum AdjustmentChannel {
 	Alpha,
 }
 
+/// One Levels record in the node's units: percentage input and output points and the gamma value.
+#[derive(Clone, Copy)]
+struct LevelsRecord {
+	shadows: f32,
+	midtones: f32,
+	highlights: f32,
+	output_minimums: f32,
+	output_maximums: f32,
+}
+
+/// A record's input curve followed by its output range.
+#[derive(Clone, Copy)]
+struct LevelsStage {
+	curve: LevelsCurve,
+	output_minimum: f32,
+	output_maximum: f32,
+}
+
+impl LevelsRecord {
+	fn new(shadows: f32, midtones: f32, highlights: f32, output_minimums: f32, output_maximums: f32) -> Self {
+		Self {
+			shadows,
+			midtones,
+			highlights,
+			output_minimums,
+			output_maximums,
+		}
+	}
+
+	fn stage(&self, gamma: f32) -> LevelsStage {
+		LevelsStage {
+			curve: LevelsCurve::from_points(self.shadows * 2.55, self.highlights * 2.55, gamma),
+			output_minimum: self.output_minimums / 100.,
+			output_maximum: self.output_maximums / 100.,
+		}
+	}
+}
+
+impl LevelsStage {
+	fn apply(&self, value: f32) -> f32 {
+		self.curve.apply(value) * (self.output_maximum - self.output_minimum) + self.output_minimum
+	}
+}
+
+/// A channel's record followed by the composite record.
+#[derive(Clone, Copy)]
+struct LevelsChain {
+	first: LevelsStage,
+	second: LevelsStage,
+	two_stages: bool,
+}
+
+impl LevelsChain {
+	fn new(channel: LevelsRecord, composite: LevelsRecord) -> Self {
+		// For PSD interop, two power functions with nothing between them (the composite's input points and the
+		// channel's output range at their defaults) merge into one curve with the product of the gammas, toe included
+		let nothing_between = composite.shadows == 0. && composite.highlights == 100. && channel.output_minimums == 0. && channel.output_maximums == 100.;
+		if nothing_between {
+			let merged = LevelsRecord {
+				output_minimums: composite.output_minimums,
+				output_maximums: composite.output_maximums,
+				..channel
+			};
+			let stage = merged.stage(channel.midtones * composite.midtones);
+			Self {
+				first: stage,
+				second: stage,
+				two_stages: false,
+			}
+		} else {
+			Self {
+				first: channel.stage(channel.midtones),
+				second: composite.stage(composite.midtones),
+				two_stages: true,
+			}
+		}
+	}
+
+	fn apply(&self, value: f32) -> f32 {
+		let value = self.first.apply(value);
+		if self.two_stages { self.second.apply(value) } else { value }
+	}
+}
+
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels
-//
-// Algorithm from:
-// https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/levels.html
 #[node_macro::node(category("Raster: Adjustment"), properties("levels_properties"), shader_node(PerPixelAdjust))]
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
 	#[default(0.)] shadows: Item<PercentageF32>,
-	#[default(50.)] midtones: Item<PercentageF32>,
+	#[default(1.)] midtones: Item<f32>,
 	#[default(100.)] highlights: Item<PercentageF32>,
 	#[default(0.)] output_minimums: Item<PercentageF32>,
 	#[default(100.)] output_maximums: Item<PercentageF32>,
+	#[name("(Red) Shadows")]
+	#[default(0.)]
+	red_shadows: Item<PercentageF32>,
+	#[name("(Red) Midtones")]
+	#[default(1.)]
+	red_midtones: Item<f32>,
+	#[name("(Red) Highlights")]
+	#[default(100.)]
+	red_highlights: Item<PercentageF32>,
+	#[name("(Red) Output Minimums")]
+	#[default(0.)]
+	red_output_minimums: Item<PercentageF32>,
+	#[name("(Red) Output Maximums")]
+	#[default(100.)]
+	red_output_maximums: Item<PercentageF32>,
+	#[name("(Green) Shadows")]
+	#[default(0.)]
+	green_shadows: Item<PercentageF32>,
+	#[name("(Green) Midtones")]
+	#[default(1.)]
+	green_midtones: Item<f32>,
+	#[name("(Green) Highlights")]
+	#[default(100.)]
+	green_highlights: Item<PercentageF32>,
+	#[name("(Green) Output Minimums")]
+	#[default(0.)]
+	green_output_minimums: Item<PercentageF32>,
+	#[name("(Green) Output Maximums")]
+	#[default(100.)]
+	green_output_maximums: Item<PercentageF32>,
+	#[name("(Blue) Shadows")]
+	#[default(0.)]
+	blue_shadows: Item<PercentageF32>,
+	#[name("(Blue) Midtones")]
+	#[default(1.)]
+	blue_midtones: Item<f32>,
+	#[name("(Blue) Highlights")]
+	#[default(100.)]
+	blue_highlights: Item<PercentageF32>,
+	#[name("(Blue) Output Minimums")]
+	#[default(0.)]
+	blue_output_minimums: Item<PercentageF32>,
+	#[name("(Blue) Output Maximums")]
+	#[default(100.)]
+	blue_output_maximums: Item<PercentageF32>,
+	#[name("(Alpha) Shadows")]
+	#[default(0.)]
+	alpha_shadows: Item<PercentageF32>,
+	#[name("(Alpha) Midtones")]
+	#[default(1.)]
+	alpha_midtones: Item<f32>,
+	#[name("(Alpha) Highlights")]
+	#[default(100.)]
+	alpha_highlights: Item<PercentageF32>,
+	#[name("(Alpha) Output Minimums")]
+	#[default(0.)]
+	alpha_output_minimums: Item<PercentageF32>,
+	#[name("(Alpha) Output Maximums")]
+	#[default(100.)]
+	alpha_output_maximums: Item<PercentageF32>,
+	_channel: Item<AdjustmentChannel>,
 ) -> Item<T> {
 	let mut image = image;
-	let shadows = shadows.into_element();
-	let midtones = midtones.into_element();
-	let highlights = highlights.into_element();
-	let output_minimums = output_minimums.into_element();
-	let output_maximums = output_maximums.into_element();
+	let composite = LevelsRecord::new(
+		shadows.into_element(),
+		midtones.into_element(),
+		highlights.into_element(),
+		output_minimums.into_element(),
+		output_maximums.into_element(),
+	);
+	let red = LevelsChain::new(
+		LevelsRecord::new(
+			red_shadows.into_element(),
+			red_midtones.into_element(),
+			red_highlights.into_element(),
+			red_output_minimums.into_element(),
+			red_output_maximums.into_element(),
+		),
+		composite,
+	);
+	let green = LevelsChain::new(
+		LevelsRecord::new(
+			green_shadows.into_element(),
+			green_midtones.into_element(),
+			green_highlights.into_element(),
+			green_output_minimums.into_element(),
+			green_output_maximums.into_element(),
+		),
+		composite,
+	);
+	let blue = LevelsChain::new(
+		LevelsRecord::new(
+			blue_shadows.into_element(),
+			blue_midtones.into_element(),
+			blue_highlights.into_element(),
+			blue_output_minimums.into_element(),
+			blue_output_maximums.into_element(),
+		),
+		composite,
+	);
+
+	// Alpha stands apart from the composite record that the three color channels pass through
+	let alpha = LevelsRecord::new(
+		alpha_shadows.into_element(),
+		alpha_midtones.into_element(),
+		alpha_highlights.into_element(),
+		alpha_output_minimums.into_element(),
+		alpha_output_maximums.into_element(),
+	);
+	let alpha = alpha.stage(alpha.midtones);
 
 	image.element_mut().adjust(|color| {
 		// Levels math operates in gamma space
-		let [mut r, mut g, mut b, a] = color.to_gamma_srgb_channels();
+		let [r, g, b, a] = color.to_gamma_srgb_channels();
 
-		// Input Range (Range: 0-1)
-		let input_shadows = shadows / 100.;
-		let input_midtones = midtones / 100.;
-		let input_highlights = highlights / 100.;
-
-		// Output Range (Range: 0-1)
-		let output_minimums = output_minimums / 100.;
-		let output_maximums = output_maximums / 100.;
-
-		// Midtones interpolation factor between minimums and maximums (Range: 0-1)
-		let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
-
-		// Gamma correction (Range: 0.01-10)
-		let gamma = if midtones < 0.5 {
-			// Range: 0-1
-			let x = 1. - midtones * 2.;
-			// Range: 1-10
-			1. + 9. * x
-		} else {
-			// Range: 0-0.5
-			let x = 1. - midtones;
-			// Range: 0-1
-			let x = x * 2.;
-			// Range: 0.01-1
-			x.max(0.01)
-		};
-
-		// Input levels (Range: 0-1)
-		let highlights_minus_shadows = (input_highlights - input_shadows).clamp(f32::EPSILON, 1.);
-		let input_map = |c: f32| ((c - input_shadows).max(0.) / highlights_minus_shadows).min(1.);
-		r = input_map(r);
-		g = input_map(g);
-		b = input_map(b);
-
-		// Midtones gamma curve (Range: 0-1)
-		let inverse_gamma = 1. / gamma.max(0.0001);
-		r = r.powf(inverse_gamma);
-		g = g.powf(inverse_gamma);
-		b = b.powf(inverse_gamma);
-
-		// Output levels (Range: 0-1)
-		let output_map = |c: f32| c * (output_maximums - output_minimums) + output_minimums;
-		r = output_map(r);
-		g = output_map(g);
-		b = output_map(b);
-
-		Color::from_gamma_srgb_channels(r, g, b, a)
+		Color::from_gamma_srgb_channels(red.apply(r), green.apply(g), blue.apply(b), alpha.apply(a))
 	});
 	image
 }
@@ -1466,6 +1600,70 @@ mod tests {
 	fn assert_close(actual: [f32; 3], expected: [f32; 3]) {
 		for (actual, expected) in actual.iter().zip(expected) {
 			assert!((actual - expected).abs() <= 1., "expected {expected}, got {actual}");
+		}
+	}
+
+	/// Runs Levels with composite and red records given as [black, white, gamma, output black, output white] with 0..255 points
+	/// on one gamma-space gray value (0..255), returning the red and green results on the same scale.
+	fn run_levels(value: f32, composite: [f32; 5], red: [f32; 5]) -> [f32; 2] {
+		let pixel = Color::from_gamma_srgb_channels(value / 255., value / 255., value / 255., 1.);
+		let percent = |level: f32| level / 2.55;
+		let result = levels(
+			(),
+			Item::new_from_element(pixel),
+			percent(composite[0]).into(),
+			composite[2].into(),
+			percent(composite[1]).into(),
+			percent(composite[3]).into(),
+			percent(composite[4]).into(),
+			percent(red[0]).into(),
+			red[2].into(),
+			percent(red[1]).into(),
+			percent(red[3]).into(),
+			percent(red[4]).into(),
+			0_f32.into(),
+			1_f32.into(),
+			100_f32.into(),
+			0_f32.into(),
+			100_f32.into(),
+			0_f32.into(),
+			1_f32.into(),
+			100_f32.into(),
+			0_f32.into(),
+			100_f32.into(),
+			0_f32.into(),
+			1_f32.into(),
+			100_f32.into(),
+			0_f32.into(),
+			100_f32.into(),
+			AdjustmentChannel::Rgb.into(),
+		);
+		let [r, g, _, _] = result.into_element().to_gamma_srgb_channels();
+		[r * 255., g * 255.]
+	}
+
+	#[test]
+	fn levels_records_merge_into_one_gamma_only_when_nothing_lies_between() {
+		const DEFAULT: [f32; 5] = [0., 255., 1., 0., 255.];
+		for (value, composite, red, expected_red, expected_green) in [
+			// Two gammas with nothing between them act as one gamma of 2.25, toe included
+			(5., [0., 255., 1.5, 0., 255.], [0., 255., 1.5, 0., 255.], 23., 14.),
+			(25., [0., 255., 1.5, 0., 255.], [0., 255., 1.5, 0., 255.], 89., 54.),
+			(100., [0., 255., 1.5, 0., 255.], [0., 255., 1.5, 0., 255.], 168., 137.),
+			// A black point in each record keeps them as two curves
+			(40., [30., 255., 1.5, 0., 255.], [20., 255., 1.5, 0., 255.], 49., 28.),
+			(100., [30., 255., 1.5, 0., 255.], [20., 255., 1.5, 0., 255.], 144., 117.),
+			// Input and output points only
+			(100., [30., 220., 1., 0., 255.], [50., 255., 1., 0., 200.], 26., 94.),
+			(150., [30., 220., 1., 0., 255.], [50., 255., 1., 0., 200.], 91., 161.),
+			// A pure channel gamma under a composite with points stays a separate stage
+			(5., [0., 200., 1.2, 10., 255.], [0., 255., 3., 0., 255.], 70., 21.),
+			(50., [0., 200., 1.2, 10., 255.], [0., 255., 3., 0., 255.], 201., 88.),
+			(128., DEFAULT, DEFAULT, 128., 128.),
+		] {
+			let [red_actual, green_actual] = run_levels(value, composite, red);
+			assert!((red_actual - expected_red).abs() <= 1.5, "{value} red: expected {expected_red}, got {red_actual}");
+			assert!((green_actual - expected_green).abs() <= 1.5, "{value} green: expected {expected_green}, got {green_actual}");
 		}
 	}
 
