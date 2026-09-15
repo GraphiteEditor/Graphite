@@ -1321,7 +1321,7 @@ fn dimensions(_: impl Ctx, content: IList<Vector>) -> DVec2 {
 }
 
 /// Type-asserts a value to be vector data. A position becomes a single-anchor vector.
-#[node_macro::node(category("Vector"), name("As Vector"), path(core_types::vector))]
+#[node_macro::node(category("Type Assertion"), path(core_types::vector))]
 fn as_vector<T: Into<Vector>>(_: impl Ctx, #[implementations(Vector, DVec2)] value: T) -> Vector {
 	value.into()
 }
