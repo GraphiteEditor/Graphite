@@ -358,6 +358,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				SelectiveColorChoice,
 				TonalRange,
 				AdjustmentChannel,
+				HueSaturationRange,
 				Stroke,
 				XY,
 				ScaleType,

@@ -2221,6 +2221,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 27;
 	}
 
+	// Hue/Saturation gained colorize and the six hue ranges after its three master sliders
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::hue_saturation::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(4).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		inputs_count = 51;
+	}
+
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) && inputs_count == 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);

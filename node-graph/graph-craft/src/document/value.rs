@@ -565,6 +565,7 @@ tagged_value! {
 	SelectiveColorChoice(raster_nodes::adjustments::SelectiveColorChoice),
 	TonalRange(raster_nodes::adjustments::TonalRange),
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
+	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
 	GridType(vector::misc::GridType),
 	ArcType(vector::misc::ArcType),
 	RowsOrColumns(vector::misc::RowsOrColumns),

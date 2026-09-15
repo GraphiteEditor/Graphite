@@ -3537,7 +3537,7 @@ impl DocumentMessageHandler {
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
 				.max_width(100)
-				.tooltip_label("Fill")
+				.tooltip_label("Fill Opacity")
 				.widget_instance(),
 		];
 		let layers_panel_control_bar_left = Layout(vec![LayoutGroup::row(widgets)]);
