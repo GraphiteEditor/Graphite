@@ -14,8 +14,14 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowPointerLock);
 			}
+			AppWindowMessage::PointerUnlock => {
+				#[cfg(not(target_family = "wasm"))]
+				responses.add(FrontendMessage::WindowPointerUnlock);
+			}
 			AppWindowMessage::PointerLockMove { x, y } => {
 				responses.add(FrontendMessage::WindowPointerLockMove { position: (x, y) });
+				// Send locked deltas only to the transform layer, so number input drags don't move the editor pointer
+				responses.add(TransformLayerMessage::PointerLockMove { delta: glam::DVec2::new(x, y) });
 			}
 			AppWindowMessage::DirectInput { enabled } => {
 				#[cfg(not(target_family = "wasm"))]

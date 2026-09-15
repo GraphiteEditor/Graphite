@@ -88,6 +88,11 @@ mod editor_commands {
 		AppWindowMessage::PointerLock.into()
 	}
 
+	/// Reports pointer movement while the pointer is locked, so tools can keep tracking
+	fn app_window_pointer_lock_move(x: f64, y: f64) -> Message {
+		AppWindowMessage::PointerLockMove { x, y }.into()
+	}
+
 	/// Minimizes the application window to the taskbar or dock
 	fn app_window_minimize() -> Message {
 		AppWindowMessage::Minimize.into()
