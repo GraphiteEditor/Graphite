@@ -50,7 +50,7 @@ impl<'e> Graphic<'e> {
 
 		match self {
 			// The legacy interior is owned outright, so its lanes map in place.
-			Graphic::Graphic(children) => {
+			Graphic::GraphicList(children) => {
 				for row in 0..children.len() {
 					let lane_transform: DAffine2 = children.attribute_cloned_or_default(ATTR_TRANSFORM, row);
 					let Some(child) = children.element_mut(row) else { continue };
@@ -217,7 +217,7 @@ mod tests {
 		let mut children = List::new();
 		children.push(Item::new_from_element(Graphic::Color(core_types::Color::WHITE)));
 		children.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO))));
-		let mut graphic = Graphic::Graphic(children);
+		let mut graphic = Graphic::GraphicList(children);
 
 		let mut mapped = 0;
 		graphic
@@ -228,7 +228,7 @@ mod tests {
 			.expect("no rebuild is needed");
 
 		assert_eq!(mapped, 1, "only the vector leaf is mapped");
-		let Graphic::Graphic(children) = &graphic else { panic!("the list form survives") };
+		let Graphic::GraphicList(children) = &graphic else { panic!("the list form survives") };
 		assert!(matches!(children.element(0), Some(Graphic::Color(_))), "the color leaf passes through untouched");
 	}
 }

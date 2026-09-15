@@ -90,7 +90,7 @@ impl<'a> PaintReach<'a> {
 /// cell of any other form is treated as paint that draws nothing.
 pub fn paint_cell_rows<'a>(cell: &'a Graphic<'static>) -> Option<&'a List<Graphic<'static>>> {
 	match cell {
-		Graphic::Graphic(list) => Some(list).filter(|list| is_paint_present(list)),
+		Graphic::GraphicList(list) => Some(list).filter(|list| is_paint_present(list)),
 		_ => None,
 	}
 }
@@ -103,7 +103,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 			*item_transform = transform * *item_transform;
 		}
 		for graphic in graphics.iter_element_values_mut() {
-			if let Graphic::Graphic(list) = graphic {
+			if let Graphic::GraphicList(list) = graphic {
 				bake_graphic_paint_transform(list, transform);
 			}
 		}
@@ -113,7 +113,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 		&& let Some(cells) = appearance.0.iter_attribute_values_mut::<Graphic>(crate::markers::ATTR_PAINT)
 	{
 		for cell in cells {
-			if let Graphic::Graphic(list) = cell {
+			if let Graphic::GraphicList(list) = cell {
 				bake_graphic_paint_transform(list, transform);
 			}
 		}

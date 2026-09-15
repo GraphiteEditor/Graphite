@@ -399,7 +399,7 @@ fn walk_vector_rows_impl<'a>(
 				appearance: reach.appearance,
 				top_lane: row_top,
 			}),
-			Graphic::Graphic(children) => walk_vector_rows_impl(
+			Graphic::GraphicList(children) => walk_vector_rows_impl(
 				GraphicLevel::Legacy(children),
 				scale.composed(&level, index),
 				level.try_attr::<EditorLayerPath>(index),
@@ -496,11 +496,11 @@ mod run_tests {
 		let deep = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(3., 3.))));
 		let mut mixed = List::new();
 		mixed.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO))));
-		mixed.push(Item::new_from_element(Graphic::Graphic(deep)));
+		mixed.push(Item::new_from_element(Graphic::GraphicList(deep)));
 
 		let mut top = List::new();
 		top.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(9., 9.)))));
-		top.push(Item::new_from_element(Graphic::Graphic(mixed)));
+		top.push(Item::new_from_element(Graphic::GraphicList(mixed)));
 
 		let mut reported = Vec::new();
 		walk_vector_rows(GraphicLevel::Legacy(&top), &mut |row| {
@@ -537,8 +537,8 @@ mod run_tests {
 		nested.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_scale(DVec2::splat(2.)));
 
 		let mut top = List::new();
-		top.push(Item::new_from_element(Graphic::Graphic(painted)));
-		top.push(Item::new_from_element(Graphic::Graphic(nested)));
+		top.push(Item::new_from_element(Graphic::GraphicList(painted)));
+		top.push(Item::new_from_element(Graphic::GraphicList(nested)));
 		top.push(Item::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: inner_item })));
 		top.push(Item::new_from_element(Graphic::Color(Color::BLACK)));
 		top.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(6., 0.)))));
@@ -621,7 +621,7 @@ mod run_tests {
 		inner.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ONE))));
 		inner.set_attribute(ATTR_APPEARANCE, 0, single(Color::BLACK));
 
-		let mut top = List::new_from_element(Graphic::Graphic(inner));
+		let mut top = List::new_from_element(Graphic::GraphicList(inner));
 		top.set_attribute(ATTR_APPEARANCE, 0, single(Color::WHITE));
 
 		let walked = flatten_vector_rows(GraphicLevel::Legacy(&top));

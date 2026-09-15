@@ -43,7 +43,7 @@ pub(crate) fn group_locate<'e>(group: &core_types::record::Group<'e>, transform:
 /// itself otherwise.
 pub(crate) fn leaf_count(graphic: &Graphic, fully_flatten: bool, depth: usize) -> usize {
 	match graphic {
-		Graphic::Graphic(children) if fully_flatten || depth == 0 => (0..children.len())
+		Graphic::GraphicList(children) if fully_flatten || depth == 0 => (0..children.len())
 			.map(|index| children.element(index).map_or(0, |child| leaf_count(child, fully_flatten, depth + 1)))
 			.sum(),
 		Graphic::Group(group) if (fully_flatten || depth == 0) && group_expands(group) => group_leaf_count(group, fully_flatten, depth),
@@ -55,7 +55,7 @@ pub(crate) fn leaf_count(graphic: &Graphic, fully_flatten: bool, depth: usize) -
 /// along its path composed onto `transform`.
 pub(crate) fn locate<'e>(graphic: &Graphic<'e>, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic<'e>, DAffine2)> {
 	match graphic {
-		Graphic::Graphic(children) if fully_flatten || depth == 0 => (0..children.len()).find_map(|index| {
+		Graphic::GraphicList(children) if fully_flatten || depth == 0 => (0..children.len()).find_map(|index| {
 			let child = children.element(index)?;
 			let child_transform: DAffine2 = children.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			locate(child, transform * child_transform, fully_flatten, depth + 1, remaining)
@@ -108,7 +108,7 @@ impl Inherited {
 /// of other element types contribute nothing.
 pub(crate) fn walk_typed_leaves<T: TryFromGraphic + dyn_any::StaticTypeSized>(graphic: &Graphic, inherited: Inherited, visit: &mut dyn FnMut(&T, Inherited) -> RowStep) -> RowStep {
 	match graphic {
-		Graphic::Graphic(children) => {
+		Graphic::GraphicList(children) => {
 			for index in 0..children.len() {
 				let Some(child) = children.element(index) else { continue };
 				if let RowStep::Stop = walk_typed_leaves(child, inherited.composed(children, index), visit) {
@@ -283,7 +283,7 @@ mod tests {
 			list.push(Item::new_from_element(child));
 			list.set_attribute(ATTR_TRANSFORM, index, transform);
 		}
-		Graphic::Graphic(list)
+		Graphic::GraphicList(list)
 	}
 
 	fn text_of<'a>(graphic: &'a Graphic<'_>) -> &'a str {
@@ -607,7 +607,7 @@ mod tests {
 		let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, 2), &frames) else {
 			panic!("expected a final record");
 		};
-		let Graphic::Graphic(children) = record.element::<Graphic>() else {
+		let Graphic::GraphicList(children) = record.element::<Graphic>() else {
 			panic!("lane 2 keeps the subgroup element");
 		};
 		assert_eq!(children.len(), 1);
@@ -937,11 +937,11 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let nested = {
-			let Graphic::Graphic(mut children) = group(vec![(Graphic::Color(Color::WHITE), translation(20.)), (text("x"), translation(300.))]) else {
+			let Graphic::GraphicList(mut children) = group(vec![(Graphic::Color(Color::WHITE), translation(20.)), (text("x"), translation(300.))]) else {
 				unreachable!("group builds a legacy graphic list");
 			};
 			children.set_attribute(core_types::ATTR_OPACITY, 0, 0.5);
-			Graphic::Graphic(children)
+			Graphic::GraphicList(children)
 		};
 		let rows = vec![(Graphic::Color(Color::BLACK), translation(1.)), (nested, translation(0.5)), (text("y"), translation(9.))];
 		let layout = graphic_layout();

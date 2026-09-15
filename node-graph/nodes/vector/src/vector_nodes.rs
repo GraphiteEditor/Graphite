@@ -127,7 +127,7 @@ fn assign_colors<'e>(
 
 	// The recolor lands on the appearance's coverage paints
 	let mut appearance = existing_appearance.unwrap_or_default();
-	let paint_cell = Graphic::Graphic(paint);
+	let paint_cell = Graphic::GraphicList(paint);
 	if fill && !appearance.set_paint_of(Cover::Fill, paint_cell.clone()) {
 		appearance.replace_or_insert(Coverage::new_fill(), paint_cell.clone(), CoverPlacement::Below);
 	}
@@ -239,7 +239,7 @@ fn assign_colors_graphic<'e>(
 
 				// The recolor lands on the row's appearance coverage paints
 				let mut appearance = rows.attribute_cloned_or_default::<Appearance>(graphic_types::ATTR_APPEARANCE, row);
-				let paint_cell = Graphic::Graphic(paint);
+				let paint_cell = Graphic::GraphicList(paint);
 				if fill && !appearance.set_paint_of(Cover::Fill, paint_cell.clone()) {
 					appearance.replace_or_insert(Coverage::new_fill(), paint_cell.clone(), CoverPlacement::Below);
 				}
@@ -304,7 +304,7 @@ fn park_appearance(arena: &core_types::arena::Arena, appearance: Appearance) -> 
 /// graphic cell, the input lane's own envelope dropped.
 fn stamped_appearance(content_appearance: Option<&Appearance>, coverage: Coverage, paint: &List<Graphic<'static>>, placement: CoverPlacement) -> Appearance {
 	let mut appearance = content_appearance.cloned().unwrap_or_default();
-	appearance.replace_or_insert(coverage, Graphic::Graphic(paint.clone()), placement);
+	appearance.replace_or_insert(coverage, Graphic::GraphicList(paint.clone()), placement);
 	appearance
 }
 
@@ -3082,7 +3082,7 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 			// The paint cell carries its graphic list as one wrapped cell, so the lerp works on the unwrapped rows.
 			let source_paint = source_index.and_then(|index| a.paint_at(index)).and_then(graphic_types::graphic::paint_cell_rows);
 			let target_paint = target_index.and_then(|index| b.paint_at(index)).and_then(graphic_types::graphic::paint_cell_rows);
-			let paint = lerp_graphic(source_paint, target_paint, time).map(Graphic::Graphic).unwrap_or_default();
+			let paint = lerp_graphic(source_paint, target_paint, time).map(Graphic::GraphicList).unwrap_or_default();
 
 			result.replace_or_insert(coverage, paint, CoverPlacement::Above);
 		}
@@ -4344,7 +4344,7 @@ mod test {
 			v
 		};
 
-		let fill_appearance = |color: Color| Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(List::new_from_element(color).into_graphic_list()));
+		let fill_appearance = |color: Color| Appearance::new_single(Coverage::new_fill(), Graphic::GraphicList(List::new_from_element(color).into_graphic_list()));
 		let item_a = Item::new_from_element(rect())
 			.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY)
 			.with_attribute(graphic_types::ATTR_APPEARANCE, fill_appearance(Color::RED));

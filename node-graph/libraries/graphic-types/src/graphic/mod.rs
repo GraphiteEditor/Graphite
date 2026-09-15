@@ -38,7 +38,7 @@ pub enum Graphic<'e> {
 	/// The absence of graphical content, like CSS's `none` keyword: painting it produces nothing.
 	#[default]
 	None,
-	Graphic(List<Graphic<'e>>),
+	GraphicList(List<Graphic<'e>>),
 	Vector(Vector),
 	RasterCPU(Raster<CPU>),
 	RasterGPU(Raster<GPU>),
@@ -164,7 +164,7 @@ impl From<String> for Graphic<'_> {
 /// Both group forms are excluded: a lone native `Group` still has interior structure to flatten.
 pub fn is_lone_anonymous_leaf(content: &List<Graphic>) -> bool {
 	content.len() == 1
-		&& !matches!(content.element(0), Some(Graphic::Graphic(_)) | Some(Graphic::Group(_)))
+		&& !matches!(content.element(0), Some(Graphic::GraphicList(_)) | Some(Graphic::Group(_)))
 		&& content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).is_none()
 		&& content.attribute::<f64>(ATTR_OPACITY, 0).is_none()
 		&& content.attribute::<f64>(ATTR_OPACITY_FILL, 0).is_none()
@@ -172,7 +172,7 @@ pub fn is_lone_anonymous_leaf(content: &List<Graphic>) -> bool {
 }
 
 /// Deeply flattens a `List<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
-/// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-`List`s composes transforms and opacity.
+/// and discarding all other non-matching content. Recursion through `Graphic::GraphicList` sub-`List`s composes transforms and opacity.
 fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
 	// Its list is already the flat answer, so hand it back rather than rebuilding it item by item
 	if is_lone_anonymous_leaf(&content) {
@@ -200,7 +200,7 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 			match element {
 				// Compose the parent's transform/opacity/fill onto each child, but only for attributes the parent carries.
 				// A child lacking one is padded with the composition identity (`1.` for opacity/fill, identity for transform), so composing through it is a no-op.
-				Graphic::Graphic(mut sub_list) => {
+				Graphic::GraphicList(mut sub_list) => {
 					// A group's first child has no preceding sibling, so its clipping flag is inert until splicing
 					// hands it the group's own predecessor. Clear it (keeping the column) to stay clip-neutral.
 					if sub_list.attribute::<bool>(ATTR_CLIPPING_MASK, 0).is_some() {
@@ -379,14 +379,14 @@ impl From<DVec2> for Graphic<'_> {
 impl<'e> Graphic<'e> {
 	pub fn as_graphic(&self) -> Option<&List<Graphic<'_>>> {
 		match self {
-			Graphic::Graphic(graphic) => Some(graphic),
+			Graphic::GraphicList(graphic) => Some(graphic),
 			_ => None,
 		}
 	}
 
 	pub fn as_graphic_mut(&mut self) -> Option<&mut List<Graphic<'e>>> {
 		match self {
-			Graphic::Graphic(graphic) => Some(graphic),
+			Graphic::GraphicList(graphic) => Some(graphic),
 			_ => None,
 		}
 	}
@@ -420,7 +420,7 @@ impl<'e> Graphic<'e> {
 
 		match self {
 			Graphic::None => true,
-			Graphic::Graphic(list) => all_clipped(list),
+			Graphic::GraphicList(list) => all_clipped(list),
 			Graphic::Group(group) => group_all_clipped(group),
 			_ => false,
 		}
@@ -436,7 +436,7 @@ impl<'e> Graphic<'e> {
 	pub fn is_opaque(&self) -> bool {
 		match self {
 			Graphic::None => false,
-			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
+			Graphic::GraphicList(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
 			// A bare leaf carries no paint attribute, which rides its lane, so
 			// nothing here claims opacity.
 			Graphic::Vector(_) => false,
@@ -450,7 +450,7 @@ impl<'e> Graphic<'e> {
 	pub fn is_fully_transparent(&self) -> bool {
 		match self {
 			Graphic::None => true,
-			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
+			Graphic::GraphicList(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
 			// A bare vector leaf carries no paint or stroke of its own, so it is invisible on its own
 			Graphic::Vector(_) => true,
 			Graphic::Color(color) => color.a() == 0.,
@@ -470,7 +470,7 @@ impl<'e> Graphic<'e> {
 	pub fn is_empty(&self) -> bool {
 		match self {
 			Graphic::None => true,
-			Graphic::Graphic(list) => list.is_empty(),
+			Graphic::GraphicList(list) => list.is_empty(),
 			Graphic::Group(group) => group_is_empty(group),
 			_ => false,
 		}
@@ -484,7 +484,7 @@ impl BoundingBox for Graphic<'_> {
 			Graphic::Vector(vector) => BoundingBox::bounding_box(vector, transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
-			Graphic::Graphic(list) => list.bounding_box(transform, include_stroke),
+			Graphic::GraphicList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.bounding_box(transform, include_stroke),
 			Graphic::Text(text) => text.bounding_box(transform, include_stroke),
@@ -498,7 +498,7 @@ impl BoundingBox for Graphic<'_> {
 			Graphic::Vector(vector) => vector.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
-			Graphic::Graphic(graphic) => graphic.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::GraphicList(graphic) => graphic.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
@@ -527,7 +527,7 @@ impl RenderComplexity for Graphic<'_> {
 	fn render_complexity(&self) -> usize {
 		match self {
 			Self::None => 0,
-			Self::Graphic(list) => list.render_complexity(),
+			Self::GraphicList(list) => list.render_complexity(),
 			Self::Vector(list) => list.render_complexity(),
 			Self::RasterCPU(list) => list.render_complexity(),
 			Self::RasterGPU(list) => list.render_complexity(),
@@ -676,7 +676,7 @@ mod tests {
 		let flattened: List<Vector> = graphics.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
 
-		let mut group = List::new_from_element(Graphic::Graphic(List::new_from_element(vector_graphic())));
+		let mut group = List::new_from_element(Graphic::GraphicList(List::new_from_element(vector_graphic())));
 		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
 		let flattened: List<Vector> = group.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
@@ -695,7 +695,7 @@ mod tests {
 		inner.push(Item::new_from_element(vector_graphic()));
 		inner.set_attribute(ATTR_APPEARANCE, 0, single(Color::BLACK));
 
-		let mut outer = List::new_from_element(Graphic::Graphic(inner));
+		let mut outer = List::new_from_element(Graphic::GraphicList(inner));
 		outer.set_attribute(ATTR_APPEARANCE, 0, single(Color::WHITE));
 
 		let flattened: List<Vector> = outer.into_flattened_list();

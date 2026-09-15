@@ -210,7 +210,7 @@ pub struct RenderContext {
 
 /// The single black-fill appearance a mask clone paints with, at full alpha so the mask fully covers the interior.
 fn black_fill_appearance() -> Appearance {
-	Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(List::new_from_element(Graphic::Color(Color::BLACK))))
+	Appearance::new_single(Coverage::new_fill(), Graphic::GraphicList(List::new_from_element(Graphic::Color(Color::BLACK))))
 }
 
 /// The alpha multiplier a paint row's opacity attributes apply when it serves as a paint.
@@ -737,7 +737,7 @@ impl Render for Graphic<'_> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.render_svg(render, render_params),
+			Graphic::GraphicList(list) => list.render_svg(render, render_params),
 			Graphic::Vector(vector) => render_vector_svg(&Single(vector), None, render, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_svg(&Single(raster), render, render_params),
 			Graphic::RasterGPU(_) => (),
@@ -751,7 +751,7 @@ impl Render for Graphic<'_> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Vector(vector) => render_vector_vello(&Single(vector), None, scene, transform, context, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_vello(&Single(raster), scene, transform, render_params),
 			Graphic::RasterGPU(raster) => render_raster_gpu_vello(&Single(raster), scene, transform, context, render_params),
@@ -777,7 +777,7 @@ impl Render for Graphic<'_> {
 	fn contains_artboard(&self) -> bool {
 		match self {
 			Graphic::None => false,
-			Graphic::Graphic(list) => list.contains_artboard(),
+			Graphic::GraphicList(list) => list.contains_artboard(),
 			_ => false,
 		}
 	}
@@ -785,7 +785,7 @@ impl Render for Graphic<'_> {
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
 			Graphic::None => (),
-			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
+			Graphic::GraphicList(list) => list.new_ids_from_hash(reference),
 			Graphic::Vector(vector) => vector.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default()),
 			_ => (),
 		}
@@ -795,7 +795,7 @@ impl Render for Graphic<'_> {
 fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
 	match element {
 		Graphic::Vector(vector) => render_vector_svg(&Single(vector), reach.appearance, render, render_params),
-		Graphic::Graphic(inner) => render_graphic_svg_with(inner, reach, render, render_params),
+		Graphic::GraphicList(inner) => render_graphic_svg_with(inner, reach, render, render_params),
 		Graphic::Group(group) => render_group_svg(group, reach, render, render_params),
 		_ => element.render_svg(render, render_params),
 	}
@@ -804,7 +804,7 @@ fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &
 fn render_element_vello<'a>(element: &'a Graphic, reach: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 	match element {
 		Graphic::Vector(vector) => render_vector_vello(&Single(vector), reach.appearance, scene, transform, context, render_params),
-		Graphic::Graphic(inner) => render_graphic_vello_with(inner, reach, scene, transform, context, render_params),
+		Graphic::GraphicList(inner) => render_graphic_vello_with(inner, reach, scene, transform, context, render_params),
 		Graphic::Group(group) => render_group_vello(group, reach, scene, transform, context, render_params),
 		_ => element.render_to_vello(scene, transform, context, render_params),
 	}
@@ -834,7 +834,7 @@ fn collect_element_metadata<'a>(
 		metadata.upstream_footprints.insert(element_id, footprint);
 		match element {
 			Graphic::Group(group) => collect_group_row_metadata(group, metadata, element_id),
-			Graphic::Graphic(_) => {}
+			Graphic::GraphicList(_) => {}
 			// A leaf's layer identity and transform ride its containing lane.
 			Graphic::Vector(_) => {
 				metadata.first_element_source_id.insert(element_id, lane_source);
@@ -848,7 +848,7 @@ fn collect_element_metadata<'a>(
 
 	match element {
 		Graphic::None => {}
-		Graphic::Graphic(list) => collect_graphic_metadata_with(list, reach, metadata, footprint, element_id),
+		Graphic::GraphicList(list) => collect_graphic_metadata_with(list, reach, metadata, footprint, element_id),
 		Graphic::Vector(vector) => collect_vector_metadata(&Single(vector), reach.appearance, metadata, footprint, element_id),
 		Graphic::RasterCPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::RasterGPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
@@ -891,7 +891,7 @@ fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, elem
 fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
 	match element {
 		Graphic::None => (),
-		Graphic::Graphic(list) => add_graphic_upstream_click_targets_with(list, reach, click_targets),
+		Graphic::GraphicList(list) => add_graphic_upstream_click_targets_with(list, reach, click_targets),
 		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(vector), reach.appearance, click_targets),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(click_targets),
 		Graphic::Color(_) => {}
@@ -904,7 +904,7 @@ fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReac
 fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
 	match element {
 		Graphic::None => (),
-		Graphic::Graphic(list) => add_graphic_upstream_outline_targets_with(list, reach, outlines),
+		Graphic::GraphicList(list) => add_graphic_upstream_outline_targets_with(list, reach, outlines),
 		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(vector), reach.appearance, outlines),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(outlines),
 		Graphic::Color(_) => {}
@@ -1856,7 +1856,7 @@ fn render_vector_item_vello<S: LaneSource<Element = Vector>>(
 					let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 				}
-				Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) | Graphic::Group(_) => {
+				Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) | Graphic::Group(_) => {
 					scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 					paint.render_to_vello(scene, multiplied_transform, context, render_params);
 					scene.pop_layer();
@@ -1941,7 +1941,7 @@ fn render_vector_item_vello<S: LaneSource<Element = Vector>>(
 
 					scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 				}
-				Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) | Graphic::Group(_) => {
+				Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) | Graphic::Group(_) => {
 					let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 					scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
@@ -3015,7 +3015,7 @@ pub fn graphic_list_bounding_box<'e, S: LaneSource<Element = Graphic<'e>>>(sourc
 		let Some(graphic) = source.element(index) else { continue };
 		let bounds = match graphic {
 			Graphic::Text(text) => text_list_bounding_box(&Single(text), item_transform),
-			Graphic::Graphic(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
+			Graphic::GraphicList(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
 			other => other.thumbnail_bounding_box(item_transform, true),
 		};
 		match bounds {
@@ -3462,7 +3462,7 @@ mod group_walk_tests {
 
 	/// The appearance the fill node stamps, so test content mirrors node output.
 	fn fill_appearance(paint: &List<Graphic<'static>>) -> Appearance {
-		Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(paint.clone()))
+		Appearance::new_single(Coverage::new_fill(), Graphic::GraphicList(paint.clone()))
 	}
 
 	fn rendered_svg(render: impl FnOnce(&mut SvgRender)) -> (String, String) {
@@ -3506,7 +3506,7 @@ mod group_walk_tests {
 
 		let params = RenderParams::default();
 		let native = rendered_svg(|render| Graphic::Group(group.clone()).render_svg(render, &params));
-		let legacy = rendered_svg(|render| Graphic::Graphic(graphic_types::graphic::group_to_legacy_list(&group)).render_svg(render, &params));
+		let legacy = rendered_svg(|render| Graphic::GraphicList(graphic_types::graphic::group_to_legacy_list(&group)).render_svg(render, &params));
 
 		assert!(native.0.contains(r##"fill="#"##), "the lane's fill paint must reach the vector interior: {}", native.0);
 		assert_eq!(native, legacy);

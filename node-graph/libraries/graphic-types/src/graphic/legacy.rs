@@ -49,14 +49,14 @@ pub fn map_groups_to_legacy<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 	match graphic {
 		Graphic::None => Graphic::None,
 		Graphic::Group(group) => group_to_legacy_graphic(group),
-		Graphic::Graphic(children) => {
+		Graphic::GraphicList(children) => {
 			let mut out = List::new();
 			for item in children.clone().into_iter() {
 				let (element, attributes) = item.into_parts();
 				out.push(Item::from_parts(map_groups_to_legacy(&element), attributes));
 			}
 			map_paint_attrs_to_legacy(&mut out);
-			Graphic::Graphic(out)
+			Graphic::GraphicList(out)
 		}
 		Graphic::Vector(vector) => Graphic::Vector(vector.clone()),
 		Graphic::RasterCPU(raster) => Graphic::RasterCPU(raster.clone()),
@@ -81,10 +81,10 @@ pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic<'st
 			.or_else(|| run_to_legacy_list::<Gradient>(item).map(|list| detable_items(list, Graphic::Gradient)))
 			.or_else(|| run_to_legacy_list::<String>(item).map(|list| detable_items(list, Graphic::Text)));
 		if let Some(typed) = typed {
-			return Graphic::Graphic(typed);
+			return Graphic::GraphicList(typed);
 		}
 	}
-	Graphic::Graphic(group_to_legacy_list(group))
+	Graphic::GraphicList(group_to_legacy_list(group))
 }
 
 /// The group as a legacy `List<Graphic>`: a `Graphic` run becomes the items,
@@ -122,7 +122,7 @@ mod run_tests {
 		// SAFETY: the erased native list serves only while `source` is live; the
 		// deep glue under test replaces its borrows at the copy-out seam.
 		let paint = unsafe { core_types::record::erase_static(native_group_paint(&inner_vector, &source)) };
-		let appearance = Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(paint.clone()));
+		let appearance = Appearance::new_single(Coverage::new_fill(), Graphic::GraphicList(paint.clone()));
 
 		let vector = unit_square_at(DVec2::new(4., 4.));
 		let mut builder = RunBuilder::new(&source, element_write_hashed::<Vector>(), &[FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
@@ -137,7 +137,7 @@ mod run_tests {
 
 		let served = legacy.attribute::<Appearance>(ATTR_APPEARANCE, 0).expect("the appearance rides the list");
 		let cell = served.paint_at(0).expect("the fill coverage keeps its paint");
-		let Graphic::Graphic(cell_rows) = cell else { panic!("the paint cell keeps the list form") };
+		let Graphic::GraphicList(cell_rows) = cell else { panic!("the paint cell keeps the list form") };
 		assert_eq!(cell_rows.element(0).unwrap(), &expected);
 	}
 

@@ -361,7 +361,7 @@ fn flatten_vector_run_into<'a>(out: &mut List<Vector>, level: GraphicLevel<'a>, 
 		let composed = ancestors.through(&level, index);
 		match element {
 			Graphic::Vector(vector) => push_leaf_vector_row(out, level, index, vector, ancestors, reach),
-			Graphic::Graphic(children) => push_union(out, flatten_vector_run(GraphicLevel::Legacy(children), composed, reach)),
+			Graphic::GraphicList(children) => push_union(out, flatten_vector_run(GraphicLevel::Legacy(children), composed, reach)),
 			Graphic::Group(group) => flatten_group(out, group, composed, reach),
 			Graphic::Text(text) => {
 				let one = List::new_from_item(Item::from_parts(text.clone(), graphic_types::graphic::lane_attributes(level, index)));
@@ -491,7 +491,7 @@ mod tests {
 	/// The single-fill appearance a built row paints with.
 	fn fill_appearance(paint: List<Graphic<'static>>) -> Appearance {
 		use graphic_types::appearance::Coverage;
-		Appearance::new_single(Coverage::new_fill(), Graphic::Graphic(paint))
+		Appearance::new_single(Coverage::new_fill(), Graphic::GraphicList(paint))
 	}
 
 	#[test]
