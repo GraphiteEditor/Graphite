@@ -269,7 +269,7 @@ mod test_fill {
 		};
 
 		instrumented
-			.grab_all_input_level::<fill::FillInput, Color>(&editor.runtime)
+			.grab_all_input_level::<fill::PaintInput, Color>(&editor.runtime)
 			.flat_map(|list| list.iter_element_values().cloned().collect::<Vec<_>>())
 			.collect()
 	}
@@ -498,7 +498,7 @@ mod test_fill {
 		let ellipse_fill_id = get_fill_node_id_with_direct_fill_input(ellipse, &editor.active_document().network_interface).expect("the ellipse should have a Fill node");
 		editor.active_document_mut().network_interface.create_wire(
 			&OutputConnector::primary_output(shared_transform_id),
-			&InputConnector::node(ellipse_fill_id, graphene_std::vector::fill::FillInput),
+			&InputConnector::node(ellipse_fill_id, graphene_std::vector::fill::PaintInput),
 			&[],
 		);
 
@@ -518,7 +518,7 @@ mod test_fill {
 		assert_eq!(
 			document
 				.network_interface
-				.upstream_output_connector(&InputConnector::node(ellipse_fill_id, graphene_std::vector::fill::FillInput), &[])
+				.upstream_output_connector(&InputConnector::node(ellipse_fill_id, graphene_std::vector::fill::PaintInput), &[])
 				.and_then(|output| output.node_id()),
 			Some(shared_transform_id),
 			"the ellipse should keep being painted by the shared chain"

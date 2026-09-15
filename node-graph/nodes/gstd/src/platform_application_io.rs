@@ -6,8 +6,6 @@ use canvas_utils::{Canvas, CanvasHandle};
 use core_types::attribute::{Attr, OwnedAttr, Transform};
 use core_types::color::SRGBA8;
 use core_types::gpoll::GPoll;
-#[cfg(target_family = "wasm")]
-use core_types::list::List;
 
 #[cfg(target_family = "wasm")]
 use core_types::ATTR_TRANSFORM;
@@ -25,15 +23,9 @@ pub use graphene_canvas_utils as canvas_utils;
 #[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
 #[cfg(target_family = "wasm")]
-use graphic_types::IntoGraphicList;
-#[cfg(target_family = "wasm")]
-use graphic_types::Vector;
-#[cfg(target_family = "wasm")]
 use graphic_types::markers::EditorMergedLayers;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-#[cfg(target_family = "wasm")]
-use graphic_types::vector_types::gradient::Gradient;
 #[cfg(target_family = "wasm")]
 use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use std::sync::Arc;
@@ -204,23 +196,7 @@ fn create_canvas(_: impl Ctx) -> CanvasHandle {
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn rasterize<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(
-	_: impl Ctx,
-	_: (),
-	#[implementations(
-		Vector,
-		Raster<CPU>,
-		Graphic,
-		Color,
-		Gradient,
-	)]
-	mut data: IList<T>,
-	footprint: Footprint,
-	mut canvas: CanvasHandle,
-) -> (Raster<CPU>, Attr<Transform>, OwnedAttr<EditorMergedLayers>)
-where
-	List<T>: Render + Clone + IntoGraphicList,
-{
+async fn rasterize(_: impl Ctx, _: (), mut data: IList<Graphic<'static>>, footprint: Footprint, mut canvas: CanvasHandle) -> (Raster<CPU>, Attr<Transform>, OwnedAttr<EditorMergedLayers>) {
 	use glam::{DAffine2, DVec2};
 
 	if footprint.transform.matrix2.determinant() == 0. {
@@ -232,7 +208,7 @@ where
 	// Snapshot the input as a List<Graphic> so the renderer can recurse into the original child layers
 	// when collecting metadata, exposing their click targets to editor tools (same mechanism as Boolean Operation).
 	// The copy is owned before the first await: the input's arena content dies with the spawning evaluation.
-	let upstream_graphic_list = data.clone().into_graphic_list();
+	let upstream_graphic_list = data.clone();
 	let merged_layers = OwnedAttr::new(Some(&upstream_graphic_list));
 
 	let mut render = SvgRender::new();

@@ -103,6 +103,7 @@ pub struct DocumentMessageHandler {
 	pub properties_panel_collapsed_sections: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
+	#[serde(skip_deserializing, default)]
 	pub commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
 	pub document_ptz: PTZ,

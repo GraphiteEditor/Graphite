@@ -350,16 +350,16 @@ fn fill<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	/// The content with vector paths to apply the fill style to.
 	(element, content_appearance): (Vector, Attr<AppearanceMarker>),
-	/// The fill to paint the path with.
+	/// The paint to fill the path's interior with.
 	#[default(Color::BLACK)]
-	fill: IList<Graphic<'static>>,
+	paint: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
 	_backup_gradient: IList<Gradient>,
 	_gradient_form: GradientForm,
 	_has_transform: bool,
 	_transform: DAffine2,
 ) -> Result<(Vector, Attr<'e, AppearanceMarker>), Interrupt> {
-	let mut paint = paint_table(fill);
+	let mut paint = paint_table(paint);
 	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_form, _has_transform.then_some(_transform));
 	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint, CoverPlacement::Above);
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
@@ -372,7 +372,7 @@ fn fill<'e>(
 fn fill_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	(element, content_appearance): (Graphic<'static>, Attr<AppearanceMarker>),
-	#[default(Color::BLACK)] fill: IList<Graphic<'static>>,
+	#[default(Color::BLACK)] paint: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
 	_backup_gradient: IList<Gradient>,
 	_gradient_form: GradientForm,
@@ -383,7 +383,7 @@ fn fill_graphic_leveled<'e>(
 		RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		_ => None,
 	};
-	let mut paint = paint_table(fill);
+	let mut paint = paint_table(paint);
 	default_gradient_paint(&mut paint, bounds, _gradient_form, _has_transform.then_some(_transform));
 	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint, CoverPlacement::Above);
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
