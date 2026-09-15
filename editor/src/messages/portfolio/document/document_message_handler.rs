@@ -1836,7 +1836,8 @@ impl DocumentMessageHandler {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
 		viewport_polygon.apply_transform(document_to_viewport.inverse());
 
-		ClickXRayIter::new(&self.network_interface, XRayTarget::Polygon(viewport_polygon))
+		let polygon = BezPath::from_path_segments(viewport_polygon.iter_closed());
+		ClickXRayIter::new(&self.network_interface, XRayTarget::Path(polygon))
 	}
 
 	/// Runs an intersection test with all layers and a viewport space subpath; ignoring artboards
@@ -3791,7 +3792,6 @@ enum XRayTarget {
 	Point(DVec2),
 	Quad(Quad),
 	Path(BezPath),
-	Polygon(Subpath<PointId>),
 }
 
 /// The result for the [`ClickXRayIter`] on the layer
@@ -3891,10 +3891,6 @@ impl<'a> ClickXRayIter<'a> {
 			}
 			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_kurbo(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
-			XRayTarget::Polygon(polygon) => {
-				let polygon = BezPath::from_path_segments(polygon.iter_closed());
-				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
-			}
 		}
 	}
 }

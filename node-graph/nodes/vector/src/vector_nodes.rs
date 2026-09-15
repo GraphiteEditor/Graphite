@@ -4207,12 +4207,12 @@ mod test {
 	#[test]
 	fn bounding_box() {
 		let bounding_box = with_ctx(|ctx| super::bounding_box(ctx, Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))).unwrap());
-		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
+		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
-			.region_manipulator_groups()
+			.stroke_manipulator_groups()
 			.next()
 			.unwrap()
-			.1
+			.0
 			.iter()
 			.map(|manipulators| manipulators.anchor)
 			.collect::<Vec<DVec2>>();
@@ -4222,12 +4222,12 @@ mod test {
 		// The box spans local space, so a lane rotation leaves it unchanged
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let bounding_box = with_ctx(|ctx| super::bounding_box(ctx, square).unwrap());
-		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
+		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
-			.region_manipulator_groups()
+			.stroke_manipulator_groups()
 			.next()
 			.unwrap()
-			.1
+			.0
 			.iter()
 			.map(|manipulators| manipulators.anchor)
 			.collect::<Vec<DVec2>>();

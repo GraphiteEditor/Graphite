@@ -806,11 +806,9 @@ impl HandleExt for HandleId {
 
 #[cfg(test)]
 mod tests {
-	use kurbo::{PathSeg, QuadBez};
-
 	use super::*;
 
-	use crate::subpath::{Bezier, Subpath};
+	use crate::subpath::{Bezier, ManipulatorGroup, Subpath};
 
 	#[test]
 	fn modify_new() {
@@ -828,10 +826,11 @@ mod tests {
 		let subpaths = [
 			Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE),
 			Subpath::new_rectangle(DVec2::NEG_ONE, DVec2::ZERO),
-			Subpath::from_beziers(
-				&[
-					PathSeg::Quad(QuadBez::new(Point::new(0., 0.), Point::new(5., 10.), Point::new(10., 0.))),
-					PathSeg::Quad(QuadBez::new(Point::new(10., 0.), Point::new(15., 10.), Point::new(20., 0.))),
+			Subpath::new(
+				vec![
+					ManipulatorGroup::new(DVec2::new(0., 0.), None, None),
+					ManipulatorGroup::new(DVec2::new(10., 0.), Some(DVec2::new(5., 10.)), None),
+					ManipulatorGroup::new(DVec2::new(20., 0.), Some(DVec2::new(15., 10.)), None),
 				],
 				false,
 			),

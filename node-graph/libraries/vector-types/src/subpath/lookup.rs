@@ -14,7 +14,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	pub fn all_self_intersections(&self, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+	fn all_self_intersections(&self, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersections_vec = Vec::new();
 		let err = accuracy.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
 		let num_curves = self.len();

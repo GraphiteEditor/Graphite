@@ -9,7 +9,6 @@ mod transform;
 pub use core::*;
 use kurbo::PathSeg;
 use std::fmt::{Debug, Formatter, Result};
-use std::ops::{Index, IndexMut};
 pub use structs::*;
 
 /// Structure used to represent a path composed of [Bezier] curves.
@@ -25,22 +24,6 @@ pub struct SubpathIter<'a, PointId: Identifier> {
 	index: usize,
 	subpath: &'a Subpath<PointId>,
 	is_always_closed: bool,
-}
-
-impl<PointId: Identifier> Index<usize> for Subpath<PointId> {
-	type Output = ManipulatorGroup<PointId>;
-
-	fn index(&self, index: usize) -> &Self::Output {
-		assert!(index < self.len(), "Index out of bounds in trait Index of SubPath.");
-		&self.manipulator_groups[index]
-	}
-}
-
-impl<PointId: Identifier> IndexMut<usize> for Subpath<PointId> {
-	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		assert!(index < self.len(), "Index out of bounds in trait IndexMut of SubPath.");
-		&mut self.manipulator_groups[index]
-	}
 }
 
 impl<PointId: Identifier> Iterator for SubpathIter<'_, PointId> {
@@ -60,7 +43,7 @@ impl<PointId: Identifier> Iterator for SubpathIter<'_, PointId> {
 		let end_index = (self.index + 1) % self.subpath.len();
 		self.index += 1;
 
-		Some(self.subpath[start_index].to_bezier(&self.subpath[end_index]))
+		Some(self.subpath.manipulator_groups[start_index].to_bezier(&self.subpath.manipulator_groups[end_index]))
 	}
 }
 

@@ -74,7 +74,7 @@ pub mod math {
 	pub use core_types::math::quad;
 
 	pub mod math_ext {
-		pub use vector_types::{QuadExt, RectExt};
+		pub use vector_types::QuadExt;
 	}
 }
 

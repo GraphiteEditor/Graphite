@@ -464,7 +464,6 @@ macro_rules! tagged_value {
 					Type::Record(inner) => Self::from_type(inner),
 					Type::Concrete(concrete_type) => {
 						let name = concrete_type.name.as_ref();
-						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						if name == core_types::normalize_type_name(std::any::type_name::<()>()) { return Some(TaggedValue::None) }
 						// List-wrapped types need a single-item default with the element's default, not an empty list
@@ -732,7 +731,6 @@ impl TaggedValue {
 			Type::Concrete(concrete_type) => {
 				let ty = concrete_type.id?;
 				use std::any::TypeId;
-				// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 				// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 				let ty = match () {
 					() if ty == TypeId::of::<()>() => TaggedValue::None,

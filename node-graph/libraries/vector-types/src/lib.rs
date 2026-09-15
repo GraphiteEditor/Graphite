@@ -11,7 +11,7 @@ pub mod vector;
 pub use core_types as gcore;
 pub use gradient::{Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStop};
 pub use markers::{ATTR_EDITOR_CLICK_TARGET, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPREAD};
-pub use math::{QuadExt, RectExt};
+pub use math::QuadExt;
 pub use subpath::Subpath;
 pub use vector::Vector;
 pub use vector::reference_point::ReferencePoint;
