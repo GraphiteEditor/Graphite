@@ -1,3 +1,4 @@
+use crate::color::Color;
 use core::fmt::Display;
 use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
@@ -186,9 +187,22 @@ impl Display for BlendMode {
 	}
 }
 
+/// Composites `foreground` over `background` with the given blend mode, fading the result by `opacity`.
+#[inline(always)]
+pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
+	let target_color = match blend_mode {
+		// The alpha-only utility modes composite alpha directly, with no color mixing to fade
+		BlendMode::Erase => return background.alpha_subtract(foreground),
+		BlendMode::Restore => return background.alpha_add(foreground),
+		BlendMode::MultiplyAlpha => return background.alpha_multiply(foreground),
+		blend_mode => apply_blend_mode(foreground, background, blend_mode),
+	};
+
+	background.alpha_blend(target_color.apply_opacity(opacity))
+}
+
 /// Mixes the two colors by the blend mode's own formula, leaving the alpha compositing to the caller.
-pub fn apply_blend_mode(foreground: crate::color::Color, background: crate::color::Color, blend_mode: BlendMode) -> crate::color::Color {
-	use crate::color::Color;
+pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendMode) -> Color {
 	match blend_mode {
 		// Normal group
 		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
@@ -230,7 +244,6 @@ pub fn apply_blend_mode(foreground: crate::color::Color, background: crate::colo
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::color::Color;
 
 	#[test]
 	fn overlay_is_hard_light_with_swapped_operands() {
