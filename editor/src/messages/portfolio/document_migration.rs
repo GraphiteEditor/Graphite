@@ -2201,13 +2201,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		let output_level = |index: usize, default: f32| match old_inputs.get(index).and_then(|input| input.as_value()) {
+			Some(TaggedValue::F32(percent)) => percent / 100.,
+			_ => default,
+		};
+		let (output_minimums, output_maximums) = (output_level(4, 0.), output_level(5, 1.));
 		for (index, input) in old_inputs.iter().take(6).enumerate() {
 			let input = match (index, input.as_value()) {
 				(2, Some(TaggedValue::F32(percent))) => {
 					// The old node's midtones-to-gamma mapping, from https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
-					let midtones = percent / 100.;
+					let midtones = output_minimums + (output_maximums - output_minimums) * percent / 100.;
 					let gamma = if midtones < 0.5 { 1. + 9. * (1. - midtones * 2.) } else { ((1. - midtones) * 2.).max(0.01) };
-					NodeInput::value(TaggedValue::F32(gamma.clamp(0.1, 9.99)), input.is_exposed())
+					NodeInput::value(TaggedValue::F32(gamma.clamp(0.01, 9.99)), input.is_exposed())
 				}
 				_ => input.clone(),
 			};

@@ -1588,8 +1588,9 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 		floor = *position;
 	}
 	for i in 0..marker_positions.len() {
-		if marker_between[i] && i > 0 && i + 1 < marker_positions.len() {
-			let (left, right) = (marker_positions[i - 1], marker_positions[i + 1]);
+		if marker_between[i] {
+			let left = if i == 0 { 0. } else { marker_positions[i - 1] };
+			let right = marker_positions.get(i + 1).copied().unwrap_or(1.);
 			marker_positions[i] = left + marker_positions[i] * (right - left);
 		}
 	}
