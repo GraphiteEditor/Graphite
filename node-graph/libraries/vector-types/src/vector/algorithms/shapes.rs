@@ -260,6 +260,41 @@ pub fn spiral_bezpath(a: f64, outer_radius: f64, turns: f64, start_angle: f64, d
 	bezpath_from_anchors(&anchors, false)
 }
 
+/// Constructs a teardrop with `corner1` and `corner2` as the two corners of the bounding box.
+pub fn teardrop_bezpath(corner1: DVec2, corner2: DVec2, velocity: f64) -> BezPath {
+	let size = (corner1 - corner2).abs();
+
+	// the bottom half of the teardrop is a circle, upon which these calculations are heavily based
+	let circle_center = DVec2::new((corner1.x + corner2.x) / 2., (corner1.y + (2. * velocity - 1.) * corner2.y) / (2. * velocity));
+
+	let top = DVec2::new(circle_center.x, corner1.y);
+	let bottom = DVec2::new(circle_center.x, corner2.y);
+	let left = DVec2::new(corner1.x, circle_center.y);
+	let right = DVec2::new(corner2.x, circle_center.y);
+
+	// because we modify the dimensions vertically, the handle_offset remains the same as
+	// for a circle *horizontally*, but the vertical handle_offset must be adjusted
+	let horizontal_handle_offset = size * HANDLE_OFFSET_FACTOR * 0.5;
+	let vertical_handle_offset = horizontal_handle_offset / velocity;
+
+	// I've found that the teardrop looks better when its sides go up a little steeper than they go down
+	let roundness_multiplier = 1.6;
+	let roundness = vertical_handle_offset * roundness_multiplier;
+
+	// both handles for the top point of the teardrop, to make it pointier
+	let point_handle_multiplier = 0.28;
+	let point_handles = Some(top + size * point_handle_multiplier * DVec2::Y);
+
+	let anchors = [
+		Anchor::new(top, point_handles, point_handles),
+		Anchor::new(right, Some(right - roundness * DVec2::Y), Some(right + vertical_handle_offset * DVec2::Y)),
+		Anchor::new(bottom, Some(bottom + horizontal_handle_offset * DVec2::X), Some(bottom - horizontal_handle_offset * DVec2::X)),
+		Anchor::new(left, Some(left + vertical_handle_offset * DVec2::Y), Some(left - roundness * DVec2::Y)),
+	];
+
+	bezpath_from_anchors(&anchors, true)
+}
+
 pub fn calculate_growth_factor(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
 	match spiral_type {
 		SpiralType::Archimedean => {

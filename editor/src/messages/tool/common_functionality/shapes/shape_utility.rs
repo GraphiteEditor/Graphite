@@ -33,6 +33,7 @@ pub enum ShapeType {
 	Circle,
 	Arc,
 	Spiral,
+	Teardrop,
 	Grid,
 	Arrow,
 	Line,      // KEEP THIS AT THE END
@@ -48,6 +49,7 @@ impl ShapeType {
 		ShapeType::Circle,
 		ShapeType::Arc,
 		ShapeType::Spiral,
+		ShapeType::Teardrop,
 		ShapeType::Grid,
 		ShapeType::Arrow,
 		ShapeType::Line,      // KEEP THIS AT THE END
@@ -58,7 +60,10 @@ impl ShapeType {
 	/// True if this shape mode's fill checkbox is ticked by default when nothing is selected.
 	/// Spiral/Grid/Line are open paths and default to fill-off, the closed shapes default to fill-on.
 	pub fn defaults_to_fill(&self) -> bool {
-		matches!(self, Self::Polygon | Self::Star | Self::Circle | Self::Arc | Self::Rectangle | Self::Ellipse | Self::Arrow)
+		matches!(
+			self,
+			Self::Polygon | Self::Star | Self::Circle | Self::Arc | Self::Rectangle | Self::Ellipse | Self::Arrow | Self::Teardrop
+		)
 	}
 
 	pub fn name(&self) -> String {
@@ -68,6 +73,7 @@ impl ShapeType {
 			Self::Circle => "Circle",
 			Self::Arc => "Arc",
 			Self::Spiral => "Spiral",
+			Self::Teardrop => "Teardrop",
 			Self::Grid => "Grid",
 			Self::Arrow => "Arrow",
 			Self::Line => "Line",           // KEEP THIS AT THE END
