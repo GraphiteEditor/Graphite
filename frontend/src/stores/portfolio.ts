@@ -3,7 +3,7 @@ import { SvelteMap } from "svelte/reactivity";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
+import { acceptStringFromFilters, downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
 import { rasterizeSVG } from "/src/utility-functions/rasterization";
 import { patchLayout } from "/src/utility-functions/widgets";
 import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -93,14 +93,13 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		}
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerOpen", async () => {
-		const files = await upload(`image/*,.${editor.fileExtension()},.${editor.gddFileExtension()}`, "data", true);
+	subscriptions.subscribeFrontendMessage("TriggerOpen", async ({ filters }) => {
+		const files = await upload(acceptStringFromFilters(filters), "data", true);
 		files.forEach((file) => editor.openFile(file.filename, file.content));
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerImport", async () => {
-		// TODO: Use the same `accept` string as in the `TriggerOpen` handler once importing Graphite documents as nodes is supported
-		const data = await upload("image/*", "data");
+	subscriptions.subscribeFrontendMessage("TriggerImport", async ({ filters }) => {
+		const data = await upload(acceptStringFromFilters(filters), "data");
 		editor.importFile(data.filename, data.content);
 	});
 
