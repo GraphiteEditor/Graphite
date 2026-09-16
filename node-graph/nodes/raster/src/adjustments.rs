@@ -622,7 +622,8 @@ fn black_and_white<T: Adjust<Color>>(
 	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
-	#[default(Color::BLACK)] tint: Item<Color>,
+	use_tint: Item<bool>,
+	#[default("#e1d3b3")] tint: Item<Color>,
 	#[default(40.)]
 	#[range]
 	#[soft(-200..300)]
@@ -650,6 +651,7 @@ fn black_and_white<T: Adjust<Color>>(
 ) -> Item<T> {
 	let mut image = image;
 	let tint = tint.into_element();
+	let use_tint = use_tint.into_element();
 	let reds = reds.into_element();
 	let yellows = yellows.into_element();
 	let greens = greens.into_element();
@@ -685,18 +687,17 @@ fn black_and_white<T: Adjust<Color>>(
 			yellow_part * yellows + (red_part - yellow_part) * reds + (green_part - yellow_part) * greens
 		};
 
-		let luminance = gray_base + additional;
+		let luminance = (gray_base + additional).clamp(0., 1.);
+		if !use_tint {
+			return Color::from_gamma_srgb_channels(luminance, luminance, luminance, alpha_part);
+		}
 
-		// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
-		// Apply luminance substitution in gamma space
-		let [tr, tg, tb, _] = tint.to_gamma_srgb_channels();
-		let tint_luma_rec_601 = 0.3 * tr + 0.59 * tg + 0.11 * tb;
-		let delta = luminance - tint_luma_rec_601;
-		let result_r = (tr + delta).clamp(0., 1.);
-		let result_g = (tg + delta).clamp(0., 1.);
-		let result_b = (tb + delta).clamp(0., 1.);
+		// The tint takes on the gray's luminosity the way the Luminosity blend mode would
+		let [tint_r, tint_g, tint_b, _] = tint.to_gamma_srgb_channels();
+		let tint_luma = luma_rec_601_fixed_point(tint_r, tint_g, tint_b);
+		let [tinted_r, tinted_g, tinted_b] = set_luminosity(tint_r, tint_g, tint_b, tint_luma, luminance);
 
-		Color::from_gamma_srgb_channels(result_r, result_g, result_b, alpha_part)
+		Color::from_gamma_srgb_channels(tinted_r, tinted_g, tinted_b, alpha_part)
 	});
 	image
 }
@@ -1911,7 +1912,7 @@ fn photo_filter<T: Adjust<Color>>(
 	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
-	#[default("ec8a00")] color: Item<Color>,
+	#[default("#ec8a00")] color: Item<Color>,
 	#[default(25.)] density: Item<PercentageF32>,
 	#[default(true)] preserve_luminosity: Item<bool>,
 ) -> Item<T> {
@@ -1937,7 +1938,7 @@ fn photo_filter<T: Adjust<Color>>(
 		let mut b = linear_to_srgb(filtered[2].clamp(0., 1.));
 
 		if preserve_luminosity {
-			[r, g, b] = set_luminosity(r, g, b, luma_rec_601_fixed(r, g, b), luma_rec_601_fixed(r_in, g_in, b_in));
+			[r, g, b] = set_luminosity(r, g, b, luma_rec_601_fixed_point(r, g, b), luma_rec_601_fixed_point(r_in, g_in, b_in));
 		}
 
 		Color::from_gamma_srgb_channels(r, g, b, alpha)
@@ -1959,7 +1960,7 @@ fn multiply_matrix(matrix: &[[f32; 3]; 3], vector: [f32; 3]) -> [f32; 3] {
 }
 
 /// The Rec. 601 luma in the 14-bit fixed point that PSD interop depends on.
-fn luma_rec_601_fixed(r: f32, g: f32, b: f32) -> f32 {
+fn luma_rec_601_fixed_point(r: f32, g: f32, b: f32) -> f32 {
 	(4915. * r + 9667. * g + 1802. * b) / 16384.
 }
 
@@ -2157,6 +2158,61 @@ mod tests {
 			let [red_actual, green_actual] = run_levels(value, composite, red);
 			assert!((red_actual - expected_red).abs() <= 1.5, "{value} red: expected {expected_red}, got {red_actual}");
 			assert!((green_actual - expected_green).abs() <= 1.5, "{value} green: expected {expected_green}, got {green_actual}");
+		}
+	}
+
+	/// Runs Black & White with the default sliders on one gamma-space RGB value (0..255) and returns the gamma-space result on the same scale.
+	fn run_black_and_white(input: [f32; 3], tint: [f32; 3]) -> [f32; 3] {
+		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
+		let tint = Color::from_gamma_srgb_channels(tint[0] / 255., tint[1] / 255., tint[2] / 255., 1.);
+		let result = black_and_white(
+			(),
+			Item::new_from_element(pixel),
+			true.into(),
+			tint.into(),
+			40_f32.into(),
+			60_f32.into(),
+			40_f32.into(),
+			60_f32.into(),
+			20_f32.into(),
+			80_f32.into(),
+		);
+		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		[r * 255., g * 255., b * 255.]
+	}
+
+	#[test]
+	fn black_and_white_tint_takes_the_grays_luminosity() {
+		for (input, tint, expected) in [
+			([200., 200., 200.], [225., 211., 179.], [213., 199., 167.]),
+			([50., 50., 50.], [225., 211., 179.], [63., 49., 17.]),
+			([200., 100., 50.], [225., 211., 179.], [133., 119., 87.]),
+			([200., 200., 200.], [30., 60., 120.], [176., 202., 255.]),
+			([50., 50., 50.], [30., 60., 120.], [22., 52., 112.]),
+			([200., 100., 50.], [30., 60., 120.], [92., 122., 182.]),
+		] {
+			let actual = run_black_and_white(input, tint);
+			for (actual, expected) in actual.iter().zip(expected) {
+				assert!((actual - expected).abs() <= 1., "{input:?} tinted {tint:?}: expected {expected}, got {actual}");
+			}
+		}
+	}
+
+	#[test]
+	fn black_and_white_clipped_channels_are_pulled_toward_the_luminosity() {
+		// A pure red tint over grays, where the shifted channels run out of range
+		for (gray, expected) in [
+			(1., [3.33, 0., 0.]),
+			(38., [126.67, 0., 0.]),
+			(75., [250.01, 0., 0.]),
+			(78., [255., 2.15, 2.15]),
+			(129., [255., 75., 75.]),
+			(200., [255., 176.43, 176.43]),
+		] {
+			let actual = run_black_and_white([gray, gray, gray], [255., 0., 0.]);
+			for (actual, expected) in actual.iter().zip(expected) {
+				assert!((actual - expected).abs() <= 0.51, "gray {gray} tinted red: expected {expected}, got {actual}");
+			}
 		}
 	}
 

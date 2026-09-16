@@ -2266,6 +2266,22 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 51;
 	}
 
+	// Black & White gained a Use Tint toggle ahead of its tint color; a non-black tint used to be the only way to tint
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::black_and_white::IDENTIFIER) && inputs_count == 8 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		for (index, input) in old_inputs.iter().enumerate().skip(1).take(7) {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index + 1), input.clone(), network_path);
+		}
+		let use_tint = !matches!(old_inputs[1].as_value(), Some(TaggedValue::Color(color)) if *color == Color::BLACK);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Bool(use_tint), false), network_path);
+		inputs_count = 9;
+	}
+
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) && inputs_count == 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
