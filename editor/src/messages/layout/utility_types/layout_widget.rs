@@ -470,7 +470,7 @@ impl LayoutGroup {
 				| Widget::ParameterExposeButton(_)
 				| Widget::ColorComparisonInput(_)
 				| Widget::ColorPresetsInput(_)
-				| Widget::SpectrumInput(_)
+				| Widget::SliderInput(_)
 				| Widget::TransferCurveInput(_)
 				| Widget::VisualColorPickersInput(_) => continue,
 			};
@@ -823,7 +823,7 @@ pub enum Widget {
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),
-	SpectrumInput(SpectrumInput),
+	SliderInput(SliderInput),
 	TextAreaInput(TextAreaInput),
 	TextButton(TextButton),
 	TextInput(TextInput),
@@ -888,7 +888,7 @@ impl DiffUpdate {
 				| Widget::WorkingColorsInput(_)
 				| Widget::ColorComparisonInput(_)
 				| Widget::ColorPresetsInput(_)
-				| Widget::SpectrumInput(_)
+				| Widget::SliderInput(_)
 				| Widget::TransferCurveInput(_)
 				| Widget::VisualColorPickersInput(_) => None,
 			};
