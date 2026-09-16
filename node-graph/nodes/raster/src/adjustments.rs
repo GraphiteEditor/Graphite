@@ -1,7 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::adjust::Adjust;
-use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
 #[cfg(feature = "std")]
 use core_types::list::{Item, List};
@@ -82,11 +81,7 @@ pub enum DesaturateMethod {
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn desaturate<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
 	method: Item<DesaturateMethod>,
@@ -130,11 +125,7 @@ fn desaturate<T: Adjust<Color>>(
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
 	#[default(2.2)]
@@ -156,11 +147,7 @@ fn gamma_correction<T: Adjust<Color>>(
 #[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
 fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
 	channel: Item<RedGreenBlueAlpha>,
@@ -183,11 +170,7 @@ fn extract_channel<T: Adjust<Color>>(
 #[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
 fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
 ) -> Item<T> {
@@ -196,35 +179,98 @@ fn make_opaque<T: Adjust<Color>>(
 	input
 }
 
-// TODO: Remove this once GPU shader nodes are able to support the non-classic algorithm
-// TODO: Maybe re-add the "Raster: Adjustment" category to make this user-facing if we care to make this not just for testing
-#[node_macro::node(name("Brightness/Contrast Classic"), category(""), properties("brightness_contrast_properties"), shader_node(PerPixelAdjust))]
-fn brightness_contrast_classic<T: Adjust<Color>>(
-	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
-	#[gpu_image]
-	input: Item<T>,
-	brightness: Item<SignedPercentageF32>,
-	contrast: Item<SignedPercentageF32>,
-) -> Item<T> {
-	let mut input = input;
-	let brightness = brightness.into_element();
-	let contrast = contrast.into_element();
+/// Remaps a gamma-space channel through the stages of a Levels adjustment: the input range, the midtones gamma, and the output range.
+fn apply_levels(value: f32, input_shadows: f32, input_highlights: f32, inverse_gamma: f32, output_minimum: f32, output_maximum: f32) -> f32 {
+	let highlights_minus_shadows = (input_highlights - input_shadows).clamp(f32::EPSILON, 1.);
+	let value = ((value - input_shadows).max(0.) / highlights_minus_shadows).min(1.);
+	let value = value.powf(inverse_gamma);
 
-	let brightness = brightness / 255.;
+	value * (output_maximum - output_minimum) + output_minimum
+}
 
-	let contrast = contrast / 100.;
-	let contrast = if contrast > 0. { (contrast * core::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
+/// The classic Brightness/Contrast algorithm: a Levels remap around the pivot, adding the brightness before a positive
+/// contrast stretch and after a negative contrast squeeze.
+fn brightness_contrast_classic(value: f32, brightness: f32, contrast: f32, pivot: f32) -> f32 {
+	// Full contrast is a hard step, sending values at the pivot or above to white (with half a 16-bit step of slack for float ties)
+	if contrast >= 1. {
+		return if value + brightness >= pivot - 1. / 65536. { 1. } else { 0. };
+	}
 
-	let offset = brightness * contrast + brightness - contrast / 2.;
+	let result = if contrast > 0. {
+		let input_shadows = pivot * contrast - brightness;
+		apply_levels(value, input_shadows, input_shadows + 1. - contrast, 1., 0., 1.)
+	} else {
+		let output_minimum = brightness - pivot * contrast;
+		apply_levels(value, 0., 1., 1., output_minimum, output_minimum + 1. + contrast)
+	};
 
-	input.element_mut().adjust(|color| color.map_gamma_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)));
+	result.clamp(0., 1.)
+}
 
-	input
+/// One brightness curve of the current algorithm, for a magnitude in 0..100: a line of slope 2^(b/110) up to an output of 0.5,
+/// continued by a cubic Hermite segment that eases into (1, 1).
+struct BrightnessCurve {
+	slope: f32,
+	knee: f32,
+	end_slope: f32,
+}
+
+impl BrightnessCurve {
+	fn new(brightness: f32) -> Self {
+		let slope = 2_f32.powf(brightness / 110.);
+		let knee = 0.5 / slope;
+		let end_slope = (1. / (1. + 12. * (slope - 1.))).max(0.1);
+
+		Self { slope, knee, end_slope }
+	}
+
+	/// Evaluates the Hermite segment at its parameter t in 0..1, returning the value and its derivative with respect to x.
+	fn hermite(&self, t: f32) -> (f32, f32) {
+		let length = 1. - self.knee;
+		let start_tangent = length * self.slope;
+		let end_tangent = length * self.end_slope;
+		let t2 = t * t;
+		let t3 = t2 * t;
+
+		let value = (2. * t3 - 3. * t2 + 1.) * 0.5 + (t3 - 2. * t2 + t) * start_tangent + (-2. * t3 + 3. * t2) + (t3 - t2) * end_tangent;
+		let derivative = ((6. * t2 - 6. * t) * 0.5 + (3. * t2 - 4. * t + 1.) * start_tangent + (-6. * t2 + 6. * t) + (3. * t2 - 2. * t) * end_tangent) / length;
+
+		(value, derivative)
+	}
+
+	fn forward(&self, x: f32) -> f32 {
+		if x < self.knee {
+			return self.slope * x;
+		}
+
+		let t = ((x - self.knee) / (1. - self.knee)).min(1.);
+		self.hermite(t).0.min(1.)
+	}
+
+	/// Inverts the curve, solving the monotone Hermite segment with a bracketed Newton iteration.
+	fn inverse(&self, y: f32) -> f32 {
+		if y <= 0.5 {
+			return y / self.slope;
+		}
+
+		let mut low = 0.;
+		let mut high = 1.;
+		let mut t = (y - 0.5) * 2.;
+		for _ in 0..8 {
+			let (value, derivative) = self.hermite(t);
+			let error = value - y;
+			if error > 0. {
+				high = t;
+			} else {
+				low = t;
+			}
+
+			let step = t - error / (derivative * (1. - self.knee));
+			t = if step >= low && step <= high { step } else { (low + high) * 0.5 };
+		}
+
+		self.knee + t * (1. - self.knee)
+	}
 }
 
 // Aims for interoperable compatibility with:
@@ -233,80 +279,48 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/brightness-contrast.html
-#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), cfg(feature = "std"))]
+//
+// TODO: A Lab-only mode once Graphite supports the CIE Lab color space.
+#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), shader_node(PerPixelAdjust))]
 fn brightness_contrast<T: Adjust<Color>>(
-	_ctx: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	_: impl Ctx,
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
 	brightness: Item<SignedPercentageF32>,
 	contrast: Item<SignedPercentageF32>,
 	use_classic: Item<bool>,
+	#[default(127.)] classic_pivot: Item<f32>,
 ) -> Item<T> {
-	let use_classic = use_classic.into_element();
-	if use_classic {
-		return brightness_contrast_classic(_ctx, input, brightness, contrast);
-	}
-
 	let mut input = input;
 	let brightness = brightness.into_element();
-	let contrast = contrast.into_element();
+	let contrast = contrast.into_element() / 100.;
+	let use_classic = use_classic.into_element();
+	let classic_pivot = classic_pivot.into_element() / 255.;
 
-	const WINDOW_SIZE: usize = 1024;
+	// Beyond a magnitude of 100, the curve for 100 is applied first and the curve for the remainder after it
+	let magnitude = brightness.abs().min(150.);
+	let first_curve = BrightnessCurve::new(magnitude.min(100.));
+	let second_curve = BrightnessCurve::new((magnitude - 100.).max(0.));
 
-	// Brightness LUT
-	let brightness_is_negative = brightness < 0.;
-	// We clamp the brightness before the two curve X-axis points `130 - brightness * 26` and `233 - brightness * 48` intersect.
-	// Beyond the point of intersection, the cubic spline fitting becomes invalid and fails an assertion, which we need to avoid.
-	// See the intersection of the red lines at x = 103/22*100 = 468.18182 in the graph: https://www.desmos.com/calculator/ekvz4zyd9c
-	let brightness = (brightness.abs() / 100.).min(103. / 22. - 0.00001);
-	let brightness_curve_points = CubicSplines {
-		x: [0., 130. - brightness * 26., 233. - brightness * 48., 255.].map(|x| x / 255.),
-		y: [0., 130. + brightness * 51., 233. + brightness * 10., 255.].map(|x| x / 255.),
-	};
-	let brightness_curve_solutions = brightness_curve_points.solve();
-	let mut brightness_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
-		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
-		brightness_curve_points.interpolate(x, &brightness_curve_solutions)
-	});
-	// Special handling for when brightness is negative
-	if brightness_is_negative {
-		brightness_lut = core::array::from_fn(|i| {
-			let mut x = i;
-			while x > 1 && brightness_lut[x] > i as f32 / WINDOW_SIZE as f32 {
-				x -= 1;
+	input.element_mut().adjust(|color| {
+		color.map_gamma_rgb(|c| {
+			if use_classic {
+				return brightness_contrast_classic(c, brightness / 255., contrast, classic_pivot);
 			}
-			x as f32 / WINDOW_SIZE as f32
-		});
-	}
 
-	// Contrast LUT
-	// Unlike with brightness, the X-axis points `64` and `192` don't intersect at any contrast value, because they are constants.
-	// So we don't have to worry about clamping the contrast value to avoid invalid cubic spline fitting.
-	// See the graph: https://www.desmos.com/calculator/iql9vsca56
-	let contrast = contrast / 100.;
-	let contrast_curve_points = CubicSplines {
-		x: [0., 64., 192., 255.].map(|x| x / 255.),
-		y: [0., 64. - contrast * 30., 192. + contrast * 30., 255.].map(|x| x / 255.),
-	};
-	let contrast_curve_solutions = contrast_curve_points.solve();
-	let contrast_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
-		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
-		contrast_curve_points.interpolate(x, &contrast_curve_solutions)
+			// Negative brightness runs the same curves in reverse
+			let brightened = if brightness >= 0. {
+				second_curve.forward(first_curve.forward(c))
+			} else {
+				first_curve.inverse(second_curve.inverse(c))
+			};
+
+			// Contrast pushes away from (or pulls toward) the midpoint, most strongly at the quarter tones
+			let contrasted = brightened + 0.76 * contrast * (2. * brightened - 1.) * brightened.min(1. - brightened);
+			contrasted.clamp(0., 1.)
+		})
 	});
-
-	// Composed brightness and contrast LUTs
-	let combined_lut = brightness_lut.map(|brightness| {
-		let index_in_contrast_lut = (brightness * (contrast_lut.len() - 1) as f32).round() as usize;
-		contrast_lut[index_in_contrast_lut]
-	});
-	let lut_max = (combined_lut.len() - 1) as f32;
-
-	input.element_mut().adjust(|color| color.map_gamma_rgb(|c| combined_lut[(c * lut_max).round() as usize]));
 
 	input
 }
@@ -611,11 +625,7 @@ fn points_to_transfer_curve(
 #[node_macro::node(name("Black & White"), category("Raster: Adjustment"), properties("black_and_white_properties"), shader_node(PerPixelAdjust))]
 fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
 	#[default(Color::BLACK)] tint: Item<Color>,
@@ -891,11 +901,7 @@ fn lightness_toward_max_or_min(rgb: [f32; 3], amount: f32) -> [f32; 3] {
 #[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), properties("hue_saturation_properties"), shader_node(PerPixelAdjust))]
 fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
 	hue: Item<AngleF32>,
@@ -1113,11 +1119,7 @@ fn hue_saturation<T: Adjust<Color>>(
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
 ) -> Item<T> {
@@ -1197,11 +1199,7 @@ async fn gradient_map<T: Adjust<Color> + Send>(
 #[node_macro::node(category("Raster: Adjustment"), properties("vibrance_properties"), shader_node(PerPixelAdjust))]
 fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
 	vibrance: Item<SignedPercentageF32>,
@@ -1395,11 +1393,7 @@ pub enum DomainWarpType {
 #[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), shader_node(PerPixelAdjust))]
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
 
@@ -1537,11 +1531,7 @@ pub enum SelectiveColorChoice {
 #[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), shader_node(PerPixelAdjust))]
 fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
 
@@ -1708,11 +1698,7 @@ fn selective_color<T: Adjust<Color>>(
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
 	#[default(4)]
@@ -1742,11 +1728,7 @@ fn posterize<T: Adjust<Color>>(
 #[node_macro::node(category("Raster: Adjustment"), properties("exposure_properties"), shader_node(PerPixelAdjust))]
 fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
+	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
 	exposure: Item<f32>,
@@ -1961,6 +1943,73 @@ mod tests {
 	fn assert_close_with_label(actual: [f32; 3], expected: [f32; 3], label: &str) {
 		for channel in 0..3 {
 			assert!((actual[channel] - expected[channel]).abs() <= 1.5, "{label}: expected {expected:?}, got {actual:?}");
+		}
+	}
+
+	/// Runs the node on one gamma-space gray value (0..255) and returns the gamma-space result on the same scale.
+	fn run_brightness_contrast(value: f32, brightness: f32, contrast: f32, use_classic: bool) -> f32 {
+		let pixel = Color::from_gamma_srgb_channels(value / 255., value / 255., value / 255., 1.);
+		let result = brightness_contrast((), Item::new_from_element(pixel), brightness.into(), contrast.into(), use_classic.into(), 127_f32.into());
+		result.into_element().to_gamma_srgb_channels()[0] * 255.
+	}
+
+	#[test]
+	fn brightness_contrast_curves_brightness_and_pivots_contrast_at_the_midpoint() {
+		for (value, brightness, contrast, expected) in [
+			(16., 100., 0., 30.),
+			(64., 100., 0., 120.),
+			(128., 100., 0., 209.),
+			(192., 100., 0., 245.),
+			(128., 20., 0., 145.),
+			(64., -100., 0., 34.),
+			(128., -100., 0., 68.),
+			(192., -100., 0., 111.),
+			(240., -100., 0., 177.),
+			(64., 150., 0., 162.),
+			(128., 150., 0., 239.),
+			(128., -150., 0., 50.),
+			(240., -150., 0., 131.),
+			(32., 0., 100., 14.),
+			(64., 0., 100., 40.),
+			(192., 0., 100., 216.),
+			(64., 0., -50., 76.),
+			(64., 0., 25., 58.),
+			(64., 50., 30., 81.),
+			(128., 50., 30., 178.),
+			(192., 50., 30., 233.),
+			(64., -60., -20., 48.),
+			(128., -60., -20., 92.),
+			(192., -60., -20., 139.),
+		] {
+			let actual = run_brightness_contrast(value, brightness, contrast, false);
+			assert!(
+				(actual - expected).abs() <= 1.,
+				"{value} at brightness {brightness}, contrast {contrast}: expected {expected}, got {actual}"
+			);
+		}
+	}
+
+	#[test]
+	fn brightness_contrast_classic_remaps_levels_around_the_pivot() {
+		for (value, brightness, contrast, expected) in [
+			(0., 0., -50., 64.),
+			(100., 0., -50., 114.),
+			(255., 0., -50., 191.),
+			(64., 0., 50., 1.),
+			(100., 0., 50., 73.),
+			(200., 0., 50., 255.),
+			(50., 40., 40., 65.),
+			(100., 40., 40., 148.),
+			(50., -40., -40., 41.),
+			(200., -40., -40., 131.),
+			(126., 0., 100., 0.),
+			(128., 0., 100., 255.),
+		] {
+			let actual = run_brightness_contrast(value, brightness, contrast, true);
+			assert!(
+				(actual - expected).abs() <= 1.,
+				"{value} at brightness {brightness}, contrast {contrast}: expected {expected}, got {actual}"
+			);
 		}
 	}
 

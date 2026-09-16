@@ -477,11 +477,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &[
 			"graphene_raster_nodes::adjustments::BrightnessContrastNode",
 			"graphene_core::raster::adjustments::BrightnessContrastNode",
+			"graphene_raster_nodes::adjustments::brightness_contrast_classic",
+			"graphene_raster_nodes::adjustments::BrightnessContrastClassicNode",
 		],
-	},
-	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::brightness_contrast_classic::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::adjustments::BrightnessContrastClassicNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::channel_mixer::IDENTIFIER,
@@ -2205,6 +2203,31 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
 		}
 		inputs_count = 3;
+	}
+
+	// The removed "Brightness/Contrast Classic" node had no Use Classic input, so its three inputs become the unified node with the toggle on
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::brightness_contrast::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(3).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+		inputs_count = 4;
+	}
+
+	// Brightness/Contrast gained the classic algorithm's pivot, whose default of 127 matches what PSD adjustment layers store
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::brightness_contrast::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(4).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		inputs_count = 5;
 	}
 
 	// Levels' Midtones became the gamma value it encoded, and each channel gained its own record after the composite one
