@@ -2095,18 +2095,16 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::vibrance::*;
 
-	let track = Gradient::from(vec![Color::MIDDLE_GRAY, Color::RED]);
-	vec![spectrum_slider_row(
-		node_id,
-		context,
-		VibranceInput,
-		track,
-		Color::WHITE,
-		-100.,
-		100.,
-		0.,
-		NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
-	)]
+	let number_input = NumberInput::default().mode_increment().unit("%").min(-100.).max(100.);
+	let slider = SliderRange {
+		min: -100.,
+		max: 100.,
+		default: Some(0.),
+	};
+	let vibrance = range_slider_widget(ParameterWidgetsInfo::new(node_id, VibranceInput, true, context), number_input.clone(), slider);
+	let saturation = range_slider_widget(ParameterWidgetsInfo::new(node_id, SaturationInput, true, context), number_input, slider);
+
+	vec![LayoutGroup::row(vibrance), LayoutGroup::row(saturation)]
 }
 
 pub(crate) fn color_balance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
