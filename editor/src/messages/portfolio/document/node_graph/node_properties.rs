@@ -1346,12 +1346,12 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 	})
 }
 
-/// 2-stop black-to-white gradient track for spectrum sliders that map a value to a grayscale axis.
+/// 2-stop black-to-white gradient track for sliders that map a value to a grayscale axis.
 fn bw_track() -> Gradient {
 	Gradient::from(vec![Color::BLACK, Color::WHITE])
 }
 
-/// 3-stop black-to-color-to-white gradient track for spectrum sliders that map a value to a hue's full luminance range.
+/// 3-stop black-to-color-to-white gradient track for sliders that map a value to a hue's full luminance range.
 fn color_track(color: Color) -> Gradient {
 	Gradient::from(vec![Color::BLACK, color, Color::WHITE])
 }
@@ -1369,7 +1369,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	let brightness_min = if use_classic_value { -100. } else { -150. };
 	let brightness_max = if use_classic_value { 100. } else { 150. };
 
-	let brightness = spectrum_slider_row(
+	let brightness = gradient_slider_row(
 		node_id,
 		context,
 		BrightnessInput,
@@ -1385,7 +1385,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	let zero_position = -contrast_min / (100. - contrast_min);
 	let mut contrast_track = Gradient::from(vec![Color::MIDDLE_GRAY, Color::BLACK, Color::MIDDLE_GRAY]);
 	contrast_track.set_positions(&[0., zero_position, 1.]);
-	let contrast = spectrum_slider_row(
+	let contrast = gradient_slider_row(
 		node_id,
 		context,
 		ContrastInput,
@@ -1402,7 +1402,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	let mut layout = vec![brightness, contrast, LayoutGroup::row(use_classic)];
 	if use_classic_value {
 		let number_input = NumberInput::default().mode_increment().min(0.).max(255.);
-		layout.push(spectrum_slider_row(node_id, context, ClassicPivotInput, bw_track(), Color::WHITE, 0., 255., 127., number_input));
+		layout.push(gradient_slider_row(node_id, context, ClassicPivotInput, bw_track(), Color::WHITE, 0., 255., 127., number_input));
 	}
 
 	layout
@@ -1481,22 +1481,22 @@ pub(crate) fn levels_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	};
 
 	let input_range_params = [
-		SpectrumSectionParam::new(shadows, Color::BLACK, 0., MarkerScale::Percent),
-		SpectrumSectionParam::new(midtones, Color::MIDDLE_GRAY, 1., MarkerScale::Gamma).between_neighbors(),
-		SpectrumSectionParam::new(highlights, Color::WHITE, 100., MarkerScale::Percent),
+		SliderSectionParam::new(shadows, Color::BLACK, 0., MarkerScale::Percent),
+		SliderSectionParam::new(midtones, Color::MIDDLE_GRAY, 1., MarkerScale::Gamma).between_neighbors(),
+		SliderSectionParam::new(highlights, Color::WHITE, 100., MarkerScale::Percent),
 	];
 	let output_range_params = [
-		SpectrumSectionParam::new(output_minimums, Color::BLACK, 0., MarkerScale::Percent),
-		SpectrumSectionParam::new(output_maximums, Color::WHITE, 100., MarkerScale::Percent),
+		SliderSectionParam::new(output_minimums, Color::BLACK, 0., MarkerScale::Percent),
+		SliderSectionParam::new(output_maximums, Color::WHITE, 100., MarkerScale::Percent),
 	];
 
 	let mut layout = vec![channel];
-	build_shared_spectrum_section(node_id, context, &bw_track(), &input_range_params, &mut layout);
-	build_shared_spectrum_section(node_id, context, &bw_track(), &output_range_params, &mut layout);
+	build_shared_slider_section(node_id, context, &bw_track(), &input_range_params, &mut layout);
+	build_shared_slider_section(node_id, context, &bw_track(), &output_range_params, &mut layout);
 	layout
 }
 
-/// How a shared spectrum marker's value maps onto its track.
+/// How a shared slider marker's value maps onto its track.
 #[derive(Clone, Copy)]
 enum MarkerScale {
 	/// A 0..100 percentage, placed linearly.
@@ -1545,8 +1545,8 @@ impl MarkerScale {
 	}
 }
 
-/// One parameter of a shared spectrum section and how its marker sits on the track.
-struct SpectrumSectionParam {
+/// One parameter of a shared slider section and how its marker sits on the track.
+struct SliderSectionParam {
 	parameter: ParameterRef,
 	handle_color: Color,
 	/// The value a double-click resets to.
@@ -1560,7 +1560,7 @@ struct SpectrumSectionParam {
 	between_neighbors: bool,
 }
 
-impl SpectrumSectionParam {
+impl SliderSectionParam {
 	fn new(parameter: impl Into<ParameterRef>, handle_color: Color, default_value: f64, scale: MarkerScale) -> Self {
 		Self {
 			parameter: parameter.into(),
@@ -1589,10 +1589,10 @@ impl SpectrumSectionParam {
 	}
 }
 
-/// Append a section of related parameters as rows: a shared spectrum over `track` (with one marker per non-exposed parameter) sits on the first non-exposed row
+/// Append a section of related parameters as rows: a shared slider over `track` (with one marker per non-exposed parameter) sits on the first non-exposed row
 /// alongside its 60px number input, and the remaining non-exposed rows show only their 60px number input. Exposed parameters render as the standard exposed-row display.
 /// Marker positions are clamped to non-decreasing display order so they never visually cross even if the underlying values do.
-fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesContext, track: &Gradient, params: &[SpectrumSectionParam], layout: &mut Vec<LayoutGroup>) {
+fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesContext, track: &Gradient, params: &[SliderSectionParam], layout: &mut Vec<LayoutGroup>) {
 	// Snapshot exposure and values before the mutable-borrow loop
 	let exposure_and_value: Vec<(bool, f64)> = match get_document_node(node_id, context) {
 		Ok(document_node) => params
@@ -1608,7 +1608,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 			})
 			.collect(),
 		Err(err) => {
-			log::error!("Could not get document node in build_shared_spectrum_section: {err}");
+			log::error!("Could not get document node in build_shared_slider_section: {err}");
 			return;
 		}
 	};
@@ -1655,12 +1655,12 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 		}
 	}
 
-	let spectrum_markers: Vec<SpectrumMarker> = marker_positions
+	let slider_markers: Vec<SliderMarker> = marker_positions
 		.iter()
 		.zip(&marker_colors_and_links)
 		.zip(&marker_between)
 		.map(|((&position, &(handle_color, paired, dashed)), &between)| {
-			let mut marker = SpectrumMarker::new(position, 0.5, handle_color);
+			let mut marker = SliderMarker::new(position, 0.5, handle_color);
 			if paired {
 				marker = marker.pair_with_next();
 			}
@@ -1674,11 +1674,11 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 		})
 		.collect();
 
-	// Build the shared spectrum widget (placed on the first non-exposed row)
-	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
-		SpectrumInput::new(GradientStops::from(track))
+	// Build the shared slider widget (placed on the first non-exposed row)
+	let slider_widget = (!slider_markers.is_empty()).then(|| {
+		SliderInput::new(GradientStops::from(track))
 			.track_space(GradientSpace::RgbGamma)
-			.markers(spectrum_markers)
+			.markers(slider_markers)
 			.show_midpoints(false)
 			.allow_insert(false)
 			.allow_delete(false)
@@ -1691,9 +1691,9 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 				let marker_scales = marker_scales.clone();
 				let marker_positions = marker_positions.clone();
 				let marker_between = marker_between.clone();
-				move |update: &SpectrumInputUpdate| {
+				move |update: &SliderInputUpdate| {
 					let i = match update {
-						SpectrumInputUpdate::MoveMarker { index, .. } | SpectrumInputUpdate::ResetMarker { index } => *index as usize,
+						SliderInputUpdate::MoveMarker { index, .. } | SliderInputUpdate::ResetMarker { index } => *index as usize,
 						_ => return Message::NoOp,
 					};
 					let (Some(&input_index), Some(&scale), Some(&between), Some(&default_position)) =
@@ -1709,17 +1709,17 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 					let right = (i + 1..marker_positions.len()).find(|&j| bounding(j)).map_or(1., |j| marker_positions[j]);
 
 					let scale_position = match update {
-						SpectrumInputUpdate::MoveMarker { position, .. } if between => {
+						SliderInputUpdate::MoveMarker { position, .. } if between => {
 							let span = right - left;
 							if span <= f64::EPSILON {
 								return Message::NoOp;
 							}
 							((position - left) / span).clamp(0., 1.)
 						}
-						SpectrumInputUpdate::MoveMarker { position, .. } => *position,
+						SliderInputUpdate::MoveMarker { position, .. } => *position,
 						// A default that would cross a neighbor falls back to the midpoint between them
-						SpectrumInputUpdate::ResetMarker { .. } if between || cyclic || (left..=right).contains(&default_position) => default_position,
-						SpectrumInputUpdate::ResetMarker { .. } => (left + right) / 2.,
+						SliderInputUpdate::ResetMarker { .. } if between || cyclic || (left..=right).contains(&default_position) => default_position,
+						SliderInputUpdate::ResetMarker { .. } => (left + right) / 2.,
 						_ => return Message::NoOp,
 					};
 					NodeGraphMessage::SetInputValue {
@@ -1733,9 +1733,9 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 			.on_commit(commit_value)
 			.widget_instance()
 	});
-	let spectrum_owner = marker_input_indices.first().copied();
+	let slider_owner = marker_input_indices.first().copied();
 
-	// One row per parameter: first non-exposed carries the shared spectrum, others get just a number input
+	// One row per parameter: first non-exposed carries the shared slider, others get just a number input
 	for (i, param) in params.iter().enumerate() {
 		let (exposed, current) = exposure_and_value[i];
 		let input_index = param.parameter.input_index;
@@ -1748,10 +1748,10 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 			let mut row = start_widgets(&ParameterWidgetsInfo::at_index(node_id, input_index, true, context));
 			row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
-			if Some(input_index) == spectrum_owner
-				&& let Some(spectrum) = &spectrum_widget
+			if Some(input_index) == slider_owner
+				&& let Some(slider) = &slider_widget
 			{
-				row.push(spectrum.clone());
+				row.push(slider.clone());
 				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			}
 
@@ -1898,7 +1898,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	let mut layout = vec![enum_choice::<HueSaturationRange>().for_socket(range_info).disabled(colorize_value).property_row()];
 
 	layout.extend([
-		spectrum_slider_row(
+		gradient_slider_row(
 			node_id,
 			context,
 			hue,
@@ -1909,7 +1909,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 			hue_default,
 			NumberInput::default().mode_increment().unit("°").min(hue_min).max(hue_max),
 		),
-		spectrum_slider_row(
+		gradient_slider_row(
 			node_id,
 			context,
 			saturation,
@@ -1920,7 +1920,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 			saturation_default,
 			NumberInput::default().mode_increment().unit("%").min(saturation_min).max(100.),
 		),
-		spectrum_slider_row(
+		gradient_slider_row(
 			node_id,
 			context,
 			lightness,
@@ -1937,12 +1937,12 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	if !colorize_value && let (Some(values), Some(defaults)) = (range_values, range_defaults) {
 		let [falloff_start, range_start, range_end, falloff_end] = values;
 		let params = [
-			SpectrumSectionParam::new(falloff_start, Color::WHITE, defaults[0], MarkerScale::Degrees).pair_with_next(),
-			SpectrumSectionParam::new(range_start, Color::WHITE, defaults[1], MarkerScale::Degrees).dash_to_next(),
-			SpectrumSectionParam::new(range_end, Color::WHITE, defaults[2], MarkerScale::Degrees).pair_with_next(),
-			SpectrumSectionParam::new(falloff_end, Color::WHITE, defaults[3], MarkerScale::Degrees),
+			SliderSectionParam::new(falloff_start, Color::WHITE, defaults[0], MarkerScale::Degrees).pair_with_next(),
+			SliderSectionParam::new(range_start, Color::WHITE, defaults[1], MarkerScale::Degrees).dash_to_next(),
+			SliderSectionParam::new(range_end, Color::WHITE, defaults[2], MarkerScale::Degrees).pair_with_next(),
+			SliderSectionParam::new(falloff_end, Color::WHITE, defaults[3], MarkerScale::Degrees),
 		];
-		build_shared_spectrum_section(node_id, context, &hue_track, &params, &mut layout);
+		build_shared_slider_section(node_id, context, &hue_track, &params, &mut layout);
 	}
 
 	let colorize = bool_widget(ParameterWidgetsInfo::new(node_id, ColorizeInput, true, context), CheckboxInput::default());
@@ -1951,7 +1951,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	layout
 }
 
-/// A single-marker `SpectrumInput` over `track` driving the number at `input_index`: the marker sits at `position`, double-click
+/// A single-marker `SliderInput` over `track` driving the number at `input_index`: the marker sits at `position`, double-click
 /// returns it to `default_position`, and each move sets the input to `value_at` the new position.
 fn value_slider(
 	node_id: NodeId,
@@ -1961,18 +1961,18 @@ fn value_slider(
 	position: f64,
 	default_position: Option<f64>,
 	value_at: impl Fn(f64) -> TaggedValue + 'static + Send + Sync,
-) -> SpectrumInput {
-	SpectrumInput::new(track)
+) -> SliderInput {
+	SliderInput::new(track)
 		.track_space(GradientSpace::RgbGamma)
-		.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
+		.markers(vec![SliderMarker::new(position, 0.5, handle_color)])
 		.show_midpoints(false)
 		.allow_insert(false)
 		.allow_delete(false)
 		.allow_reorder(false)
-		.on_update(move |update: &SpectrumInputUpdate| {
+		.on_update(move |update: &SliderInputUpdate| {
 			let new_position = match update {
-				SpectrumInputUpdate::MoveMarker { index: 0, position } => Some(*position),
-				SpectrumInputUpdate::ResetMarker { index: 0 } => default_position,
+				SliderInputUpdate::MoveMarker { index: 0, position } => Some(*position),
+				SliderInputUpdate::ResetMarker { index: 0 } => default_position,
 				_ => None,
 			};
 			let Some(new_position) = new_position else { return Message::NoOp };
@@ -2048,8 +2048,8 @@ pub(crate) fn range_slider_widget(parameter_widgets_info: ParameterWidgetsInfo, 
 	)
 }
 
-/// Build a row with a single-marker `SpectrumInput` and a 60px `NumberInput`. The marker maps `value_min..value_max` to position 0..1, and double-click resets to `default_value`.
-fn spectrum_slider_row(
+/// Build a row with a single-marker `SliderInput` over `track` and a 60px `NumberInput`. The marker maps `value_min..value_max` to position 0..1, and double-click resets to `default_value`.
+fn gradient_slider_row(
 	node_id: NodeId,
 	context: &mut NodePropertiesContext,
 	parameter: impl Into<ParameterRef>,
@@ -2069,7 +2069,7 @@ fn spectrum_slider_row(
 		.and_then(|input| input.as_non_exposed_value())
 		.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value as f64) } else { None });
 
-	// Only add the spectrum and number widgets when the input is not exposed
+	// Only add the slider and number widgets when the input is not exposed
 	if let Some(current) = current {
 		let slider = SliderRange {
 			min: value_min,
@@ -2116,12 +2116,12 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 	use graphene_std::raster::threshold::*;
 
 	let params = [
-		SpectrumSectionParam::new(MinLuminanceInput, Color::WHITE, 50., MarkerScale::Percent).dash_to_next(),
-		SpectrumSectionParam::new(MaxLuminanceInput, Color::WHITE, 100., MarkerScale::Percent),
+		SliderSectionParam::new(MinLuminanceInput, Color::WHITE, 50., MarkerScale::Percent).dash_to_next(),
+		SliderSectionParam::new(MaxLuminanceInput, Color::WHITE, 100., MarkerScale::Percent),
 	];
 
 	let mut layout = Vec::with_capacity(2);
-	build_shared_spectrum_section(node_id, context, &bw_track(), &params, &mut layout);
+	build_shared_slider_section(node_id, context, &bw_track(), &params, &mut layout);
 
 	layout
 }
@@ -2179,7 +2179,7 @@ pub(crate) fn color_balance_properties(node_id: NodeId, context: &mut NodeProper
 
 	let mut layout = vec![tone];
 	for (parameter, track) in parameters.into_iter().zip(tracks) {
-		layout.push(spectrum_slider_row(node_id, context, parameter, track, Color::WHITE, -100., 100., 0., number_input.clone()));
+		layout.push(gradient_slider_row(node_id, context, parameter, track, Color::WHITE, -100., 100., 0., number_input.clone()));
 	}
 	layout.push(LayoutGroup::row(preserve_luminosity));
 
@@ -2204,7 +2204,7 @@ pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodeProp
 		(MagentasInput.into(), Color::MAGENTA, 80.),
 	];
 	for (parameter, color, default) in params {
-		layout.push(spectrum_slider_row(
+		layout.push(gradient_slider_row(
 			node_id,
 			context,
 			parameter.clone(),
@@ -2268,7 +2268,7 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 		layout.push(output_channel);
 	}
 	for (i, (parameter, &default)) in parameters.into_iter().zip(defaults.iter()).enumerate() {
-		layout.push(spectrum_slider_row(
+		layout.push(gradient_slider_row(
 			node_id,
 			context,
 			parameter,
@@ -2329,7 +2329,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 
 	let mut layout = vec![colors];
 	for (i, parameter) in parameters.into_iter().enumerate() {
-		layout.push(spectrum_slider_row(node_id, context, parameter, tracks[i].clone(), Color::WHITE, -100., 100., 0., number_input.clone()));
+		layout.push(gradient_slider_row(node_id, context, parameter, tracks[i].clone(), Color::WHITE, -100., 100., 0., number_input.clone()));
 	}
 	layout.push(mode);
 

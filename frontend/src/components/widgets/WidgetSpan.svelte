@@ -15,7 +15,7 @@
 	import NumberInput from "/src/components/widgets/inputs/NumberInput.svelte";
 	import RadioInput from "/src/components/widgets/inputs/RadioInput.svelte";
 	import ReferencePointInput from "/src/components/widgets/inputs/ReferencePointInput.svelte";
-	import SpectrumInput from "/src/components/widgets/inputs/SpectrumInput.svelte";
+	import SliderInput from "/src/components/widgets/inputs/SliderInput.svelte";
 	import TextAreaInput from "/src/components/widgets/inputs/TextAreaInput.svelte";
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
 	import TransferCurveInput from "/src/components/widgets/inputs/TransferCurveInput.svelte";
@@ -243,8 +243,8 @@
 				},
 			}),
 		},
-		SpectrumInput: {
-			component: SpectrumInput,
+		SliderInput: {
+			component: SliderInput,
 			getProps: (props, index) => ({
 				...props,
 				$$events: {
