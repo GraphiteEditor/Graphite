@@ -1329,9 +1329,8 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	let use_classic_value = get_document_node(node_id, context)
 		.ok()
 		.and_then(|document_node| document_node.input(UseClassicInput).and_then(|input| input.as_value()))
-		.and_then(|tagged| if let TaggedValue::Bool(value) = tagged { Some(*value) } else { None });
-	let includes_use_classic = use_classic_value.is_some();
-	let use_classic_value = use_classic_value.unwrap_or(false);
+		.and_then(|tagged| if let TaggedValue::Bool(value) = tagged { Some(*value) } else { None })
+		.unwrap_or(false);
 
 	let brightness_min = if use_classic_value { -100. } else { -150. };
 	let brightness_max = if use_classic_value { 100. } else { 150. };
@@ -1364,11 +1363,12 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 		NumberInput::default().mode_increment().unit("%").min(contrast_min).max(100.),
 	);
 
-	let mut layout = vec![brightness, contrast];
-	if includes_use_classic {
-		// TODO: When we no longer use this function in the temporary "Brightness/Contrast Classic" node, remove this conditional pushing and just always include this
-		let use_classic = bool_widget(ParameterWidgetsInfo::new(node_id, UseClassicInput, true, context), CheckboxInput::default());
-		layout.push(LayoutGroup::row(use_classic));
+	let use_classic = bool_widget(ParameterWidgetsInfo::new(node_id, UseClassicInput, true, context), CheckboxInput::default());
+
+	let mut layout = vec![brightness, contrast, LayoutGroup::row(use_classic)];
+	if use_classic_value {
+		let number_input = NumberInput::default().mode_increment().min(0.).max(255.);
+		layout.push(spectrum_slider_row(node_id, context, ClassicPivotInput, bw_track(), Color::WHITE, 0., 255., 127., number_input));
 	}
 
 	layout
