@@ -1194,18 +1194,6 @@ async fn gradient_map<T: Adjust<Color> + Send>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27-,vibA%27%20%3D%20Vibrance,-%27hue%20%27%20%3D%20Old
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Vibrance%20(Photoshop%20CS3)
-//
-// Algorithm based on:
-// https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
-// The results of this implementation are very close to correct, but not quite perfect.
-//
-// Some further analysis available at:
-// https://www.photo-mark.com/notes/analyzing-photoshop-vibrance-and-saturation/
-//
-// This algorithm is currently lacking a "Saturation" parameter which is needed for interoperability.
-// It's not the same as the saturation component of Hue/Saturation/Value. Vibrance and Saturation are both separable.
-// When both parameters are set, it is equivalent to running this adjustment twice, with only vibrance set and then only saturation set.
-// (Except for some noise probably due to rounding error.)
 #[node_macro::node(category("Raster: Adjustment"), properties("vibrance_properties"), shader_node(PerPixelAdjust))]
 fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
@@ -1217,81 +1205,74 @@ fn vibrance<T: Adjust<Color>>(
 	#[gpu_image]
 	image: Item<T>,
 	vibrance: Item<SignedPercentageF32>,
+	saturation: Item<SignedPercentageF32>,
 ) -> Item<T> {
 	let mut image = image;
-	let vibrance = vibrance.into_element();
+	let vibrance = vibrance.into_element().clamp(-100., 100.) / 100.;
+	let saturation_scale = 1. + saturation.into_element().clamp(-100., 100.) / 100.;
 
+	// Vibrance then saturation, both in linear light, which equals applying each alone in turn
 	image.element_mut().adjust(|color| {
-		let r_raw = color.r();
-		let g_raw = color.g();
-		let b_raw = color.b();
-		let alpha_in = color.a();
+		let (r, g, b) = (color.r(), color.g(), color.b());
+		let maximum = r.max(g).max(b);
+		let [chroma_factor, brightness_factor] = vibrance_factors(r, g, b, vibrance);
+		let after_vibrance = Color::from_rgbaf32_unchecked(
+			scale_about_maximum(r, maximum, chroma_factor, brightness_factor),
+			scale_about_maximum(g, maximum, chroma_factor, brightness_factor),
+			scale_about_maximum(b, maximum, chroma_factor, brightness_factor),
+			color.a(),
+		);
 
-		let vibrance = vibrance / 100.;
-		// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
-		// So this scales the 0% to -50% range to 0% to -100%.
-		let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };
-
-		let channel_max = r_raw.max(g_raw).max(b_raw);
-		let channel_min = r_raw.min(g_raw).min(b_raw);
-		let channel_difference = channel_max - channel_min;
-
-		let scale_multiplier = if channel_max == r_raw {
-			let green_blue_difference = (g_raw - b_raw).abs();
-			let t = (green_blue_difference / channel_difference).min(1.);
-			t * 0.5 + 0.5
-		} else {
-			1.
-		};
-		let scale = slowed_vibrance * scale_multiplier * (2. - channel_difference);
-		let channel_reduction = channel_min * scale;
-		let scale = 1. + scale * (1. - channel_difference);
-
-		let r_lin0 = srgb_to_linear(r_raw);
-		let g_lin0 = srgb_to_linear(g_raw);
-		let b_lin0 = srgb_to_linear(b_raw);
-		let luminance_initial = 0.2126 * r_lin0 + 0.7152 * g_lin0 + 0.0722 * b_lin0;
-
-		let mut alt_r = srgb_to_linear(r_raw * scale - channel_reduction);
-		let mut alt_g = srgb_to_linear(g_raw * scale - channel_reduction);
-		let mut alt_b = srgb_to_linear(b_raw * scale - channel_reduction);
-		let luminance = 0.2126 * alt_r + 0.7152 * alt_g + 0.0722 * alt_b;
-		// Skip the luminance-preservation scaling when the result is black (e.g. black input pixel), avoiding division by zero.
-		if luminance > 0. {
-			alt_r *= luminance_initial / luminance;
-			alt_g *= luminance_initial / luminance;
-			alt_b *= luminance_initial / luminance;
-		}
-
-		let channel_max = alt_r.max(alt_g).max(alt_b);
-		if linear_to_srgb(channel_max) > 1. {
-			let scale = (1. - luminance) / (channel_max - luminance);
-			alt_r = (alt_r - luminance) * scale + luminance;
-			alt_g = (alt_g - luminance) * scale + luminance;
-			alt_b = (alt_b - luminance) * scale + luminance;
-		}
-
-		alt_r = linear_to_srgb(alt_r);
-		alt_g = linear_to_srgb(alt_g);
-		alt_b = linear_to_srgb(alt_b);
-
-		if vibrance >= 0. {
-			Color::from_rgbaf32_unchecked(alt_r, alt_g, alt_b, alpha_in)
-		} else {
-			// TODO: The result ends up a bit darker than it should be, further investigation is needed.
-			// Mix in gamma space (matching `alt_*`), so the luminance is computed from gamma channels too.
-			let [gr, gg, gb, _] = color.to_gamma_srgb_channels();
-			let luminance = 0.299 * gr + 0.587 * gg + 0.114 * gb;
-			let factor = -slowed_vibrance;
-			Color::from_rgbaf32_unchecked(
-				alt_r * (1. - factor) + luminance * factor,
-				alt_g * (1. - factor) + luminance * factor,
-				alt_b * (1. - factor) + luminance * factor,
-				alpha_in,
-			)
-		}
+		// For PSD interop, saturation scales each channel's distance from a gray weighted by ProPhoto's luminance coefficients
+		let gray = 0.288040 * after_vibrance.r() + 0.711874 * after_vibrance.g() + 0.000086 * after_vibrance.b();
+		after_vibrance.map_rgb(|c| (gray + (c - gray) * saturation_scale).clamp(0., 1.))
 	});
 	image
+}
+
+fn scale_about_maximum(channel: f32, maximum: f32, chroma_factor: f32, brightness_factor: f32) -> f32 {
+	(brightness_factor * (maximum + chroma_factor * (channel - maximum))).clamp(0., 1.)
+}
+
+/// Share of the vibrance boost the skin-tone protection removes at full weight, a fitted constant.
+const VIBRANCE_PROTECTION_LOSS: f32 = 0.4857;
+
+/// Vibrance on linear SDR channels as `[chroma factor about the max, brightness multiply]` for an amount in -1..1, both fading out toward black.
+/// Negative desaturates and darkens low-chroma colors most. Positive boosts them, brightens a little, and spares reds.
+fn vibrance_factors(r: f32, g: f32, b: f32, amount: f32) -> [f32; 2] {
+	let maximum = r.max(g).max(b);
+	let minimum = r.min(g).min(b);
+	if maximum <= 0. {
+		return [1., 1.];
+	}
+	let ratio = minimum / maximum;
+	let saturation = 1. - ratio;
+	let q = ratio * saturation;
+	let toe = 1. - (16. * maximum).min(1.);
+	let rolloff = 1. - toe * toe;
+	let brightness = (2. * q - q * q) * (1. - maximum) * rolloff;
+
+	if amount < 0. {
+		let amount = -amount;
+		let chroma_factor = (1. - amount / 4.) * (1. - amount * (1. - rolloff * saturation * (1. + saturation) / 2.));
+		return [chroma_factor, 1. - amount * brightness];
+	}
+
+	let protection = skin_tone_window(hexagon_hue_degrees(r, g, b)) * (1. - saturation * saturation);
+	let amount = amount * (1. - protection * (1. - amount));
+	let boost = (5. / 6.) * (1. - VIBRANCE_PROTECTION_LOSS * protection) * amount * ratio * (1. - minimum) * rolloff;
+	[1. / (1. - boost), 1. + amount * brightness / 4.]
+}
+
+/// How fully a hue falls under the skin-tone protection: all of it from red to 30 degrees, fading out by 45, and back in from 300.
+fn skin_tone_window(hue: f32) -> f32 {
+	if hue < 45. {
+		((45. - hue) / 15.).min(1.)
+	} else if hue >= 300. {
+		(hue - 300.) / 60.
+	} else {
+		0.
+	}
 }
 
 #[repr(u32)]
@@ -2241,6 +2222,53 @@ mod tests {
 		assert!(!threshold_is_white([135., 100., 0.], 100.));
 		assert!(!threshold_is_white([255., 0., 50.], 82.));
 		assert!(threshold_is_white([0., 200., 0.], 118.));
+	}
+
+	/// Runs the node on one gamma-space RGB value (0..255) and returns the gamma-space result on the same scale.
+	fn run_vibrance(input: [f32; 3], vibrance_amount: f32, saturation: f32) -> [f32; 3] {
+		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
+		let result = vibrance((), Item::new_from_element(pixel), vibrance_amount.into(), saturation.into());
+		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		[r * 255., g * 255., b * 255.]
+	}
+
+	#[test]
+	fn vibrance_saturation_scales_chroma_around_a_prophoto_weighted_gray() {
+		for (input, saturation, expected) in [
+			([255., 0., 0.], -100., [146., 146., 146.]),
+			([0., 255., 0.], -100., [219., 219., 219.]),
+			([0., 0., 255.], -100., [0., 0., 0.]),
+			([200., 100., 50.], -100., [139., 139., 139.]),
+			([0., 255., 0.], -50., [161., 238., 161.]),
+			([200., 100., 50.], 50., [223., 71., 0.]),
+			([100., 150., 200.], 100., [3., 161., 244.]),
+			([200., 180., 170.], 100., [213., 174., 152.]),
+		] {
+			let actual = run_vibrance(input, 0., saturation);
+			for (actual, expected) in actual.iter().zip(expected) {
+				assert!((actual - expected).abs() <= 1., "{input:?} at {saturation}: expected {expected}, got {actual}");
+			}
+		}
+	}
+
+	#[test]
+	fn vibrance_boosts_low_chroma_colors_most_and_spares_reds() {
+		for (input, amount, expected) in [
+			([200., 100., 100.], -100., [188., 148., 148.]),
+			([200., 160., 160.], -50., [192., 172., 172.]),
+			([50., 0., 0.], -100., [50., 31., 31.]),
+			([100., 50., 0.], -100., [100., 67., 50.]),
+			([200., 100., 100.], 100., [203., 71., 71.]),
+			([255., 125., 125.], 100., [255., 91., 91.]),
+			([125., 255., 125.], 100., [80., 255., 80.]),
+			([255., 200., 205.], 100., [255., 190., 196.]),
+			([60., 120., 200.], 75., [38., 115., 201.]),
+		] {
+			let actual = run_vibrance(input, amount, 0.);
+			for (actual, expected) in actual.iter().zip(expected) {
+				assert!((actual - expected).abs() <= 1., "{input:?} at {amount}: expected {expected}, got {actual}");
+			}
+		}
 	}
 
 	/// Runs Selective Color on one gamma-space RGB value (0..255) with the given group values

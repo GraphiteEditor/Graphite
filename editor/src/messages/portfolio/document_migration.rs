@@ -2196,6 +2196,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 3;
 	}
 
+	// Vibrance gained a Saturation input after its Vibrance input, whose default of 0 leaves old documents unchanged
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::vibrance::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		inputs_count = 3;
+	}
+
 	// Levels' Midtones became the gamma value it encoded, and each channel gained its own record after the composite one
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::levels::IDENTIFIER) && inputs_count == 6 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
