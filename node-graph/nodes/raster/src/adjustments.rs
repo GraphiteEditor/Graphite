@@ -1223,7 +1223,7 @@ fn vibrance<T: Adjust<Color>>(
 			color.a(),
 		);
 
-		// Saturation scales each channel's distance from a gray weighted by ProPhoto's luminance coefficients
+		// For PSD interop, saturation scales each channel's distance from a gray weighted by ProPhoto's luminance coefficients
 		let gray = 0.288040 * after_vibrance.r() + 0.711874 * after_vibrance.g() + 0.000086 * after_vibrance.b();
 		after_vibrance.map_rgb(|c| (gray + (c - gray) * saturation_scale).clamp(0., 1.))
 	});
@@ -1237,7 +1237,7 @@ fn scale_about_maximum(channel: f32, maximum: f32, chroma_factor: f32, brightnes
 /// Share of the vibrance boost the skin-tone protection removes at full weight, a fitted constant.
 const VIBRANCE_PROTECTION_LOSS: f32 = 0.4857;
 
-/// Vibrance on linear channels as `[chroma factor about the max, brightness multiply]` for an amount in -1..1, both fading out toward black.
+/// Vibrance on linear SDR channels as `[chroma factor about the max, brightness multiply]` for an amount in -1..1, both fading out toward black.
 /// Negative desaturates and darkens low-chroma colors most. Positive boosts them, brightens a little, and spares reds.
 fn vibrance_factors(r: f32, g: f32, b: f32, amount: f32) -> [f32; 2] {
 	let maximum = r.max(g).max(b);
