@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{
 };
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
-use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
+use crate::messages::portfolio::utility_types::{ResourceFileKind, WorkspacePanelLayout};
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
 use graph_craft::document::NodeId;
@@ -92,6 +92,15 @@ pub enum FrontendMessage {
 	},
 	TriggerImport {
 		filters: Vec<FileFilter>,
+	},
+	/// Asks the frontend for a file whose bytes come back through the `upload_resource` command, aimed at this node input.
+	TriggerUploadResource {
+		filters: Vec<FileFilter>,
+		kind: ResourceFileKind,
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+		#[serde(rename = "inputIndex")]
+		input_index: u32,
 	},
 	TriggerSaveDocument {
 		document_id: DocumentId,

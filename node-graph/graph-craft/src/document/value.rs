@@ -42,6 +42,7 @@ macro_rules! for_each_item_type_default {
 		$action!(Gradient);
 		$action!(Artboard);
 		$action!(String);
+		$action!(Resource);
 	};
 }
 
@@ -63,7 +64,6 @@ macro_rules! for_each_list_type_default {
 macro_rules! for_each_bare_type_default {
 	($action:ident) => {
 		$action!(DocumentNode);
-		$action!(Resource);
 	};
 }
 

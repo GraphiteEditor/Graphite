@@ -240,6 +240,22 @@ impl EditorWrapper {
 		cfg!(debug_assertions)
 	}
 
+	/// The file extensions of raster images the editor decodes itself (web only; on desktop, dropped files are imported natively and this is never called)
+	#[cfg(all(feature = "web", not(feature = "native")))]
+	#[wasm_bindgen(js_name = rasterImageExtensions)]
+	pub fn raster_image_extensions(&self) -> Vec<String> {
+		editor::messages::portfolio::utility_types::RASTER_IMAGE_EXTENSIONS
+			.iter()
+			.map(|extension| extension.to_string())
+			.collect()
+	}
+	#[cfg(feature = "native")]
+	#[wasm_bindgen(js_name = rasterImageExtensions)]
+	pub fn raster_image_extensions(&self) -> Vec<String> {
+		log::error!("rasterImageExtensions is unavailable on desktop, where dropped files are imported natively");
+		Vec::new()
+	}
+
 	/// Load persisted browser storage state (web only; on desktop, persistence is handled natively and this is never triggered)
 	#[cfg(all(feature = "web", not(feature = "native")))]
 	#[wasm_bindgen(js_name = loadPersistedState)]

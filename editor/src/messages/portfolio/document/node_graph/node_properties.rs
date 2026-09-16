@@ -7,15 +7,16 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
+use crate::messages::portfolio::utility_types::ResourceFileKind;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceId;
+use graph_craft::application_io::resource::{DataSource, Resource, ResourceId};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
-use graph_craft::{Type, concrete};
+use graph_craft::{Type, concrete, item};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
@@ -341,6 +342,7 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<Footprint>(x) => footprint_widget(default_info, &mut extra_widgets),
 						Some(x) if id_is::<Box<VectorModification>>(x) => vector_modification_widget(default_info).into(),
 						Some(x) if id_is::<Image<Color>>(x) => image_data_widget(default_info).into(),
+						Some(x) if id_is::<Resource>(x) => resource_widget(default_info, ResourceFileKind::Any).into(),
 						// ===============================
 						// MANUALLY IMPLEMENTED ENUM TYPES
 						// ===============================
@@ -1286,6 +1288,78 @@ pub fn transfer_curve_widget(parameter_widgets_info: ParameterWidgetsInfo) -> La
 pub fn font_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
 	let (font_widgets, style_widgets) = font_inputs(parameter_widgets_info);
 	font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
+}
+
+/// A dropdown of the document's uploaded files, led by "None" and a "Browse…" entry that uploads another file of the given kind.
+pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: ResourceFileKind) -> Vec<WidgetInstance> {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(input) = parameter_widgets_info.input() else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	let selected = match input.as_non_exposed_value() {
+		Some(TaggedValue::Resource(resource_id)) => Some(*resource_id),
+		Some(TaggedValue::TypeDefault(_)) => None,
+		_ => return widgets,
+	};
+
+	// Fonts have their own picker, so only uploaded files are listed, labeled by content hash until resources carry names
+	let ParameterWidgetsInfo { node_id, index, resources, .. } = parameter_widgets_info;
+	let mut files: Vec<(ResourceId, String)> = resources
+		.registry
+		.resolved()
+		.filter(|info| info.sources.iter().all(|source| matches!(source, DataSource::Embedded)))
+		.map(|info| (info.id, info.hash.map(|hash| hash.to_string()[..8].to_string()).unwrap_or_default()))
+		.collect();
+	files.sort();
+
+	// Entries assign only on click, since a hover preview leaves the replaced file unreferenced and garbage collected
+	let assign_on_click = |value: TaggedValue| {
+		move |_: &()| Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: index,
+					value: value.clone().into(),
+				}
+				.into(),
+			]),
+		}
+	};
+	let none = MenuListEntry::new("none")
+		.label("None")
+		.on_update(|_| Message::NoOp)
+		.on_commit(assign_on_click(TaggedValue::TypeDefault(item!(Resource))));
+	let browse = MenuListEntry::new("browse").label("Browse…").on_update(|_| Message::NoOp).on_commit(move |_| {
+		FrontendMessage::TriggerUploadResource {
+			filters: kind.filters(),
+			kind,
+			node_id,
+			input_index: index as u32,
+		}
+		.into()
+	});
+	let file_entries = files
+		.iter()
+		.map(|(resource_id, label)| {
+			MenuListEntry::new(format!("{resource_id:?}"))
+				.label(label.clone())
+				.on_update(|_| Message::NoOp)
+				.on_commit(assign_on_click(TaggedValue::Resource(*resource_id)))
+		})
+		.collect();
+	let selected_index = match selected {
+		None => Some(0),
+		Some(selected) => files.iter().position(|(resource_id, _)| *resource_id == selected).map(|position| position as u32 + 2),
+	};
+
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		DropdownInput::new(vec![vec![none, browse], file_entries]).selected_index(selected_index).widget_instance(),
+	]);
+	widgets
 }
 
 pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext<'a>) -> Result<&'a DocumentNode, String> {

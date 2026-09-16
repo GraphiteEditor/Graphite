@@ -1,12 +1,12 @@
 use super::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+use crate::messages::portfolio::utility_types::ImageFile;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, VectorModificationType};
@@ -141,7 +141,7 @@ pub enum GraphOperationMessage {
 	},
 	NewBitmapLayer {
 		id: NodeId,
-		image: Image<Color>,
+		image: ImageFile,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

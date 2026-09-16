@@ -85,9 +85,13 @@ export async function pasteFile(item: DataTransferItem, editor: EditorWrapper, m
 	const file = item.getAsFile();
 	if (!file) return;
 
+	const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
 	if (file.type.startsWith("image/svg")) {
 		const svg = await file.text();
 		editor.pasteSvg(file.name, svg, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
+	} else if (editor.rasterImageExtensions().includes(extension)) {
+		// Formats the editor decodes itself keep their original bytes instead of being rasterized by the browser
+		editor.pasteImageFile(file.name, await file.bytes(), mouse?.[0], mouse?.[1], insertParentId, insertIndex);
 	} else if (file.type.startsWith("image/")) {
 		const imageData = await extractPixelData(file);
 		editor.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, mouse?.[0], mouse?.[1], insertParentId, insertIndex);

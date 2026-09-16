@@ -7,14 +7,13 @@ use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
+use crate::messages::portfolio::utility_types::ImageFile;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Appearance;
-use graphene_std::Color;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::vector::click_target::ClickTarget;
@@ -117,7 +116,7 @@ pub enum DocumentMessage {
 	},
 	InsertImage {
 		name: Option<String>,
-		image: Image<Color>,
+		image: ImageFile,
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 		/// When true (file-open flow), place the image at the document origin so `WrapContentInArtboard`

@@ -251,13 +251,17 @@ pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -
 }
 
 #[node_macro::node(category(""))]
-pub fn image<'a: 'n>(_: impl Ctx, resource: Item<Resource>) -> Item<Raster<CPU>> {
+pub fn image<'a: 'n>(
+	_: impl Ctx,
+	_primary: (),
+	/// The image file to display.
+	#[widget(ParsedWidgetOverride::Custom = "image_file")]
+	resource: Item<Resource>,
+) -> Item<Raster<CPU>> {
 	let resource = resource.into_element();
 	let image_data = resource.as_ref();
 
-	let Some(image) = ::image::load_from_memory(image_data).ok() else {
-		return Item::default();
-	};
+	let Some(image) = ::image::load_from_memory(image_data).ok() else { return Item::default() };
 	let image = image.to_rgba32f();
 	let image = Image {
 		data: image.chunks(4).map(|pixel| Color::from_gamma_srgb_channels(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),

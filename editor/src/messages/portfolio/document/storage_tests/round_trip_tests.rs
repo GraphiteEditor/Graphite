@@ -15,6 +15,7 @@ use crate::messages::portfolio::document::document_message_handler::DocumentMess
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage};
+use crate::messages::portfolio::utility_types::ImageFile;
 use crate::test_utils::test_prelude::*;
 use graphene_std::NodeParameter;
 use graphene_std::vector::style::RenderMode;
@@ -503,7 +504,7 @@ async fn paste_image_with_name_is_one_undo_step() {
 
 	// Paste with a name so the handler emits the `SetDisplayName` sub-step that historically opened its
 	// own transaction. `create_raster_image` passes `name: None` and so wouldn't exercise this path.
-	let image = Image::new(2, 2, Color::WHITE);
+	let image = ImageFile::from_image(&Image::new(2, 2, Color::WHITE));
 	editor
 		.handle_message(PortfolioMessage::InsertImage {
 			name: Some("pasted".into()),
@@ -526,6 +527,37 @@ async fn paste_image_with_name_is_one_undo_step() {
 	);
 }
 
+/// Choosing "None" in the Image node's file picker leaves the empty-resource placeholder, which must still render.
+#[tokio::test]
+async fn image_node_with_no_file_still_evaluates() {
+	use graph_craft::document::DocumentNodeImplementation;
+	use graph_craft::document::value::TaggedValue;
+	use graph_craft::item;
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.create_raster_image(Image::new(2, 2, Color::WHITE), None).await;
+
+	let image_node_id = editor
+		.active_document()
+		.network_interface
+		.document_network()
+		.nodes
+		.iter()
+		.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::raster_nodes::std_nodes::image::IDENTIFIER))
+		.map(|(id, _)| *id)
+		.expect("the pasted image should be an Image node");
+	editor
+		.handle_message(NodeGraphMessage::SetInputValue {
+			node_id: image_node_id,
+			input_index: graphene_std::raster_nodes::std_nodes::image::ResourceInput::INDEX,
+			value: TaggedValue::TypeDefault(item!(graph_craft::application_io::resource::Resource)).into(),
+		})
+		.await;
+
+	editor.eval_graph().await.expect("an Image node with no file chosen should still evaluate");
+}
+
 /// Undoing an image paste reverts the interaction's `AddResource` in the `Gdd` cursor while the runtime keeps
 /// the resource alive for legacy redo, so the cursor legitimately holds fewer resources than a fresh
 /// `from_runtime`. Drives the relaxed comparison: every resource the current network references must be in
@@ -538,7 +570,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	let byte_store = mount_in_memory_storage(&mut editor).await;
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
-	let image = Image::new(2, 2, Color::WHITE);
+	let image = ImageFile::from_image(&Image::new(2, 2, Color::WHITE));
 	editor
 		.handle_message(PortfolioMessage::InsertImage {
 			name: Some("pasted".into()),
@@ -582,7 +614,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	editor.draw_rect(0., 0., 100., 100.).await;
 	let after_rect = editor.active_document().network_interface.document_network().clone();
 
-	let image = Image::new(2, 2, Color::WHITE);
+	let image = ImageFile::from_image(&Image::new(2, 2, Color::WHITE));
 	editor
 		.handle_message(PortfolioMessage::InsertImage {
 			name: Some("pasted".into()),

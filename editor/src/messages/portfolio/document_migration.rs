@@ -2140,8 +2140,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
 			document
 				.network_interface
-				.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
+				.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
 		}
+	}
+
+	// Move the Image node's resource from the primary input to the first secondary input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
+		&& inputs_count == 1
+		&& matches!(node.inputs.first().and_then(|input| input.as_value()), Some(TaggedValue::Resource(_)))
+	{
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[0].clone(), network_path);
 	}
 
 	// Convert text nodes from the old `editor-api` scope + `Font` input to a single font `Resource` input.
@@ -3108,6 +3119,40 @@ mod tests {
 					"shape {shape} lost its letter tilt"
 				);
 			}
+		}
+	}
+
+	#[test]
+	fn every_legacy_image_shape_stores_its_resource_as_secondary_input() {
+		use graphene_std::raster::Image;
+
+		let resource_id = ResourceId::new();
+		let legacy_inputs = [
+			NodeInput::value(TaggedValue::ImageData(Image::new(2, 2, Color::WHITE)), false),
+			NodeInput::value(TaggedValue::Resource(resource_id), false),
+		];
+
+		for legacy_input in legacy_inputs {
+			let image_id = NodeId(1);
+			let mut document = DocumentMessageHandler::default();
+			document.network_interface.insert_node(
+				image_id,
+				NodeTemplate {
+					implementation: NodeTemplateImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER),
+					inputs: vec![legacy_input],
+					..Default::default()
+				},
+				&[],
+			);
+
+			document_migration_upgrades(&mut document, false);
+
+			let image_node = &document.network_interface.document_network().nodes[&image_id];
+			assert_eq!(image_node.inputs.len(), 2, "the image node should gain its placeholder primary input");
+			let Some(TaggedValue::Resource(stored)) = image_node.inputs[1].as_value() else {
+				panic!("the file should sit at input 1")
+			};
+			assert!(document.resources.registry.contains(stored) || *stored == resource_id, "the stored file should be the legacy one");
 		}
 	}
 

@@ -1,5 +1,8 @@
+use crate::messages::frontend::utility_types::FileFilter;
 use graphene_std::Color;
 use graphene_std::raster::Image;
+use std::io::Cursor;
+use std::sync::Arc;
 
 /// Proportional share (0-1) for the document panel's side when splitting adjacent to non-document panels.
 const DOCUMENT_PANEL_SHARE: f64 = 0.8;
@@ -794,9 +797,85 @@ pub enum FileContent {
 	/// A `.gdd` document container (archive bytes).
 	GddDocument(Vec<u8>),
 	/// A bitmap image.
-	Image(Image<Color>),
+	Image(ImageFile),
 	/// An SVG file string.
 	Svg(String),
 	/// Any other unsupported/unrecognized file type.
 	Unsupported,
+}
+
+/// The raster image formats the editor decodes, by file extension.
+pub const RASTER_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "bmp", "gif"];
+
+/// The file dialog filter for the raster image formats the editor decodes.
+pub fn raster_image_file_filter() -> FileFilter {
+	FileFilter {
+		name: "Image".into(),
+		extensions: RASTER_IMAGE_EXTENSIONS.iter().map(|extension| extension.to_string()).collect(),
+	}
+}
+
+/// What a file chosen for a resource input must decode as before it is stored.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ResourceFileKind {
+	#[default]
+	Any,
+	RasterImage,
+}
+
+impl ResourceFileKind {
+	/// The file dialog filters offered for this kind.
+	pub fn filters(self) -> Vec<FileFilter> {
+		match self {
+			Self::Any => Vec::new(),
+			Self::RasterImage => vec![raster_image_file_filter()],
+		}
+	}
+
+	/// The error to show when the file's contents do not decode as this kind.
+	pub fn rejection(self, data: &[u8]) -> Option<&'static str> {
+		match self {
+			Self::Any => None,
+			Self::RasterImage => ImageFile::encoded_size(data)
+				.is_none()
+				.then_some("This file cannot be used because it is not a supported image file type."),
+		}
+	}
+}
+
+/// An encoded image file kept as its original bytes, with the pixel size it decodes to.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImageFile {
+	pub data: Arc<[u8]>,
+	pub width: u32,
+	pub height: u32,
+}
+
+impl ImageFile {
+	/// The pixel size from an encoded file's header.
+	pub fn encoded_size(data: &[u8]) -> Option<(u32, u32)> {
+		image::ImageReader::new(Cursor::new(data)).with_guessed_format().ok()?.into_dimensions().ok()
+	}
+
+	/// Keeps an encoded file's original bytes alongside its pixel size.
+	pub fn from_encoded(data: Vec<u8>) -> Option<Self> {
+		let (width, height) = Self::encoded_size(&data)?;
+
+		Some(Self { data: data.into(), width, height })
+	}
+
+	/// Encodes RGBA8 pixels as PNG, for images that arrive already decoded.
+	pub fn from_pixels(pixels: &[u8], width: u32, height: u32) -> Self {
+		Self::from_image(&Image::from_image_data(pixels, width, height))
+	}
+
+	/// Encodes a decoded image as PNG.
+	pub fn from_image(image: &Image<Color>) -> Self {
+		Self {
+			data: image.to_png().into(),
+			width: image.width,
+			height: image.height,
+		}
+	}
 }

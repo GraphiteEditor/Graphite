@@ -15,7 +15,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::portfolio::document_storage_io::{build_or_open_working_copy, compare_storage_against_runtime, open_gdd_document};
-use crate::messages::portfolio::utility_types::FileContent;
+use crate::messages::portfolio::utility_types::{FileContent, ImageFile, raster_image_file_filter};
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, ToolType};
@@ -24,10 +24,8 @@ use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
-use graphene_std::Color;
-use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::vec;
 
@@ -660,28 +658,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::Open => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
+				let mut image_filter = raster_image_file_filter();
+				image_filter.extensions.insert(0, "svg".into());
 				responses.add(FrontendMessage::TriggerOpen {
 					filters: vec![
 						FileFilter {
 							name: "Graphite Document".into(),
 							extensions: vec![FILE_EXTENSION.into(), GDD_FILE_EXTENSION.into()],
 						},
-						FileFilter {
-							name: "Image".into(),
-							extensions: vec!["svg".into(), "png".into(), "jpg".into(), "jpeg".into(), "bmp".into(), "gif".into()],
-						},
+						image_filter,
 					],
 				});
 			}
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				// TODO: Also offer the Graphite document filter once importing Graphite documents as nodes is supported
-				responses.add(FrontendMessage::TriggerImport {
-					filters: vec![FileFilter {
-						name: "Image".into(),
-						extensions: vec!["svg".into(), "png".into(), "jpg".into(), "jpeg".into(), "bmp".into(), "gif".into()],
-					}],
-				});
+				let mut image_filter = raster_image_file_filter();
+				image_filter.extensions.insert(0, "svg".into());
+				responses.add(FrontendMessage::TriggerImport { filters: vec![image_filter] });
 			}
 			PortfolioMessage::OpenFile { path, content } => {
 				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
@@ -1824,7 +1818,7 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	fn read_file(path: &PathBuf, content: Vec<u8>) -> FileContent {
+	fn read_file(path: &Path, content: Vec<u8>) -> FileContent {
 		let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_lowercase();
 		match extension.as_str() {
 			FILE_EXTENSION => match String::from_utf8(content) {
@@ -1836,18 +1830,10 @@ impl PortfolioMessageHandler {
 				Ok(content) => FileContent::Svg(content),
 				Err(_) => FileContent::Unsupported,
 			},
-			_ => {
-				let format = image::guess_format(&content).unwrap_or_else(|_| image::ImageFormat::from_path(path).unwrap_or(image::ImageFormat::Png));
-				match image::load_from_memory_with_format(&content, format) {
-					Ok(image) => {
-						// TODO: Handle Image formats with more than 8 bits per channel
-						let image_data = image.to_rgba8();
-						let image = Image::<Color>::from_image_data(image_data.as_raw(), image.width(), image.height());
-						FileContent::Image(image)
-					}
-					Err(_) => FileContent::Unsupported,
-				}
-			}
+			_ => match ImageFile::from_encoded(content) {
+				Some(image) => FileContent::Image(image),
+				None => FileContent::Unsupported,
+			},
 		}
 	}
 

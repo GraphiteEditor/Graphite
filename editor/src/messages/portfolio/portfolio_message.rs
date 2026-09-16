@@ -1,10 +1,8 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::PersistentStateMessage;
-use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
+use super::utility_types::{DockingSplitDirection, ImageFile, PanelGroupId, PanelType};
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::prelude::*;
-use graphene_std::Color;
-use graphene_std::raster::Image;
 use std::path::PathBuf;
 
 #[impl_message(Message, Portfolio)]
@@ -140,7 +138,7 @@ pub enum PortfolioMessage {
 	},
 	OpenImage {
 		name: Option<String>,
-		image: Image<Color>,
+		image: ImageFile,
 	},
 	OpenSvg {
 		name: Option<String>,
@@ -148,7 +146,7 @@ pub enum PortfolioMessage {
 	},
 	InsertImage {
 		name: Option<String>,
-		image: Image<Color>,
+		image: ImageFile,
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
