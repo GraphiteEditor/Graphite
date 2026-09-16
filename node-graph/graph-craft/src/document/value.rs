@@ -653,7 +653,7 @@ impl TaggedValue {
 		}
 
 		fn to_gradient(input: &str) -> Option<Gradient> {
-			// String syntax: (e.g. "000000ff, ff0000ff")
+			// String syntax: (e.g. "#000000ff, #ff0000ff")
 			let stops = input.split(',').filter_map(|s| to_color(s.trim())).collect::<Vec<_>>();
 			match stops.len() {
 				0 => {
@@ -1038,16 +1038,17 @@ mod paint_default_parsing {
 		);
 	}
 
-	/// A hex string default reaches the parser without the quotes its literal had in the node signature, and must still parse.
+	/// A hex string default reaches the parser without the quotes its literal had in the node signature, and must carry its hash prefix.
 	#[test]
-	fn hex_string_color_default_parses_without_quotes() {
+	fn hex_string_color_default_requires_its_hash_prefix() {
 		let tint = Some(TaggedValue::Color(Color::from(SRGBA8::new(225, 211, 179, 255))));
-		assert_eq!(TaggedValue::from_primitive_string("e1d3b3", &item!(Color)), tint, "a bare hex default should resolve");
 		assert_eq!(
 			TaggedValue::from_primitive_string("\"#e1d3b3\"", &item!(Color)),
 			tint,
 			"a quoted, hash-prefixed hex default should resolve"
 		);
+		assert_eq!(TaggedValue::from_primitive_string("#e1d3b3ff", &item!(Color)), tint, "an alpha-suffixed hex default should resolve");
+		assert_eq!(TaggedValue::from_primitive_string("e1d3b3", &item!(Color)), None, "a bare hex default should be rejected");
 	}
 
 	/// Table-era documents stored the red-slash "no paint" fill as an empty color table, which must keep

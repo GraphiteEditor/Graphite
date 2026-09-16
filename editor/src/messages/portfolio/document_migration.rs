@@ -2275,7 +2275,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		for (index, input) in old_inputs.iter().enumerate().skip(1).take(7) {
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index + 1), input.clone(), network_path);
 		}
-		let use_tint = matches!(old_inputs[1].as_value(), Some(TaggedValue::Color(color)) if *color != Color::BLACK);
+		let use_tint = !matches!(old_inputs[1].as_value(), Some(TaggedValue::Color(color)) if *color == Color::BLACK);
 		document
 			.network_interface
 			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Bool(use_tint), false), network_path);

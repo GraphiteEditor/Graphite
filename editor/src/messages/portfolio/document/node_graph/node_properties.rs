@@ -1088,7 +1088,7 @@ pub fn optional_color_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_
 	let label_count = start_widgets(&parameter_widgets_info).len();
 	let exposed = parameter_widgets_info.is_exposed();
 
-	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button) else {
+	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button.disabled(enabled == Some(false))) else {
 		return LayoutGroup::row(Vec::new());
 	};
 	if let Some(enabled) = enabled
