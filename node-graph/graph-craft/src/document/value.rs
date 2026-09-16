@@ -3,6 +3,7 @@ use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::Any as DAny;
 use brush_nodes::brush_stroke::BrushStroke;
+use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::context::Context;
 use core_types::gpoll::GPoll;
@@ -82,6 +83,10 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
 			BrushStrokes(Vec<BrushStroke>),
+			/// The tablet-capture strokes the Brush tool records, materialized as `List<Stroke>` at runtime.
+			Strokes(Vec<Stroke>),
+			/// The GPU brush node's render cache, carried as node data rather than user-visible content.
+			BrushCache(BrushCache),
 			// =======================
 			// AUTO-GENERATED VARIANTS
 			// =======================
@@ -126,6 +131,8 @@ macro_rules! tagged_value {
 					Self::Color(color) => color.cache_hash(state),
 					Self::GradientRamp(ramp) => ramp.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
+					Self::Strokes(strokes) => strokes.cache_hash(state),
+					Self::BrushCache(cache) => cache.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -172,6 +179,11 @@ macro_rules! tagged_value {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
+					Self::Strokes(strokes) => {
+						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Box::new(list)
+					}
+					Self::BrushCache(cache) => Box::new(cache),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -218,6 +230,11 @@ macro_rules! tagged_value {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
+					Self::Strokes(strokes) => {
+						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Arc::new(list)
+					}
+					Self::BrushCache(cache) => Arc::new(cache),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -258,6 +275,8 @@ macro_rules! tagged_value {
 					Self::Color(_) => concrete!(Color),
 					Self::GradientRamp(_) => concrete!(Gradient),
 					Self::BrushStrokes(_) => concrete!(BrushStroke),
+					Self::Strokes(_) => concrete!(Stroke),
+					Self::BrushCache(_) => concrete!(BrushCache),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -309,6 +328,8 @@ macro_rules! tagged_value {
 					Self::Color(_) => leveled::<Color>(),
 					Self::GradientRamp(_) => leveled::<Gradient>(),
 					Self::BrushStrokes(_) => leveled::<BrushStroke>(),
+					Self::Strokes(_) => leveled::<Stroke>(),
+					Self::BrushCache(_) => scalar::<BrushCache>(),
 					$( Self::$identifier(_) => scalar::<$ty>(), )*
 					Self::RenderOutput(_) => scalar::<RenderOutput>(),
 					Self::NodeIdPath(_) => scalar::<Vec<NodeId>>(),
@@ -354,6 +375,7 @@ macro_rules! tagged_value {
 					Self::Color(color) => Ok(leveled_record_value_source(vec![color])),
 					Self::GradientRamp(ramp) => Ok(leveled_record_value_source(vec![Gradient::from(ramp)])),
 					Self::BrushStrokes(strokes) => Ok(leveled_record_value_source(strokes)),
+					Self::Strokes(strokes) => Ok(leveled_record_value_source(strokes)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -367,6 +389,7 @@ macro_rules! tagged_value {
 					Self::ContextModification(modification) => Ok(record_value_source(modification)),
 					Self::EditorApi(x) => Ok(record_value_source(x)),
 					Self::ResourceHash(x) => Ok(record_value_source(x)),
+					Self::BrushCache(cache) => Ok(record_value_source(cache)),
 				}
 			}
 
@@ -414,6 +437,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*downcast::<Gradient>(input).unwrap()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
+					x if x == TypeId::of::<BrushCache>() => Ok(TaggedValue::BrushCache(*downcast(input).unwrap())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -443,6 +467,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Gradient>().unwrap()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
+					x if x == TypeId::of::<BrushCache>() => Ok(TaggedValue::BrushCache(input.downcast_ref::<BrushCache>().unwrap().clone())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -479,6 +504,7 @@ macro_rules! tagged_value {
 						if name == core_types::normalize_type_name(std::any::type_name::<Color>()) { return Some(TaggedValue::Color(Color::default())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Gradient>()) { return Some(TaggedValue::GradientRamp(GradientRamp::default())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<BrushStroke>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<Stroke>()) { return Some(TaggedValue::Strokes(Vec::new())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Graphic>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Graphic>))) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Artboard>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Artboard>))) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Raster<CPU>>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Raster<CPU>>))) }
@@ -514,6 +540,8 @@ macro_rules! tagged_value {
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::GradientRamp(ramp) => format!("GradientRamp({ramp:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
+					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
+					Self::BrushCache(cache) => format!("BrushCache({cache:?})"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
