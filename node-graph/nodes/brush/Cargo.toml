@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
-serde = ["dep:serde", "core-types/serde", "raster-types/serde", "raster-nodes/serde"]
+serde = ["dep:serde", "core-types/serde", "raster-types/serde"]
 
 [dependencies]
 # Local dependencies
@@ -17,12 +17,15 @@ brush-types = { workspace = true }
 core-types = { workspace = true }
 graphene-hash = { workspace = true }
 graphic-types = { workspace = true }
-raster-types = { workspace = true }
-raster-nodes = { workspace = true }
+raster-types = { workspace = true, features = ["wgpu"] }
+wgpu-executor = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies
 glam = { workspace = true }
+half = { workspace = true }
+bytemuck = { workspace = true }
+wgpu = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true, features = ["derive"] }

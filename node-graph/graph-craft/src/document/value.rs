@@ -2,7 +2,6 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::Any as DAny;
-use brush_nodes::brush_stroke::BrushStroke;
 use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::context::Context;
@@ -79,10 +78,6 @@ macro_rules! tagged_value {
 			/// (Old documents stored flat stops, a tuple list, or the ancient full `Gradient` struct under the legacy `"Gradient"` tag, all routed by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(alias = "Gradient", alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			GradientRamp(GradientRamp),
-			/// Stored compactly as a `Vec<BrushStroke>`, materializes as `List<BrushStroke>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
-			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this document upgrade code
-			#[serde(alias = "BrushStrokeTable")]
-			BrushStrokes(Vec<BrushStroke>),
 			/// The tablet-capture strokes the Brush tool records, materialized as `List<Stroke>` at runtime.
 			Strokes(Vec<Stroke>),
 			/// The GPU brush node's render cache, carried as node data rather than user-visible content.
@@ -130,7 +125,6 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => values.cache_hash(state),
 					Self::Color(color) => color.cache_hash(state),
 					Self::GradientRamp(ramp) => ramp.cache_hash(state),
-					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					Self::Strokes(strokes) => strokes.cache_hash(state),
 					Self::BrushCache(cache) => cache.cache_hash(state),
 					// =======================
@@ -175,10 +169,6 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => Box::new(BoxCorners::from(values)),
 					Self::Color(color) => Box::new(List::<Color>::new_from_element(color)),
 					Self::GradientRamp(ramp) => Box::new(List::new_from_item(core_types::list::Item::<Gradient>::from(ramp))),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
-					}
 					Self::Strokes(strokes) => {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
@@ -226,10 +216,6 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => Arc::new(BoxCorners::from(values)),
 					Self::Color(color) => Arc::new(List::<Color>::new_from_element(color)),
 					Self::GradientRamp(ramp) => Arc::new(List::new_from_item(core_types::list::Item::<Gradient>::from(ramp))),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
-					}
 					Self::Strokes(strokes) => {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
@@ -274,7 +260,6 @@ macro_rules! tagged_value {
 					Self::BoxCorners(_) => concrete!(BoxCorners),
 					Self::Color(_) => concrete!(Color),
 					Self::GradientRamp(_) => concrete!(Gradient),
-					Self::BrushStrokes(_) => concrete!(BrushStroke),
 					Self::Strokes(_) => concrete!(Stroke),
 					Self::BrushCache(_) => concrete!(BrushCache),
 					// =======================
@@ -327,7 +312,6 @@ macro_rules! tagged_value {
 					Self::BoxCorners(_) => scalar::<BoxCorners>(),
 					Self::Color(_) => leveled::<Color>(),
 					Self::GradientRamp(_) => leveled::<Gradient>(),
-					Self::BrushStrokes(_) => leveled::<BrushStroke>(),
 					Self::Strokes(_) => leveled::<Stroke>(),
 					Self::BrushCache(_) => scalar::<BrushCache>(),
 					$( Self::$identifier(_) => scalar::<$ty>(), )*
@@ -374,7 +358,6 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => Ok(record_value_source(BoxCorners::from(values))),
 					Self::Color(color) => Ok(leveled_record_value_source(vec![color])),
 					Self::GradientRamp(ramp) => Ok(leveled_record_value_source(vec![Gradient::from(ramp)])),
-					Self::BrushStrokes(strokes) => Ok(leveled_record_value_source(strokes)),
 					Self::Strokes(strokes) => Ok(leveled_record_value_source(strokes)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -436,7 +419,6 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(downcast::<DashPattern>(input).unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*downcast::<Gradient>(input).unwrap()))),
-					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
 					x if x == TypeId::of::<BrushCache>() => Ok(TaggedValue::BrushCache(*downcast(input).unwrap())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -466,7 +448,6 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<DashPattern>().unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Gradient>().unwrap()))),
-					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
 					x if x == TypeId::of::<BrushCache>() => Ok(TaggedValue::BrushCache(input.downcast_ref::<BrushCache>().unwrap().clone())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -498,12 +479,10 @@ macro_rules! tagged_value {
 						if name == core_types::normalize_type_name(std::any::type_name::<List<f64>>()) { return Some(TaggedValue::F64Array(Vec::new())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<DashPattern>()) { return Some(TaggedValue::DashPattern(Vec::new())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<BoxCorners>()) { return Some(TaggedValue::BoxCorners(Vec::new())) }
-						if name == core_types::normalize_type_name(std::any::type_name::<List<BrushStroke>>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						// Leveled inputs type by their element; each element name maps to the
 						// same tagged default as its legacy list form.
 						if name == core_types::normalize_type_name(std::any::type_name::<Color>()) { return Some(TaggedValue::Color(Color::default())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Gradient>()) { return Some(TaggedValue::GradientRamp(GradientRamp::default())) }
-						if name == core_types::normalize_type_name(std::any::type_name::<BrushStroke>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Stroke>()) { return Some(TaggedValue::Strokes(Vec::new())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Graphic>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Graphic>))) }
 						if name == core_types::normalize_type_name(std::any::type_name::<Artboard>()) { return Some(TaggedValue::TypeDefault(core_types::descriptor!(List<Artboard>))) }
@@ -539,7 +518,6 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => format!("BoxCorners({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::GradientRamp(ramp) => format!("GradientRamp({ramp:?})"),
-					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
 					Self::BrushCache(cache) => format!("BrushCache({cache:?})"),
 					// =======================

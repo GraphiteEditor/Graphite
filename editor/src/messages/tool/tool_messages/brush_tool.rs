@@ -1,27 +1,21 @@
 use super::tool_prelude::*;
-use crate::consts::DEFAULT_BRUSH_SIZE;
+use crate::application::generate_uuid;
+use crate::consts::{BRUSH_FLOW_DEFAULT, BRUSH_HARDNESS_DEFAULT, BRUSH_SIZE_DEFAULT};
 use crate::messages::portfolio::document::graph_operation::transform_utils::get_current_transform;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
-use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, solid};
-use graph_craft::document::NodeId;
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, OutputConnector};
+use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, selection_changed_since_last_sync, solid};
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
-use graphene_std::brush::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
+use graphene_std::brush::basic_brush::basic_brush as active_brush;
+use graphene_std::brush::{Channel, Stroke};
 use graphene_std::color::SRGBA8;
-use graphene_std::raster::BlendMode;
 use graphene_std::vector::style::FillChoice;
 
-const BRUSH_MAX_SIZE: f64 = 5000.;
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum DrawMode {
-	Draw = 0,
-	Erase,
-	Restore,
-}
+const SAMPLE_MERGE_DISTANCE: f64 = 1.;
+const SAMPLE_MERGE_PRESSURE: f64 = 0.01;
 
 #[derive(Default, ExtractField)]
 pub struct BrushTool {
@@ -34,23 +28,25 @@ pub struct BrushOptions {
 	diameter: f64,
 	hardness: f64,
 	flow: f64,
-	spacing: f64,
 	color: ToolColorOptions,
-	blend_mode: BlendMode,
-	draw_mode: DrawMode,
+	last_synced_selection: Vec<LayerNodeIdentifier>,
 }
 
 impl Default for BrushOptions {
 	fn default() -> Self {
 		Self {
-			diameter: DEFAULT_BRUSH_SIZE,
-			hardness: 0.,
-			flow: 100.,
-			spacing: 20.,
+			diameter: BRUSH_SIZE_DEFAULT,
+			hardness: BRUSH_HARDNESS_DEFAULT,
+			flow: BRUSH_FLOW_DEFAULT,
 			color: ToolColorOptions::default(),
-			blend_mode: BlendMode::Normal,
-			draw_mode: DrawMode::Draw,
+			last_synced_selection: Vec::new(),
 		}
+	}
+}
+
+impl BrushOptions {
+	fn active_color(&self) -> Color {
+		self.color.active_color().unwrap_or_default()
 	}
 }
 
@@ -60,6 +56,7 @@ impl Default for BrushOptions {
 pub enum BrushToolMessage {
 	// Standard messages
 	Abort,
+	SelectionChanged,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -72,14 +69,11 @@ pub enum BrushToolMessage {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BrushToolMessageOptionsUpdate {
-	BlendMode(BlendMode),
 	ChangeDiameter(f64),
 	Color(Option<Color>),
 	Diameter(f64),
-	DrawMode(DrawMode),
-	Flow(f64),
 	Hardness(f64),
-	Spacing(f64),
+	Flow(f64),
 	WorkingColorsChanged,
 }
 
@@ -104,7 +98,7 @@ impl ToolMetadata for BrushTool {
 
 impl LayoutHolder for BrushTool {
 	fn layout(&self) -> Layout {
-		let mut widgets = vec![
+		let widgets = vec![
 			ColorInput::new(FillChoice::<SRGBA8>::from(self.options.color.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
 				.mixed(self.options.color.fill_choice.is_none())
 				.narrow(true)
@@ -119,9 +113,13 @@ impl LayoutHolder for BrushTool {
 			NumberInput::new(Some(self.options.diameter))
 				.label("Diameter")
 				.min(1.)
-				.max(BRUSH_MAX_SIZE) /* Anything bigger would cause the application to be unresponsive and eventually die */
 				.unit(" px")
-				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions { options: BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap()) }.into())
+				.on_update(|number_input: &NumberInput| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap()),
+					}
+					.into()
+				})
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(self.options.hardness))
@@ -151,62 +149,7 @@ impl LayoutHolder for BrushTool {
 					.into()
 				})
 				.widget_instance(),
-			Separator::new(SeparatorStyle::Related).widget_instance(),
-			NumberInput::new(Some(self.options.spacing))
-				.label("Spacing")
-				.min(1.)
-				.max(100.)
-				.mode_range()
-				.unit("%")
-				.on_update(|number_input: &NumberInput| {
-					BrushToolMessage::UpdateOptions {
-						options: BrushToolMessageOptionsUpdate::Spacing(number_input.value.unwrap()),
-					}
-					.into()
-				})
-				.widget_instance(),
 		];
-
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-
-		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
-			.into_iter()
-			.map(|draw_mode| {
-				RadioEntryData::new(format!("{draw_mode:?}")).label(format!("{draw_mode:?}")).on_update(move |_| {
-					BrushToolMessage::UpdateOptions {
-						options: BrushToolMessageOptionsUpdate::DrawMode(draw_mode),
-					}
-					.into()
-				})
-			})
-			.collect();
-		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_instance());
-
-		widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
-
-		let blend_mode_entries: Vec<Vec<_>> = BlendMode::list()
-			.iter()
-			.map(|section| {
-				section
-					.iter()
-					.map(|blend_mode| {
-						MenuListEntry::new(format!("{blend_mode:?}")).label(blend_mode.to_string()).on_commit(|_| {
-							BrushToolMessage::UpdateOptions {
-								options: BrushToolMessageOptionsUpdate::BlendMode(*blend_mode),
-							}
-							.into()
-						})
-					})
-					.collect()
-			})
-			.collect();
-		widgets.push(
-			DropdownInput::new(blend_mode_entries)
-				.selected_index(self.options.blend_mode.index_in_list().map(|index| index as u32))
-				.tooltip_description("The blend mode used with the background when performing a brush stroke. Only used in draw mode.")
-				.disabled(self.options.draw_mode != DrawMode::Draw)
-				.widget_instance(),
-		);
 
 		Layout(vec![LayoutGroup::row(widgets)])
 	}
@@ -215,12 +158,18 @@ impl LayoutHolder for BrushTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for BrushTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		if matches!(&message, ToolMessage::Brush(BrushToolMessage::SelectionChanged)) {
+			if self.fsm_state == BrushToolFsmState::Ready && selection_changed_since_last_sync(&mut self.options.last_synced_selection, context.document) {
+				self.sync_options_from_selection(context.document, responses);
+			}
+			return;
+		}
+
 		let ToolMessage::Brush(BrushToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, true);
 			return;
 		};
 		match options {
-			BrushToolMessageOptionsUpdate::BlendMode(blend_mode) => self.options.blend_mode = blend_mode,
 			BrushToolMessageOptionsUpdate::ChangeDiameter(change) => {
 				let needs_rounding = ((self.options.diameter + change.abs() / 2.) % change.abs() - change.abs() / 2.).abs() > 0.5;
 				if needs_rounding && change > 0. {
@@ -234,12 +183,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Brus
 				self.send_layout(responses, LayoutTarget::ToolOptions);
 			}
 			BrushToolMessageOptionsUpdate::Diameter(diameter) => self.options.diameter = diameter,
-			BrushToolMessageOptionsUpdate::DrawMode(draw_mode) => self.options.draw_mode = draw_mode,
 			BrushToolMessageOptionsUpdate::Hardness(hardness) => self.options.hardness = hardness,
 			BrushToolMessageOptionsUpdate::Flow(flow) => self.options.flow = flow,
-			BrushToolMessageOptionsUpdate::Spacing(spacing) => self.options.spacing = spacing,
 			BrushToolMessageOptionsUpdate::Color(color) => {
-				// User picked a color: push to the global primary working color (no tool-local customization).
 				if let Some(color) = color {
 					responses.add(ToolMessage::SelectWorkingColor { color, primary: true });
 				}
@@ -273,30 +219,115 @@ impl ToolTransition for BrushTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(BrushToolMessage::Abort.into()),
+			selection_changed: Some(BrushToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(BrushToolMessage::WorkingColorChanged.into()),
 			..Default::default()
 		}
 	}
 }
 
+impl BrushTool {
+	fn sync_options_from_selection(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		let Some(strokes_node) = selected_strokes_node(document) else { return };
+		let Some(node) = document.network_interface.document_network().nodes.get(&strokes_node) else {
+			return;
+		};
+		let value = |index: usize| node.inputs.get(index).and_then(|input| input.as_value());
+		if let Some(TaggedValue::F64(diameter)) = value(STROKES_DIAMETER_INPUT) {
+			self.options.diameter = *diameter;
+		}
+		if let Some(TaggedValue::F64(hardness)) = value(STROKES_HARDNESS_INPUT) {
+			self.options.hardness = *hardness;
+		}
+		if let Some(TaggedValue::F64(flow)) = value(STROKES_FLOW_INPUT) {
+			self.options.flow = *flow;
+		}
+		if let Some(TaggedValue::Color(color)) = value(STROKES_COLOR_INPUT)
+			&& *color != self.options.active_color()
+		{
+			responses.add(ToolMessage::SelectWorkingColor { color: *color, primary: true });
+		} else {
+			self.send_layout(responses, LayoutTarget::ToolOptions);
+		}
+	}
+}
+
+const STROKES_COLOR_INPUT: usize = 1;
+const STROKES_DIAMETER_INPUT: usize = 2;
+const STROKES_HARDNESS_INPUT: usize = 3;
+const STROKES_FLOW_INPUT: usize = 4;
+
 #[derive(Clone, Debug, Default)]
 struct BrushToolData {
-	strokes: Vec<BrushStroke>,
+	stroke: Stroke,
+	stroke_node_id: Option<NodeId>,
+	strokes_before: Vec<Stroke>,
 	layer: Option<LayerNodeIdentifier>,
 	transform: DAffine2,
+	last_sample: (DVec2, Option<f64>),
+}
+
+enum BrushTarget {
+	Existing { strokes_node_id: NodeId, strokes: Vec<Stroke> },
+	NewGroup { parent: LayerNodeIdentifier, insert_index: usize },
+	FillEmpty { layer: LayerNodeIdentifier },
 }
 
 impl BrushToolData {
-	fn load_existing_strokes(&mut self, document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
-		self.transform = DAffine2::IDENTITY;
+	fn resolve_target(&mut self, document: &DocumentMessageHandler, options: &BrushOptions) -> Option<(LayerNodeIdentifier, BrushTarget)> {
+		self.layer = None;
 
-		if document.network_interface.selected_nodes().selected_layers(document.metadata()).count() != 1 {
+		let selected_nodes = document.network_interface.selected_nodes();
+		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+		let selected_layer = selected_layers.next().filter(|_| selected_layers.next().is_none())?;
+
+		if self.load_brush_layer(document, selected_layer) {
+			return Some((
+				selected_layer,
+				BrushTarget::NewGroup {
+					parent: selected_layer,
+					insert_index: 0,
+				},
+			));
+		}
+
+		let parent = selected_layer.parent(document.metadata()).filter(|&parent| parent != LayerNodeIdentifier::ROOT_PARENT)?;
+		if !self.load_brush_layer(document, parent) {
 			return None;
 		}
-		let layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next()?;
 
-		self.layer = Some(layer);
-		for node_id in document.network_interface.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow) {
+		let Some(output) = document.network_interface.upstream_output_connector(&InputConnector::node_at_index(selected_layer.to_node(), 1), &[]) else {
+			return Some((parent, BrushTarget::FillEmpty { layer: selected_layer }));
+		};
+
+		let new_group = || {
+			let insert_index = parent.children(document.metadata()).position(|child| child == selected_layer).unwrap_or_default();
+			BrushTarget::NewGroup { parent, insert_index }
+		};
+		let OutputConnector::Node { node_id: strokes_node_id, .. } = output else {
+			return Some((parent, new_group()));
+		};
+		if document.network_interface.reference(&strokes_node_id, &[]) != Some(DefinitionIdentifier::ProtoNode(graphene_std::brush::brush_strokes::IDENTIFIER)) {
+			return Some((parent, new_group()));
+		}
+		let strokes = document
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&strokes_node_id)
+			.and_then(|node| node.inputs.first())
+			.and_then(|input| input.as_value())
+			.and_then(|value| if let TaggedValue::Strokes(strokes) = value { Some(strokes.clone()) } else { None });
+		match strokes {
+			Some(strokes) if Self::style_matches(document, strokes_node_id, options) => Some((parent, BrushTarget::Existing { strokes_node_id, strokes })),
+			_ => Some((parent, new_group())),
+		}
+	}
+
+	fn load_brush_layer(&mut self, document: &DocumentMessageHandler, candidate: LayerNodeIdentifier) -> bool {
+		self.transform = DAffine2::IDENTITY;
+
+		for node_id in document.network_interface.upstream_flow_back_from_nodes(vec![candidate.to_node()], &[], FlowType::HorizontalFlow) {
 			let Some(node) = document.network_interface.document_network().nodes.get(&node_id) else {
 				continue;
 			};
@@ -304,12 +335,9 @@ impl BrushToolData {
 				continue;
 			};
 
-			if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && node_id != layer.to_node() {
-				let points_input = node.inputs.get(1)?;
-				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else { continue };
-				self.strokes = strokes.clone();
-
-				return Some(layer);
+			if reference == DefinitionIdentifier::ProtoNode(active_brush::IDENTIFIER) && node_id != candidate.to_node() {
+				self.layer = Some(candidate);
+				return true;
 			}
 
 			if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER) {
@@ -318,13 +346,39 @@ impl BrushToolData {
 		}
 
 		self.transform = DAffine2::IDENTITY;
-		None
+		false
 	}
 
-	fn update_strokes(&self, responses: &mut VecDeque<Message>) {
-		let Some(layer) = self.layer else { return };
-		let strokes = self.strokes.clone();
-		responses.add(GraphOperationMessage::Brush { layer, strokes });
+	fn style_matches(document: &DocumentMessageHandler, strokes_node: NodeId, options: &BrushOptions) -> bool {
+		let Some(node) = document.network_interface.document_network().nodes.get(&strokes_node) else {
+			return false;
+		};
+		let value = |index: usize| node.inputs.get(index).and_then(|input| input.as_value());
+		matches!(value(STROKES_COLOR_INPUT), Some(TaggedValue::Color(color)) if *color == options.active_color())
+			&& matches!(value(STROKES_DIAMETER_INPUT), Some(TaggedValue::F64(diameter)) if *diameter == options.diameter)
+			&& matches!(value(STROKES_HARDNESS_INPUT), Some(TaggedValue::F64(hardness)) if *hardness == options.hardness)
+			&& matches!(value(STROKES_FLOW_INPUT), Some(TaggedValue::F64(flow)) if *flow == options.flow)
+	}
+
+	fn push_sample(&mut self, position: DVec2, pressure: Option<f64>, elapsed_milliseconds: f64) {
+		self.stroke.position.push(position);
+		if let Channel::Samples(times) = &mut self.stroke.time {
+			times.push(elapsed_milliseconds / 1000.);
+		}
+		if let Channel::Samples(pressures) = &mut self.stroke.pressure {
+			pressures.push(pressure.unwrap_or(1.) as f32);
+		}
+	}
+
+	fn update_stroke(&self, responses: &mut VecDeque<Message>) {
+		let Some(stroke_node_id) = self.stroke_node_id else { return };
+		let mut strokes = self.strokes_before.clone();
+		strokes.push(self.stroke.clone());
+		responses.add(NodeGraphMessage::SetInputValue {
+			node_id: stroke_node_id,
+			input_index: 0,
+			value: TaggedValue::Strokes(strokes).into(),
+		});
 	}
 }
 
@@ -346,60 +400,96 @@ impl Fsm for BrushToolFsmState {
 		match (self, event) {
 			(BrushToolFsmState::Ready, BrushToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
-				let loaded_layer = tool_data.load_existing_strokes(document);
 
-				if let Some(layer) = loaded_layer {
-					let pos = document
-						.network_interface
-						.document_metadata()
-						.downstream_transform_to_viewport(layer)
-						.inverse()
-						.transform_point2(input.mouse.position);
-					let layer_position = tool_data.transform.inverse().transform_point2(pos);
-					let layer_document_scale = document.metadata().downstream_transform_to_viewport(layer) * tool_data.transform;
-
-					// TODO: Also scale it based on the input image ('Background' input).
-					// TODO: Resizing the input image results in a different brush size from the chosen diameter.
-					let layer_scale = 0.0001_f64 // Safety against division by zero
-						.max((layer_document_scale.matrix2 * glam::DVec2::X).length())
-						.max((layer_document_scale.matrix2 * glam::DVec2::Y).length());
-
-					// Start a new stroke with a single sample
-					let blend_mode = match tool_options.draw_mode {
-						DrawMode::Draw => tool_options.blend_mode,
-						DrawMode::Erase => BlendMode::Erase,
-						DrawMode::Restore => BlendMode::Restore,
-					};
-					tool_data.strokes.push(BrushStroke {
-						trace: vec![BrushInputSample { position: layer_position }],
-						style: BrushStyle {
-							color: tool_options.color.active_color().unwrap_or_default(),
-							diameter: tool_options.diameter / layer_scale,
-							hardness: tool_options.hardness,
-							flow: tool_options.flow,
-							spacing: tool_options.spacing,
-							blend_mode,
-						},
-					});
-
-					tool_data.update_strokes(responses);
-					BrushToolFsmState::Drawing
-				}
-				// Create the new layer, wait for the render output to return its transform, and then create the rest of the layer
-				else {
+				// A new brush layer needs a graph run before the stroke can start.
+				let Some((brush_layer, target)) = tool_data.resolve_target(document, tool_options) else {
 					new_brush_layer(document, responses);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					responses.add(DeferMessage::AfterGraphRun {
 						messages: vec![BrushToolMessage::DragStart.into()],
 					});
-					BrushToolFsmState::Ready
+					return BrushToolFsmState::Ready;
+				};
+
+				let pos = document
+					.network_interface
+					.document_metadata()
+					.downstream_transform_to_viewport(brush_layer)
+					.inverse()
+					.transform_point2(input.mouse.position);
+				let layer_position = tool_data.transform.inverse().transform_point2(pos);
+
+				let pressure = input.mouse.pressure;
+				tool_data.stroke = Stroke {
+					time: Channel::Samples(Vec::new()),
+					seed: generate_uuid(),
+					..Default::default()
+				};
+				if pressure.is_some() {
+					tool_data.stroke.pressure = Channel::Samples(Vec::new());
 				}
+				tool_data.push_sample(layer_position, pressure, input.mouse.time.unwrap_or(0.));
+				tool_data.last_sample = (input.mouse.position, pressure);
+
+				match target {
+					BrushTarget::Existing { strokes_node_id, strokes } => {
+						tool_data.stroke_node_id = Some(strokes_node_id);
+						tool_data.strokes_before = strokes;
+					}
+					BrushTarget::NewGroup { parent, insert_index } => {
+						let group_id = NodeId::new();
+						let strokes_node_id = NodeId::new();
+						tool_data.stroke_node_id = Some(strokes_node_id);
+						tool_data.strokes_before = Vec::new();
+						responses.add(GraphOperationMessage::NewBrushGroupLayer {
+							id: group_id,
+							strokes_node_id,
+							parent,
+							insert_index,
+							color: tool_options.active_color(),
+							diameter: tool_options.diameter,
+							hardness: tool_options.hardness,
+							flow: tool_options.flow,
+						});
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![group_id] });
+					}
+					BrushTarget::FillEmpty { layer } => {
+						let strokes_node_id = NodeId::new();
+						tool_data.stroke_node_id = Some(strokes_node_id);
+						tool_data.strokes_before = Vec::new();
+						responses.add(GraphOperationMessage::NewBrushStrokesNode {
+							layer,
+							strokes_node_id,
+							color: tool_options.active_color(),
+							diameter: tool_options.diameter,
+							hardness: tool_options.hardness,
+							flow: tool_options.flow,
+						});
+					}
+				}
+				tool_data.update_stroke(responses);
+
+				BrushToolFsmState::Drawing
 			}
 
 			(BrushToolFsmState::Drawing, BrushToolMessage::PointerMove) => {
-				if let Some(layer) = tool_data.layer
-					&& let Some(stroke) = tool_data.strokes.last_mut()
-				{
+				let pressure = input.mouse.pressure;
+
+				if pressure == Some(0.) {
+					return BrushToolFsmState::Drawing;
+				}
+
+				let (last_position, last_pressure) = tool_data.last_sample;
+				let moved = input.mouse.position.distance(last_position) >= SAMPLE_MERGE_DISTANCE;
+				let pressure_changed = match (pressure, last_pressure) {
+					(Some(pressure), Some(last_pressure)) => (pressure - last_pressure).abs() >= SAMPLE_MERGE_PRESSURE,
+					(pressure, last_pressure) => pressure.is_some() != last_pressure.is_some(),
+				};
+				if !moved && !pressure_changed {
+					return BrushToolFsmState::Drawing;
+				}
+
+				if let Some(layer) = tool_data.layer {
 					let layer_position = document
 						.network_interface
 						.document_metadata()
@@ -408,26 +498,31 @@ impl Fsm for BrushToolFsmState {
 						.transform_point2(input.mouse.position);
 					let layer_position = tool_data.transform.inverse().transform_point2(layer_position);
 
-					stroke.trace.push(BrushInputSample { position: layer_position })
+					tool_data.push_sample(layer_position, pressure, input.mouse.time.unwrap_or(0.));
+					tool_data.last_sample = (input.mouse.position, pressure);
 				}
-				tool_data.update_strokes(responses);
+				tool_data.update_stroke(responses);
 
 				BrushToolFsmState::Drawing
 			}
 
 			(BrushToolFsmState::Drawing, BrushToolMessage::DragStop) => {
-				if !tool_data.strokes.is_empty() {
+				if tool_data.stroke_node_id.is_some() {
 					responses.add(DocumentMessage::EndTransaction);
 				} else {
 					responses.add(DocumentMessage::AbortTransaction);
 				}
-				tool_data.strokes.clear();
+				tool_data.stroke_node_id = None;
+				tool_data.stroke = Stroke::default();
+				tool_data.strokes_before = Vec::new();
 
 				BrushToolFsmState::Ready
 			}
 			(BrushToolFsmState::Drawing, BrushToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.strokes.clear();
+				tool_data.stroke_node_id = None;
+				tool_data.stroke = Stroke::default();
+				tool_data.strokes_before = Vec::new();
 
 				BrushToolFsmState::Ready
 			}
@@ -458,12 +553,40 @@ impl Fsm for BrushToolFsmState {
 	}
 }
 
+fn selected_strokes_node(document: &DocumentMessageHandler) -> Option<NodeId> {
+	let selected_nodes = document.network_interface.selected_nodes();
+	let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+	let selected_layer = selected_layers.next().filter(|_| selected_layers.next().is_none())?;
+
+	let group = if is_brush_layer(document, selected_layer) {
+		selected_layer.children(document.metadata()).next()?
+	} else {
+		let parent = selected_layer.parent(document.metadata()).filter(|&parent| parent != LayerNodeIdentifier::ROOT_PARENT)?;
+		if !is_brush_layer(document, parent) {
+			return None;
+		}
+		selected_layer
+	};
+
+	let OutputConnector::Node { node_id, .. } = document.network_interface.upstream_output_connector(&InputConnector::node_at_index(group.to_node(), 1), &[])? else {
+		return None;
+	};
+	(document.network_interface.reference(&node_id, &[]) == Some(DefinitionIdentifier::ProtoNode(graphene_std::brush::brush_strokes::IDENTIFIER))).then_some(node_id)
+}
+
+fn is_brush_layer(document: &DocumentMessageHandler, candidate: LayerNodeIdentifier) -> bool {
+	document
+		.network_interface
+		.upstream_flow_back_from_nodes(vec![candidate.to_node()], &[], FlowType::HorizontalFlow)
+		.any(|node_id| node_id != candidate.to_node() && document.network_interface.reference(&node_id, &[]) == Some(DefinitionIdentifier::ProtoNode(active_brush::IDENTIFIER)))
+}
+
 fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	responses.add(DocumentMessage::DeselectAllLayers);
 
-	let brush_node = resolve_proto_node_type(graphene_std::brush::brush::brush::IDENTIFIER)
+	let brush_node = resolve_proto_node_type(active_brush::IDENTIFIER)
 		.expect("Brush node does not exist")
-		.default_node_template();
+		.node_template_input_override([None, Some(NodeInput::value(TaggedValue::BrushCache(Default::default()), false))]);
 
 	let id = NodeId::new();
 	responses.add(GraphOperationMessage::NewCustomLayer {

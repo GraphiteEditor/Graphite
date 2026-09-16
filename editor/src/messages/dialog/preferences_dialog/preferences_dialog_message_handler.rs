@@ -275,11 +275,7 @@ impl PreferencesDialogMessageHandler {
 
 			let checkbox_id = CheckboxId::new();
 			let brush_tool_description = "
-				Enable the Brush tool to support basic raster-based layer painting.\n\
-				\n\
-				This legacy experimental tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will have a renewed focus on raster graphics editing.\n\
-				\n\
-				Content created with the Brush tool may not be compatible with future versions of Graphite.\n\
+				Enable the Brush tool to support basic layer painting.\n\
 				\n\
 				*Default: Off.*
 				"
