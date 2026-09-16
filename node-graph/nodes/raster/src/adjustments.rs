@@ -23,13 +23,7 @@ use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
 use vector_types::Gradient;
 
-// TODO: Implement the following:
-// Photo Filter
-// Aims for interoperable compatibility with:
-// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27phfl%27%20%3D%20Photo%20Filter
-// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=of%20the%20file.-,Photo%20Filter,-Key%20is%20%27phfl
-//
-// Color Lookup
+// TODO: Implement 'Color Lookup':
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27clrL%27%20%3D%20Color%20Lookup
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
@@ -1390,6 +1384,8 @@ pub enum DomainWarpType {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
+//
+// TODO: CMYK source channels once Graphite supports the CMYK color space.
 #[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), shader_node(PerPixelAdjust))]
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
@@ -1904,6 +1900,93 @@ fn color_balance<T: Adjust<Color>>(
 		Color::from_gamma_srgb_channels(red.apply(r), green.apply(g), blue.apply(b), a)
 	});
 	image
+}
+
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27phfl%27%20%3D%20Photo%20Filter
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=of%20the%20file.-,Photo%20Filter,-Key%20is%20%27phfl
+#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+fn photo_filter<T: Adjust<Color>>(
+	_: impl Ctx,
+	#[implementations(Raster<CPU>, Color, Gradient)]
+	#[gpu_image]
+	image: Item<T>,
+	#[default("ec8a00")] color: Item<Color>,
+	#[default(25.)] density: Item<PercentageF32>,
+	#[default(true)] preserve_luminosity: Item<bool>,
+) -> Item<T> {
+	let mut image = image;
+	let color = color.into_element();
+	let density = (density.into_element() / 100.).clamp(0., 1.);
+	let preserve_luminosity = preserve_luminosity.into_element();
+
+	// The image is multiplied in XYZ by the filter color normalized to the white point, with density easing that multiplier toward 1
+	let filter_xyz = multiply_matrix(&SRGB_TO_XYZ_D50, [color.r(), color.g(), color.b()]);
+	let factor = [
+		1. + density * (filter_xyz[0] / WHITE_XYZ_D50[0] - 1.),
+		1. + density * (filter_xyz[1] / WHITE_XYZ_D50[1] - 1.),
+		1. + density * (filter_xyz[2] / WHITE_XYZ_D50[2] - 1.),
+	];
+
+	image.element_mut().adjust(|pixel| {
+		let [r_in, g_in, b_in, alpha] = pixel.to_gamma_srgb_channels();
+		let xyz = multiply_matrix(&SRGB_TO_XYZ_D50, [srgb_to_linear(r_in), srgb_to_linear(g_in), srgb_to_linear(b_in)]);
+		let filtered = multiply_matrix(&XYZ_D50_TO_SRGB, [xyz[0] * factor[0], xyz[1] * factor[1], xyz[2] * factor[2]]);
+		let mut r = linear_to_srgb(filtered[0].clamp(0., 1.));
+		let mut g = linear_to_srgb(filtered[1].clamp(0., 1.));
+		let mut b = linear_to_srgb(filtered[2].clamp(0., 1.));
+
+		if preserve_luminosity {
+			[r, g, b] = set_luminosity(r, g, b, luma_rec_601_fixed(r, g, b), luma_rec_601_fixed(r_in, g_in, b_in));
+		}
+
+		Color::from_gamma_srgb_channels(r, g, b, alpha)
+	});
+	image
+}
+
+// sRGB colorants adapted to D50 as in the sRGB IEC61966-2.1 ICC profile, row major, and their inverse
+const SRGB_TO_XYZ_D50: [[f32; 3]; 3] = [[0.43607, 0.38515, 0.14307], [0.22249, 0.71687, 0.06061], [0.01392, 0.09708, 0.71410]];
+const XYZ_D50_TO_SRGB: [[f32; 3]; 3] = [[3.134096, -1.6174, -0.490638], [-0.978793, 1.916295, 0.033454], [0.071971, -0.228987, 1.40538]];
+const WHITE_XYZ_D50: [f32; 3] = [0.96420, 1., 0.82491];
+
+fn multiply_matrix(matrix: &[[f32; 3]; 3], vector: [f32; 3]) -> [f32; 3] {
+	[
+		matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2],
+		matrix[1][0] * vector[0] + matrix[1][1] * vector[1] + matrix[1][2] * vector[2],
+		matrix[2][0] * vector[0] + matrix[2][1] * vector[1] + matrix[2][2] * vector[2],
+	]
+}
+
+/// The Rec. 601 luma in the 14-bit fixed point that PSD interop depends on.
+fn luma_rec_601_fixed(r: f32, g: f32, b: f32) -> f32 {
+	(4915. * r + 9667. * g + 1802. * b) / 16384.
+}
+
+fn pull_toward_luminosity(channels: [f32; 3], luminosity: f32, scale: f32) -> [f32; 3] {
+	[
+		luminosity + (channels[0] - luminosity) * scale,
+		luminosity + (channels[1] - luminosity) * scale,
+		luminosity + (channels[2] - luminosity) * scale,
+	]
+}
+
+/// The Luminosity blend mode's construction: shifts gamma-encoded channels from `luma` to `luminosity`,
+/// then pulls them toward it just enough to bring every channel back into 0..1.
+fn set_luminosity(r: f32, g: f32, b: f32, luma: f32, luminosity: f32) -> [f32; 3] {
+	let shift = luminosity - luma;
+	let mut channels = [r + shift, g + shift, b + shift];
+
+	let low = channels[0].min(channels[1]).min(channels[2]);
+	if low < 0. {
+		channels = pull_toward_luminosity(channels, luminosity, luminosity / (luminosity - low));
+	}
+	let high = channels[0].max(channels[1]).max(channels[2]);
+	if high > 1. {
+		channels = pull_toward_luminosity(channels, luminosity, (1. - luminosity) / (high - luminosity));
+	}
+
+	[channels[0].clamp(0., 1.), channels[1].clamp(0., 1.), channels[2].clamp(0., 1.)]
 }
 
 #[cfg(feature = "std")]
@@ -2474,5 +2557,30 @@ mod tests {
 		// Red: black 39, white 235, gamma 1.09; green: gamma 0.91; blue: white 210, gamma 1.13
 		let result = run_color_balance([128., 128., 128.], [-39., 6., 42.], [21., 0., -25.], [20., -35., 45.], false);
 		assert_close(result, [124., 120., 164.]);
+	}
+
+	/// Runs Photo Filter on one gamma-space RGB value (0..255) and returns the gamma-space result on the same scale.
+	fn run_photo_filter(input: [f32; 3], filter: [f32; 3], density: f32, preserve_luminosity: bool) -> [f32; 3] {
+		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
+		let filter = Color::from_gamma_srgb_channels(filter[0] / 255., filter[1] / 255., filter[2] / 255., 1.);
+		let result = photo_filter((), Item::new_from_element(pixel), filter.into(), density.into(), preserve_luminosity.into());
+		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		[r * 255., g * 255., b * 255.]
+	}
+
+	#[test]
+	fn photo_filter_multiplies_in_xyz() {
+		assert_close(run_photo_filter([0., 255., 0.], [255., 0., 0.], 100., false), [146., 103., 0.]);
+		assert_close(run_photo_filter([0., 0., 255.], [255., 0., 0.], 100., false), [116., 0., 37.]);
+		assert_close(run_photo_filter([100., 100., 100.], [128., 128., 128.], 100., false), [46., 46., 46.]);
+		assert_close(run_photo_filter([100., 100., 100.], [236., 138., 0.], 25., false), [98., 91., 87.]);
+		assert_close(run_photo_filter([200., 200., 200.], [255., 255., 255.], 100., false), [200., 200., 200.]);
+	}
+
+	#[test]
+	fn photo_filter_preserve_luminosity_shifts_then_clips_toward_luminosity() {
+		assert_close(run_photo_filter([20., 20., 20.], [255., 0., 0.], 100., true), [34., 14., 14.]);
+		assert_close(run_photo_filter([160., 160., 160.], [255., 0., 0.], 100., true), [255., 120., 120.]);
+		assert_close(run_photo_filter([90., 90., 90.], [236., 138., 0.], 25., true), [95., 88., 85.]);
 	}
 }
