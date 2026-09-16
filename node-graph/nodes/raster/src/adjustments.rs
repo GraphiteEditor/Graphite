@@ -1,6 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::adjust::Adjust;
+#[cfg(feature = "std")]
+use crate::color_lookup_table::Lut;
 use core::fmt::Debug;
 #[cfg(feature = "std")]
 use core_types::list::{Item, List};
@@ -9,6 +11,8 @@ use core_types::transfer_curve::{TransferCurve, TransferCurveEvaluator};
 #[cfg(feature = "std")]
 use glam::DVec2;
 use glam::Vec3;
+#[cfg(feature = "std")]
+use graphene_resource::Resource;
 use no_std_types::color::{Color, linear_to_srgb, srgb_to_linear};
 use no_std_types::context::Ctx;
 #[cfg(not(feature = "std"))]
@@ -22,11 +26,6 @@ use num_traits::float::Float;
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
 use vector_types::Gradient;
-
-// TODO: Implement 'Color Lookup':
-// Aims for interoperable compatibility with:
-// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27clrL%27%20%3D%20Color%20Lookup
-// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
 /// Conversion from a color to grayscale.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -1947,11 +1946,11 @@ fn photo_filter<T: Adjust<Color>>(
 }
 
 // sRGB colorants adapted to D50 as in the sRGB IEC61966-2.1 ICC profile, row major, and their inverse
-const SRGB_TO_XYZ_D50: [[f32; 3]; 3] = [[0.43607, 0.38515, 0.14307], [0.22249, 0.71687, 0.06061], [0.01392, 0.09708, 0.71410]];
-const XYZ_D50_TO_SRGB: [[f32; 3]; 3] = [[3.134096, -1.6174, -0.490638], [-0.978793, 1.916295, 0.033454], [0.071971, -0.228987, 1.40538]];
-const WHITE_XYZ_D50: [f32; 3] = [0.96420, 1., 0.82491];
+pub(crate) const SRGB_TO_XYZ_D50: [[f32; 3]; 3] = [[0.43607, 0.38515, 0.14307], [0.22249, 0.71687, 0.06061], [0.01392, 0.09708, 0.71410]];
+pub(crate) const XYZ_D50_TO_SRGB: [[f32; 3]; 3] = [[3.134096, -1.6174, -0.490638], [-0.978793, 1.916295, 0.033454], [0.071971, -0.228987, 1.40538]];
+pub(crate) const WHITE_XYZ_D50: [f32; 3] = [0.96420, 1., 0.82491];
 
-fn multiply_matrix(matrix: &[[f32; 3]; 3], vector: [f32; 3]) -> [f32; 3] {
+pub(crate) fn multiply_matrix(matrix: &[[f32; 3]; 3], vector: [f32; 3]) -> [f32; 3] {
 	[
 		matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2],
 		matrix[1][0] * vector[0] + matrix[1][1] * vector[1] + matrix[1][2] * vector[2],
@@ -1988,6 +1987,37 @@ fn set_luminosity(r: f32, g: f32, b: f32, luma: f32, luminosity: f32) -> [f32; 3
 	}
 
 	[channels[0].clamp(0., 1.), channels[1].clamp(0., 1.), channels[2].clamp(0., 1.)]
+}
+
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27clrL%27%20%3D%20Color%20Lookup
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
+//
+// TODO: Support dither, which needs the pixel position that a per-color adjustment never sees.
+// TODO: Verify the tetrahedral interpolation, which is unconfirmed against other implementations.
+#[cfg(feature = "std")]
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn color_lookup<T: Adjust<Color> + Send>(
+	_: impl Ctx,
+	/// The image whose colors are remapped by the LUT (lookup table).
+	#[implementations(Raster<CPU>, Color, Gradient)]
+	image: Item<T>,
+	/// A LUT (lookup table) file in the `.cube`, `.3dl`, `.look`, `.csp`, or `.icc` (*abstract* or *device link* ICC profile) format.
+	#[name("LUT File")]
+	lut_file: Item<Resource>,
+) -> Item<T> {
+	let mut image = image;
+	let Ok(lut) = Lut::parse(lut_file.element()) else { return image };
+
+	image.element_mut().adjust(|color| {
+		// Lookup tables address the gamma-encoded channels
+		let [r, g, b, a] = color.to_gamma_srgb_channels();
+		let [r, g, b] = lut.apply([r, g, b]);
+
+		Color::from_gamma_srgb_channels(r, g, b, a)
+	});
+
+	image
 }
 
 #[cfg(feature = "std")]
