@@ -243,18 +243,6 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 
 				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 			}
-			ToolMessage::PreUndo => {
-				let tool_data = &mut self.tool_state.tool_data;
-				if tool_data.active_tool_type != ToolType::Pen {
-					responses.add(EventMessage::ToolAbort);
-				}
-			}
-			ToolMessage::Redo => {
-				let tool_data = &mut self.tool_state.tool_data;
-				if tool_data.active_tool_type == ToolType::Pen {
-					responses.add(PenToolMessage::Redo);
-				}
-			}
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
 
@@ -317,12 +305,6 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				std::mem::swap(&mut document_data.primary_color, &mut document_data.secondary_color);
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
-			}
-			ToolMessage::Undo => {
-				let tool_data = &mut self.tool_state.tool_data;
-				if tool_data.active_tool_type == ToolType::Pen {
-					responses.add(PenToolMessage::Undo);
-				}
 			}
 
 			// Sub-messages
@@ -390,8 +372,6 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			SelectRandomWorkingColor,
 			ResetColors,
 			SwapColors,
-
-			Undo,
 		);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list.extend(self.transform_layer_handler.actions());
