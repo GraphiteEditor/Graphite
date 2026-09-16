@@ -1075,6 +1075,40 @@ pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_in
 	widgets
 }
 
+/// `parameter_widgets_info` is for the color parameter. `bool_input_index` is the input index of the bool parameter, drawn as a checkbox in front of the color.
+/// A color row gated by the bool input at `bool_input_index`, whose checkbox takes the assist slot after the label like the
+/// Opacity node's toggles, so the caller passes `blank_assist = false`. An exposed color shows neither, as in that node.
+pub fn optional_color_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, color_button: ColorInput) -> LayoutGroup {
+	let node_id = parameter_widgets_info.node_id;
+	let enabled = parameter_widgets_info
+		.document_node
+		.and_then(|document_node| document_node.inputs.get(bool_input_index))
+		.and_then(|input| input.as_non_exposed_value())
+		.and_then(|value| if let TaggedValue::Bool(enabled) = value { Some(*enabled) } else { None });
+	let label_count = start_widgets(&parameter_widgets_info).len();
+	let exposed = parameter_widgets_info.is_exposed();
+
+	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button.disabled(enabled == Some(false))) else {
+		return LayoutGroup::row(Vec::new());
+	};
+	if let Some(enabled) = enabled
+		&& !exposed
+	{
+		let checkbox = [
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			CheckboxInput::new(enabled)
+				.on_update(update_value_at_index(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
+				.on_commit(commit_value)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+		];
+		row.widgets.splice(label_count..label_count, checkbox);
+	}
+
+	LayoutGroup::Row(row)
+}
+
 pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetInstance> {
 	let mut widgets = start_widgets(&parameter_widgets_info);
 
@@ -2157,7 +2191,8 @@ pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodeProp
 
 	let number_input = NumberInput::default().mode_increment().unit("%").min(-200.).max(300.);
 
-	let tint = color_widget(ParameterWidgetsInfo::new(node_id, TintInput, true, context), ColorInput::default());
+	let use_tint: ParameterRef = UseTintInput.into();
+	let tint = optional_color_widget(ParameterWidgetsInfo::new(node_id, TintInput, false, context), use_tint.input_index, ColorInput::default());
 
 	let mut layout = vec![tint];
 	let params: &[(ParameterRef, Color, f64)] = &[
