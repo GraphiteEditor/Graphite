@@ -644,9 +644,8 @@ impl TaggedValue {
 				});
 			}
 
-			// Hex syntax (e.g. "000000ff"), which a string literal default reaches here without its quotes
-			let hex = input.trim().trim_matches('"').trim().trim_start_matches('#');
-			let color = SRGBA8::from_hex_str(hex).map(Color::from);
+			// Hex syntax (e.g. "#1cd1ad", or "#1cd1ad70" with alpha), which a string literal default reaches here without its quotes
+			let color = input.trim().trim_matches('"').trim().strip_prefix('#').and_then(SRGBA8::from_hex_str).map(Color::from);
 			if color.is_none() {
 				log::error!("Invalid default value color string: {input}");
 			}
