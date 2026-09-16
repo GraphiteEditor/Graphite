@@ -1,4 +1,4 @@
-use crate::messages::layout::utility_types::widgets::input_widgets::{SpectrumInputUpdate, VisualColorPickersInputUpdate};
+use crate::messages::layout::utility_types::widgets::input_widgets::{SliderInputUpdate, VisualColorPickersInputUpdate};
 use crate::messages::prelude::*;
 use graphene_std::vector::style::{FillChoice, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread};
 
@@ -45,8 +45,8 @@ pub enum ColorPickerMessage {
 	/// Swap the current "new" color with the captured "old" color.
 	SwapNewWithOld,
 
-	/// `SpectrumInput` change: marker move/insert/delete, midpoint move/reset, or active marker selection changed.
-	GradientUpdate { update: SpectrumInputUpdate },
+	/// `SliderInput` change: marker move/insert/delete, midpoint move/reset, or active marker selection changed.
+	GradientUpdate { update: SliderInputUpdate },
 	/// Gradient spread choice from the gradient "Ends" selection.
 	SetGradientSpread { gradient_spread: GradientSpread },
 	/// Gradient cyclic choice: whether the stops wrap as a cycle, from the "Cyclic" checkbox.

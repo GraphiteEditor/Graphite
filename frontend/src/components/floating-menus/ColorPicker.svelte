@@ -83,7 +83,7 @@
 		.pickers-and-gradient .widget-span {
 			--row-height: 24px;
 
-			&:has(.spectrum-input) {
+			&:has(.slider-input) {
 				margin-top: 16px;
 
 				.number-input {

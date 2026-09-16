@@ -624,7 +624,7 @@ pub enum TransferCurveInputUpdate {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
-pub struct SpectrumInput {
+pub struct SliderInput {
 	// Content
 	/// The colored gradient drawn behind the markers (display-only, caller-owned).
 	#[widget_builder(constructor)]
@@ -644,7 +644,7 @@ pub struct SpectrumInput {
 	/// Straight-alpha samples the frontend draws as the stops of an SVG gradient filling the track strip. Auto-populated from `track` at layout-send time.
 	#[serde(rename = "trackSamples")]
 	#[widget_builder(skip)]
-	pub track_samples: Vec<SpectrumSample>,
+	pub track_samples: Vec<SliderSample>,
 	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated by evaluating `track` at position 0.
 	#[serde(rename = "trackStartCSS")]
 	#[widget_builder(skip)]
@@ -654,7 +654,7 @@ pub struct SpectrumInput {
 	#[widget_builder(skip)]
 	pub track_end_css: String,
 	/// The handles the user can drag along the track. Their handle colors are caller-owned (e.g., for a gradient editor they follow the stop colors, for a "Shadows/Midpoints/Highlights" widget they're hardcoded).
-	pub markers: Vec<SpectrumMarker>,
+	pub markers: Vec<SliderMarker>,
 	#[serde(rename = "activeMarkerIndex")]
 	pub active_marker_index: Option<u32>,
 	#[serde(rename = "activeMarkerIsMidpoint")]
@@ -689,7 +689,7 @@ pub struct SpectrumInput {
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<SpectrumInputUpdate>,
+	pub on_update: WidgetCallback<SliderInputUpdate>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -697,12 +697,12 @@ pub struct SpectrumInput {
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SpectrumMarker {
+pub struct SliderMarker {
 	/// Position along the track, normally 0..1. A shifted or stretched non-cyclic ramp can push it outside, where it is not drawn.
 	position: f64,
 	/// Midpoint (0..1) of the interval to the next marker, used only with `show_midpoints`. The last marker's midpoint spans the wrap of a cyclic track, or is otherwise ignored.
 	midpoint: f64,
-	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`],
+	/// CSS color string for the marker handle's fill. Set via `SliderMarker::new` from a linear [`Color`],
 	/// discarding any transparency so the handle always shows the RGB that steers the interpolation.
 	#[serde(rename = "handleColorCSS")]
 	handle_color_css: String,
@@ -717,7 +717,7 @@ pub struct SpectrumMarker {
 	between_neighbors: bool,
 }
 
-impl SpectrumMarker {
+impl SliderMarker {
 	pub fn new(position: f64, midpoint: f64, handle_color: Color) -> Self {
 		let handle_color_css = format!("#{}", SRGBA8::from(handle_color).to_rgb_hex());
 		Self {
@@ -748,8 +748,8 @@ impl SpectrumMarker {
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SpectrumSample {
-	/// Position (0..1) of the sample along the spectrum track, drawn as the SVG stop's `offset`.
+pub struct SliderSample {
+	/// Position (0..1) of the sample along the slider track, drawn as the SVG stop's `offset`.
 	position: f64,
 	/// `#rrggbb` hex of the sample's color, drawn as the SVG stop's `stop-color`.
 	color: String,
@@ -757,7 +757,7 @@ pub struct SpectrumSample {
 	alpha: f32,
 }
 
-impl SpectrumSample {
+impl SliderSample {
 	pub fn new(position: f64, color: Color) -> Self {
 		Self {
 			position,
@@ -769,7 +769,7 @@ impl SpectrumSample {
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum SpectrumInputUpdate {
+pub enum SliderInputUpdate {
 	MoveMarker {
 		index: u32,
 		position: f64,

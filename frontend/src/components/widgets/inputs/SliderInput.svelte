@@ -3,22 +3,22 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import type { GradientInterpolation, SpectrumInputUpdate, SpectrumMarker, SpectrumSample } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { GradientInterpolation, SliderInputUpdate, SliderMarker, SliderSample } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	const dispatch = createEventDispatcher<{ update: SpectrumInputUpdate; dragging: boolean }>();
+	const dispatch = createEventDispatcher<{ update: SliderInputUpdate; dragging: boolean }>();
 
 	// Document-unique `id` for this instance's SVG gradient, referenced by its `url(#...)`
-	const gradientId = `spectrum-input-gradient-${String(Math.random()).substring(2)}`;
+	const gradientId = `slider-input-gradient-${String(Math.random()).substring(2)}`;
 
-	export let trackSamples: SpectrumSample[];
+	export let trackSamples: SliderSample[];
 	export let trackStartCSS: string;
 	export let trackEndCSS: string;
 	export let trackCyclic = false;
 	export let trackInterpolation: GradientInterpolation = "Linear";
-	export let markers: SpectrumMarker[];
+	export let markers: SliderMarker[];
 	export let activeMarkerIndex: number | undefined = 0;
 	export let activeMarkerIsMidpoint = false;
 	export let showMidpoints = true;
@@ -92,7 +92,7 @@
 		return WHOLE_PATHS;
 	}
 
-	function emit(intent: SpectrumInputUpdate) {
+	function emit(intent: SliderInputUpdate) {
 		dispatch("update", intent);
 	}
 
@@ -151,7 +151,7 @@
 	}
 
 	// A marker paired with its successor draws as one marker split down the middle while the two coincide (the successor drawing nothing) and as a half once apart
-	function markerShape(markers: SpectrumMarker[], index: number): MarkerShape {
+	function markerShape(markers: SliderMarker[], index: number): MarkerShape {
 		const marker = markers[index];
 		const previous = markers[index - 1];
 		const next = markers[index + 1];
@@ -161,7 +161,7 @@
 	}
 
 	// The spans from each marker passing `linked` to its successor, which on a wrapping track may cross the track's ends in two pieces
-	function markerSpans(markers: SpectrumMarker[], allowWrap: boolean, linked: (marker: SpectrumMarker) => boolean): { index: number; left: number; width: number }[] {
+	function markerSpans(markers: SliderMarker[], allowWrap: boolean, linked: (marker: SliderMarker) => boolean): { index: number; left: number; width: number }[] {
 		const spans: { index: number; left: number; width: number }[] = [];
 
 		markers.forEach((marker, index) => {
@@ -616,7 +616,7 @@
 
 	// Map midpoint pairs to absolute track positions for rendering the diamond markers.
 	// A rendered diamond's index is the index of the interval's left marker, which for the cyclic wrapped interval's diamond is the last marker.
-	function diamondPositions(markers: SpectrumMarker[], showMidpoints: boolean, trackCyclic: boolean, trackInterpolation: GradientInterpolation): number[] {
+	function diamondPositions(markers: SliderMarker[], showMidpoints: boolean, trackCyclic: boolean, trackInterpolation: GradientInterpolation): number[] {
 		// A stepped ramp jumps at its stops, so no midpoint has anything to bias
 		if (!showMidpoints || trackInterpolation === "Stepped" || markers.length < 2) return [];
 		const positions = markers.slice(0, -1).map((marker, i) => marker.position + marker.midpoint * (markers[i + 1].position - marker.position));
@@ -645,7 +645,7 @@
 </script>
 
 <LayoutCol
-	class="spectrum-input"
+	class="slider-input"
 	classes={{ narrow, disabled, "range-slider": rangeSlider }}
 	styles={{
 		"--gradient-start": trackStartCSS,
@@ -743,7 +743,7 @@
 </LayoutCol>
 
 <style lang="scss">
-	.spectrum-input {
+	.slider-input {
 		position: relative;
 		--marker-half-width: 6px;
 
