@@ -66,21 +66,6 @@ impl<C> FillChoice<C> {
 	}
 }
 
-impl FillChoice<SRGBA8> {
-	/// Build a CSS `background-image` string representing this fill, or `None` if the fill is [`FillChoice::None`].
-	/// Solid colors become a degenerate gradient between the same color so the CSS variable can always be assigned to a `background-image`.
-	pub fn to_css_background_image(&self) -> Option<String> {
-		match self {
-			Self::None => None,
-			Self::Solid(srgba) => {
-				let hex = srgba.to_rgba_hex();
-				Some(format!("linear-gradient(#{hex}, #{hex})"))
-			}
-			Self::Gradient(ramp) => Some(ramp.stops.to_svg_background_image(ramp.into())),
-		}
-	}
-}
-
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

@@ -1975,7 +1975,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 	}
 
 	responses.add(PropertiesPanelMessage::Refresh);
-	// Refresh the tool options so the swatch's `chosen_gradient` (precomputed CSS string) updates live as the user edits stops in the picker.
+	// Refresh the tool options so the swatch's `swatch_samples` update live as the user edits stops in the picker.
 	responses.add(ToolMessage::RefreshToolOptions);
 }
 
