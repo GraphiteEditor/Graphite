@@ -201,7 +201,7 @@ impl NodeRuntime {
 		}
 
 		let requests = [preferences, graph, eyedropper, svg_clipboard, execution].into_iter().flatten();
-
+		let mut return_texture = None;
 		for request in requests {
 			match request {
 				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
@@ -217,161 +217,169 @@ impl NodeRuntime {
 						let _ = self.update_network(graph).await;
 					}
 				}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
-					mut network,
-					resources,
-					node_to_inspect,
-				}) => {
-					// Insert the monitor node to manage the inspection
-					self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
-
-					self.old_graph = Some(network.clone());
-					self.resources = resources;
-
-					self.node_graph_errors.clear();
-					let result = self.update_network(network).await;
-					let node_graph_errors = self.node_graph_errors.clone();
-
-					self.update_thumbnails = true;
-
-					self.sender.send_compilation_response(CompilationResponse { result, node_graph_errors });
-				}
-				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, mut render_config, .. }) => {
-					// We may want to render via the SVG pipeline even though raster was requested, if SVG Preview render mode is active or WebGPU/Vello is unavailable
-					if render_config.export_format == ExportFormat::Raster
-						&& (render_config.render_mode == RenderMode::SvgPreview || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none())
-					{
-						render_config.export_format = ExportFormat::Svg;
-					}
-
-					let result = self.execute_network(render_config).await;
-					let mut responses = VecDeque::new();
-					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
-					if !render_config.for_eyedropper {
-						self.process_monitor_nodes(&mut responses, self.update_thumbnails);
-					}
-					self.update_thumbnails = false;
-
-					// Resolve the result from the inspection by accessing the monitor node
-					let inspect_result = self.inspect_state.as_ref().and_then(|state| state.access(&self.executor));
-
-					let (result, texture) = match result {
-						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(texture),
-							metadata,
-						})) if render_config.for_export => {
-							let executor = self
-								.editor_api
-								.application_io
-								.as_ref()
-								.unwrap()
-								.gpu_executor()
-								.expect("GPU executor should be available when we receive a texture");
-
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
-
-							let (data, width, height) = raster_cpu.to_flat_u8();
-
-							(
-								Ok(TaggedValue::RenderOutput(RenderOutput {
-									data: RenderOutputType::Buffer { data, width, height },
-									metadata,
-								})),
-								None,
-							)
-						}
-						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(texture),
-							metadata: _,
-						})) if render_config.for_eyedropper => {
-							let executor = self
-								.editor_api
-								.application_io
-								.as_ref()
-								.unwrap()
-								.gpu_executor()
-								.expect("GPU executor should be available when we receive a texture");
-
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
-
-							self.sender.send_eyedropper_preview(raster_cpu);
-							continue;
-						}
-						// Eyedropper render that didn't produce a texture (e.g., SVG fallback when GPU is unavailable); discard it
-						_ if render_config.for_eyedropper => {
-							continue;
-						}
-						#[cfg(all(target_family = "wasm", feature = "gpu"))]
-						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(texture),
-							metadata,
-						})) if !render_config.for_export => {
-							self.current_viewport_texture = Some(texture.clone());
-
-							let app_io = self.editor_api.application_io.as_ref().unwrap();
-							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
-
-							self.wasm_canvas_cache.present(&texture, executor);
-
-							let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
-							(
-								Ok(TaggedValue::RenderOutput(RenderOutput {
-									data: RenderOutputType::CanvasFrame {
-										canvas_id: self.wasm_canvas_cache.id(),
-										resolution: logical_resolution,
-									},
-									metadata,
-								})),
-								None,
-							)
-						}
-						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(texture),
-							metadata,
-						})) => (
-							Ok(TaggedValue::RenderOutput(RenderOutput {
-								data: RenderOutputType::Texture(texture.clone()),
-								metadata,
-							})),
-							Some(texture),
-						),
-						r => (r, None),
-					};
-
-					self.sender.send_execution_response(ExecutionResponse {
-						execution_id,
-						result,
-						responses,
-						vector_modify: self.vector_modify.clone(),
-						inspect_result,
-					});
-					return texture;
-				}
-				GraphRuntimeRequest::CopySvgTextClipboard(text_string_clipboard, selected_node_ids) => {
-					let combined_graphics = self.collect_graphics(&selected_node_ids);
-
-					if combined_graphics.is_empty() {
-						self.sender.send_svg_text_clipboard(String::new(), text_string_clipboard);
-						return None;
-					}
-
-					let bounds = graphene_std::renderer::graphic_list_bounding_box(&combined_graphics, DAffine2::IDENTITY);
-					let final_bounds = match bounds {
-						RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
-						_ => [DVec2::ZERO, DVec2::ONE],
-					};
-
-					let footprint = Footprint::from_bounds(final_bounds, RenderQuality::Full);
-					let render_params = RenderParams { footprint, ..Default::default() };
-					let mut render = SvgRender::new();
-					combined_graphics.render_svg(&mut render, &render_params);
-					render.format_svg(final_bounds[0], final_bounds[1]);
-
-					self.sender.send_svg_text_clipboard(render.svg.to_svg_string(), text_string_clipboard);
-				}
+				GraphRuntimeRequest::GraphUpdate(graph_update) => self.graph_update(graph_update).await,
+				GraphRuntimeRequest::ExecutionRequest(request) => self.execution_request(request, &mut return_texture).await,
+				GraphRuntimeRequest::CopySvgTextClipboard(text_string_clipboard, selected_node_ids) => self.copy_svg_text_clipboard(text_string_clipboard, selected_node_ids),
 			}
 		}
-		None
+		return_texture
+	}
+
+	async fn graph_update(&mut self, graph_update: GraphUpdate) {
+		let GraphUpdate {
+			mut network,
+			resources,
+			node_to_inspect,
+		} = graph_update;
+
+		// Insert the monitor node to manage the inspection
+		self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
+
+		self.old_graph = Some(network.clone());
+		self.resources = resources;
+
+		self.node_graph_errors.clear();
+		let result = self.update_network(network).await;
+		let node_graph_errors = self.node_graph_errors.clone();
+
+		self.update_thumbnails = true;
+
+		self.sender.send_compilation_response(CompilationResponse { result, node_graph_errors });
+	}
+
+	async fn execution_request(&mut self, request: ExecutionRequest, return_texture: &mut Option<Texture>) {
+		let ExecutionRequest { execution_id, mut render_config, .. } = request;
+
+		// We may want to render via the SVG pipeline even though raster was requested, if SVG Preview render mode is active or WebGPU/Vello is unavailable
+		if render_config.export_format == ExportFormat::Raster && (render_config.render_mode == RenderMode::SvgPreview || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none()) {
+			render_config.export_format = ExportFormat::Svg;
+		}
+
+		let result = self.execute_network(render_config).await;
+		let mut responses = VecDeque::new();
+		// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
+		if !render_config.for_eyedropper {
+			self.process_monitor_nodes(&mut responses, self.update_thumbnails);
+		}
+		self.update_thumbnails = false;
+
+		// Resolve the result from the inspection by accessing the monitor node
+		let inspect_result = self.inspect_state.as_ref().and_then(|state| state.access(&self.executor));
+
+		let (result, texture) = match result {
+			Ok(TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Texture(texture),
+				metadata,
+			})) if render_config.for_export => {
+				let executor = self
+					.editor_api
+					.application_io
+					.as_ref()
+					.unwrap()
+					.gpu_executor()
+					.expect("GPU executor should be available when we receive a texture");
+
+				let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
+
+				let (data, width, height) = raster_cpu.to_flat_u8();
+
+				(
+					Ok(TaggedValue::RenderOutput(RenderOutput {
+						data: RenderOutputType::Buffer { data, width, height },
+						metadata,
+					})),
+					None,
+				)
+			}
+			Ok(TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Texture(texture),
+				metadata: _,
+			})) if render_config.for_eyedropper => {
+				let executor = self
+					.editor_api
+					.application_io
+					.as_ref()
+					.unwrap()
+					.gpu_executor()
+					.expect("GPU executor should be available when we receive a texture");
+
+				let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
+
+				self.sender.send_eyedropper_preview(raster_cpu);
+				return;
+			}
+			// Eyedropper render that didn't produce a texture (e.g., SVG fallback when GPU is unavailable); discard it
+			_ if render_config.for_eyedropper => {
+				return;
+			}
+			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			Ok(TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Texture(texture),
+				metadata,
+			})) if !render_config.for_export => {
+				self.current_viewport_texture = Some(texture.clone());
+
+				let app_io = self.editor_api.application_io.as_ref().unwrap();
+				let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
+
+				self.wasm_canvas_cache.present(&texture, executor);
+
+				let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
+				(
+					Ok(TaggedValue::RenderOutput(RenderOutput {
+						data: RenderOutputType::CanvasFrame {
+							canvas_id: self.wasm_canvas_cache.id(),
+							resolution: logical_resolution,
+						},
+						metadata,
+					})),
+					None,
+				)
+			}
+			Ok(TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Texture(texture),
+				metadata,
+			})) => (
+				Ok(TaggedValue::RenderOutput(RenderOutput {
+					data: RenderOutputType::Texture(texture.clone()),
+					metadata,
+				})),
+				Some(texture),
+			),
+			r => (r, None),
+		};
+
+		self.sender.send_execution_response(ExecutionResponse {
+			execution_id,
+			result,
+			responses,
+			vector_modify: self.vector_modify.clone(),
+			inspect_result,
+		});
+		*return_texture = texture;
+	}
+
+	fn copy_svg_text_clipboard(&self, text_string_clipboard: String, selected_node_ids: Vec<NodeId>) {
+		let combined_graphics = self.collect_graphics(&selected_node_ids);
+
+		if combined_graphics.is_empty() {
+			self.sender.send_svg_text_clipboard(String::new(), text_string_clipboard);
+			return;
+		}
+
+		let bounds = graphene_std::renderer::graphic_list_bounding_box(&combined_graphics, DAffine2::IDENTITY);
+		let final_bounds = match bounds {
+			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
+			_ => [DVec2::ZERO, DVec2::ONE],
+		};
+
+		let footprint = Footprint::from_bounds(final_bounds, RenderQuality::Full);
+		let render_params = RenderParams { footprint, ..Default::default() };
+		let mut render = SvgRender::new();
+		combined_graphics.render_svg(&mut render, &render_params);
+		render.format_svg(final_bounds[0], final_bounds[1]);
+
+		self.sender.send_svg_text_clipboard(render.svg.to_svg_string(), text_string_clipboard);
 	}
 
 	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
@@ -551,7 +559,7 @@ impl NodeRuntime {
 		}
 	}
 
-	fn collect_graphics(&self, selected_node_ids: &Vec<NodeId>) -> List<Graphic> {
+	fn collect_graphics(&self, selected_node_ids: &[NodeId]) -> List<Graphic> {
 		let mut combined_graphics = List::<Graphic>::new();
 		for monitor_node_path in &self.monitor_nodes {
 			// Skip inspect monitor node if active
@@ -577,7 +585,7 @@ impl NodeRuntime {
 		combined_graphics
 	}
 
-	fn is_insepect_monitor_node(&self, monitor_node_path: &Vec<NodeId>) -> bool {
+	fn is_insepect_monitor_node(&self, monitor_node_path: &[NodeId]) -> bool {
 		self.inspect_state.as_ref().is_some_and(|state| monitor_node_path.last().copied() == Some(state.monitor_node))
 	}
 }
