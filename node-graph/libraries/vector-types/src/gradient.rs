@@ -90,13 +90,6 @@ impl From<&GradientStops<SRGBA8>> for Gradient {
 	}
 }
 
-impl GradientStops<SRGBA8> {
-	/// CSS `background-image` value drawing the stops as an SVG data URI, keeping straight-alpha interpolation.
-	pub fn to_svg_background_image(&self, settings: GradientSettings) -> String {
-		Gradient::from(self).to_svg_background_image(settings)
-	}
-}
-
 /// The serialized exchange form of a gradient: its stops, with whole-ramp settings as sibling fields serialized
 /// only when non-default. The space is the exception: it always serializes, so its absence marks a ramp
 /// from before the field existed, which deserializes as the gamma those documents rendered with.
@@ -1440,28 +1433,6 @@ impl Gradient {
 		if samples.is_empty() { vec![(0., Color::BLACK, None)] } else { samples }
 	}
 
-	/// Build a CSS `background-image` value embedding the gradient as an SVG data URI, sampling the midpoint curves, color
-	/// space, and spline. SVG interpolates its stops with straight alpha, matching the canvas renderers, where a CSS
-	/// `linear-gradient` interpolates premultiplied and would hide the pull a transparent stop's RGB exerts on the render.
-	pub fn to_svg_background_image(&self, settings: GradientSettings) -> String {
-		use std::fmt::Write;
-
-		let mut stops = String::new();
-		for (position, color, _) in self.interpolated_samples_or_black(settings) {
-			let srgba = SRGBA8::from(color);
-			let _ = write!(stops, "<stop offset='{}' stop-color='#{}'", (position * 1e4).round() / 1e4, srgba.to_rgb_hex());
-			if srgba.alpha < 255 {
-				let _ = write!(stops, " stop-opacity='{}'", (color.a() as f64 * 1000.).round() / 1000.);
-			}
-			stops.push_str("/>");
-		}
-
-		// A sizeless SVG stretches to fill the CSS background area; the encoding covers the URI-hostile characters
-		let svg = format!("<svg xmlns='http://www.w3.org/2000/svg'><linearGradient id='g' x1='0' y1='0' x2='1' y2='0'>{stops}</linearGradient><rect width='100%' height='100%' fill='url(#g)'/></svg>");
-		let encoded = svg.replace('%', "%25").replace('#', "%23").replace('<', "%3C").replace('>', "%3E");
-		format!("url(\"data:image/svg+xml,{encoded}\")")
-	}
-
 	/// Produce a set of linearly-interpolated color samples that approximate the gradient's true curve.
 	///
 	/// Each sample is `(position, color, original_midpoint)` where `original_midpoint` is `Some(f64)` with the corresponding
@@ -2381,26 +2352,6 @@ mod tests {
 				}
 			}
 		}
-	}
-
-	#[test]
-	fn svg_background_image_percent_encodes_and_keeps_straight_alpha_stops() {
-		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
-		gradient.set_color(1, Color::from_rgbaf32_unchecked(1., 1., 1., 0.5));
-
-		let image = gradient.to_svg_background_image(GradientSettings::default());
-
-		assert!(image.starts_with("url(\"data:image/svg+xml,"), "the value should be an SVG data URI: {image}");
-		assert!(image.contains("stop-opacity='0.5'"), "a transparent stop should emit its straight alpha: {image}");
-		assert!(!image.contains(['#', '<', '>']), "URI-hostile characters should be percent-encoded: {image}");
-	}
-
-	#[test]
-	fn svg_background_image_paints_a_stopless_gradient_black() {
-		let image = Gradient::from(Vec::new()).to_svg_background_image(GradientSettings::default());
-
-		// The hex color's `#` arrives percent-encoded
-		assert!(image.contains("stop-color='%23000000'"), "a gradient with no stops should paint black rather than nothing: {image}");
 	}
 
 	#[test]

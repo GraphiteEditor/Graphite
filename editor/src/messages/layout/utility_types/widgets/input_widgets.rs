@@ -641,10 +641,10 @@ pub struct SliderInput {
 	/// The path the track's stops interpolate along, used to bake `track_samples` and by the frontend to suppress the midpoint diamonds when stepped.
 	#[serde(rename = "trackInterpolation")]
 	pub track_interpolation: GradientInterpolation,
-	/// Straight-alpha samples the frontend draws as the stops of an SVG gradient filling the track strip. Auto-populated from `track` at layout-send time.
+	/// Straight-alpha color samples drawn by the frontend as the stops of an SVG gradient filling the track strip. Auto-populated from `track` at layout-send time.
 	#[serde(rename = "trackSamples")]
 	#[widget_builder(skip)]
-	pub track_samples: Vec<SliderSample>,
+	pub track_samples: Vec<GradientSample>,
 	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated by evaluating `track` at position 0.
 	#[serde(rename = "trackStartCSS")]
 	#[widget_builder(skip)]
@@ -748,8 +748,8 @@ impl SliderMarker {
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SliderSample {
-	/// Position (0..1) of the sample along the slider track, drawn as the SVG stop's `offset`.
+pub struct GradientSample {
+	/// Position (0..1) of the sample along the gradient, drawn as the SVG stop's `offset`.
 	position: f64,
 	/// `#rrggbb` hex of the sample's color, drawn as the SVG stop's `stop-color`.
 	color: String,
@@ -757,7 +757,7 @@ pub struct SliderSample {
 	alpha: f32,
 }
 
-impl SliderSample {
+impl GradientSample {
 	pub fn new(position: f64, color: Color) -> Self {
 		Self {
 			position,
