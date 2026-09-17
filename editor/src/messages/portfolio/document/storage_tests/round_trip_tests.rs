@@ -15,7 +15,7 @@ use crate::messages::portfolio::document::document_message_handler::DocumentMess
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage};
-use crate::messages::portfolio::utility_types::ImageFile;
+use crate::messages::portfolio::resource_upload::utility_types::UploadTarget;
 use crate::test_utils::test_prelude::*;
 use graphene_std::NodeParameter;
 use graphene_std::vector::style::RenderMode;
@@ -495,6 +495,18 @@ async fn live_undo_new_document_draw_rect() {
 /// name set, reparent, and transform in a single transaction. Were the name set to open its own nested
 /// transaction (a historical wart), the first undo would revert only the name and leave the layer behind, so
 /// this asserts the layer count returns to its pre-paste value after exactly one undo.
+/// Pastes a 2x2 image as a named layer.
+fn paste_named_image() -> ResourceUploadMessage {
+	ResourceUploadMessage::Upload {
+		name: Some("pasted".into()),
+		data: Image::new(2, 2, Color::WHITE).to_png().into(),
+		target: UploadTarget::Layer {
+			mouse: None,
+			parent_and_insert_index: None,
+		},
+	}
+}
+
 #[tokio::test]
 async fn paste_image_with_name_is_one_undo_step() {
 	let mut editor = EditorTestUtils::create();
@@ -504,15 +516,7 @@ async fn paste_image_with_name_is_one_undo_step() {
 
 	// Paste with a name so the handler emits the `SetDisplayName` sub-step that historically opened its
 	// own transaction. `create_raster_image` passes `name: None` and so wouldn't exercise this path.
-	let image = ImageFile::from_image(&Image::new(2, 2, Color::WHITE));
-	editor
-		.handle_message(PortfolioMessage::InsertImage {
-			name: Some("pasted".into()),
-			image,
-			mouse: None,
-			parent_and_insert_index: None,
-		})
-		.await;
+	editor.handle_message(paste_named_image()).await;
 	assert_eq!(
 		editor.active_document().metadata().all_layers().count(),
 		layers_before + 1,
@@ -570,15 +574,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	let byte_store = mount_in_memory_storage(&mut editor).await;
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
-	let image = ImageFile::from_image(&Image::new(2, 2, Color::WHITE));
-	editor
-		.handle_message(PortfolioMessage::InsertImage {
-			name: Some("pasted".into()),
-			image,
-			mouse: None,
-			parent_and_insert_index: None,
-		})
-		.await;
+	editor.handle_message(paste_named_image()).await;
 
 	editor.handle_message(DocumentMessage::Undo).await;
 
@@ -614,15 +610,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	editor.draw_rect(0., 0., 100., 100.).await;
 	let after_rect = editor.active_document().network_interface.document_network().clone();
 
-	let image = ImageFile::from_image(&Image::new(2, 2, Color::WHITE));
-	editor
-		.handle_message(PortfolioMessage::InsertImage {
-			name: Some("pasted".into()),
-			image,
-			mouse: None,
-			parent_and_insert_index: None,
-		})
-		.await;
+	editor.handle_message(paste_named_image()).await;
 
 	// First undo: removes the paste, back to the post-rectangle network. Cursor and legacy must agree.
 	editor.handle_message(DocumentMessage::Undo).await;

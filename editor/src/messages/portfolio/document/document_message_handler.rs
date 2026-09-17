@@ -826,7 +826,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(image, layer_node_id, layer_parent, responses);
+				let layer = graph_modification_utils::new_image_layer(image.resource_id, layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {

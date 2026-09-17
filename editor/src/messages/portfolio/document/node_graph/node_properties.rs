@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
-use crate::messages::portfolio::utility_types::ResourceFileKind;
+use crate::messages::portfolio::resource_upload::utility_types::{ResourceFileKind, UploadTarget};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
@@ -1333,11 +1333,8 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: Resou
 		.on_update(|_| Message::NoOp)
 		.on_commit(assign_on_click(TaggedValue::TypeDefault(item!(Resource))));
 	let browse = MenuListEntry::new("browse").label("Browse…").on_update(|_| Message::NoOp).on_commit(move |_| {
-		FrontendMessage::TriggerUploadResource {
-			filters: kind.filters(),
-			kind,
-			node_id,
-			input_index: index as u32,
+		ResourceUploadMessage::RequestUpload {
+			target: UploadTarget::NodeInput { node_id, input_index: index, kind },
 		}
 		.into()
 	});

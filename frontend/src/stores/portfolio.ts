@@ -103,9 +103,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		editor.importFile(data.filename, data.content);
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerUploadResource", async ({ filters, kind, nodeId, inputIndex }) => {
+	subscriptions.subscribeFrontendMessage("TriggerUploadResource", async ({ filters }) => {
 		const data = await upload(acceptStringFromFilters(filters), "data");
-		editor.uploadResource(nodeId, inputIndex, kind, data.content);
+		editor.uploadResource(data.filename, data.content);
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerSaveDocument", (data) => {

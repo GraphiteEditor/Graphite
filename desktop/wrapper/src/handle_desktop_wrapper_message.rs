@@ -22,6 +22,11 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			OpenFileDialogContext::Import => {
 				dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::ImportFile { path, content });
 			}
+			OpenFileDialogContext::UploadResource => {
+				let name = path.file_name().map(|name| name.to_string_lossy().to_string());
+				let message = ResourceUploadMessage::ReceiveUpload { name, data: content.into() };
+				dispatcher.queue_editor_message(message);
+			}
 		},
 		DesktopWrapperMessage::SaveFileDialogResult { path, context } => match context {
 			SaveFileDialogContext::Document { document_id, content } => {

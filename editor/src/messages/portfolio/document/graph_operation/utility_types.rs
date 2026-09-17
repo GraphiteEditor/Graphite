@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 };
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
-use crate::messages::portfolio::utility_types::ImageFile;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
 	ReplaceablePaintChain, get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
@@ -270,13 +269,10 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.set_chain_position(node_id, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, image: ImageFile, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, resource_id: ResourceId, layer: LayerNodeIdentifier) {
 		let transform = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)
 			.expect("Transform node does not exist")
 			.default_node_template();
-
-		let resource_id = ResourceId::new();
-		self.responses.add(ResourceMessage::StoreEmbedded { resource_id, data: image.data });
 
 		let image_node = resolve_proto_node_type(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
 			.expect("Image node does not exist")

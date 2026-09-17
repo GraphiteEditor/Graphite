@@ -244,7 +244,7 @@ impl EditorWrapper {
 	#[cfg(all(feature = "web", not(feature = "native")))]
 	#[wasm_bindgen(js_name = rasterImageExtensions)]
 	pub fn raster_image_extensions(&self) -> Vec<String> {
-		editor::messages::portfolio::utility_types::RASTER_IMAGE_EXTENSIONS
+		editor::messages::portfolio::resource_upload::utility_types::RASTER_IMAGE_EXTENSIONS
 			.iter()
 			.map(|extension| extension.to_string())
 			.collect()

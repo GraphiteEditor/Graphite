@@ -1,6 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::PersistentStateMessage;
-use super::utility_types::{DockingSplitDirection, ImageFile, PanelGroupId, PanelType};
+use super::resource_upload::ResourceUploadMessage;
+use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::prelude::*;
 use std::path::PathBuf;
@@ -16,6 +17,8 @@ pub enum PortfolioMessage {
 	Fonts(FontsMessage),
 	#[child]
 	PersistentState(PersistentStateMessage),
+	#[child]
+	ResourceUpload(ResourceUploadMessage),
 
 	// Messages
 	Init,
@@ -136,19 +139,9 @@ pub enum PortfolioMessage {
 		document_is_saved: bool,
 		document_serialized_content: String,
 	},
-	OpenImage {
-		name: Option<String>,
-		image: ImageFile,
-	},
 	OpenSvg {
 		name: Option<String>,
 		svg: String,
-	},
-	InsertImage {
-		name: Option<String>,
-		image: ImageFile,
-		mouse: Option<(f64, f64)>,
-		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
 	InsertSvg {
 		name: Option<String>,

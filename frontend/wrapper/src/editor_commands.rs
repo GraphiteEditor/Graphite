@@ -20,12 +20,12 @@ mod editor_commands {
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-	use editor::messages::portfolio::utility_types::{ImageFile, PanelGroupId, ResourceFileKind};
+	use editor::messages::portfolio::resource_upload::utility_types::UploadTarget;
+	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
 	use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
-	use graph_craft::application_io::resource::ResourceId;
 	use graph_craft::document::NodeId;
-	use graph_craft::document::value::TaggedValue;
+	use graphene_std::raster::Image;
 	use graphene_std::raster::color::Color;
 	use graphene_std::vector::style::FillChoice;
 	use std::path::PathBuf;
@@ -615,7 +615,7 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Pastes an image
+	/// Pastes decoded RGBA8 pixels as an image layer, encoded as PNG for storage
 	fn paste_image(
 		name: Option<String>,
 		image_data: Vec<u8>,
@@ -627,7 +627,7 @@ mod editor_commands {
 		insert_index: Option<usize>,
 	) -> Message {
 		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-		let image = ImageFile::from_pixels(&image_data, width, height);
+		let data = Image::from_image_data(&image_data, width, height).to_png();
 
 		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
 			let insert_parent_id = NodeId(insert_parent_id);
@@ -637,24 +637,16 @@ mod editor_commands {
 			None
 		};
 
-		PortfolioMessage::InsertImage {
+		ResourceUploadMessage::Upload {
 			name,
-			image,
-			mouse,
-			parent_and_insert_index,
+			data: data.into(),
+			target: UploadTarget::Layer { mouse, parent_and_insert_index },
 		}
 		.into()
 	}
 
-	/// Pastes an image file, keeping its original encoding
+	/// Pastes an image file as an image layer, keeping its original encoding
 	fn paste_image_file(name: Option<String>, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) -> Message {
-		let Some(image) = ImageFile::from_encoded(data) else {
-			return DialogMessage::DisplayDialogError {
-				title: "Unsupported image format".into(),
-				description: "The loaded file is not a supported bitmap image format.".into(),
-			}
-			.into();
-		};
 		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
 
 		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
@@ -665,38 +657,17 @@ mod editor_commands {
 			None
 		};
 
-		PortfolioMessage::InsertImage {
+		ResourceUploadMessage::Upload {
 			name,
-			image,
-			mouse,
-			parent_and_insert_index,
+			data: data.into(),
+			target: UploadTarget::Layer { mouse, parent_and_insert_index },
 		}
 		.into()
 	}
 
-	/// Stores a file chosen for a resource input and assigns it, once it decodes as the kind that input accepts
-	fn upload_resource(node_id: u64, input_index: usize, kind: ResourceFileKind, data: Vec<u8>) -> Message {
-		if let Some(description) = kind.rejection(&data) {
-			return DialogMessage::DisplayDialogError {
-				title: "Unsupported format".into(),
-				description: description.into(),
-			}
-			.into();
-		}
-
-		let resource_id = ResourceId::new();
-		Message::Batched {
-			messages: Box::new([
-				DocumentMessage::AddTransaction.into(),
-				DocumentMessage::Resource(ResourceMessage::StoreEmbedded { resource_id, data: data.into() }).into(),
-				NodeGraphMessage::SetInputValue {
-					node_id: NodeId(node_id),
-					input_index,
-					value: TaggedValue::Resource(resource_id).into(),
-				}
-				.into(),
-			]),
-		}
+	/// Hands the file picked for a requested resource upload to the editor
+	fn upload_resource(name: String, data: Vec<u8>) -> Message {
+		ResourceUploadMessage::ReceiveUpload { name: Some(name), data: data.into() }.into()
 	}
 
 	/// Pastes an SVG given its string representation

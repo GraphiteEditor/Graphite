@@ -7,7 +7,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	InputMetadata, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, Vec2InputSettings, WidgetOverride,
 };
-use crate::messages::portfolio::utility_types::ResourceFileKind;
+use crate::messages::portfolio::resource_upload::utility_types::ResourceFileKind;
 use crate::messages::prelude::{FontsMessage, FontsMessageHandler, Message, ResourceMessageHandler, Responses};
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;

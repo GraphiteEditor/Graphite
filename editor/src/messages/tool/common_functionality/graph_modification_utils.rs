@@ -2,10 +2,10 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, DefinitionIdentifier};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate, OutputConnector};
-use crate::messages::portfolio::utility_types::ImageFile;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::ProtoNodeIdentifier;
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graphene_std::Color;
@@ -206,10 +206,15 @@ pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifie
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 }
 
-/// Create a new bitmap layer.
-pub fn new_image_layer(image: ImageFile, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+/// Create a new bitmap layer showing a stored image resource.
+pub fn new_image_layer(resource_id: ResourceId, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
-	responses.add(GraphOperationMessage::NewBitmapLayer { id, image, parent, insert_index });
+	responses.add(GraphOperationMessage::NewBitmapLayer {
+		id,
+		resource_id,
+		parent,
+		insert_index,
+	});
 	LayerNodeIdentifier::new_unchecked(id)
 }
 

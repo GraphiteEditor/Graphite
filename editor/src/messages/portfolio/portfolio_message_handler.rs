@@ -15,7 +15,8 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::portfolio::document_storage_io::{build_or_open_working_copy, compare_storage_against_runtime, open_gdd_document};
-use crate::messages::portfolio::utility_types::{FileContent, ImageFile, raster_image_file_filter};
+use crate::messages::portfolio::resource_upload::utility_types::{UploadTarget, image_file_filter};
+use crate::messages::portfolio::utility_types::FileContent;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, ToolType};
@@ -59,6 +60,7 @@ pub struct PortfolioMessageHandler {
 	pub(crate) active_document_id: Option<DocumentId>,
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
+	resource_upload: ResourceUploadMessageHandler,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
@@ -113,6 +115,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::Fonts(message) => {
 				let context = FontsMessageContext { resource_storage };
 				self.fonts.process_message(message, responses, context);
+			}
+			PortfolioMessage::ResourceUpload(message) => {
+				let context = ResourceUploadMessageContext {
+					document_open: !self.document_ids.is_empty(),
+				};
+				self.resource_upload.process_message(message, responses, context);
 			}
 
 			// Messages
@@ -658,24 +666,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::Open => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				let mut image_filter = raster_image_file_filter();
-				image_filter.extensions.insert(0, "svg".into());
 				responses.add(FrontendMessage::TriggerOpen {
 					filters: vec![
 						FileFilter {
 							name: "Graphite Document".into(),
 							extensions: vec![FILE_EXTENSION.into(), GDD_FILE_EXTENSION.into()],
 						},
-						image_filter,
+						image_file_filter(),
 					],
 				});
 			}
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				// TODO: Also offer the Graphite document filter once importing Graphite documents as nodes is supported
-				let mut image_filter = raster_image_file_filter();
-				image_filter.extensions.insert(0, "svg".into());
-				responses.add(FrontendMessage::TriggerImport { filters: vec![image_filter] });
+				responses.add(FrontendMessage::TriggerImport { filters: vec![image_file_filter()] });
 			}
 			PortfolioMessage::OpenFile { path, content } => {
 				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
@@ -699,8 +703,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					FileContent::Svg(svg) => {
 						responses.add(PortfolioMessage::OpenSvg { name, svg });
 					}
-					FileContent::Image(image) => {
-						responses.add(PortfolioMessage::OpenImage { name, image });
+					FileContent::Image(data) => {
+						responses.add(ResourceUploadMessage::Upload {
+							name,
+							data: data.into(),
+							target: UploadTarget::Document,
+						});
 					}
 					FileContent::Unsupported => {
 						// TODO: Show a more thoughtfully designed error message to the user
@@ -738,12 +746,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							parent_and_insert_index: None,
 						});
 					}
-					FileContent::Image(image) => {
-						responses.add(PortfolioMessage::InsertImage {
+					FileContent::Image(data) => {
+						responses.add(ResourceUploadMessage::Upload {
 							name,
-							image,
-							mouse: None,
-							parent_and_insert_index: None,
+							data: data.into(),
+							target: UploadTarget::Layer {
+								mouse: None,
+								parent_and_insert_index: None,
+							},
 						});
 					}
 					FileContent::Unsupported => {
@@ -987,34 +997,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					self.tick_autosave_load_progress(responses, false);
 				}
 			}
-			PortfolioMessage::OpenImage { name, image } => {
-				// `NewDocumentWithName`'s handler routes empty/None-equivalent names through `resolve_document_name` which assigns the next available "Untitled Document {N}".
-				responses.add(PortfolioMessage::NewDocumentWithName {
-					name: name.clone().unwrap_or_default(),
-				});
-
-				responses.add(DocumentMessage::InsertImage {
-					name,
-					image,
-					mouse: None,
-					parent_and_insert_index: None,
-					place_at_origin: true,
-				});
-
-				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![
-						DocumentMessage::WrapContentInArtboard {
-							place_artboard_at_origin: true,
-							artboard_canvas: None,
-						}
-						.into(),
-					],
-				});
-				responses.add(DeferMessage::AfterNavigationReady {
-					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
-				});
-			}
 			PortfolioMessage::OpenSvg { name, svg } => {
 				responses.add(PortfolioMessage::NewDocumentWithName {
 					name: name.clone().unwrap_or_default(),
@@ -1173,24 +1155,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-			}
-			PortfolioMessage::InsertImage {
-				name,
-				image,
-				mouse,
-				parent_and_insert_index,
-			} => {
-				if self.document_ids.is_empty() {
-					responses.add(PortfolioMessage::OpenImage { name, image });
-				} else {
-					responses.add(DocumentMessage::InsertImage {
-						name,
-						image,
-						mouse,
-						parent_and_insert_index,
-						place_at_origin: false,
-					});
 				}
 			}
 			PortfolioMessage::InsertSvg {
@@ -1830,10 +1794,7 @@ impl PortfolioMessageHandler {
 				Ok(content) => FileContent::Svg(content),
 				Err(_) => FileContent::Unsupported,
 			},
-			_ => match ImageFile::from_encoded(content) {
-				Some(image) => FileContent::Image(image),
-				None => FileContent::Unsupported,
-			},
+			_ => FileContent::Image(content),
 		}
 	}
 

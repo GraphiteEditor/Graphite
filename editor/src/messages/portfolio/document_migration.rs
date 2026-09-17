@@ -2144,10 +2144,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Move the Image node's resource from the primary input to the first secondary input
+	// Move the Image node's resource, whether a stored value or a wire, from the primary input to the first secondary input
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
 		&& inputs_count == 1
-		&& matches!(node.inputs.first().and_then(|input| input.as_value()), Some(TaggedValue::Resource(_)))
+		&& !matches!(node.inputs.first().and_then(|input| input.as_value()), Some(TaggedValue::ImageData(_)))
 	{
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -3127,32 +3127,38 @@ mod tests {
 		use graphene_std::raster::Image;
 
 		let resource_id = ResourceId::new();
+		let upstream_id = NodeId(2);
 		let legacy_inputs = [
 			NodeInput::value(TaggedValue::ImageData(Image::new(2, 2, Color::WHITE)), false),
 			NodeInput::value(TaggedValue::Resource(resource_id), false),
+			NodeInput::node(upstream_id, 0),
 		];
 
 		for legacy_input in legacy_inputs {
 			let image_id = NodeId(1);
 			let mut document = DocumentMessageHandler::default();
-			document.network_interface.insert_node(
-				image_id,
-				NodeTemplate {
-					implementation: NodeTemplateImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER),
-					inputs: vec![legacy_input],
-					..Default::default()
-				},
-				&[],
-			);
+			let image_template = |inputs| NodeTemplate {
+				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER),
+				inputs,
+				..Default::default()
+			};
+			document.network_interface.insert_node(upstream_id, image_template(vec![]), &[]);
+			document.network_interface.insert_node(image_id, image_template(vec![NodeInput::value(TaggedValue::None, false)]), &[]);
+			document.network_interface.set_input(&InputConnector::node_at_index(image_id, 0), legacy_input.clone(), &[]);
 
 			document_migration_upgrades(&mut document, false);
 
 			let image_node = &document.network_interface.document_network().nodes[&image_id];
 			assert_eq!(image_node.inputs.len(), 2, "the image node should gain its placeholder primary input");
-			let Some(TaggedValue::Resource(stored)) = image_node.inputs[1].as_value() else {
-				panic!("the file should sit at input 1")
-			};
-			assert!(document.resources.registry.contains(stored) || *stored == resource_id, "the stored file should be the legacy one");
+			match (&legacy_input, &image_node.inputs[1]) {
+				(NodeInput::Node { .. }, migrated) => assert_eq!(migrated.as_node(), Some(upstream_id), "the wire should sit at input 1"),
+				(_, migrated) => {
+					let Some(TaggedValue::Resource(stored)) = migrated.as_value() else {
+						panic!("the file should sit at input 1")
+					};
+					assert!(document.resources.registry.contains(stored) || *stored == resource_id, "the stored file should be the legacy one");
+				}
+			}
 		}
 	}
 
