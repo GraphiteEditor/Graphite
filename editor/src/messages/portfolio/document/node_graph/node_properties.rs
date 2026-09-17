@@ -1304,13 +1304,33 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: Resou
 		_ => return widgets,
 	};
 
-	// Fonts have their own picker, so only uploaded files are listed, labeled by content hash until resources carry names
-	let ParameterWidgetsInfo { node_id, index, resources, .. } = parameter_widgets_info;
-	let mut files: Vec<(ResourceId, String)> = resources
+	// Fonts have their own picker, so only uploaded files are listed, labeled by hash and user count until resources carry names
+	let ParameterWidgetsInfo {
+		node_id,
+		index,
+		resources,
+		network_interface,
+		..
+	} = parameter_widgets_info;
+	let user_counts = network_interface.resource_user_counts();
+	let mut files: Vec<(ResourceId, String, String)> = resources
 		.registry
 		.resolved()
 		.filter(|info| info.sources.iter().all(|source| matches!(source, DataSource::Embedded)))
-		.map(|info| (info.id, info.hash.map(|hash| hash.to_string()[..8].to_string()).unwrap_or_default()))
+		.map(|info| {
+			let hash = info.hash.map(|hash| hash.to_string()[..8].to_string()).unwrap_or_default();
+			let users = user_counts.get(&info.id).copied().unwrap_or(0);
+			let tooltip_description = match users {
+				0 => "Not used by any node input. This resource will be dropped upon document reload.".to_string(),
+				users => format!("Used by {users} node input{}.", if users == 1 { "" } else { "s" }),
+			};
+			let uses = match users {
+				0 => "unused".to_string(),
+				1 => "1 use".to_string(),
+				users => format!("{users} uses"),
+			};
+			(info.id, format!("{hash} · {uses}"), tooltip_description)
+		})
 		.collect();
 	files.sort();
 
@@ -1330,26 +1350,32 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: Resou
 	};
 	let none = MenuListEntry::new("none")
 		.label("None")
+		.tooltip_description("No resource assigned to this input.")
 		.on_update(|_| Message::NoOp)
 		.on_commit(assign_on_click(TaggedValue::TypeDefault(item!(Resource))));
-	let browse = MenuListEntry::new("browse").label("Browse…").on_update(|_| Message::NoOp).on_commit(move |_| {
-		ResourceUploadMessage::RequestUpload {
-			target: UploadTarget::NodeInput { node_id, input_index: index, kind },
-		}
-		.into()
-	});
+	let browse = MenuListEntry::new("browse")
+		.label("Browse…")
+		.tooltip_description("Pick a file from disk to use for this input.")
+		.on_update(|_| Message::NoOp)
+		.on_commit(move |_| {
+			ResourceUploadMessage::RequestUpload {
+				target: UploadTarget::NodeInput { node_id, input_index: index, kind },
+			}
+			.into()
+		});
 	let file_entries = files
 		.iter()
-		.map(|(resource_id, label)| {
+		.map(|(resource_id, label, tooltip_description)| {
 			MenuListEntry::new(format!("{resource_id:?}"))
 				.label(label.clone())
+				.tooltip_description(tooltip_description.clone())
 				.on_update(|_| Message::NoOp)
 				.on_commit(assign_on_click(TaggedValue::Resource(*resource_id)))
 		})
 		.collect();
 	let selected_index = match selected {
 		None => Some(0),
-		Some(selected) => files.iter().position(|(resource_id, _)| *resource_id == selected).map(|position| position as u32 + 2),
+		Some(selected) => files.iter().position(|(resource_id, ..)| *resource_id == selected).map(|position| position as u32 + 2),
 	};
 
 	widgets.extend_from_slice(&[
