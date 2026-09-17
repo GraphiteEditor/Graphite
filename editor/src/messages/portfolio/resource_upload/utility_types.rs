@@ -1,5 +1,6 @@
 use crate::messages::frontend::utility_types::FileFilter;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::prelude::DocumentId;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::NodeId;
 
@@ -60,8 +61,13 @@ impl ResourceFileKind {
 /// Where an uploaded file goes once it is stored as a resource.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum UploadTarget {
-	/// A node input that accepts the given kind of file.
-	NodeInput { node_id: NodeId, input_index: usize, kind: ResourceFileKind },
+	/// A node input in the given document that accepts the given kind of file.
+	NodeInput {
+		document_id: DocumentId,
+		node_id: NodeId,
+		input_index: usize,
+		kind: ResourceFileKind,
+	},
 	/// A new image layer in the active document, centered on the mouse or else the viewport.
 	Layer {
 		mouse: Option<(f64, f64)>,

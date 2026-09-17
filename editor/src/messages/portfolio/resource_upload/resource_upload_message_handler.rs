@@ -40,19 +40,30 @@ impl MessageHandler<ResourceUploadMessage, ResourceUploadMessageContext> for Res
 				};
 
 				match target {
-					UploadTarget::NodeInput { node_id, input_index, kind } => {
+					UploadTarget::NodeInput {
+						document_id,
+						node_id,
+						input_index,
+						kind,
+					} => {
 						if let Some(description) = kind.rejection(&data) {
 							return reject(responses, description);
 						}
 
+						// The file goes to the document that asked for it, which may no longer be active or open once the dialog closes
 						let resource_id = ResourceId::new();
-						responses.add(DocumentMessage::AddTransaction);
-						responses.add(ResourceMessage::StoreEmbedded { resource_id, data });
-						responses.add(NodeGraphMessage::SetInputValue {
-							node_id,
-							input_index,
-							value: Box::new(TaggedValue::Resource(resource_id)),
-						});
+						let messages = [
+							DocumentMessage::AddTransaction,
+							DocumentMessage::Resource(ResourceMessage::StoreEmbedded { resource_id, data }),
+							DocumentMessage::NodeGraph(NodeGraphMessage::SetInputValue {
+								node_id,
+								input_index,
+								value: Box::new(TaggedValue::Resource(resource_id)),
+							}),
+						];
+						for message in messages {
+							responses.add(PortfolioMessage::DocumentPassMessage { document_id, message });
+						}
 					}
 					UploadTarget::Layer { .. } | UploadTarget::Document => {
 						let Some((width, height)) = decoded_image_size(&data) else {
@@ -135,6 +146,7 @@ mod tests {
 	#[test]
 	fn a_file_that_is_not_an_image_is_rejected_before_it_is_stored() {
 		let target = UploadTarget::NodeInput {
+			document_id: DocumentId(3),
 			node_id: NodeId(7),
 			input_index: 1,
 			kind: ResourceFileKind::RasterImage,
@@ -151,6 +163,7 @@ mod tests {
 	#[test]
 	fn a_picked_file_goes_to_the_target_of_the_pending_request() {
 		let target = UploadTarget::NodeInput {
+			document_id: DocumentId(3),
 			node_id: NodeId(7),
 			input_index: 1,
 			kind: ResourceFileKind::Any,

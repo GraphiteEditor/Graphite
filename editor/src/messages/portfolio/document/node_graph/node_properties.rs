@@ -1306,6 +1306,7 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: Resou
 
 	// Fonts have their own picker, so only uploaded files are listed, labeled by hash and user count until resources carry names
 	let ParameterWidgetsInfo {
+		document_id,
 		node_id,
 		index,
 		resources,
@@ -1316,7 +1317,7 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: Resou
 	let mut files: Vec<(ResourceId, String, String)> = resources
 		.registry
 		.resolved()
-		.filter(|info| info.sources.iter().all(|source| matches!(source, DataSource::Embedded)))
+		.filter(|info| !info.sources.iter().any(|source| matches!(source, DataSource::Font { .. })))
 		.map(|info| {
 			let hash = info.hash.map(|hash| hash.to_string()[..8].to_string()).unwrap_or_default();
 			let users = user_counts.get(&info.id).copied().unwrap_or(0);
@@ -1359,7 +1360,12 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: Resou
 		.on_update(|_| Message::NoOp)
 		.on_commit(move |_| {
 			ResourceUploadMessage::RequestUpload {
-				target: UploadTarget::NodeInput { node_id, input_index: index, kind },
+				target: UploadTarget::NodeInput {
+					document_id,
+					node_id,
+					input_index: index,
+					kind,
+				},
 			}
 			.into()
 		});
@@ -3440,6 +3446,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 }
 
 pub struct ParameterWidgetsInfo<'a> {
+	document_id: DocumentId,
 	network_interface: &'a NodeNetworkInterface,
 	resources: &'a ResourceMessageHandler,
 	selection_network_path: &'a [NodeId],
@@ -3485,6 +3492,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
 		ParameterWidgetsInfo {
+			document_id: context.document_id,
 			network_interface: context.network_interface,
 			resources: context.resources,
 			selection_network_path: context.selection_network_path,

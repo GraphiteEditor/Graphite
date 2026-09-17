@@ -118,7 +118,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::ResourceUpload(message) => {
 				let context = ResourceUploadMessageContext {
-					document_open: !self.document_ids.is_empty(),
+					document_open: self.active_document().is_some(),
 				};
 				self.resource_upload.process_message(message, responses, context);
 			}
