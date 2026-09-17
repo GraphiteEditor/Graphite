@@ -31,6 +31,8 @@ pub struct FieldMetadata {
 	pub description: &'static str,
 	/// Index levels the node pushes when evaluating this input.
 	pub pushed_levels: u8,
+	/// Index levels of this input the node iterates itself when materializing it; they are the input's own lanes, never the caller's.
+	pub driven_levels: u8,
 	pub hidden: bool,
 	pub exposed: bool,
 	pub widget_override: RegistryWidgetOverride,

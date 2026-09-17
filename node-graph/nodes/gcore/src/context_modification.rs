@@ -10,8 +10,9 @@ fn context_modification<T>(
 	value: impl Node<Context<'_>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
 	modification: ContextModification,
+	#[data] remembered: std::sync::Arc<core_types::context::NullifiedHash>,
 ) -> Result<T, Interrupt> {
-	let scope = ctx.scope().nullified(modification.features, Some(modification.sources()));
+	let scope = ctx.scope().nullified_through(modification.features, Some(modification.sources()), &remembered);
 	let exhausted = || {
 		Interrupt::from(GraphError {
 			kind: ErrorKind::ArenaExhausted,

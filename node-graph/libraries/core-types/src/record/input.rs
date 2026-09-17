@@ -103,7 +103,11 @@ where
 	let status = node.eval_batch(input, range.clone(), None, frames);
 	#[cfg(debug_assertions)]
 	{
-		let name = core::any::type_name::<N>();
+		let consumer = BATCH_CONSUMER.with(|consumer| consumer.get());
+		let name = match consumer.is_empty() {
+			true => core::any::type_name::<N>(),
+			false => consumer,
+		};
 		let batched = !matches!(status, BatchStatus::Unbatched);
 		crate::record::input::tally_batch(name, batched, len);
 	}
@@ -537,10 +541,6 @@ pub fn tally_batch(name: &str, batched: bool, lanes: usize) {
 	use std::cell::RefCell;
 	use std::collections::HashMap;
 
-	thread_local! {
-		static TALLY: RefCell<HashMap<String, (usize, usize, usize)>> = RefCell::new(HashMap::new());
-	}
-
 	static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 	if !*ON.get_or_init(|| std::env::var_os("GRAPHENE_BATCH_DEBUG").is_some()) {
 		return;
@@ -560,7 +560,7 @@ pub fn tally_batch(name: &str, batched: bool, lanes: usize) {
 	TALLY.with(|tally| {
 		let tally = tally.borrow();
 		let total: usize = tally.values().map(|(batched, unbatched, _)| batched + unbatched).sum();
-		if !total.is_multiple_of(20000) {
+		if !total.is_multiple_of(20000) || std::env::var_os("GRAPHENE_BATCH_DEBUG_PERIODIC").is_none() {
 			return;
 		}
 		let mut rows: Vec<_> = tally.iter().map(|(name, counts)| (name.clone(), *counts)).collect();
@@ -577,4 +577,22 @@ pub fn tally_batch(name: &str, batched: bool, lanes: usize) {
 fn short_name(name: &str) -> String {
 	let head = name.split('<').next().unwrap_or(name);
 	head.rsplit("::").take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("::")
+}
+
+#[cfg(debug_assertions)]
+thread_local! {
+	static BATCH_CONSUMER: std::cell::Cell<&'static str> = const { std::cell::Cell::new("") };
+	static TALLY: std::cell::RefCell<std::collections::HashMap<String, (usize, usize, usize)>> = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Names the kernel input about to materialize, so the `GRAPHENE_BATCH_DEBUG` tally is keyed by consumer rather than by the erased source.
+#[cfg(debug_assertions)]
+pub fn note_batch_consumer(name: &'static str) {
+	BATCH_CONSUMER.with(|consumer| consumer.set(name));
+}
+
+/// Drains the tally: per consumer input, (batched, unbatched, lanes).
+#[cfg(debug_assertions)]
+pub fn take_batch_tally() -> Vec<(String, (usize, usize, usize))> {
+	TALLY.with(|tally| tally.borrow_mut().drain().collect())
 }

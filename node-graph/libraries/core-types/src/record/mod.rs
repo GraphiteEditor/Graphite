@@ -24,6 +24,8 @@ mod testkit;
 pub use access::{Rec, RecordValue, apply_plan, borrow_element, erase_static, read_at, read_at_defaulting, read_element, token_only, write_element, write_element_sized, write_field};
 pub use frames::{FrameArena, FrameScope, Frames};
 pub use input::{DerivedLazyInput, DerivedRecordInput, ElementInput, ElementLazyInput, LevelStatus, RecordExtract, RecordInput, RecordLazyInput, fill_frames, materialize_batch, materialize_level};
+#[cfg(debug_assertions)]
+pub use input::{note_batch_consumer, take_batch_tally};
 pub use layout::{
 	ElToken, ElementSpec, ElementWrite, ElementWritePick, ElementWritePickHashed, ElementWritePickPlain, FieldDesc, FieldOffset, FieldWrite, InputReads, Layout, LayoutMeta, NamedRead, NamedWrite,
 	RecordLayout, copy_plan, element_dims, element_parked, element_write, element_write_hashed, empty_layout,
@@ -32,5 +34,5 @@ pub use owned::{OwnedRecord, deepen_field_value, has_deep_element_glue, register
 pub use promote::{Promotion, assert_promoted, register_element_promote, register_field_promote, register_retained_heap};
 pub use route::{RecordSource, SourcePlan};
 pub use run::{Group, GroupItem, RunBuilder, RunColumn, RunView, run_to_owned_list};
-pub use serve::{FrameClaim, MaterializedSpan, Served, SlotRun, serve_input};
+pub use serve::{FrameClaim, LaneSpan, MaterializedSpan, Served, SlotRun, serve_input};
 pub use testkit::{LiftedSource, ServedRecord, capture, fixtures as test_fixtures, test_frames};

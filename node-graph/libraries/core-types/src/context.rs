@@ -823,6 +823,10 @@ impl<'a> std::fmt::Debug for VarArgLink<'a> {
 	}
 }
 
+/// The scope hash a boundary last nullified and the hash that came out; the strip set is fixed per boundary, so the pair is a memo of one evaluation.
+#[derive(Debug, Default)]
+pub struct NullifiedHash(std::sync::Mutex<(u64, u64)>);
+
 #[derive(Clone, Copy, Debug)]
 pub struct EvalScope<'a> {
 	real_time: Option<f64>,
@@ -875,6 +879,30 @@ impl<'a> EvalScope<'a> {
 		scope
 	}
 
+	/// [`EvalScope::nullified`] remembering the last scope it nullified: a boundary serves every lane of an evaluation from one scope, so the filtered hash is computed once per scope rather than per lane.
+	pub fn nullified_through(&self, keep: ContextFeatures, retain: Option<&[SourceId]>, remembered: &NullifiedHash) -> EvalScope<'a> {
+		let mut scope = EvalScope {
+			real_time: self.real_time.filter(|_| keep.contains(ContextFeatures::REAL_TIME)),
+			animation_time: self.animation_time.filter(|_| keep.contains(ContextFeatures::ANIMATION_TIME)),
+			pointer_position: self.pointer_position.filter(|_| keep.contains(ContextFeatures::POINTER_POSITION)),
+			..*self
+		};
+		if !scope_hash_cache_enabled() {
+			scope.hash = scope.compute_hash(|source| retain.is_none_or(|retain| retain.contains(source)));
+			return scope;
+		}
+		let mut last = remembered.0.lock().unwrap();
+		scope.hash = match *last {
+			(input, output) if input == self.hash => output,
+			_ => {
+				let output = scope.compute_hash(|source| retain.is_none_or(|retain| retain.contains(source)));
+				*last = (self.hash, output);
+				output
+			}
+		};
+		scope
+	}
+
 	pub fn nullified(&self, keep: ContextFeatures, retain: Option<&[SourceId]>) -> EvalScope<'a> {
 		let mut scope = EvalScope {
 			real_time: self.real_time.filter(|_| keep.contains(ContextFeatures::REAL_TIME)),
@@ -893,7 +921,7 @@ impl<'a> EvalScope<'a> {
 	}
 
 	fn compute_hash(&self, keep_source: impl Fn(&SourceId) -> bool) -> u64 {
-		let mut hasher = std::hash::DefaultHasher::new();
+		let mut hasher = graphene_hash::FxHasher64::new();
 		self.real_time.map(f64::to_bits).hash(&mut hasher);
 		self.animation_time.map(f64::to_bits).hash(&mut hasher);
 		self.pointer_position.map(|position| (position.x.to_bits(), position.y.to_bits())).hash(&mut hasher);
@@ -1473,7 +1501,7 @@ mod context_impl_tests {
 	use crate::graphene_hash::CacheHash;
 
 	fn hash_of(ctx: &ContextImpl) -> u64 {
-		let mut hasher = std::hash::DefaultHasher::new();
+		let mut hasher = graphene_hash::FxHasher64::new();
 		ctx.cache_hash(&mut hasher);
 		hasher.finish()
 	}
@@ -1796,4 +1824,9 @@ mod context_impl_tests {
 		let (value, _) = ExtractArena::arena(&ctx).alloc(41u32).unwrap();
 		assert_eq!(*value, 41);
 	}
+}
+
+fn scope_hash_cache_enabled() -> bool {
+	static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	*ON.get_or_init(|| std::env::var_os("SCOPE_HASH_CACHE").is_none_or(|v| v != "off"))
 }

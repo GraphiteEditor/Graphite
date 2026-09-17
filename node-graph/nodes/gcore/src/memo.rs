@@ -1,8 +1,9 @@
 use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ModifyIndex};
-use core_types::gpoll::{Finality, GPoll};
+use core_types::gpoll::{Extent, Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
-use core_types::record::{FrameClaim, LevelStatus, MaterializedSpan, OwnedRecord, Promotion, Served};
+use core_types::record::{FrameClaim, LaneSpan, LevelStatus, MaterializedSpan, OwnedRecord, Promotion, Served};
 use core_types::registry::cache_key;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -131,13 +132,40 @@ fn memoize<'e, 'l>(
 	result
 }
 
-/// The span memo's entry: the span resolves only while the persistent epoch
-/// that published it is live, so a flush costs a re-publish and nothing else.
+/// A published level and how far the region confirmed it.
 #[derive(Debug)]
 pub struct SpanLevel {
-	key: u64,
 	span: MaterializedSpan,
 	finality: Finality,
+}
+
+/// Keyed by an already-hashed context, so the map hashes the key once more with Fx rather than SipHash.
+type KeyMap<V> = HashMap<u64, V, std::hash::BuildHasherDefault<graphene_hash::FxHasher64>>;
+
+/// The boundary memo's entries for one generation of the persistent region,
+/// keyed by the lane-normalized context: every level or lane published stays
+/// addressable until the region flushes, since the region cannot give the
+/// bytes back any earlier.
+#[derive(Debug, Default)]
+pub struct MemoTable {
+	generation: u64,
+	levels: KeyMap<SpanLevel>,
+	lanes: KeyMap<LaneSpan>,
+	/// Extents answered per key and level, since a level's extent is the same for every lane that asks.
+	extents: HashMap<(u64, u8), Extent, std::hash::BuildHasherDefault<graphene_hash::FxHasher64>>,
+}
+
+impl MemoTable {
+	/// The entries of `persistent`'s current generation; a flush empties them.
+	fn for_generation(&mut self, persistent: &core_types::arena::Arena) -> &mut Self {
+		if self.generation != persistent.generation() {
+			self.levels.clear();
+			self.lanes.clear();
+			self.extents.clear();
+			self.generation = persistent.generation();
+		}
+		self
+	}
 }
 
 /// The cheap memo the compiler inserts at context boundaries: a published
@@ -175,7 +203,14 @@ where
 	keyed.set_index(0);
 	let key = cache_key(&keyed);
 
-	let entry = node.cache.lock().unwrap().as_ref().filter(|entry| entry.key == key).map(|entry| (entry.span, entry.finality));
+	let entry = node
+		.cache
+		.lock()
+		.unwrap()
+		.for_generation(input.scope().persistent())
+		.levels
+		.get(&key)
+		.map(|entry| (entry.span, entry.finality));
 	let Some((span, finality)) = entry else { return BatchStatus::Unbatched };
 	let Some(published) = span.batch(input.scope().persistent(), content.layout()) else {
 		return BatchStatus::Unbatched;
@@ -209,51 +244,50 @@ where
 	use core_types::node::Node;
 
 	let content = &node.content;
-	let forward = || Node::extent_at(content, ctx, level, frames);
-	if level != 0 || content.layout().depth != 1 {
-		return forward();
+	if content.layout().depth == 0 || !extent_cache_enabled() {
+		return Node::extent_at(content, ctx, level, frames);
 	}
-
 	let mut keyed = *ctx;
 	keyed.set_index(0);
 	let key = cache_key(&keyed);
-
-	let published = node
-		.cache
-		.lock()
-		.unwrap()
-		.as_ref()
-		.filter(|entry| entry.key == key)
-		.and_then(|entry| entry.span.batch(ctx.scope().persistent(), content.layout()).map(|batch| batch.len()));
-
-	match published {
-		Some(lanes) => GPoll::Final(Extent::Exactly(lanes)),
-		None => forward(),
+	let persistent = ctx.scope().persistent();
+	{
+		let mut table = node.cache.lock().unwrap();
+		let table = table.for_generation(persistent);
+		if let Some(extent) = table.extents.get(&(key, level)) {
+			return GPoll::Final(*extent);
+		}
+		// A one-level span answers its own level's extent as its length.
+		if level == 0
+			&& content.layout().depth == 1
+			&& let Some(entry) = table.levels.get(&key)
+			&& let Some(published) = entry.span.batch(persistent, content.layout())
+		{
+			return GPoll::Final(Extent::Exactly(published.len()));
+		}
 	}
+	let extent = Node::extent_at(content, ctx, level, frames);
+	if let GPoll::Final(extent) = extent {
+		node.cache.lock().unwrap().for_generation(persistent).extents.insert((key, level), extent);
+	}
+	extent
 }
 
 #[node_macro::node(category(""), path(graphene_core::memo), extent_raw(frame_memo_extent), batch(frame_memo_batch))]
 fn frame_memo<'e, 'l>(
 	ctx: impl Ctx + CacheHash + DeriveCtx + ExtractArena<'e> + ModifyIndex + Copy,
-	#[data] cache: Arc<Mutex<Option<SpanLevel>>>,
+	#[data] cache: Arc<Mutex<MemoTable>>,
 	content: impl Node<Context<'_>>,
 	slot: FrameClaim<'e, 'l>,
 ) -> GPoll<Served<'e>> {
-	// A scalar input's value may depend on the consuming lane (index readers),
-	// so only a leveled input, whose level covers every lane by construction,
-	// keys with the lane normalized away.
+	// The addressed lane keys apart from the rest of the context: a level
+	// covers every lane, and scalar content publishes lane by lane under it.
 	let leveled = content.layout().depth > 0;
-	let lane = match leveled {
-		true => ctx.index() as usize,
-		false => 0,
-	};
-	let key = match leveled {
-		true => {
-			let mut keyed = *ctx;
-			keyed.set_index(0);
-			cache_key(&keyed)
-		}
-		false => cache_key(&ctx),
+	let lane = ctx.index() as usize;
+	let key = {
+		let mut keyed = *ctx;
+		keyed.set_index(0);
+		cache_key(&keyed)
 	};
 	let mut slot = slot;
 	let promotion = Promotion::new(ctx.arena(), slot.frames().bounds(), ctx.scope().persistent());
@@ -272,23 +306,26 @@ fn frame_memo<'e, 'l>(
 		finalized(unsafe { slot.finish_served() }, finality)
 	};
 	let past_end = || GPoll::Error(Box::new(core_types::gpoll::GraphError::past_end()));
-	let entry = cache.lock().unwrap().as_ref().filter(|entry| entry.key == key).map(|entry| (entry.span, entry.finality));
-	// A span that no longer resolves was flushed.
-	if let Some((span, finality)) = entry
-		&& let Some(published) = span.batch(persistent, content.layout())
-	{
-		if lane >= published.len() {
-			// The cached level ends here; the past-end signal serves drains.
-			return past_end();
-		}
-		return serve(published.get(lane).rec().ptr(), finality, slot);
-	}
 	if leveled {
+		let entry = cache.lock().unwrap().for_generation(persistent).levels.get(&key).map(|entry| (entry.span, entry.finality));
+		if let Some((span, finality)) = entry
+			&& let Some(published) = span.batch(persistent, content.layout())
+		{
+			if lane >= published.len() {
+				// The cached level ends here; the past-end signal serves drains.
+				return past_end();
+			}
+			probe_memo_hit(&cache);
+			return serve(published.get(lane).rec().ptr(), finality, slot);
+		}
 		return match content.materialize_level(ctx, ctx.arena()) {
 			LevelStatus::Batch(batch, finality) => {
 				// SAFETY: the batch came from this input, so it carries the input's layout.
 				let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) };
-				*cache.lock().unwrap() = span.map(|span| SpanLevel { key, span, finality });
+				probe_memo_publish(&cache, true, batch.len(), content.layout().frame_bytes(), span.is_some());
+				if let Some(span) = span {
+					cache.lock().unwrap().for_generation(persistent).levels.insert(key, SpanLevel { span, finality });
+				}
 				match lane < batch.len() {
 					// The publishing evaluation reads the resident batch, not the copy.
 					true => serve(batch.get(lane).rec().ptr(), finality, slot),
@@ -299,6 +336,17 @@ fn frame_memo<'e, 'l>(
 			LevelStatus::Error(error) => GPoll::Error(Box::new(error)),
 		};
 	}
+	let hit = cache
+		.lock()
+		.unwrap()
+		.for_generation(persistent)
+		.lanes
+		.get(&key)
+		.and_then(|span| span.lane(persistent, lane, content.layout()));
+	if let Some((src, finality)) = hit {
+		probe_memo_hit(&cache);
+		return serve(src, finality, slot);
+	}
 	// The output layout is the content's, so the claim is the content's frame.
 	let result = content.serve(ctx, slot);
 	let publishable = match &result {
@@ -308,12 +356,12 @@ fn frame_memo<'e, 'l>(
 	};
 	if let Some((value, finality)) = publishable {
 		let layout = content.layout();
-		// SAFETY: the value came from this input, so it carries the input's
-		// layout, and one record of it is a batch of one lane.
-		let batch = unsafe { core_types::node::RecordBatch::new(layout.rec(value).ptr(), 1, layout) };
-		// SAFETY: as above.
-		let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) };
-		*cache.lock().unwrap() = span.map(|span| SpanLevel { key, span, finality });
+		let mut table = cache.lock().unwrap();
+		let span = table.for_generation(persistent).lanes.entry(key).or_insert_with(|| LaneSpan::new(persistent));
+		// SAFETY: the value came from this input, so it carries the input's layout.
+		let ok = unsafe { span.publish(lane, layout.rec(value).ptr(), layout, &promotion, finality) }.is_some();
+		drop(table);
+		probe_memo_publish(&cache, false, 1, layout.frame_bytes(), ok);
 	}
 	result
 }
@@ -782,4 +830,68 @@ mod tests {
 		assert_eq!(first, second, "the hit names the published payload rather than re-parking it");
 		assert!(persistent.contains(first.cast::<u8>()), "the payload the hits share lives in the persistent region");
 	}
+
+	#[test]
+	fn a_scalar_memo_publishes_lane_by_lane() {
+		let frames = core_types::record::test_frames(1 << 16);
+		let mut arena = Arena::new(1 << 12).unwrap();
+		let persistent = Arena::new(1 << 14).unwrap();
+		let generations = [];
+		let evaluations = Arc::new(AtomicU32::new(0));
+		let counted = evaluations.clone();
+		let source = LiftedSource::new(move |ctx: &ContextImpl<'_>| {
+			counted.fetch_add(1, Ordering::Relaxed);
+			GPoll::Final(core_types::context::ExtractIndex::<0>::index(ctx) as u32 * 10)
+		});
+		let layout = element_layout::<u32>();
+		let memo = FrameMemoNode::new(source, &layout);
+		let at = |arena: &Arena, lane: u64| {
+			let scope = scope_fixture(&generations, arena).with_persistent(&persistent);
+			let mut ctx = ContextImpl::root(&scope);
+			core_types::context::InjectIndex::set_index(&mut ctx, lane);
+			let GPoll::Final(value) = core_types::record::serve_input(&memo, &ctx, &frames) else {
+				panic!("the memo must serve lane {lane}");
+			};
+			unsafe { core_types::record::read_element::<u32>(layout.rec(&value)) }
+		};
+		assert_eq!((at(&arena, 0), at(&arena, 1), at(&arena, 2)), (0, 10, 20));
+		assert_eq!(evaluations.load(Ordering::Relaxed), 3);
+		arena.reset();
+		assert_eq!((at(&arena, 2), at(&arena, 0), at(&arena, 1)), (20, 0, 10), "every published lane survives into the next evaluation");
+		assert_eq!(evaluations.load(Ordering::Relaxed), 3, "no published lane is re-evaluated");
+		assert_eq!(at(&arena, 5), 50);
+		assert_eq!(evaluations.load(Ordering::Relaxed), 4, "an unpublished lane evaluates once");
+	}
+}
+
+fn probe_memo_enabled() -> bool {
+	static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	*ON.get_or_init(|| std::env::var_os("PROBE_MEMO").is_some())
+}
+
+static PROBE_MEMO_HITS: Mutex<Option<std::collections::HashMap<usize, u64>>> = Mutex::new(None);
+
+fn probe_memo_hit(cache: &Arc<Mutex<MemoTable>>) {
+	if !probe_memo_enabled() {
+		return;
+	}
+	let mut hits = PROBE_MEMO_HITS.lock().unwrap();
+	*hits.get_or_insert_with(Default::default).entry(Arc::as_ptr(cache) as usize).or_default() += 1;
+}
+
+fn probe_memo_publish(cache: &Arc<Mutex<MemoTable>>, leveled: bool, lanes: usize, frame_bytes: usize, ok: bool) {
+	if !probe_memo_enabled() {
+		return;
+	}
+	let id = Arc::as_ptr(cache) as usize;
+	let hits = PROBE_MEMO_HITS.lock().unwrap().as_ref().and_then(|hits| hits.get(&id).copied()).unwrap_or(0);
+	eprintln!(
+		"PROBE memo publish id={id:#x} leveled={leveled} lanes={lanes} frame_bytes={frame_bytes} bytes={} ok={ok} hits_before={hits}",
+		lanes * frame_bytes
+	);
+}
+
+fn extent_cache_enabled() -> bool {
+	static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	*ON.get_or_init(|| std::env::var_os("MEMO_EXTENT_CACHE").is_none_or(|v| v != "off"))
 }

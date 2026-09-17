@@ -17,13 +17,14 @@ use std::sync::{Arc, Mutex, PoisonError};
 const ARENA_CAPACITY: usize = 1 << 28;
 
 const PERSISTENT_CAPACITY: usize = 1 << 26;
+/// The largest region a frame can grow the persistent region to.
+const PERSISTENT_CAPACITY_MAX: usize = 1 << 30;
 
 /// The heap the persistent region's parked payloads may own before a flush.
 /// Occupancy cannot stand in for it: a park costs one pointer in the region
 /// and owns its content outside it, so the two diverge by orders of magnitude.
 #[cfg(not(target_family = "wasm"))]
 const PERSISTENT_HEAP_BUDGET: usize = 1 << 29;
-
 #[cfg(target_family = "wasm")]
 const PERSISTENT_HEAP_BUDGET: usize = 1 << 28;
 
@@ -45,6 +46,14 @@ fn assert_deep_element_glue() {
 	] {
 		assert!(registered, "deep element glue for `{name}` is missing; run `__node_registry_deep_element_{name}` first");
 	}
+}
+
+/// The persistent region size, overridable for experiments with `GRAPHENE_PERSISTENT_MB`.
+fn persistent_capacity() -> usize {
+	std::env::var("GRAPHENE_PERSISTENT_MB")
+		.ok()
+		.and_then(|mb| mb.parse::<usize>().ok())
+		.map_or(PERSISTENT_CAPACITY, |mb| mb << 20)
 }
 
 fn new_arena(capacity: usize) -> Arena {
@@ -87,7 +96,7 @@ impl Default for DynamicExecutor {
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
 			orphaned_nodes: HashSet::new(),
 			arena: Mutex::new(new_arena(ARENA_CAPACITY)),
-			persistent: Mutex::new(new_arena(PERSISTENT_CAPACITY)),
+			persistent: Mutex::new(new_arena(persistent_capacity())),
 			frames: Mutex::new(core_types::record::FrameArena::new()),
 			runtime: noop_runtime(),
 			live_sources: Vec::new(),
@@ -126,7 +135,7 @@ impl DynamicExecutor {
 			typing_context,
 			orphaned_nodes: HashSet::new(),
 			arena: Mutex::new(new_arena(ARENA_CAPACITY)),
-			persistent: Mutex::new(new_arena(PERSISTENT_CAPACITY)),
+			persistent: Mutex::new(new_arena(persistent_capacity())),
 			frames: Mutex::new(core_types::record::FrameArena::new()),
 			runtime,
 			live_sources: sources,
@@ -297,8 +306,27 @@ where
 		// re-promote: on a refusal, which leaves no room for the next promote,
 		// and ahead of one where either the region itself or the heap its
 		// parked payloads own is close to full.
-		if persistent.exhausted() || over_budget(persistent.occupancy(), persistent.capacity()) || over_budget(persistent.retained_heap(), PERSISTENT_HEAP_BUDGET) {
-			persistent.reset();
+		let heap_bound = over_budget(persistent.retained_heap(), PERSISTENT_HEAP_BUDGET);
+		if persistent.exhausted() || over_budget(persistent.occupancy(), persistent.capacity()) || heap_bound {
+			// A region its frames outgrow is replaced by one sized to twice what
+			// they published, so the steady state fits without a flush per frame;
+			// the heap the payloads own stays the bound that only a flush relieves.
+			let wanted = (persistent.occupancy() * 2).min(PERSISTENT_CAPACITY_MAX);
+			match !heap_bound && wanted > persistent.capacity() {
+				true => *persistent = new_arena(wanted),
+				false => {
+					persistent.reset();
+				}
+			}
+		}
+		if std::env::var_os("PROBE_REGION").is_some() {
+			eprintln!(
+				"PROBE region capacity={} occupancy={} retained_heap={} exhausted={}",
+				persistent.capacity(),
+				persistent.occupancy(),
+				persistent.retained_heap(),
+				persistent.exhausted()
+			);
 		}
 		let mut buffer = self.frames.lock().unwrap_or_else(PoisonError::into_inner);
 		buffer.reserve(self.tree.stack_need());

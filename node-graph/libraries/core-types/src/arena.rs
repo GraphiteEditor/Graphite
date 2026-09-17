@@ -32,7 +32,7 @@ pub struct Arena {
 	/// while a mistyped sharer, a sharer naming another destination, and a
 	/// sharer whose destination has since flushed are all refused. Cleared by
 	/// [`Arena::reset`], so a forwarding holds for one generation.
-	forwarded: Mutex<HashMap<usize, (usize, TypeId, u64)>>,
+	forwarded: Mutex<HashMap<usize, (usize, TypeId, u64), std::hash::BuildHasherDefault<graphene_hash::FxHasher64>>>,
 }
 
 impl std::fmt::Debug for Arena {
@@ -132,7 +132,7 @@ impl Arena {
 			drops: Mutex::new(Vec::new()),
 			exhausted: AtomicBool::new(false),
 			retained_heap: AtomicUsize::new(0),
-			forwarded: Mutex::new(HashMap::new()),
+			forwarded: Mutex::new(HashMap::default()),
 		})
 	}
 
@@ -147,7 +147,7 @@ impl Arena {
 			drops: Mutex::new(Vec::new()),
 			exhausted: AtomicBool::new(false),
 			retained_heap: AtomicUsize::new(0),
-			forwarded: Mutex::new(HashMap::new()),
+			forwarded: Mutex::new(HashMap::default()),
 		}
 	}
 

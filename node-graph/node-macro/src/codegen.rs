@@ -200,8 +200,14 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let field_pushed_levels: Vec<u8> = regular_fields
 		.iter()
 		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) if *list_levels > 0 => *list_levels,
 			ParsedFieldType::Node(_) => pushed_levels,
+			_ => 0,
+		})
+		.collect();
+	let field_driven_levels: Vec<u8> = regular_fields
+		.iter()
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { list_levels, .. }) => *list_levels,
 			_ => 0,
 		})
 		.collect();
@@ -693,6 +699,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								widget_override: #widget_override,
 								description: #input_descriptions,
 								pushed_levels: #field_pushed_levels,
+								driven_levels: #field_driven_levels,
 								hidden: #input_hidden,
 								exposed: #exposed,
 								value_source: #value_sources,
@@ -1388,6 +1395,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								let __fresh = match __sized {
 									::core::result::Result::Ok(__count) => {
 										let __start: u64 = 0;
+										#[cfg(debug_assertions)]
+										#core_types::record::note_batch_consumer(::std::concat!(::std::stringify!(#fn_name), ".", ::std::stringify!(#name)));
 										match #core_types::record::materialize_batch(&self.#name, __input, __start..__start + __count as u64, __arena, #frames) {
 											#core_types::node::BatchStatus::Lent(__batch, ..) => __batch,
 											#core_types::node::BatchStatus::Filled(__batch, ..) => __batch.into_shared(),
@@ -1402,6 +1411,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 									::core::result::Result::Err(__bound) => {
 										let mut __guess = __bound.max(16);
 										loop {
+											#[cfg(debug_assertions)]
+											#core_types::record::note_batch_consumer(::std::concat!(::std::stringify!(#fn_name), ".", ::std::stringify!(#name)));
 											let (__batch, __hint) = match #core_types::record::materialize_batch(&self.#name, __input, 0..__guess as u64, __arena, #frames) {
 												#core_types::node::BatchStatus::Lent(__batch, _, __hint) => (__batch, __hint),
 												#core_types::node::BatchStatus::Filled(__batch, _, __hint) => (__batch.into_shared(), __hint),
@@ -1629,6 +1640,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					// span, as in eval), so a data-dependent extent can walk
 					// its lanes.
 					ValueBinding::Materialized => {
+						let fn_name = &parsed.fn_name;
 						let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'_");
 						quote! {
 							let #query = || {
@@ -1638,6 +1650,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 									#core_types::gpoll::GPoll::Pending => return #core_types::gpoll::GPoll::Pending,
 									_ => return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError::new("extent over a non-exact ranked input"))),
 								};
+								#[cfg(debug_assertions)]
+								#core_types::record::note_batch_consumer(::std::concat!(::std::stringify!(#fn_name), ".", ::std::stringify!(#name)));
 								match #core_types::record::materialize_batch(&self.#name, __input, 0..__count as u64, __arena, __frames) {
 									#core_types::node::BatchStatus::Lent(__batch, ..) => #core_types::gpoll::GPoll::Final(unsafe { #core_types::node::List::<#ty>::new(__batch) }),
 									#core_types::node::BatchStatus::Filled(__batch, ..) => #core_types::gpoll::GPoll::Final(unsafe { #core_types::node::List::<#ty>::new(__batch.into_shared()) }),

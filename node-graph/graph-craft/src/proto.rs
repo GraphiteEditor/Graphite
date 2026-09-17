@@ -614,16 +614,16 @@ impl ProtoNetwork {
 		nullification_node_id
 	}
 
-	/// The node's declared dependencies and per-input pushed levels, both read
+	/// The node's declared dependencies and per-input pushed and driven levels, all read
 	/// from the registry since they follow the node's signature. A node with no
 	/// registry entry declares nothing and pushes nothing.
-	fn registry_dependencies(&self, node_index: usize) -> (ContextDependencies, Vec<u8>) {
+	fn registry_dependencies(&self, node_index: usize) -> (ContextDependencies, Vec<(u8, u8)>) {
 		let identifier = &self.nodes[node_index].1.identifier;
 		let metadata = core_types::registry::NODE_METADATA.lock().unwrap();
 		match metadata.get(identifier) {
 			Some(entry) => (
 				ContextDependencies::from(entry.context_features.as_slice()),
-				entry.fields.iter().map(|field| field.pushed_levels).collect(),
+				entry.fields.iter().map(|field| (field.pushed_levels, field.driven_levels)).collect(),
 			),
 			None => (ContextDependencies::default(), Vec::new()),
 		}
@@ -634,7 +634,7 @@ impl ProtoNetwork {
 		let mut combined_deps = ContextModification::default();
 		let node_index = id.0 as usize;
 
-		let (registry_deps, pushed_levels) = self.registry_dependencies(node_index);
+		let (registry_deps, input_levels) = self.registry_dependencies(node_index);
 		let (extract, inject, own_deps) = {
 			let carried = &self.nodes[node_index].1.context_features;
 			// A code-built wrapper node declares dependencies its signature cannot
@@ -681,12 +681,12 @@ impl ProtoNetwork {
 			}
 
 			let mut lifted = branch.0.clone();
-			let delta = pushed_levels.get(input).copied().unwrap_or(0);
-			lifted.index_levels = lifted.index_levels.lifted(0, delta);
+			let (pushed, driven) = input_levels.get(input).copied().unwrap_or((0, 0));
+			lifted.index_levels = lifted.index_levels.lifted(driven, pushed);
 
 			if std::env::var_os("PROBE_LEVELS").is_some() && branch.0.index_levels != lifted.index_levels {
 				eprintln!(
-					"PROBE lift: {} input {input} delta {delta}: {:?} -> {:?}{}",
+					"PROBE lift: {} input {input} pushed {pushed} driven {driven}: {:?} -> {:?}{}",
 					self.nodes[node_index].1.identifier.as_str(),
 					branch.0.index_levels,
 					lifted.index_levels,
@@ -1419,7 +1419,7 @@ mod test {
 			construction_args: ConstructionArgs::Nodes(vec![list, index]),
 			..Default::default()
 		};
-		// Consumes the level `string_split` pushed, so masks shift back down across it.
+		// A materialized list input drives its own level 0 and shifts nothing above it.
 		let join = |strings: NodeId| ProtoNode {
 			identifier: text_nodes::string_join::IDENTIFIER,
 			call_argument: concrete!(Context),
@@ -1449,8 +1449,7 @@ mod test {
 				(NodeId(6), split(NodeId(5))),
 				(NodeId(7), item_at_index(NodeId(6), NodeId(2))),
 				(NodeId(8), join(NodeId(7))),
-				// Two more level-consuming hops, standing in for the nested `Repeat`s the
-				// lookup sits inside; each shifts the readers' levels one step further down.
+				// Two more driven hops above the lookup; neither shifts a reader's level.
 				(NodeId(9), join(NodeId(8))),
 				(NodeId(10), join(NodeId(9))),
 			]
@@ -1460,9 +1459,9 @@ mod test {
 		}
 	}
 
-	/// Pins the masks a resolved-level lookup produces today. Every boundary here keeps a level
-	/// its subtree reads, so this shape alone does not reproduce the `brick-waves` collapse where
-	/// the palette resolves to a single cached color; it is here to notice when these shift.
+	/// Pins the masks a resolved-level lookup produces: every boundary keeps each level its
+	/// subtree reads, unshifted across the materialized hops, so the readers' levels reach the
+	/// boundaries above the lookup intact.
 	#[test]
 	fn nested_index_lookup_boundary_levels() {
 		let mut network = nested_index_lookup_network();
@@ -1474,11 +1473,9 @@ mod test {
 			levels,
 			vec![
 				("text_nodes::StringSplitNode".to_string(), IndexLevels::empty().with_level(0)),
-				("graphene_core::list::ItemAtIndexNode".to_string(), IndexLevels::empty().with_level(2)),
-				("text_nodes::StringJoinNode".to_string(), IndexLevels::empty().with_level(1)),
-				("text_nodes::StringSplitNode".to_string(), IndexLevels::empty().with_level(0)),
-				("graphene_core::list::ItemAtIndexNode".to_string(), IndexLevels::empty().with_level(1)),
-				("text_nodes::StringJoinNode".to_string(), IndexLevels::empty().with_level(0)),
+				("text_nodes::StringJoinNode".to_string(), IndexLevels::empty().with_level(2)),
+				("text_nodes::StringSplitNode".to_string(), IndexLevels::empty().with_level(0).with_level(2)),
+				("core_types::vector::ReadIndexNode".to_string(), IndexLevels::empty().with_level(1)),
 			]
 		);
 	}

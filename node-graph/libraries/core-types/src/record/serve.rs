@@ -370,6 +370,99 @@ impl MaterializedSpan {
 	}
 }
 
+/// A level published one lane at a time, for content served per lane under a
+/// level whose extent the publisher never learns: chunk `k` holds lanes
+/// `2^k - 1 ..= 2^(k+1) - 2`, so a lane's chunk is `(lane + 1).ilog2()`, a
+/// reserved slab never moves, and the level costs at most twice its lanes.
+pub struct LaneSpan {
+	generation: u64,
+	/// Chunk base addresses, 0 while unreserved; live exactly while the generation is.
+	chunks: Vec<usize>,
+	/// Per lane: 0 unpublished, 1 final, 2 partial.
+	states: Vec<u8>,
+}
+
+impl std::fmt::Debug for LaneSpan {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("LaneSpan").field("lanes", &self.states.len()).finish()
+	}
+}
+
+impl LaneSpan {
+	pub fn new(arena: &crate::arena::Arena) -> Self {
+		Self {
+			generation: arena.generation(),
+			chunks: Vec::new(),
+			states: Vec::new(),
+		}
+	}
+
+	/// Whether the span still resolves against `arena`; a flush ends it.
+	pub fn is_live(&self, arena: &crate::arena::Arena) -> bool {
+		self.generation == arena.generation()
+	}
+
+	fn place(lane: usize) -> (usize, usize) {
+		let chunk = (lane + 1).ilog2() as usize;
+		(chunk, lane + 1 - (1 << chunk))
+	}
+
+	/// Lane `lane`'s record and finality, or `None` while it is unpublished or
+	/// once the generation moved on.
+	pub fn lane(&self, arena: &crate::arena::Arena, lane: usize, layout: &Layout) -> Option<(*const u8, crate::gpoll::Finality)> {
+		self.is_live(arena).then_some(())?;
+		let finality = match self.states.get(lane).copied().unwrap_or(0) {
+			1 => crate::gpoll::Finality::AllFinal,
+			2 => crate::gpoll::Finality::Partial,
+			_ => return None,
+		};
+		let (chunk, slot) = Self::place(lane);
+		let base = self.chunks.get(chunk).copied().filter(|base| *base != 0)? as *const u8;
+		// SAFETY: the state marks the slot published within the chunk's
+		// reservation, at the layout it was published under, and the generation
+		// check proved the region still holds it.
+		Some((unsafe { base.add(slot * layout.lane_stride()) }, finality))
+	}
+
+	/// Publishes lane `lane` as a copy of `src`. `None` where the region refused
+	/// the reservation or the promote, which leaves the lane unpublished.
+	///
+	/// # Safety
+	/// `src` must be a live record of `layout`.
+	pub unsafe fn publish(&mut self, lane: usize, src: *const u8, layout: &Layout, promotion: &crate::record::Promotion<'_>, finality: crate::gpoll::Finality) -> Option<()> {
+		let persistent = promotion.persistent();
+		self.is_live(persistent).then_some(())?;
+		let stride = layout.lane_stride();
+		let (chunk, slot) = Self::place(lane);
+		if self.chunks.len() <= chunk {
+			self.chunks.resize(chunk + 1, 0);
+		}
+		if self.chunks[chunk] == 0 {
+			let slab = persistent.alloc_scratch::<u64>(((1usize << chunk) * stride).div_ceil(8))?;
+			self.chunks[chunk] = slab.as_mut_ptr() as usize;
+		}
+		// SAFETY: the caller's contract on `src`, into this lane's own slot of
+		// the chunk reserved above at the layout's stride.
+		let dst = unsafe { (self.chunks[chunk] as *mut u8).add(slot * stride) };
+		unsafe { std::ptr::copy_nonoverlapping(src, dst, layout.size) };
+		// SAFETY: the copy images a record of this layout.
+		unsafe { crate::record::promote::promote_record(layout, dst, promotion) }?;
+		#[cfg(debug_assertions)]
+		// SAFETY: the lane was imaged and promoted above.
+		unsafe {
+			crate::record::promote::assert_promoted(layout, dst.cast_const(), promotion)
+		};
+		if self.states.len() <= lane {
+			self.states.resize(lane + 1, 0);
+		}
+		self.states[lane] = match finality {
+			crate::gpoll::Finality::AllFinal => 1,
+			crate::gpoll::Finality::Partial => 2,
+		};
+		Some(())
+	}
+}
+
 /// The proof a record was served through a frame claim: mintable only by the
 /// claim's closing methods, so holding one means the record is of the
 /// claimed layout.
@@ -464,5 +557,31 @@ mod tests {
 		let frames = frame_arena.frames();
 		let claim = shorten(frames.claim(&layout));
 		assert_eq!(claim.layout, &layout);
+	}
+
+	#[test]
+	fn a_lane_span_publishes_out_of_order_and_dies_with_its_generation() {
+		let transient = crate::arena::Arena::new(4096).unwrap();
+		let mut persistent = crate::arena::Arena::new(1 << 14).unwrap();
+		let layout = Layout::default().with_writes(1, crate::record::layout::element_write::<f64>(), &[crate::record::test_support::f64_field("opacity")]);
+		let mut buffer = vec![0u64; layout.frame_bytes().div_ceil(8)];
+		let base = buffer.as_mut_ptr().cast::<u8>();
+		let bounds = (base as usize, buffer.len() * 8);
+		let promotion = crate::record::Promotion::new(&transient, bounds, &persistent);
+		let mut span = LaneSpan::new(&persistent);
+		for lane in [5usize, 0, 2] {
+			unsafe { base.cast::<f64>().write(lane as f64) };
+			unsafe { span.publish(lane, base.cast_const(), &layout, &promotion, crate::gpoll::Finality::AllFinal) }.unwrap();
+		}
+		assert!(span.lane(&persistent, 1, &layout).is_none(), "an unpublished lane is a miss");
+		assert!(span.lane(&persistent, 9, &layout).is_none(), "a lane past every published one is a miss");
+		for lane in [0usize, 2, 5] {
+			let (ptr, finality) = span.lane(&persistent, lane, &layout).unwrap();
+			assert_eq!(unsafe { ptr.cast::<f64>().read() }, lane as f64, "lane {lane}");
+			assert_eq!(finality, crate::gpoll::Finality::AllFinal);
+		}
+		persistent.reset();
+		assert!(!span.is_live(&persistent));
+		assert!(span.lane(&persistent, 0, &layout).is_none(), "a flush ends the span");
 	}
 }

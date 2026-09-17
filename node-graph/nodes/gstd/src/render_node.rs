@@ -8,6 +8,7 @@ use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
 use vector_types::Gradient;
+use vector_types::vector::style::RenderMode;
 use wgpu_executor::RenderContext;
 
 #[derive(Clone, dyn_any::DynAny)]
@@ -163,7 +164,12 @@ fn create_context(ctx: impl Ctx + ExtractVarArgs + DeriveCtx, data: impl Node<Co
 		for_export: render_config.for_export,
 		render_output_type,
 		scale: render_config.scale,
-		viewport_zoom: logical_viewport.scale_magnitudes().x,
+		// Only Outline mode renders in viewport pixels; elsewhere the zoom is
+		// constant so a zoom alone does not miss the intermediate cache.
+		viewport_zoom: match render_config.render_mode {
+			RenderMode::Outline => logical_viewport.scale_magnitudes().x,
+			_ => 0.,
+		},
 		..Default::default()
 	};
 
