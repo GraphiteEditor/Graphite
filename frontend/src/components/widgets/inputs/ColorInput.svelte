@@ -3,13 +3,16 @@
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import { contrastingOutlineFactor, fillChoiceColor, fillChoiceGradient } from "/src/utility-functions/colors";
-	import type { FillChoice, MenuDirection, ActionShortcut, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { FillChoice, GradientSample, MenuDirection, ActionShortcut, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ value: FillChoice<SRGBA8>; startHistoryTransaction: undefined }>();
 
+	// Document-unique `id` for this instance's SVG gradient, referenced by its `url(#...)`
+	const gradientId = `color-input-gradient-${String(Math.random()).substring(2)}`;
+
 	// Content
 	export let value: FillChoice<SRGBA8>;
-	export let chosenGradient: string | undefined = undefined;
+	export let swatchSamples: GradientSample[] = [];
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let menuDirection: MenuDirection = "Bottom";
@@ -46,7 +49,18 @@
 	{tooltipDescription}
 	{tooltipShortcut}
 >
-	<button style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner></button>
+	<button style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner>
+		{#if swatchSamples.length > 0}
+			<svg class="swatch" xmlns="http://www.w3.org/2000/svg">
+				<linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+					{#each swatchSamples as sample}
+						<stop offset={sample.position} stop-color={sample.color} stop-opacity={sample.alpha} />
+					{/each}
+				</linearGradient>
+				<rect width="100%" height="100%" fill={`url(#${gradientId})`} />
+			</svg>
+		{/if}
+	</button>
 	<ColorPicker
 		{open}
 		{disabled}
@@ -85,14 +99,12 @@
 			overflow: hidden;
 			position: relative;
 
-			&::before {
-				content: "";
+			> .swatch {
 				position: absolute;
 				top: 0;
-				bottom: 0;
 				left: 0;
-				right: 0;
-				background: var(--chosen-gradient);
+				width: 100%;
+				height: 100%;
 			}
 
 			.text-label {
@@ -150,8 +162,8 @@
 			background: var(--color-e-nearwhite);
 			background-image: none;
 
-			&::before {
-				background: var(--color-e-nearwhite);
+			> .swatch {
+				display: none;
 			}
 
 			&::after {

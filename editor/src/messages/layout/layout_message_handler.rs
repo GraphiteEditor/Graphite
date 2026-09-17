@@ -546,7 +546,15 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 	for instance in layout.iter_mut() {
 		match &mut *instance.widget {
 			Widget::ColorInput(color_input) => {
-				color_input.chosen_gradient = color_input.value.to_css_background_image();
+				color_input.swatch_samples = match &color_input.value {
+					FillChoice::None => Vec::new(),
+					FillChoice::Solid(color) => vec![GradientSample::new(0., graphene_std::Color::from(*color))],
+					FillChoice::Gradient(ramp) => graphene_std::vector::style::Gradient::from(&ramp.stops)
+						.interpolated_samples_or_black(ramp.into())
+						.into_iter()
+						.map(|(position, color, _)| GradientSample::new(position, color))
+						.collect(),
+				};
 			}
 			Widget::TransferCurveInput(curve_input) => {
 				const SAMPLE_COUNT: usize = 128;
@@ -578,7 +586,7 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 				slider_input.track_samples = track_gradient
 					.interpolated_samples_or_black(settings)
 					.into_iter()
-					.map(|(position, color, _)| SliderSample::new(position, color))
+					.map(|(position, color, _)| GradientSample::new(position, color))
 					.collect();
 				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrapped interval's boundary-crossing color rather than the outermost stops'
 				let track_evaluator = track_gradient.evaluator(settings);

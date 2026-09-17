@@ -3,7 +3,7 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import type { GradientInterpolation, SliderInputUpdate, SliderMarker, SliderSample } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { GradientInterpolation, GradientSample, SliderInputUpdate, SliderMarker } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
@@ -13,7 +13,7 @@
 	// Document-unique `id` for this instance's SVG gradient, referenced by its `url(#...)`
 	const gradientId = `slider-input-gradient-${String(Math.random()).substring(2)}`;
 
-	export let trackSamples: SliderSample[];
+	export let trackSamples: GradientSample[];
 	export let trackStartCSS: string;
 	export let trackEndCSS: string;
 	export let trackCyclic = false;
