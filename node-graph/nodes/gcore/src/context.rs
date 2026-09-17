@@ -39,7 +39,7 @@ macro_rules! vararg_readers {
 				vararg_element(ctx)
 			}
 
-			fn $extent<C: Ctx + ExtractVarArgs, N>(_: &$node_type<N>, ctx: &C, level: u8) -> GPoll<Extent> {
+			fn $extent<'e, C: Ctx + ExtractVarArgs, N>(_: &$node_type<N>, ctx: &C, level: u8, _: &core_types::record::Frames<'e>) -> GPoll<Extent> {
 				vararg_lanes::<$element>(ctx, level)
 			}
 		)*
@@ -86,5 +86,23 @@ fn read_index(
 ) -> f64 {
 	// The chain's innermost entry is the consuming input's own lane from the
 	// decompose-and-promote split; the loops the reader counts sit above it.
-	ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize + 1)).unwrap_or(0) as f64
+	let value = ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize + 1)).unwrap_or(0) as f64;
+
+	if std::env::var_os("PROBE_READ_INDEX").is_some() {
+		let chain: Vec<usize> = ctx.try_index().map(|levels| levels.collect()).unwrap_or_default();
+		probe_read_index(loop_level, chain, value);
+	}
+
+	value
+}
+
+/// Reports each newly seen chain a `read_index` is evaluated against, so a nullified level
+/// shows up as a chain that stops short or a value that never varies.
+fn probe_read_index(loop_level: u32, chain: Vec<usize>, value: f64) {
+	use std::sync::{LazyLock, Mutex};
+	static SEEN: LazyLock<Mutex<std::collections::HashSet<(u32, Vec<usize>)>>> = LazyLock::new(Default::default);
+
+	if SEEN.lock().unwrap().insert((loop_level, chain.clone())) {
+		eprintln!("PROBE read_index loop_level={loop_level} depth={} chain={chain:?} -> {value}", chain.len());
+	}
 }

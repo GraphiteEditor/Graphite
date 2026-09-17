@@ -1,6 +1,14 @@
 # Keep `--cfg=web_sys_unstable_apis` here so the wasm wrapper crates build with the same web-sys API signatures (e.g. `put_image_data`/`get_image_data` taking `i32` rather than `f64`) on both native and the wasm target.
 [target.'cfg(not(target_family = "wasm"))']
-rustflags = ["--cfg=web_sys_unstable_apis"]
+# Frame pointers keep the native build profileable: the record model puts ~1KB frames on the stack and
+# recurses past a hundred of them, so a sampling profiler copying a fixed slice of stack unwinds a frame
+# or two and reports every sample as its own root. This must live here rather than under `[build]`, which
+# Cargo ignores whenever any `target.*` section matches.
+# A build id is what a profiler matches a recorded module against when it goes looking for symbols;
+# the linker here does not emit one on its own, and without it an imported profile is all addresses.
+# It has to be the `uuid` style: perf stores a 20 byte id, and the other styles here produce 32 bytes,
+# which perf truncates and the profiler then reads as a mismatch against the file it was told to use.
+rustflags = ["--cfg=web_sys_unstable_apis", "-C", "force-frame-pointers=yes", "-C", "link-arg=-Wl,--build-id=uuid"]
 
 [target.'cfg(target_family = "wasm")']
 rustflags = [

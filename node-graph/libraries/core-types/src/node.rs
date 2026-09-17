@@ -78,6 +78,19 @@ impl<'a> RecordBatch<'a> {
 		self.frames
 	}
 
+	/// The lanes in `range` as a view of their own, which is these frames at an offset rather
+	/// than a copy of them. `None` where the range leaves the batch.
+	pub fn slice(&self, range: std::ops::Range<usize>) -> Option<RecordBatch<'a>> {
+		(range.start <= range.end && range.end <= self.len).then(|| RecordBatch {
+			// SAFETY: in-bounds by the check above, at the stride the constructor established.
+			frames: unsafe { self.frames.add(range.start * self.stride) },
+			stride: self.stride,
+			len: range.end - range.start,
+			layout: self.layout,
+			_lifetime: PhantomData,
+		})
+	}
+
 	pub fn get(&self, lane: usize) -> RecordLane<'a> {
 		assert!(lane < self.len, "lane {lane} out of bounds for a batch of {}", self.len);
 		RecordLane {
@@ -297,6 +310,22 @@ impl<'a, T> List<'a, T> {
 	pub fn element_ref(&self, index: usize) -> &T {
 		// SAFETY: `List::new` established that `T` is the batch's element type,
 		// and the borrow lives within the batch's own lifetime.
+		unsafe { crate::record::borrow_element::<T>(self.batch.get(index).rec()) }
+	}
+
+	/// The element at `index` borrowed for the arena's lifetime rather than the batch's.
+	/// A parked element is a pointer in the frame to a payload the arena owns, so the
+	/// payload outlives the frame that named it and a kernel may hand out slices of it.
+	/// Panics where `T` is written inline, whose bytes live in the frame and die with it.
+	pub fn element_arena<'arena>(&self, index: usize, arena: &'arena crate::arena::Arena) -> &'arena T {
+		assert!(
+			crate::record::element_parked::<T>(),
+			"`{}` is written inline, so its bytes live in the frame rather than the arena",
+			std::any::type_name::<T>()
+		);
+		let _ = arena;
+		// SAFETY: `List::new` established that `T` is the batch's element type, and a
+		// parked element's payload is arena-resident, so it lives for `'arena`.
 		unsafe { crate::record::borrow_element::<T>(self.batch.get(index).rec()) }
 	}
 
@@ -570,7 +599,10 @@ impl StatusCell {
 			}
 			GPoll::Pending => Err(Interrupt::Pending),
 			GPoll::Error(mut error) => {
-				error.trace.push(input_index);
+				// A drain's past-end signal carries no trace; see `GraphError::traced`
+				if error.kind != crate::gpoll::ErrorKind::PastEnd {
+					error.trace.push(input_index);
+				}
 				Err(Interrupt::Error(error))
 			}
 		}

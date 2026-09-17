@@ -240,6 +240,42 @@ impl<'e, 'l> FrameClaim<'e, 'l> {
 		}
 	}
 
+	/// Serves an element the arena already parks, writing that park's pointer
+	/// rather than allocating a second copy of the same value. A constant whose
+	/// park outlives every lane of an evaluation costs one allocation per
+	/// generation this way instead of one per serve.
+	///
+	/// The frame representation is the one [`crate::record::write_element`]
+	/// produces for a parked element, so a consumer cannot tell the two apart;
+	/// the difference is only that the arena's drop glue was registered once,
+	/// when `parked` was allocated.
+	pub fn lift_served_parked<T: Send + Sync + dyn_any::StaticTypeSized>(mut self, parked: &'e T, arena: &'e crate::arena::Arena) -> GPoll<Served<'e>> {
+		self.check_element::<T>();
+		assert!(
+			crate::record::element_parked::<T>(),
+			"`lift_served_parked` serves a parked element; `{}` is written inline",
+			std::any::type_name::<T>()
+		);
+		assert!(
+			self.layout.fields.is_empty() || self.filled_fields,
+			"a layout with {} fields must carry or write them before lifting",
+			self.layout.fields.len()
+		);
+		let frame_bytes = self.layout.frame_bytes();
+		let dst = self.dst();
+		// SAFETY: the element check pinned `T` and its slot holds `&T` for a
+		// parked element, and the frame is this layout's fresh claim.
+		unsafe { dst.cast::<&T>().write(parked) };
+		let value = match frame_bytes {
+			// SAFETY: the frame was just written with the whole record.
+			0 => unsafe { (&raw mut self.inline).cast::<RecordValue<'e>>().read() },
+			// SAFETY: as above, for a spilled frame.
+			_ => RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }),
+		};
+		let _ = arena;
+		GPoll::Final(Served { value })
+	}
+
 	/// [`Self::lift`] with the proof-bearing return for [`Node::serve`].
 	pub fn lift_served<T: Send + Sync + dyn_any::StaticTypeSized>(self, poll: GPoll<T>, arena: &'e crate::arena::Arena) -> GPoll<Served<'e>> {
 		self.lift(poll, arena).map(|value| Served { value })

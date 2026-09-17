@@ -757,8 +757,14 @@ pub(crate) fn type_disqualifies(ty: &Type) -> bool {
 	}
 
 	impl<'ast> Visit<'ast> for Disqualifier {
-		fn visit_type_reference(&mut self, _: &'ast syn::TypeReference) {
-			self.found = true;
+		fn visit_type_reference(&mut self, reference: &'ast syn::TypeReference) {
+			// A shared borrow of the serving arena erases to `&'static T` for the row, so only
+			// a mutable borrow (which no record can hand out) still disqualifies
+			if reference.mutability.is_some() {
+				self.found = true;
+				return;
+			}
+			syn::visit::visit_type(self, &reference.elem);
 		}
 
 		fn visit_type_impl_trait(&mut self, _: &'ast syn::TypeImplTrait) {

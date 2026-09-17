@@ -1191,6 +1191,15 @@ fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] satura
 /// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce no color.
 #[node_macro::node(category("Color"), name("Hex to Color"))]
 fn hex_to_color(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, hex_code: String) -> Result<IList<Color>, Interrupt> {
+	if std::env::var_os("PROBE_HEX").is_some() {
+		use std::sync::{LazyLock, Mutex};
+		static SEEN: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Default::default);
+		let mut seen = SEEN.lock().unwrap();
+		if seen.insert(hex_code.clone()) {
+			eprintln!("PROBE hex_to_color distinct #{} = {hex_code}", seen.len());
+		}
+	}
+
 	// An invalid input serves an empty level: no color
 	match (core_types::misc::parse_css_color(&hex_code), ctx.index()) {
 		(Some(color), 0) => Ok(color),

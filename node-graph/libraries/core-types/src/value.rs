@@ -2,6 +2,10 @@
 /// input per evaluation.
 pub struct ValueSource<T> {
 	value: T,
+	/// The park this constant already holds in the serving arena. A value wire is
+	/// read once per lane, so re-parking the constant each time is what made a wide
+	/// level's arena cost scale with its lane count rather than with its data.
+	parked: crate::arena::ArenaCell<T>,
 	layout: crate::record::Layout,
 }
 
@@ -12,6 +16,7 @@ where
 	pub fn new(value: T) -> Self {
 		Self {
 			value,
+			parked: crate::arena::ArenaCell::new(),
 			layout: crate::record::Layout::default().with_writes(0, crate::record::element_write::<T>(), &[]),
 		}
 	}
@@ -19,13 +24,27 @@ where
 
 impl<C, T> crate::node::Node<C> for ValueSource<T>
 where
-	T: Clone + Send + Sync + dyn_any::StaticTypeSized,
+	T: Clone + Send + Sync + dyn_any::StaticTypeSized + 'static,
 {
 	fn serve<'e, 'l>(&self, input: &C, slot: crate::record::FrameClaim<'e, 'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
 	where
 		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
-		slot.lift_served(crate::gpoll::GPoll::Final(self.value.clone()), input.arena())
+		let arena = input.arena();
+		// An element the arena does not park has no pointer to share, so it takes the plain write
+		if !crate::record::element_parked::<T>() {
+			return slot.lift_served(crate::gpoll::GPoll::Final(self.value.clone()), arena);
+		}
+
+		if let Some(parked) = self.parked.load(arena) {
+			return slot.lift_served_parked(parked, arena);
+		}
+
+		let Some((parked, weak)) = arena.alloc(self.value.clone()) else {
+			return crate::gpoll::GPoll::arena_exhausted();
+		};
+		self.parked.store(weak);
+		slot.lift_served_parked(parked, arena)
 	}
 
 	fn layout(&self) -> &crate::record::Layout {

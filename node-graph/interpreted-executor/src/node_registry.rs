@@ -12,6 +12,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		convert_node!(from: DVec2, to: DVec2),
 		convert_node!(from: String, to: String),
 		convert_node!(from: bool, to: String),
+		convert_node!(from: &'static str, to: String),
 		convert_node!(from: DVec2, to: String),
 		convert_node!(from: IVec2, to: String),
 		convert_node!(from: DAffine2, to: String),

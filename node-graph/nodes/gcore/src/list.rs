@@ -69,7 +69,7 @@ fn omit_element_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: Level
 pub fn item_at_index<T: Clone + Default + Send + Sync + CacheHash + 'static>(
 	_: impl Ctx,
 	/// The `List` of data to extract from.
-	#[implementations(String, f64, NodeId, Color, Gradient, Vector, Raster<CPU>, Graphic, Artboard)]
+	#[implementations(String, &'static str, f64, NodeId, Color, Gradient, Vector, Raster<CPU>, Graphic, Artboard)]
 	list: IList<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,

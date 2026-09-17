@@ -23,6 +23,8 @@ impl Preprocessor {
 	pub fn preprocess(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
 		self.insert_inject_scopes(network);
 		self.replace_resource_inputs(network, resolve_resource)?;
+		self.restore_declared_context_features(network);
+		self.determine_index_reads(network)?;
 		self.expand_network(network);
 		Ok(())
 	}
@@ -86,6 +88,67 @@ impl Preprocessor {
 		Ok(())
 	}
 
+	/// Re-declares context dependencies from the registry, which is their only authority: a
+	/// document serializes `extract`/`inject` and never carries `index_levels`.
+	fn restore_declared_context_features(&self, network: &mut NodeNetwork) {
+		for node in network.nodes.values_mut() {
+			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+				self.restore_declared_context_features(nested);
+				continue;
+			}
+
+			let DocumentNodeImplementation::ProtoNode(identifier) = &node.implementation else { continue };
+			let metadata = core_types::registry::NODE_METADATA.lock().unwrap();
+			let Some(entry) = metadata.get(identifier) else { continue };
+			let declared = ContextDependencies::from(entry.context_features.as_slice());
+
+			node.context_features.extract = declared.extract;
+			node.context_features.inject = declared.inject;
+			node.context_features.index_levels = declared.index_levels;
+		}
+	}
+
+	/// Narrows `read_index`'s declared index levels when its *Loop Level* is a literal,
+	/// since the signature alone can only declare [`ALL_INDEX_LEVELS`] and a saturated
+	/// mask suppresses nullification for the whole cone.
+	fn determine_index_reads(&self, network: &mut NodeNetwork) -> Result<(), PreprocessorError> {
+		for node in network.nodes.values_mut() {
+			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+				self.determine_index_reads(nested)?;
+				continue;
+			}
+
+			if !matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_core::context::read_index::IDENTIFIER) {
+				continue;
+			}
+
+			let Some(NodeInput::Value { tagged_value, .. }) = node.inputs.get(graphene_core::context::read_index::LoopLevelInput::INDEX) else {
+				continue;
+			};
+			let TaggedValue::U32(loop_level) = **tagged_value else { continue };
+
+			// The kernel counts loops from the level above the consuming input's own lane.
+			let level = u8::try_from(loop_level.saturating_add(1)).unwrap_or(ALL_INDEX_LEVELS);
+			match std::env::var("LEVEL_MODE").as_deref() {
+				Ok("off") => continue,
+				Ok("only0") if loop_level != 0 => continue,
+				Ok("only1") if loop_level != 1 => continue,
+				_ => (),
+			}
+			let extra = match std::env::var("LEVEL_BUMP").as_deref() {
+				Ok(bump) if loop_level >= 1 => bump.parse::<u32>().unwrap_or(0),
+				_ => 0,
+			};
+			let loop_level = loop_level + extra;
+
+			// The carried declaration is taken whole or not at all, keyed on `extract`.
+			node.context_features.extract |= ContextFeatures::INDEX;
+			node.context_features.index_levels = IndexLevels::empty().with_level(level);
+		}
+
+		Ok(())
+	}
+
 	fn expand_network(&self, network: &mut NodeNetwork) {
 		for node in network.nodes.values_mut() {
 			match &mut node.implementation {
@@ -99,7 +162,16 @@ impl Preprocessor {
 						}
 						node.inputs.truncate(new_node.inputs.len());
 
+						let substituted = DocumentNodeImplementation::ProtoNode(proto_node_identifier.clone());
 						node.implementation = new_node.implementation.clone();
+
+						// The wrapper stands in for the node it substitutes, so whatever was declared
+						// against it belongs on that node once the substitution exposes it.
+						if let DocumentNodeImplementation::Network(inner) = &mut node.implementation
+							&& let Some(main) = inner.nodes.values_mut().find(|node| node.implementation == substituted)
+						{
+							main.context_features = node.context_features.clone();
+						}
 					}
 				}
 				DocumentNodeImplementation::Extract => (),

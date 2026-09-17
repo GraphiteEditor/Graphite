@@ -100,7 +100,14 @@ where
 			trace: Vec::new(),
 		})
 	};
-	match node.eval_batch(input, range.clone(), None, frames) {
+	let status = node.eval_batch(input, range.clone(), None, frames);
+	#[cfg(debug_assertions)]
+	{
+		let name = core::any::type_name::<N>();
+		let batched = !matches!(status, BatchStatus::Unbatched);
+		crate::record::input::tally_batch(name, batched, len);
+	}
+	match status {
 		BatchStatus::Unbatched => match arena.alloc_scratch::<u64>(words) {
 			Some(scratch) => fill_frames(node, input, range, Some(scratch), frames),
 			None => exhausted(),
@@ -521,4 +528,53 @@ impl<El: Clone + 'static, N> RecordExtract<El, N> {
 		// `El` by the wiring that built this extract.
 		serve_input(&self.edge, input, &scope).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
 	}
+}
+
+/// Records whether a materialized input answered with a batch, for the `GRAPHENE_BATCH_DEBUG`
+/// report on which nodes still drive the per-lane fill.
+#[cfg(debug_assertions)]
+pub fn tally_batch(name: &str, batched: bool, lanes: usize) {
+	use std::cell::RefCell;
+	use std::collections::HashMap;
+
+	thread_local! {
+		static TALLY: RefCell<HashMap<String, (usize, usize, usize)>> = RefCell::new(HashMap::new());
+	}
+
+	static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	if !*ON.get_or_init(|| std::env::var_os("GRAPHENE_BATCH_DEBUG").is_some()) {
+		return;
+	}
+
+	TALLY.with(|tally| {
+		let mut tally = tally.borrow_mut();
+		let entry = tally.entry(short_name(name)).or_insert((0, 0, 0));
+		match batched {
+			true => entry.0 += 1,
+			false => entry.1 += 1,
+		}
+		entry.2 += lanes;
+	});
+
+	// Reporting on drop is awkward from a thread local, so the report is printed on demand
+	TALLY.with(|tally| {
+		let tally = tally.borrow();
+		let total: usize = tally.values().map(|(batched, unbatched, _)| batched + unbatched).sum();
+		if !total.is_multiple_of(20000) {
+			return;
+		}
+		let mut rows: Vec<_> = tally.iter().map(|(name, counts)| (name.clone(), *counts)).collect();
+		rows.sort_by_key(|(_, (_, unbatched, _))| std::cmp::Reverse(*unbatched));
+		eprintln!("batch tally> after {total} materializations:");
+		for (name, (batched, unbatched, lanes)) in rows.iter().take(12) {
+			eprintln!("batch tally>   batched={batched:<8} UNBATCHED={unbatched:<8} lanes={lanes:<10} {name}");
+		}
+	});
+}
+
+/// The node's own name out of the fully qualified generic soup.
+#[cfg(debug_assertions)]
+fn short_name(name: &str) -> String {
+	let head = name.split('<').next().unwrap_or(name);
+	head.rsplit("::").take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("::")
 }

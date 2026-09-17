@@ -1885,11 +1885,29 @@ fn migrate_node(
 		for (index, input) in old_inputs.iter().enumerate().take(7) {
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
 		}
-		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 7), old_inputs[8].clone(), network_path);
+		// A document old enough to still carry "Paint Order" also predates `DashPattern`, and the standalone dash
+		// conversion below reads the pre-migration node, where index 7 is still the paint order
+		let dash_input = migrate_dash_input(&old_inputs[8]).unwrap_or_else(|| old_inputs[8].clone());
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 7), dash_input, network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 8), old_inputs[9].clone(), network_path);
 		inputs_count = 9;
 
 		set_stroke_paint_order(&mut document.network_interface, network_path, *node_id, paint_order);
+	}
+
+	// The String Split node gained a unit primary so its level stands on its own rather than inheriting its
+	// subject's rank, which shifts its three original inputs one slot later
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text_nodes::string_split::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (index, input) in old_inputs.iter().enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index + 1), input.clone(), network_path);
+		}
+
+		inputs_count = 4;
 	}
 
 	// TODO: Eventually remove this document upgrade code

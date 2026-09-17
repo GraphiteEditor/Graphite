@@ -114,6 +114,11 @@ enum Command {
 		/// Animation duration in seconds for GIF (takes precedence over --frames)
 		#[clap(long)]
 		duration: Option<f64>,
+
+		/// Render this many times in a row, reporting each run. Compiling the graph and building the
+		/// executor happen once, so the later runs time the evaluation rather than the setup around it.
+		#[clap(long, default_value = "1")]
+		repeat: u32,
 	},
 	ListNodeIdentifiers,
 
@@ -236,6 +241,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 			fps,
 			frames,
 			duration,
+			repeat,
 			..
 		} => {
 			// Spawn thread to poll GPU device
@@ -257,11 +263,29 @@ fn main() -> Result<(), Box<dyn Error>> {
 			}
 
 			// Perform export based on file type
-			if file_type == export::FileType::Gif {
-				let animation = export::AnimationParams::new(fps, frames, duration);
-				export::export_gif(&executor, wgpu_executor_ref.clone(), output, scale, (width, height), animation, &completion_receiver)?;
-			} else {
-				export::export_document(&executor, wgpu_executor_ref.clone(), output, file_type, scale, (width, height), transparent, &completion_receiver)?;
+			for run in 1..=repeat.max(1) {
+				// Each run starts from a flushed region, so it evaluates the graph rather than
+				// reading back the memos the run before it published
+				executor.flush_persistent();
+				let started = std::time::Instant::now();
+				if file_type == export::FileType::Gif {
+					let animation = export::AnimationParams::new(fps, frames, duration);
+					export::export_gif(&executor, wgpu_executor_ref.clone(), output.clone(), scale, (width, height), animation, &completion_receiver)?;
+				} else {
+					export::export_document(
+						&executor,
+						wgpu_executor_ref.clone(),
+						output.clone(),
+						file_type,
+						scale,
+						(width, height),
+						transparent,
+						&completion_receiver,
+					)?;
+				}
+				if repeat > 1 {
+					println!("run {run}/{repeat}: {:?}", started.elapsed());
+				}
 			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),

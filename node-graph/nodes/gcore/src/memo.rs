@@ -144,7 +144,95 @@ pub struct SpanLevel {
 /// level lives in the persistent region and serves cross-evaluation hits by
 /// byte copy until the next flush, which costs a re-publish rather than a deep
 /// copy.
-#[node_macro::node(category(""), path(graphene_core::memo))]
+/// A run of a memoized level, lent straight out of the published span.
+///
+/// The per-lane path copies each lane into the caller's frame, which for a consumer reading a
+/// whole level is a copy per lane of bytes that are already contiguous and already live. The
+/// span is exactly that: one flat buffer in the persistent region, so the run is a view of it
+/// and the caller reads the published bytes in place. A miss goes unbatched, which runs the
+/// per-lane path and leaves the level published for the next caller.
+fn frame_memo_batch<'batch, 'serve, C, N>(
+	node: &'batch _frame_memo_mod::FrameMemoNode<N>,
+	input: &'batch C,
+	range: std::ops::Range<u64>,
+	_scratch: Option<&'batch mut [std::mem::MaybeUninit<u64>]>,
+	_frames: &core_types::record::Frames<'serve>,
+) -> core_types::node::BatchStatus<'batch>
+where
+	C: Ctx + CacheHash + DeriveCtx + core_types::context::ExtractArena<ArenaRef = &'serve core_types::arena::Arena> + ModifyIndex + Copy,
+	N: core_types::node::Node<C>,
+{
+	use core_types::gpoll::Extent;
+	use core_types::node::BatchStatus;
+
+	let content = &node.content;
+	// A scalar level has no run to lend, and its lanes are keyed apart anyway
+	if content.layout().depth != 1 {
+		return BatchStatus::Unbatched;
+	}
+
+	let mut keyed = *input;
+	keyed.set_index(0);
+	let key = cache_key(&keyed);
+
+	let entry = node.cache.lock().unwrap().as_ref().filter(|entry| entry.key == key).map(|entry| (entry.span, entry.finality));
+	let Some((span, finality)) = entry else { return BatchStatus::Unbatched };
+	let Some(published) = span.batch(input.scope().persistent(), content.layout()) else {
+		return BatchStatus::Unbatched;
+	};
+
+	let (Ok(start), Ok(end)) = (usize::try_from(range.start), usize::try_from(range.end)) else {
+		return BatchStatus::InvalidRange;
+	};
+	// A run reaching past the level comes back short, which is how the caller learns where it ends
+	let Some(run) = published.slice(start..end.min(published.len())) else {
+		return BatchStatus::InvalidRange;
+	};
+
+	BatchStatus::Lent(run, finality, Extent::Exactly(published.len()))
+}
+
+/// The extent of a memoized level, answered from the published span when there is one.
+///
+/// The memo saves its content from being served again, but a consumer asks for the level's
+/// extent once per lane it reads, and without this that question reaches the content every
+/// time. A published span already knows how many lanes it holds, so the answer is a length
+/// rather than whatever the content would recompute to produce it. Only a one-level span
+/// answers here, where the span's length is that level's extent; anything deeper falls
+/// through, since the span is flat across its levels and could not be read apart.
+fn frame_memo_extent<'e, C, N>(node: &_frame_memo_mod::FrameMemoNode<N>, ctx: &C, level: u8, frames: &core_types::record::Frames<'e>) -> GPoll<core_types::gpoll::Extent>
+where
+	C: Ctx + CacheHash + DeriveCtx + core_types::context::ExtractArena<ArenaRef = &'e core_types::arena::Arena> + ModifyIndex + Copy,
+	N: core_types::node::Node<C>,
+{
+	use core_types::gpoll::Extent;
+	use core_types::node::Node;
+
+	let content = &node.content;
+	let forward = || Node::extent_at(content, ctx, level, frames);
+	if level != 0 || content.layout().depth != 1 {
+		return forward();
+	}
+
+	let mut keyed = *ctx;
+	keyed.set_index(0);
+	let key = cache_key(&keyed);
+
+	let published = node
+		.cache
+		.lock()
+		.unwrap()
+		.as_ref()
+		.filter(|entry| entry.key == key)
+		.and_then(|entry| entry.span.batch(ctx.scope().persistent(), content.layout()).map(|batch| batch.len()));
+
+	match published {
+		Some(lanes) => GPoll::Final(Extent::Exactly(lanes)),
+		None => forward(),
+	}
+}
+
+#[node_macro::node(category(""), path(graphene_core::memo), extent_raw(frame_memo_extent), batch(frame_memo_batch))]
 fn frame_memo<'e, 'l>(
 	ctx: impl Ctx + CacheHash + DeriveCtx + ExtractArena<'e> + ModifyIndex + Copy,
 	#[data] cache: Arc<Mutex<Option<SpanLevel>>>,

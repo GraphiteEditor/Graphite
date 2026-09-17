@@ -33,6 +33,15 @@ macro_rules! impl_convert_to_string {
 }
 impl_convert_to_string!(f32, i8, u8, i16, u16, i32, u32, i64, u64, i128, u128, isize, usize, bool, String, DVec2, IVec2, DAffine2);
 
+/// Owns a borrowed element, so a node lending slices of an arena-parked string can still
+/// feed a consumer that wants the string itself.
+impl Convert<String, ()> for &str {
+	#[inline]
+	fn convert(self, _: Footprint, _converter: ()) -> String {
+		self.to_string()
+	}
+}
+
 // Denoised so 0.1 + 0.2 reaches the string as "0.3" rather than "0.30000000000000004"
 impl Convert<String, ()> for f64 {
 	#[inline]

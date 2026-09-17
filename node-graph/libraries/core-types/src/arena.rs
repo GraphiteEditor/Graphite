@@ -113,7 +113,17 @@ pub unsafe fn reset_generation_counter() -> bool {
 impl Arena {
 	pub fn new(capacity: usize) -> Option<Self> {
 		let generation = next_generation()?;
-		let buf = (0..capacity).map(|_| UnsafeCell::new(MaybeUninit::uninit())).collect();
+		// The backbone is handed out uninitialized, so it is reserved rather than written: building
+		// it element by element would touch every byte of the region before an evaluation uses any
+		// of it. `UnsafeCell<MaybeUninit<u8>>` has no validity requirement, so the spare capacity
+		// is already a legal value of it.
+		let buf = {
+			let mut buf: Vec<UnsafeCell<MaybeUninit<u8>>> = Vec::with_capacity(capacity);
+			// SAFETY: the allocation covers `capacity` elements and the element type is valid
+			// in any bit pattern, including uninitialized.
+			unsafe { buf.set_len(capacity) };
+			buf.into_boxed_slice()
+		};
 		LIVE_ARENAS.fetch_add(1, Ordering::Release);
 		Some(Self {
 			generation: AtomicU64::new(generation),
@@ -199,7 +209,8 @@ impl Arena {
 				static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 				let count = COUNT.fetch_add(1, Ordering::Relaxed);
 				if reserved.is_none() {
-					eprintln!("arena> EXHAUSTED after {count} allocations, wanted {size} bytes\n{}", std::backtrace::Backtrace::force_capture());
+					eprintln!("arena> EXHAUSTED after {count} allocations, wanted {size} bytes");
+					Self::dump_tally();
 				} else if count.is_multiple_of(20000) {
 					eprintln!("arena> {count} allocations, offset {}, this {size} bytes", self.offset.load(Ordering::Relaxed));
 				}
@@ -214,6 +225,20 @@ impl Arena {
 
 	pub fn alloc<T: Send + Sync>(&self, value: T) -> Option<(&T, ArenaWeak<T>)> {
 		self.alloc_sized(value, 0)
+	}
+
+	/// Prints the per-type allocation tally gathered under `GRAPHENE_ARENA_DEBUG`.
+	#[cfg(debug_assertions)]
+	pub fn dump_tally() {
+		ARENA_TALLY.with(|tally| {
+			let mut rows: Vec<(String, usize)> = tally.borrow().iter().map(|(name, count)| (name.clone(), *count)).collect();
+			rows.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+			let total: usize = rows.iter().map(|(_, count)| count).sum();
+			eprintln!("arena tally> {total} allocations across {} types", rows.len());
+			for (name, count) in rows.iter().take(20) {
+				eprintln!("arena tally>   {count:>10}  {name}");
+			}
+		});
 	}
 
 	/// [`Arena::alloc`] with the park glue's estimate of the heap `value` owns,
@@ -236,6 +261,8 @@ impl Arena {
 	}
 
 	fn alloc_stamped<T: Send + Sync>(&self, value: T, retained: usize, type_of: Option<TypeId>) -> Option<(&T, ArenaWeak<T>)> {
+		#[cfg(debug_assertions)]
+		arena_tally(core::any::type_name::<T>());
 		let offset = self.reserve(size_of::<T>(), align_of::<T>())?;
 		// Built before the write so an unencodable offset drops `value` here
 		// rather than stranding it in the arena without drop glue.
@@ -346,6 +373,8 @@ impl Arena {
 	}
 
 	pub fn alloc_slice_copy<T: Copy + Send + Sync>(&self, src: &[T]) -> Option<&[T]> {
+		#[cfg(debug_assertions)]
+		arena_tally(core::any::type_name::<&[T]>());
 		let buf = self.alloc_scratch::<T>(src.len())?;
 		for (slot, &value) in buf.iter_mut().zip(src) {
 			slot.write(value);
@@ -358,6 +387,8 @@ impl Arena {
 	// restrict themselves to `Copy` payloads (leak, not UB, otherwise).
 	#[allow(clippy::mut_from_ref)]
 	pub fn alloc_scratch<T: Send + Sync>(&self, len: usize) -> Option<&mut [MaybeUninit<T>]> {
+		#[cfg(debug_assertions)]
+		arena_tally("<scratch>");
 		let size = size_of::<T>().checked_mul(len)?;
 		let offset = self.reserve(size, align_of::<T>())?;
 		// SAFETY: `reserve` returned `offset`, so it is within the backbone.
@@ -867,4 +898,19 @@ mod tests {
 		arena.reset();
 		assert_eq!(DROPS.load(Ordering::Relaxed), 2);
 	}
+}
+
+#[cfg(debug_assertions)]
+thread_local! {
+	static ARENA_TALLY: std::cell::RefCell<std::collections::HashMap<String, usize>> = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Counts one arena allocation against its type, for the `GRAPHENE_ARENA_DEBUG` breakdown.
+#[cfg(debug_assertions)]
+fn arena_tally(name: &str) {
+	static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	if !*ON.get_or_init(|| std::env::var_os("GRAPHENE_ARENA_DEBUG").is_some()) {
+		return;
+	}
+	ARENA_TALLY.with(|tally| *tally.borrow_mut().entry(name.to_string()).or_default() += 1);
 }

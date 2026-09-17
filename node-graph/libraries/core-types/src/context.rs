@@ -283,7 +283,21 @@ pub fn nullify_index_levels<'s>(head: IndexLink<'s>, levels: IndexLevels, arena:
 	if levels.is_all() {
 		return Some(head);
 	}
-	let indices: Vec<u64> = core::iter::successors(Some(&head), |link| link.outer).map(|link| link.index).collect();
+	// A chain is a handful of levels deep and this runs on every nullified serve, so the walk
+	// lands in a local buffer rather than a fresh allocation. `IndexLevels` only distinguishes
+	// the first `u32::BITS` levels, and a chain past that is masked wholesale by `contains_level`.
+	const MAX_LEVELS: usize = u32::BITS as usize;
+	let mut buffer = [0_u64; MAX_LEVELS];
+	let mut count = 0;
+	for link in core::iter::successors(Some(&head), |link| link.outer) {
+		if count == MAX_LEVELS {
+			break;
+		}
+		buffer[count] = link.index;
+		count += 1;
+	}
+	let indices = &buffer[..count];
+
 	let masked = |level: usize| match levels.contains_level(level) {
 		true => indices[level],
 		false => 0,

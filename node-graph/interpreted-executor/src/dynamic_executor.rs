@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::{Arc, Mutex, PoisonError};
 
-const ARENA_CAPACITY: usize = 1 << 27;
+const ARENA_CAPACITY: usize = 1 << 28;
 
 const PERSISTENT_CAPACITY: usize = 1 << 26;
 
@@ -251,6 +251,13 @@ impl DynamicExecutor {
 			}
 		};
 		result.ok_or(IntrospectError::NoData)
+	}
+
+	/// Drops the persistent region, so every memo has to republish on the next evaluation.
+	/// An evaluation that follows this one does the work a first evaluation would, which is what
+	/// a measurement of the graph itself wants rather than the memo hits of a repeat.
+	pub fn flush_persistent(&self) {
+		self.persistent.lock().unwrap_or_else(PoisonError::into_inner).reset();
 	}
 
 	pub fn input_type(&self) -> Option<Type> {

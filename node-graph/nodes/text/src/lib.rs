@@ -12,7 +12,6 @@ use core_types::extent::{LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
 use core_types::graphene_hash::CacheHash;
 use core_types::math::float_noise::round_away_float_noise;
-use core_types::node::Lane;
 use core_types::registry::types::{SignedInteger, TextArea};
 use core_types::{Ctx, ExtractIndex, InjectIndex};
 use dyn_any::DynAny;
@@ -751,21 +750,79 @@ pub(crate) fn expanded_count(strings: core_types::node::List<'_, String>, expand
 	Extent::Exactly((0..strings.len()).map(|row| expand(strings.element_ref(row))).sum())
 }
 
-/// The parts of `string` around `delimiter`, unescaped when asked.
-fn split_parts(string: &str, delimiter: &str, delimiter_escaping: bool) -> Vec<String> {
-	let delimiter = match delimiter_escaping {
-		true => unescape_string(delimiter.to_string()),
-		false => delimiter.to_string(),
-	};
-	string.split(&delimiter).map(str::to_string).collect()
+/// The delimiter as it is matched against, which is the delimiter itself unless it spells an
+/// escape. Checking first keeps the common separator off the allocation path.
+fn resolved_delimiter(delimiter: &str, delimiter_escaping: bool) -> std::borrow::Cow<'_, str> {
+	match delimiter_escaping && delimiter.contains('\\') {
+		true => std::borrow::Cow::Owned(unescape_string(delimiter.to_string())),
+		false => std::borrow::Cow::Borrowed(delimiter),
+	}
+}
+
+/// The parts of `string` around `delimiter`. A one-character delimiter takes the `char` pattern,
+/// which searches with memchr instead of the generic two-way substring search, and a split level
+/// is walked often enough for that to be the difference.
+pub(crate) fn split_iter<'text, 'delimiter>(string: &'text str, delimiter: &'delimiter str) -> SplitIter<'text, 'delimiter> {
+	let mut characters = delimiter.chars();
+	match (characters.next(), characters.next()) {
+		(Some(character), None) => SplitIter::Character(string.split(character)),
+		_ => SplitIter::Text(string.split(delimiter)),
+	}
+}
+
+pub(crate) enum SplitIter<'text, 'delimiter> {
+	Character(std::str::Split<'text, char>),
+	Text(std::str::Split<'text, &'delimiter str>),
+}
+
+impl<'text> Iterator for SplitIter<'text, '_> {
+	type Item = &'text str;
+
+	fn next(&mut self) -> Option<&'text str> {
+		match self {
+			SplitIter::Character(split) => split.next(),
+			SplitIter::Text(split) => split.next(),
+		}
+	}
+}
+
+/// How many parts `string` splits into, without building them.
+///
+/// The consuming level asks for this once per lane it reads, so a long row would be rescanned
+/// for every lane of the level it feeds. Only a row long enough for the scan to matter is kept,
+/// which leaves the short rows (already a handful of bytes) off the bookkeeping path. The row is
+/// identified by where it sits and how long it is, which names an arena-parked row within an
+/// evaluation.
+fn split_count(string: &str, delimiter: &str, delimiter_escaping: bool) -> usize {
+	const WORTH_KEEPING: usize = 4096;
+
+	thread_local! {
+		static RECENT: std::cell::Cell<Option<((usize, usize), usize)>> = const { std::cell::Cell::new(None) };
+	}
+
+	let key = (string.as_ptr() as usize, string.len());
+	if string.len() >= WORTH_KEEPING
+		&& let Some((cached, count)) = RECENT.get()
+		&& cached == key
+	{
+		return count;
+	}
+
+	let count = split_iter(string, resolved_delimiter(delimiter, delimiter_escaping).as_ref()).count();
+	if string.len() >= WORTH_KEEPING {
+		RECENT.set(Some((key, count)));
+	}
+
+	count
 }
 
 /// Splits each string into substrings based on the specified delimiter, producing one flat list of all the substrings. This is the inverse of the **String Join** node.
 ///
 /// For example, splitting "a, b, c" with delimiter ", " produces `["a", "b", "c"]`.
-#[node_macro::node(category("Text"), extent(string_split_extent))]
-fn string_split(
-	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
+#[node_macro::node(category("Text"), extent(string_split_extent), batch(string_split_batch))]
+fn string_split<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	_primary: (),
 	/// The strings to split into substrings.
 	strings: IList<String>,
 	/// The character(s) that separate the substrings. These are not included in the outputs.
@@ -775,19 +832,125 @@ fn string_split(
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
 	delimiter_escaping: bool,
-) -> Result<IList<Lane<String>>, Interrupt> {
-	let (row, part) = locate_expanded(strings, ctx.index() as usize, |string| split_parts(string, &delimiter, delimiter_escaping)).ok_or_else(|| Interrupt::from(GraphError::past_end()))?;
-	Ok(strings.lane(row).map_element(part))
+) -> Result<IList<&'e str>, Interrupt> {
+	let delimiter = resolved_delimiter(&delimiter, delimiter_escaping);
+
+	// The parts borrow the rows they split, and those rows are arena-parked for the whole
+	// evaluation, so a split level costs no allocation per lane. One walk serves the lane and
+	// measures the row it skipped past, so a row is never scanned twice.
+	let mut remaining = ctx.index() as usize;
+	for row in 0..strings.len() {
+		let text: &'e str = strings.element_arena(row, ctx.arena()).as_str();
+		let mut seen = 0;
+		for part in split_iter(text, delimiter.as_ref()) {
+			if seen == remaining {
+				return Ok(part);
+			}
+			seen += 1;
+		}
+		remaining -= seen;
+	}
+
+	Err(GraphError::past_end().into())
+}
+
+/// Serves a whole range of lanes from one walk of the rows, instead of re-walking them for
+/// each lane. A split level is read lane by lane by its consumer, so the per-lane form costs
+/// a scan per lane and this costs one scan per range.
+fn string_split_batch<'batch, 'serve, Input, Primary, Strings, Delimiter, Escaping>(
+	node: &'batch _string_split_mod::StringSplitNode<Primary, Strings, Delimiter, Escaping>,
+	input: &'batch Input,
+	range: std::ops::Range<u64>,
+	scratch: Option<&'batch mut [std::mem::MaybeUninit<u64>]>,
+	frames: &core_types::record::Frames<'serve>,
+) -> core_types::node::BatchStatus<'batch>
+where
+	Input: Ctx + ExtractIndex + InjectIndex + Copy + core_types::context::ExtractArena<ArenaRef = &'serve core_types::arena::Arena>,
+	Primary: core_types::node::Node<Input>,
+	Strings: core_types::node::Node<Input>,
+	Delimiter: core_types::node::Node<Input>,
+	Escaping: core_types::node::Node<Input>,
+{
+	use core_types::node::BatchStatus;
+
+	let Some(scratch) = scratch else { return BatchStatus::NeedBuffer };
+	let Ok(len) = usize::try_from(range.end.saturating_sub(range.start)) else {
+		return BatchStatus::InvalidRange;
+	};
+	let arena = core_types::context::ExtractArena::arena(input);
+	let cell = core_types::node::StatusCell::new();
+
+	// The scalar inputs are read once for the whole range rather than once per lane
+	let read = |index: usize, node: &dyn core_types::node::Node<Input>| cell.eval_input(index, node, input, frames);
+	let delimiter = match read(2, &node.delimiter) {
+		Ok(value) => unsafe { core_types::record::read_element::<String>(node.__in_2.rec(&value)) },
+		Err(interrupt) => return interrupt.into(),
+	};
+	let escaping = match read(3, &node.delimiter_escaping) {
+		Ok(value) => unsafe { core_types::record::read_element::<bool>(node.__in_3.rec(&value)) },
+		Err(interrupt) => return interrupt.into(),
+	};
+	let delimiter = resolved_delimiter(&delimiter, escaping);
+
+	let count = match core_types::node::Node::extent(&node.strings, input, core_types::gpoll::Level::Total, frames) {
+		core_types::gpoll::GPoll::Final(Extent::Exactly(count)) => count,
+		core_types::gpoll::GPoll::Pending => return BatchStatus::Pending,
+		_ => return BatchStatus::Error(GraphError::new("string split over a non-exact row count")),
+	};
+	let rows = match core_types::record::materialize_batch(&node.strings, input, 0..count as u64, arena, frames) {
+		BatchStatus::Lent(batch, ..) => batch,
+		BatchStatus::Filled(batch, ..) => batch.into_shared(),
+		BatchStatus::Pending => return BatchStatus::Pending,
+		BatchStatus::Error(error) => return BatchStatus::Error(error),
+		_ => return BatchStatus::Error(GraphError::new("string split could not materialize its rows")),
+	};
+	// SAFETY: the wiring resolved this input's element as `String`.
+	let rows = unsafe { core_types::node::List::<String>::new(rows) };
+
+	let Some(mut run) = frames.run(scratch, len, &node.__layout) else {
+		return BatchStatus::InvalidRange;
+	};
+
+	let mut lane = 0;
+	let mut skipped = 0;
+	let mut hint = Extent::AtLeast(range.end as usize);
+	'rows: for row in 0..rows.len() {
+		let text: &'serve str = rows.element_arena(row, arena).as_str();
+		for part in split_iter(text, delimiter.as_ref()) {
+			// Lanes below the range belong to an earlier batch, so they are walked past
+			if skipped < range.start as usize {
+				skipped += 1;
+				continue;
+			}
+			if lane == len {
+				break 'rows;
+			}
+
+			let claim = run.slot(lane, frames);
+			let core_types::gpoll::GPoll::Final(served) = claim.lift_served(core_types::gpoll::GPoll::Final(part), arena) else {
+				return BatchStatus::Error(GraphError::new("string split could not serve a lane"));
+			};
+			run.served(lane, &served);
+			lane += 1;
+		}
+	}
+
+	// A range the rows could not fill ends the level, so the bound turns exact
+	if lane < len {
+		hint = Extent::Exactly(range.start as usize + lane);
+	}
+
+	BatchStatus::Filled(run.finish(), core_types::gpoll::Finality::AllFinal, hint)
 }
 
 /// The level holds every string's parts in order.
-fn string_split_extent(strings: ListIn<'_, String>, delimiter: ValueIn<'_, String>, delimiter_escaping: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
+fn string_split_extent(_primary: ValueIn<'_, ()>, strings: ListIn<'_, String>, delimiter: ValueIn<'_, String>, delimiter_escaping: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
 	match level.top() {
 		true => strings
 			.get()
 			.zip(delimiter.get())
 			.zip(delimiter_escaping.get())
-			.map(|((strings, delimiter), escaping)| expanded_count(strings, |string| split_parts(string, &delimiter, escaping).len())),
+			.map(|((strings, delimiter), escaping)| expanded_count(strings, |string| split_count(string, &delimiter, escaping))),
 		false => GPoll::Final(Extent::Exactly(1)),
 	}
 }

@@ -29,6 +29,11 @@ impl GraphError {
 	}
 
 	pub fn traced(mut self, input_index: usize) -> Self {
+		// The past-end signal ends a drain rather than reporting a fault, so nobody reads where it
+		// came from, and every level of every lane would otherwise grow a trace nobody looks at
+		if self.kind == ErrorKind::PastEnd {
+			return self;
+		}
 		self.trace.push(input_index);
 		self
 	}
@@ -120,6 +125,8 @@ impl<T> GPoll<T> {
 				boxed.1.trace.push(input);
 				GPoll::Fallback(boxed)
 			}
+			// The past-end signal ends a drain rather than reporting a fault, so its trace is never read
+			GPoll::Error(error) if error.kind == ErrorKind::PastEnd => GPoll::Error(error),
 			GPoll::Error(mut e) => {
 				e.trace.push(input);
 				GPoll::Error(e)

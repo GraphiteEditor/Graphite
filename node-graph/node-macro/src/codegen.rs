@@ -1245,6 +1245,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let mut lend_outlives: Vec<TokenStream2> = Vec::new();
 	if let Type::Reference(reference) = &slot_value_type(&parsed.output_type)
 		&& let Some(lifetime) = &reference.lifetime
+		// A borrowed element whose own type names no lifetime outlives every serving
+		// lifetime already, and the impl has no lifetime parameter to state it against
+		&& crate::codegen::classify::named_serving_lifetime(&reference.elem).is_some()
 	{
 		let inner = &reference.elem;
 		lend_outlives.push(quote!(#inner: #lifetime));
@@ -1688,12 +1691,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		}
 	} else if let Some(path) = &parsed.attributes.extent_raw {
+		// The raw surface hands over the node itself, so a node holding state (a memo's published
+		// span) can answer from it, and the frames so it can still fall through to an input.
 		quote! {
-			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8, _: &#core_types::record::Frames<'__serve>) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
+			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8, __frames: &#core_types::record::Frames<'__serve>) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
 				where
 					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 				{
-				#path(self, __input, __level)
+				#path(self, __input, __level, __frames)
 			}
 		}
 	} else if let Some(subject_index) = ir::forwarded_subject(&node).filter(|_| node.output.shape.depth == 0) {

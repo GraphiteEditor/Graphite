@@ -681,7 +681,18 @@ impl ProtoNetwork {
 			}
 
 			let mut lifted = branch.0.clone();
-			lifted.index_levels = lifted.index_levels.lifted(0, pushed_levels.get(input).copied().unwrap_or(0));
+			let delta = pushed_levels.get(input).copied().unwrap_or(0);
+			lifted.index_levels = lifted.index_levels.lifted(0, delta);
+
+			if std::env::var_os("PROBE_LEVELS").is_some() && branch.0.index_levels != lifted.index_levels {
+				eprintln!(
+					"PROBE lift: {} input {input} delta {delta}: {:?} -> {:?}{}",
+					self.nodes[node_index].1.identifier.as_str(),
+					branch.0.index_levels,
+					lifted.index_levels,
+					if lifted.index_levels.is_empty() { "   <-- REQUIREMENT DIES" } else { "" }
+				);
+			}
 			combined_deps |= &lifted;
 			branch_dependencies.push(branch);
 		}
@@ -1381,6 +1392,120 @@ mod test {
 		network.insert_context_nullification_nodes().expect("Error when calling 'insert_context_nullification_nodes'");
 
 		assert!(nullification_filters(&network).is_empty(), "equal branch source sets need no filter");
+	}
+
+	/// A nested lookup shaped like the palette chain in `brick-waves`: a constant string split
+	/// twice, each split indexed by a `read_index` whose *Loop Level* the preprocessor resolved
+	/// to a concrete level. Every inserted boundary must keep the levels its subtree reads, or
+	/// the lookup collapses to one cached result.
+	fn nested_index_lookup_network() -> ProtoNetwork {
+		let read_index = |level: u8| ProtoNode {
+			identifier: graphene_core::context::read_index::IDENTIFIER,
+			call_argument: concrete!(Context),
+			construction_args: ConstructionArgs::Nodes(vec![NodeId(0), NodeId(0)]),
+			context_features: ContextDependencies::new(core_types::context::ContextFeatures::INDEX, core_types::context::ContextFeatures::empty())
+				.with_index_levels(core_types::context::IndexLevels::empty().with_level(level)),
+			..Default::default()
+		};
+		let split = |source: NodeId| ProtoNode {
+			identifier: text_nodes::string_split::IDENTIFIER,
+			call_argument: concrete!(Context),
+			construction_args: ConstructionArgs::Nodes(vec![NodeId(0), source, NodeId(0), NodeId(0)]),
+			..Default::default()
+		};
+		let item_at_index = |list: NodeId, index: NodeId| ProtoNode {
+			identifier: graphene_core::list::item_at_index::IDENTIFIER,
+			call_argument: concrete!(Context),
+			construction_args: ConstructionArgs::Nodes(vec![list, index]),
+			..Default::default()
+		};
+		// Consumes the level `string_split` pushed, so masks shift back down across it.
+		let join = |strings: NodeId| ProtoNode {
+			identifier: text_nodes::string_join::IDENTIFIER,
+			call_argument: concrete!(Context),
+			construction_args: ConstructionArgs::Nodes(vec![strings, NodeId(0), NodeId(0)]),
+			..Default::default()
+		};
+
+		ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(10),
+			nodes: [
+				(
+					NodeId(0),
+					ProtoNode {
+						identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
+						call_argument: concrete!(Context),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::String("a,b\nc,d".to_string()).into()),
+						..Default::default()
+					},
+				),
+				// The outer loop selects a row, the inner loop a field within it.
+				(NodeId(1), read_index(2)),
+				(NodeId(2), read_index(1)),
+				(NodeId(3), split(NodeId(0))),
+				(NodeId(4), item_at_index(NodeId(3), NodeId(1))),
+				(NodeId(5), join(NodeId(4))),
+				(NodeId(6), split(NodeId(5))),
+				(NodeId(7), item_at_index(NodeId(6), NodeId(2))),
+				(NodeId(8), join(NodeId(7))),
+				// Two more level-consuming hops, standing in for the nested `Repeat`s the
+				// lookup sits inside; each shifts the readers' levels one step further down.
+				(NodeId(9), join(NodeId(8))),
+				(NodeId(10), join(NodeId(9))),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		}
+	}
+
+	/// Pins the masks a resolved-level lookup produces today. Every boundary here keeps a level
+	/// its subtree reads, so this shape alone does not reproduce the `brick-waves` collapse where
+	/// the palette resolves to a single cached color; it is here to notice when these shift.
+	#[test]
+	fn nested_index_lookup_boundary_levels() {
+		let mut network = nested_index_lookup_network();
+		network.insert_context_nullification_nodes().expect("Error when calling 'insert_context_nullification_nodes'");
+
+		let levels: Vec<_> = index_level_boundaries(&network).into_iter().map(|(wrapped, _, levels)| (wrapped, levels)).collect();
+
+		assert_eq!(
+			levels,
+			vec![
+				("text_nodes::StringSplitNode".to_string(), IndexLevels::empty().with_level(0)),
+				("graphene_core::list::ItemAtIndexNode".to_string(), IndexLevels::empty().with_level(2)),
+				("text_nodes::StringJoinNode".to_string(), IndexLevels::empty().with_level(1)),
+				("text_nodes::StringSplitNode".to_string(), IndexLevels::empty().with_level(0)),
+				("graphene_core::list::ItemAtIndexNode".to_string(), IndexLevels::empty().with_level(1)),
+				("text_nodes::StringJoinNode".to_string(), IndexLevels::empty().with_level(0)),
+			]
+		);
+	}
+
+	/// Each inserted context modification, as (wrapped node, required features, retained levels).
+	fn index_level_boundaries(network: &ProtoNetwork) -> Vec<(String, core_types::context::ContextFeatures, core_types::context::IndexLevels)> {
+		let node = |id: NodeId| &network.nodes[id.0 as usize].1;
+		network
+			.nodes
+			.iter()
+			.filter(|(_, candidate)| candidate.identifier.as_str() == graphene_core::context_modification::context_modification::IDENTIFIER.as_str())
+			.map(|(_, candidate)| {
+				let ConstructionArgs::Nodes(args) = &candidate.construction_args else {
+					panic!("filter args must be nodes")
+				};
+				let ConstructionArgs::Nodes(memoized) = &node(args[0]).construction_args else {
+					panic!("filter memoize args must be nodes")
+				};
+				let ConstructionArgs::Value(value) = &node(args[1]).construction_args else {
+					panic!("filter payload must be a value")
+				};
+				let value::TaggedValue::ContextModification(modification) = &**value else {
+					panic!("filter payload must be a context modification")
+				};
+				(node(memoized[0]).identifier.as_str().to_string(), modification.features, modification.index_levels)
+			})
+			.collect()
 	}
 
 	fn find_node<'a>(network: &'a ProtoNetwork, name: &str) -> (NodeId, &'a ProtoNode) {
