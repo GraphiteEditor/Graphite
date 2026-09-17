@@ -126,6 +126,12 @@ impl<'a> RecordBatchMut<'a> {
 		Self { scratch, len, layout }
 	}
 
+	/// A batch over lanes the caller imaged itself: `len` complete records of
+	/// `layout`, packed at its stride from the start of `scratch`.
+	pub fn filled(scratch: &'a mut [MaybeUninit<u64>], len: usize, layout: &'a crate::record::Layout) -> Self {
+		Self::new(scratch, len, layout)
+	}
+
 	pub fn len(&self) -> usize {
 		self.len
 	}

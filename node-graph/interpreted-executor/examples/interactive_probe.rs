@@ -43,12 +43,14 @@ fn main() {
 	// PROBE_COLD_REPEATS=N re-runs the base view N times behind a flush, so a
 	// profile of this process is dominated by cold frames rather than by loading.
 	if let Some(repeats) = std::env::var("PROBE_COLD_REPEATS").ok().and_then(|n| n.parse::<usize>().ok()) {
-		std::hint::black_box(Executor::execute(&&executor, base).expect("execute"));
+		let first = Executor::execute(&&executor, base).expect("execute");
+		println!("{:>18}: digest={}", "cold", digest(&first));
 		for _ in 0..repeats {
 			executor.flush_persistent();
 			let started = Instant::now();
-			std::hint::black_box(Executor::execute(&&executor, base).expect("execute"));
-			println!("{:>18}: {:>10.3?}", "cold (flushed)", started.elapsed());
+			let result = Executor::execute(&&executor, base).expect("execute");
+			let elapsed = started.elapsed();
+			println!("{:>18}: {:>10.3?}  digest={}", "cold (flushed)", elapsed, digest(&result));
 			#[cfg(debug_assertions)]
 			if std::env::var_os("GRAPHENE_BATCH_DEBUG").is_some() {
 				let mut rows = core_types::record::take_batch_tally();
@@ -61,6 +63,11 @@ fn main() {
 					println!("  tally {batched:>7} batched {unbatched:>7} unbatched {lanes:>9} lanes  {name}");
 				}
 				println!("  tally {m:>7} batched {u:>7} unbatched {l:>9} lanes  TOTAL");
+				let mut kernels = core_types::record::take_kernel_tally();
+				kernels.sort_by_key(|(_, (calls, _))| std::cmp::Reverse(*calls));
+				for ((kernel, how), (calls, lanes)) in &kernels {
+					println!("  kernel {calls:>8} calls {lanes:>9} lanes  {kernel:<28} {how}");
+				}
 			}
 		}
 		return;
@@ -68,7 +75,36 @@ fn main() {
 	for (name, config) in steps {
 		let started = Instant::now();
 		let result = Executor::execute(&&executor, config).expect("execute");
-		println!("{name:>18}: {:>10.3?}", started.elapsed());
-		std::hint::black_box(result);
+		let elapsed = started.elapsed();
+		println!("{name:>18}: {:>10.3?}  digest={}", elapsed, digest(&result));
 	}
+}
+
+/// A stable digest of a frame's output, so two frames can be compared for identical results.
+fn digest<T: std::fmt::Debug>(value: &T) -> String {
+	use std::hash::{Hash, Hasher};
+	let text = format!("{value:?}");
+	// Pattern ids are fresh uuids per render, so hex runs of twelve or more are masked before hashing.
+	let mut masked = String::with_capacity(text.len());
+	let mut run = String::new();
+	for c in text.chars().chain(std::iter::once(' ')) {
+		if c.is_ascii_hexdigit() {
+			run.push(c);
+			continue;
+		}
+		if run.len() >= 12 {
+			masked.push('#');
+		} else {
+			masked.push_str(&run);
+		}
+		run.clear();
+		masked.push(c);
+	}
+	let text = masked;
+	if text.len() < 400 {
+		eprintln!("  result: {text}");
+	}
+	let mut hasher = std::hash::DefaultHasher::new();
+	text.hash(&mut hasher);
+	format!("{:016x} ({} bytes)", hasher.finish(), text.len())
 }

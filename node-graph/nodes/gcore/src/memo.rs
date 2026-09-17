@@ -183,8 +183,8 @@ fn frame_memo_batch<'batch, 'serve, C, N>(
 	node: &'batch _frame_memo_mod::FrameMemoNode<N>,
 	input: &'batch C,
 	range: std::ops::Range<u64>,
-	_scratch: Option<&'batch mut [std::mem::MaybeUninit<u64>]>,
-	_frames: &core_types::record::Frames<'serve>,
+	scratch: Option<&'batch mut [std::mem::MaybeUninit<u64>]>,
+	frames: &core_types::record::Frames<'serve>,
 ) -> core_types::node::BatchStatus<'batch>
 where
 	C: Ctx + CacheHash + DeriveCtx + core_types::context::ExtractArena<ArenaRef = &'serve core_types::arena::Arena> + ModifyIndex + Copy,
@@ -194,36 +194,99 @@ where
 	use core_types::node::BatchStatus;
 
 	let content = &node.content;
-	// A scalar level has no run to lend, and its lanes are keyed apart anyway
-	if content.layout().depth != 1 {
-		return BatchStatus::Unbatched;
-	}
-
+	let layout = content.layout();
 	let mut keyed = *input;
 	keyed.set_index(0);
 	let key = cache_key(&keyed);
-
-	let entry = node
-		.cache
-		.lock()
-		.unwrap()
-		.for_generation(input.scope().persistent())
-		.levels
-		.get(&key)
-		.map(|entry| (entry.span, entry.finality));
-	let Some((span, finality)) = entry else { return BatchStatus::Unbatched };
-	let Some(published) = span.batch(input.scope().persistent(), content.layout()) else {
-		return BatchStatus::Unbatched;
-	};
-
+	let persistent = input.scope().persistent();
 	let (Ok(start), Ok(end)) = (usize::try_from(range.start), usize::try_from(range.end)) else {
 		return BatchStatus::InvalidRange;
 	};
-	// A run reaching past the level comes back short, which is how the caller learns where it ends
-	let Some(run) = published.slice(start..end.min(published.len())) else {
+	// Scalar content publishes lane by lane: a range whose lanes are all
+	// published copies out of the lane span, and anything else is served
+	// through the content's batch and published from the fill.
+	if layout.depth == 0 {
+		let Some(scratch) = scratch else {
+			return BatchStatus::NeedBuffer;
+		};
+		let len = end.saturating_sub(start);
+		let stride = layout.lane_stride();
+		if scratch.len() * 8 < len * stride {
+			return BatchStatus::InvalidRange;
+		}
+		let published: Option<Vec<(*const u8, Finality)>> = {
+			let mut table = node.cache.lock().unwrap();
+			let table = table.for_generation(persistent);
+			table.lanes.get(&key).and_then(|span| (start..end).map(|lane| span.lane(persistent, lane, layout)).collect())
+		};
+		if let Some(lanes) = published {
+			#[cfg(debug_assertions)]
+			core_types::record::note_kernel_batch("frame_memo", "scalar hit", len);
+			let base: *mut u8 = scratch.as_mut_ptr().cast();
+			let mut finality = Finality::AllFinal;
+			for (lane, (src, lane_finality)) in lanes.iter().enumerate() {
+				if *lane_finality == Finality::Partial {
+					finality = Finality::Partial;
+				}
+				// SAFETY: a published lane images a complete record of this layout in the live region.
+				unsafe { std::ptr::copy_nonoverlapping(*src, base.add(lane * stride), layout.size) };
+			}
+			// Lanes `0..len` were imaged above as records of this layout.
+			return BatchStatus::Filled(core_types::node::RecordBatchMut::filled(scratch, len, layout), finality, Extent::AtLeast(end));
+		}
+		#[cfg(debug_assertions)]
+		core_types::record::note_kernel_batch("frame_memo", "scalar fill", len);
+		let filled = core_types::record::forward_batch(content, input, range.clone(), Some(scratch), frames, layout, |scratch| {
+			core_types::record::fill_frames(content, input, range.clone(), Some(scratch), frames)
+		});
+		let BatchStatus::Filled(batch, finality, hint) = filled else {
+			return filled;
+		};
+		let promotion = Promotion::new(input.arena(), frames.bounds(), persistent);
+		let mut table = node.cache.lock().unwrap();
+		let span = table.for_generation(persistent).lanes.entry(key).or_insert_with(|| LaneSpan::new(persistent));
+		for lane in 0..batch.len() {
+			// SAFETY: the fill wrote lane `lane` as a record of this layout.
+			let ok = unsafe { span.publish(start + lane, batch.share().get(lane).rec().ptr(), layout, &promotion, finality) }.is_some();
+			if !ok {
+				break;
+			}
+		}
+		return BatchStatus::Filled(batch, finality, hint);
+	}
+
+	let entry = node.cache.lock().unwrap().for_generation(persistent).levels.get(&key).map(|entry| (entry.span, entry.finality));
+	// A miss materializes the level here and lends it, rather than leaving the
+	// caller to walk this boundary lane by lane.
+	let (span, finality) = match entry {
+		Some(entry) => entry,
+		None => match {
+			#[cfg(debug_assertions)]
+			core_types::record::note_kernel_batch("frame_memo", "miss materialize", end.saturating_sub(start));
+			core_types::record::materialize_level(content, input, input.arena(), frames)
+		} {
+			LevelStatus::Batch(batch, finality) => {
+				let promotion = Promotion::new(input.arena(), frames.bounds(), persistent);
+				// SAFETY: the batch came from this input, so it carries the input's layout.
+				let Some(span) = (unsafe { MaterializedSpan::to_persistent(&batch, &promotion) }) else {
+					return BatchStatus::Unbatched;
+				};
+				probe_memo_publish(&node.cache, true, batch.len(), layout.frame_bytes(), true);
+				node.cache.lock().unwrap().for_generation(persistent).levels.insert(key, SpanLevel { span, finality });
+				(span, finality)
+			}
+			LevelStatus::Pending => return BatchStatus::Pending,
+			LevelStatus::Error(error) => return BatchStatus::Error(error),
+		},
+	};
+	let Some(published) = span.batch(persistent, layout) else {
+		return BatchStatus::Unbatched;
+	};
+	// A flat request over a deeper level reads the flat span the same way;
+	// a run reaching past the level comes back short, which is how the caller learns where it ends.
+	let Some(run) = published.slice(start.min(published.len())..end.min(published.len())) else {
 		return BatchStatus::InvalidRange;
 	};
-
 	BatchStatus::Lent(run, finality, Extent::Exactly(published.len()))
 }
 
@@ -372,7 +435,7 @@ type MonitorValue = Arc<Mutex<Option<CtxSnapshot>>>;
 /// it. It stores only the evaluation context: the output is pure over
 /// (context, source generations), so introspection recreates it by
 /// re-evaluating this input with the rehydrated snapshot.
-#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
+#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), batch(monitor_batch))]
 fn monitor<'e, 'l>(
 	ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e> + ModifyIndex + Copy,
 	#[data] io: MonitorValue,
@@ -894,4 +957,27 @@ fn probe_memo_publish(cache: &Arc<Mutex<MemoTable>>, leveled: bool, lanes: usize
 fn extent_cache_enabled() -> bool {
 	static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 	*ON.get_or_init(|| std::env::var_os("MEMO_EXTENT_CACHE").is_none_or(|v| v != "off"))
+}
+
+/// The monitor's batch: the snapshot is lane zero's, and the content answers
+/// the range through the caller's scratch.
+fn monitor_batch<'batch, 'serve, C, N>(
+	node: &'batch _monitor_mod::MonitorNode<N>,
+	input: &'batch C,
+	range: std::ops::Range<u64>,
+	scratch: Option<&'batch mut [std::mem::MaybeUninit<u64>]>,
+	frames: &core_types::record::Frames<'serve>,
+) -> core_types::node::BatchStatus<'batch>
+where
+	C: Ctx + DeriveCtx + ExtractAll + core_types::context::ExtractArena<ArenaRef = &'serve core_types::arena::Arena> + ModifyIndex + Copy,
+	N: core_types::node::Node<C>,
+{
+	if range.start == 0 && input.index() == 0 {
+		*node.io.lock().unwrap() = Some(CtxSnapshot::capture(input));
+	}
+	let content = &node.content;
+	let layout = content.layout();
+	core_types::record::forward_batch(content, input, range.clone(), scratch, frames, layout, |scratch| {
+		core_types::record::fill_frames(content, input, range.clone(), Some(scratch), frames)
+	})
 }

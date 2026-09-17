@@ -15,6 +15,10 @@ use crate::node::Node;
 pub trait DerivedRecordInput<'derived, C> {
 	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C, frames: &Frames<'derived>) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt>;
 	fn extent_at_derived(&self, ctx: &C, level: u8, frames: &Frames<'derived>) -> GPoll<crate::gpoll::Extent>;
+	fn eval_batch_derived<'a>(&'a self, ctx: &'a C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'derived>) -> crate::node::BatchStatus<'a>
+	where
+		C: crate::context::InjectIndex + Copy;
+	fn serve_derived<'l>(&self, ctx: &C, slot: crate::record::FrameClaim<'derived, 'l>) -> GPoll<crate::record::Served<'derived>>;
 }
 
 impl<'derived, C, N> DerivedRecordInput<'derived, C> for N
@@ -28,6 +32,92 @@ where
 
 	fn extent_at_derived(&self, ctx: &C, level: u8, frames: &Frames<'derived>) -> GPoll<crate::gpoll::Extent> {
 		self.extent_at(ctx, level, frames)
+	}
+	fn eval_batch_derived<'a>(&'a self, ctx: &'a C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'derived>) -> crate::node::BatchStatus<'a>
+	where
+		C: crate::context::InjectIndex + Copy,
+	{
+		self.eval_batch(ctx, range, scratch, frames)
+	}
+	fn serve_derived<'l>(&self, ctx: &C, slot: crate::record::FrameClaim<'derived, 'l>) -> GPoll<crate::record::Served<'derived>> {
+		self.serve(ctx, slot)
+	}
+}
+
+/// Evaluates `node`'s batch at a derived context and hands the lanes back
+/// through the caller's scratch: a batch borrowed at the derived lifetime
+/// cannot outlive it, so a lent run is copied in and a filled scratch is
+/// re-minted. The node is asked without scratch first, as the driver asks;
+/// an unbatched answer hands the scratch to `unbatched`, the caller's own
+/// lane loop, so a boundary keeps its hoisted loop where nothing lends.
+pub fn forward_batch<'a, 'derived, C, N>(
+	node: &N,
+	ctx: &C,
+	range: std::ops::Range<u64>,
+	scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>,
+	frames: &Frames<'derived>,
+	layout: &'a Layout,
+	unbatched: impl FnOnce(&'a mut [std::mem::MaybeUninit<u64>]) -> crate::node::BatchStatus<'a>,
+) -> crate::node::BatchStatus<'a>
+where
+	N: DerivedRecordInput<'derived, C>,
+	C: crate::context::InjectIndex + Copy,
+{
+	use crate::node::BatchStatus;
+	let Some(len) = range.end.checked_sub(range.start).and_then(|len| usize::try_from(len).ok()) else {
+		return BatchStatus::InvalidRange;
+	};
+	let stride = layout.lane_stride();
+	let wants_fill = match node.eval_batch_derived(ctx, range.clone(), None, frames) {
+		BatchStatus::Lent(batch, finality, hint) => {
+			let Some(scratch) = scratch else {
+				return BatchStatus::NeedBuffer;
+			};
+			if scratch.len() * 8 < len * stride {
+				return BatchStatus::InvalidRange;
+			}
+			let lanes = batch.len().min(len);
+			let base: *mut u8 = scratch.as_mut_ptr().cast();
+			for lane in 0..lanes {
+				// SAFETY: the lent lanes are live records of this layout, and the
+				// scratch holds `len` lanes at the layout's stride.
+				unsafe { std::ptr::copy_nonoverlapping(batch.get(lane).rec().ptr(), base.add(lane * stride), layout.size) };
+			}
+			// Lanes `0..lanes` were imaged above as records of this layout.
+			return BatchStatus::Filled(crate::node::RecordBatchMut::new(scratch, lanes, layout), finality, hint);
+		}
+		BatchStatus::NeedBuffer => true,
+		// The caller's own lane loop takes the scratch instead.
+		BatchStatus::Unbatched => {
+			return match scratch {
+				Some(scratch) => unbatched(scratch),
+				None => BatchStatus::NeedBuffer,
+			};
+		}
+		BatchStatus::Pending => return BatchStatus::Pending,
+		BatchStatus::Error(error) => return BatchStatus::Error(error),
+		BatchStatus::InvalidRange => return BatchStatus::InvalidRange,
+		BatchStatus::Filled(..) => return BatchStatus::Error(crate::gpoll::GraphError::new("a batch filled scratch it was not given")),
+	};
+	debug_assert!(wants_fill);
+	let Some(scratch) = scratch else {
+		return BatchStatus::NeedBuffer;
+	};
+	if scratch.len() * 8 < len * stride {
+		return BatchStatus::InvalidRange;
+	}
+	let filled = match node.eval_batch_derived(ctx, range, Some(&mut *scratch), frames) {
+		BatchStatus::Filled(filled, finality, hint) => Ok((filled.len(), finality, hint)),
+		// A node that lends only once given scratch is served lane by lane instead.
+		BatchStatus::Lent(..) | BatchStatus::Unbatched | BatchStatus::NeedBuffer => Err(BatchStatus::Unbatched),
+		BatchStatus::Pending => Err(BatchStatus::Pending),
+		BatchStatus::Error(error) => Err(BatchStatus::Error(error)),
+		BatchStatus::InvalidRange => Err(BatchStatus::InvalidRange),
+	};
+	match filled {
+		// The node filled lanes `0..lanes` of this scratch as records of its layout, which is `layout`.
+		Ok((lanes, finality, hint)) => BatchStatus::Filled(crate::node::RecordBatchMut::new(scratch, lanes, layout), finality, hint),
+		Err(status) => status,
 	}
 }
 
@@ -538,9 +628,6 @@ impl<El: Clone + 'static, N> RecordExtract<El, N> {
 /// report on which nodes still drive the per-lane fill.
 #[cfg(debug_assertions)]
 pub fn tally_batch(name: &str, batched: bool, lanes: usize) {
-	use std::cell::RefCell;
-	use std::collections::HashMap;
-
 	static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 	if !*ON.get_or_init(|| std::env::var_os("GRAPHENE_BATCH_DEBUG").is_some()) {
 		return;
@@ -595,4 +682,27 @@ pub fn note_batch_consumer(name: &'static str) {
 #[cfg(debug_assertions)]
 pub fn take_batch_tally() -> Vec<(String, (usize, usize, usize))> {
 	TALLY.with(|tally| tally.borrow_mut().drain().collect())
+}
+
+#[cfg(debug_assertions)]
+thread_local! {
+	static KERNELS: std::cell::RefCell<std::collections::HashMap<(&'static str, &'static str), (usize, usize)>> = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Records one batch entry of a kernel: `how` names the path taken (hand,
+/// hoisted, eager-forward, unbatched, or a hand batch's own outcome).
+#[cfg(debug_assertions)]
+pub fn note_kernel_batch(kernel: &'static str, how: &'static str, lanes: usize) {
+	KERNELS.with(|kernels| {
+		let mut kernels = kernels.borrow_mut();
+		let entry = kernels.entry((kernel, how)).or_insert((0, 0));
+		entry.0 += 1;
+		entry.1 += lanes;
+	});
+}
+
+/// Drains the kernel tally: per (kernel, path), (calls, lanes).
+#[cfg(debug_assertions)]
+pub fn take_kernel_tally() -> Vec<((&'static str, &'static str), (usize, usize))> {
+	KERNELS.with(|kernels| kernels.borrow_mut().drain().collect())
 }

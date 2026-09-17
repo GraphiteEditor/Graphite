@@ -23,9 +23,11 @@ mod testkit;
 
 pub use access::{Rec, RecordValue, apply_plan, borrow_element, erase_static, read_at, read_at_defaulting, read_element, token_only, write_element, write_element_sized, write_field};
 pub use frames::{FrameArena, FrameScope, Frames};
-pub use input::{DerivedLazyInput, DerivedRecordInput, ElementInput, ElementLazyInput, LevelStatus, RecordExtract, RecordInput, RecordLazyInput, fill_frames, materialize_batch, materialize_level};
+pub use input::{
+	DerivedLazyInput, DerivedRecordInput, ElementInput, ElementLazyInput, LevelStatus, RecordExtract, RecordInput, RecordLazyInput, fill_frames, forward_batch, materialize_batch, materialize_level,
+};
 #[cfg(debug_assertions)]
-pub use input::{note_batch_consumer, take_batch_tally};
+pub use input::{note_batch_consumer, note_kernel_batch, take_batch_tally, take_kernel_tally};
 pub use layout::{
 	ElToken, ElementSpec, ElementWrite, ElementWritePick, ElementWritePickHashed, ElementWritePickPlain, FieldDesc, FieldOffset, FieldWrite, InputReads, Layout, LayoutMeta, NamedRead, NamedWrite,
 	RecordLayout, copy_plan, element_dims, element_parked, element_write, element_write_hashed, empty_layout,

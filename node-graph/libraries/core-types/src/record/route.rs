@@ -132,6 +132,49 @@ where
 		self.edge.extent_at(input, level, frames)
 	}
 
+	/// A batch through the route: an identity route forwards the request
+	/// untouched, and a translating route materializes the source's lanes at
+	/// the source layout and translates each into the caller's scratch, so a
+	/// batch survives the layout seam instead of restarting lane by lane.
+	fn eval_batch<'a, 'x>(&'a self, input: &'a C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'x>) -> crate::node::BatchStatus<'a>
+	where
+		C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
+	{
+		use crate::node::BatchStatus;
+		let Some(plan) = &self.plan else {
+			return self.edge.eval_batch(input, range, scratch, frames);
+		};
+		let Some(scratch) = scratch else {
+			return BatchStatus::NeedBuffer;
+		};
+		let Some(len) = range.end.checked_sub(range.start).and_then(|len| usize::try_from(len).ok()) else {
+			return BatchStatus::InvalidRange;
+		};
+		let stride = self.union.lane_stride();
+		if scratch.len() * 8 < len * stride {
+			return BatchStatus::InvalidRange;
+		}
+		let arena = crate::context::ExtractArena::arena(input);
+		let (source, finality, hint) = match super::input::materialize_batch(&self.edge, input, range, arena, frames) {
+			BatchStatus::Lent(batch, finality, hint) => (batch, finality, hint),
+			BatchStatus::Filled(batch, finality, hint) => (batch.into_shared(), finality, hint),
+			BatchStatus::Pending => return BatchStatus::Pending,
+			BatchStatus::Error(error) => return BatchStatus::Error(error),
+			BatchStatus::Unbatched => return BatchStatus::Unbatched,
+			BatchStatus::NeedBuffer => return BatchStatus::NeedBuffer,
+			BatchStatus::InvalidRange => return BatchStatus::InvalidRange,
+		};
+		let lanes = source.len().min(len);
+		let base: *mut u8 = scratch.as_mut_ptr().cast();
+		for lane in 0..lanes {
+			// SAFETY: the source lane is a record of the plan's source layout,
+			// and the scratch holds `len` union lanes at the union stride,
+			// disjoint from the source's storage.
+			unsafe { plan.translate(source.get(lane).rec(), base.add(lane * stride)) };
+		}
+		// Lanes `0..lanes` were translated above as records of the union layout.
+		BatchStatus::Filled(crate::node::RecordBatchMut::new(scratch, lanes, &self.union), finality, hint)
+	}
 	fn layout(&self) -> &Layout {
 		&self.union
 	}

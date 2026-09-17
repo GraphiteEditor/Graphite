@@ -2063,146 +2063,151 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#fallback
 		}
 	};
-	let record_tail_core = record_io.then(|| {
-		let tuple_arg = |field: &ParsedField, value: TokenStream2| match field.attribute_reads.is_empty() {
-			true => value,
-			false => {
-				let read_pats = field.attribute_reads.iter().map(|read| &read.pat_ident.ident);
-				quote!((#value #(, #read_pats)*))
-			}
-		};
-		let carrier_arg = if skips_carrier {
-			None
-		} else if lazy_carrier {
-			// The kernel drives the derived carrier itself through its handle.
-			let name = &regular_fields[0].pat_ident.ident;
-			Some(quote!(#name))
-		} else if let Some(ty) = carrier_read_ty.as_ref() {
-			Some(tuple_arg(regular_fields[0], quote!(unsafe { #core_types::record::read_element::<#ty>(__src_rec) })))
-		} else {
-			Some(tuple_arg(regular_fields[0], quote!(#core_types::record::ElToken)))
-		}
-		.into_iter();
-		let value_args = regular_fields.iter().skip(if skips_carrier { 0 } else { 1 }).filter(|field| !kernel_omits(field)).map(|field| {
-			let name = &field.pat_ident.ident;
-			match &field.ty {
-				// A lend param binds an owned input; the kernel borrows the
-				// evaluated value.
-				ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => quote!(&#name),
-				_ => tuple_arg(field, quote!(#name)),
-			}
-		});
-		let record_kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #carrier_arg)* #(, #value_args)*));
-		let carry = (!skips_carrier && !lazy_carrier).then(|| quote!(unsafe { __frame.carry(__src_rec, &self.__plan) };));
-		// A lazy carrier's source record is the token the kernel returned; its
-		// content frames sit above the claim and stay readable until its drop.
-		let lazy_carry = match lazy_carrier {
-			true => quote! {
-				let __src_rec = self.__carrier.rec(&__element);
-				unsafe { __frame.carry(__src_rec, &self.__plan) };
-			},
-			false => TokenStream2::new(),
-		};
-		// A gathered lane owns its record, so the plan reads straight off it.
-		let gather_carry = match gather_carrier {
-			true => quote! {
-				let __src_rec = __element.rec();
-				unsafe { __frame.carry(__src_rec, &self.__plan) };
-			},
-			false => TokenStream2::new(),
-		};
-		let carrier_read_bindings: Vec<TokenStream2> = match skips_carrier || lazy_carrier {
-			true => Vec::new(),
-			false => reads_of(0).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(__src_rec))).collect(),
-		};
-		let kernel_value = match *model {
-			Dialect::Interrupt => quote! {
-				match #record_kernel_call {
-					Ok(__value) => __value,
-					Err(__interrupt) => return __interrupt.into()
+	// The carrier record's source is a parameter: the serve tail evaluates it per
+	// call, the hoisted batch loop reads it out of the subject batch.
+	let record_tail_core_with = |carrier: TokenStream2| {
+		record_io.then(|| {
+			let tuple_arg = |field: &ParsedField, value: TokenStream2| match field.attribute_reads.is_empty() {
+				true => value,
+				false => {
+					let read_pats = field.attribute_reads.iter().map(|read| &read.pat_ident.ident);
+					quote!((#value #(, #read_pats)*))
 				}
-			},
-			_ => quote!(#record_kernel_call),
-		};
-		let attr_binders: Vec<Ident> = (0..write_markers.len()).map(|index| format_ident!("__attr_{index}")).collect();
-		let element_binder = match (element_write.is_some(), lazy_carrier || gather_carrier) {
-			(true, _) | (_, true) => quote!(__element),
-			(false, false) => quote!(_),
-		};
-		// Slot binders in the return tuple's own order: an `Attr` binds the
-		// next write binder, a `RemoveAttr` binds nothing.
-		let slot_binders: Vec<TokenStream2> = {
-			let mut binders = attr_binders.iter();
-			match output_row.clone() {
-				Type::Tuple(tuple) => tuple
-					.elems
-					.iter()
-					.skip(1)
-					.map(|slot| match attr_marker(slot) {
-						Some(_) => {
-							let binder = binders.next().expect("write binders match the Attr slots");
-							quote!(#core_types::attribute::Attr(#binder))
-						}
-						None => quote!(_),
-					})
-					.collect(),
-				_ => Vec::new(),
-			}
-		};
-		let destructure = match slot_binders.is_empty() {
-			true => quote!(let #element_binder = __kernel_value;),
-			false => quote!(let (#element_binder #(, #slot_binders)*) = __kernel_value;),
-		};
-		// A droppable element parks in the arena and rides as a reference.
-		let element_store = element_write.map(|ty| {
-			let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'_");
-			let exhausted = quote! {
-				return #core_types::gpoll::Interrupt::from(#core_types::gpoll::GraphError {
-					kind: #core_types::gpoll::ErrorKind::ArenaExhausted,
-					trace: ::std::vec::Vec::new(),
-				})
-				.into();
 			};
-			match gather_carrier {
-				// A gathered lane writes the subject `map_element` substituted,
-				// and otherwise carries the source record's own element bytes.
-				true => quote! {
-					match #core_types::node::Lane::into_element(__element) {
-						::core::option::Option::Some(__subject) => {
-							if __frame.element::<#ty>(__subject, #core_types::context::ExtractArena::arena(__input)).is_none() {
-								#exhausted
-							}
-						}
-						// SAFETY: `__src_rec` is the gathered lane's own live record, whose
-						// element slot the output layout resolved against.
-						::core::option::Option::None => unsafe { __frame.carry_element(__src_rec) },
-					}
-				},
-				false => quote! {
-					if __frame.element::<#ty>(__element, #core_types::context::ExtractArena::arena(__input)).is_none() {
-						#exhausted
-					}
-				},
+			let carrier_arg = if skips_carrier {
+				None
+			} else if lazy_carrier {
+				// The kernel drives the derived carrier itself through its handle.
+				let name = &regular_fields[0].pat_ident.ident;
+				Some(quote!(#name))
+			} else if let Some(ty) = carrier_read_ty.as_ref() {
+				Some(tuple_arg(regular_fields[0], quote!(unsafe { #core_types::record::read_element::<#ty>(__src_rec) })))
+			} else {
+				Some(tuple_arg(regular_fields[0], quote!(#core_types::record::ElToken)))
 			}
-		});
-		let attr_stores = attr_binders.iter().enumerate().map(|(index, binder)| {
-			let slot = format_ident!("__write_{index}");
-			quote!(unsafe { __frame.attr_at(self.#slot, #binder) };)
-		});
-		quote! {
-			#carrier_eval
-			#carry
-			#(#carrier_read_bindings)*
-			let __kernel_value = #kernel_value;
-			#destructure
-			#lazy_carry
-			#gather_carry
-			#element_store
-			#(#attr_stores)*
-			// SAFETY: the carry and the writes above complete the record.
-			let __value = unsafe { __frame.finish_served() };
-		}
-	});
+			.into_iter();
+			let value_args = regular_fields.iter().skip(if skips_carrier { 0 } else { 1 }).filter(|field| !kernel_omits(field)).map(|field| {
+				let name = &field.pat_ident.ident;
+				match &field.ty {
+					// A lend param binds an owned input; the kernel borrows the
+					// evaluated value.
+					ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => quote!(&#name),
+					_ => tuple_arg(field, quote!(#name)),
+				}
+			});
+			let record_kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #carrier_arg)* #(, #value_args)*));
+			let carry = (!skips_carrier && !lazy_carrier).then(|| quote!(unsafe { __frame.carry(__src_rec, &self.__plan) };));
+			// A lazy carrier's source record is the token the kernel returned; its
+			// content frames sit above the claim and stay readable until its drop.
+			let lazy_carry = match lazy_carrier {
+				true => quote! {
+					let __src_rec = self.__carrier.rec(&__element);
+					unsafe { __frame.carry(__src_rec, &self.__plan) };
+				},
+				false => TokenStream2::new(),
+			};
+			// A gathered lane owns its record, so the plan reads straight off it.
+			let gather_carry = match gather_carrier {
+				true => quote! {
+					let __src_rec = __element.rec();
+					unsafe { __frame.carry(__src_rec, &self.__plan) };
+				},
+				false => TokenStream2::new(),
+			};
+			let carrier_read_bindings: Vec<TokenStream2> = match skips_carrier || lazy_carrier {
+				true => Vec::new(),
+				false => reads_of(0).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(__src_rec))).collect(),
+			};
+			let kernel_value = match *model {
+				Dialect::Interrupt => quote! {
+					match #record_kernel_call {
+						Ok(__value) => __value,
+						Err(__interrupt) => return __interrupt.into()
+					}
+				},
+				_ => quote!(#record_kernel_call),
+			};
+			let attr_binders: Vec<Ident> = (0..write_markers.len()).map(|index| format_ident!("__attr_{index}")).collect();
+			let element_binder = match (element_write.is_some(), lazy_carrier || gather_carrier) {
+				(true, _) | (_, true) => quote!(__element),
+				(false, false) => quote!(_),
+			};
+			// Slot binders in the return tuple's own order: an `Attr` binds the
+			// next write binder, a `RemoveAttr` binds nothing.
+			let slot_binders: Vec<TokenStream2> = {
+				let mut binders = attr_binders.iter();
+				match output_row.clone() {
+					Type::Tuple(tuple) => tuple
+						.elems
+						.iter()
+						.skip(1)
+						.map(|slot| match attr_marker(slot) {
+							Some(_) => {
+								let binder = binders.next().expect("write binders match the Attr slots");
+								quote!(#core_types::attribute::Attr(#binder))
+							}
+							None => quote!(_),
+						})
+						.collect(),
+					_ => Vec::new(),
+				}
+			};
+			let destructure = match slot_binders.is_empty() {
+				true => quote!(let #element_binder = __kernel_value;),
+				false => quote!(let (#element_binder #(, #slot_binders)*) = __kernel_value;),
+			};
+			// A droppable element parks in the arena and rides as a reference.
+			let element_store = element_write.map(|ty| {
+				let ty = &crate::codegen::classify::substitute_lifetimes(ty, "'_");
+				let exhausted = quote! {
+					return #core_types::gpoll::Interrupt::from(#core_types::gpoll::GraphError {
+						kind: #core_types::gpoll::ErrorKind::ArenaExhausted,
+						trace: ::std::vec::Vec::new(),
+					})
+					.into();
+				};
+				match gather_carrier {
+					// A gathered lane writes the subject `map_element` substituted,
+					// and otherwise carries the source record's own element bytes.
+					true => quote! {
+						match #core_types::node::Lane::into_element(__element) {
+							::core::option::Option::Some(__subject) => {
+								if __frame.element::<#ty>(__subject, #core_types::context::ExtractArena::arena(__input)).is_none() {
+									#exhausted
+								}
+							}
+							// SAFETY: `__src_rec` is the gathered lane's own live record, whose
+							// element slot the output layout resolved against.
+							::core::option::Option::None => unsafe { __frame.carry_element(__src_rec) },
+						}
+					},
+					false => quote! {
+						if __frame.element::<#ty>(__element, #core_types::context::ExtractArena::arena(__input)).is_none() {
+							#exhausted
+						}
+					},
+				}
+			});
+			let attr_stores = attr_binders.iter().enumerate().map(|(index, binder)| {
+				let slot = format_ident!("__write_{index}");
+				quote!(unsafe { __frame.attr_at(self.#slot, #binder) };)
+			});
+			quote! {
+				#carrier
+				#carry
+				#(#carrier_read_bindings)*
+				let __kernel_value = #kernel_value;
+				#destructure
+				#lazy_carry
+				#gather_carry
+				#element_store
+				#(#attr_stores)*
+				// SAFETY: the carry and the writes above complete the record.
+				let __value = unsafe { __frame.finish_served() };
+			}
+		})
+	};
+	let record_tail_core = record_tail_core_with(carrier_eval.clone().unwrap_or_default());
 	let record_tail = record_tail_core.clone().map(|core| {
 		quote! {
 			#core
@@ -2315,8 +2320,50 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// lazy carriers).
 	// Each lane serves in place into its own region of the run, so the loop
 	// collects the serving proofs.
+	// An eager carrier subject is lane-mapped, so the batch materializes it once
+	// over the range and each lane reads its record out of that batch instead of
+	// serving the input per lane.
+	let batched_subject = (record_io && !skips_carrier && !lazy_carrier && !has_lazy).then(|| {
+		let name = &regular_fields[0].pat_ident.ident;
+		let fn_name = &parsed.fn_name;
+		let prologue = quote! {
+			let __subject_batch = {
+				let __arena = #core_types::context::ExtractArena::arena(&__base_ctx);
+				#[cfg(debug_assertions)]
+				#core_types::record::note_batch_consumer(::std::concat!(::std::stringify!(#fn_name), ".", ::std::stringify!(#name)));
+				match #core_types::record::materialize_batch(&self.#name, &__base_ctx, __range.clone(), __arena, (&*__frames)) {
+					#core_types::node::BatchStatus::Lent(__batch, __batch_finality, _) => {
+						if __batch_finality == #core_types::gpoll::Finality::Partial {
+							__finality = #core_types::gpoll::Finality::Partial;
+						}
+						__batch
+					}
+					#core_types::node::BatchStatus::Filled(__batch, __batch_finality, _) => {
+						if __batch_finality == #core_types::gpoll::Finality::Partial {
+							__finality = #core_types::gpoll::Finality::Partial;
+						}
+						__batch.into_shared()
+					}
+					#core_types::node::BatchStatus::Pending => return #core_types::node::BatchStatus::Pending,
+					#core_types::node::BatchStatus::Error(__error) => return #core_types::node::BatchStatus::Error(__error),
+					_ => return #core_types::node::BatchStatus::Error(#core_types::gpoll::GraphError::new("subject batch failed")),
+				}
+			};
+		};
+		let lane = quote! {
+			// The subject level ends here; the fill comes back short.
+			if __lane >= __subject_batch.len() {
+				__hint = #core_types::gpoll::Extent::Exactly(__range.start as usize + __lane);
+				break;
+			}
+			let __src_rec = __subject_batch.get(__lane).rec();
+		};
+		(prologue, lane)
+	});
+	let subject_prologue = batched_subject.as_ref().map(|(prologue, _)| prologue.clone());
+	let batched_carrier = batched_subject.as_ref().map(|(_, lane)| lane.clone()).unwrap_or_else(|| carrier_eval.clone().unwrap_or_default());
 	let hoisted_lane_poll = match tail_form {
-		Tail::Record => record_tail_core.clone().map(|core| {
+		Tail::Record => record_tail_core_with(batched_carrier).map(|core| {
 			quote! {
 				#core
 				let __poll = __cell.finish(__value);
@@ -2325,18 +2372,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Tail::Forward if routing_generic.is_some() => Some(quote!(let __poll = #lift;)),
 		_ => None,
 	};
-	// A serving-lifetime element rides the per-lane fill loop: the hoisted
-	// batch fill cannot yet carry an arena-lifetimed element through the
-	// caller's scratch.
-	let hoisted_lane_poll = match &node.output.shape.element {
-		ir::Element::Concrete(element) if crate::codegen::classify::named_serving_lifetime(element).is_some() => None,
-		_ => hoisted_lane_poll,
-	};
 	let hoisted_batch = parsed.attributes.batch.is_none() && produces_records && hoisted_lane_poll.is_some();
+	let fn_name = &parsed.fn_name;
 	let batch_impl = match (&parsed.attributes.batch, produces_records, hoisted_lane_poll) {
 		(Some(path), ..) => quote! {
 			#batch_signature
 			{
+				#[cfg(debug_assertions)]
+				#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "hand", __range.end.saturating_sub(__range.start) as usize);
 				#path(self, __input, __range, __scratch, __frames)
 			}
 		},
@@ -2423,6 +2466,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					};
 					let mut __finality = #core_types::gpoll::Finality::AllFinal;
 					let mut __hint = #core_types::gpoll::Extent::AtLeast(__range.end as usize);
+					#subject_prologue
 					let mut __lane_ctx = __base_ctx;
 					for __lane in 0..__len {
 						#core_types::context::InjectIndex::set_index(&mut __lane_ctx, __range.start + __lane as u64);
@@ -2483,6 +2527,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let ::core::option::Option::Some(__len) = __range.end.checked_sub(__range.start).and_then(|__len| usize::try_from(__len).ok()) else {
 						return #core_types::node::BatchStatus::InvalidRange;
 					};
+					#[cfg(debug_assertions)]
+					#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "hoisted", __len);
 					let __node_layout = <Self as #core_types::node::Node<#ctx_ident>>::layout(self);
 					// The batch's own claims are free again when it returns, so
 					// the caller's free space comes back as it was lent.
@@ -2503,10 +2549,19 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(None, true, None) => quote! {
 			#batch_signature
 			{
+				#[cfg(debug_assertions)]
+				#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "eager-forward", __range.end.saturating_sub(__range.start) as usize);
 				#core_types::record::fill_frames(self, __input, __range, __scratch, __frames)
 			}
 		},
-		(None, false, _) => quote!(),
+		(None, false, _) => quote! {
+			#batch_signature
+			{
+				#[cfg(debug_assertions)]
+				#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "unbatched", __range.end.saturating_sub(__range.start) as usize);
+				#core_types::node::BatchStatus::Unbatched
+			}
+		},
 	};
 
 	let record_bounds: Vec<TokenStream2> = {

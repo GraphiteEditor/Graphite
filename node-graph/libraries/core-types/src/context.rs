@@ -969,7 +969,7 @@ impl BorrowArena for ContextImpl<'_> {
 }
 
 pub trait CtxFamily {
-	type Ctx<'s>: Ctx + DeriveCtx<Family = Self>;
+	type Ctx<'s>: Ctx + DeriveCtx<Family = Self> + InjectIndex + Copy;
 }
 
 pub type Derived<'s, C> = <<C as DeriveCtx>::Family as CtxFamily>::Ctx<'s>;
