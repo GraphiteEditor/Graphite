@@ -1,12 +1,10 @@
 [package]
-name = "brush-types"
-description = "The brush stroke data format for Graphene"
-version.workspace = true
-license.workspace = true
-authors.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-publish.workspace = true
+name = "graphene-cache"
+version = "0.1.0"
+edition = "2024"
+description = "A keyed cache for Graphene"
+authors = ["Graphite Authors <contact@graphite.art>"]
+license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
@@ -15,8 +13,6 @@ serde = ["dep:serde", "core-types/serde"]
 [dependencies]
 # Local dependencies
 core-types = { workspace = true }
-graphene-cache = { workspace = true }
-graphene-hash = { workspace = true }
 
 # Workspace dependencies
 dyn-any = { workspace = true }
