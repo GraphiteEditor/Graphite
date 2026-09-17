@@ -111,21 +111,36 @@ the `Repeat` varies over it — but the subtree below still evaluates against wh
 **Narrowing is ON by default, so the tree renders wrong.** Use `LEVEL_MODE=only0` for a correct run.
 Remove the probes and the `LEVEL_MODE`/`LEVEL_BUMP` block before this is fit to merge.
 
+## Artwork
+
+Committed under `test-artwork/`:
+
+- `brick-waves-v3.graphite` — the migrated working copy. **Every measurement in this document used
+  this file**; it is the one known to reproduce.
+- `brick-waves.graphite` — the original as saved from the editor. Kept so nothing is lost, but it
+  **does not load on this branch**:
+
+  ```
+  GraphError { identifier: "graphic_nodes::graphic::ToGraphicNode", error: "No implementations found" }
+  ```
+
+  It predates the rebase, so it needs a migration that does not exist here yet. Use the v3 copy.
+
 ## Repro commands
 
 ```sh
 cargo build -p graphene-cli
-cd /tmp/claude-1000
+ART=test-artwork/brick-waves-v3.graphite
 
 # correct vs broken
-LEVEL_MODE=only0 .../graphene-cli export brick-v3.graphite -o ok.svg    # 65 colors
-                 .../graphene-cli export brick-v3.graphite -o bad.svg   # 3 colors
+LEVEL_MODE=only0 ./target/debug/graphene-cli export $ART -o ok.svg    # 65 colors
+                 ./target/debug/graphene-cli export $ART -o bad.svg   # 3 colors
 grep -o 'fill="#[0-9a-f]*"' bad.svg | sort -u | wc -l
 
 # where distinctness is lost
-PROBE_READ_INDEX=1 ... export ... -o p.svg   # read_index: correct, 96 values
-PROBE_HEX=1        ... export ... -o h.svg   # hex_to_color: 1 input, should be 63
+PROBE_READ_INDEX=1 ./target/debug/graphene-cli export $ART -o p.svg   # read_index: correct, 96 values
+PROBE_HEX=1        ./target/debug/graphene-cli export $ART -o h.svg   # hex_to_color: 1 input, should be 63
 
 # compile-time masks (note: -o /dev/null short-circuits evaluation, use a real file)
-.../graphene-cli compile -p brick-v3.graphite | grep -o "index_levels: IndexLevels([0-9]*)" | sort | uniq -c
+./target/debug/graphene-cli compile -p $ART | grep -o "index_levels: IndexLevels([0-9]*)" | sort | uniq -c
 ```
