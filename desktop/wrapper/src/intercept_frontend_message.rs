@@ -116,9 +116,8 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerClipboardRead => {
 			dispatcher.respond(DesktopFrontendMessage::ClipboardRead);
 		}
-		FrontendMessage::TriggerClipboardSvgAndJsonWrite { graphite_json, .. } => {
-			// TODO: Add support for svg after clipboard API change in desktop.
-			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content: graphite_json });
+		FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string, graphite_json } => {
+			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { svg_string, graphite_json });
 		}
 		FrontendMessage::WindowPointerLock => {
 			dispatcher.respond(DesktopFrontendMessage::PointerLock);
