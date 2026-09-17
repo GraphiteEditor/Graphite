@@ -192,7 +192,8 @@ impl Footprint {
 	pub fn from_bounds(bounds: [DVec2; 2], quality: RenderQuality) -> Self {
 		Footprint {
 			transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
-			resolution: UVec2::new((bounds[1].x - bounds[0].x).abs().ceil() as u32, (bounds[1].y - bounds[0].y).abs().ceil() as u32).max(UVec2::ONE),
+			transform: DAffine2::from_translation(bounds[0].min(bounds[1])),
+			resolution: (bounds[1] - bounds[0]).abs().ceil().as_uvec2().max(UVec2::ONE),
 			quality,
 		}
 	}
