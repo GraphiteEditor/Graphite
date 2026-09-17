@@ -28,7 +28,7 @@ where
 {
 	fn serve<'e, 'l>(&self, input: &C, slot: crate::record::FrameClaim<'e, 'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
 	where
-		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		C: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		let arena = input.arena();
 		// An element the arena does not park has no pointer to share, so it takes the plain write
@@ -86,7 +86,7 @@ where
 {
 	fn serve<'e, 'l>(&self, input: &C, slot: crate::record::FrameClaim<'e, 'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
 	where
-		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		C: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		let Some(value) = self.values.get(input.innermost_index() as usize) else {
 			return crate::gpoll::GPoll::error("value level addressed past its items");
@@ -96,7 +96,7 @@ where
 
 	fn extent_at<'x>(&self, _input: &C, level: u8, _frames: &crate::record::Frames<'x>) -> crate::gpoll::GPoll<crate::gpoll::Extent>
 	where
-		C: crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
+		C: crate::dispatch::AsDispatch<'x> + crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
 	{
 		match level {
 			0 => crate::gpoll::GPoll::Final(crate::gpoll::Extent::Exactly(self.values.len())),

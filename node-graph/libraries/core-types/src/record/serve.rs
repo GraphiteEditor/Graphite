@@ -488,7 +488,7 @@ impl<'e> Served<'e> {
 pub fn serve_input<'e, C, N>(node: &N, input: &C, frames: &Frames<'e>) -> GPoll<RecordValue<'e>>
 where
 	N: Node<C> + ?Sized,
-	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	C: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 {
 	let slot = frames.claim(node.layout());
 	node.serve(input, slot).map(Served::value)

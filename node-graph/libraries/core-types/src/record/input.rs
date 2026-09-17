@@ -4,6 +4,7 @@ use super::access::{Rec, RecordValue, read_element};
 use super::frames::Frames;
 use super::layout::Layout;
 use super::serve::{FrameClaim, Served, serve_input};
+use crate::dispatch::{AsDispatch, Dispatch, LaneMap};
 use crate::gpoll::GPoll;
 use crate::node::Node;
 
@@ -15,29 +16,32 @@ use crate::node::Node;
 pub trait DerivedRecordInput<'derived, C> {
 	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C, frames: &Frames<'derived>) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt>;
 	fn extent_at_derived(&self, ctx: &C, level: u8, frames: &Frames<'derived>) -> GPoll<crate::gpoll::Extent>;
-	fn eval_batch_derived<'a>(&'a self, ctx: &'a C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'derived>) -> crate::node::BatchStatus<'a>
+	fn eval_batch_derived<'a, 'r>(&'a self, dispatch: Dispatch<'derived>, scratch: Option<&'r mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'derived>) -> crate::node::BatchStatus<'r>
 	where
-		C: crate::context::InjectIndex + Copy;
+		'a: 'r,
+		'derived: 'r,
+		C: AsDispatch<'derived> + crate::context::InjectIndex + Copy;
 	fn serve_derived<'l>(&self, ctx: &C, slot: crate::record::FrameClaim<'derived, 'l>) -> GPoll<crate::record::Served<'derived>>;
 }
 
 impl<'derived, C, N> DerivedRecordInput<'derived, C> for N
 where
 	N: Node<C>,
-	C: crate::context::ExtractArena<ArenaRef = &'derived crate::arena::Arena>,
+	C: crate::dispatch::AsDispatch<'derived> + crate::context::ExtractArena<ArenaRef = &'derived crate::arena::Arena>,
 {
 	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C, frames: &Frames<'derived>) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt> {
 		cell.eval_input(input_index, self, ctx, frames)
 	}
-
 	fn extent_at_derived(&self, ctx: &C, level: u8, frames: &Frames<'derived>) -> GPoll<crate::gpoll::Extent> {
 		self.extent_at(ctx, level, frames)
 	}
-	fn eval_batch_derived<'a>(&'a self, ctx: &'a C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'derived>) -> crate::node::BatchStatus<'a>
+	fn eval_batch_derived<'a, 'r>(&'a self, dispatch: Dispatch<'derived>, scratch: Option<&'r mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'derived>) -> crate::node::BatchStatus<'r>
 	where
-		C: crate::context::InjectIndex + Copy,
+		'a: 'r,
+		'derived: 'r,
+		C: AsDispatch<'derived> + crate::context::InjectIndex + Copy,
 	{
-		self.eval_batch(ctx, range, scratch, frames)
+		self.eval_batch(dispatch, scratch, frames)
 	}
 	fn serve_derived<'l>(&self, ctx: &C, slot: crate::record::FrameClaim<'derived, 'l>) -> GPoll<crate::record::Served<'derived>> {
 		self.serve(ctx, slot)
@@ -61,14 +65,31 @@ pub fn forward_batch<'a, 'derived, C, N>(
 ) -> crate::node::BatchStatus<'a>
 where
 	N: DerivedRecordInput<'derived, C>,
-	C: crate::context::InjectIndex + Copy,
+	C: AsDispatch<'derived> + crate::context::InjectIndex + Copy,
+{
+	forward_dispatch(node, &ctx.dispatch(LaneMap::open(), range), scratch, frames, layout, unbatched)
+}
+
+/// [`forward_batch`] over a dispatch the caller already derived.
+pub fn forward_dispatch<'a, 'derived, C, N>(
+	node: &N,
+	dispatch: &Dispatch<'derived>,
+	scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>,
+	frames: &Frames<'derived>,
+	layout: &'a Layout,
+	unbatched: impl FnOnce(&'a mut [std::mem::MaybeUninit<u64>]) -> crate::node::BatchStatus<'a>,
+) -> crate::node::BatchStatus<'a>
+where
+	N: DerivedRecordInput<'derived, C>,
+	C: AsDispatch<'derived> + crate::context::InjectIndex + Copy,
 {
 	use crate::node::BatchStatus;
+	let range = dispatch.range();
 	let Some(len) = range.end.checked_sub(range.start).and_then(|len| usize::try_from(len).ok()) else {
 		return BatchStatus::InvalidRange;
 	};
 	let stride = layout.lane_stride();
-	let wants_fill = match node.eval_batch_derived(ctx, range.clone(), None, frames) {
+	let wants_fill = match node.eval_batch_derived(dispatch.clone(), None, frames) {
 		BatchStatus::Lent(batch, finality, hint) => {
 			let Some(scratch) = scratch else {
 				return BatchStatus::NeedBuffer;
@@ -106,7 +127,7 @@ where
 	if scratch.len() * 8 < len * stride {
 		return BatchStatus::InvalidRange;
 	}
-	let filled = match node.eval_batch_derived(ctx, range, Some(&mut *scratch), frames) {
+	let filled = match node.eval_batch_derived(dispatch.clone(), Some(&mut *scratch), frames) {
 		BatchStatus::Filled(filled, finality, hint) => Ok((filled.len(), finality, hint)),
 		// A node that lends only once given scratch is served lane by lane instead.
 		BatchStatus::Lent(..) | BatchStatus::Unbatched | BatchStatus::NeedBuffer => Err(BatchStatus::Unbatched),
@@ -124,13 +145,25 @@ where
 /// Fills caller scratch with one frame per lane of `range`: the input serves
 /// into the lane's own region of the slab, and the lane's own frame space is
 /// free again at the next lane, so the frame peak stays at one lane's need and
-/// every lane's bytes are distinct.
-pub fn fill_frames<'a, 'e, C, N>(node: &'a N, input: &C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'e>) -> crate::node::BatchStatus<'a>
+/// the scratch grows only with the lanes.
+pub fn fill_frames<'a, 'e, 'r, C, N>(node: &'a N, input: &C, range: std::ops::Range<u64>, scratch: Option<&'r mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'e>) -> crate::node::BatchStatus<'r>
 where
-	C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	'a: 'r,
+	C: AsDispatch<'e> + crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	N: Node<C>,
+{
+	fill_dispatch::<C, N>(node, &input.dispatch(LaneMap::open(), range), scratch, frames)
+}
+
+/// [`fill_frames`] over a dispatch: each lane's context is rebuilt from it.
+pub fn fill_dispatch<'a, 'e, 'r, C, N>(node: &'a N, dispatch: &Dispatch<'e>, scratch: Option<&'r mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'e>) -> crate::node::BatchStatus<'r>
+where
+	'a: 'r,
+	C: AsDispatch<'e> + crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	N: Node<C>,
 {
 	use crate::node::BatchStatus;
+	let range = dispatch.range();
 	let Some(scratch) = scratch else {
 		return BatchStatus::NeedBuffer;
 	};
@@ -140,11 +173,15 @@ where
 	let Some(mut run) = frames.run(scratch, len, node.layout()) else {
 		return BatchStatus::InvalidRange;
 	};
-	let mut local = *input;
 	let mut finality = crate::gpoll::Finality::AllFinal;
 	let mut hint = crate::gpoll::Extent::AtLeast(range.end as usize);
 	for lane in 0..len {
-		local.set_index(range.start + lane as u64);
+		let Some(local) = C::at_lane(dispatch, range.start + lane as u64) else {
+			return BatchStatus::Error(crate::gpoll::GraphError {
+				kind: crate::gpoll::ErrorKind::ArenaExhausted,
+				trace: Vec::new(),
+			});
+		};
 		let lane_frames = frames.scope();
 		let slot = run.slot(lane, &lane_frames);
 		let served = match node.serve(&local, slot) {
@@ -171,12 +208,37 @@ where
 /// The driver a consumer runs on a record input: a resident batch returns with
 /// no allocation, a node's own batch impl gets `n * frame_bytes` of arena
 /// scratch, and an unbatched input falls back to the [`fill_frames`] loop.
-pub fn materialize_batch<'a, 'e, C, N>(node: &'a N, input: &'a C, range: std::ops::Range<u64>, arena: &'a crate::arena::Arena, frames: &Frames<'e>) -> crate::node::BatchStatus<'a>
+pub fn materialize_batch<'a, 'e, 'r, C, N>(node: &'a N, input: &'a C, range: std::ops::Range<u64>, arena: &'a crate::arena::Arena, frames: &Frames<'e>) -> crate::node::BatchStatus<'r>
 where
-	C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	'a: 'r,
+	'e: 'r,
+	C: AsDispatch<'e> + crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	N: Node<C>,
+{
+	let dispatch = input.dispatch(LaneMap::open(), range);
+	materialize_owned::<C, N>(node, dispatch, arena, frames)
+}
+
+/// [`materialize_batch`] over a dispatch the caller already derived.
+pub fn materialize_dispatch<'a, 'e, 'r, C, N>(node: &'a N, dispatch: &Dispatch<'e>, arena: &'a crate::arena::Arena, frames: &Frames<'e>) -> crate::node::BatchStatus<'r>
+where
+	'a: 'r,
+	'e: 'r,
+	C: AsDispatch<'e> + crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	N: Node<C>,
+{
+	materialize_owned::<C, N>(node, dispatch.clone(), arena, frames)
+}
+
+fn materialize_owned<'a, 'e, 'r, C, N>(node: &'a N, dispatch: Dispatch<'e>, arena: &'a crate::arena::Arena, frames: &Frames<'e>) -> crate::node::BatchStatus<'r>
+where
+	'a: 'r,
+	'e: 'r,
+	C: AsDispatch<'e> + crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	N: Node<C>,
 {
 	use crate::node::BatchStatus;
+	let range = dispatch.range();
 	let Some(len) = range.end.checked_sub(range.start).and_then(|len| usize::try_from(len).ok()) else {
 		return BatchStatus::InvalidRange;
 	};
@@ -190,7 +252,7 @@ where
 			trace: Vec::new(),
 		})
 	};
-	let status = node.eval_batch(input, range.clone(), None, frames);
+	let status = node.eval_batch(dispatch.clone(), None, frames);
 	#[cfg(debug_assertions)]
 	{
 		let consumer = BATCH_CONSUMER.with(|consumer| consumer.get());
@@ -203,11 +265,11 @@ where
 	}
 	match status {
 		BatchStatus::Unbatched => match arena.alloc_scratch::<u64>(words) {
-			Some(scratch) => fill_frames(node, input, range, Some(scratch), frames),
+			Some(scratch) => fill_dispatch::<C, N>(node, &dispatch, Some(scratch), frames),
 			None => exhausted(),
 		},
 		BatchStatus::NeedBuffer => match arena.alloc_scratch::<u64>(words) {
-			Some(scratch) => node.eval_batch(input, range, Some(scratch), frames),
+			Some(scratch) => node.eval_batch(dispatch, Some(scratch), frames),
 			None => exhausted(),
 		},
 		status => status,
@@ -225,9 +287,11 @@ pub enum LevelStatus<'a> {
 /// fills once, a lower bound drains by guess-and-double until a short fill,
 /// each reply's hint seeding the next guess. The boundary consumers' driver;
 /// reducers inline the same protocol with their span offsets.
-pub fn materialize_level<'a, 'e, C, N>(node: &'a N, input: &'a C, arena: &'a crate::arena::Arena, frames: &Frames<'e>) -> LevelStatus<'a>
+pub fn materialize_level<'a, 'e, 'r, C, N>(node: &'a N, input: &'a C, arena: &'a crate::arena::Arena, frames: &Frames<'e>) -> LevelStatus<'r>
 where
-	C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	'a: 'r,
+	'e: 'r,
+	C: AsDispatch<'e> + crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	N: Node<C>,
 {
 	use crate::gpoll::{Extent, GraphError, Level};
@@ -295,7 +359,7 @@ impl<'a, 'e, N> RecordInput<'a, 'e, N> {
 	pub fn serve<'l, C>(&self, ctx: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 	where
 		N: Node<C>,
-		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		C: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		self.node.serve(ctx, slot)
 	}
@@ -305,7 +369,7 @@ impl<'a, 'e, N> RecordInput<'a, 'e, N> {
 	pub fn materialize_level<'b, C>(&'b self, ctx: &'b C, arena: &'b crate::arena::Arena) -> LevelStatus<'b>
 	where
 		N: Node<C>,
-		C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		C: AsDispatch<'e> + crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		materialize_level(self.node, ctx, arena, self.frames)
 	}
@@ -613,7 +677,7 @@ impl<El: Clone + 'static, N> RecordExtract<El, N> {
 	pub fn eval<'e, C>(&self, input: &C, frames: &Frames<'e>) -> GPoll<El>
 	where
 		N: Node<C>,
-		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		C: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		// The element copies out by value, so the input's claim dies with
 		// the scope.

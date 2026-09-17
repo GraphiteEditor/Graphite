@@ -5,6 +5,7 @@ pub mod attribute;
 pub mod bounds;
 pub mod consts;
 pub mod context;
+pub mod dispatch;
 pub mod extent;
 pub mod gpoll;
 pub mod lane;

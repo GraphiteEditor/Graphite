@@ -3,7 +3,7 @@ use crate::gpoll::{Extent, Finality, GPoll, GraphError, Interrupt, Level};
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
-use std::ops::{Deref, Range};
+use std::ops::Deref;
 
 #[derive(Debug)]
 pub enum BatchStatus<'a> {
@@ -386,7 +386,7 @@ pub trait Node<Input> {
 	/// takes exactly its own frame out of the caller's free space.
 	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'e, 'l>) -> GPoll<crate::record::Served<'e>>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>;
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>;
 
 	/// The count of items at one absolute nesting level (innermost `0`). The
 	/// leveled primitive a structure node overrides to report a pushed level's
@@ -394,7 +394,7 @@ pub trait Node<Input> {
 	/// `GPoll` status axis.
 	fn extent_at<'e>(&self, _input: &Input, _level: u8, _frames: &crate::record::Frames<'e>) -> GPoll<Extent>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		GPoll::Final(Extent::Exactly(1))
 	}
@@ -404,7 +404,7 @@ pub trait Node<Input> {
 	/// domain's flat count. Consumers query this; nodes only write `extent_at`.
 	fn extent<'e>(&self, input: &Input, at: Level, frames: &crate::record::Frames<'e>) -> GPoll<Extent>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		let product =
 			|range: core::ops::Range<u8>, frames: &crate::record::Frames<'e>| range.fold(GPoll::Final(Extent::Exactly(1)), |acc, level| Extent::mul(acc, self.extent_at(input, level, frames)));
@@ -438,17 +438,19 @@ pub trait Node<Input> {
 	/// Installs this node's resolved record layout; a no-op unless it produces records.
 	fn set_layout(&mut self, _layout: crate::record::RecordLayout) {}
 
-	/// Batched evaluation of `range` into caller-provided frame storage of
+	/// Batched evaluation of the dispatch's range into caller-provided frame storage of
 	/// `range.len() * layout.lane_stride()` bytes; see [`BatchStatus`]. The
 	/// default advertises no support and drivers fall back to per-lane serves
 	/// with copy-out ([`crate::record::fill_frames`]); overrides exist to beat
 	/// that loop (resident lanes, direct fills, fewer erased calls), never for
 	/// correctness.
-	fn eval_batch<'a, 'e>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>, frames: &crate::record::Frames<'e>) -> BatchStatus<'a>
+	fn eval_batch<'a, 'e, 'r>(&'a self, dispatch: crate::dispatch::Dispatch<'e>, scratch: Option<&'r mut [MaybeUninit<u64>]>, frames: &crate::record::Frames<'e>) -> BatchStatus<'r>
 	where
-		Input: InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		'a: 'r,
+		'e: 'r,
+		Input: crate::dispatch::AsDispatch<'e> + InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
-		let _ = (input, range, scratch, frames);
+		let _ = (dispatch, scratch, frames);
 		BatchStatus::Unbatched
 	}
 }
@@ -459,14 +461,14 @@ where
 {
 	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'e, 'l>) -> GPoll<crate::record::Served<'e>>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		(**self).serve(input, slot)
 	}
 
 	fn extent_at<'e>(&self, input: &Input, level: u8, frames: &crate::record::Frames<'e>) -> GPoll<Extent>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		(**self).extent_at(input, level, frames)
 	}
@@ -479,11 +481,13 @@ where
 		(**self).layout()
 	}
 
-	fn eval_batch<'a, 'e>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>, frames: &crate::record::Frames<'e>) -> BatchStatus<'a>
+	fn eval_batch<'a, 'e, 'r>(&'a self, dispatch: crate::dispatch::Dispatch<'e>, scratch: Option<&'r mut [MaybeUninit<u64>]>, frames: &crate::record::Frames<'e>) -> BatchStatus<'r>
 	where
-		Input: InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		'a: 'r,
+		'e: 'r,
+		Input: crate::dispatch::AsDispatch<'e> + InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
-		(**self).eval_batch(input, range, scratch, frames)
+		(**self).eval_batch(dispatch, scratch, frames)
 	}
 }
 
@@ -493,14 +497,14 @@ where
 {
 	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'e, 'l>) -> GPoll<crate::record::Served<'e>>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		(**self).serve(input, slot)
 	}
 
 	fn extent_at<'e>(&self, input: &Input, level: u8, frames: &crate::record::Frames<'e>) -> GPoll<Extent>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		(**self).extent_at(input, level, frames)
 	}
@@ -513,11 +517,13 @@ where
 		(**self).layout()
 	}
 
-	fn eval_batch<'a, 'e>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>, frames: &crate::record::Frames<'e>) -> BatchStatus<'a>
+	fn eval_batch<'a, 'e, 'r>(&'a self, dispatch: crate::dispatch::Dispatch<'e>, scratch: Option<&'r mut [MaybeUninit<u64>]>, frames: &crate::record::Frames<'e>) -> BatchStatus<'r>
 	where
-		Input: InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		'a: 'r,
+		'e: 'r,
+		Input: crate::dispatch::AsDispatch<'e> + InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
-		(**self).eval_batch(input, range, scratch, frames)
+		(**self).eval_batch(dispatch, scratch, frames)
 	}
 }
 
@@ -527,14 +533,14 @@ where
 {
 	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'e, 'l>) -> GPoll<crate::record::Served<'e>>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		(**self).serve(input, slot)
 	}
 
 	fn extent_at<'e>(&self, input: &Input, level: u8, frames: &crate::record::Frames<'e>) -> GPoll<Extent>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		(**self).extent_at(input, level, frames)
 	}
@@ -547,11 +553,13 @@ where
 		(**self).layout()
 	}
 
-	fn eval_batch<'a, 'e>(&'a self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<u64>]>, frames: &crate::record::Frames<'e>) -> BatchStatus<'a>
+	fn eval_batch<'a, 'e, 'r>(&'a self, dispatch: crate::dispatch::Dispatch<'e>, scratch: Option<&'r mut [MaybeUninit<u64>]>, frames: &crate::record::Frames<'e>) -> BatchStatus<'r>
 	where
-		Input: InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		'a: 'r,
+		'e: 'r,
+		Input: crate::dispatch::AsDispatch<'e> + InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
-		(**self).eval_batch(input, range, scratch, frames)
+		(**self).eval_batch(dispatch, scratch, frames)
 	}
 }
 
@@ -587,7 +595,7 @@ impl StatusCell {
 	#[inline(always)]
 	pub fn eval_input<'e, Input, N: Node<Input> + ?Sized>(&self, input_index: usize, node: &N, input: &Input, frames: &crate::record::Frames<'e>) -> Result<crate::record::RecordValue<'e>, Interrupt>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		let slot = frames.claim(node.layout());
 		match node.serve(input, slot) {
@@ -683,7 +691,7 @@ impl<'a, 'f, N> LazyInput<'a, 'f, N> {
 	pub fn extent<'e, Input>(&self, ctx: &Input, at: Level) -> GPoll<Extent>
 	where
 		N: Node<Input>,
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 		'f: 'e,
 	{
 		self.node.extent(ctx, at, self.frames)
@@ -693,59 +701,43 @@ impl<'a, 'f, N> LazyInput<'a, 'f, N> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
 	use crate::arena::Arena;
-	use crate::context::ExtractArena;
+	use crate::context::{ContextImpl, EvalScope, ExtractIndices};
+	use crate::dispatch::{AsDispatch, LaneMap};
 	use crate::record::{LiftedSource, serve_input};
 
-	#[derive(Clone, Copy)]
-	struct TestInput<'a> {
-		index: u64,
-		arena: &'a Arena,
-	}
-
-	impl InjectIndex for TestInput<'_> {
-		fn set_index(&mut self, index: u64) {
-			self.index = index;
-		}
-	}
-
-	impl<'a> ExtractArena for TestInput<'a> {
-		type ArenaRef = &'a Arena;
-
-		fn arena(&self) -> &'a Arena {
-			self.arena
-		}
-	}
-
-	fn double<'a>() -> LiftedSource<u64, impl Fn(&TestInput<'a>) -> GPoll<u64>> {
-		LiftedSource::new(|input: &TestInput<'a>| GPoll::Final(input.index * 2))
+	fn double() -> LiftedSource<u64, impl for<'c> Fn(&ContextImpl<'c>) -> GPoll<u64>> {
+		LiftedSource::new(|input: &ContextImpl<'_>| GPoll::Final(input.innermost_index() * 2))
 	}
 
 	#[test]
 	fn the_default_advertises_no_batch_support() {
 		let frames = crate::record::test_frames(1 << 16);
 		let arena = Arena::new(1024).unwrap();
-		let input = TestInput { index: 0, arena: &arena };
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let input = ContextImpl::root(&scope);
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
 		let node = double();
-		assert!(matches!(node.eval_batch(&input, 2..6, Some(&mut scratch), &frames), BatchStatus::Unbatched));
-		assert!(matches!(node.eval_batch(&input, 2..6, None, &frames), BatchStatus::Unbatched));
+		assert!(matches!(node.eval_batch(input.dispatch(LaneMap::open(), 2..6), Some(&mut scratch), &frames), BatchStatus::Unbatched));
+		assert!(matches!(node.eval_batch(input.dispatch(LaneMap::open(), 2..6), None, &frames), BatchStatus::Unbatched));
 	}
 
 	#[test]
 	fn trait_is_object_safe_across_erased_edges() {
 		let arena = Arena::new(1024).unwrap();
-		let input = TestInput { index: 21, arena: &arena };
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let input = ContextImpl::root(&scope).replaced(21);
 		let node = double();
-		let layout = Node::<TestInput>::layout(&node).clone();
-		let erased: Box<dyn Node<TestInput>> = Box::new(node);
+		let layout = Node::<ContextImpl<'_>>::layout(&node).clone();
+		let erased: Box<dyn for<'c> Node<ContextImpl<'c>>> = Box::new(node);
 		let frames = crate::record::test_frames(1 << 12);
 		let GPoll::Final(value) = serve_input(&*erased, &input, &frames) else {
 			panic!("the erased edge must serve a final record");
 		};
 		// SAFETY: the record was served at `layout`, whose element is the output.
 		assert_eq!(unsafe { crate::record::read_element::<u64>(layout.rec(&value)) }, 42);
-		assert!(matches!(erased.eval_batch(&input, 0..2, None, &frames), BatchStatus::Unbatched));
+		assert!(matches!(erased.eval_batch(input.dispatch(LaneMap::open(), 0..2), None, &frames), BatchStatus::Unbatched));
 	}
 }

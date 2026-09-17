@@ -27,49 +27,52 @@ fn context_modification<T>(
 	value.eval(&ctx.nullified(modification.features, index, &scope))
 }
 
-/// The boundary's batch: the scope and index chain derive once for the whole
-/// range, and the value answers the range through the caller's scratch, so a
-/// consumer reading a level below a boundary walks the boundary once rather
-/// than once per lane.
-fn context_modification_batch<'batch, 'serve, Input, Value, Modification>(
+/// The boundary's batch: the scope, features and index levels narrow once for
+/// the whole range, and the value answers the range through the caller's
+/// scratch, so a consumer reading a level below a boundary walks the
+/// boundary once rather than once per lane.
+fn context_modification_batch<'batch, 'serve, 'r, Input, Value, Modification>(
 	node: &'batch _context_modification_mod::ContextModificationNode<Value, Modification>,
-	input: &'batch Input,
-	range: std::ops::Range<u64>,
-	scratch: Option<&'batch mut [std::mem::MaybeUninit<u64>]>,
+	dispatch: core_types::dispatch::Dispatch<'serve>,
+	scratch: Option<&'r mut [std::mem::MaybeUninit<u64>]>,
 	frames: &core_types::record::Frames<'serve>,
-) -> core_types::node::BatchStatus<'batch>
+) -> core_types::node::BatchStatus<'r>
 where
-	Input: Ctx + DeriveCtx + InjectIndex + Copy + core_types::context::ExtractArena<ArenaRef = &'serve core_types::arena::Arena>,
+	'batch: 'r,
+	'serve: 'r,
+	Input: Ctx + DeriveCtx + InjectIndex + Copy + core_types::dispatch::AsDispatch<'serve> + core_types::context::ExtractArena<ArenaRef = &'serve core_types::arena::Arena>,
 	Value: for<'derived> core_types::record::DerivedRecordInput<'derived, core_types::context::Derived<'derived, Input>>,
 	Modification: core_types::node::Node<Input>,
 	_context_modification_mod::ContextModificationNode<Value, Modification>: core_types::node::Node<Input>,
 {
 	use core_types::node::BatchStatus;
 
+	let exhausted = || {
+		BatchStatus::Error(GraphError {
+			kind: ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		})
+	};
+	let range = dispatch.range();
+	let Some(base) = Input::at_lane(&dispatch, range.start) else {
+		return exhausted();
+	};
 	let cell = core_types::node::StatusCell::new();
-	let modification = match cell.eval_input(1, &node.modification, input, frames) {
+	let modification = match cell.eval_input(1, &node.modification, &base, frames) {
 		// SAFETY: input 1 is the modification, read at the layout resolved for it.
 		Ok(value) => unsafe { core_types::record::read_element::<ContextModification>(node.__in_1.rec(&value)) },
 		Err(interrupt) => return interrupt.into(),
 	};
-	let scope = input.scope().nullified_through(modification.features, Some(modification.sources()), &node.remembered);
-	let index = match modification.features.contains(ContextFeatures::INDEX) {
-		true => match nullify_index_levels(input.index_head(), modification.index_levels, scope.arena()) {
-			Some(index) => index,
-			None => {
-				return BatchStatus::Error(GraphError {
-					kind: ErrorKind::ArenaExhausted,
-					trace: Vec::new(),
-				});
-			}
-		},
-		false => IndexLink { index: 0, outer: None },
+	let scope = dispatch.scope().nullified_through(modification.features, Some(modification.sources()), &node.remembered);
+	let levels = match modification.features.contains(ContextFeatures::INDEX) {
+		true => modification.index_levels,
+		false => core_types::context::IndexLevels::empty(),
 	};
-	let derived = input.nullified(modification.features, index, &scope);
+	let derived = dispatch.keeping(modification.features).nullified(levels).with_scope(&scope);
 	let layout = core_types::node::Node::<Input>::layout(node);
-	// Nothing below lends: the boundary serves the range itself, with the
-	// modification, scope and layout bound once rather than per lane.
-	let lanes = |scratch: &'batch mut [std::mem::MaybeUninit<u64>]| {
+	// Nothing below lends: the boundary serves the range itself from the
+	// narrowed dispatch, one context rebuilt per lane.
+	let lanes = |scratch: &'r mut [std::mem::MaybeUninit<u64>]| {
 		use core_types::gpoll::{Extent, Finality};
 		#[cfg(debug_assertions)]
 		core_types::record::note_kernel_batch("context_modification", "lane loop", range.end.saturating_sub(range.start) as usize);
@@ -82,24 +85,12 @@ where
 		let mut finality = Finality::AllFinal;
 		let mut hint = Extent::AtLeast(range.end as usize);
 		for lane in 0..len {
-			let mut local = *input;
-			local.set_index(range.start + lane as u64);
-			let index = match modification.features.contains(ContextFeatures::INDEX) {
-				true => match nullify_index_levels(local.index_head(), modification.index_levels, scope.arena()) {
-					Some(index) => index,
-					None => {
-						return BatchStatus::Error(GraphError {
-							kind: ErrorKind::ArenaExhausted,
-							trace: Vec::new(),
-						});
-					}
-				},
-				false => IndexLink { index: 0, outer: None },
+			let Some(ctx) = <core_types::context::Derived<'_, Input> as core_types::dispatch::AsDispatch<'_>>::at_lane(&derived, range.start + lane as u64) else {
+				return exhausted();
 			};
-			let derived = local.nullified(modification.features, index, &scope);
 			let lane_frames = frames.scope();
 			let slot = run.slot(lane, &lane_frames);
-			let served = match node.value.serve_derived(&derived, slot) {
+			let served = match node.value.serve_derived(&ctx, slot) {
 				GPoll::Final(served) => served,
 				GPoll::Partial(served) => {
 					finality = Finality::Partial;
@@ -118,5 +109,5 @@ where
 		}
 		BatchStatus::Filled(run.finish(), finality, hint)
 	};
-	core_types::record::forward_batch(&node.value, &derived, range.clone(), scratch, frames, layout, lanes)
+	core_types::record::forward_dispatch(&node.value, &derived, scratch, frames, layout, lanes)
 }

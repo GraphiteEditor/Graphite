@@ -167,7 +167,7 @@ where
 {
 	fn serve<'e, 'l>(&self, input: &Input, slot: crate::record::FrameClaim<'e, 'l>) -> crate::gpoll::GPoll<crate::record::Served<'e>>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		// SAFETY: `own` keeps the payload alive for `self`'s lifetime and Arc
 		// payloads are address stable.
@@ -176,7 +176,7 @@ where
 
 	fn extent_at<'x>(&self, input: &Input, level: u8, frames: &crate::record::Frames<'x>) -> crate::gpoll::GPoll<crate::gpoll::Extent>
 	where
-		Input: crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
+		Input: crate::dispatch::AsDispatch<'x> + crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
 	{
 		// SAFETY: as in serve.
 		unsafe { self.ptr.as_ref() }.extent_at(input, level, frames)
@@ -192,18 +192,19 @@ where
 		unsafe { self.ptr.as_ref() }.layout()
 	}
 
-	fn eval_batch<'a, 'x>(
+	fn eval_batch<'a, 'x, 'r>(
 		&'a self,
-		input: &'a Input,
-		range: std::ops::Range<u64>,
-		scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>,
+		dispatch: crate::dispatch::Dispatch<'x>,
+		scratch: Option<&'r mut [std::mem::MaybeUninit<u64>]>,
 		frames: &crate::record::Frames<'x>,
-	) -> crate::node::BatchStatus<'a>
+	) -> crate::node::BatchStatus<'r>
 	where
-		Input: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
+		'a: 'r,
+		'x: 'r,
+		Input: crate::dispatch::AsDispatch<'x> + crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
 	{
 		// SAFETY: as in serve.
-		unsafe { self.ptr.as_ref() }.eval_batch(input, range, scratch, frames)
+		unsafe { self.ptr.as_ref() }.eval_batch(dispatch, scratch, frames)
 	}
 }
 

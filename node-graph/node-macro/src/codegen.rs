@@ -955,7 +955,11 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(None, false) => quote!('_),
 	};
 	if bind_record_arena {
-		ctx_bounds.push(quote!(#core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>));
+		ctx_bounds.push(quote!(#core_types::dispatch::AsDispatch<'__record> + #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>));
+	}
+	// A kernel naming its own arena lifetime batches at that lifetime.
+	if let Some(lifetime) = &declared_arena_lifetime {
+		ctx_bounds.push(quote!(#core_types::dispatch::AsDispatch<#lifetime>));
 	}
 
 	let ctx_generic = match ctx_bounds.is_empty() {
@@ -1697,7 +1701,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! {
 			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8, __frames: &#core_types::record::Frames<'__serve>) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
 				where
-					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+					#ctx_ident: #core_types::dispatch::AsDispatch<'__serve> + #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 				{
 				#(#arg_decls)*
 				let __level_in = #core_types::extent::LevelIn::new(__level, <Self as #core_types::node::Node<#ctx_ident>>::layout(self).depth);
@@ -1710,7 +1714,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! {
 			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8, __frames: &#core_types::record::Frames<'__serve>) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
 				where
-					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+					#ctx_ident: #core_types::dispatch::AsDispatch<'__serve> + #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 				{
 				#path(self, __input, __level, __frames)
 			}
@@ -1740,7 +1744,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! {
 			fn extent_at<'__serve>(&self, __input: &#ctx_ident, __level: u8, __frames: &#core_types::record::Frames<'__serve>) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
 				where
-					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+					#ctx_ident: #core_types::dispatch::AsDispatch<'__serve> + #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 				{
 				#query
 				let __arg = #core_types::extent::ExtentIn::new(&__query);
@@ -1754,7 +1758,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! {
 			fn extent_at<'__serve>(&self, _: &#ctx_ident, _: u8, _: &#core_types::record::Frames<'__serve>) -> #core_types::gpoll::GPoll<#core_types::gpoll::Extent>
 				where
-					#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+					#ctx_ident: #core_types::dispatch::AsDispatch<'__serve> + #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 				{
 				#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::AtLeast(0))
 			}
@@ -1776,15 +1780,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 
 	let batch_signature = quote! {
-		fn eval_batch<'__batch, '__serve>(
+		fn eval_batch<'__batch, '__serve, '__out>(
 			&'__batch self,
-			__input: &'__batch #ctx_ident,
-			__range: ::std::ops::Range<u64>,
-			__scratch: Option<&'__batch mut [::std::mem::MaybeUninit<u64>]>,
+			__dispatch: #core_types::dispatch::Dispatch<'__serve>,
+			__scratch: Option<&'__out mut [::std::mem::MaybeUninit<u64>]>,
 			__frames: &#core_types::record::Frames<'__serve>,
-		) -> #core_types::node::BatchStatus<'__batch>
+		) -> #core_types::node::BatchStatus<'__out>
 		where
-			#ctx_ident: #core_types::context::InjectIndex + Copy + #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+			'__batch: '__out,
+			'__serve: '__out,
+			#ctx_ident: #core_types::dispatch::AsDispatch<'__serve> + #core_types::context::InjectIndex + Copy + #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 	};
 	let produces_records = record_io || routing_generic.is_some() || flip;
 
@@ -2378,9 +2383,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(Some(path), ..) => quote! {
 			#batch_signature
 			{
+				let __range = __dispatch.range();
 				#[cfg(debug_assertions)]
 				#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "hand", __range.end.saturating_sub(__range.start) as usize);
-				#path(self, __input, __range, __scratch, __frames)
+				#path(self, __dispatch, __scratch, __frames)
 			}
 		},
 		(None, true, Some(lane_poll)) => {
@@ -2467,9 +2473,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let mut __finality = #core_types::gpoll::Finality::AllFinal;
 					let mut __hint = #core_types::gpoll::Extent::AtLeast(__range.end as usize);
 					#subject_prologue
-					let mut __lane_ctx = __base_ctx;
 					for __lane in 0..__len {
-						#core_types::context::InjectIndex::set_index(&mut __lane_ctx, __range.start + __lane as u64);
+						let ::core::option::Option::Some(__lane_ctx) = <#ctx_ident as #core_types::dispatch::AsDispatch<'__serve>>::at_lane(&__dispatch, __range.start + __lane as u64) else {
+							return #core_types::node::BatchStatus::Error(#core_types::gpoll::GraphError { kind: #core_types::gpoll::ErrorKind::ArenaExhausted, trace: ::std::vec::Vec::new() });
+						};
 						let __input = &__lane_ctx;
 						// The lane's inputs claim beyond its slab region, and their
 						// space is free again at the next lane.
@@ -2521,6 +2528,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote! {
 				#batch_signature
 				{
+					let __range = __dispatch.range();
 					let ::core::option::Option::Some(__scratch) = __scratch else {
 						return #core_types::node::BatchStatus::NeedBuffer;
 					};
@@ -2534,10 +2542,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					// the caller's free space comes back as it was lent.
 					let __frames = __frames.scope();
 					let __cell = #cell_constructor;
-					let __base_ctx = {
-						let mut __ctx = *__input;
-						#core_types::context::InjectIndex::set_index(&mut __ctx, __range.start);
-						__ctx
+					let ::core::option::Option::Some(__base_ctx) = <#ctx_ident as #core_types::dispatch::AsDispatch<'__serve>>::at_lane(&__dispatch, __range.start) else {
+						return #core_types::node::BatchStatus::Error(#core_types::gpoll::GraphError { kind: #core_types::gpoll::ErrorKind::ArenaExhausted, trace: ::std::vec::Vec::new() });
 					};
 					let __input = &__base_ctx;
 					#selected_fill
@@ -2549,14 +2555,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(None, true, None) => quote! {
 			#batch_signature
 			{
+				let __range = __dispatch.range();
 				#[cfg(debug_assertions)]
 				#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "eager-forward", __range.end.saturating_sub(__range.start) as usize);
-				#core_types::record::fill_frames(self, __input, __range, __scratch, __frames)
+				#core_types::record::fill_dispatch::<#ctx_ident, _>(self, &__dispatch, __scratch, __frames)
 			}
 		},
 		(None, false, _) => quote! {
 			#batch_signature
 			{
+				let __range = __dispatch.range();
 				#[cfg(debug_assertions)]
 				#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "unbatched", __range.end.saturating_sub(__range.start) as usize);
 				#core_types::node::BatchStatus::Unbatched
@@ -2978,7 +2986,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		{
 			fn serve<'__serve, '__slot>(&self, __input: &#ctx_ident, __slot: #core_types::record::FrameClaim<'__serve, '__slot>) -> #core_types::gpoll::GPoll<#core_types::record::Served<'__serve>>
 			where
-				#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
+				#ctx_ident: #core_types::dispatch::AsDispatch<'__serve> + #core_types::context::ExtractArena<ArenaRef = &'__serve #core_types::arena::Arena>,
 			{
 				#frame_entry
 				let __cell = #cell_constructor;

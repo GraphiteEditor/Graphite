@@ -1753,7 +1753,7 @@ mod graphene_test {
 		let erased: Box<ErasedRecordNode> = Box::new(node);
 		// One u64 word per lane at the element-only layout.
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
-		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch), &frames);
+		let status = erased.eval_batch(core_types::dispatch::AsDispatch::dispatch(&ctx, core_types::dispatch::LaneMap::open(), 2..6), Some(&mut scratch), &frames);
 		let BatchStatus::Filled(batch, finality, _) = status else {
 			panic!("expected filled, got {status:?}");
 		};

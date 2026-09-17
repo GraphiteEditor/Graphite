@@ -560,7 +560,7 @@ mod tests {
 		let scoped = ctx.promoted(&head, 0);
 
 		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 5 * out.lane_stride() / 8];
-		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..5, Some(&mut scratch), &frames) else {
+		let core_types::node::BatchStatus::Filled(batch, ..) = core_types::node::Node::<core_types::context::ContextImpl<'_>>::eval_batch(&node, core_types::dispatch::AsDispatch::dispatch(&scoped, core_types::dispatch::LaneMap::open(), 0..5), Some(&mut scratch), &frames) else {
 			panic!("expected a filled batch");
 		};
 		let batch = batch.into_shared();
@@ -1006,7 +1006,7 @@ mod tests {
 		let scoped = ctx.promoted(&head, 0);
 
 		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 3 * out.lane_stride() / 8];
-		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..3, Some(&mut scratch), &frames) else {
+		let core_types::node::BatchStatus::Filled(batch, ..) = core_types::node::Node::<core_types::context::ContextImpl<'_>>::eval_batch(&node, core_types::dispatch::AsDispatch::dispatch(&scoped, core_types::dispatch::LaneMap::open(), 0..3), Some(&mut scratch), &frames) else {
 			panic!("expected a filled batch");
 		};
 		let batch = batch.into_shared();

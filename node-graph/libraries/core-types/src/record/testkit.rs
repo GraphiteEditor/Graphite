@@ -77,7 +77,7 @@ impl ServedRecord {
 pub fn capture<'e, C, N>(node: &N, ctx: &C, frames: &Frames<'e>) -> GPoll<ServedRecord>
 where
 	N: Node<C> + ?Sized,
-	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	C: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 {
 	let scope = frames.scope();
 	let layout = node.layout().clone();
@@ -119,7 +119,7 @@ where
 {
 	fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 	where
-		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		C: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		slot.lift_served((self.kernel)(input), input.arena())
 	}
@@ -146,7 +146,7 @@ mod tests {
 		impl<C> Node<C> for Fixture {
 			fn serve<'e, 'l>(&self, input: &C, mut slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 			where
-				C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+				C: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 			{
 				let offset = self.layout.offset_of(Transform::NAME, 0).expect("the fixture's layout carries the transform");
 				if slot.element(String::from("parked"), crate::context::ExtractArena::arena(input)).is_none() {

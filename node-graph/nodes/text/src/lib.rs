@@ -857,15 +857,16 @@ fn string_split<'e>(
 /// Serves a whole range of lanes from one walk of the rows, instead of re-walking them for
 /// each lane. A split level is read lane by lane by its consumer, so the per-lane form costs
 /// a scan per lane and this costs one scan per range.
-fn string_split_batch<'batch, 'serve, Input, Primary, Strings, Delimiter, Escaping>(
+fn string_split_batch<'batch, 'serve, 'r, Input, Primary, Strings, Delimiter, Escaping>(
 	node: &'batch _string_split_mod::StringSplitNode<Primary, Strings, Delimiter, Escaping>,
-	input: &'batch Input,
-	range: std::ops::Range<u64>,
-	scratch: Option<&'batch mut [std::mem::MaybeUninit<u64>]>,
+	dispatch: core_types::dispatch::Dispatch<'serve>,
+	scratch: Option<&'r mut [std::mem::MaybeUninit<u64>]>,
 	frames: &core_types::record::Frames<'serve>,
-) -> core_types::node::BatchStatus<'batch>
+) -> core_types::node::BatchStatus<'r>
 where
-	Input: Ctx + ExtractIndex + InjectIndex + Copy + core_types::context::ExtractArena<ArenaRef = &'serve core_types::arena::Arena>,
+	'batch: 'r,
+	'serve: 'r,
+	Input: Ctx + ExtractIndex + InjectIndex + Copy + core_types::dispatch::AsDispatch<'serve> + core_types::context::ExtractArena<ArenaRef = &'serve core_types::arena::Arena>,
 	Primary: core_types::node::Node<Input>,
 	Strings: core_types::node::Node<Input>,
 	Delimiter: core_types::node::Node<Input>,
@@ -873,6 +874,11 @@ where
 {
 	use core_types::node::BatchStatus;
 
+	let range = dispatch.range();
+	let Some(input) = Input::at_lane(&dispatch, range.start) else {
+		return BatchStatus::Error(GraphError::new("string split could not rebuild its context"));
+	};
+	let input = &input;
 	let Some(scratch) = scratch else { return BatchStatus::NeedBuffer };
 	let Ok(len) = usize::try_from(range.end.saturating_sub(range.start)) else {
 		return BatchStatus::InvalidRange;

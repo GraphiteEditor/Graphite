@@ -92,7 +92,7 @@ where
 {
 	fn serve<'e, 'l>(&self, input: &C, mut slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
 	where
-		C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+		C: crate::dispatch::AsDispatch<'e> + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	{
 		// The source's frame is claimed beyond this one and dies with the
 		// claim; the translated union record stays.
@@ -127,7 +127,7 @@ where
 
 	fn extent_at<'x>(&self, input: &C, level: u8, frames: &Frames<'x>) -> GPoll<crate::gpoll::Extent>
 	where
-		C: crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
+		C: crate::dispatch::AsDispatch<'x> + crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
 	{
 		self.edge.extent_at(input, level, frames)
 	}
@@ -136,13 +136,16 @@ where
 	/// untouched, and a translating route materializes the source's lanes at
 	/// the source layout and translates each into the caller's scratch, so a
 	/// batch survives the layout seam instead of restarting lane by lane.
-	fn eval_batch<'a, 'x>(&'a self, input: &'a C, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'x>) -> crate::node::BatchStatus<'a>
+	fn eval_batch<'a, 'x, 'r>(&'a self, dispatch: crate::dispatch::Dispatch<'x>, scratch: Option<&'r mut [std::mem::MaybeUninit<u64>]>, frames: &Frames<'x>) -> crate::node::BatchStatus<'r>
 	where
-		C: crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
+		'a: 'r,
+		'x: 'r,
+		C: crate::dispatch::AsDispatch<'x> + crate::context::InjectIndex + Copy + crate::context::ExtractArena<ArenaRef = &'x crate::arena::Arena>,
 	{
 		use crate::node::BatchStatus;
+		let range = dispatch.range();
 		let Some(plan) = &self.plan else {
-			return self.edge.eval_batch(input, range, scratch, frames);
+			return self.edge.eval_batch(dispatch, scratch, frames);
 		};
 		let Some(scratch) = scratch else {
 			return BatchStatus::NeedBuffer;
@@ -154,8 +157,7 @@ where
 		if scratch.len() * 8 < len * stride {
 			return BatchStatus::InvalidRange;
 		}
-		let arena = crate::context::ExtractArena::arena(input);
-		let (source, finality, hint) = match super::input::materialize_batch(&self.edge, input, range, arena, frames) {
+		let (source, finality, hint) = match super::input::materialize_dispatch::<C, _>(&self.edge, &dispatch, dispatch.scope().arena(), frames) {
 			BatchStatus::Lent(batch, finality, hint) => (batch, finality, hint),
 			BatchStatus::Filled(batch, finality, hint) => (batch.into_shared(), finality, hint),
 			BatchStatus::Pending => return BatchStatus::Pending,

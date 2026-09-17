@@ -323,6 +323,12 @@ impl core::ops::BitOrAssign for IndexLevels {
 	}
 }
 
+impl core::ops::BitAndAssign for IndexLevels {
+	fn bitand_assign(&mut self, other: Self) {
+		self.0 &= other.0;
+	}
+}
+
 impl graphene_hash::CacheHash for IndexLevels {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		core::hash::Hash::hash(self, state);
@@ -707,7 +713,7 @@ impl ExtractFootprint for () {
 // ==============
 
 pub type Context<'a> = ContextImpl<'a>;
-type DynRef<'a> = &'a (dyn Any + Send + Sync);
+pub type DynRef<'a> = &'a (dyn Any + Send + Sync);
 
 pub trait DynHash {
 	fn dyn_hash(&self, state: &mut dyn Hasher);
@@ -937,6 +943,23 @@ impl<'a> EvalScope<'a> {
 		self.generations.iter().find(|(candidate, _)| *candidate == source).map(|(_, generation)| *generation)
 	}
 
+	/// The scope's own contribution to a cache key.
+	pub fn hash(&self) -> u64 {
+		self.hash
+	}
+
+	pub fn real_time(&self) -> Option<f64> {
+		self.real_time
+	}
+
+	pub fn animation_time(&self) -> Option<f64> {
+		self.animation_time
+	}
+
+	pub fn pointer_position(&self) -> Option<DVec2> {
+		self.pointer_position
+	}
+
 	pub fn generations(&self) -> &'a [(SourceId, u64)] {
 		self.generations
 	}
@@ -969,7 +992,7 @@ impl BorrowArena for ContextImpl<'_> {
 }
 
 pub trait CtxFamily {
-	type Ctx<'s>: Ctx + DeriveCtx<Family = Self> + InjectIndex + Copy;
+	type Ctx<'s>: Ctx + DeriveCtx<Family = Self> + InjectIndex + Copy + crate::dispatch::AsDispatch<'s>;
 }
 
 pub type Derived<'s, C> = <<C as DeriveCtx>::Family as CtxFamily>::Ctx<'s>;
@@ -1243,6 +1266,15 @@ impl<'a> ContextImpl<'a> {
 	pub fn index_head(&self) -> IndexLink<'a> {
 		self.index
 	}
+	pub fn footprint_ref(&self) -> Option<&'a Footprint> {
+		self.footprint
+	}
+	pub fn varargs_ref(&self) -> Option<&'a VarArgLink<'a>> {
+		self.varargs
+	}
+	pub fn position_ref(&self) -> Option<&'a PositionLink<'a>> {
+		self.position
+	}
 
 	pub fn with_footprint<'s>(&self, footprint: &'s Footprint) -> ContextImpl<'s>
 	where
@@ -1364,37 +1396,52 @@ impl ExtractPosition for ContextImpl<'_> {
 		self.position.map(|head| std::iter::successors(Some(head), |link| link.outer).map(|link| link.position))
 	}
 }
-impl ExtractVarArgs for ContextImpl<'_> {
-	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
-		let mut link = self.varargs.ok_or(VarArgsResult::NoVarArgs)?;
-		let mut remaining = index;
-		loop {
-			match link.args.get(remaining) {
-				Some(arg) => return Ok(arg as DynRef<'_>),
-				None => {
-					remaining -= link.args.len();
-					link = link.outer.ok_or(VarArgsResult::IndexOutOfBounds)?;
-				}
+/// The vararg at `index` along a chain of links.
+pub fn vararg_at<'a>(head: Option<&'a VarArgLink<'a>>, index: usize) -> Result<DynRef<'a>, VarArgsResult> {
+	let mut link = head.ok_or(VarArgsResult::NoVarArgs)?;
+	let mut remaining = index;
+	loop {
+		match link.args.get(remaining) {
+			Some(arg) => return Ok(arg as DynRef<'a>),
+			None => {
+				remaining -= link.args.len();
+				link = link.outer.ok_or(VarArgsResult::IndexOutOfBounds)?;
 			}
 		}
+	}
+}
+
+/// The number of varargs along a chain of links.
+pub fn varargs_len(head: Option<&VarArgLink<'_>>) -> Result<usize, VarArgsResult> {
+	let head = head.ok_or(VarArgsResult::NoVarArgs)?;
+	Ok(std::iter::successors(Some(head), |link| link.outer).map(|link| link.args.len()).sum())
+}
+
+/// Hashes every vararg along a chain of links, then their count.
+pub fn hash_vararg_chain(head: Option<&VarArgLink<'_>>, hasher: &mut dyn Hasher) {
+	let mut count = 0u64;
+	let mut link = head;
+	while let Some(current) = link {
+		for arg in current.args.iter() {
+			arg.dyn_hash(&mut *hasher);
+			count += 1;
+		}
+		link = current.outer;
+	}
+	count.hash(&mut &mut *hasher);
+}
+
+impl ExtractVarArgs for ContextImpl<'_> {
+	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
+		vararg_at(self.varargs, index)
 	}
 
 	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
-		let head = self.varargs.ok_or(VarArgsResult::NoVarArgs)?;
-		Ok(std::iter::successors(Some(head), |link| link.outer).map(|link| link.args.len()).sum())
+		varargs_len(self.varargs)
 	}
 
 	fn hash_varargs(&self, hasher: &mut dyn Hasher) {
-		let mut count = 0u64;
-		let mut link = self.varargs;
-		while let Some(current) = link {
-			for arg in current.args.iter() {
-				arg.dyn_hash(&mut *hasher);
-				count += 1;
-			}
-			link = current.outer;
-		}
-		count.hash(&mut &mut *hasher);
+		hash_vararg_chain(self.varargs, hasher)
 	}
 }
 impl<'a> ExtractArena for ContextImpl<'a> {

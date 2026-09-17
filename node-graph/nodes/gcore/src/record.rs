@@ -1288,9 +1288,22 @@ mod tests {
 		let head = ctx.index_head();
 		let scoped = ctx.promoted(&head, 0);
 
-		assert!(matches!(node.eval_batch(&scoped, 0..6, None, &frames), core_types::node::BatchStatus::NeedBuffer));
+		assert!(matches!(
+			core_types::node::Node::<core_types::context::ContextImpl<'_>>::eval_batch(
+				&node,
+				core_types::dispatch::AsDispatch::dispatch(&scoped, core_types::dispatch::LaneMap::open(), 0..6),
+				None,
+				&frames
+			),
+			core_types::node::BatchStatus::NeedBuffer
+		));
 		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 6 * out.lane_stride() / 8];
-		let core_types::node::BatchStatus::Filled(batch, finality, _) = node.eval_batch(&scoped, 0..6, Some(&mut scratch), &frames) else {
+		let core_types::node::BatchStatus::Filled(batch, finality, _) = core_types::node::Node::<core_types::context::ContextImpl<'_>>::eval_batch(
+			&node,
+			core_types::dispatch::AsDispatch::dispatch(&scoped, core_types::dispatch::LaneMap::open(), 0..6),
+			Some(&mut scratch),
+			&frames,
+		) else {
 			panic!("expected a filled batch");
 		};
 		assert_eq!(finality, core_types::gpoll::Finality::AllFinal);
@@ -1349,7 +1362,12 @@ mod tests {
 		let scoped = ctx.promoted(&head, 0);
 
 		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 6 * out.lane_stride() / 8];
-		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..6, Some(&mut scratch), &frames) else {
+		let core_types::node::BatchStatus::Filled(batch, ..) = core_types::node::Node::<core_types::context::ContextImpl<'_>>::eval_batch(
+			&node,
+			core_types::dispatch::AsDispatch::dispatch(&scoped, core_types::dispatch::LaneMap::open(), 0..6),
+			Some(&mut scratch),
+			&frames,
+		) else {
 			panic!("expected a filled batch");
 		};
 		assert_eq!(batch.len(), 6);
@@ -1390,7 +1408,12 @@ mod tests {
 		let scoped = ctx.promoted(&head, 0);
 
 		let mut scratch = vec![std::mem::MaybeUninit::<u64>::uninit(); 6 * out.lane_stride() / 8];
-		let core_types::node::BatchStatus::Filled(batch, ..) = node.eval_batch(&scoped, 0..6, Some(&mut scratch), &frames) else {
+		let core_types::node::BatchStatus::Filled(batch, ..) = core_types::node::Node::<core_types::context::ContextImpl<'_>>::eval_batch(
+			&node,
+			core_types::dispatch::AsDispatch::dispatch(&scoped, core_types::dispatch::LaneMap::open(), 0..6),
+			Some(&mut scratch),
+			&frames,
+		) else {
 			panic!("expected a filled batch");
 		};
 		assert_eq!(batch.len(), 6);

@@ -26,9 +26,11 @@ pub enum LevelGroup<'e> {
 
 /// The renderer's flip form: the wire's whole extent materialized into a
 /// group over the level's records, ready for the group render bridge.
-pub fn materialize_group<'a, 'e, C, N>(node: &'a N, input: &'a C, arena: &'a Arena, frames: &core_types::record::Frames<'e>) -> LevelGroup<'a>
+pub fn materialize_group<'a, 'e, 'r, C, N>(node: &'a N, input: &'a C, arena: &'a Arena, frames: &core_types::record::Frames<'e>) -> LevelGroup<'r>
 where
-	C: InjectIndex + Copy + core_types::context::ExtractArena<ArenaRef = &'e Arena>,
+	'a: 'r,
+	'e: 'r,
+	C: core_types::dispatch::AsDispatch<'e> + InjectIndex + Copy + core_types::context::ExtractArena<ArenaRef = &'e Arena>,
 	N: Node<C>,
 {
 	match materialize_level(node, input, arena, frames) {
